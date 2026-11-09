@@ -20,8 +20,8 @@ import { postgresFixture } from "./postgres-fixture.mjs";
 import { databaseTransferRace } from "./database-transfer-race.mjs";
 import { nativeExportRoundtrip } from "./native-export-roundtrip.mjs";
 import { exportLegacyPglite } from "../database-transfer/legacy-pglite.mjs";
-import { readServerConfig } from "../../cantrip_server/src/config.ts";
-import { connectDatabase } from "../../cantrip_server/src/db/index.ts";
+import { readServerConfig } from "../../tests/reference-node-server/src/config.ts";
+import { connectDatabase } from "../../tests/reference-node-server/src/db/index.ts";
 import {
   prepareHistoricalPglite,
   upgradeHistoricalReference,

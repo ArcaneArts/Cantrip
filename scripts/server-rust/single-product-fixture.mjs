@@ -27,7 +27,7 @@ export class SingleProductFixture extends HttpFixture {
     await mkdir(this.directory, { recursive: true });
     if (this.kind === "node") {
       this.server = await startPackagedNodeServer(
-        path.join(repositoryRoot, "cantrip_server"),
+        path.join(repositoryRoot, "tests/reference-node-server"),
         this.environment,
         { nodeExecutable: process.execPath, port },
       );

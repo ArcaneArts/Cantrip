@@ -1,4 +1,4 @@
-import { WorktreeCreateMutationError } from "../../cantrip_server/src/worktrees/coordinator.ts";
+import { WorktreeCreateMutationError } from "../../tests/reference-node-server/src/worktrees/coordinator.ts";
 
 const cases = [];
 for (const outcome of ["notStarted", "committed", "rolledBack", "partial"])

@@ -11,7 +11,7 @@ import { deadline } from "./live-sockets.mjs";
 import { request, requestHeaders } from "./shared-runtime-fixture-tools.mjs";
 import { verifyTenantSession } from "./shared-runtime-tenants.mjs";
 const WebSocket = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("ws");
 const generation = "55555555-5555-4555-8555-555555555555";
 

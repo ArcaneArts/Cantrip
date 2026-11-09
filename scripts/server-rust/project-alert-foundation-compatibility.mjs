@@ -30,7 +30,7 @@ try {
     "pnpm",
     [
       "--filter",
-      "@cantrip/server",
+      "@cantrip/server-reference",
       "exec",
       "vitest",
       "run",

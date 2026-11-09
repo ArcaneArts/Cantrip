@@ -54,10 +54,11 @@ let database, app, failure;
 const report = { root, completeReplacement: false };
 try {
   const { readServerConfig } =
-    await import("../../cantrip_server/src/config.ts");
+    await import("../../tests/reference-node-server/src/config.ts");
   const { connectDatabase } =
-    await import("../../cantrip_server/src/db/index.ts");
-  const { buildApp } = await import("../../cantrip_server/src/app.ts");
+    await import("../../tests/reference-node-server/src/db/index.ts");
+  const { buildApp } =
+    await import("../../tests/reference-node-server/src/app.ts");
   const config = readServerConfig();
   database = await connectDatabase(config);
   app = await buildApp({ config, database, logger: false });
@@ -71,7 +72,7 @@ try {
     "All actual app/plugin registrations are observed",
   );
   const require = createRequire(
-    new URL("../../cantrip_server/package.json", import.meta.url),
+    new URL("../../tests/reference-node-server/package.json", import.meta.url),
   );
   const Router = createRequire(require.resolve("fastify"))("find-my-way");
   let targetError = null;

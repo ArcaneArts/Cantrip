@@ -7,7 +7,7 @@ import { observeConfiguration } from "./config-oracle.mjs";
 
 const source = parse(
   await readFile(
-    new URL("../../cantrip_server/src/config.ts", import.meta.url),
+    new URL("../../tests/reference-node-server/src/config.ts", import.meta.url),
     "utf8",
   ),
   { sourceType: "module", plugins: ["typescript"] },

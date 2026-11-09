@@ -3,7 +3,7 @@
 import { createRequire } from "node:module";
 
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { sql } = require("drizzle-orm");
 

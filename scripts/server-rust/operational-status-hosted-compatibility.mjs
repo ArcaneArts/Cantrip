@@ -20,7 +20,7 @@ import { password } from "./security-fixtures.mjs";
 import { prometheus } from "./operational-status-http-cases.mjs";
 
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 const { values } = parseArgs({ options: { report: { type: "string" } } });
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-operational-hosted-"));
@@ -228,7 +228,7 @@ try {
     try {
       if (kind === "node")
         f.server = await startPackagedNodeServer(
-          path.join(repositoryRoot, "cantrip_server"),
+          path.join(repositoryRoot, "tests/reference-node-server"),
           f.environment,
           { nodeExecutable: process.execPath },
         );

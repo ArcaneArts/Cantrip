@@ -1,4 +1,4 @@
-import { ProjectWorktreeCoordinator } from "../../cantrip_server/src/worktrees/coordinator.ts";
+import { ProjectWorktreeCoordinator } from "../../tests/reference-node-server/src/worktrees/coordinator.ts";
 export async function worktreeCoordinatorFixture(database, request, execute) {
   const trace = [],
     replies = [...request.replies];

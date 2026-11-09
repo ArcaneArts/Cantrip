@@ -1,15 +1,15 @@
 import {
   canTransitionTaskState,
   validateTaskOperationStart,
-} from "../../cantrip_server/src/tasks/state.ts";
+} from "../../tests/reference-node-server/src/tasks/state.ts";
 import {
   scheduleTaskRetry,
   taskRetrySummary,
-} from "../../cantrip_server/src/tasks/automatic-retry.ts";
+} from "../../tests/reference-node-server/src/tasks/automatic-retry.ts";
 import {
   taskOperationRelayTurnFields,
   parseTaskOperationRelayResult,
-} from "../../cantrip_server/src/tasks/encrypted-relay.ts";
+} from "../../tests/reference-node-server/src/tasks/encrypted-relay.ts";
 import { taskStart, taskResult } from "./task-wire-fixtures.mjs";
 const cases = [];
 function add(kind, input, run) {

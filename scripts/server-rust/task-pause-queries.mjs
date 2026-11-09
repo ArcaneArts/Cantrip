@@ -2,9 +2,9 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFile, writeFile } from "node:fs/promises";
-import * as schema from "../../cantrip_server/src/db/schema.ts";
+import * as schema from "../../tests/reference-node-server/src/db/schema.ts";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { drizzle } = require("drizzle-orm/pg-proxy");
 const { and, eq, gt, inArray, isNull, sql } = require("drizzle-orm");

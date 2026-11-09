@@ -1,7 +1,7 @@
 packages:
   - cantrip_app
   - cantrip_site
-  - cantrip_server
+  - tests/reference-node-server
   - cantrip_worker
   - cantrip_os/host
   - packages/*

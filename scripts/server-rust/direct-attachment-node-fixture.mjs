@@ -7,8 +7,8 @@ import { createServiceLogEmitter } from "../../packages/logging/src/core.ts";
 import {
   DirectAttachmentCoordinator,
   DirectAttachmentUnavailableError,
-} from "../../cantrip_server/src/direct-attachments/coordinator.ts";
-import { WorkerUnavailableError } from "../../cantrip_server/src/workers/bridge.ts";
+} from "../../tests/reference-node-server/src/direct-attachments/coordinator.ts";
+import { WorkerUnavailableError } from "../../tests/reference-node-server/src/workers/bridge.ts";
 let coordinator,
   now,
   jitter,

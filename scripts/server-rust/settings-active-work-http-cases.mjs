@@ -1,7 +1,7 @@
 // Real migrated rows exercise each count's ownership and lifecycle predicates.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import * as schema from "../../cantrip_server/src/db/schema.ts";
+import * as schema from "../../tests/reference-node-server/src/db/schema.ts";
 import { literal } from "./project-target-state.mjs";
 import {
   settingsChat as chat,
@@ -9,7 +9,7 @@ import {
   settingsTree as tree,
 } from "./native-settings-http-fixture.mjs";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { getTableConfig } = require("drizzle-orm/pg-core");
 const future = "2099-01-01T00:00:00.000Z";

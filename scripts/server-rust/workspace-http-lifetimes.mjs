@@ -17,7 +17,7 @@ import {
 } from "./project-target-state.mjs";
 import { workspaceState } from "./workspace-wire-fixtures.mjs";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 const option = (key) => {
   const i = process.argv.indexOf(key);

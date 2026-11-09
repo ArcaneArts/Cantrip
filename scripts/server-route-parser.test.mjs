@@ -172,7 +172,10 @@ const actualFamilies = [
 test("inventories all actual protected model-operation endpoints", async () => {
   const file = "model-operations.ts";
   const source = await readFile(
-    new URL(`../cantrip_server/src/app/routes/${file}`, import.meta.url),
+    new URL(
+      `../tests/reference-node-server/src/app/routes/${file}`,
+      import.meta.url,
+    ),
     "utf8",
   );
   assert.deepEqual(
@@ -190,7 +193,10 @@ test("inventories all actual protected model-operation endpoints", async () => {
 for (const [file, prefix, suffixes] of actualFamilies) {
   test(`inventories the real ${file} registrations`, async () => {
     const source = await readFile(
-      new URL(`../cantrip_server/src/app/routes/${file}`, import.meta.url),
+      new URL(
+        `../tests/reference-node-server/src/app/routes/${file}`,
+        import.meta.url,
+      ),
       "utf8",
     );
     const registered = readStaticServerRoutes(source, file).filter(

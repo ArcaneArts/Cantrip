@@ -7,7 +7,7 @@ import {
   hashSecret,
   normalizeAccountEmail,
   safeSecretMatch,
-} from "../../cantrip_server/src/auth/service.ts";
+} from "../../tests/reference-node-server/src/auth/service.ts";
 import {
   accountRegistrationSchema,
   authLoginSchema,

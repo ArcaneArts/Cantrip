@@ -3,7 +3,7 @@ import {
   buildAccountResourceUsage,
   buildStorageUsageHistory,
   buildBandwidthUsageHistory,
-} from "../../cantrip_server/src/account-usage/resource-usage-response.ts";
+} from "../../tests/reference-node-server/src/account-usage/resource-usage-response.ts";
 const at = "2026-10-25T00:00:00.000Z";
 const row = (category, storageClass, logicalBytes, extra = {}) => ({
   ownerId: "owner",

@@ -4,10 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { tsImport } from "tsx/esm/api";
 
-import {
-  combineApplicationSources,
-  readApplicationSourceCorpus,
-} from "./application-source-corpus.mjs";
+import { readRustServerSources } from "./rust-server-source-corpus.mjs";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -17,7 +14,9 @@ const repositoryRoot = path.resolve(
 const read = (relativePath) =>
   readFile(path.join(repositoryRoot, relativePath), "utf8");
 const readApplication = async () =>
-  combineApplicationSources(await readApplicationSourceCorpus(repositoryRoot));
+  (await readRustServerSources(repositoryRoot))
+    .map(({ sourceText }) => sourceText)
+    .join("\n");
 
 const supportedConsumers = [
   {
@@ -109,8 +108,11 @@ const [
   readClientApiSourceText(repositoryRoot),
   read("cantrip_app/src/lib/desktop-tunnel.ts"),
   readApplication(),
-  read("cantrip_server/src/operations/legacy-feature-transports.ts"),
-  read("cantrip_server/src/operations/metrics.ts"),
+  read("cantrip_server_rs/src/http/operational_status.rs"),
+  Promise.all([
+    read("cantrip_server_rs/src/operations/metrics.rs"),
+    read("cantrip_server_rs/src/operations/metrics/prometheus.rs"),
+  ]).then((parts) => parts.join("\n")),
   tsImport("../packages/protocol/src/index.ts", import.meta.url).then(
     (protocol) => protocol.serverOperationalStatsSchema,
   ),
@@ -180,16 +182,17 @@ for (const marker of ["forceDesktopTunnelRelay", "deleteDirectAttachment"]) {
 }
 
 for (const route of compatibilityRoutes) {
-  if (!server.includes(route) || !compatibility.includes(route)) {
+  const registered = route.replace(/:([A-Za-z0-9_]+)/gu, "{$1}");
+  if (!server.includes(registered) || !compatibility.includes(route)) {
     violations.push(
       `compatibility endpoint is not retained and classified: ${route}`,
     );
   }
 }
 for (const marker of [
-  'reply.header("deprecation"',
-  'reply.header("link"',
-  "recordLegacyFeatureTransport",
+  '"deprecation"',
+  "header::LINK",
+  "legacy_request(",
   "network.compatibility-endpoint.requested",
 ]) {
   if (!server.includes(marker)) {
@@ -198,7 +201,7 @@ for (const marker of [
 }
 for (const marker of [
   "cantrip_legacy_feature_transport_requests_total",
-  "legacyFeatureTransportEndpoints",
+  "LEGACY_ENDPOINTS",
 ]) {
   if (!metrics.includes(marker)) {
     violations.push(`compatibility telemetry is missing ${marker}`);

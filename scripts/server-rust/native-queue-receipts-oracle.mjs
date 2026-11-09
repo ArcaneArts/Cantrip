@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   waitForManagedQueueReceipt,
   notifyManagedQueueReceipt,
-} from "../../cantrip_server/src/app/runtime/managed-queue-receipts.ts";
+} from "../../tests/reference-node-server/src/app/runtime/managed-queue-receipts.ts";
 const start = (id = "a", extra = {}) => ({ op: "start", id, ...extra });
 const reply = (index, value, id = "a") => ({ op: "reply", id, index, value });
 const notice = (chat = "chat") => ({ op: "notify", chat });

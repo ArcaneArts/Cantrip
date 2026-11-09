@@ -1,13 +1,13 @@
 // Development-only: actual reference services, real Redis, controlled worker ACKs.
 import { createInterface } from "node:readline";
 import { EventEmitter } from "node:events";
-import { RedisRelayCoordinator } from "../../cantrip_server/src/coordination/relay-coordinator.ts";
+import { RedisRelayCoordinator } from "../../tests/reference-node-server/src/coordination/relay-coordinator.ts";
 import {
   WorkerLinkCoordinator,
   WorkerLinkUnavailableError,
-} from "../../cantrip_server/src/worker-links/coordinator.ts";
-import { WorkerLinkService } from "../../cantrip_server/src/worker-links/service.ts";
-import { WorkerLinkRelay } from "../../cantrip_server/src/worker-links/relay.ts";
+} from "../../tests/reference-node-server/src/worker-links/coordinator.ts";
+import { WorkerLinkService } from "../../tests/reference-node-server/src/worker-links/service.ts";
+import { WorkerLinkRelay } from "../../tests/reference-node-server/src/worker-links/relay.ts";
 let coordination, local, service, server, generation, relay, unsubscribeRelay;
 const relaySockets = new Map();
 class RelaySocket extends EventEmitter {

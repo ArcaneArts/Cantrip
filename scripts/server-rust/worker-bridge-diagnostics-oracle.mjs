@@ -5,7 +5,7 @@ import { performance } from "node:perf_hooks";
 import {
   WorkerBridge,
   WorkerUnavailableError,
-} from "../../cantrip_server/src/workers/bridge.ts";
+} from "../../tests/reference-node-server/src/workers/bridge.ts";
 import {
   createServiceLogger,
   minimizeServiceLogRecordInput,

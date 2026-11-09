@@ -7,7 +7,7 @@ import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import WebSocket, { WebSocketServer } from "ws";
 import { describe, expect, it, vi } from "vitest";
-import { createNativeCommandWorkerFixture } from "../../cantrip_server/test/native-command-worker-fixture.js";
+import { createNativeCommandWorkerFixture } from "../../tests/reference-node-server/test/native-command-worker-fixture.js";
 import {
   CodexAppServer,
   type CodexProcessLauncher,

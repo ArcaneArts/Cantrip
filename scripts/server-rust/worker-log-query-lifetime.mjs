@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { setTimeout as delay } from "node:timers/promises";
 import { LogProbe, gate } from "./worker-log-stream-probe.mjs";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 export async function workerLogQueryLifetime({ f, state, visit, result }) {
   const blocker = postgres(f.environment.DATABASE_URL, { max: 1 });

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createManagedQueueDelivery } from "../../cantrip_server/src/app/runtime/managed-queue-delivery.ts";
+import { createManagedQueueDelivery } from "../../tests/reference-node-server/src/app/runtime/managed-queue-delivery.ts";
 import { cases } from "./queue-delivery-cases.mjs";
 const settle = () => new Promise(setImmediate);
 const originalSetInterval = globalThis.setInterval;

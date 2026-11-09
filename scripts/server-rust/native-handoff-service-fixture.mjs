@@ -2,9 +2,9 @@
 // claiming native file transfer or a real CLI/account migration in this fixture.
 import { createRequire } from "node:module";
 const Fastify = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("fastify");
-import { installChatRuntimeHandoffRoutes } from "../../cantrip_server/src/app/routes/chat-runtime-handoffs.ts";
+import { installChatRuntimeHandoffRoutes } from "../../tests/reference-node-server/src/app/routes/chat-runtime-handoffs.ts";
 export async function nativeHandoffServiceFixture(repository, input) {
   const owner = input.owner,
     chat = input.chat ?? "chat",

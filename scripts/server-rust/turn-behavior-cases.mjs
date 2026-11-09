@@ -235,7 +235,7 @@ export async function runTurnBehaviorCases({ observe }) {
   });
   await run("test runner recognition retains JavaScript whitespace semantics", {
     commands: [
-      "pnpm --filter @cantrip/server test",
+      "pnpm server:reference:test",
       "cargo test --workspace",
       "./gradlew test",
       "gradle test",

@@ -34,7 +34,7 @@ for (const [project, ...tests] of [
     "src/endpoint-content-encryption.test.ts",
   ],
   [
-    "cantrip_server",
+    "tests/reference-node-server",
     "test/auth-api.test.ts",
     "test/computer-use-routes.test.ts",
     "test/computer-use-coordinated-transport.test.ts",
@@ -78,7 +78,12 @@ for (const [project, ...tests] of [
 ]) {
   const result = spawnSync(
     process.execPath,
-    [path.join(root, "node_modules/vitest/vitest.mjs"), "run", ...tests],
+    [
+      path.join(root, "node_modules/vitest/vitest.mjs"),
+      "run",
+      ...tests,
+      "--maxWorkers=2",
+    ],
     {
       cwd: path.join(root, project),
       env: { ...process.env, CANTRIP_CUA_TEST_BINARY: binary },

@@ -6,7 +6,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { buildRustServer, repositoryRoot } from "./build.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
@@ -123,7 +123,7 @@ try {
       try {
         if (kind === "node")
           f.server = await startPackagedNodeServer(
-            path.join(repositoryRoot, "cantrip_server"),
+            path.join(repositoryRoot, "tests/reference-node-server"),
             f.environment,
             { nodeExecutable: process.execPath },
           );

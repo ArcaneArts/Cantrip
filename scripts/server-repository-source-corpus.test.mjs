@@ -14,7 +14,7 @@ test("server repository source corpus covers only repository components", async 
     join(tmpdir(), "cantrip-server-repository-corpus-"),
   );
   try {
-    const databasePath = join(root, "cantrip_server/src/db");
+    const databasePath = join(root, "tests/reference-node-server/src/db");
     await mkdir(join(databasePath, "repository/nested"), { recursive: true });
     await writeFile(join(databasePath, "repository.ts"), "export {};\n");
     await writeFile(join(databasePath, "tab-layouts.ts"), "export {};\n");
@@ -35,11 +35,11 @@ test("server repository source corpus covers only repository components", async 
     assert.deepEqual(
       corpus.map(({ file }) => file),
       [
-        "cantrip_server/src/db/repository-facade-projects.ts",
-        "cantrip_server/src/db/repository.ts",
-        "cantrip_server/src/db/repository/alpha.ts",
-        "cantrip_server/src/db/repository/zeta.ts",
-        "cantrip_server/src/db/tab-layouts.ts",
+        "tests/reference-node-server/src/db/repository-facade-projects.ts",
+        "tests/reference-node-server/src/db/repository.ts",
+        "tests/reference-node-server/src/db/repository/alpha.ts",
+        "tests/reference-node-server/src/db/repository/zeta.ts",
+        "tests/reference-node-server/src/db/tab-layouts.ts",
       ],
     );
   } finally {

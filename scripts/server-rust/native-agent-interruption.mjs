@@ -6,7 +6,7 @@ import { loadStoredWorkerCredential } from "../../cantrip_worker/src/credential-
 import { eventually } from "./full-worker.mjs";
 
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 
 async function activeNativeState(sql, chatId) {

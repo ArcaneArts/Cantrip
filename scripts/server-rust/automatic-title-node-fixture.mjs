@@ -1,15 +1,15 @@
-import { createTaskOperationQueue } from "../../cantrip_server/src/app/runtime/task-operation-queue.ts";
-import { retryTaskOperation } from "../../cantrip_server/src/app/runtime/task-automatic-retry.ts";
+import { createTaskOperationQueue } from "../../tests/reference-node-server/src/app/runtime/task-operation-queue.ts";
+import { retryTaskOperation } from "../../tests/reference-node-server/src/app/runtime/task-automatic-retry.ts";
 import {
   generateAutomaticTitle,
   labelingModelConfiguration,
-} from "../../cantrip_server/src/chats/automatic-labeling.ts";
-import { createModelRoutingRuntime } from "../../cantrip_server/src/app/runtime/model-routing-runtime.ts";
+} from "../../tests/reference-node-server/src/chats/automatic-labeling.ts";
+import { createModelRoutingRuntime } from "../../tests/reference-node-server/src/app/runtime/model-routing-runtime.ts";
 import { turnLiveEnvironment } from "./turn-live-node-fixture.mjs";
-import { serverLogger } from "../../cantrip_server/src/logger.ts";
+import { serverLogger } from "../../tests/reference-node-server/src/logger.ts";
 import { createRequire } from "node:module";
 const { sql } = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("drizzle-orm");
 export async function automaticTitleFixture(repository, input) {
   if (input.action === "claim")

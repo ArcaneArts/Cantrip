@@ -1,8 +1,8 @@
 import { createRequire } from "node:module";
-import { ExecutionLaneConflictError } from "../../cantrip_server/src/db/repository/chat-execution-lanes.ts";
-import { NativeCommandError } from "../../cantrip_server/src/db/repository/native-command-errors.ts";
+import { ExecutionLaneConflictError } from "../../tests/reference-node-server/src/db/repository/chat-execution-lanes.ts";
+import { NativeCommandError } from "../../tests/reference-node-server/src/db/repository/native-command-errors.ts";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { sql } = require("drizzle-orm");
 export function laneFailure(error) {

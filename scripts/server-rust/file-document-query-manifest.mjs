@@ -2,13 +2,14 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFile, writeFile } from "node:fs/promises";
-import { FileDocumentRepository } from "../../cantrip_server/src/db/repository/file-documents.ts";
+import { FileDocumentRepository } from "../../tests/reference-node-server/src/db/repository/file-documents.ts";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { drizzle } = require("drizzle-orm/pg-proxy");
 const { getTableColumns } = require("drizzle-orm");
-const schema = await import("../../cantrip_server/src/db/schema.ts");
+const schema =
+  await import("../../tests/reference-node-server/src/db/schema.ts");
 const protectedState = {
   classification: { recordKind: "file-document-state" },
   protectedState: {

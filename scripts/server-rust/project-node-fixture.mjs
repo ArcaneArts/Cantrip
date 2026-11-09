@@ -2,16 +2,16 @@
 import { createInterface } from "node:readline";
 import { createRequire } from "node:module";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { sql } = require("drizzle-orm");
-import { readServerConfig } from "../../cantrip_server/src/config.ts";
-import { connectDatabase } from "../../cantrip_server/src/db/index.ts";
-import { buildExecutionTargetCatalog } from "../../cantrip_server/src/execution-targets/catalog.ts";
-import { lockNativeCommandChat } from "../../cantrip_server/src/db/repository/native-command-lock.ts";
-import { assertNativeRuntimeWritable } from "../../cantrip_server/src/db/repository/native-runtime-handoff-guard.ts";
+import { readServerConfig } from "../../tests/reference-node-server/src/config.ts";
+import { connectDatabase } from "../../tests/reference-node-server/src/db/index.ts";
+import { buildExecutionTargetCatalog } from "../../tests/reference-node-server/src/execution-targets/catalog.ts";
+import { lockNativeCommandChat } from "../../tests/reference-node-server/src/db/repository/native-command-lock.ts";
+import { assertNativeRuntimeWritable } from "../../tests/reference-node-server/src/db/repository/native-runtime-handoff-guard.ts";
 import { managedConsoleFixture } from "./managed-console-node-fixture.mjs";
-import { gitManagedOperationContext } from "../../cantrip_server/src/app/shared/git-managed-operations.ts";
+import { gitManagedOperationContext } from "../../tests/reference-node-server/src/app/shared/git-managed-operations.ts";
 import { worktreeCoordinatorFixture } from "./worktree-coordinator-node-fixture.mjs";
 import { conversionFixture } from "./conversion-node-fixture.mjs";
 import { chatRelocationFixture } from "./chat-relocation-node-fixture.mjs";
@@ -24,9 +24,9 @@ import { nativeCommandFixture } from "./native-command-node-fixture.mjs";
 import { nativeHistoryFixture } from "./native-history-node-fixture.mjs";
 import { startOperationClock } from "./operation-clock.mjs";
 import { managedPreparationFixture } from "./managed-preparation-node-fixture.mjs";
-import { NativeCommandError } from "../../cantrip_server/src/db/repository/native-command-errors.ts";
-import { ExecutionLaneConflictError } from "../../cantrip_server/src/db/repository/chat-execution-lanes.ts";
-import { AgentInteractionConflictError } from "../../cantrip_server/src/db/repository/agent-interactions.ts";
+import { NativeCommandError } from "../../tests/reference-node-server/src/db/repository/native-command-errors.ts";
+import { ExecutionLaneConflictError } from "../../tests/reference-node-server/src/db/repository/chat-execution-lanes.ts";
+import { AgentInteractionConflictError } from "../../tests/reference-node-server/src/db/repository/agent-interactions.ts";
 import { projectAutomationFixture } from "./project-automation-node-fixture.mjs";
 // readline also recognizes Unicode line separators. Keep replies one record
 // without changing any decoded string, including lone UTF-16 surrogates.

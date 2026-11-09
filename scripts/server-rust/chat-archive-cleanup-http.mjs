@@ -7,7 +7,7 @@ import { settingsHttpFixture } from "./native-settings-http-fixture.mjs";
 import { heartbeat, password } from "./security-fixtures.mjs";
 import { buildRustServer, buildRustExample } from "./build.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import {
   retentionControls,
   foreignOwnerControl,

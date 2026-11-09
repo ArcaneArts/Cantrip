@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { workerCommandSchema } from "@cantrip/protocol";
 import { verifyBuiltRuntime } from "../../scripts/cantrip-codex/verify-built-runtime.mjs";
-import { managedTurnSessionContext } from "../../cantrip_server/src/terminals/managed-session.js";
+import { managedTurnSessionContext } from "../../tests/reference-node-server/src/terminals/managed-session.js";
 import { ManagedSuspensionResumes } from "../src/codex/managed-suspension-resume.js";
 import { openManagedSuspensionSource } from "../src/codex/managed-suspended-source.js";
 import { createNativeSharedViewFixture } from "./native-shared-view-fixture.js";

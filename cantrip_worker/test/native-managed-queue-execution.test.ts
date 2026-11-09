@@ -8,9 +8,9 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import WebSocket from "ws";
 import { describe, expect, it, vi } from "vitest";
-import { createNativeCommandWorkerFixture } from "../../cantrip_server/test/native-command-worker-fixture.js";
-import { createChatRecoveryRuntime } from "../../cantrip_server/src/app/runtime/chat-recovery-runtime.js";
-import { installChatQueueRoutes } from "../../cantrip_server/src/app/routes/chat-queue.js";
+import { createNativeCommandWorkerFixture } from "../../tests/reference-node-server/test/native-command-worker-fixture.js";
+import { createChatRecoveryRuntime } from "../../tests/reference-node-server/src/app/runtime/chat-recovery-runtime.js";
+import { installChatQueueRoutes } from "../../tests/reference-node-server/src/app/routes/chat-queue.js";
 import {
   CodexAppServer,
   type CodexProcessLauncher,
@@ -27,7 +27,7 @@ import {
 } from "../src/codex/managed-native-queue.js";
 import { ManagedExecutionRunner } from "../src/codex/managed-execution-runner.js";
 import { managedQueueNativeCommand } from "../src/codex/managed-queue-command.js";
-import { createManagedQueueDelivery } from "../../cantrip_server/src/app/runtime/managed-queue-delivery.js";
+import { createManagedQueueDelivery } from "../../tests/reference-node-server/src/app/runtime/managed-queue-delivery.js";
 import { ManagedNativeQueueClient } from "../src/managed-native-queue-client.js";
 import { NativeCommandClient } from "../src/native-command-client.js";
 import { createManagedQueueInputCodec } from "../src/managed-queue-input.js";
@@ -45,7 +45,7 @@ import type { NativeHistoryNotification } from "../src/codex/native-history-obse
 
 // Resolve the server fixture's dependency without adding Fastify to production worker dependencies.
 const Fastify = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("fastify") as () => Awaited<
   ReturnType<typeof createNativeCommandWorkerFixture>
 >["app"];

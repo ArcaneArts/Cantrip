@@ -1,12 +1,12 @@
 // Actual Source recovery coordinator and repositories. Turn, account handoff
 // and Task collaborators below are controlled fixture boundaries only.
-import { createChatRecoveryRuntime } from "../../cantrip_server/src/app/runtime/chat-recovery-runtime.ts";
-import { createModelRoutingRuntime } from "../../cantrip_server/src/app/runtime/model-routing-runtime.ts";
+import { createChatRecoveryRuntime } from "../../tests/reference-node-server/src/app/runtime/chat-recovery-runtime.ts";
+import { createModelRoutingRuntime } from "../../tests/reference-node-server/src/app/runtime/model-routing-runtime.ts";
 import { turnLiveEnvironment } from "./turn-live-node-fixture.mjs";
-import { serverLogger } from "../../cantrip_server/src/logger.ts";
+import { serverLogger } from "../../tests/reference-node-server/src/logger.ts";
 import { createRequire } from "node:module";
 const { sql } = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("drizzle-orm");
 export async function recoveryFixture(original, input) {
   const trace = [],

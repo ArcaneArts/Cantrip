@@ -9,7 +9,7 @@ import { HttpFixture } from "./http-fixture.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { buildRustServer } from "./build.mjs";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const postgres = require("postgres");
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-alert-source-http-"));

@@ -86,7 +86,7 @@ node scripts/server-rust/project-alert-foundation-compatibility.mjs
 node --import tsx scripts/server-rust/project-alert-http-compatibility.mjs
 node scripts/server-rust/project-alert-source-http.mjs
 node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain interactions --database postgres --report /tmp/cantrip-alert-interactions.json
-pnpm --filter @cantrip/server exec vitest run test/project-alerts.test.ts test/project-alert-interactions.test.ts test/project-alert-workflows.test.ts
+pnpm --filter @cantrip/server-reference exec vitest run test/project-alerts.test.ts test/project-alert-interactions.test.ts test/project-alert-workflows.test.ts
 node scripts/server-rust/cargo.mjs test --test project_alerts --test project_alert_interactions --test project_alert_workflows
 pnpm --filter @cantrip/worker exec vitest run test/mcp-alert-operations.test.ts test/project-goal-delivery.test.ts
 pnpm --filter @cantrip/app exec vitest run src/components/alerts src/lib/project-alert-counts.test.tsx src/lib/alert-navigation.test.ts src/lib/alert-worker-encryption.test.tsx src/components/app/workspace-panel-popout.integration.test.ts

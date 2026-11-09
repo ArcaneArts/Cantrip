@@ -1,14 +1,14 @@
 // Actual outcome, coordinator, Task recovery, Goal and turn services. Only
 // worker/catalog I/O, account preparation and scheduler wakeup are controlled.
-import { createChatRecoveryRuntime } from "../../cantrip_server/src/app/runtime/chat-recovery-runtime.ts";
-import { createChatTurnOutcomeRuntime } from "../../cantrip_server/src/app/runtime/chat-turn-outcome-runtime.ts";
-import { createTaskGoalRuntime } from "../../cantrip_server/src/app/runtime/task-goal-runtime.ts";
-import { createTaskExecutionRecovery } from "../../cantrip_server/src/app/runtime/task-execution-recovery.ts";
-import { createChatAutomationPauseRuntime } from "../../cantrip_server/src/app/runtime/chat-automation-pause-runtime.ts";
+import { createChatRecoveryRuntime } from "../../tests/reference-node-server/src/app/runtime/chat-recovery-runtime.ts";
+import { createChatTurnOutcomeRuntime } from "../../tests/reference-node-server/src/app/runtime/chat-turn-outcome-runtime.ts";
+import { createTaskGoalRuntime } from "../../tests/reference-node-server/src/app/runtime/task-goal-runtime.ts";
+import { createTaskExecutionRecovery } from "../../tests/reference-node-server/src/app/runtime/task-execution-recovery.ts";
+import { createChatAutomationPauseRuntime } from "../../tests/reference-node-server/src/app/runtime/chat-automation-pause-runtime.ts";
 import {
   ChatTurnOutcomeRecoveryScheduler,
   chatTurnOutcomeRecoveryKey,
-} from "../../cantrip_server/src/chats/turn-outcome-recovery.ts";
+} from "../../tests/reference-node-server/src/chats/turn-outcome-recovery.ts";
 import { workerServerEnvelopeSchema } from "../../packages/protocol/dist/index.js";
 export async function turnOutcomeFixture({
   repository,

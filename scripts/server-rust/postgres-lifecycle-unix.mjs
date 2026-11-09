@@ -14,7 +14,7 @@ import { ownershipHandoff } from "./postgres-lifecycle-handoff.mjs";
 
 const execute = promisify(execFile);
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const postgres = require("postgres");
 const quote = (s) => `'${s.replaceAll("'", "'\"'\"'")}'`;

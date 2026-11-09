@@ -4,7 +4,7 @@ import { projectLabel } from "./security-fixtures.mjs";
 import { streamingHttpRequest } from "./streaming-http-request.mjs";
 
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 
 // Hold real database locks at production HTTP admission boundaries. Lifecycle

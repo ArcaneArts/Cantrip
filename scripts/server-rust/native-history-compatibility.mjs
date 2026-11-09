@@ -13,7 +13,7 @@ import { runHistoryMediaCases } from "./native-history-media-cases.mjs";
 import { runHistoryArchiveCases } from "./native-history-archive-cases.mjs";
 import { runHistoryPublicationCases } from "./native-history-publication-cases.mjs";
 import { runHistoryRaces } from "./native-history-races.mjs";
-import { nativeHistoryPayloadDigest } from "../../cantrip_server/src/db/repository/native-history-digest.ts";
+import { nativeHistoryPayloadDigest } from "../../tests/reference-node-server/src/db/repository/native-history-digest.ts";
 import {
   targetStateSql,
   localOwner as owner,

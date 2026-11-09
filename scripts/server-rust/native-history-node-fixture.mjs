@@ -1,5 +1,5 @@
 // Calls the unchanged production history repository against disposable storage.
-import { nativeHistoryPayloadDigest } from "../../cantrip_server/src/db/repository/native-history-digest.ts";
+import { nativeHistoryPayloadDigest } from "../../tests/reference-node-server/src/db/repository/native-history-digest.ts";
 import { reconcileNativeHistoryUsage } from "../../packages/protocol/dist/index.js";
 export async function nativeHistoryFixture(repository, request) {
   if (request.op === "native-history-publications")

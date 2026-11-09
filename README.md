@@ -172,7 +172,7 @@ Cantrip is split into three deployable applications plus one shared protocol pac
 ```mermaid
 flowchart LR
     APP["cantrip_app<br/>React + Vite<br/>Browser / Tauri / Capacitor"]
-    SERVER["cantrip_server<br/>Fastify + PGlite/PostgreSQL<br/>Identity, configuration, history, routing"]
+    SERVER["cantrip_server_rs<br/>Rust + PGlite/PostgreSQL<br/>Identity, configuration, history, routing"]
     WORKER["cantrip_worker<br/>Node.js<br/>Codex, files, Git, PTYs, Chromium, desktop capture"]
     CODEX["Codex CLI / app-server"]
     FILES["Project source folders"]
@@ -193,11 +193,11 @@ mutations only through the server and never assumes project files exist on the
 client device. After server authorization, live feature bytes may use a scoped
 WorkerLink carrier directly between the app and worker, with relay fallback.
 
-### `cantrip_server`
+### `cantrip_server_rs`
 
 The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings and Policies, stores projects and durable conversation history, tracks worker presence, persists worktree observations plus project-wide logical branch leases, reconciles per-account logical storage and meters server-carried bandwidth, and authorizes operations on the correct worker checkout. It stores ChatGPT and Grok OAuth bundles only as opaque endpoint-encrypted envelopes. Authorized workers decrypt, refresh, and reseal them locally; the server authorizes revision-fenced envelope fetch/reseal and global sign-out.
 
-Local development uses embedded PGlite. Browser development stores it under `.cantrip/browser-dev/`; default desktop development uses `.cantrip/dev/`, and named desktop profiles use `.cantrip/dev-profiles/<name>/`. A PostgreSQL `DATABASE_URL` can be supplied for a standalone database. Source files and attachment bytes are not copied into the server database. The server stores attachment metadata with conversation history and relays bounded upload and preview chunks to the owning worker.
+Local development uses embedded PGlite. Browser development stores it under `.cantrip/browser-dev/`; default desktop development uses `.cantrip/dev/`, and named desktop profiles use `.cantrip/dev-profiles/<name>/`. A private PostgreSQL process can be selected with `CANTRIP_DATABASE_MODE=bundled-postgres`, and an external PostgreSQL `DATABASE_URL` retains its existing selection behavior. Source files and attachment bytes are not copied into the server database. The server stores attachment metadata with conversation history and relays bounded upload and preview chunks to the owning worker.
 
 ### `cantrip_worker`
 
@@ -239,7 +239,7 @@ commands, limits, and threat controls are documented in
 
 ## Current deployment model
 
-The current local mode has one anonymous Cantrip user and no Cantrip sign-in screen. `pnpm dev` or `pnpm devtop` starts the server and a local worker together, so the app connects immediately. A packaged Tauri desktop app carries its own production server, worker, Node.js runtime, and PGlite migrations. It starts those services on a private dynamic loopback port and stops them with the app.
+The current local mode has one anonymous Cantrip user and no Cantrip sign-in screen. `pnpm dev` or `pnpm devtop` starts the server and a local worker together, so the app connects immediately. A packaged Tauri desktop app carries the Rust server and its database assets, plus the existing worker and its Node.js runtime. It starts those services on a private dynamic loopback port and stops them with the app.
 
 The account area in the main sidebar is also the server switcher. Its **Add server** action saves a named server origin in client bootstrap storage, tests `/api/bootstrap`, and switches every HTTP and WebSocket request after a reload. The built-in **Local** profile always selects the desktop-bundled stack in a release build and the normal development stack in `devtop`. Server profiles contain no credentials; hosted sessions remain in server-owned HttpOnly cookies.
 
@@ -380,7 +380,8 @@ writes follow the selected permission profile.
 Cantrip/
 ├── cantrip_app/       # React/Vite UI, Tauri shell, Capacitor configuration
 ├── cantrip_site/      # Public React/Vite marketing site
-├── cantrip_server/    # API, persistence, identity, and worker routing
+├── cantrip_server_rs/ # Rust API, persistence, identity, and worker routing
+├── cantrip_server/    # SQL migration chain embedded by the Rust server
 ├── cantrip_worker/    # Codex runtime, terminals, files, Git, and GitHub access
 ├── cantrip_cli/       # Worker-authenticated Rust command-line interface
 ├── cantrip_codex/     # Pinned upstream Codex source and source manifest
@@ -692,7 +693,7 @@ Launch Services can distinguish successive builds. Set
 `CANTRIP_APP_BUILD_VERSION` to a positive one-to-three-component numeric build
 version when packaging needs an explicit reproducible override.
 
-Standalone service directories include a platform-matched Node.js runtime, compiled JavaScript, production dependencies, startup scripts, and a focused `.env.example`. Worker packages also include the native `cantrip` CLI. They do not require Node.js to be installed on the host. Copy `.env.example` to `.env`, create a short-lived worker link code while signed into the server, put it in the worker environment for its first start, then remove it after enrollment. The worker persists its unique credential in its data directory and initiates every connection through `CANTRIP_SERVER_URL`; no inbound worker port is exposed. The shared `CANTRIP_WORKER_TOKEN` path is limited to explicit loopback `pnpm dev` and embedded Tauri bootstraps.
+Standalone server directories contain the Rust executable, native PGlite and private PostgreSQL assets, startup scripts, and a focused `.env.example`. Worker directories retain a platform-matched Node.js runtime, compiled JavaScript and production dependencies, plus the native `cantrip` CLI. They do not require Node.js to be installed on the host. Copy `.env.example` to `.env`, create a short-lived worker link code while signed into the server, put it in the worker environment for its first start, then remove it after enrollment. The worker persists its unique credential in its data directory and initiates every connection through `CANTRIP_SERVER_URL`; no inbound worker port is exposed. The shared `CANTRIP_WORKER_TOKEN` path is limited to explicit loopback `pnpm dev` and embedded Tauri bootstraps.
 
 Settings → Workers provides the supported onboarding and management surface. The desktop app detects its bundled local worker automatically and offers **Add this machine** when connected to a hosted server; the authenticated app completes that machine's enrollment without making the user copy a link code. It shows internal and remote machines, presence, runtime capabilities, project-source associations, and credential activity. Remote workers can be renamed, rotated, revoked, unlinked, or relinked without deleting server-owned projects and conversations. Internal embedded/development workers are marked and protected from rename or removal. The desktop app can launch hidden at login, and closing its main window leaves its linked workers online through the system tray. On macOS, Command-Q closes Cantrip's windows without stopping those services; explicit Quit actions ask for confirmation before shutting the worker and server down.
 

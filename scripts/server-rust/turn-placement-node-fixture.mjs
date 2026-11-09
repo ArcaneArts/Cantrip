@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
-import { reconcileTaskTurnPlacement } from "../../cantrip_server/src/app/runtime/task-turn-placement.ts";
+import { reconcileTaskTurnPlacement } from "../../tests/reference-node-server/src/app/runtime/task-turn-placement.ts";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { sql } = require("drizzle-orm");
 export async function turnPlacementFixture(repository, input) {

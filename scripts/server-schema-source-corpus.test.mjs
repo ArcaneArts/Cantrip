@@ -16,11 +16,11 @@ test("inventories every table exported by the actual Drizzle schema", async () =
     ].map((match) => match[1]),
   );
   const schema = await tsImport(
-    "../cantrip_server/src/db/schema.ts",
+    "../tests/reference-node-server/src/db/schema.ts",
     import.meta.url,
   );
   const require = createRequire(
-    new URL("../cantrip_server/package.json", import.meta.url),
+    new URL("../tests/reference-node-server/package.json", import.meta.url),
   );
   const { isTable } = require("drizzle-orm");
   const actual = Object.entries(schema)

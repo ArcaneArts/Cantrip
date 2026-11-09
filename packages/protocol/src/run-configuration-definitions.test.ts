@@ -31,7 +31,7 @@ function shellConfiguration() {
     provider: "shell" as const,
     target: {
       kind: "command" as const,
-      command: "pnpm --filter @cantrip/server dev",
+      command: "pnpm server:dev",
     },
   };
 }

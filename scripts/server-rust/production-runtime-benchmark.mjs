@@ -67,13 +67,13 @@ const command =
     : path.join(artifact, "bin/cantrip-server");
 const args =
   values.runtime === "node"
-    ? [path.resolve("cantrip_server/dist/index.js")]
+    ? [path.resolve("tests/reference-node-server/dist/index.js")]
     : ["--database", "pglite", "--port", String(port)];
 if (values.runtime === "rust")
   environment.PGLITE_RUNTIME_DIR = path.join(artifact, "pglite");
 const startedAt = performance.now();
 const child = spawn(command, args, {
-  cwd: path.resolve("cantrip_server"),
+  cwd: path.resolve("tests/reference-node-server"),
   env: environment,
   stdio: ["ignore", "pipe", "pipe"],
 });

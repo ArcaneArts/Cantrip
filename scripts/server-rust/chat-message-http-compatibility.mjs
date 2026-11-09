@@ -10,7 +10,7 @@ import { postgresFixture } from "./postgres-fixture.mjs";
 import { LiveProbe, currentUser } from "./live-sockets.mjs";
 import { heartbeat, password } from "./security-fixtures.mjs";
 import { label, json, literal, stamp } from "./project-target-state.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { protectChatMessage } from "../../cantrip_worker/src/chat-message-encryption.ts";
 import { decryptChatMessageProtectedContent } from "../../packages/crypto/dist/index.js";
 import { chatMessageHttpRaces } from "./chat-message-http-races.mjs";

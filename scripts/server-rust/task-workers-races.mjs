@@ -6,7 +6,7 @@ import { repositoryFixture } from "./repository-fixture.mjs";
 import { literal } from "./project-target-state.mjs";
 import { runTaskPauseUsageRaces } from "./task-pause-usage-races.mjs";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 const worker = "79797979-7979-4797-8797-000000000001";
 async function waiters(sql, table, count) {

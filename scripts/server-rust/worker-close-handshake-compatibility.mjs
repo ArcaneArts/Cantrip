@@ -25,7 +25,7 @@ import {
   rejectedWorkerAuthenticationCloseCase,
 } from "./worker-authentication-close-cases.mjs";
 const WebSocket = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("ws");
 const { values } = parseArgs({
   options: {
@@ -106,7 +106,7 @@ try {
         ? process.execPath
         : process.env.CANTRIP_RUST_SERVER_BINARY,
       kind === "node"
-        ? ["--import", "tsx", "cantrip_server/src/index.ts"]
+        ? ["--import", "tsx", "tests/reference-node-server/src/index.ts"]
         : args,
       { cwd: repositoryRoot, env, stdio: ["ignore", "pipe", "pipe"] },
     );

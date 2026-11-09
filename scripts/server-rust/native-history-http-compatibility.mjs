@@ -14,7 +14,7 @@ import {
   until,
 } from "./native-settings-http-fixture.mjs";
 import { literal } from "./project-target-state.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { heartbeat, password } from "./security-fixtures.mjs";
 import { NativeHistoryClient } from "../../cantrip_worker/src/native-history-client.ts";
 import { prepareNativeHistoryRenderedItem } from "../../cantrip_worker/src/native-history-prepare-item.ts";

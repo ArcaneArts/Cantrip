@@ -1,4 +1,4 @@
-import { TaskSchedulingConflictError } from "../../cantrip_server/src/db/task-scheduling.ts";
+import { TaskSchedulingConflictError } from "../../tests/reference-node-server/src/db/task-scheduling.ts";
 import * as protocol from "../../packages/protocol/dist/task-scheduling.js";
 export async function taskWorkersFixture(repository, input) {
   const task = repository.taskScheduling;

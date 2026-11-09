@@ -8,7 +8,7 @@ import { createRequire } from "node:module";
 import { setTimeout as sleep } from "node:timers/promises";
 import { buildRustExample } from "./build.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { password } from "./security-fixtures.mjs";
 import {
   settingsHttpFixture,
@@ -19,7 +19,7 @@ import {
 } from "./native-settings-http-fixture.mjs";
 import { literal } from "./project-target-state.mjs";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const postgres = require("postgres");
 const reportPath = process.argv[process.argv.indexOf("--report") + 1];

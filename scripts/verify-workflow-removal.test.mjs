@@ -22,7 +22,7 @@ test("current tree satisfies the durable workflow removal contract", async () =>
 test("finds restored product types, routes, commands, tables, and docs", () => {
   const violations = forbiddenWorkflowReferences([
     {
-      file: "cantrip_server/src/restored.ts",
+      file: "tests/reference-node-server/src/restored.ts",
       sourceText: [
         'const run: WorkflowRun = await load("workflow_runs");',
         'app.post("/api/workflow-runs", handler);',

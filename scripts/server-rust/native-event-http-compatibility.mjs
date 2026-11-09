@@ -7,7 +7,7 @@ import path from "node:path";
 import { buildRustServer, buildRustExample } from "./build.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { nativeEventHttpSpecialCases } from "./native-event-http-special-cases.mjs";
 import { nativeEventPublicationSchedules } from "./native-event-publication-schedules.mjs";
 import {

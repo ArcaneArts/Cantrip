@@ -1,5 +1,5 @@
 // Test plumbing invokes the production coordinator; it does not reimplement it.
-import { RedisRelayCoordinator } from "../../cantrip_server/src/coordination/relay-coordinator.ts";
+import { RedisRelayCoordinator } from "../../tests/reference-node-server/src/coordination/relay-coordinator.ts";
 import { createInterface } from "node:readline";
 import { createHash } from "node:crypto";
 

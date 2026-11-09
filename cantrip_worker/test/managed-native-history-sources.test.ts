@@ -10,8 +10,8 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createNativeCommandWorkerFixture } from "../../cantrip_server/test/native-command-worker-fixture.js";
-import * as schema from "../../cantrip_server/src/db/schema.js";
+import { createNativeCommandWorkerFixture } from "../../tests/reference-node-server/test/native-command-worker-fixture.js";
+import * as schema from "../../tests/reference-node-server/src/db/schema.js";
 import { ManagedNativeHistorySources } from "../src/managed-native-history-sources.js";
 import { ManagedNativeHistoryProjection } from "../src/managed-native-history-projection.js";
 import type { WorkerEncryptionService } from "../src/worker-encryption.js";

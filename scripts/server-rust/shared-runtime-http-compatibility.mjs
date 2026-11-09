@@ -13,7 +13,7 @@ import { postgresFixture } from "./postgres-fixture.mjs";
 import { redisFixture } from "./coordinated-fixture-tools.mjs";
 import { LiveProbe, currentUser } from "./live-sockets.mjs";
 import { heartbeat, projectLabel, password } from "./security-fixtures.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { verifySharedWorkers } from "./shared-runtime-worker.mjs";
 import { verifyLiveOrder } from "./shared-runtime-live.mjs";
 import { verifyRedisInterruption } from "./shared-runtime-redis-fault.mjs";

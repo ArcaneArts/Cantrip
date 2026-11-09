@@ -9,7 +9,7 @@ const repositoryRoot = path.resolve(
 );
 const auditPath = "scripts/audit-run-configuration-cutover.mjs";
 const intentionallyHistoricalPaths = new Set([
-  "cantrip_server/test/run-configuration-cutover-migration.test.ts",
+  "tests/reference-node-server/test/run-configuration-cutover-migration.test.ts",
   "docs/RUN_CONFIGURATIONS.md",
   auditPath,
 ]);
@@ -36,8 +36,9 @@ const scanRoots = [
   "README.md",
   "docs",
   "cantrip_app/src",
-  "cantrip_server/src",
-  "cantrip_server/test",
+  "cantrip_server_rs/src",
+  "tests/reference-node-server/src",
+  "tests/reference-node-server/test",
   "cantrip_worker/src",
   "cantrip_worker/test",
   "packages",

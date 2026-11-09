@@ -76,9 +76,9 @@
     "bundle": "node scripts/bundle.mjs",
     "deploy:server": "node scripts/deploy-production.mjs",
     "release": "node scripts/release.mjs",
-    "build": "pnpm cli:build && pnpm cua:build && pnpm --filter '!@cantrip/server' -r build && pnpm server:rust:build",
-    "typecheck": "pnpm -r typecheck",
-    "test": "node --test cantrip_os/tests/*.test.mjs scripts/*.test.mjs scripts/managed-runtimes/*.test.mjs scripts/cantrip-cli/*.test.mjs && pnpm cli:test && pnpm cua:test && pnpm -r --if-present test",
+    "build": "pnpm cli:build && pnpm cua:build && pnpm -r build && pnpm server:rust:build",
+    "typecheck": "pnpm -r typecheck && pnpm server:check",
+    "test": "node --test cantrip_os/tests/*.test.mjs scripts/*.test.mjs scripts/managed-runtimes/*.test.mjs scripts/cantrip-cli/*.test.mjs && pnpm cli:test && pnpm cua:test && pnpm -r --if-present test && pnpm server:test",
     "check": "pnpm check:large-files && pnpm check:app-decomposition && pnpm check:server-repository-decomposition && pnpm verify:workflow-removal && pnpm audit:run-configurations && pnpm audit:server-boundaries && pnpm verify:network-tranche-one && pnpm verify:network-tranche-two && pnpm network:acceptance:check && pnpm codex:verify && pnpm skill-templates:verify && pnpm cli:check && pnpm cua:check && pnpm typecheck && pnpm test && pnpm format:check",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -89,7 +89,13 @@
     "qa:editor-file-polish": "node scripts/qa/editor-file-polish-browser.mjs",
     "qa:editor-recovery": "node scripts/qa/native-editor-integration.mjs --all",
     "qa:editor-fixture": "node scripts/qa/editor-recovery-fixture.mjs",
-    "server:dev": "node scripts/server-rust/dev.mjs --watch"
+    "server:dev": "node scripts/server-rust/dev.mjs --watch",
+    "server:reference:build": "pnpm --filter @cantrip/server-reference reference:build",
+    "server:reference:test": "pnpm --filter @cantrip/server-reference reference:test",
+    "server:check": "node scripts/server-rust/cargo.mjs check --lib --bins",
+    "server:test": "node scripts/server-rust/cargo.mjs test --lib",
+    "audit:reference-server-boundaries": "node scripts/audit-reference-server-boundaries.mjs --check",
+    "audit:reference-server-boundaries:write": "node scripts/audit-reference-server-boundaries.mjs --write"
   },
   "devDependencies": {
     "@babel/parser": "7.29.8",

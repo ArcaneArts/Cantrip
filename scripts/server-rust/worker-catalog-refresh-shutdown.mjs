@@ -5,7 +5,7 @@ import { eventually } from "./full-worker.mjs";
 import { literal } from "./project-target-state.mjs";
 import { LiveProbe } from "./live-sockets.mjs";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 
 export async function catalogRefreshShutdown({

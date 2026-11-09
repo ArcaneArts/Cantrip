@@ -1,4 +1,4 @@
-import { createModelRoutingRuntime } from "../../cantrip_server/src/app/runtime/model-routing-runtime.ts";
+import { createModelRoutingRuntime } from "../../tests/reference-node-server/src/app/runtime/model-routing-runtime.ts";
 
 // Only the unchanged routing service's timers use this controlled clock. Database
 // and transport timers continue to run normally while real SQL is awaited.

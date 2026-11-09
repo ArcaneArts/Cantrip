@@ -2,10 +2,12 @@
 
 The normal development, package, desktop and deployment entrypoints now select
 Rust. See [default cutover](RUST_SERVER_DEFAULT_CUTOVER.md) for the exact local
-checks and remaining replacement requirements. The worker remains Node, and
-production Node-server source retirement and final shipping acceptance remain
-unfinished. Older sections below retain their milestone-time observations;
-their statements about Node being the default describe those earlier revisions.
+checks and remaining replacement requirements. The production Node workspace
+and entrypoints are removed; explicit development comparisons retain a
+[test-only baseline](RUST_SERVER_NODE_RETIREMENT.md). The worker remains Node,
+and final shipping acceptance remains unfinished. Older sections below retain
+their milestone-time observations; their statements about Node being the default
+describe those earlier revisions.
 
 Real native Agent/Goal execution now continues through Rust → Node → Rust
 profile rollback on all three backends, plus a PostgreSQL code-change case

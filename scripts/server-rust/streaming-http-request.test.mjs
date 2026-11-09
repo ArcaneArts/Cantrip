@@ -9,7 +9,7 @@ import {
   headersOnlyHttpRequest,
 } from "./streaming-http-request.mjs";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 
 test("retains the actual early HTTP rejection and cookies without finishing the upload", async () => {

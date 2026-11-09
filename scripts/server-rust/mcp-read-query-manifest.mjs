@@ -2,13 +2,13 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFile, writeFile } from "node:fs/promises";
-import * as schema from "../../cantrip_server/src/db/schema.ts";
-import { ChatCatalogRepository } from "../../cantrip_server/src/db/repository/chat-catalog.ts";
-import { MessageQueryRepository } from "../../cantrip_server/src/db/repository/message-queries.ts";
-import { SettingsRepository } from "../../cantrip_server/src/db/repository/settings.ts";
-import { WorkerRepository } from "../../cantrip_server/src/db/repository/workers.ts";
+import * as schema from "../../tests/reference-node-server/src/db/schema.ts";
+import { ChatCatalogRepository } from "../../tests/reference-node-server/src/db/repository/chat-catalog.ts";
+import { MessageQueryRepository } from "../../tests/reference-node-server/src/db/repository/message-queries.ts";
+import { SettingsRepository } from "../../tests/reference-node-server/src/db/repository/settings.ts";
+import { WorkerRepository } from "../../tests/reference-node-server/src/db/repository/workers.ts";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { drizzle } = require("drizzle-orm/pg-proxy");
 async function capture(run, headers) {

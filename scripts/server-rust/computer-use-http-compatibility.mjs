@@ -13,7 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { HttpFixture } from "./http-fixture.mjs";
 import { buildRustExample } from "./build.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
@@ -64,7 +64,10 @@ async function run(f, result, profile) {
       "Production qualification observes its fixture-owned external PostgreSQL database",
     );
     const postgres = createRequire(
-      new URL("../../cantrip_server/package.json", import.meta.url),
+      new URL(
+        "../../tests/reference-node-server/package.json",
+        import.meta.url,
+      ),
     )("postgres");
     observer = postgres(f.environment.DATABASE_URL, { max: 1 });
     f.sql = (statements, queries = []) =>

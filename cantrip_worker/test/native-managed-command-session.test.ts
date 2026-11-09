@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import WebSocket from "ws";
 import { describe, expect, it, vi } from "vitest";
-import { createNativeCommandWorkerFixture } from "../../cantrip_server/test/native-command-worker-fixture.js";
+import { createNativeCommandWorkerFixture } from "../../tests/reference-node-server/test/native-command-worker-fixture.js";
 import {
   CodexAppServer,
   type CodexProcessLauncher,

@@ -1,7 +1,7 @@
 import {
   associateTaskPullRequests,
   taskAdvisoryWarnings,
-} from "../../cantrip_server/src/tasks/dashboard.ts";
+} from "../../tests/reference-node-server/src/tasks/dashboard.ts";
 import { taskDashboardCases } from "./task-dashboard-fixtures.mjs";
 
 const cases = [...taskDashboardCases()].map((input) => {

@@ -1,8 +1,8 @@
 // Actual Source actor, Goal/recovery, admission, naming, Live and repositories.
 // Clock and held worker replies are explicit differential-test boundaries.
-import { createTaskAutomaticRetry } from "../../cantrip_server/src/app/runtime/task-automatic-retry.ts";
-import { createTaskOperationQueue } from "../../cantrip_server/src/app/runtime/task-operation-queue.ts";
-import { generateAutomaticTitle } from "../../cantrip_server/src/chats/automatic-labeling.ts";
+import { createTaskAutomaticRetry } from "../../tests/reference-node-server/src/app/runtime/task-automatic-retry.ts";
+import { createTaskOperationQueue } from "../../tests/reference-node-server/src/app/runtime/task-operation-queue.ts";
+import { generateAutomaticTitle } from "../../tests/reference-node-server/src/chats/automatic-labeling.ts";
 export async function taskAutomaticFixture({
   repository,
   input,

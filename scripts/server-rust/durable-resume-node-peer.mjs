@@ -1,5 +1,5 @@
 // Controlled native boundary; all ownership/epoch/receipt writes use real SQL services.
-import { WorkerCommandError } from "../../cantrip_server/src/workers/bridge.ts";
+import { WorkerCommandError } from "../../tests/reference-node-server/src/workers/bridge.ts";
 import { nativeCommandAdmissionSchema } from "../../packages/protocol/dist/index.js";
 export async function durableResumePeer(repository, input, worker, command) {
   if (input.coldResumeError)

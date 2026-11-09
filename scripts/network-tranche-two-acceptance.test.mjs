@@ -48,7 +48,12 @@ test("a broken metadata marker cannot suppress behavioral suites", async () => {
   for (const group of ["protocol", "app", "worker", "server"]) {
     assert.ok(
       calls.some(
-        (args) => args.includes(`@cantrip/${group}`) && args.includes("vitest"),
+        (args) =>
+          args.includes(
+            group === "server"
+              ? "@cantrip/server-reference"
+              : `@cantrip/${group}`,
+          ) && args.includes("vitest"),
       ),
     );
   }
@@ -76,7 +81,8 @@ test("one behavioral failure still collects independent behavioral results", asy
   );
   assert.ok(
     calls.some(
-      (args) => args.includes("@cantrip/server") && args.includes("vitest"),
+      (args) =>
+        args.includes("@cantrip/server-reference") && args.includes("vitest"),
     ),
   );
   assert.ok(calls.some(([command]) => command === "cargo"));

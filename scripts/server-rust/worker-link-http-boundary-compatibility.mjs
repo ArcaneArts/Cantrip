@@ -10,7 +10,7 @@ import { HttpFixture } from "./http-fixture.mjs";
 import { redisFixture, eventually } from "./coordinated-fixture-tools.mjs";
 import { workerLinkWireFixtures } from "./worker-link-wire-fixtures.mjs";
 const WebSocket = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("ws");
 const { values } = parseArgs({
   options: {

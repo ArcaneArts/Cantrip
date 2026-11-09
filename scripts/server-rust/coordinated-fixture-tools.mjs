@@ -7,7 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import path from "node:path";
 import { repositoryRoot } from "./cargo.mjs";
 const { createClient } = createRequire(
-  path.join(repositoryRoot, "cantrip_server/package.json"),
+  path.join(repositoryRoot, "tests/reference-node-server/package.json"),
 )("redis");
 export async function redisFixture(binary, root) {
   const socket = createServer();

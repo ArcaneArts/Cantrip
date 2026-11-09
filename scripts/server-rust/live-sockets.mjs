@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { appLiveServerMessageSchema } from "../../packages/protocol/dist/index.js";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const WebSocket = require("ws");
 export const appOrigin = "http://127.0.0.1:5173";

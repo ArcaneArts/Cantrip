@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { protectChatMessage } from "../../cantrip_worker/src/chat-message-encryption.ts";
-import { GOAL_RESUME_PROMPT } from "../../cantrip_server/src/app/shared/constants.ts";
+import { GOAL_RESUME_PROMPT } from "../../tests/reference-node-server/src/app/shared/constants.ts";
 import {
   encryptTaskProtectedContent,
   decryptTaskProtectedContent,

@@ -6,7 +6,7 @@ import path from "node:path";
 import { buildRustServer } from "./build.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { password } from "./security-fixtures.mjs";
 const option = (key) => {
   const i = process.argv.indexOf(key);

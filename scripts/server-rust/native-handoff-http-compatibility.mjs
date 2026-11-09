@@ -15,7 +15,7 @@ import {
   settingsWorker,
 } from "./native-settings-http-fixture.mjs";
 import { literal } from "./project-target-state.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { password } from "./security-fixtures.mjs";
 import { NativeRuntimeHandoffClient } from "../../cantrip_worker/src/native-runtime-handoff-client.ts";
 import { prepareManagedConsoleState } from "../../cantrip_worker/src/managed-console-state.ts";

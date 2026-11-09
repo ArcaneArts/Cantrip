@@ -21,8 +21,8 @@ import { eventually } from "./full-worker.mjs";
 import { exportWorker } from "./project-export-http-worker.mjs";
 import { exportShutdown } from "./project-export-http-lifecycle.mjs";
 import { password } from "./security-fixtures.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
-import { encodeCanonicalChatPayload } from "../../cantrip_server/src/chats/hydration.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
+import { encodeCanonicalChatPayload } from "../../tests/reference-node-server/src/chats/hydration.ts";
 import {
   targetStateSql,
   localOwner,

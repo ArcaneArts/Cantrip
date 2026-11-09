@@ -4,16 +4,16 @@ import { createRequire } from "node:module";
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { format, resolveConfig } from "prettier";
-import * as schema from "../../cantrip_server/src/db/schema.ts";
-import { ChatRuntimeContextRepository } from "../../cantrip_server/src/db/repository/chat-runtime-context.ts";
-import { TerminalRepository } from "../../cantrip_server/src/db/repository/terminals.ts";
-import { ExplorerRepository } from "../../cantrip_server/src/db/repository/explorers.ts";
-import { CodeSurfaceRepository } from "../../cantrip_server/src/db/repository/code-surfaces.ts";
-import { RemoteSurfaceRepository } from "../../cantrip_server/src/db/repository/remote-surfaces.ts";
-import { BrowserRepository } from "../../cantrip_server/src/db/repository/browsers.ts";
-import { ProjectRepository } from "../../cantrip_server/src/db/repository/projects.ts";
+import * as schema from "../../tests/reference-node-server/src/db/schema.ts";
+import { ChatRuntimeContextRepository } from "../../tests/reference-node-server/src/db/repository/chat-runtime-context.ts";
+import { TerminalRepository } from "../../tests/reference-node-server/src/db/repository/terminals.ts";
+import { ExplorerRepository } from "../../tests/reference-node-server/src/db/repository/explorers.ts";
+import { CodeSurfaceRepository } from "../../tests/reference-node-server/src/db/repository/code-surfaces.ts";
+import { RemoteSurfaceRepository } from "../../tests/reference-node-server/src/db/repository/remote-surfaces.ts";
+import { BrowserRepository } from "../../tests/reference-node-server/src/db/repository/browsers.ts";
+import { ProjectRepository } from "../../tests/reference-node-server/src/db/repository/projects.ts";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { drizzle } = require("drizzle-orm/pg-proxy");
 const owner = "fixture-owner",

@@ -1,4 +1,4 @@
-import { OperationalMetrics } from "../../cantrip_server/src/operations/metrics.ts";
+import { OperationalMetrics } from "../../tests/reference-node-server/src/operations/metrics.ts";
 import * as protocol from "../../packages/protocol/dist/index.js";
 import { workerLinkWireFixtures } from "./worker-link-wire-fixtures.mjs";
 const metrics = new OperationalMetrics(),

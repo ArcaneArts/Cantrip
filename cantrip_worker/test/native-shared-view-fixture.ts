@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { encryptChatMessageProtectedContent } from "@cantrip/crypto";
-import { acquireChatTurnExecution } from "../../cantrip_server/src/app/runtime/chat-turn-admission.js";
+import { acquireChatTurnExecution } from "../../tests/reference-node-server/src/app/runtime/chat-turn-admission.js";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createRequire } from "node:module";
@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { expect, vi } from "vitest";
-import { createNativeCommandWorkerFixture } from "../../cantrip_server/test/native-command-worker-fixture.js";
+import { createNativeCommandWorkerFixture } from "../../tests/reference-node-server/test/native-command-worker-fixture.js";
 import {
   CodexAppServer,
   CodexTurnFailureError,
@@ -33,7 +33,7 @@ import { AttachmentStore } from "../src/attachment-store.js";
 import type { WorkerEncryptionService } from "../src/worker-encryption.js";
 import { nativePermissionPatch } from "../src/codex/managed-native-permissions.js";
 import { createNativeCuaWorkerFixture } from "./native-cua-worker-fixture.js";
-import { computerUsePreviewAuthority } from "../../cantrip_server/src/app/routes/computer-use-preview.js";
+import { computerUsePreviewAuthority } from "../../tests/reference-node-server/src/app/routes/computer-use-preview.js";
 import { createNativeResourceProtection } from "../src/native-resource-protection.js";
 import { NativeSuspensionStore } from "../src/native-suspension-store.js";
 import { createManagedSuspensionCapture } from "../src/codex/managed-native-suspension.js";

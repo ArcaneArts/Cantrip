@@ -5,14 +5,19 @@ import { pnpmCommand } from "./pnpm-command.mjs";
 
 test("runs the active pnpm JavaScript CLI directly on Windows", () => {
   assert.deepEqual(
-    pnpmCommand(["--filter", "@cantrip/server", "build"], {
+    pnpmCommand(["--filter", "@cantrip/server-reference", "reference:build"], {
       environment: { npm_execpath: "C:\\pnpm\\pnpm.cjs" },
       nodeExecutable: "C:\\Program Files\\nodejs\\node.exe",
       platform: "win32",
     }),
     {
       command: "C:\\Program Files\\nodejs\\node.exe",
-      arguments: ["C:\\pnpm\\pnpm.cjs", "--filter", "@cantrip/server", "build"],
+      arguments: [
+        "C:\\pnpm\\pnpm.cjs",
+        "--filter",
+        "@cantrip/server-reference",
+        "reference:build",
+      ],
     },
   );
 });

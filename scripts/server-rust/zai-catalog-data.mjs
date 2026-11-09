@@ -7,7 +7,7 @@ import {
   ZAI_CODEX_CATALOG_SCOPE,
   ZAI_CODEX_CATALOG_SOURCE,
   ZAI_CODEX_MODELS,
-} from "../../cantrip_server/src/models/zai-catalog.ts";
+} from "../../tests/reference-node-server/src/models/zai-catalog.ts";
 
 const target = new URL(
   "../../cantrip_server_rs/contracts/zai-catalog.json",

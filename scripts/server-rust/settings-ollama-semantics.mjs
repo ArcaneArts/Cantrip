@@ -1,5 +1,5 @@
 import { ollamaModelInventorySchema } from "../../packages/protocol/dist/index.js";
-import { normalizeOllamaModel } from "../../cantrip_server/src/models/ollama-catalog.ts";
+import { normalizeOllamaModel } from "../../tests/reference-node-server/src/models/ollama-catalog.ts";
 
 export function ollamaSemantics(emit) {
   const base = {

@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { projectLabel } from "./security-fixtures.mjs";
 
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { drizzle } = require("drizzle-orm/pglite");
 const { migrate } = require("drizzle-orm/pglite/migrator");

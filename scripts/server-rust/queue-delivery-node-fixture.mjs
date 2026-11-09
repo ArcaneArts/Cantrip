@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
-import { createManagedQueueDelivery } from "../../cantrip_server/src/app/runtime/managed-queue-delivery.ts";
-import { WorkerBridge } from "../../cantrip_server/src/workers/bridge.ts";
-import { LimitedWorkerCommandBus } from "../../cantrip_server/src/workers/limited-command-bus.ts";
+import { createManagedQueueDelivery } from "../../tests/reference-node-server/src/app/runtime/managed-queue-delivery.ts";
+import { WorkerBridge } from "../../tests/reference-node-server/src/workers/bridge.ts";
+import { LimitedWorkerCommandBus } from "../../tests/reference-node-server/src/workers/limited-command-bus.ts";
 
 export async function queueDeliveryFixture(repository, input) {
   const trace = [],

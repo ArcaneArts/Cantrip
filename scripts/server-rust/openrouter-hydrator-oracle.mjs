@@ -1,4 +1,4 @@
-import { OpenRouterRuntimeCatalogHydrator } from "../../cantrip_server/src/models/openrouter-runtime-catalog.ts";
+import { OpenRouterRuntimeCatalogHydrator } from "../../tests/reference-node-server/src/models/openrouter-runtime-catalog.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 const deferred = () => {
   let resolve, reject;

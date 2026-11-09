@@ -1,9 +1,9 @@
 // Disposable adapter to the unchanged production repositories and runtime.
 import { createRequire } from "node:module";
-import { createManagedChatPreparation } from "../../cantrip_server/src/app/runtime/managed-chat-preparation.ts";
-import { createModelRoutingRuntime } from "../../cantrip_server/src/app/runtime/model-routing-runtime.ts";
+import { createManagedChatPreparation } from "../../tests/reference-node-server/src/app/runtime/managed-chat-preparation.ts";
+import { createModelRoutingRuntime } from "../../tests/reference-node-server/src/app/runtime/model-routing-runtime.ts";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { sql } = require("drizzle-orm");
 export async function managedPreparationFixture(repository, input) {

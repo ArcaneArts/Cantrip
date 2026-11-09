@@ -1,4 +1,4 @@
-import { nativeCommandPolicy } from "../../cantrip_server/src/db/repository/native-commands.ts";
+import { nativeCommandPolicy } from "../../tests/reference-node-server/src/db/repository/native-commands.ts";
 import {
   managedNativeMethods,
   managedNativeServerRequests,

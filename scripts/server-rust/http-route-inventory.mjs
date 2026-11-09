@@ -46,7 +46,7 @@ try {
     server =
       kind === "node"
         ? await startPackagedNodeServer(
-            path.join(repositoryRoot, "cantrip_server"),
+            path.join(repositoryRoot, "tests/reference-node-server"),
             environment,
             { nodeExecutable: process.execPath },
           )

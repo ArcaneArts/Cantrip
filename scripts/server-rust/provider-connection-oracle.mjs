@@ -1,7 +1,7 @@
 import {
   providerConnectionFailureStage,
   providerConnectionFailureMessage,
-} from "../../cantrip_server/src/models/provider-connection-test.ts";
+} from "../../tests/reference-node-server/src/models/provider-connection-test.ts";
 const inputs = [
   "",
   "worker",

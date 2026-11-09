@@ -1,7 +1,7 @@
 import {
   isOpenRouterProvider,
   normalizeOpenRouterModel,
-} from "../../cantrip_server/src/models/openrouter-catalog.ts";
+} from "../../tests/reference-node-server/src/models/openrouter-catalog.ts";
 
 export function openRouterSemantics(emit) {
   let seed = 812723;

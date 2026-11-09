@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createNativeLogicalCompletionDelivery } from "../../cantrip_server/src/app/runtime/native-logical-completion-delivery.ts";
+import { createNativeLogicalCompletionDelivery } from "../../tests/reference-node-server/src/app/runtime/native-logical-completion-delivery.ts";
 import { cases } from "./completion-delivery-cases.mjs";
 const settle = () => new Promise(setImmediate);
 const originalNow = Date.now,

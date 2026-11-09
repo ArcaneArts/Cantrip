@@ -6,9 +6,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import path from "node:path";
 import { repositoryFixture } from "./repository-fixture.mjs";
 import { retainedPrompt } from "./native-settlement-fixtures.mjs";
-import { nativeHistoryPayloadDigest } from "../../cantrip_server/src/db/repository/native-history-digest.ts";
+import { nativeHistoryPayloadDigest } from "../../tests/reference-node-server/src/db/repository/native-history-digest.ts";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const postgres = require("postgres");
 async function waiters(sql, count) {

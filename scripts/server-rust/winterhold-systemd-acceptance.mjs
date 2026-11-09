@@ -16,7 +16,7 @@ import {
 } from "../deploy-production.mjs";
 
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const WebSocket = require("ws");
 const { values } = parseArgs({

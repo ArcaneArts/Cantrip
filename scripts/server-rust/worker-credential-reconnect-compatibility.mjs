@@ -12,7 +12,7 @@ import { postgresFixture } from "./postgres-fixture.mjs";
 import { managementWorker } from "./worker-management-http-worker.mjs";
 import { eventually } from "./full-worker.mjs";
 import { localOwner } from "./project-target-state.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { password } from "./security-fixtures.mjs";
 import { capturedCredentialFixture } from "./settings-provider-fixtures.mjs";
 import { credentialReconnectShutdown } from "./worker-credential-reconnect-shutdown.mjs";
@@ -172,7 +172,10 @@ try {
           "Observe only the isolated external PostgreSQL fixture",
         );
         const postgres = createRequire(
-          new URL("../../cantrip_server/package.json", import.meta.url),
+          new URL(
+            "../../tests/reference-node-server/package.json",
+            import.meta.url,
+          ),
         )("postgres");
         observer = postgres(databaseUrl, { max: 1 });
         f.sql = (statements, queries = []) =>

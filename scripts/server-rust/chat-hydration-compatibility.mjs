@@ -9,7 +9,7 @@ import { buildRustExample } from "./build.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
 import { projectLabel } from "./security-fixtures.mjs";
 import { chatRelocationContextPayloadSchema } from "../../packages/protocol/src/chat-relocation.ts";
-import { encodeCanonicalChatPayload } from "../../cantrip_server/src/chats/hydration.ts";
+import { encodeCanonicalChatPayload } from "../../tests/reference-node-server/src/chats/hydration.ts";
 
 const { values } = parseArgs({ options: { report: { type: "string" } } });
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-chat-hydration-"));

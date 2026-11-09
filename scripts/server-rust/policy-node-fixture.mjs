@@ -1,11 +1,11 @@
 // Disposable IPC driver of the actual Node repository, using real migrations.
 import { createInterface } from "node:readline";
 import { createRequire } from "node:module";
-import { readServerConfig } from "../../cantrip_server/src/config.ts";
-import { connectDatabase } from "../../cantrip_server/src/db/index.ts";
-import { PolicyScopeNotFoundError } from "../../cantrip_server/src/db/policies.ts";
+import { readServerConfig } from "../../tests/reference-node-server/src/config.ts";
+import { connectDatabase } from "../../tests/reference-node-server/src/db/index.ts";
+import { PolicyScopeNotFoundError } from "../../tests/reference-node-server/src/db/policies.ts";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { sql } = require("drizzle-orm");
 const database = await connectDatabase(readServerConfig());

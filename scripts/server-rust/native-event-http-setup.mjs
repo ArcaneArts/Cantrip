@@ -7,7 +7,7 @@ import {
   settingsWorker as worker,
 } from "./native-settings-http-fixture.mjs";
 import { literal, json, label } from "./project-target-state.mjs";
-import { createWorkerCredential } from "../../cantrip_server/src/workers/credentials.ts";
+import { createWorkerCredential } from "../../tests/reference-node-server/src/workers/credentials.ts";
 export const rejectedEventCredentials = ["scope", "revoked", "expired"].map(
   (reason) => ({ reason, ...createWorkerCredential() }),
 );

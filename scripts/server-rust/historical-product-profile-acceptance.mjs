@@ -21,7 +21,7 @@ import { fixtureEnvironment, startServer } from "./process.mjs";
 import { startPackagedNodeServer } from "./packaged-node-fixture.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { snapshot, assertImportedProfile } from "./profile-snapshots.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { heartbeat } from "./security-fixtures.mjs";
 import * as crypto from "../../packages/crypto/dist/index.js";
 import {

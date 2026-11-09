@@ -25,7 +25,7 @@ import {
   exportLegacyProfile,
   restoreLegacyProfile,
 } from "../database-transfer/legacy-profile.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import {
   initialization,
   projectLabel,
@@ -42,10 +42,10 @@ import { snapshot, assertImportedProfile } from "./profile-snapshots.mjs";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 const { PGlite } = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("@electric-sql/pglite");
 
 const { values } = parseArgs({

@@ -1,6 +1,6 @@
 // Actual pause/Goal/Live/SQL services. The controlled worker admits, dispatches
 // and settles real native pause controls before returning its boundary receipt.
-import { createChatAutomationPauseRuntime } from "../../cantrip_server/src/app/runtime/chat-automation-pause-runtime.ts";
+import { createChatAutomationPauseRuntime } from "../../tests/reference-node-server/src/app/runtime/chat-automation-pause-runtime.ts";
 export async function pausePeer({
   repository,
   input,

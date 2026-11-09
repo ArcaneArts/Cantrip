@@ -3,10 +3,10 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFile, writeFile } from "node:fs/promises";
-import * as schema from "../../cantrip_server/src/db/schema.ts";
-import { ChatExecutionLaneRepository } from "../../cantrip_server/src/db/repository/chat-execution-lanes.ts";
+import * as schema from "../../tests/reference-node-server/src/db/schema.ts";
+import { ChatExecutionLaneRepository } from "../../tests/reference-node-server/src/db/repository/chat-execution-lanes.ts";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { drizzle } = require("drizzle-orm/pg-proxy");
 const source = drizzle(

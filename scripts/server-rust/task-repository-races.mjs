@@ -5,7 +5,7 @@ import path from "node:path";
 import { repositoryFixture } from "./repository-fixture.mjs";
 import { taskStart, taskResult } from "./task-wire-fixtures.mjs";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 async function waiters(sql, count, table) {
   const deadline = Date.now() + 20_000;

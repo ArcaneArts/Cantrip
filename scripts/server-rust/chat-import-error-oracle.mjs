@@ -1,8 +1,8 @@
 // Drive the actual Source executor; capture its repository settlement boundary.
 import assert from "node:assert/strict";
-import { ChatImportJobExecutor } from "../../cantrip_server/src/chat-imports/executor.ts";
-import { CanonicalChatHydrationError } from "../../cantrip_server/src/chats/hydration.ts";
-import { WorkerUnavailableError } from "../../cantrip_server/src/workers/bridge.ts";
+import { ChatImportJobExecutor } from "../../tests/reference-node-server/src/chat-imports/executor.ts";
+import { CanonicalChatHydrationError } from "../../tests/reference-node-server/src/chats/hydration.ts";
+import { WorkerUnavailableError } from "../../tests/reference-node-server/src/workers/bridge.ts";
 import { externalChatReadWorkerResultSchema } from "../../packages/protocol/dist/index.js";
 
 const inputs = [];

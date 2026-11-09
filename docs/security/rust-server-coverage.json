@@ -3,7 +3,7 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "996ae2eabb360097dc284ef3544b9e29ac5d7fa442ff3f294918f2aafff3cdd3",
+    "sha256": "5464ff99ba10af2ed8c0b676dcc99e8ac492f89c10b0523ee45c0d0e36659cf2",
     "baselineCommit": "2e99d7ab00f100759003e0ebe08461f557acb599",
     "counts": {
       "routes": 584,
@@ -12,7 +12,7 @@
       "repositoryMethods": 370,
       "liveResources": 47
     },
-    "workingTreeNote": "Current Task Goal worker-loss recovery adds internal opaque-response validation helpers. All reviewed contract-set digests and route, worker-command, durable-table, repository-method and live-resource counts remain unchanged. The optional response-reuse flag retains legacy workers and is advertised only for a prepared canonical Goal input. See RUST_SERVER_TASK_GOAL_WORKER_RECOVERY.md for exact local qualification and remaining final-artifact acceptance. Full replacement remains incomplete.",
+    "workingTreeNote": "The original Node contract/schema classification inventory now reads the explicit development baseline in tests/reference-node-server. Its source paths and line positions change with relocation; this is not itself current Rust runtime proof. The normal boundary audit additionally executes current Rust authority/retention tests, and production artifact acceptance runs with baseline src/dist physically unavailable. See RUST_SERVER_NODE_RETIREMENT.md. Full replacement acceptance remains incomplete.",
     "durableTableCountScope": "All Drizzle tables exported by the actual current schema, independently compared at runtime to the source corpus. Does not count internal migration metadata or assert a current all-backend migration/data-preservation pass."
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
@@ -15561,10 +15561,9 @@
         "https://github.com/ArcaneArts/Cantrip/pull/2749",
         "https://github.com/ArcaneArts/Cantrip/pull/2752"
       ],
-      "scope": "Implemented opt-in native supervisor/packaging with historical local macOS arm64 all-store launcher and actual app evidence. Default remains Node. The existing-profile milestone subsequently packages bounded automatic conversion.",
+      "scope": "The native supervisor and packaging are now the normal production path. Original opt-in local macOS launcher/app evidence remains historically scoped; defaultRuntimeCutover and productionNodeRemoval record the later normal-path and no-reference runtime qualification.",
       "remaining": [
-        "Qualify current integrated artifacts, supported platforms, installer/update supervision and full product/failure/performance matrix.",
-        "Complete final Rust default cutover and production Node-server removal."
+        "Qualify final supported shipping artifacts, existing-client encryption and installer/update supervision; preserve the separate scope of earlier product/failure/performance evidence."
       ]
     },
     "winterholdDelivery": {
@@ -15590,12 +15589,36 @@
         "scope": "Local ARM64 Ubuntu systemd fixture executing the x64 native artifact through binfmt, with actual Caddy HTTPS/TLS external PostgreSQL and post-write code rollback. No production host deployment or bare-metal x64/Windows claim."
       },
       "remaining": [
-        "Qualify current integrated artifacts and remaining supported platforms, product/fault/coordination/performance requirements.",
-        "Final Rust default cutover and production Node removal. Production deployment remains separately unauthorized."
+        "Complete final supported shipping acceptance and reconcile current product/fault/coordination/performance evidence.",
+        "Default Rust deployment and production Node-source retirement are implemented with scoped local qualification, recorded separately. Production Winterhold deployment remains outside the authorized goal."
       ]
     },
     "productionNodeRemoval": {
-      "status": "unimplemented"
+      "status": "implemented-with-scoped-local-qualification",
+      "implementation": [
+        "pnpm-workspace.yaml",
+        "package.json",
+        "tests/reference-node-server/package.json",
+        "scripts/package-distributions.mjs",
+        "scripts/audit-server-boundaries.mjs"
+      ],
+      "evidence": [
+        "docs/RUST_SERVER_NODE_RETIREMENT.md",
+        "cantrip_server_rs/tests/http_security_boundaries.rs",
+        "scripts/server-rust/packaged-server-acceptance.mjs"
+      ],
+      "qualification": {
+        "candidate": "1.1.2785",
+        "referenceUnavailable": "Reference src and dist physically unavailable during normal package:server and complete native artifact acceptance.",
+        "storageModes": ["pglite", "bundled-postgres", "postgres"],
+        "artifactFilesVerified": 1762,
+        "runtimeNodeAbsent": true,
+        "homebrewReadsAndArtifactWritesDenied": true,
+        "scope": "Local macOS arm64 production artifact; current Rust HTTP authority and retained-state checks are separate from the preserved legacy source classification baseline."
+      },
+      "remaining": [
+        "Final supported shipping and existing-client encrypted desktop/update acceptance remain required by the full replacement goal."
+      ]
     },
     "wireContracts": {
       "status": "partial",
@@ -19939,7 +19962,7 @@
       "remaining": [
         "Current normal desktop app existing-client encryption-ready acceptance remains incomplete at actual macOS Keychain access while the console is locked; no identity/catalog/vault bypass.",
         "Complete current supported-platform, product, background-service, interruption and coordination acceptance; broader historical upgrades and product-state rollback; remaining representative performance.",
-        "Rust-default cutover and production Node server removal remain unimplemented. Worker remains Node; no production Winterhold deployment."
+        "Default Rust cutover and production Node-source retirement now have separate scoped local qualification. Complete final supported shipping and existing-client encrypted desktop/update acceptance; the worker remains Node and production Winterhold deployment is not performed."
       ],
       "currentLinuxBaselineQualification": "See currentLinuxLibcQualification for fresh1.1.2783 on both container architectures and exported standalone/systemd deployments; original2778 evidence remains separately scoped."
     },
@@ -20079,8 +20102,7 @@
         "scripts/devtop.test.mjs"
       ],
       "remaining": [
-        "Remove the production Node server implementation and resolve its remaining source/build/test dependencies.",
-        "Complete final supported shipping and existing-client encrypted desktop/update acceptance; do not infer whole replacement completion from runtime selection."
+        "Complete final supported shipping and existing-client encrypted desktop/update acceptance; do not infer whole replacement completion from runtime selection. Production source retirement and its scoped isolation qualification are recorded separately in productionNodeRemoval."
       ]
     }
   },

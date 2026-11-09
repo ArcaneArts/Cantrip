@@ -8,7 +8,7 @@ import {
   nativeHistoryCommitReceiptSchema,
   nativeHistoryPreparedBatchSchema,
 } from "../../packages/protocol/dist/index.js";
-import { nativeHistoryPayloadDigest } from "../../cantrip_server/src/db/repository/native-history-digest.ts";
+import { nativeHistoryPayloadDigest } from "../../tests/reference-node-server/src/db/repository/native-history-digest.ts";
 export const ids = {
   owner: "00000000-0000-0000-0000-000000000001",
   worker: "rollback-worker",

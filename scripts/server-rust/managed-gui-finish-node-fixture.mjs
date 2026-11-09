@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
-import { finishManagedGui } from "../../cantrip_server/src/app/runtime/finish-managed-gui.ts";
-import { WorkerBridge } from "../../cantrip_server/src/workers/bridge.ts";
-import { LimitedWorkerCommandBus } from "../../cantrip_server/src/workers/limited-command-bus.ts";
+import { finishManagedGui } from "../../tests/reference-node-server/src/app/runtime/finish-managed-gui.ts";
+import { WorkerBridge } from "../../tests/reference-node-server/src/workers/bridge.ts";
+import { LimitedWorkerCommandBus } from "../../tests/reference-node-server/src/workers/limited-command-bus.ts";
 export async function managedGuiFinishFixture(repository, input) {
   const trace = [],
     bridge = new WorkerBridge(15000, { event() {}, rateLimited() {} });

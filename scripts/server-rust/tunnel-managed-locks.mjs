@@ -5,7 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { tunnelIds, tunnelRecord, tunnelNow } from "./tunnel-state.mjs";
 import { stamp } from "./project-target-state.mjs";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 const deferred = () => Promise.withResolvers();
 export async function tunnelManagedLocks({ pair, urls, owner, report }) {
