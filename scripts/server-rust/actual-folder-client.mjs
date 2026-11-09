@@ -77,6 +77,7 @@ import { verifySharedProductOfflineShutdown } from "./shared-product-offline-shu
 import { actualNativeInflightClient } from "./actual-native-inflight-client.mjs";
 import { SingleProductFixture } from "./single-product-fixture.mjs";
 import { actualSingleInflightClient } from "./actual-single-inflight-client.mjs";
+import { actualWorkerInflightClient } from "./actual-worker-inflight-client.mjs";
 import { actualModelOperationsClient } from "./actual-model-operations-client.mjs";
 import { actualCantripOsClient } from "./actual-cantrip-os-client.mjs";
 import {
@@ -122,6 +123,8 @@ const option = (name) => {
 const databaseMode = option("--database") ?? "pglite";
 const sharedPair = option("--server-pair");
 const singleProduct =
+  process.argv.includes("--production-server") ||
+  process.argv.includes("--native-worker-recovery") ||
   process.argv.includes("--native-single-recovery") ||
   process.argv.includes("--native-single-agent-recovery") ||
   process.argv.includes("--model-operations") ||
@@ -1095,6 +1098,23 @@ async function flow(
         result,
       });
     }
+    if (process.argv.includes("--native-worker-recovery")) {
+      if (worker) await stopWorker();
+      await actualWorkerInflightClient({
+        operationKind: option("--worker-recovery-kind") ?? "direct",
+        fixture,
+        page,
+        projectId: first.id,
+        workerId,
+        dataDirectory,
+        getWorker: () => worker,
+        startWorker,
+        stopWorker,
+        crashWorker,
+        requests,
+        result,
+      });
+    }
     if (process.argv.includes("--native-inflight-recovery")) {
       if (!worker) await startWorker();
       await actualNativeInflightClient({
@@ -1517,6 +1537,11 @@ try {
       assert.deepEqual(
         runtime.singleInflight.summary,
         report.runtimes[0].singleInflight.summary,
+      );
+    if (process.argv.includes("--native-worker-recovery"))
+      assert.deepEqual(
+        runtime.workerInflight.summary,
+        report.runtimes[0].workerInflight.summary,
       );
     if (process.argv.includes("--native-inflight-recovery"))
       assert.deepEqual(

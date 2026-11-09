@@ -66,6 +66,7 @@ import {
   taskInferenceRouteViewSchema,
 } from "@cantrip/protocol";
 import { createTaskExecutionRecovery } from "./task-execution-recovery.js";
+import { createTaskNativeTurnObserver } from "./task-native-turn-observer.js";
 import {
   createTaskAutomaticRetry,
   retryTaskOperation,
@@ -124,6 +125,21 @@ export function installTaskRouteRuntime(
     bridge,
     ownerId: applicationOwnerId,
     leaseOwner: `${serverId}:${serverInstanceId}`,
+    observeNativeTurn: async (context, turnId) => {
+      const observed = await createTaskNativeTurnObserver(dependencies)(
+        context,
+        turnId,
+      );
+      app.log.info(
+        {
+          event: "task.native-turn.observed",
+          chatId: context.chatId,
+          ...observed,
+        },
+        "Observed retained native Task turn",
+      );
+      return observed;
+    },
     goals: {
       continueTaskGoalInWorktree: dependencies.continueTaskGoalInWorktree,
       readEncryptedTaskGoal: dependencies.readEncryptedTaskGoal,
@@ -163,7 +179,12 @@ export function installTaskRouteRuntime(
       if (!context || context.experience !== "task")
         return reply.code(404).send({ error: "Task not found." });
       try {
-        await repository.taskRetries.reset(owner, context.chatId);
+        const target = await repository.tasks.get(owner, context.chatId);
+        if (
+          target?.planGoalEnabled &&
+          target.dispatch?.operationKind === "finalize"
+        )
+          await repository.taskRetries.reset(owner, context.chatId);
         if (!(await taskRecovery.recover(context.chatId, true)))
           return reply.code(409).send({
             error:

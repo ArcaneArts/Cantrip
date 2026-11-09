@@ -66,7 +66,9 @@ for (const database of databases) {
         "--database",
         database,
         ...suites[suite],
-        ...(values["production-server"] ? [] : ["--task-diagnostics"]),
+        ...(values["production-server"]
+          ? ["--production-server"]
+          : ["--task-diagnostics"]),
         "--report",
         report,
       ],

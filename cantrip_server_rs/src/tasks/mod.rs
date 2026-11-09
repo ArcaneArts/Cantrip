@@ -12,6 +12,7 @@ pub(crate) mod goal_observations;
 mod inference_inputs;
 mod inference_routes;
 mod native_input_binding;
+mod native_turn_recovery;
 mod operations;
 mod pending_input;
 pub mod policy;

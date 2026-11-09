@@ -5,6 +5,7 @@ mod claim_recovery;
 mod continuation;
 mod cycle_recovery;
 mod leases;
+mod native_observation;
 mod observe;
 mod start;
 mod suspension;

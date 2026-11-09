@@ -95,6 +95,7 @@ export async function runManagedQueueCases(h) {
           items: [],
           claims: [],
           pendingImports: [],
+          goalRecovery: null,
         });
   }
   for (const [name, input, code] of [
