@@ -14678,6 +14678,38 @@
     ]
   },
   "crossCutting": {
+    "currentBroadWireCompatibility": {
+      "status": "implemented-pending-platform-acceptance",
+      "evidence": [
+        "docs/RUST_SERVER_CURRENT_WIRE_COMPATIBILITY.md",
+        "scripts/server-rust/security-fixtures.mjs",
+        "scripts/server-rust/current-wire-fixtures.mjs",
+        "scripts/server-rust/refresh-worker-command-fixtures.mjs",
+        "scripts/server-rust/refresh-worker-command-alternatives.mjs",
+        "cantrip_server_rs/tests/wire_contracts.rs",
+        "cantrip_server_rs/tests/worker_command_contracts.rs",
+        "packages/protocol/src/public-surface-compatibility.test.ts",
+        "scripts/server-rust/wire-stream-compatibility.mjs",
+        "cantrip_server_rs/examples/wire-contract-fixture.rs"
+      ],
+      "sourceQualification": "All 803 roots have nonempty fixture sets; all 2,702 baseline examples parse the actual sourceContractSchema. All 323 command examples parse complete envelopes. Every original 308 command and 1,180 alternative example is preserved exactly. The refreshed 1,292 cases cover 63 union schemas/562 options and 189 enum schemas/733 values. The original focused Task and eleven Chat import oracle outputs are byte-identical. The full protocol package passes 1,120 test executions across 116 files, including compiled copies; typechecking passes. All historical public-surface fingerprints remain unchanged with 76 additive exports and seven commands explicitly listed.",
+      "nativeQualification": {
+        "platform": "darwin-arm64",
+        "broadSchemaComparisons": 893386,
+        "broadSchemaRoots": 802,
+        "jsonRoundTrips": 69648,
+        "taskInputComparisons": 8222,
+        "commandExamples": 323,
+        "commandBoundaries": 86,
+        "commandMutations": 262471,
+        "customCommandChecksExecuted": 102,
+        "customCommandChecksRegistered": 102,
+        "strengthenedFixtureComparisons": 13710,
+        "strengthenedFixtureRoots": 5,
+        "scope": "The five strengthened fixture sets were rechecked after the broad pass. These comparisons overlap that corpus. Per-root hashes verify all other fixture sets are unchanged. No production parser or graph change was required."
+      },
+      "remaining": "Full product/fault recovery, supported platforms and current shipping artifacts, historical upgrades, post-write rollback, performance, Rust default cutover and production Node-server removal remain. Node is still the default; the worker remains Node."
+    },
     "currentTaskGoalWorkerProcessRecovery": {
       "status": "implemented-pending-platform-acceptance",
       "evidence": [
@@ -14700,7 +14732,6 @@
         "optimizedProduct": "Final optimized production main fc672af50d6e0d9681a274654711d534a3e0b4fee1720fa33ac8f5f8527c5105 passes all10activeGoalworker-loss cases:bothservers/all3stores andall4sharedpairs;50modelPOSTs,oneanswerpercase,exactGoal/Task/history restart. Existing production Task andAgent/Task matrix also passes all6storage/productcases with bothserverentrypoints andfullcurrent92patch nativeworker."
       },
       "remaining": [
-        "Current broad protocol export/discriminator expectations and missing newer schema/command fixtures reproduce on clean Primary; retain failures and complete whole-goal wire reconciliation.",
         "Supported platforms/current packaged artifacts, updates, historical profiles/full product rollback, prolonged faults, comparative performance, final Rust default cutover and production Node-server removal."
       ]
     },

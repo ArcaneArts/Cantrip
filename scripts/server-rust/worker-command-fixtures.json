@@ -135,6 +135,113 @@
       }
     },
     {
+      "type": "model.embedding",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "scope": {
+            "workerId": "worker",
+            "modelId": "model",
+            "routeId": "route"
+          },
+          "protectedRequest": {
+            "formatVersion": 1,
+            "domain": "model-operation-content",
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            }
+          },
+          "type": "model.embedding",
+          "serverId": "server",
+          "route": {
+            "modelId": "model",
+            "routeId": "route",
+            "modelName": "model",
+            "adapter": "openai-embeddings",
+            "options": {},
+            "provider": {
+              "id": "fixture",
+              "name": "fixture",
+              "kind": "chatgpt",
+              "baseUrl": "stun:example.test",
+              "protectedApiKey": null,
+              "accountId": null,
+              "credentialHomeKey": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "model.decision",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "scope": {
+            "workerId": "worker",
+            "modelId": "model",
+            "routeId": "route"
+          },
+          "protectedRequest": {
+            "formatVersion": 1,
+            "domain": "model-operation-content",
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            }
+          },
+          "type": "model.decision",
+          "serverId": "server",
+          "route": {
+            "modelId": "model",
+            "routeId": "route",
+            "modelName": "model",
+            "adapter": "openai-decisions",
+            "options": {},
+            "provider": {
+              "id": "fixture",
+              "name": "fixture",
+              "kind": "chatgpt",
+              "baseUrl": "stun:example.test",
+              "protectedApiKey": null,
+              "accountId": null,
+              "credentialHomeKey": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "model.operation.cancel",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "model.operation.cancel",
+          "serverId": "server",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "scope": {
+            "workerId": "worker",
+            "modelId": "model",
+            "routeId": "route"
+          }
+        }
+      }
+    },
+    {
       "type": "inference.status",
       "input": {
         "kind": "request",
@@ -4826,6 +4933,27 @@
       }
     },
     {
+      "type": "task.goal.source",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "task.goal.source",
+          "cycleId": "11111111-1111-4111-8111-111111111111",
+          "scope": {
+            "chatId": "chat",
+            "workerId": "worker",
+            "threadId": "thread",
+            "contextKind": "project",
+            "projectId": "project",
+            "placementId": "worktree",
+            "modelRouteId": "model",
+            "providerAccountId": null
+          }
+        }
+      }
+    },
+    {
       "type": "chat.message.protect",
       "input": {
         "kind": "request",
@@ -5049,6 +5177,118 @@
           "chatId": "fixture",
           "rootOperationId": "fixture",
           "rootOperationGeneration": "fixture"
+        }
+      }
+    },
+    {
+      "type": "chat.suspension.resume",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "session": {
+            "chatId": "chat",
+            "computerUseEnabled": false,
+            "contextKind": "project",
+            "projectId": "github",
+            "worktreeId": "github-alpha-main",
+            "rootKind": "git-worktree",
+            "scratchRootId": null
+          },
+          "cwd": "/fixture",
+          "model": {
+            "id": "model",
+            "routeId": "route",
+            "name": "model",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "provider",
+            "name": "provider",
+            "kind": "openai-compatible",
+            "baseUrl": "http://localhost:8080",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": ":workspace",
+          "planMode": "default",
+          "subagentDefaults": null,
+          "mcpServers": [],
+          "type": "chat.suspension.resume",
+          "chatId": "chat",
+          "threadId": "native-thread",
+          "controlId": "f57d812b-37d4-4d1e-b87a-3503b0d89b23",
+          "checkpoint": {
+            "suspension": {
+              "threadId": "native-thread",
+              "turnId": "original-turn",
+              "checkpointId": "checkpoint",
+              "revision": 1
+            },
+            "storageId": "f57d812b-37d4-4d1e-b87a-3503b0d89b23",
+            "runtimeVersion": "test/cantrip-suspension-v8",
+            "runtimeFingerprint": null
+          },
+          "nativeActivationGeneration": null,
+          "nativeRuntimeGeneration": null,
+          "executionProfile": "ide"
+        }
+      }
+    },
+    {
+      "type": "chat.suspension.stop",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "session": {
+            "chatId": "chat",
+            "computerUseEnabled": false,
+            "contextKind": "project",
+            "projectId": "github",
+            "worktreeId": "github-alpha-main",
+            "rootKind": "git-worktree",
+            "scratchRootId": null
+          },
+          "cwd": "/fixture",
+          "model": {
+            "id": "model",
+            "routeId": "route",
+            "name": "model",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "provider",
+            "name": "provider",
+            "kind": "openai-compatible",
+            "baseUrl": "http://localhost:8080",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": ":workspace",
+          "planMode": "default",
+          "subagentDefaults": null,
+          "mcpServers": [],
+          "type": "chat.suspension.stop",
+          "chatId": "chat",
+          "threadId": "native-thread",
+          "controlId": "f57d812b-37d4-4d1e-b87a-3503b0d89b23",
+          "checkpoint": {
+            "suspension": {
+              "threadId": "native-thread",
+              "turnId": "original-turn",
+              "checkpointId": "checkpoint",
+              "revision": 1
+            },
+            "storageId": "f57d812b-37d4-4d1e-b87a-3503b0d89b23",
+            "runtimeVersion": "test/cantrip-suspension-v8",
+            "runtimeFingerprint": null
+          },
+          "nativeActivationGeneration": null,
+          "nativeRuntimeGeneration": null,
+          "executionProfile": "ide"
         }
       }
     },
@@ -5402,22 +5642,52 @@
       }
     },
     {
-      "type": "task.goal.source",
+      "type": "chat.goal.claim-recover",
       "input": {
         "kind": "request",
         "requestId": "fixture-command",
         "command": {
-          "type": "task.goal.source",
-          "cycleId": "11111111-1111-4111-8111-111111111111",
-          "scope": {
+          "session": {
             "chatId": "chat",
-            "workerId": "worker",
-            "threadId": "thread",
+            "computerUseEnabled": false,
             "contextKind": "project",
-            "projectId": "project",
-            "placementId": "worktree",
-            "modelRouteId": "model",
-            "providerAccountId": null
+            "projectId": "github",
+            "worktreeId": "github-alpha-main",
+            "rootKind": "git-worktree",
+            "scratchRootId": null
+          },
+          "cwd": "/fixture",
+          "model": {
+            "id": "model",
+            "routeId": "route",
+            "name": "model",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "provider",
+            "name": "provider",
+            "kind": "openai-compatible",
+            "baseUrl": "http://localhost:8080",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": ":workspace",
+          "planMode": "default",
+          "subagentDefaults": null,
+          "mcpServers": [],
+          "type": "chat.goal.claim-recover",
+          "chatId": "chat",
+          "threadId": "original-goal-thread",
+          "claim": {
+            "claimId": "claim",
+            "promptId": "prompt",
+            "promptRevision": 0,
+            "operationId": "original-goal-operation",
+            "operationGeneration": "original-goal-generation",
+            "threadId": "original-goal-thread",
+            "goalEpoch": "original-goal-epoch",
+            "admission": null
           }
         }
       }
@@ -6248,6 +6518,355 @@
       }
     },
     {
+      "type": "cantrip-os.packages.status",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.packages.status",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "11111111-1111-4111-8111-111111111111",
+            "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+            "attachmentGeneration": "11111111-1111-4111-8111-111111111111"
+          },
+          "transport": {
+            "kind": "ssh",
+            "host": "fixture.invalid",
+            "port": 22,
+            "user": "root",
+            "identityFile": "/private/key",
+            "knownHostsFile": "/private/known-hosts"
+          }
+        }
+      }
+    },
+    {
+      "type": "cantrip-os.packages.operation",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.packages.operation",
+          "mode": "execute",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "11111111-1111-4111-8111-111111111111",
+            "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+            "attachmentGeneration": "11111111-1111-4111-8111-111111111111"
+          },
+          "transport": {
+            "kind": "ssh",
+            "host": "fixture.invalid",
+            "port": 22,
+            "user": "root",
+            "identityFile": "/private/key",
+            "knownHostsFile": "/private/known-hosts"
+          },
+          "operationId": "11111111-1111-4111-8111-111111111111",
+          "target": {
+            "generation": "11111111-1111-4111-8111-111111111111",
+            "expected": {
+              "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+              "ownerId": "owner",
+              "workerId": "worker",
+              "identityPath": "/var/lib/cantrip-os-executor/instance.json"
+            },
+            "bootId": "11111111-1111-4111-8111-111111111111",
+            "initStart": "1",
+            "architecture": "amd64",
+            "containerId": null
+          },
+          "action": "repair",
+          "configuration": "preserve",
+          "packages": [
+            {
+              "name": "cantrip-os-recovery",
+              "version": "0.5.0",
+              "architecture": "all",
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "bytes": 21484
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "cantrip-os.system.status",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.system.status",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "11111111-1111-4111-8111-111111111111",
+            "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+            "attachmentGeneration": "11111111-1111-4111-8111-111111111111"
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          },
+          "target": {
+            "generation": "11111111-1111-4111-8111-111111111111",
+            "expected": {
+              "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+              "ownerId": "owner",
+              "workerId": "worker",
+              "identityPath": "/var/lib/cantrip-os-executor/instance.json"
+            },
+            "containerId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "containerName": "cantrip-os",
+            "imageId": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "architecture": "amd64",
+            "identityEvidence": "guest-identity"
+          },
+          "recovery": {
+            "operationId": "11111111-1111-4111-8111-111111111111",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "serverId": "server",
+              "instanceId": "11111111-1111-4111-8111-111111111111",
+              "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+              "attachmentGeneration": "11111111-1111-4111-8111-111111111111"
+            },
+            "targetGeneration": "11111111-1111-4111-8111-111111111111"
+          }
+        }
+      }
+    },
+    {
+      "type": "cantrip-os.system.capture",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "mode": "execute",
+          "operationId": "11111111-1111-4111-8111-111111111111",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "11111111-1111-4111-8111-111111111111",
+            "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+            "attachmentGeneration": "11111111-1111-4111-8111-111111111111"
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          },
+          "target": {
+            "generation": "11111111-1111-4111-8111-111111111111",
+            "expected": {
+              "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+              "ownerId": "owner",
+              "workerId": "worker",
+              "identityPath": "/var/lib/cantrip-os-executor/instance.json"
+            },
+            "containerId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "containerName": "cantrip-os",
+            "imageId": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "architecture": "amd64",
+            "identityEvidence": "guest-identity"
+          },
+          "type": "cantrip-os.system.capture",
+          "action": "capture",
+          "checkpointId": "11111111-1111-4111-8111-111111111111",
+          "resumeOriginal": true
+        }
+      }
+    },
+    {
+      "type": "cantrip-os.system.replace",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "mode": "execute",
+          "operationId": "11111111-1111-4111-8111-111111111111",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "11111111-1111-4111-8111-111111111111",
+            "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+            "attachmentGeneration": "11111111-1111-4111-8111-111111111111"
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          },
+          "target": {
+            "generation": "11111111-1111-4111-8111-111111111111",
+            "expected": {
+              "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+              "ownerId": "owner",
+              "workerId": "worker",
+              "identityPath": "/var/lib/cantrip-os-executor/instance.json"
+            },
+            "containerId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "containerName": "cantrip-os",
+            "imageId": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "architecture": "amd64",
+            "identityEvidence": "guest-identity"
+          },
+          "type": "cantrip-os.system.replace",
+          "action": "replace",
+          "source": {
+            "kind": "checkpoint",
+            "capture": {
+              "context": {
+                "ownerId": "owner",
+                "workerId": "worker",
+                "serverId": "server",
+                "instanceId": "11111111-1111-4111-8111-111111111111",
+                "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+                "attachmentGeneration": "11111111-1111-4111-8111-111111111111",
+                "operationId": "11111111-1111-4111-8111-111111111111",
+                "targetGeneration": "11111111-1111-4111-8111-111111111111",
+                "containerId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "checkpointId": "11111111-1111-4111-8111-111111111111"
+              },
+              "container": "cantrip-os",
+              "resumeOriginal": true
+            }
+          },
+          "startTarget": true
+        }
+      }
+    },
+    {
+      "type": "cantrip-os.system.rollback",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "mode": "execute",
+          "operationId": "11111111-1111-4111-8111-111111111111",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "11111111-1111-4111-8111-111111111111",
+            "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+            "attachmentGeneration": "11111111-1111-4111-8111-111111111111"
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          },
+          "target": {
+            "generation": "11111111-1111-4111-8111-111111111111",
+            "expected": {
+              "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+              "ownerId": "owner",
+              "workerId": "worker",
+              "identityPath": "/var/lib/cantrip-os-executor/instance.json"
+            },
+            "containerId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "containerName": "cantrip-os",
+            "imageId": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "architecture": "amd64",
+            "identityEvidence": "guest-identity"
+          },
+          "type": "cantrip-os.system.rollback",
+          "action": "rollback",
+          "replacement": {
+            "operationId": "11111111-1111-4111-8111-111111111111",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "serverId": "server",
+              "instanceId": "11111111-1111-4111-8111-111111111111",
+              "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+              "attachmentGeneration": "11111111-1111-4111-8111-111111111111"
+            },
+            "targetGeneration": "11111111-1111-4111-8111-111111111111"
+          },
+          "startTarget": false
+        }
+      }
+    },
+    {
+      "type": "cantrip-os.desktop.status",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "11111111-1111-4111-8111-111111111111",
+            "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+            "attachmentGeneration": "11111111-1111-4111-8111-111111111111",
+            "runtimeGeneration": "11111111-1111-4111-8111-111111111111",
+            "workspaceId": "11111111-1111-4111-8111-111111111111",
+            "guestWorkspaceId": "work",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/homes/work"
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "fixture"
+          },
+          "type": "cantrip-os.desktop.status"
+        }
+      }
+    },
+    {
+      "type": "cantrip-os.desktop.operation",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "11111111-1111-4111-8111-111111111111",
+            "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+            "attachmentGeneration": "11111111-1111-4111-8111-111111111111",
+            "runtimeGeneration": "11111111-1111-4111-8111-111111111111",
+            "workspaceId": "11111111-1111-4111-8111-111111111111",
+            "guestWorkspaceId": "work",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/homes/work"
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "fixture"
+          },
+          "type": "cantrip-os.desktop.operation",
+          "mode": "execute",
+          "operationId": "11111111-1111-4111-8111-111111111111",
+          "action": "stop",
+          "targetGeneration": "11111111-1111-4111-8111-111111111111",
+          "desktopTarget": {
+            "id": "work",
+            "user": "ctw-work",
+            "uid": 20000,
+            "gid": 20000,
+            "home": "/homes/work",
+            "display": 100,
+            "generation": 1,
+            "desktop_generation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "status": "running"
+          }
+        }
+      }
+    },
+    {
       "type": "cantrip-os.backup.capture",
       "input": {
         "kind": "request",
@@ -6276,6 +6895,48 @@
             "homeGuestPath": "/home/example"
           },
           "sources": [],
+          "protectedRequest": {
+            "kind": "metadata",
+            "sequence": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "AAAAAAAAAAAAAAAAAAAAAA"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "cantrip-os.backup.reset",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.backup.reset",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          },
+          "workspace": {
+            "id": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example"
+          },
           "protectedRequest": {
             "kind": "metadata",
             "sequence": 1,

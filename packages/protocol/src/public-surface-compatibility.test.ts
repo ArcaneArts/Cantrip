@@ -798,6 +798,87 @@ const nativeResourceAndTimingExports = [
   "workerChatTurnOutcomeNotificationSchema",
 ].sort();
 
+// Reviewed model-operation, catalog and Task Goal additions. Keep the legacy
+// export fingerprints unchanged and assert these additive names explicitly.
+const modelAndGoalExports = [
+  "MODEL_CATALOG_BYTES_LIMIT",
+  "MODEL_CATALOG_MODEL_LIMIT",
+  "MODEL_CATALOG_PAGE_BYTES",
+  "MODEL_CATALOG_PAGE_ITEMS",
+  "MODEL_OPERATION_CONTENT_BYTES_LIMIT",
+  "MODEL_OPERATION_USAGE_METRICS",
+  "MODEL_OPERATION_WIRE_BYTES_LIMIT",
+  "decisionAnswerSchema",
+  "decisionInputSchema",
+  "decisionOutcomeSchema",
+  "decisionQuestionSchema",
+  "decisionResultSchema",
+  "discoveredModelOperations",
+  "embeddingInputSchema",
+  "embeddingItemSchema",
+  "embeddingOutcomeSchema",
+  "embeddingResultSchema",
+  "embeddingSpaceIdentitySchema",
+  "endpointOperationMetadata",
+  "isLanguageModelProfile",
+  "modelAdapterSupportsOperation",
+  "modelCatalogPageRequestSchema",
+  "modelCatalogPageSchema",
+  "modelCatalogSnapshotSchema",
+  "modelDecisionCommandSchema",
+  "modelEmbeddingCommandSchema",
+  "modelInputPartSchema",
+  "modelOperationAdapterSchema",
+  "modelOperationCancelCommandSchema",
+  "modelOperationCancelResultSchema",
+  "modelOperationCancelSchema",
+  "modelOperationCapabilitiesSchema",
+  "modelOperationContentContext",
+  "modelOperationFailureSchema",
+  "modelOperationOptionsSchema",
+  "modelOperationRouteSchema",
+  "modelOperationSchema",
+  "modelOperationScopeSchema",
+  "modelOperationUsageConsistent",
+  "modelOperationUsageCoverage",
+  "modelOperationUsageCoverageSchema",
+  "modelOperationUsageEvidenceSchema",
+  "modelOperationUsageFitsIdentity",
+  "modelOperationUsageIdentitySchema",
+  "modelOperationUsageIncomplete",
+  "modelOperationUsageSchema",
+  "modelProfileOperation",
+  "nativeGoalClaimRecoveryReceiptSchema",
+  "nativeGoalClaimRecoverySchema",
+  "nativeRuntimeHandoffTaskContextSchema",
+  "observedModelTokenTotal",
+  "operationProviderFamily",
+  "protectedDecisionRequestSchema",
+  "protectedDecisionResponseSchema",
+  "protectedEmbeddingRequestSchema",
+  "protectedEmbeddingResponseSchema",
+  "providerOperationDocumentation",
+  "providerOperationRegistryVersion",
+  "providerOperationSupport",
+  "registeredModelOperations",
+  "taskGoalCycleCaptureSchema",
+  "taskGoalCycleDispatchResultSchema",
+  "taskGoalCycleDispatchSchema",
+  "taskGoalCycleIdentitySchema",
+  "taskGoalCycleRecoveryBinding",
+  "taskGoalCycleRecoveryReceiptSchema",
+  "taskGoalCycleRecoverySchema",
+  "taskGoalCycleSourceRecordSchema",
+  "taskGoalHandoffCaptureSchema",
+  "taskGoalHandoffCycle",
+  "taskGoalInputCaptureSchema",
+  "taskGoalInputSourceRecordSchema",
+  "taskGoalInputTransferContextSchema",
+  "taskPauseIntentSchema",
+  "taskPauseScopeSchema",
+  "usesWorkerModelCatalog",
+].sort();
+
 describe("protocol public surface compatibility", () => {
   it("advertises Task continuation contracts independently of legacy snapshots", () => {
     expect(
@@ -830,14 +911,19 @@ describe("protocol public surface compatibility", () => {
         endpointProviderExports.includes(name),
       ),
     ).toEqual(endpointProviderExports);
+    expect(
+      currentExportNames.filter((name) => modelAndGoalExports.includes(name)),
+    ).toEqual(modelAndGoalExports);
     const allExportNames = currentExportNames.filter(
       (name) =>
+        !modelAndGoalExports.includes(name) &&
         !endpointProviderExports.includes(name) &&
         !desktopIoExports.includes(name) &&
         !taskSuspensionExports.includes(name),
     );
     expect(currentExportNames).toHaveLength(
       allExportNames.length +
+        modelAndGoalExports.length +
         endpointProviderExports.length +
         desktopIoExports.length +
         taskSuspensionExports.length,
@@ -1012,8 +1098,25 @@ describe("protocol public surface compatibility", () => {
   });
 
   it("keeps worker discriminators stable and ordered", () => {
-    const advertisedCommandTypes = workerCommandSchema.options.map(
+    const currentAdvertisedCommandTypes = workerCommandSchema.options.map(
       (option) => option.shape.type.value,
+    );
+    const modelAndGoalCommands = [
+      "model.embedding",
+      "model.decision",
+      "model.operation.cancel",
+      "task.goal.source",
+      "chat.suspension.stop",
+      "chat.goal.claim-recover",
+      "task.goal.recover",
+    ];
+    expect(
+      currentAdvertisedCommandTypes.filter((type) =>
+        modelAndGoalCommands.includes(type),
+      ),
+    ).toEqual(modelAndGoalCommands);
+    const advertisedCommandTypes = currentAdvertisedCommandTypes.filter(
+      (type) => !modelAndGoalCommands.includes(type),
     );
     // Reviewed explicit cold recovery preserves every previous discriminator.
     expect(
