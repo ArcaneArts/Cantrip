@@ -15544,7 +15544,7 @@
     },
     "desktopPackaging": {
       "historicalStatus": "unported",
-      "status": "implemented-pending-platform-acceptance",
+      "status": "implemented-with-scoped-local-qualification",
       "implementation": [
         "cantrip_app/src-tauri/src/desktop_services.rs",
         "scripts/package-distributions.mjs",
@@ -15555,13 +15555,15 @@
         "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md",
         "scripts/server-rust/desktop-runtime-acceptance.mjs",
         "scripts/server-rust/desktop-bundle-acceptance.mjs",
-        "scripts/server-rust/desktop-profile-upgrade-compatibility.mjs"
+        "scripts/server-rust/desktop-profile-upgrade-compatibility.mjs",
+        "docs/RUST_SERVER_DESKTOP_ENCRYPTED_ACCEPTANCE.md",
+        "scripts/server-rust/desktop-client-continuity.mjs"
       ],
       "delivery": [
         "https://github.com/ArcaneArts/Cantrip/pull/2749",
         "https://github.com/ArcaneArts/Cantrip/pull/2752"
       ],
-      "scope": "The native supervisor and packaging are now the normal production path. Original opt-in local macOS launcher/app evidence remains historically scoped; defaultRuntimeCutover and productionNodeRemoval record the later normal-path and no-reference runtime qualification.",
+      "scope": "Native supervisor and Rust packaging are the normal path. Current1.1.2786 macOS arm64 application passes all three original encrypted-client profile upgrades, restarts, real worker version commands, retained worker identities, catalog/key-binding continuity and graceful ownership shutdown. Original opt-in evidence retains its historical scope.",
       "remaining": [
         "Qualify final supported shipping artifacts, existing-client encryption and installer/update supervision; preserve the separate scope of earlier product/failure/performance evidence."
       ]
@@ -19960,11 +19962,11 @@
         "docs/RUST_SERVER_LINUX_ABI.md"
       ],
       "remaining": [
-        "Current normal desktop app existing-client encryption-ready acceptance remains incomplete at actual macOS Keychain access while the console is locked; no identity/catalog/vault bypass.",
         "Complete current supported-platform, product, background-service, interruption and coordination acceptance; broader historical upgrades and product-state rollback; remaining representative performance.",
         "Default Rust cutover and production Node-source retirement now have separate scoped local qualification. Complete final supported shipping and existing-client encrypted desktop/update acceptance; the worker remains Node and production Winterhold deployment is not performed."
       ],
-      "currentLinuxBaselineQualification": "See currentLinuxLibcQualification for fresh1.1.2783 on both container architectures and exported standalone/systemd deployments; original2778 evidence remains separately scoped."
+      "currentLinuxBaselineQualification": "See currentLinuxLibcQualification for fresh1.1.2783 on both container architectures and exported standalone/systemd deployments; original2778 evidence remains separately scoped.",
+      "currentMacDesktopQualification": "Current normal1.1.2786 macOS arm64 app passes all three original encrypted client profiles, upgrade/restart and retained keys/identities. See RUST_SERVER_DESKTOP_ENCRYPTED_ACCEPTANCE.md. Earlier locked-console/Keychain attempt is historical; no reset or ACL bypass."
     },
     "currentSmallProfilePerformance": {
       "status": "partial",
@@ -20104,6 +20106,37 @@
       "remaining": [
         "Complete final supported shipping and existing-client encrypted desktop/update acceptance; do not infer whole replacement completion from runtime selection. Production source retirement and its scoped isolation qualification are recorded separately in productionNodeRemoval."
       ]
+    },
+    "finalReplacementAcceptance": {
+      "status": "in-progress",
+      "integratedRuntimeSource": "384e537d01bcc4d81d963916b087aafbeea412a9",
+      "implementationSourceContinuity": "Actual git diff from59dbc4f10 to384e537d0 contains no changes in cantrip_server_rs/src, cantrip_worker/src or packages/protocol/src production files. The protocol change is a test-only reference path. Earlier results retain their original artifact/platform scope.",
+      "currentInventoryAudit": {
+        "routes": 584,
+        "workerCommands": 323,
+        "durableTables": 135,
+        "repositoryMethods": 370,
+        "liveResources": 47
+      },
+      "remaining": [
+        "Complete final contract/domain and supported-platform shipping reconciliation using authoritative retained results; current macOS encrypted desktop upgrades/restarts now pass in all three stores.",
+        "Keep reproduced baseline failures and conditional test skips explicit; do not weaken required assertions or infer whole replacement completion from this macOS qualification."
+      ],
+      "currentMacDesktop": {
+        "status": "passed",
+        "version": "1.1.2786",
+        "sourceCommit": "384e537d01bcc4d81d963916b087aafbeea412a9",
+        "stores": ["pglite", "bundled-postgres", "postgres"],
+        "realWebViewEncryptionReady": true,
+        "applicationCases": 7,
+        "deviceKeysRetained": 1,
+        "accountBindingsRetained": 4,
+        "evidence": [
+          "docs/RUST_SERVER_DESKTOP_ENCRYPTED_ACCEPTANCE.md",
+          "scripts/server-rust/desktop-bundle-acceptance.mjs",
+          "scripts/server-rust/desktop-client-continuity.mjs"
+        ]
+      }
     }
   },
   "remainingAcceptance": [

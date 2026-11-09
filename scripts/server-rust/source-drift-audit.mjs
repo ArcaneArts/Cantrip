@@ -34,13 +34,19 @@ const { values } = parseArgs({
 });
 const git = (...args) =>
   execFileSync("git", args, { cwd: repositoryRoot, encoding: "utf8" }).trim();
+// The reference moved after the production cutover. Include both locations so
+// an audit crossing that commit still examines the original server history.
+const nodeSourceRoots = [
+  "cantrip_server/src/",
+  "tests/reference-node-server/src/",
+];
 const commits = git(
   "log",
   "--first-parent",
   "--format=%H%x00%s",
   `${values.baseline}..${values.head}`,
   "--",
-  "tests/reference-node-server/src",
+  ...nodeSourceRoots.map((root) => root.slice(0, -1)),
 )
   .split("\n")
   .filter(Boolean)
@@ -51,7 +57,7 @@ const commits = git(
       commit,
       subject,
       nodeFiles: files.filter((file) =>
-        file.startsWith("tests/reference-node-server/src/"),
+        nodeSourceRoots.some((root) => file.startsWith(root)),
       ),
       rustCoreFiles: files.filter((file) =>
         file.startsWith("cantrip_server_rs/src/"),
