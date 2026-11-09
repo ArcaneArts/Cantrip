@@ -49,8 +49,14 @@ const report = {
   containers: [],
   network,
   modes: [],
+  bootstrapObservations: [],
   completeReplacement: false,
 };
+await writeFile(
+  path.join(evidence, "owned-runtime.json"),
+  JSON.stringify({ prefix, host, database, network }, null, 2) + "\n",
+  { mode: 0o600 },
+);
 const id = (label) =>
   createHash("sha256")
     .update(prefix + label)
@@ -146,6 +152,11 @@ function request(route, { method = "GET", body, headers = {} } = {}) {
           try {
             const body = JSON.parse(Buffer.concat(chunks).toString());
             if (body.csrfToken) csrf = body.csrfToken;
+            if (route === "/api/bootstrap" && body.server)
+              report.bootstrapObservations.push({
+                status: response.statusCode,
+                server: body.server,
+              });
             resolve({
               status: response.statusCode,
               headers: response.headers,

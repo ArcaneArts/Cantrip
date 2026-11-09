@@ -6,6 +6,10 @@ and collected shared libraries. The worker continues to use its existing Node
 runtime. Node and Cargo are build tools; the server's packaged launchers and
 health checks execute native programs.
 
+The [Linux ABI qualification](RUST_SERVER_LINUX_ABI.md) records the reproduced
+Debian 12 ARM64 linker failure and the pinned source build for matching native
+PGlite engine/runtime assets on both container architectures.
+
 ## Build and configuration
 
 Build on the target OS, or in a matching local container:

@@ -19933,13 +19933,15 @@
         "scripts/server-rust/packaged-server-acceptance.mjs",
         "scripts/server-rust/desktop-profile-upgrade-compatibility.mjs",
         "scripts/server-rust/container-server-acceptance.mjs",
-        "scripts/server-rust/winterhold-systemd-acceptance.mjs"
+        "scripts/server-rust/winterhold-systemd-acceptance.mjs",
+        "docs/RUST_SERVER_LINUX_ABI.md"
       ],
       "remaining": [
         "Current normal desktop app existing-client encryption-ready acceptance remains incomplete at actual macOS Keychain access while the console is locked; no identity/catalog/vault bypass.",
         "Complete current supported-platform, product, background-service, interruption and coordination acceptance; broader historical upgrades and product-state rollback; remaining representative performance.",
         "Rust-default cutover and production Node server removal remain unimplemented. Worker remains Node; no production Winterhold deployment."
-      ]
+      ],
+      "currentLinuxBaselineQualification": "See currentLinuxLibcQualification for fresh1.1.2783 on both container architectures and exported standalone/systemd deployments; original2778 evidence remains separately scoped."
     },
     "currentSmallProfilePerformance": {
       "status": "partial",
@@ -20013,6 +20015,50 @@
         "These tests do not establish product endpoint encryption, full-worker process crashes or other QoS/platform/multi-instance performance. Existing component/product evidence retains its separate scope; large-profile and remaining representative performance acceptance stays required.",
         "Complete existing-client encryption/update, historical product-state upgrade/rollback, remaining product/background/fault/coordination/supported-platform acceptance, then Rust default selection and production Node-server removal. Worker remains Node; no Winterhold production deployment."
       ]
+    },
+    "currentLinuxLibcQualification": {
+      "status": "implemented-with-scoped-local-qualification",
+      "scope": "Production native1.1.2783, Debian12 container and exported Ubuntu24 distributions, each architecture ARM64/x64 and all3stores local/hosted. Actual systemd/Caddy installation, failure recovery and externalPG Node1.1.2739/Rust post-write rollback on both artifacts. Linux host is ARM64; x64 executes through Rosetta, not bare-metal performance.",
+      "evidence": [
+        "docs/RUST_SERVER_LINUX_ABI.md",
+        "deploy/docker/server-rust.Dockerfile",
+        "scripts/server-rust/container-runtime-identity.mjs",
+        "scripts/server-rust/container-server-acceptance.mjs",
+        "scripts/server-rust/winterhold-systemd-acceptance.mjs"
+      ],
+      "repair": "Reproduced ARM64 prebuilt native engine link failure on Debian12; rebuild pinned engine/runtime on same libc baseline for both Linux architectures, including relocation/libpq and source licenses. No libc symbol aliases or raised OS baseline.",
+      "pinnedSource": {
+        "engine": "0062c8c2fec03e389f8c2e8cad18391ecf0d53bd",
+        "postgresFork": "06c837c6a30335169df786c610ed224bc51d81c0"
+      },
+      "containerMatrix": {
+        "architectures": ["arm64", "x64"],
+        "distributions": ["debian12", "ubuntu24"],
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "localHostedPairs": 12,
+        "verifiedArtifactFilesPerCase": 2546,
+        "nonRootReadOnlyNoexecTmpfs": true,
+        "nodeAbsent": true,
+        "nativeMigrationExportRestartSigterm": true
+      },
+      "serviceMatrix": {
+        "architectures": ["arm64", "x64"],
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "installerSteps": 36,
+        "successfulInstalls": 24,
+        "intentionalRecoveredFailures": 12,
+        "actualBaselineVersion": "1.1.2739"
+      },
+      "remaining": [
+        "Final integrated release revision and other supported desktop artifacts, full existing-client encrypted desktop/update acceptance and remaining original acceptance scope.",
+        "Rust default selection and production Node-server removal remain unimplemented; worker remains Node. No production Winterhold deployment."
+      ],
+      "localChecks": {
+        "packagingPolicyTests": 15,
+        "packagingDeploymentTests": 18,
+        "serverBoundaryAudit": true,
+        "aggregateRepositoryCheck": "Fails Node budgets1539/1500 and2329/1999; reproduced on cleanPrimary; downstreamaggregate stages unrun."
+      }
     }
   },
   "remainingAcceptance": [
