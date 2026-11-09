@@ -15503,14 +15503,30 @@
     },
     "fullPostWriteRollback": {
       "status": "partial",
-      "limitedEvidence": "Native logical/profile reversal, automatic packaged legacy conversion and actual app post-write rollback/re-upgrade have scoped historical local evidence. Winterhold additionally qualifies external PostgreSQL Node/Rust post-write code rollback over TLS. Broader current artifact/platform/historical-profile and full-product rollback acceptance remains incomplete.",
+      "limitedEvidence": "Native logical/profile reversal, automatic packaged legacy conversion and actual app post-write rollback have scoped historical local evidence. Current populated Node 1.1.2733 -> native 1.1.2779 -> Node -> native round trips pass all three stores, with exact comparisons of 137 tables and four sequences and retained session, identity, credential summary, crypto wrappers and encrypted product writes. Winterhold separately qualifies external PostgreSQL post-write code rollback over TLS. Full-client, current-platform, historical-profile and complete execution-replay rollback acceptance remain incomplete.",
       "historicalLimitedEvidence": "Existing auth/encryption/policy/workspace suites retain selected writes across Node/Rust/Node on external PostgreSQL. Native SQL export adds current/historical all-store database rollback after real password-authenticated Rust workspace/protection writes. Complete-profile CLI transfer now retains original keys/files/backend selection, compares all115tables4sequences and lets actualNode retain session/CSRF/serverUUID plus Rust workspace revision2 and write revision3 on all3stores. Packaged existing-profile activation and product-wide post-write rollback remain incomplete; see installationProfileTransfer.",
       "evidence": [
         "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md",
         "docs/RUST_SERVER_PROFILE_ACTIVATION.md",
         "docs/RUST_SERVER_DESKTOP_RUNTIME.md",
-        "docs/RUST_SERVER_WINTERHOLD.md"
-      ]
+        "docs/RUST_SERVER_WINTERHOLD.md",
+        "docs/RUST_SERVER_HISTORICAL_PRODUCT_ROLLBACK.md",
+        "scripts/server-rust/historical-product-profile-acceptance.mjs",
+        "scripts/server-rust/historical-product-profile-material.mjs"
+      ],
+      "currentPopulatedHistoricalQualification": {
+        "status": "implemented-pending-platform-acceptance",
+        "sourceRuntime": "Actual packaged Node 1.1.2733 and a preserved original profile with 1,773 files; actual 287-entry migration chain. A private copy is populated through real login, encryption initialization and enrollment, plus controlled offline domain records.",
+        "nativeRuntime": "Optimized macOS arm64 native 1.1.2779, executable SHA256 bc5cb46a18b2315fb6f4845f3c983a9f1ae6f7d8b7b21544b536eb76d360dcba",
+        "storageModes": ["pglite", "bundled-postgres", "postgres"],
+        "localQualification": "Final tracked run passes all three stores: 35 nonempty baseline tables; all 137 tables and four sequences, exact import receipt and timestamp; original files and modes unchanged; original session, CSRF and server identity. The original password wrapper and actual HPKE client grant unwrap the same key. The enrolled credential summary, three encrypted messages and frozen queue survive. Rust, old Node and returned Rust accept encrypted title/composer, revision-fenced Task and document writes; restart retains them. Original files, key, empty directory, modes and numeric/null/binary/time/Unicode probes are checked.",
+        "historyScope": "Validated empty history checkpoint receipt and canonical payload digest are preserved. This is not native-turn archive replay or in-flight execution acceptance.",
+        "remaining": [
+          "Full existing-client encryption, update and restart acceptance, plus representative historical profiles.",
+          "Current supported-platform shipping artifacts and complete product, in-flight execution and history replay rollback.",
+          "Remaining fault, coordination and performance requirements, Rust defaults and production Node server removal."
+        ]
+      }
     },
     "desktopPackaging": {
       "historicalStatus": "unported",
