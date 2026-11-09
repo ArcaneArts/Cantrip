@@ -7,11 +7,13 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { parseArgs } from "node:util";
+import { containerRuntimeIdentity } from "./container-runtime-identity.mjs";
 
 const execute = promisify(execFile);
 const { values } = parseArgs({
   options: {
     image: { type: "string" },
+    architecture: { type: "string" },
     report: { type: "string" },
     "postgres-image": { type: "string", default: "postgres:18" },
   },
@@ -163,6 +165,7 @@ try {
       const address = await docker("port", name, "4310/tcp");
       return "http://" + address.split("\n")[0];
     };
+    let localBootstrap;
     const visit = async (mutate) => {
       const base = await origin();
       await retry(async () => {
@@ -204,9 +207,27 @@ try {
           body: JSON.stringify({ theme: "dark" }),
         });
       assert.equal((await request("/api/settings")).preferences.theme, "dark");
-      return (await request("/api/bootstrap")).server.id;
+      localBootstrap = (await request("/api/bootstrap")).server;
+      return localBootstrap.id;
     };
     const identity = await visit(true);
+    const runtimeIdentity = await containerRuntimeIdentity(
+      docker,
+      name,
+      inspected.Architecture,
+    );
+    if (values.architecture)
+      assert.equal(runtimeIdentity.architecture, values.architecture);
+    assert.deepEqual(
+      localBootstrap.version,
+      Object.fromEntries(
+        ["major", "minor", "patch", "version"].map((key) => [
+          key,
+          runtimeIdentity.artifactVersion[key],
+        ]),
+      ),
+      "public version fields match the executed artifact",
+    );
     assert.equal(await docker("exec", name, "id", "-u"), "10001");
     const mount = (await docker("exec", name, "cat", "/proc/mounts"))
       .split("\n")
@@ -288,6 +309,7 @@ try {
     report.modes.push({
       mode,
       identity,
+      runtimeIdentity,
       nodeAbsent: true,
       nonRoot: true,
       readOnlyRoot: true,

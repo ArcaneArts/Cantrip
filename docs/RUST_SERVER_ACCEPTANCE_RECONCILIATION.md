@@ -4,6 +4,12 @@ The server replacement remains incomplete. Node is still the default server,
 and the worker remains Node. Historical ledger entries describe their original
 milestones; their remaining-work text is not a current implementation inventory.
 
+The [Linux ABI qualification](RUST_SERVER_LINUX_ABI.md) fixes the actual Debian 12
+ARM64 native PGlite link failure. Fresh `1.1.2783` ARM64 and x64 images, exported
+Ubuntu distributions and systemd/Caddy rehearsals pass their three-store matrix.
+This preserves the original Linux baseline; complete desktop acceptance and the
+Rust-default/production-Node removal remain separate.
+
 The [current native package qualification](RUST_SERVER_CURRENT_PACKAGED_ACCEPTANCE.md)
 adds actual Windows x64 artifact execution on an ARM64 Windows kernel. All three
 stores, emoji/space package and profile paths, exports, restart and the embedded

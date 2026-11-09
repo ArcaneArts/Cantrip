@@ -2,6 +2,30 @@
 # final image; the unchanged worker continues to use its own image/runtime.
 FROM node:24.22.1-bookworm-slim AS node-build-tool
 
+# Build the pinned native engine against the same libc baseline as the server.
+# The published ARM64 archive was compiled against newer libc and cannot link
+# on Debian 12. Rebuild its matching runtime too, including relocatable libpq.
+# This stage is cached independently of Cantrip source and never runs at startup.
+FROM debian:bookworm-slim AS pglite-build
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends ca-certificates git \
+      build-essential clang bison flex zlib1g-dev pkg-config patchelf \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /engine
+# pglite-rs 0.2.7's engine-06c837c6a303-p3 sources, including the exact
+# postgres-pglite gitlink 06c837c6a30335169df786c610ed224bc51d81c0.
+RUN git init \
+    && git remote add origin https://github.com/Midwess/pglite-rs.git \
+    && git fetch --depth 1 origin 0062c8c2fec03e389f8c2e8cad18391ecf0d53bd \
+    && git checkout --detach FETCH_HEAD \
+    && git config submodule.postgres-pglite.url https://github.com/electric-sql/postgres-pglite.git \
+    && git submodule update --init --depth 1 postgres-pglite
+# Upstream otherwise uses every host CPU. Bound native compilation as well as
+# Cargo; this changes build parallelism only.
+RUN sed -i 's/^NPROC=.*/NPROC=2/' native/build-libpglite.sh \
+    && bash native/build-libpglite.sh \
+    && bash native/relocate-runtime.sh native/out
+
 FROM rust:1.93.0-bookworm AS build
 
 ARG TARGETARCH
@@ -9,10 +33,13 @@ ARG CANTRIP_VERSION_PATCH
 ENV CANTRIP_VERSION_PATCH=${CANTRIP_VERSION_PATCH} \
     CARGO_INCREMENTAL=0 \
     CARGO_BUILD_JOBS=2 \
-    CARGO_PROFILE_RELEASE_DEBUG=0
+    CARGO_PROFILE_RELEASE_DEBUG=0 \
+    PGLITE_LIB_DIR=/pglite-engine
 WORKDIR /workspace
 
 COPY --from=node-build-tool /usr/local/bin/node /usr/local/bin/node
+COPY --from=pglite-build /engine/native/out/libpglite.a /pglite-engine/libpglite.a
+COPY --from=pglite-build /engine/native/out/pglite-runtime.tar /pglite-engine/pglite-runtime.tar
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends libssl-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
@@ -48,6 +75,8 @@ COPY --from=build /workspace/version.json ./version.json
 COPY --from=build /workspace/policy_templates ./policy_templates
 COPY --from=build /workspace/deploy/server.env.example ./deploy/server.env.example
 COPY --from=build /workspace/deploy/server-rust.README.md ./deploy/server-rust.README.md
+COPY --from=pglite-build /engine/LICENSE /usr/share/doc/cantrip-pglite-native/copyright.engine
+COPY --from=pglite-build /engine/postgres-pglite/COPYRIGHT /usr/share/doc/cantrip-pglite-native/copyright.postgres
 RUN case "$TARGETARCH" in \
       amd64) cantrip_target=linux-x64 ;; \
       arm64) cantrip_target=linux-arm64 ;; \
