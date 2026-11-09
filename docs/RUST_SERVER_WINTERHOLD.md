@@ -116,6 +116,12 @@ and performance acceptance, final default cutover and production Node removal.
 
 ## Qualified local result
 
+The [integrated artifact qualification](RUST_SERVER_INTEGRATED_ARTIFACT_ACCEPTANCE.md)
+refreshes this rehearsal with candidate `1.1.2778`: all three stores, all 18
+installer cases, post-write rollback, TLS, namespace write restrictions and
+independent hashing of the mapped native executable passed locally. The original
+milestone below retains its own version and evidence scope.
+
 The optimized `1.1.2739` x64 artifact passed the complete driver locally on
 2026-11-07, with PostgreSQL 18.6 tools and native PGlite 17.5. The unchanged Node
 baseline used the same application version. All three modes retained identity,
