@@ -46,18 +46,42 @@ pub(super) async fn recover(
     {
         return stale();
     }
-    let response_key = format!("assistant:{}", text(&r["clientMessageId"])?);
+    let publication = if s["publication"].is_null() {
+        json!({"idempotencyKey":format!("assistant:{}", text(&r["clientMessageId"])?)})
+    } else {
+        s["publication"].clone()
+    };
+    let mut publication_kind = None;
     let message = if n["outcome"]["ok"] == true {
         parse(
             "taskMessageRelayResultSchema",
             &n["outcome"]["result"]["structuredResult"],
         )
         .ok()
-        .filter(|v| v["message"]["idempotencyKey"] == response_key.as_str())
+        .filter(|v| {
+            publication_kind = super::response_publication::kind(
+                &v["message"],
+                &publication,
+                &n["outcome"]["result"],
+                &s["nativeExecution"],
+            );
+            publication_kind.is_some()
+        })
         .map(|v| v["message"].clone())
     } else {
         None
     };
+    let response_digest = message
+        .as_ref()
+        .map(|message| json!(crate::native_history::payload_digest(message)))
+        .unwrap_or(Value::Null);
+    if !super::response_publication::matches_terminal(
+        &s["terminal"],
+        publication_kind.as_ref(),
+        &response_digest,
+    ) {
+        return stale();
+    }
     let ok = n["outcome"]["ok"] == true && message.is_some();
     let failure = if ok {
         Value::Null
@@ -74,13 +98,16 @@ pub(super) async fn recover(
     {
         return stale();
     }
-    let terminal = if !s["terminal"].is_null() {
+    let mut terminal = if !s["terminal"].is_null() {
         s["terminal"].clone()
     } else {
         json!({"ok":ok,"failureKind":failure,"observedAt":now(),"projectedAt":Value::Null,
         "threadId":if n["outcome"]["ok"]==true{n["outcome"]["result"]["threadId"].clone()}else{Value::Null},
         "turnId":if n["outcome"]["ok"]==true{n["outcome"]["result"]["turnId"].clone()}else{n["outcome"]["inference"]["turnId"].clone()}})
     };
+    if s["terminal"].is_null() && !response_digest.is_null() {
+        terminal["outcomeDigest"] = response_digest;
+    }
     let root=one(Executor::Transaction(tx),"SELECT jsonb_build_object('id',w.id)::text FROM project_worktrees w JOIN project_sources s ON s.id=w.project_source_id JOIN projects p ON p.id=s.project_id AND p.owner_id=$1 WHERE w.id=$2 LIMIT 1",&[&owner,&text(&r["worktreeId"])?]).await?;
     let root = root
         .as_ref()

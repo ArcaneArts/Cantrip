@@ -146,6 +146,16 @@ function automaticOrder(value) {
 }
 function normalized(value, i, key = "") {
   if (
+    key === "observationFence" &&
+    value &&
+    typeof value.fingerprint === "string"
+  ) {
+    // Node serializes this private snapshot into a fingerprint; Rust retains
+    // the same snapshot as JSON. Compare every decoded authority field.
+    const { fingerprint, ...fields } = value;
+    return normalized({ ...fields, snapshot: JSON.parse(fingerprint) }, i, key);
+  }
+  if (
     ["projectPauseError", "recoveryError"].includes(key) &&
     typeof value === "string" &&
     value.includes("Failed query: update ")

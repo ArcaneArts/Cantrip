@@ -4,6 +4,15 @@ The server replacement remains incomplete. Node is still the default server,
 and the worker remains Node. Historical ledger entries describe their original
 milestones; their remaining-work text is not a current implementation inventory.
 
+The [Task Goal worker-loss comparison](RUST_SERVER_TASK_GOAL_WORKER_RECOVERY.md)
+now qualifies active implementation recovery with the final optimized executable
+on all three stores and all four shared pairings. It preserves one opaque native
+answer, the original Task/Goal authority and exact completed restart state. The
+six existing production Task and Agent/Task suites also pass. Changed-response
+replay, legacy publishers, historical delivery, autonomous cycles and actual SQL
+rollback have separate all-store repository qualification. Broader worker/native
+loss, platform/artifact, performance and final cutover requirements remain.
+
 The [Task worker-process recovery](RUST_SERVER_TASK_WORKER_RECOVERY.md)
 qualification adds explicit terminal observation and guarded failure settlement
 for expired direct/planning rounds. Current debug and optimized peers pass

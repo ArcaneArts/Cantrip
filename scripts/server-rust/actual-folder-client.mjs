@@ -78,6 +78,7 @@ import { actualNativeInflightClient } from "./actual-native-inflight-client.mjs"
 import { SingleProductFixture } from "./single-product-fixture.mjs";
 import { actualSingleInflightClient } from "./actual-single-inflight-client.mjs";
 import { actualWorkerInflightClient } from "./actual-worker-inflight-client.mjs";
+import { actualTaskGoalWorkerInflightClient } from "./actual-task-goal-worker-inflight-client.mjs";
 import { actualModelOperationsClient } from "./actual-model-operations-client.mjs";
 import { actualCantripOsClient } from "./actual-cantrip-os-client.mjs";
 import {
@@ -124,6 +125,7 @@ const databaseMode = option("--database") ?? "pglite";
 const sharedPair = option("--server-pair");
 const singleProduct =
   process.argv.includes("--production-server") ||
+  process.argv.includes("--native-task-goal-worker-recovery") ||
   process.argv.includes("--native-worker-recovery") ||
   process.argv.includes("--native-single-recovery") ||
   process.argv.includes("--native-single-agent-recovery") ||
@@ -1098,6 +1100,22 @@ async function flow(
         result,
       });
     }
+    if (process.argv.includes("--native-task-goal-worker-recovery")) {
+      if (worker) await stopWorker();
+      await actualTaskGoalWorkerInflightClient({
+        fixture,
+        page,
+        projectId: first.id,
+        workerId,
+        dataDirectory,
+        getWorker: () => worker,
+        startWorker,
+        stopWorker,
+        crashWorker,
+        requests,
+        result,
+      });
+    }
     if (process.argv.includes("--native-worker-recovery")) {
       if (worker) await stopWorker();
       await actualWorkerInflightClient({
@@ -1537,6 +1555,11 @@ try {
       assert.deepEqual(
         runtime.singleInflight.summary,
         report.runtimes[0].singleInflight.summary,
+      );
+    if (process.argv.includes("--native-task-goal-worker-recovery"))
+      assert.deepEqual(
+        runtime.taskGoalWorkerInflight.summary,
+        report.runtimes[0].taskGoalWorkerInflight.summary,
       );
     if (process.argv.includes("--native-worker-recovery"))
       assert.deepEqual(

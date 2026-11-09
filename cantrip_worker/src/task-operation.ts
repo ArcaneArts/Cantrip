@@ -256,12 +256,12 @@ export class EncryptedTaskEventSealer {
   /** Reuse the exact published ciphertext, not a second encryption of its text.
    * The sealer is scoped to one worker command and its event queue is drained
    * before the result is sealed. Child, partial and unrelated answers cannot
-   * become the direct Task's completion message. */
+   * become a visible Task turn's completion message. */
   finalMessageForResult(
     result: AgentTurnResult,
   ): TaskMessageOpaqueContent | null {
     const completed = this.#completedRootMessage;
-    return this.#mode === "default" &&
+    return (this.#mode === "default" || this.#mode === "goal") &&
       completed &&
       completed.threadId === result.threadId &&
       completed.turnId === result.turnId &&
@@ -716,8 +716,21 @@ export async function encryptTaskTurnResult(input: {
   ownerId: string;
   result: AgentTurnResult;
   mode?: "default" | "goal" | "plan";
+  reusePublishedResponse?: boolean;
+  eventSealer?: EncryptedTaskEventSealer;
 }): Promise<AgentTurnResult> {
   const result = agentTurnResultSchema.parse(input.result);
+  const published = input.reusePublishedResponse
+    ? input.eventSealer?.finalMessageForResult(result)
+    : null;
+  if (published && published.classification.mode === (input.mode ?? "goal"))
+    return agentTurnResultSchema.parse({
+      ...result,
+      text: "",
+      structuredResult: taskMessageRelayResultSchema.parse({
+        message: published,
+      }),
+    });
   const component = input.getComponentKey();
   try {
     const message = await encryptedMessage({

@@ -335,30 +335,38 @@ impl Repository {
                 Err(e) if e.downcast_ref::<crate::task_dispatch::Conflict>().is_some()=>return super::goal_input_history::recover(tx,&owner,&worker,&n).await,
                 Err(e)=>return Err(e),
             };
+            let chat_row=super::rows::goal_chat(&row["chat"])?;
             if n["outcome"]["ok"] != true {
                 let retained = if let Some(stopped) = crate::native_commands::task_suspension::stopped_input_locked(tx,&owner,&worker,r,s).await? {Some(stopped)}
                     else {crate::native_commands::task_suspension::retain_locked(tx,&owner,&worker,&chat,&r["dispatch"],&r["executionLaneId"],&r["clientMessageId"]).await?};
                 if let Some(saved) = retained {
                     crate::native_commands::task_suspension::fail_restore_locked(tx,&owner,&chat,saved).await?;
                     return Ok(Some(json!({"retained":true,"receipt":r,"terminal":Value::Null,"message":Value::Null,"finished":false,"historyOnly":true,
-                        "chat":json!({"projectId":row["chat"]["project_id"],"experience":row["chat"]["experience"]})})));
+                        "chat":chat_row})));
                 }
             }
-            let response_key=if s["publication"]["idempotencyKey"].is_null() {format!("assistant:{}",text(&r["clientMessageId"])?)} else {text(&s["publication"]["idempotencyKey"])?};
+            let publication=if s["publication"].is_null() {json!({"idempotencyKey":format!("assistant:{}",text(&r["clientMessageId"])?)})} else {s["publication"].clone()};
+            let mut publication_kind=None;
             let message=if n["outcome"]["ok"]==true {
                 parse("taskMessageRelayResultSchema",&n["outcome"]["result"]["structuredResult"]).ok()
-                    .filter(|result|result["message"]["idempotencyKey"]==response_key.as_str() && (s["publication"].is_null() || result["message"]["id"]==s["publication"]["id"]))
+                    .filter(|result| {
+                        publication_kind=super::response_publication::kind(&result["message"],&publication,&n["outcome"]["result"],&physical["nativeExecution"]);
+                        publication_kind.is_some()
+                    })
                     .map(|result|result["message"].clone())
             } else {None};
+            let response_digest=message.as_ref().map(|message| json!(crate::native_history::payload_digest(message))).unwrap_or(Value::Null);
+            if !super::response_publication::matches_terminal(&s["terminal"],publication_kind.as_ref(),&response_digest) {return stale();}
             let ok=n["outcome"]["ok"]==true && message.is_some();
             let failure=if ok {Value::Null} else {
                 let error=if n["outcome"]["ok"]==true {json!({"message":"Task Goal outcome omitted its canonical protected response."})}else{json!({"message":n["outcome"]["error"]})};
                 json!(super::failure_kind::classify(&error))
             };
             if !s["terminal"].is_null() && (s["terminal"]["ok"]!=ok || s["terminal"]["failureKind"]!=failure) {return stale();}
-            let terminal=if !s["terminal"].is_null() {s["terminal"].clone()} else {json!({"ok":ok,"failureKind":failure,"observedAt":now(),"projectedAt":Value::Null,
+            let mut terminal=if !s["terminal"].is_null() {s["terminal"].clone()} else {json!({"ok":ok,"failureKind":failure,"observedAt":now(),"projectedAt":Value::Null,
                 "threadId":if n["outcome"]["ok"]==true{n["outcome"]["result"]["threadId"].clone()}else{row["lane"]["codex_thread_id"].clone()},
                 "turnId":if n["outcome"]["ok"]==true{n["outcome"]["result"]["turnId"].clone()}else{n["outcome"]["inference"]["turnId"].clone()}})};
+            if s["terminal"].is_null() && !response_digest.is_null() {terminal["outcomeDigest"]=response_digest;}
             let saved=if let Some(message)=message {
                 Some(crate::chats::message_writes::append_task_with(Executor::Transaction(tx),&owner,&chat,&message,
                     Some(&json!({"executionLaneId":r["executionLaneId"],"worktreeId":r["worktreeId"]}))).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?)
@@ -373,16 +381,16 @@ impl Repository {
             if owns_control && !ok && s["accepted"]==true && s["allAttemptsEnforced"]==true && s["firstDispatchedOperationId"].is_null()
                 && s["failedBeforeDispatch"]!=true && (row["chat"]["automation_paused"]==true || row["project"]["task_scheduling_paused"]==true || row["task"]["state"]=="paused") {
                 let mut state=s.clone();state["terminal"]=terminal.clone();defer_locked(tx,&owner,&c,&state).await?;
-                return Ok(Some(json!({"receipt":r,"terminal":terminal,"message":saved,"finished":true,"historyOnly":false,"chat":json!({"projectId":row["chat"]["project_id"],"experience":row["chat"]["experience"]})})));
+                return Ok(Some(json!({"receipt":r,"terminal":terminal,"message":saved,"finished":true,"historyOnly":false,"chat":chat_row})));
             }
-            if record_only || !owns_control {return Ok(Some(json!({"receipt":r,"terminal":terminal,"message":saved,"finished":false,"historyOnly":false,"chat":json!({"projectId":row["chat"]["project_id"],"experience":row["chat"]["experience"]})})));}
+            if record_only || !owns_control {return Ok(Some(json!({"receipt":r,"terminal":terminal,"message":saved,"finished":false,"historyOnly":false,"chat":chat_row})));}
             let lane=text(&r["executionLaneId"])?;
             if n["outcome"]["ok"]==true {crate::chats::execution_lanes::update_runtime_in_transaction(tx,&chat,&lane,n["outcome"]["result"]["threadId"].as_str(),"ready").await?;}
             let finished=crate::chats::execution_lanes::finish_in_transaction(tx,&chat,&lane,if ok{"idle"}else{"failed"},
                 &json!({"expectedActivatedAt":r["executionLaneActivatedAt"]})).await?;
             let at=crate::auth::now();
             tx.query("UPDATE agent_interaction_requests SET status='interrupted',resolved_at=$1,updated_at=$1 WHERE chat_id=$2 AND execution_lane_id=$3 AND status='pending'",&[&at,&chat,&lane]).await?;
-            Ok(Some(json!({"receipt":r,"terminal":terminal,"message":saved,"finished":finished,"historyOnly":false,"chat":json!({"projectId":row["chat"]["project_id"],"experience":row["chat"]["experience"]})})))
+            Ok(Some(json!({"receipt":r,"terminal":terminal,"message":saved,"finished":finished,"historyOnly":false,"chat":chat_row})))
         })).await
     }
     pub async fn goal_input_terminal(

@@ -190,6 +190,11 @@ impl EventSink {
             };
             *self.task_input_operation.lock().unwrap() =
                 Some(command["taskInferenceInput"]["operationId"].clone());
+            if command["resultMode"]["kind"] == "task-message-encrypted"
+                && command["taskInferenceInput"]["kind"] == "goal"
+            {
+                command["resultMode"]["reusePublishedResponse"] = json!(true);
+            }
         }
         Ok(command)
     }

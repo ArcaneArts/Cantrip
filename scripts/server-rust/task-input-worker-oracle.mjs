@@ -396,6 +396,22 @@ goalRestored.command.protectedTaskPrompt = {
   classification: { role: "user", mode: "goal", attachmentIds: [] },
 };
 assert.ok(worker("fresh physical Goal restoration", goalRestored).ok);
+for (const enabled of [false, true]) {
+  const input = structuredClone(goalRestored);
+  input.command.resultMode.reusePublishedResponse = enabled;
+  const parsed = worker("Goal response publication opt-in " + enabled, input);
+  assert.equal(parsed.ok.command.resultMode.reusePublishedResponse, enabled);
+}
+for (const invalid of [null, "true", 0, {}, []]) {
+  const input = structuredClone(goalRestored);
+  input.command.resultMode.reusePublishedResponse = invalid;
+  assert.ok(
+    worker(
+      "invalid Goal response publication opt-in " + JSON.stringify(invalid),
+      input,
+    ).issues,
+  );
+}
 const changedGoalSource = structuredClone(goalRestored);
 delete changedGoalSource.command.taskResumption.source.kind;
 assert.ok(

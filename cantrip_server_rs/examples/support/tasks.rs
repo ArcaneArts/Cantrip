@@ -14,6 +14,44 @@ pub async fn run(database: Arc<Database>, input: &Value) -> Result<Value> {
         Ok(
             match input["action"].as_str().context("Task fixture action")? {
                 "get" => repository.get(owner, chat).await?.unwrap_or(Value::Null),
+                "goal-input-outcome" | "goal-cycle-outcome" => {
+                    let outcome = if input["action"] == "goal-input-outcome" {
+                        repository
+                            .apply_goal_input_outcome(
+                                owner,
+                                input["worker"].as_str().context("Task worker")?,
+                                &input["notification"],
+                                input["recordOnly"] != false,
+                            )
+                            .await
+                            .map(|v| v.unwrap_or(Value::Null))
+                    } else {
+                        repository
+                            .commit_goal_cycle_outcome(
+                                owner,
+                                input["worker"].as_str().context("Task worker")?,
+                                &input["delivery"],
+                            )
+                            .await
+                    };
+                    match outcome {
+                        Ok(v) => v,
+                        Err(e)
+                            if e.downcast_ref::<cantrip_server::task_dispatch::Conflict>()
+                                .is_some() =>
+                        {
+                            Value::object([(
+                                "conflict",
+                                Value::from_serialize(
+                                    &e.downcast_ref::<cantrip_server::task_dispatch::Conflict>()
+                                        .unwrap()
+                                        .code,
+                                ),
+                            )])
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
                 "capture-native-turn" => repository
                     .capture_native_turn_recovery(owner, chat)
                     .await?

@@ -108,7 +108,9 @@ impl Service {
                     .validate_goal_observation(owner, &text(&context["chatId"])?, observation)
                     .await?;
             }
-            result["observationFence"] = observation.clone().unwrap_or(Value::Null);
+            if let Some(observation) = &observation {
+                result["observationFence"] = observation.clone();
+            }
             result["task"] = task.clone();
             return Ok(result);
         }
@@ -135,10 +137,10 @@ impl Service {
         if !options.observe_execution {
             self.reconcile_one(owner, task, &next["state"]).await?;
         }
-        result["observationFence"] = observation
-            .as_ref()
-            .map(|f| tasks::goal_observations::after_projection(f, &next["rowVersion"]))
-            .unwrap_or(Value::Null);
+        if let Some(observation) = &observation {
+            result["observationFence"] =
+                tasks::goal_observations::after_projection(observation, &next["rowVersion"]);
+        }
         result["task"] = next;
         Ok(result)
     }

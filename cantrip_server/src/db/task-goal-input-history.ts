@@ -11,6 +11,8 @@ import { projectChatExecutionLock } from "./repository/chat-execution-lock.js";
 import { TaskDispatchConflictError } from "./task-dispatch.js";
 import { classifyTaskFailure } from "../tasks/automatic-retry.js";
 import * as schema from "./schema.js";
+import { taskResponsePublicationKind } from "./task-response-publication.js";
+import { nativeHistoryPayloadDigest } from "./repository/native-history-digest.js";
 
 function stale(): never {
   throw new TaskDispatchConflictError(
@@ -83,17 +85,33 @@ export async function recoverGoalInputHistory(
   )
     stale();
   let message: TaskMessageOpaqueContent | null = null;
+  let publicationKind: "assigned" | "native-root" | null = null;
   if (n.outcome.ok) {
     try {
       const candidate = taskMessageRelayResultSchema.parse(
         n.outcome.result.structuredResult,
       ).message;
-      if (candidate.idempotencyKey === `assistant:${r.clientMessageId}`)
-        message = candidate;
+      publicationKind = taskResponsePublicationKind(
+        candidate,
+        state.publication ?? {
+          idempotencyKey: `assistant:${r.clientMessageId}`,
+        },
+        n.outcome.result,
+        state.nativeExecution,
+      );
+      if (publicationKind) message = candidate;
     } catch {
       /* Invalid protected output is a terminal failure, not a new Task failure. */
     }
   }
+  const responseDigest = message ? nativeHistoryPayloadDigest(message) : null;
+  if (
+    state.terminal &&
+    ((state.terminal.outcomeDigest &&
+      state.terminal.outcomeDigest !== responseDigest) ||
+      (!state.terminal.outcomeDigest && publicationKind === "native-root"))
+  )
+    stale();
   const ok = n.outcome.ok && message !== null;
   const failureKind = ok
     ? null
@@ -110,6 +128,7 @@ export async function recoverGoalInputHistory(
   const terminal = state.terminal ?? {
     ok,
     failureKind,
+    ...(responseDigest ? { outcomeDigest: responseDigest } : {}),
     observedAt: new Date().toISOString(),
     projectedAt: null,
     threadId: n.outcome.ok ? n.outcome.result.threadId : null,

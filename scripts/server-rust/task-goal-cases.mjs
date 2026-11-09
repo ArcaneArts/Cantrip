@@ -9,11 +9,13 @@ import {
 } from "./task-wire-fixtures.mjs";
 import { retainedPrompt } from "./native-settlement-fixtures.mjs";
 import { goalContinuationCases } from "./task-goal-continuation-cases.mjs";
+import { runTaskResponsePublicationCases } from "./task-response-publication-cases.mjs";
 export async function runTaskGoalCases(h) {
   const { observe, seed, owner, reset, reopen } = h;
   // Started dispatch fixtures deliberately own an unexpired retained lease.
   h.registerFixedClock(Date.parse("2099-01-01T00:00:00.000Z"));
   const chat = "task";
+  const operation = "77777777-7777-4777-8777-000000000311";
   const content = () =>
     taskContent("implementing", 1, {
       hasPlan: true,
@@ -85,6 +87,8 @@ export async function runTaskGoalCases(h) {
       },
       { op: "query-json", shape: "raw" },
     );
+  if (process.argv.includes("--goal-publication-only"))
+    return runTaskResponsePublicationCases(h, finalized, operation);
   await clean(false);
   await ok("unbound Task has no inferred Goal", {}, (v) => {
     assert.equal(v.result.goal, null);
@@ -202,14 +206,20 @@ export async function runTaskGoalCases(h) {
     });
   }
   await clean();
-  await ok(
-    "passive stale observation rereads latest Task",
+  await bad(
+    "passive observation rejects changed native authority",
     {
       goalBeforeReplySQL:
         "UPDATE tasks SET row_version=row_version+1 WHERE chat_id='task'",
     },
-    (v) => assert.equal(v.result.task.rowVersion, 2),
+    "The Task or its native session changed during Goal observation.",
   );
+  for (const row of await snapshot(
+    "stale passive observation preserves the newer Task",
+  )) {
+    assert.equal(row.task.row_version, 2);
+    assert.deepEqual(row.task.protected_content, taskEnvelope);
+  }
   for (const activate of [false, true]) {
     await clean();
     const value = reply();
@@ -462,7 +472,6 @@ export async function runTaskGoalCases(h) {
         );
       });
   }
-  const operation = "77777777-7777-4777-8777-000000000311";
   async function finalized() {
     await clean(false, [
       "UPDATE tasks SET state='review',plan_goal_enabled=true WHERE chat_id='task'",
@@ -718,4 +727,5 @@ export async function runTaskGoalCases(h) {
       );
     },
   );
+  await runTaskResponsePublicationCases(h, finalized, operation);
 }
