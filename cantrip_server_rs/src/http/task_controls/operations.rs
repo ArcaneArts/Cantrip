@@ -74,7 +74,10 @@ pub(super) async fn execute(
     let retries = tasks::retries::Repository::new(service.repository.database.clone());
     let result: Result<Response> = async {
         if recovering {
-            retries.reset(&owner, &chat).await?;
+            let target = repository.get(&owner, &chat).await?.unwrap_or(Value::Null);
+            if target["planGoalEnabled"] == true && target["dispatch"]["operationKind"] == "finalize" {
+                retries.reset(&owner, &chat).await?;
+            }
             if !service.execution.task_recovery.recover(&owner, &chat, true, false).await? {
                 return Ok(error(409, "No retained implementation session was found. Use Retry implementation from the plan to start it."));
             }

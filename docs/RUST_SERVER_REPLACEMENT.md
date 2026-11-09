@@ -1,5 +1,15 @@
 # Rust server replacement
 
+Explicit Task round recovery after worker-process loss now uses the original
+native terminal turn and rechecks canonical authority after IPC. Both servers
+also fence legacy retry adoption and repeated Recovery requests. Current debug
+production peers pass direct-Task worker loss on all three stores and all four
+shared pairings. Optimized peers additionally pass planning-round worker loss
+on the same matrix. See
+[Task worker-process recovery](RUST_SERVER_TASK_WORKER_RECOVERY.md) for scoped
+evidence, retained failures and remaining qualification. Node remains the
+default; complete replacement is unfinished.
+
 The current 92-patch native runtime and rebuilt full worker pass the six-case
 production product matrix across all three stores. Active Agent and Goal turns
 also survive either shared peer's SIGKILL across all four Node/Rust pairings,

@@ -5,6 +5,7 @@ import type {
 import { TaskDispatchConflictError } from "../../db/task-dispatch.js";
 import type { createTaskGoalRuntime } from "./task-goal-runtime.js";
 import type { LimitedWorkerCommandBus } from "../../workers/limited-command-bus.js";
+import type { NativeTurnRecoveryObservation } from "@cantrip/protocol";
 
 type Goals = ReturnType<typeof createTaskGoalRuntime>;
 interface Dependencies {
@@ -12,6 +13,10 @@ interface Dependencies {
   bridge: LimitedWorkerCommandBus;
   ownerId(): string;
   leaseOwner: string;
+  observeNativeTurn(
+    context: ChatExecutionContext,
+    turnId: string,
+  ): Promise<NativeTurnRecoveryObservation>;
   goals: Pick<
     Goals,
     | "readEncryptedTaskGoal"
@@ -32,6 +37,7 @@ export function createTaskExecutionRecovery({
   bridge,
   ownerId,
   leaseOwner,
+  observeNativeTurn,
   goals,
   publish,
   unpause,
@@ -70,6 +76,32 @@ export function createTaskExecutionRecovery({
     const owner = ownerId();
     let context = await repository.getChatExecutionContext(owner, chatId);
     let task = await repository.tasks.get(owner, chatId);
+    if (
+      resume &&
+      !automatic &&
+      context?.experience === "task" &&
+      task?.dispatch?.state === "expired" &&
+      task.dispatch.operationKind !== "finalize" &&
+      bridge.isConnected(context.workerId)
+    ) {
+      const retained = await repository.tasks.captureNativeTurnRecovery(
+        owner,
+        chatId,
+      );
+      if (!retained) return false;
+      const observed = await observeNativeTurn(
+        retained.source.context,
+        retained.source.nativeExecution.turnId,
+      );
+      const settled = await repository.tasks.failObservedNativeTurn(
+        owner,
+        chatId,
+        retained,
+        observed,
+      );
+      if (settled) publish(chatId, retained.source.context.projectId!);
+      return settled;
+    }
     if (
       !context ||
       context.contextKind !== "project" ||

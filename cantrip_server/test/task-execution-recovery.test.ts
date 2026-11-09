@@ -45,6 +45,16 @@ function fixture(
     leaseOwner: "server:new",
     leaseExpiresAt: "2099-01-01T00:00:00Z",
   };
+  const observationFence = {
+    target: {
+      workerId: "worker",
+      worktreeId: "original",
+      threadId: "thread",
+      modelRouteId: null,
+      providerAccountId: null,
+    },
+    fingerprint: "retained-native-observation",
+  };
   const repository = {
     getChatExecutionContext: vi.fn(async () => ({ ...context })),
     getProjectWorktreeContext: vi.fn(async () => ({
@@ -63,15 +73,39 @@ function fixture(
     setChatStatus: vi.fn(async () => {}),
     taskDispatch: {
       list: vi.fn(async () => [task.dispatch]),
-      recoverStartedGoal: vi.fn(async () => lease),
+      recoverStartedGoal: vi.fn(
+        async (
+          _owner: string,
+          _cycle: unknown,
+          _leaseOwner: string,
+          _now: Date,
+          options: {
+            assertObservation(transaction: unknown): Promise<unknown>;
+          },
+        ) => {
+          await options.assertObservation("observation-transaction");
+          return lease;
+        },
+      ),
     },
-    tasks: { get: vi.fn(async () => task) },
+    tasks: {
+      get: vi.fn(async () => task),
+      inferenceInputs: {
+        goals: {
+          terminal: vi.fn(async () => null),
+          pending: vi.fn(async () => null),
+        },
+        goalCycles: { pending: vi.fn(async () => null) },
+      },
+      goalObservations: { assertInTransaction: vi.fn(async () => {}) },
+    },
   };
   const goals = {
     readEncryptedTaskGoal: vi.fn(async () => ({
       goal: { threadId: "thread", status: "active" },
       execution: { threadId: "thread", status: options.native ?? "running" },
       task,
+      observationFence,
     })),
     retainTaskGoalLease: vi.fn(async () => {}),
     reconcileTaskGoalDispatch: vi.fn(async () => {}),
@@ -101,6 +135,7 @@ function fixture(
     unpause,
     recovery,
     publish,
+    observationFence,
   };
 }
 
@@ -136,7 +171,7 @@ describe("Task session recovery", () => {
       f.task.dispatch,
       "server:new",
       expect.any(Date),
-      { allowSettled: true },
+      { allowSettled: true, assertObservation: expect.any(Function) },
     );
   });
   it("does not misreport an unavailable checkout as a different worker", async () => {
@@ -155,6 +190,7 @@ describe("Task session recovery", () => {
       goal: { threadId: "thread", status: "blocked" },
       execution: { threadId: "thread", status: "idle" },
       task: f.task,
+      observationFence: f.observationFence,
     } as never);
     expect(await f.recovery.recover("chat", true)).toBe(true);
     expect(f.repository.taskDispatch.recoverStartedGoal).toHaveBeenCalledWith(
@@ -162,7 +198,7 @@ describe("Task session recovery", () => {
       f.task.dispatch,
       "server:new",
       expect.any(Date),
-      { allowSettled: true },
+      { allowSettled: true, assertObservation: expect.any(Function) },
     );
     expect(f.goals.reconcileTaskGoalDispatch).not.toHaveBeenCalled();
     expect(f.goals.resumeChatAutomation).toHaveBeenCalledWith(
@@ -199,6 +235,16 @@ describe("Task session recovery", () => {
       "owner",
       f.task.dispatch,
       "server:new",
+      expect.any(Date),
+      { allowSettled: false, assertObservation: expect.any(Function) },
+    );
+    expect(
+      f.repository.tasks.goalObservations.assertInTransaction,
+    ).toHaveBeenCalledWith(
+      "observation-transaction",
+      "owner",
+      "chat",
+      f.observationFence,
     );
     expect(f.repository.cancelChatWorktreeTransition).toHaveBeenCalledWith(
       "owner",

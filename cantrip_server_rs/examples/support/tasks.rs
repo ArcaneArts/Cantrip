@@ -14,6 +14,20 @@ pub async fn run(database: Arc<Database>, input: &Value) -> Result<Value> {
         Ok(
             match input["action"].as_str().context("Task fixture action")? {
                 "get" => repository.get(owner, chat).await?.unwrap_or(Value::Null),
+                "capture-native-turn" => repository
+                    .capture_native_turn_recovery(owner, chat)
+                    .await?
+                    .unwrap_or(Value::Null),
+                "fail-native-turn" => Value::from_serialize(
+                    &repository
+                        .fail_observed_native_turn(
+                            owner,
+                            chat,
+                            &input["expected"],
+                            &input["observed"],
+                        )
+                        .await?,
+                ),
                 "list" => Value::Array(
                     repository
                         .list(owner, input["project"].as_str().unwrap_or(""))

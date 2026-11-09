@@ -9,6 +9,42 @@ impl Service {
     ) -> Result<bool> {
         let context = self.chats.execution_context(owner, chat).await?;
         let task = self.tasks.get(owner, chat).await?;
+        if resume
+            && !automatic
+            && let (Some(context), Some(task)) = (&context, &task)
+            && context["experience"] == "task"
+            && task["dispatch"]["state"] == "expired"
+            && task["dispatch"]["operationKind"] != "finalize"
+            && self
+                .dependencies
+                .commands
+                .is_connected(&text(&context["workerId"])?)
+        {
+            let Some(retained) = self.tasks.capture_native_turn_recovery(owner, chat).await? else {
+                return Ok(false);
+            };
+            let observed = self
+                .dependencies
+                .goals
+                .observe_native_turn(
+                    owner,
+                    &retained["source"]["context"],
+                    &retained["source"]["nativeExecution"]["turnId"],
+                )
+                .await?;
+            let settled = self
+                .tasks
+                .fail_observed_native_turn(owner, chat, &retained, &observed)
+                .await?;
+            if settled {
+                (self.dependencies.publish)(
+                    owner,
+                    chat,
+                    &text(&retained["source"]["context"]["projectId"])?,
+                );
+            }
+            return Ok(settled);
+        }
         let (Some(mut context), Some(mut task)) = (
             context.filter(|c| c["contextKind"] == "project" && c["experience"] == "task"),
             task.filter(|t| {

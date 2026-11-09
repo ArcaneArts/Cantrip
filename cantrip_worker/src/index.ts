@@ -8825,51 +8825,56 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return runtimeHandoffs()[
           command.intent === "cancel" ? "cancel" : "run"
         ](command.chatId, command.operationId, managedGuiBridgeLifetime.signal);
-      case "chat.thread.ensure":
+      case "chat.thread.ensure": {
+        let runtime: ReturnType<typeof runtimeFor>;
+        let threadId: string;
         if (command.session) {
-          const { threadId, runtime } = await prepareManagedSession(
+          ({ threadId, runtime } = await prepareManagedSession(
             command.session,
             { ...command, provider: provider() },
             "preserve",
-          );
-          if (command.recoveryTurnId) {
-            const runtimeGeneration = runtime.transportGeneration;
-            const snapshot = await runtime.readNativeHistory(threadId);
-            if (
-              !runtimeGeneration ||
-              runtime.transportGeneration !== runtimeGeneration
-            )
-              throw new Error(
-                "The native runtime changed during recovery observation.",
-              );
-            return {
-              threadId,
-              recovery: {
-                threadId: snapshot.thread.id,
-                runtimeGeneration,
-                turnId: command.recoveryTurnId,
-                status:
-                  snapshot.thread.turns.find(
-                    (turn) => turn.id === command.recoveryTurnId,
-                  )?.status ?? null,
-              },
-            };
-          }
-          return { threadId };
+          ));
+        } else {
+          runtime = runtimeFor({
+            ...managedRuntimeTarget(command),
+            model: command.model,
+            provider: provider(),
+          });
+          ({ threadId } = await runtime.ensureThread({
+            cwd: command.cwd,
+            mcpServers: await agentMcpServers(command.cwd, command.mcpServers),
+            model: command.model,
+            permissionProfileId: command.permissionProfileId,
+            planMode: command.planMode,
+            provider: provider(),
+            threadId: command.threadId,
+          }));
         }
-        return runtimeFor({
-          ...managedRuntimeTarget(command),
-          model: command.model,
-          provider: provider(),
-        }).ensureThread({
-          cwd: command.cwd,
-          mcpServers: await agentMcpServers(command.cwd, command.mcpServers),
-          model: command.model,
-          permissionProfileId: command.permissionProfileId,
-          planMode: command.planMode,
-          provider: provider(),
-          threadId: command.threadId,
-        });
+        if (command.recoveryTurnId) {
+          const runtimeGeneration = runtime.transportGeneration;
+          const snapshot = await runtime.readNativeHistory(threadId);
+          if (
+            !runtimeGeneration ||
+            runtime.transportGeneration !== runtimeGeneration
+          )
+            throw new Error(
+              "The native runtime changed during recovery observation.",
+            );
+          return {
+            threadId,
+            recovery: {
+              threadId: snapshot.thread.id,
+              runtimeGeneration,
+              turnId: command.recoveryTurnId,
+              status:
+                snapshot.thread.turns.find(
+                  (turn) => turn.id === command.recoveryTurnId,
+                )?.status ?? null,
+            },
+          };
+        }
+        return { threadId };
+      }
       case "chat.relocation.hydration.begin":
         return chatRelocations.begin(command);
       case "chat.relocation.hydration.chunk":

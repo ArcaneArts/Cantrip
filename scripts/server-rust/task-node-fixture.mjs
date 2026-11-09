@@ -9,6 +9,17 @@ export async function taskFixture(repository, input) {
       case "get":
         value = await task.get(owner, chat);
         break;
+      case "capture-native-turn":
+        value = await task.captureNativeTurnRecovery(owner, chat);
+        break;
+      case "fail-native-turn":
+        value = await task.failObservedNativeTurn(
+          owner,
+          chat,
+          input.expected,
+          input.observed,
+        );
+        break;
       case "list":
         value = await task.list(owner, input.project);
         break;

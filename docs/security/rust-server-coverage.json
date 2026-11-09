@@ -3,8 +3,8 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "c1e4f7efa3701671b8f54477a8d6e74b51b22a263544e0b6c66bfd2f26353d32",
-    "baselineCommit": "9a08bb04264ae9ad5414f1fbce858a1343b5e58d",
+    "sha256": "bf11dac673d13ed64af52f2cf2fd49ee2207738750fa0f9dce7679d17b520d38",
+    "baselineCommit": "2e99d7ab00f100759003e0ebe08461f557acb599",
     "counts": {
       "routes": 584,
       "workerCommands": 323,
@@ -12,7 +12,7 @@
       "repositoryMethods": 370,
       "liveResources": 47
     },
-    "workingTreeNote": "Current reconciliation adds one internal global expiry helper retaining owner metadata beside mapped requests; no external route, command, schema, migration or wire-owner field is added. Approval expiry now qualifies actual Chat/Task/standalone publication, two accounts, SQL failure/recovery and held-UPDATE shutdown. Historical category rows retain their original scopes; see docs/RUST_SERVER_INTERACTION_EXPIRY.md and RUST_SERVER_ACCEPTANCE_RECONCILIATION.md. Full replacement remains incomplete.",
+    "workingTreeNote": "Current Task worker-process recovery adds an internal native-turn observer and refreshes route source locations; all reviewed contract-set digests and route, worker-command, durable-table, repository-method and live-resource counts are unchanged. Historical category rows retain their original scopes; see RUST_SERVER_ACCEPTANCE_RECONCILIATION.md and RUST_SERVER_TASK_WORKER_RECOVERY.md. Full replacement remains incomplete.",
     "durableTableCountScope": "All Drizzle tables exported by the actual current schema, independently compared at runtime to the source corpus. Does not count internal migration metadata or assert a current all-backend migration/data-preservation pass."
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
@@ -14678,6 +14678,19 @@
     ]
   },
   "crossCutting": {
+    "currentTaskWorkerProcessRecovery": {
+      "status": "partial",
+      "evidence": [
+        "docs/RUST_SERVER_TASK_WORKER_RECOVERY.md",
+        "scripts/server-rust/actual-worker-inflight-client.mjs",
+        "scripts/server-rust/task-native-turn-recovery-cases.mjs",
+        "scripts/server-rust/task-native-turn-recovery-races.mjs",
+        "cantrip_worker/test/inference-shutdown-lifetime.test.ts"
+      ],
+      "implementation": "Both servers explicitly observe the exact retained native Task turn after worker loss and lease expiry; failed/interrupted under a replacement runtime can atomically project the precomputed protected failure after rechecking complete input/control/placement/lane/dispatch authority. Private idle retry markers fence legacy adoption and survive repeated Recovery. No automatic inference or fabricated no-dispatch proof. Worker honors existing recoveryTurnId outside managed Agent sessions.",
+      "qualification": "Current debug production peers pass all10direct-Task worker-loss cases. Optimized production main/finalworker-v3 passes20actual worker-loss cases: direct and initial-plan rounds, both servers/all3stores and both rounds/all4shared pairings. Each retains exactoriginalinput/fence/credential/messages through expiry, explicitRecovery/repeated409/real6500ms noadopter, one inference until explicitRetry/two total, exactcompletedTask-or-reviewPlan/canonicalhistory restart,4normalworkerexits+1SIGKILL. All3stores pass512paired repository observations, final-write SQL rollback/approval isolation/reopen and all4 real competing owner-lock process pairings. Broad native regression passes5003paired cases/4270snapshots acrossall3stores. Finalworker delegatedAgent/MCPTask PGlite regression passes bothproductionentrypoints. Servercontrols33, workerhistory9+enablednative2, inference/ownership/lifetime15, Rustlibrary80/strictClippy/fmt pass.",
+      "remaining": "Resumption/Goal and other worker/native-process loss, prolonged faults, supported-platform/current packaged artifacts and updates, historical upgrades/product-wide post-write rollback, performance, default Rust cutover and production Node-server removal remain. pnpmcheck and separate repository decomposition failures reproduce on clean Primary; refreshed server-boundary audit passes with unchanged reviewed external contracts. Node is still default; worker remains Node."
+    },
     "currentProductAndSharedAgentRecovery": {
       "status": "partial",
       "evidence": [

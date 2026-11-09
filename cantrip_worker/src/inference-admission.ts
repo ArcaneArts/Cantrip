@@ -434,15 +434,24 @@ export class WorkerInferenceAdmission {
     this.recoveryLifetime.abort(new Error("Inference ownership is retiring."));
     if (this.recoveryRetry) clearTimeout(this.recoveryRetry);
     this.recoveryRetry = null;
+    // Native retirement retries and idle keeper IPC are unreferenced. Own the
+    // process lifetime through settlement, before closing the keeper itself.
+    const shutdownReference = setInterval(() => {}, 60_000);
     this.closure = (async () => {
-      const retired = [...this.runtimes].map((runtime) => this.retire(runtime));
-      await Promise.all(retired);
-      await this.recoveryStartup?.catch(() => {});
-      await this.recoveryWork?.catch(() => {});
-      await this.journal?.flush();
-      await this.nativeOwnership?.close();
-      this.unrequestedSettlements.clear();
-      this.goalPreparations.clear();
+      try {
+        const retired = [...this.runtimes].map((runtime) =>
+          this.retire(runtime),
+        );
+        await Promise.all(retired);
+        await this.recoveryStartup?.catch(() => {});
+        await this.recoveryWork?.catch(() => {});
+        await this.journal?.flush();
+        await this.nativeOwnership?.close();
+        this.unrequestedSettlements.clear();
+        this.goalPreparations.clear();
+      } finally {
+        clearInterval(shutdownReference);
+      }
     })();
     return this.closure;
   }
@@ -1210,9 +1219,7 @@ export class WorkerInferenceAdmission {
               )
                 this.cancel(
                   ticket,
-                  new Error(
-                    "Canonical inference ownership has ended.",
-                  ),
+                  new Error("Canonical inference ownership has ended."),
                 );
             },
           });

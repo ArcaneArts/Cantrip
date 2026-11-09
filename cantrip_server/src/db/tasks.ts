@@ -49,6 +49,12 @@ import {
   failConfirmedExpiredRound,
 } from "./task-round-outcomes.js";
 import type { WorkerNotification } from "@cantrip/protocol";
+import type { NativeTurnRecoveryObservation } from "@cantrip/protocol";
+import {
+  captureTaskNativeTurnRecovery,
+  failObservedTaskNativeTurn,
+  type TaskNativeTurnRecovery,
+} from "./task-native-turn-recovery.js";
 
 type TaskDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type TaskRow = typeof schema.tasks.$inferSelect;
@@ -353,6 +359,36 @@ export class TaskRepository {
       owner,
       chat,
       guard,
+    );
+  }
+
+  captureNativeTurnRecovery(owner: string, chat: string) {
+    return captureTaskNativeTurnRecovery(this.database, owner, chat);
+  }
+
+  failObservedNativeTurn(
+    owner: string,
+    chat: string,
+    expected: TaskNativeTurnRecovery,
+    observed: NativeTurnRecoveryObservation,
+  ) {
+    return failObservedTaskNativeTurn(
+      {
+        database: this.database,
+        lanes: this.lanes,
+        fail: (tx, guard) =>
+          new TaskRepository(tx).failOperation(
+            owner,
+            chat,
+            expected.guard.operationId,
+            undefined,
+            guard,
+          ),
+      },
+      owner,
+      chat,
+      expected,
+      observed,
     );
   }
 

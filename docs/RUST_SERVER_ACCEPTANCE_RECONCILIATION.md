@@ -4,6 +4,15 @@ The server replacement remains incomplete. Node is still the default server,
 and the worker remains Node. Historical ledger entries describe their original
 milestones; their remaining-work text is not a current implementation inventory.
 
+The [Task worker-process recovery](RUST_SERVER_TASK_WORKER_RECOVERY.md)
+qualification adds explicit terminal observation and guarded failure settlement
+for expired direct/planning rounds. Current debug and optimized peers pass
+direct-Task worker loss on all three stores and all four shared pairings,
+including repeated Recovery, the real legacy retry adoption timer, explicit
+Retry and exact history restart. Optimized peers also pass planning-round worker
+loss on that complete matrix. Resumption/Goal, broader worker-loss and final
+replacement acceptance remain separate.
+
 The [current product and shared Agent recovery](RUST_SERVER_SHARED_AGENT_RECOVERY.md)
 qualification refreshes the actual production matrix to the current 92-patch
 native runtime and rebuilt worker. All six local storage/product cases and both
