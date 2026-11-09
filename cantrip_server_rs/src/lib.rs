@@ -1,3 +1,8 @@
+// PGlite's Windows archive imports zlib. Supply its static build rather than
+// requiring a separately installed MinGW library or runtime zlib DLL.
+#[cfg(windows)]
+use libz_sys as _;
+
 pub mod agent_interactions;
 pub mod auth;
 pub mod browsers;

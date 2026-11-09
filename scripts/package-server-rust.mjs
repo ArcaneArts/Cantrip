@@ -72,6 +72,33 @@ export async function packageNativeServer(options) {
       platform: target.platform,
       serverBinary: path.resolve(binary),
     });
+    if (target.platform === "win32") {
+      // PostgreSQL's narrow Windows APIs otherwise use the system ANSI code
+      // page, losing profile paths outside that code page. Include the native
+      // PGlite tools and server as well as private PostgreSQL. This is a build
+      // operation; packaged startup needs no PowerShell or global locale change.
+      await execute(
+        path.join(
+          process.env.SystemRoot ?? "C:\\Windows",
+          "System32",
+          "WindowsPowerShell",
+          "v1.0",
+          "powershell.exe",
+        ),
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          fileURLToPath(
+            new URL("./server-rust/windows-utf8-manifest.ps1", import.meta.url),
+          ),
+          "-Root",
+          stage,
+        ],
+      );
+    }
     const version = resolveCantripVersion();
     const environmentLines = `export LD_LIBRARY_PATH="$SCRIPT_DIR/lib\${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"`;
     for (const [name, flags] of [

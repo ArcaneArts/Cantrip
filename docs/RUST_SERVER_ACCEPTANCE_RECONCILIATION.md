@@ -4,6 +4,14 @@ The server replacement remains incomplete. Node is still the default server,
 and the worker remains Node. Historical ledger entries describe their original
 milestones; their remaining-work text is not a current implementation inventory.
 
+The [current native package qualification](RUST_SERVER_CURRENT_PACKAGED_ACCEPTANCE.md)
+adds actual Windows x64 artifact execution on an ARM64 Windows kernel. All three
+stores, emoji/space package and profile paths, exports, restart and the embedded
+runtime fallback pass after static zlib and per-process UTF-8 repairs. Current
+macOS server-package and full-worker desktop-supervisor comparisons also pass
+on all three stores. Complete app/platform, update, historical-profile,
+performance and final cutover requirements remain separate.
+
 The [current wire reconciliation](RUST_SERVER_CURRENT_WIRE_COMPATIBILITY.md)
 closes the missing schema/command fixtures and stale public-surface expectations.
 Broad native comparisons, complete outgoing command mutations and protocol

@@ -17,3 +17,10 @@ SIGTERM dispositions before reporting database readiness, including boot errors.
 Otherwise host signal libraries chain PostgreSQL's backend handlers, interrupting
 the database while the host is still draining shutdown work. Existing host
 listeners survive boot. Other PostgreSQL signal dispositions are unchanged.
+
+Windows runtime helper executables receive per-process UTF-8 manifests before
+the matching runtime tar is embedded. Preparation uses portable PE/XML editing
+at build time, including builds hosted on another operating system. This keeps
+automatic extraction and explicit materialization consistent with packaged
+runtime assets, without requiring PowerShell or a system code-page change when
+the server starts. Existing helper resources and manifest settings are retained.
