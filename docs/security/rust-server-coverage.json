@@ -15107,7 +15107,10 @@
         "scripts/server-rust/worker-authentication-close-cases.mjs",
         "docs/RUST_SERVER_WORKER_AUTHENTICATION.md",
         "cantrip_server_rs/src/http/worker_socket_logs.rs",
-        "scripts/server-rust/worker-authentication-runtime-cases.mjs"
+        "scripts/server-rust/worker-authentication-runtime-cases.mjs",
+        "docs/RUST_SERVER_WORKER_CREDENTIAL_LIFECYCLE.md",
+        "cantrip_server_rs/src/http/worker_lifecycle_logs.rs",
+        "scripts/server-rust/worker-lifecycle-runtime-cases.mjs"
       ],
       "scope": "Native shared JSON operational log emission, UTF-16 text/key semantics, secret/context/error sanitization, sampled emission and bounded repeated-event windows match 65,937 actual Source sanitizer/error vectors and 2,136 actions/eight policy scenarios locally. Actual direct production log comparisons pass334 cases/15 groups, coordinator diagnostics575 cases, and routing583 cases/31 states per store on native PGlite/private/external PostgreSQL. This is not the complete operational logging/metrics product.",
       "remaining": [
@@ -15344,6 +15347,39 @@
         "optimizedProductionEntrypointPeerRuns": 28,
         "optimizedAdditionalFaultAndHandshakePeerRuns": 14,
         "focusedIntegrationTests": 16
+      },
+      "workerCredentialLifecycleQualification": {
+        "status": "implemented-with-scoped-local-qualification",
+        "sourceBaseline": "524879c3af354967b11f8286f1e57bc66f199218",
+        "platform": "darwin-arm64",
+        "qualification": "docs/RUST_SERVER_WORKER_CREDENTIAL_LIFECYCLE.md",
+        "normalStorageAuthenticationPairs": 9,
+        "debugProductionProcesses": 28,
+        "normalZeroExits": 26,
+        "expectedStartupFailureExits": 2,
+        "lifecyclePeerRuns": 18,
+        "recordedHelperHttpRequests": 540,
+        "pairedDecisionRecords": 108,
+        "undefinedContextReferenceCases": 14,
+        "libraryTests": 80,
+        "strictAllTargetClippy": true,
+        "behavior": "Real production enrollment/code/rejection/rotation/revocation records with request identity and source noise/redaction. Online/offline/worker-error delivery, history counts, malformed and missing-resource decisions. Real two-account replacement with new identity, same-code retry after denied self-replacement, old-owner/old-credential denial and new credential/revocation. Console undefined fields use explicit metadata; serialized outputs/archive omit them while retaining null/literalundefined and sanitization boundaries.",
+        "scope": "Unchanged worker transport and credential store with controlled endpoint effects. Source/native normal HTTP and selected full/minimized records; not complete worker resource/native execution or whole-server log equality.",
+        "remaining": "Original full replacement goal remains active. Other operational consumers; complete current product/fault/coordination/platform/artifact/upgrade/post-write rollback/performance/defaultRust/productionNode-serverremoval.",
+        "optimizedProductionProcesses": 40,
+        "optimizedNormalZeroExits": 30,
+        "optimizedExpectedStartupKeyFailureExits": 10,
+        "optimizedArtifact": {
+          "bytes": 94214064,
+          "sha256": "a995b3d9ddcbf3d9355b4b3a007f931fc5de56549f2a3a92a39b2d9787a9eccc",
+          "actualBootstrapVersion": "1.1.2772"
+        },
+        "enrollmentLiveRegression": {
+          "storageAuthenticationPairs": 9,
+          "fixtureProcesses": 18,
+          "pairedHttpObservations": 99,
+          "pairedPublicationObservations": 81
+        }
       }
     },
     "legacyPGliteConversion": {
@@ -15495,7 +15531,12 @@
         "docs/RUST_SERVER_WORKER_AUTHENTICATION.md",
         "cantrip_server_rs/src/http/worker_socket_logs.rs",
         "scripts/server-rust/worker-authentication-runtime-cases.mjs",
-        "scripts/server-rust/log-runtime-server-compatibility.mjs"
+        "scripts/server-rust/log-runtime-server-compatibility.mjs",
+        "docs/RUST_SERVER_WORKER_CREDENTIAL_LIFECYCLE.md",
+        "cantrip_server_rs/src/http/worker_lifecycle_logs.rs",
+        "scripts/server-rust/worker-lifecycle-runtime-cases.mjs",
+        "cantrip_server_rs/tests/log_format.rs",
+        "scripts/server-rust/log-format-oracle.mjs"
       ],
       "scope": "Native HTTP/1 upgrade (versions 8/13, ready v1/v2 and legacy), credential authentication, bounded pre-authentication buffering/capacity, close-frame transport cleanup, response correlation, local reconnect/deadline/event callback sequencing and credential delivery/revocation. Actual browser APIs and unchanged worker components exercise enrollment/rotation/persistence/reconnect/revocation. Full incoming text-envelope validation, ordered events and worker-scoped notification listeners now use the production bridge. Native notification prefixes execute in registration order; asynchronous completions are independent, and subscriptions survive reconnect. A loopback-only observer fixture compares actual HTTP/WS routing through unchanged worker transport components on all three stores locally. This does not implement the command resource domains.",
       "remaining": [
@@ -15561,6 +15602,39 @@
         "optimizedProductionEntrypointPeerRuns": 28,
         "optimizedAdditionalFaultAndHandshakePeerRuns": 14,
         "focusedIntegrationTests": 16
+      },
+      "workerCredentialLifecycleQualification": {
+        "status": "implemented-with-scoped-local-qualification",
+        "sourceBaseline": "524879c3af354967b11f8286f1e57bc66f199218",
+        "platform": "darwin-arm64",
+        "qualification": "docs/RUST_SERVER_WORKER_CREDENTIAL_LIFECYCLE.md",
+        "normalStorageAuthenticationPairs": 9,
+        "debugProductionProcesses": 28,
+        "normalZeroExits": 26,
+        "expectedStartupFailureExits": 2,
+        "lifecyclePeerRuns": 18,
+        "recordedHelperHttpRequests": 540,
+        "pairedDecisionRecords": 108,
+        "undefinedContextReferenceCases": 14,
+        "libraryTests": 80,
+        "strictAllTargetClippy": true,
+        "behavior": "Real production enrollment/code/rejection/rotation/revocation records with request identity and source noise/redaction. Online/offline/worker-error delivery, history counts, malformed and missing-resource decisions. Real two-account replacement with new identity, same-code retry after denied self-replacement, old-owner/old-credential denial and new credential/revocation. Console undefined fields use explicit metadata; serialized outputs/archive omit them while retaining null/literalundefined and sanitization boundaries.",
+        "scope": "Unchanged worker transport and credential store with controlled endpoint effects. Source/native normal HTTP and selected full/minimized records; not complete worker resource/native execution or whole-server log equality.",
+        "remaining": "Original full replacement goal remains active. Other operational consumers; complete current product/fault/coordination/platform/artifact/upgrade/post-write rollback/performance/defaultRust/productionNode-serverremoval.",
+        "optimizedProductionProcesses": 40,
+        "optimizedNormalZeroExits": 30,
+        "optimizedExpectedStartupKeyFailureExits": 10,
+        "optimizedArtifact": {
+          "bytes": 94214064,
+          "sha256": "a995b3d9ddcbf3d9355b4b3a007f931fc5de56549f2a3a92a39b2d9787a9eccc",
+          "actualBootstrapVersion": "1.1.2772"
+        },
+        "enrollmentLiveRegression": {
+          "storageAuthenticationPairs": 9,
+          "fixtureProcesses": 18,
+          "pairedHttpObservations": 99,
+          "pairedPublicationObservations": 81
+        }
       }
     },
     "appLiveTransport": {

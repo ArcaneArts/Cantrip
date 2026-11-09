@@ -48,26 +48,32 @@ static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 static SHUTDOWN_STARTED: Mutex<Option<Instant>> = Mutex::new(None);
 pub fn capture(record: Value) {
-    capture_kind(record, false)
+    capture_kind(record, false, &[])
+}
+pub fn capture_with_undefined(record: Value, fields: &[&str]) {
+    capture_kind(record, false, fields)
 }
 pub fn capture_http(record: Value) {
-    capture_kind(record, true)
+    capture_kind(record, true, &[])
 }
 pub fn is_initialized() -> bool {
     INITIALIZED.load(Ordering::Acquire)
 }
-fn capture_kind(record: Value, http: bool) {
+fn capture_kind(record: Value, http: bool, fields: &[&str]) {
+    let json_record =
+        (!fields.is_empty()).then(|| logging::without_undefined(record.clone(), fields));
+    let archived = json_record.as_ref().unwrap_or(&record);
     {
         // Cursor assignment and archive admission share one order even when
         // several Tokio/OS threads emit at the same time.
         let mut buffer = buffer().lock().unwrap();
-        let stored = buffer.append(&record);
+        let stored = buffer.append(archived);
         if let Some(runtime) = active().lock().unwrap().as_ref() {
             let _ = runtime.send.send(Command::Append(stored));
         }
     }
     let Some(console) = CONSOLE.get() else {
-        eprintln!("{}", record.stringify());
+        eprintln!("{}", archived.stringify());
         return;
     };
     let level = record["level"].as_str().unwrap_or("info");
@@ -87,8 +93,8 @@ fn capture_kind(record: Value, http: bool) {
     let line = if http {
         super::log_format::http(&record, console.colors)
     } else {
-        super::log_format::service(&record, console.colors)
-            .unwrap_or_else(|_| record.stringify().into())
+        super::log_format::service_with_undefined(&record, console.colors, fields)
+            .unwrap_or_else(|_| archived.stringify().into())
     };
     let _ = writeln!(destination.lock().unwrap(), "{}", line.lossy());
 }

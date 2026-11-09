@@ -34,6 +34,10 @@ import {
   verifyWorkerAuthenticationRuntime,
 } from "./worker-authentication-runtime-cases.mjs";
 import {
+  workerLifecycleRuntimeCases,
+  verifyWorkerLifecycleRuntime,
+} from "./worker-lifecycle-runtime-cases.mjs";
+import {
   targetPolicyCases,
   verifyTargetPolicy,
   targetPolicyNormalization,
@@ -50,6 +54,7 @@ const { values } = parseArgs({
     "http-targets": { type: "boolean", default: false },
     "worker-bridge-records": { type: "boolean", default: false },
     "worker-authentication-records": { type: "boolean", default: false },
+    "worker-lifecycle-records": { type: "boolean", default: false },
     "worker-authentication-coordination": { type: "boolean", default: false },
     "worker-authentication-pause": { type: "boolean", default: false },
     "worker-authentication-pause-denied": { type: "boolean", default: false },
@@ -78,6 +83,7 @@ const passwordHash =
   values["accounting-records"] ||
   values["http-targets"] ||
   values["worker-bridge-records"] ||
+  values["worker-lifecycle-records"] ||
   values["worker-authentication-records"]
     ? await hashPassword(password)
     : undefined;
@@ -102,6 +108,7 @@ if (
   values["accounting-records"] ||
   values["http-targets"] ||
   values["worker-bridge-records"] ||
+  values["worker-lifecycle-records"] ||
   values["worker-authentication-records"]
 )
   for (const database of ["pglite", "bundled-postgres", "postgres"])
@@ -390,6 +397,16 @@ try {
           const { cookie } = authentication;
           result.authentication = authentication.evidence;
           if (
+            values["worker-lifecycle-records"] &&
+            (scenario.name.endsWith("-default") || scenario.auth)
+          )
+            await workerLifecycleRuntimeCases(
+              origin,
+              cookie,
+              dataDirectory,
+              result,
+            );
+          if (
             (values["worker-authentication-records"] &&
               (scenario.name.endsWith("-default") || scenario.auth)) ||
             scenario.coordination
@@ -616,7 +633,10 @@ try {
               child.kill(scenario.signal ?? "SIGTERM");
             stopTimer = setTimeout(
               () => child.kill("SIGKILL"),
-              values["worker-authentication-records"] ? 45000 : 15000,
+              values["worker-authentication-records"] ||
+                values["worker-lifecycle-records"]
+                ? 45000
+                : 15000,
             );
             try {
               result.exit = await completion;
@@ -671,6 +691,13 @@ try {
           result.records,
           result.workerAuthentication,
           result.stdout,
+        );
+      if (result.workerLifecycle)
+        result.workerLifecycleRecords = verifyWorkerLifecycleRuntime(
+          result.records,
+          result.workerLifecycle,
+          result.stdout,
+          result.stderr,
         );
       if (scenario.failDatabase)
         assert.equal(
@@ -873,6 +900,12 @@ try {
         peers[0].workerAuthenticationRecords,
         "Actual worker authentication decisions, request IDs and close behavior: " +
           scenario.name,
+      );
+    if (peers[0].workerLifecycleRecords)
+      assert.deepEqual(
+        peers[1].workerLifecycleRecords,
+        peers[0].workerLifecycleRecords,
+        "Actual worker lifecycle records and HTTP decisions: " + scenario.name,
       );
     if (
       (retryRequested && scenario.name === "postgres-default") ||
