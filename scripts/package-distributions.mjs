@@ -39,7 +39,7 @@ if (!supportedTargets.has(selection)) {
 let requestedTarget;
 let fromArtifacts = false;
 let skipProtocolBuild = false;
-let serverRuntime = "node";
+let serverRuntime = "rust";
 let postgresBin;
 for (let index = 3; index < process.argv.length; index += 1) {
   const argument = process.argv[index];
@@ -60,6 +60,8 @@ for (let index = 3; index < process.argv.length; index += 1) {
     else postgresBin = value;
   } else if (argument.startsWith("--server-runtime=")) {
     serverRuntime = argument.slice("--server-runtime=".length);
+  } else if (argument.startsWith("--postgres-bin=")) {
+    postgresBin = argument.slice("--postgres-bin=".length);
   } else if (argument === "--from-artifacts") {
     fromArtifacts = true;
   } else if (argument === "--skip-protocol-build") {
@@ -70,16 +72,8 @@ for (let index = 3; index < process.argv.length; index += 1) {
   }
 }
 
-if (!["node", "rust"].includes(serverRuntime))
-  throw new Error("--server-runtime must be node or rust");
-if (
-  selection !== "desktop-runtime" &&
-  (serverRuntime !== "node" || postgresBin)
-) {
-  throw new Error(
-    "--server-runtime and --postgres-bin are desktop-runtime options",
-  );
-}
+if (serverRuntime !== "rust")
+  throw new Error("The packaged server runtime is Rust.");
 const packageTarget = normalizeTarget(requestedTarget);
 
 const platform = packageTarget.id;
@@ -119,8 +113,9 @@ async function requireDirectory(directory, description) {
   }
 }
 
-async function packageService(name, destination, { standalone = true } = {}) {
-  const packageName = `@cantrip/${name}`;
+async function packageWorker(destination, { standalone = true } = {}) {
+  const name = "worker";
+  const packageName = "@cantrip/worker";
   await rm(destination, { force: true, recursive: true });
   await mkdir(path.dirname(destination), { recursive: true });
   runPnpm([
@@ -135,27 +130,18 @@ async function packageService(name, destination, { standalone = true } = {}) {
 
   if (standalone) {
     await bundleNodeRuntime(path.join(destination, "runtime"));
-    await writeServiceLaunchers(destination, { migrations: name === "server" });
+    await writeServiceLaunchers(destination);
   }
   await cp(
     path.join(root, "deploy", `${name}.env.example`),
     path.join(destination, ".env.example"),
   );
-  if (name === "server") {
-    await cp(
-      path.join(root, "policy_templates"),
-      path.join(destination, "policy_templates"),
-      { recursive: true },
-    );
-  }
-  if (name === "worker") {
-    const bin = path.join(destination, "bin");
-    await cp(path.join(codexBuild, "bundle"), bin, { recursive: true });
-    await bundleCantripCli(root, bin);
-    await bundleCantripCua(cuaBinary, bin);
-    await verifyPackagedWorkerCua(destination);
-    await verifyPackagedWorkerMcp(destination, { smoke: standalone });
-  }
+  const bin = path.join(destination, "bin");
+  await cp(path.join(codexBuild, "bundle"), bin, { recursive: true });
+  await bundleCantripCli(root, bin);
+  await bundleCantripCua(cuaBinary, bin);
+  await verifyPackagedWorkerCua(destination);
+  await verifyPackagedWorkerMcp(destination, { smoke: standalone });
   await cp(
     path.join(root, "deploy", `${name}.README.md`),
     path.join(destination, "README.md"),
@@ -173,9 +159,6 @@ function buildServiceWorkspaces() {
 
 function buildSelectedServices(selection) {
   buildServiceWorkspaces();
-  if (selection === "server" || selection === "services") {
-    runPnpm(["--filter", "@cantrip/server", "build"]);
-  }
   if (selection === "worker" || selection === "services") {
     runPnpm(["--filter", "@cantrip/worker", "build"]);
   }
@@ -200,16 +183,16 @@ async function packageStandalone(selection) {
   }
   buildSelectedServices(selection);
   if (selection === "server" || selection === "services") {
-    await packageService(
-      "server",
-      path.join(artifacts, `cantrip-server-${platform}`),
-    );
+    const output = path.join(artifacts, `cantrip-server-${platform}`);
+    await rm(output, { force: true, recursive: true });
+    await packageNativeServer({
+      target: packageTarget.id,
+      output,
+      postgresBin,
+    });
   }
   if (selection === "worker" || selection === "services") {
-    await packageService(
-      "worker",
-      path.join(artifacts, `cantrip-worker-${platform}`),
-    );
+    await packageWorker(path.join(artifacts, `cantrip-worker-${platform}`));
   }
 }
 
@@ -220,7 +203,7 @@ async function packageDesktopRuntime() {
   if (fromArtifacts) {
     const serverArtifact = path.join(
       artifacts,
-      `cantrip-server${serverRuntime === "rust" ? "-rust" : ""}-${packageTarget.id}`,
+      `cantrip-server-${packageTarget.id}`,
     );
     const workerArtifact = path.join(
       artifacts,
@@ -230,53 +213,42 @@ async function packageDesktopRuntime() {
     await requireDirectory(workerArtifact, "Packaged worker");
     await cp(serverArtifact, path.join(runtime, "server"), {
       recursive: true,
-      dereference: serverRuntime === "rust",
+      dereference: true,
     });
     await cp(workerArtifact, path.join(runtime, "worker"), { recursive: true });
-    for (const service of ["server", "worker"]) {
-      const serviceRoot = path.join(runtime, service);
-      if (service === "server" && serverRuntime === "rust") continue;
-      await rm(path.join(serviceRoot, "runtime"), {
-        force: true,
-        recursive: true,
-      });
-      await rm(path.join(serviceRoot, "start.sh"), { force: true });
-      await rm(path.join(serviceRoot, "start.cmd"), { force: true });
-      await assertPackagedWorkspaceRuntime(serviceRoot);
-    }
+    const workerRoot = path.join(runtime, "worker");
+    await rm(path.join(workerRoot, "runtime"), {
+      force: true,
+      recursive: true,
+    });
+    await rm(path.join(workerRoot, "start.sh"), { force: true });
+    await rm(path.join(workerRoot, "start.cmd"), { force: true });
+    await assertPackagedWorkspaceRuntime(workerRoot);
   } else {
     buildCodex();
     buildCli();
     cuaBinary = buildCantripCua(root, { release: true });
-    buildSelectedServices(serverRuntime === "rust" ? "worker" : "services");
-    if (serverRuntime === "rust") {
-      await packageNativeServer({
-        target: packageTarget.id,
-        output: path.join(runtime, "server"),
-        postgresBin,
-      });
-    } else {
-      await packageService("server", path.join(runtime, "server"), {
-        standalone: false,
-      });
-    }
-    await packageService("worker", path.join(runtime, "worker"), {
+    buildSelectedServices("worker");
+    await packageNativeServer({
+      target: packageTarget.id,
+      output: path.join(runtime, "server"),
+      postgresBin,
+    });
+    await packageWorker(path.join(runtime, "worker"), {
       standalone: false,
     });
   }
-  if (serverRuntime === "rust") {
-    // Also build this small package in --from-artifacts mode. Reusing worker
-    // artifacts must not rebuild Codex, and the converter has no server code.
-    runPnpm(["--filter", "@cantrip/profile-converter", "build"]);
-    runPnpm([
-      "--config.node-linker=hoisted",
-      "--filter",
-      "@cantrip/profile-converter",
-      "deploy",
-      "--prod",
-      path.join(runtime, "profile-converter"),
-    ]);
-  }
+  // Also build this small package in --from-artifacts mode. Reusing worker
+  // artifacts must not rebuild Codex, and the converter has no server code.
+  runPnpm(["--filter", "@cantrip/profile-converter", "build"]);
+  runPnpm([
+    "--config.node-linker=hoisted",
+    "--filter",
+    "@cantrip/profile-converter",
+    "deploy",
+    "--prod",
+    path.join(runtime, "profile-converter"),
+  ]);
   await configureDesktopServer(path.join(runtime, "server"), serverRuntime);
   await bundleNodeRuntime(runtime);
   await verifyPackagedWorkerCua(path.join(runtime, "worker"));

@@ -226,7 +226,7 @@ test("passes the release commit count into the production Docker build", () => {
 });
 
 test("selects the native distribution through the existing production build path", () => {
-  for (const runtime of [undefined, "node", "rust"]) {
+  for (const runtime of [undefined, "rust"]) {
     const selected = { ...config, serverRuntime: runtime };
     validateDeploymentConfig(selected);
     const args = productionServerBuildArguments(
@@ -236,11 +236,7 @@ test("selects the native distribution through the existing production build path
     );
     assert.equal(
       args[args.indexOf("--file") + 1],
-      path.join(
-        "deploy",
-        "docker",
-        runtime === "rust" ? "server-rust.Dockerfile" : "server.Dockerfile",
-      ),
+      path.join("deploy", "docker", "server.Dockerfile"),
     );
     assert.ok(args.includes("type=local,dest=/tmp/native-output"));
     assert.ok(args.includes("CANTRIP_VERSION_PATCH=2739"));
@@ -252,7 +248,7 @@ test("selects the native distribution through the existing production build path
         "/tmp/output",
         "2739",
       ),
-    /serverRuntime must be node or rust/u,
+    /serverRuntime must be rust/u,
   );
 });
 
@@ -297,22 +293,21 @@ test("strips macOS metadata from the uploaded production server archive", async 
   }
 });
 
-test("copies every server workspace dependency into the Docker build", async () => {
+test("builds the canonical server image without the Node server workspace", async () => {
   const dockerfile = await readFile(
     new URL("../deploy/docker/server.Dockerfile", import.meta.url),
     "utf8",
   );
   for (const source of [
     "version.json",
-    "packages/logging",
-    "packages/protocol",
-    "packages/version",
     "policy_templates",
-    "cantrip_server",
+    "cantrip_server_rs",
+    "cantrip_server/drizzle",
   ]) {
     assert.match(dockerfile, new RegExp(`^COPY ${source}`, "mu"));
   }
   assert.match(dockerfile, /^ARG CANTRIP_VERSION_PATCH$/mu);
+  assert.doesNotMatch(dockerfile, /^COPY cantrip_server \.\/cantrip_server$/mu);
 });
 
 test("requires explicit commit-count versions for hosted Docker services", async () => {

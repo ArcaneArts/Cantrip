@@ -15,12 +15,26 @@ PGlite engine/runtime assets on both container architectures.
 Build on the target OS, or in a matching local container:
 
 ```sh
-CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 \
-  pnpm package:server:rust --target darwin-arm64 \
-  --postgres-bin /path/to/postgresql18/bin --output artifacts/native-server
+pnpm package:server --target darwin-arm64
 ```
 
-Reuse one `CARGO_TARGET_DIR` across development worktrees. Separate directories
+The canonical output is `artifacts/cantrip-server-darwin-arm64`. macOS builds
+use Homebrew's PostgreSQL 18 assets unless explicitly configured. Windows
+builds cache the pinned portable PostgreSQL archive without installing a
+service. Linux builds use `pg_config`, or `CANTRIP_POSTGRES_BIN_DIR`; install
+PostgreSQL 18 build assets for exports from private PostgreSQL 18 databases.
+The lower-level `package:server:rust` command remains available for explicit
+`--binary`, `--output`, and PostgreSQL asset options.
+
+Native GNU Linux builds compile the pinned PGlite engine against the build
+host's libc, matching the container build. Install Git, a C/C++ toolchain,
+Clang, Bison, Flex, zlib development headers, pkg-config and patchelf. The
+engine's libraries and matching runtime are cached under the shared Cargo
+target directory; no compilation or download occurs at server startup.
+
+The build helper uses one Git-common-directory cache by default, disables
+incremental compilation, and bounds builds to two jobs. Reuse one
+`CARGO_TARGET_DIR` when overriding it across development worktrees. Separate directories
 per worktree and incremental compiler state previously accumulated excessive
 storage. `--binary` packages an existing native server executable; the packager
 executes its `--materialize-pglite-runtime` operation so assets match that exact
@@ -58,7 +72,7 @@ Build and test the Linux image locally:
 ```sh
 docker buildx build --platform linux/amd64 \
   --build-arg CANTRIP_VERSION_PATCH="$(git rev-list --count HEAD)" \
-  -f deploy/docker/server-rust.Dockerfile --load -t cantrip-rust:qa .
+  -f deploy/docker/server.Dockerfile --load -t cantrip-rust:qa .
 node scripts/server-rust/container-server-acceptance.mjs \
   --image cantrip-rust:qa --report .qa/native-container.json
 ```
@@ -70,7 +84,7 @@ the Debian runtime image:
 ```sh
 docker buildx build --platform linux/amd64 \
   --build-arg CANTRIP_VERSION_PATCH="$(git rev-list --count HEAD)" \
-  -f deploy/docker/server-rust.Dockerfile --target distribution \
+  -f deploy/docker/server.Dockerfile --target distribution \
   --output type=local,dest=artifacts/native-linux-x64 .
 docker buildx build --platform linux/amd64 \
   -f scripts/server-rust/standalone-ubuntu.Dockerfile \

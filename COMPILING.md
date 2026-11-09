@@ -6,7 +6,8 @@ and iOS clients. Run commands from the repository root unless a section says
 otherwise.
 
 Cantrip's desktop bundle is a host-native build. It includes the React client,
-Tauri shell, server, worker, a platform-matched Node runtime, the Rust Cantrip
+Tauri shell, Rust server, worker, a platform-matched Node runtime for the worker,
+the Rust Cantrip
 CLI, portable CUA runtime, and patched Codex runtime. Native dependencies mean
 that a complete Windows bundle is built on Windows, a complete macOS bundle on
 macOS, and a complete Linux bundle on Linux.
@@ -73,6 +74,13 @@ Lower-level `package:server`, `package:worker`, `package:services`,
 `package:desktop-runtime`, and `package:app` commands are useful when iterating
 on one artifact. `pnpm bundle` is the end-to-end compilation check.
 
+The normal server build and packaging paths use Rust. `pnpm package:server`
+creates `artifacts/cantrip-server-<platform>-<architecture>` with native PGlite
+and private PostgreSQL assets. The installed server needs no Node or PostgreSQL
+installation. Desktop packaging also includes the bounded legacy-profile
+converter, using the worker's Node runtime only when an existing PGlite profile
+requires conversion. `pnpm server:dev` builds and watches the Rust server.
+
 ## Windows
 
 The supported release target is 64-bit Windows, identified by the build scripts
@@ -84,6 +92,7 @@ as `win32-x64`. Use Windows 10 or 11 on x64 hardware.
 machine, clones or refreshes a clean Cantrip checkout at `C:\src\Cantrip`, and
 runs the complete build. It installs WinGet when needed, then Git, x64 Node.js
 24, pnpm 11.15.1, Python, CMake, NASM, Rustup, the pinned Rust MSVC toolchain,
+the GNU Rust target and MSYS2 MinGW compiler for the native server,
 Visual Studio 2022 C++ Build Tools, and WebView2. Run a downloaded copy from a
 normal PowerShell window; it requests Administrator access itself:
 
@@ -160,7 +169,15 @@ Install the Rust version used by Cantrip and select the MSVC build:
 ```powershell
 rustup toolchain install 1.95.0 --profile default --component clippy --component rustfmt --component rust-src
 rustup default 1.95.0-x86_64-pc-windows-msvc
+rustup target add x86_64-pc-windows-gnu
 ```
+
+The desktop and worker retain their MSVC toolchain. The native server uses the
+GNU target and needs MSYS2's `mingw-w64-x86_64-gcc` and
+`mingw-w64-x86_64-pkgconf` packages, with `C:\msys64\mingw64\bin` on `PATH`.
+Server packaging downloads the pinned portable PostgreSQL 18.6 build assets
+into `%LOCALAPPDATA%\Cantrip\build-cache`; it does not install a database service.
+`CANTRIP_POSTGRES_BIN_DIR` selects an existing distribution instead.
 
 If `rustup default` reports that the named toolchain is unavailable, verify
 that Rustup's default host is `x86_64-pc-windows-msvc` with `rustup show` and
@@ -257,7 +274,7 @@ Install:
 5. Python 3, CMake, and pkg-config. With Homebrew:
 
    ```shell
-   brew install python cmake pkg-config
+   brew install python cmake pkg-config postgresql@18
    ```
 
 Confirm that Xcode's active developer directory is correct:
@@ -314,11 +331,13 @@ baseline examples.
 ```shell
 sudo apt update
 sudo apt install -y \
+  bison \
   build-essential \
   clang \
   cmake \
   curl \
   file \
+  flex \
   git \
   libayatana-appindicator3-dev \
   libclang-dev \
@@ -327,11 +346,19 @@ sudo apt install -y \
   libssl-dev \
   libwebkit2gtk-4.1-dev \
   libxdo-dev \
+  patchelf \
   pkg-config \
   python3 \
   rpm \
-  wget
+  wget \
+  zlib1g-dev
 ```
+
+Server packaging also needs PostgreSQL 18 runtime/build assets. Install them
+from a PostgreSQL package repository for the build distribution, or set
+`CANTRIP_POSTGRES_BIN_DIR` to an extracted PostgreSQL 18 `bin` directory. The
+canonical Dockerfile supplies those assets during its build. A packaged server
+does not require PostgreSQL development packages on the destination machine.
 
 The WebKitGTK and desktop library names for other distributions are listed in
 the [Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux).
@@ -500,6 +527,12 @@ Rust outputs can be cleaned independently when necessary:
 cargo clean --manifest-path cantrip_cli/Cargo.toml
 cargo clean --manifest-path cantrip_app/src-tauri/Cargo.toml
 ```
+
+The server build helper defaults to one Cargo cache under the repository's
+shared Git directory, with incremental compilation disabled, two build jobs,
+and development/test debug information disabled. `CARGO_TARGET_DIR` overrides
+that location. When cleaning an explicitly shared server cache, pass the same
+directory to Cargo; avoid creating separate caches for each worktree.
 
 Reinstall JavaScript dependencies only when lockfile or installation state is
 suspect:

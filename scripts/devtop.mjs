@@ -173,7 +173,7 @@ try {
         "cyan,gray,blue,magenta,green",
         "pnpm --filter @cantrip/glitch dev",
         "pnpm --filter @cantrip/protocol dev",
-        `cross-env FORCE_COLOR=1 CANTRIP_DATA_DIR=${packageStateDirectory} CANTRIP_SERVICE_LOG_DIR=${packageStateDirectory}/logs/server pnpm --filter @cantrip/server dev`,
+        `cross-env FORCE_COLOR=1 CANTRIP_DATA_DIR=${relativeStateDirectory} CANTRIP_SERVICE_LOG_DIR=${relativeStateDirectory}/logs/server pnpm server:dev`,
         `node scripts/wait-for-server.mjs && cross-env FORCE_COLOR=1 CANTRIP_WORKER_DATA_DIR=${packageStateDirectory}/worker CANTRIP_SERVICE_LOG_DIR=${packageStateDirectory}/logs/worker CANTRIP_WORKER_DEVELOPMENT_BOOTSTRAP=true pnpm --filter @cantrip/worker dev`,
         `node scripts/wait-for-server.mjs && cross-env CARGO_TARGET_DIR=${tauriTargetDirectory} CANTRIP_DEVELOPMENT_KEY_VAULT=1 VITE_CANTRIP_DISABLE_LEGACY_WEBCRYPTO=true pnpm --filter @cantrip/app exec tauri dev --config ${tauriConfigPath}`,
       ]);

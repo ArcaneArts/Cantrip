@@ -2,12 +2,12 @@ const serverUrl =
   process.env.CANTRIP_SERVER_URL ??
   `http://${process.env.CANTRIP_SERVER_HOST ?? "127.0.0.1"}:${process.env.CANTRIP_SERVER_PORT ?? "4310"}`;
 const requestedTimeoutMs = Number(
-  process.env.CANTRIP_DEV_STARTUP_TIMEOUT_MS ?? 60_000,
+  process.env.CANTRIP_DEV_STARTUP_TIMEOUT_MS ?? 0,
 );
 const timeoutMs =
   Number.isFinite(requestedTimeoutMs) && requestedTimeoutMs > 0
     ? requestedTimeoutMs
-    : 60_000;
+    : Infinity;
 const deadline = Date.now() + timeoutMs;
 
 while (Date.now() < deadline) {

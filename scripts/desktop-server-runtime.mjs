@@ -20,16 +20,16 @@ export async function makeDesktopServerFilesWritable(directory) {
 
 // This is launcher configuration, not a runtime capability probe. The desktop
 // attempts the configured executable and reports the actual spawn/start error.
-export async function configureDesktopServer(directory, runtime) {
+export async function configureDesktopServer(directory, runtime = "rust") {
+  if (runtime !== "rust")
+    throw new Error("The desktop server runtime is Rust.");
   const configuration = { runtime };
-  if (runtime === "rust") {
-    const manifest = JSON.parse(
-      await readFile(path.join(directory, "native-server.json"), "utf8"),
-    );
-    configuration.postgresBin = manifest.postgres.bin;
-    configuration.profileConverter = "../profile-converter/dist/index.mjs";
-    await makeDesktopServerFilesWritable(directory);
-  }
+  const manifest = JSON.parse(
+    await readFile(path.join(directory, "native-server.json"), "utf8"),
+  );
+  configuration.postgresBin = manifest.postgres.bin;
+  configuration.profileConverter = "../profile-converter/dist/index.mjs";
+  await makeDesktopServerFilesWritable(directory);
   await writeFile(
     path.join(directory, "desktop-server.json"),
     JSON.stringify(configuration, null, 2) + "\n",

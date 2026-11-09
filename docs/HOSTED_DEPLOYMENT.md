@@ -186,10 +186,11 @@ Never clone this volume to create a second worker.
 ## Native server and worker packages
 
 `pnpm bundle` creates platform-native server, worker, and desktop archives. The
-server and worker archives contain their own Node runtime. Copy `.env.example`
-to `.env` and use `start.sh` or `start.cmd`; no system Node installation is
-required. The server archive also includes `migrate.sh` and `migrate.cmd` for an
-explicit migration-only run.
+server archive contains the Rust executable, native PGlite and private
+PostgreSQL assets; the worker archive contains its own Node runtime. Copy
+`.env.example` to `.env` and use `start.sh` or `start.cmd`; no system Node
+installation is required. The server archive also includes `migrate.sh` and
+`migrate.cmd` for an explicit migration-only run.
 
 For a native worker, keep `CANTRIP_WORKER_DATA_DIR` on a persistent local disk.
 Upgrade by stopping the service, replacing the read-only application directory,

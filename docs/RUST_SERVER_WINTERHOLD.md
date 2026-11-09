@@ -6,11 +6,11 @@ to run the Rust server. The worker retains its own Node runtime.
 
 ## Select the server
 
-The deployment source is the exact promoted `release` commit. To select Rust
-for the host phase:
+The deployment source is the exact promoted `release` commit. Its normal host
+phase builds the Rust server:
 
 ```sh
-pnpm deploy:server --server-runtime rust
+pnpm deploy:server
 ```
 
 This is a production deployment command, not a local test command. Run it only
@@ -18,12 +18,12 @@ when a production deployment is authorized. It reads production credentials
 and contacts the configured host. The promoted snapshot must contain the native
 Dockerfile, packager, installer and matching server code.
 
-`deploy/production/deploy.json` also accepts `"serverRuntime": "rust"` or
-`"serverRuntime": "node"`. The full release command uses that committed choice;
-the host command's explicit option takes precedence. The current default stays
-Node until full replacement qualification and final cutover.
+`deploy/production/deploy.json` accepts `"serverRuntime": "rust"`; omitting the
+field also selects Rust. The explicit `--server-runtime rust` spelling remains
+accepted. The full replacement still requires source retirement and final
+shipping acceptance; see [default cutover](RUST_SERVER_DEFAULT_CUTOVER.md).
 
-Both implementations export the same distribution entry points, `start.sh` and
+The distribution retains the existing entry points, `start.sh` and
 `migrate.sh`. The installer executes those entry points rather than requiring a
 Node executable or using an artifact marker to infer runtime support. Rust
 packages include native PGlite and private PostgreSQL assets. Winterhold's

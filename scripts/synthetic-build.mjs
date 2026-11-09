@@ -154,7 +154,7 @@ await step("build-services", "Build Cantrip services", async () => {
     ],
     "Shared service build",
   );
-  await runPnpm(["--filter", "@cantrip/server", "build"], "Server build");
+  // The selected revision's bundle command builds its own server implementation.
   await runPnpm(["--filter", "@cantrip/worker", "build"], "Worker build");
 });
 await step("build-desktop", "Package Cantrip desktop", async () => {

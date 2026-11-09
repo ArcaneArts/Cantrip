@@ -45,7 +45,9 @@ test("devtop is launched through the hard-stop lifecycle wrapper", async () => {
   assert.match(launcher, /CARGO_TARGET_DIR=\$\{tauriTargetDirectory\}/u);
   assert.match(launcher, /CANTRIP_DEVELOPMENT_KEY_VAULT=1/u);
   assert.match(launcher, /VITE_CANTRIP_DISABLE_LEGACY_WEBCRYPTO=true/u);
-  assert.match(launcher, /CANTRIP_DATA_DIR=\$\{packageStateDirectory\}/u);
+  assert.match(launcher, /CANTRIP_DATA_DIR=\$\{relativeStateDirectory\}/u);
+  assert.match(launcher, /pnpm server:dev/u);
+  assert.doesNotMatch(launcher, /pnpm --filter @cantrip\/server dev/u);
   assert.match(
     launcher,
     /CANTRIP_WORKER_DATA_DIR=\$\{packageStateDirectory\}\/worker/u,

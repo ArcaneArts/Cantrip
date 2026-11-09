@@ -42,25 +42,28 @@ hashes of distribution files before the manifest is written. It describes the
 artifact contents; platform qualification requires running the artifact on the
 target platform. A successful build on another platform does not establish it.
 
-Build locally using `node scripts/package-server-rust.mjs --target <target>`;
-`pg_config` discovers the installed PostgreSQL assets, or specify
+Build locally using `pnpm package:server --target <target>`. The canonical
+artifact is `artifacts/cantrip-server-<target>`. The lower-level
+`node scripts/package-server-rust.mjs --target <target>` supports explicit
+outputs and existing binaries. PostgreSQL assets come from Homebrew PostgreSQL
+18 on macOS, a cached portable archive on Windows, or `pg_config` on Linux; specify
 `--postgres-bin`, `--postgres-share`, and `--postgres-lib`. `--binary` packages
 an already built executable, and `--output` selects a new artifact directory.
 Build tooling may use Node and Cargo; neither is required at runtime. Preserve
 the artifact's directory layout when copying it to another machine.
 
-The Linux container source is `deploy/docker/server-rust.Dockerfile`; its
+The Linux container source is `deploy/docker/server.Dockerfile`; its
 `distribution` target exports the same tree for native systemd deployment.
-`deploy/compose.rust.yml` overlays the hosted Compose configuration for local
-qualification. The canonical packaged desktop and hosted deployment defaults
-remain on the existing server until the full replacement acceptance and data
-migration/rollback work is complete. This artifact milestone does not by itself
-establish production cutover readiness.
+The canonical hosted Compose and deployment commands use this native server.
+`deploy/docker/server-rust.Dockerfile` and `deploy/compose.rust.yml` remain
+compatible explicit aliases. Release readiness additionally requires the
+documented platform, client, migration and rollback qualification.
 
 ## Existing desktop profiles
 
-`pnpm package:app --server-runtime rust` opts into native desktop packaging.
-`--from-artifacts` reuses the selected native server and unchanged worker artifacts;
+`pnpm package:app` packages the native server by default. The existing
+`--server-runtime rust` spelling is also accepted.
+`--from-artifacts` reuses the canonical native server and unchanged worker artifacts;
 it still builds and packages the small `@cantrip/profile-converter` tool. The
 worker's shared Node runtime supplies that bounded tool. The native server does
 not load it for serving or background work.

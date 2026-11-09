@@ -79,9 +79,11 @@ services:
       test:
         [
           "CMD",
-          "/opt/cantrip/runtime/node",
-          "-e",
-          "fetch('http://127.0.0.1:4310/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+          "curl",
+          "--fail",
+          "--silent",
+          "--show-error",
+          "http://127.0.0.1:4310/readyz",
         ]
       interval: 10s
       timeout: 5s

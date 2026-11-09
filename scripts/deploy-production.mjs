@@ -414,15 +414,11 @@ function writeRemoteEnvironment(
   });
 }
 
-function serverDockerfile(runtime = "node") {
-  if (!["node", "rust"].includes(runtime)) {
-    throw new Error("Deployment serverRuntime must be node or rust.");
+function serverDockerfile(runtime = "rust") {
+  if (runtime !== "rust") {
+    throw new Error("Deployment serverRuntime must be rust.");
   }
-  return path.join(
-    "deploy",
-    "docker",
-    runtime === "rust" ? "server-rust.Dockerfile" : "server.Dockerfile",
-  );
+  return path.join("deploy", "docker", "server.Dockerfile");
 }
 
 export function productionServerBuildArguments(

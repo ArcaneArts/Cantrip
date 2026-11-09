@@ -8,6 +8,35 @@ export const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 
 export async function rustEnvironment(overrides = {}) {
   const environment = { ...process.env, ...overrides };
+  environment.CARGO_INCREMENTAL ??= "0";
+  environment.CARGO_BUILD_JOBS ??= "2";
+  environment.CARGO_PROFILE_DEV_DEBUG ??= "0";
+  environment.CARGO_PROFILE_TEST_DEBUG ??= "0";
+  if (!environment.CARGO_TARGET_DIR) {
+    try {
+      const { stdout } = await execute(
+        "git",
+        ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+        { cwd: repositoryRoot },
+      );
+      environment.CARGO_TARGET_DIR = path.join(
+        stdout.trim(),
+        "cantrip",
+        "rust-server-target",
+      );
+    } catch {
+      environment.CARGO_TARGET_DIR = path.join(
+        repositoryRoot,
+        ".cantrip",
+        "build-cache",
+        "rust-server",
+      );
+    }
+  }
+  environment.CARGO_TARGET_DIR = path.resolve(
+    repositoryRoot,
+    environment.CARGO_TARGET_DIR,
+  );
   const { stdout: version } = await execute("rustc", ["-vV"], {
     cwd: repositoryRoot,
   });
@@ -19,6 +48,15 @@ export async function rustEnvironment(overrides = {}) {
       : host);
   if (target) environment.CARGO_BUILD_TARGET = target;
   if (environment.PGLITE_LIB_DIR) return environment;
+  if (
+    process.platform === "linux" &&
+    target === host &&
+    target.endsWith("-gnu")
+  ) {
+    const { linuxPgliteEngine } = await import("./linux-pglite-engine.mjs");
+    environment.PGLITE_LIB_DIR = await linuxPgliteEngine(target, environment);
+    return environment;
+  }
 
   // The 0.2.7 artifact build scripts only publish their root when an
   // uncompressed .a exists. Published packages contain .a.zst instead, so the
