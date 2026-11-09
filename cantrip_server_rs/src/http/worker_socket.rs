@@ -25,8 +25,11 @@ use std::{
 };
 use tungstenite::Message;
 use uuid::Uuid;
+#[path = "worker_socket_logs.rs"]
+mod logs;
 #[path = "worker_socket_output.rs"]
 mod output;
+use logs::Rejection;
 
 const V1: &str = "cantrip-worker-auth-ready-v1";
 const V2: &str = "cantrip-worker-auth-ready-v2";
@@ -137,6 +140,7 @@ async fn run(
         .filter(|s| !s.is_empty())
         .map(String::from)
     else {
+        logs::rejected(&ctx.id, None, Rejection::MissingWorker);
         close(&mut socket, 1008, "Unauthorized").await;
         return;
     };
@@ -154,6 +158,7 @@ async fn run(
         })
     };
     if generation.is_some_and(|value| !valid_generation(value)) {
+        logs::rejected(&ctx.id, Some(&worker), Rejection::InvalidGeneration);
         close(&mut socket, 1008, "Unauthorized").await;
         return;
     }
@@ -202,6 +207,7 @@ async fn run(
         )
         .await?;
         let Some(authenticated) = authenticated else {
+            logs::rejected(&ctx.id, Some(&worker), Rejection::InvalidCredential);
             return Ok::<_, anyhow::Error>(Err("Unauthorized"));
         };
         if !authenticated.development
@@ -211,11 +217,13 @@ async fn run(
                 .unwrap()
                 .contains(&authenticated.credential.id)
         {
+            logs::rejected(&ctx.id, Some(&worker), Rejection::Revoked);
             return Ok(Err("Worker credential was revoked"));
         }
         if state.repository.owner(&worker).await?.as_deref()
             != Some(authenticated.credential.owner_id.as_str())
         {
+            logs::rejected(&ctx.id, Some(&worker), Rejection::OwnerMismatch);
             return Ok(Err("Worker identity mismatch"));
         }
         Ok(Ok(authenticated))
@@ -283,15 +291,28 @@ async fn run(
         if !authenticated.development && revoked.contains(&peer.identity.credential) {
             None
         } else {
-            Some(state.bridge.attach_worker(
+            let attaching = state.bridge.attach_worker(
                 worker.clone(),
                 peer.clone(),
                 Some(owner.clone()),
                 ready,
-            ))
+            );
+            let request = ctx.id.clone();
+            let target = worker.clone();
+            Some(
+                async move {
+                    let result = attaching.await;
+                    if let Err(error) = &result {
+                        logs::claim_failed(&request, &target, error);
+                    }
+                    result
+                }
+                .boxed(),
+            )
         }
     };
     let Some(mut attaching) = attaching else {
+        logs::rejected(&ctx.id, Some(&worker), Rejection::Revoked);
         close(&mut socket, 1008, "Worker credential was revoked").await;
         return;
     };
@@ -304,19 +325,26 @@ async fn run(
             if let Some((code, reason)) = closed {
                 buffer.clear();
                 close(&mut socket, code, &reason).await;
+                drop(socket);
+                let _ = attaching.await;
                 return;
             }
             tokio::select! {biased;
                 _=attaching_close.changed()=>continue,
                 _=shutdown.changed()=>{
                     peer.open.store(false, Ordering::Release);
-                    buffer.clear();close(&mut socket,1005,"").await;return;
+                    buffer.clear();close(&mut socket,1005,"").await;drop(socket);let _=attaching.await;return;
+                },
+                _=&mut timeout=>{
+                    peer.open.store(false,Ordering::Release);buffer.clear();
+                    close(&mut socket,1013,"Worker authentication timed out").await;
+                    drop(socket);let _=attaching.await;return;
                 },
                 input=socket.recv()=>match input {
-                    None=>{peer.open.store(false,Ordering::Release);return;},
-                    Some(Ok(Message::Close(_)))=>{peer.open.store(false,Ordering::Release);buffer.clear();let _=socket.flush().await;return;},
-                    Some(Err(error))=>{peer.open.store(false,Ordering::Release);buffer.clear();if let Some(code)=protocol_close(&error){write_close(&mut socket,code,"").await;}return;},
-                    Some(Ok(message))=>{if let Err((code,reason))=buffer.push(message){peer.open.store(false,Ordering::Release);buffer.clear();close(&mut socket,code,reason).await;return;}},
+                    None=>{peer.open.store(false,Ordering::Release);drop(socket);let _=attaching.await;return;},
+                    Some(Ok(Message::Close(_)))=>{peer.open.store(false,Ordering::Release);buffer.clear();let _=socket.flush().await;drop(socket);let _=attaching.await;return;},
+                    Some(Err(error))=>{peer.open.store(false,Ordering::Release);buffer.clear();if let Some(code)=protocol_close(&error){write_close(&mut socket,code,"").await;}drop(socket);let _=attaching.await;return;},
+                    Some(Ok(message))=>{if let Err((code,reason))=buffer.push(message){peer.open.store(false,Ordering::Release);buffer.clear();close(&mut socket,code,reason).await;drop(socket);let _=attaching.await;return;}},
                 },
                 result=&mut attaching=>break result,
             }
@@ -336,10 +364,6 @@ async fn run(
         }
         Err(_) => {
             peer.open.store(false, Ordering::Release);
-            eprintln!(
-                "{}",
-                serde_json::json!({"event":"worker.connection.claim-failed","subsystem":"worker-connection","operation":"connect","reasonCode":"coordination-unavailable","status":"failed","workerId":worker})
-            );
             close(
                 &mut socket,
                 1013,
@@ -350,6 +374,7 @@ async fn run(
         }
     }
     state.invalidate(&owner, "worker-availability", &worker);
+    logs::authenticated(&ctx.id, &worker, &generation);
     // Keep the subscription for this socket's lifetime. Notifications only wake
     // durable delivery; its exact worker ACK establishes physical settlement.
     let weak = Arc::downgrade(state);
