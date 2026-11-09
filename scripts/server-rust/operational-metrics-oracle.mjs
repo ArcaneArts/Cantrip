@@ -1,6 +1,6 @@
 // Execute the actual Source collector with controlled clocks. Entire ordered
 // Prometheus documents and snapshots are compared, including exact BigInt bytes.
-import { OperationalMetrics } from "../../cantrip_server/src/operations/metrics.ts";
+import { OperationalMetrics } from "../../tests/reference-node-server/src/operations/metrics.ts";
 const startedAt = 1792886400000;
 let now = startedAt,
   elapsed = 1000;

@@ -1,8 +1,8 @@
 // Opt-in oracle bootstrap using the unchanged production coordination classes.
 import { randomUUID } from "node:crypto";
-import { RedisRelayCoordinator } from "../../cantrip_server/src/coordination/relay-coordinator.ts";
-import { CoordinatedWorkerBridge } from "../../cantrip_server/src/workers/coordinated-bridge.ts";
-import { AppLiveHub } from "../../cantrip_server/src/live/hub.ts";
+import { RedisRelayCoordinator } from "../../tests/reference-node-server/src/coordination/relay-coordinator.ts";
+import { CoordinatedWorkerBridge } from "../../tests/reference-node-server/src/workers/coordinated-bridge.ts";
+import { AppLiveHub } from "../../tests/reference-node-server/src/live/hub.ts";
 
 export async function prepareSharedRuntime(config, database) {
   config.serverInstanceId ??= randomUUID();

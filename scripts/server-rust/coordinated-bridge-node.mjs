@@ -1,6 +1,6 @@
 // Development driver around the production classes and public wire codecs.
-import { RedisRelayCoordinator } from "../../cantrip_server/src/coordination/relay-coordinator.ts";
-import { CoordinatedWorkerBridge } from "../../cantrip_server/src/workers/coordinated-bridge.ts";
+import { RedisRelayCoordinator } from "../../tests/reference-node-server/src/coordination/relay-coordinator.ts";
+import { CoordinatedWorkerBridge } from "../../tests/reference-node-server/src/workers/coordinated-bridge.ts";
 import {
   createWorkerLinkFrame,
   decodeWorkerLinkFrame,

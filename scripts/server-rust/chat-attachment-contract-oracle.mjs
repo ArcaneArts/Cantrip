@@ -4,7 +4,7 @@ import { vectorCases, outcome } from "./security-oracle.mjs";
 import {
   protectedAttachmentMetadataFixture,
   protectedAttachmentChunkFixture,
-} from "../../cantrip_server/test/protected-attachment-fixture.ts";
+} from "../../tests/reference-node-server/test/protected-attachment-fixture.ts";
 const metadata = protectedAttachmentMetadataFixture();
 const chunk = protectedAttachmentChunkFixture({
   sequence: 0,

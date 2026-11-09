@@ -85,7 +85,7 @@ for (const [label, source] of [
 test("classifies both real repository references without exempting the file", async () => {
   const source = await readFile(
     new URL(
-      "../cantrip_server/src/db/repository/cantrip-os-desktop.ts",
+      "../tests/reference-node-server/src/db/repository/cantrip-os-desktop.ts",
       import.meta.url,
     ),
     "utf8",

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { removedPlaintextRepositoryRoute } from "../../cantrip_server/src/app/shared/request-policy.ts";
+import { removedPlaintextRepositoryRoute } from "../../tests/reference-node-server/src/app/shared/request-policy.ts";
 import { repositoryRoot } from "./build.mjs";
 
 export async function removedRepositoryContract() {

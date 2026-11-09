@@ -2,7 +2,7 @@ import {
   TaskDispatchConflictError,
   TaskDispatchNotFoundError,
   taskDispatchSchedulerPlan,
-} from "../../cantrip_server/src/db/task-dispatch.ts";
+} from "../../tests/reference-node-server/src/db/task-dispatch.ts";
 export async function taskSchedulerFixture(repository, input) {
   const task = repository.taskDispatch,
     trace = [],

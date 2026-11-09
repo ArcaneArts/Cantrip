@@ -1,9 +1,9 @@
 // Actual Goal runtime, routing, live writers and SQL repositories. The turn
 // boundary and worker are explicit controlled peers in this development fixture.
-import { serverLogger } from "../../cantrip_server/src/logger.ts";
-import { createTaskExecutionRecovery } from "../../cantrip_server/src/app/runtime/task-execution-recovery.ts";
-import { createTaskGoalRuntime } from "../../cantrip_server/src/app/runtime/task-goal-runtime.ts";
-import { createModelRoutingRuntime } from "../../cantrip_server/src/app/runtime/model-routing-runtime.ts";
+import { serverLogger } from "../../tests/reference-node-server/src/logger.ts";
+import { createTaskExecutionRecovery } from "../../tests/reference-node-server/src/app/runtime/task-execution-recovery.ts";
+import { createTaskGoalRuntime } from "../../tests/reference-node-server/src/app/runtime/task-goal-runtime.ts";
+import { createModelRoutingRuntime } from "../../tests/reference-node-server/src/app/runtime/model-routing-runtime.ts";
 import { turnLiveEnvironment } from "./turn-live-node-fixture.mjs";
 import { createRequire } from "node:module";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -14,7 +14,7 @@ import {
   pausePeer,
 } from "./automation-pause-node-fixture.mjs";
 const { sql } = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("drizzle-orm");
 function template(value, command) {
   if (value === "<goal-message-id>") return command.taskContext?.message?.id;

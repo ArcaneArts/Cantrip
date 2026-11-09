@@ -23,7 +23,7 @@ import { heartbeat } from "./security-fixtures.mjs";
 import { tunnelRecord } from "./tunnel-record-fixture.mjs";
 
 const WebSocket = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("ws");
 const origin = "http://127.0.0.1:5173";
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");

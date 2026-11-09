@@ -1,11 +1,11 @@
 // Diagnostics from actual repository operations. Never a runtime dependency.
 import { createRequire } from "node:module";
 import { writeFile } from "node:fs/promises";
-import { TerminalRepository } from "../../cantrip_server/src/db/repository/terminals.ts";
+import { TerminalRepository } from "../../tests/reference-node-server/src/db/repository/terminals.ts";
 import { label, state } from "./project-target-state.mjs";
-import * as schema from "../../cantrip_server/src/db/schema.ts";
+import * as schema from "../../tests/reference-node-server/src/db/schema.ts";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { drizzle } = require("drizzle-orm/pg-proxy");
 const { getTableColumns } = require("drizzle-orm");

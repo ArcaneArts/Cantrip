@@ -24,11 +24,11 @@ export const topologyMatrix = [
         "activates and renews LOCAL after the broker proves its identity",
       ),
       evidence(
-        "cantrip_server/test/direct-attachment-coordinator.test.ts",
+        "tests/reference-node-server/test/direct-attachment-coordinator.test.ts",
         "keeps an activated WorkerLink capability alive across repeated renewals",
       ),
       evidence(
-        "cantrip_server/test/project-placement-api.test.ts",
+        "tests/reference-node-server/test/project-placement-api.test.ts",
         "activates an exact LOCAL capability before accepting lease heartbeats",
       ),
     ],
@@ -127,11 +127,11 @@ export const topologyMatrix = [
     expected: "identical semantics",
     evidence: [
       evidence(
-        "cantrip_server/test/worker-link-service.test.ts",
+        "tests/reference-node-server/test/worker-link-service.test.ts",
         "resolves and mutates a session from any coordinated server instance",
       ),
       evidence(
-        "cantrip_server/test/shared-relay-coordination.test.ts",
+        "tests/reference-node-server/test/shared-relay-coordination.test.ts",
         "routes commands and binary frames between server instances",
       ),
     ],
@@ -141,7 +141,7 @@ export const topologyMatrix = [
     expected: "revoke and reconnect safely",
     evidence: [
       evidence(
-        "cantrip_server/test/worker-link-coordinator.test.ts",
+        "tests/reference-node-server/test/worker-link-coordinator.test.ts",
         "expires grants and sessions and rolls back failed installations",
       ),
     ],
@@ -151,7 +151,7 @@ export const topologyMatrix = [
     expected: "exact account-session revocation",
     evidence: [
       evidence(
-        "cantrip_server/test/worker-link-service.test.ts",
+        "tests/reference-node-server/test/worker-link-service.test.ts",
         "broadcasts account-session revocation to the authority instance",
       ),
       evidence(
@@ -165,7 +165,7 @@ export const topologyMatrix = [
     expected: "exact grant revocation",
     evidence: [
       evidence(
-        "cantrip_server/test/worker-link-coordinator.test.ts",
+        "tests/reference-node-server/test/worker-link-coordinator.test.ts",
         "revokes one exact tunnel attachment without retiring sibling grants",
       ),
     ],
@@ -175,7 +175,7 @@ export const topologyMatrix = [
     expected: "generation-fenced reconnect",
     evidence: [
       evidence(
-        "cantrip_server/test/worker-link-coordinator.test.ts",
+        "tests/reference-node-server/test/worker-link-coordinator.test.ts",
         "fences account sessions, resources, worker loss, and process replacement",
       ),
     ],
@@ -313,7 +313,7 @@ export const featureMatrix = [
     id: "multiple-clients-per-worker",
     evidence: [
       evidence(
-        "cantrip_server/test/worker-link-coordinator.test.ts",
+        "tests/reference-node-server/test/worker-link-coordinator.test.ts",
         "isolates multiple clients per worker and multiple workers per client",
       ),
     ],
@@ -326,7 +326,7 @@ export const featureMatrix = [
         "keeps simultaneous workers isolated beneath one client manager",
       ),
       evidence(
-        "cantrip_server/test/worker-link-coordinator.test.ts",
+        "tests/reference-node-server/test/worker-link-coordinator.test.ts",
         "isolates multiple clients per worker and multiple workers per client",
       ),
     ],
@@ -348,7 +348,7 @@ export const featureMatrix = [
         "multiplexes reliable streams and ignores stale route frames",
       ),
       evidence(
-        "cantrip_server/test/worker-link-relay.test.ts",
+        "tests/reference-node-server/test/worker-link-relay.test.ts",
         "fails closed on stale generations and closes worker channels on disconnect",
       ),
     ],
@@ -361,7 +361,7 @@ export const featureMatrix = [
         "honors LOCAL-only and RELAY-only policy without rewriting authority",
       ),
       evidence(
-        "cantrip_server/test/worker-link-coordinator.test.ts",
+        "tests/reference-node-server/test/worker-link-coordinator.test.ts",
         "advertises direct routes only when policy permits them",
       ),
     ],
@@ -458,7 +458,7 @@ const packageTestRoots = {
   protocol: "packages/protocol/",
   app: "cantrip_app/",
   worker: "cantrip_worker/",
-  server: "cantrip_server/",
+  server: "tests/reference-node-server/",
 };
 
 export async function validateAcceptanceMatrix() {
@@ -584,7 +584,7 @@ export async function runAcceptance({
     await attempt(`${group} behavior`, () =>
       runCommand("pnpm", [
         "--filter",
-        `@cantrip/${group}`,
+        group === "server" ? "@cantrip/server-reference" : `@cantrip/${group}`,
         "exec",
         "vitest",
         "run",
@@ -593,6 +593,17 @@ export async function runAcceptance({
       ]),
     );
   }
+  await attempt("current Rust server authority", () =>
+    runCommand(process.execPath, [
+      "scripts/server-rust/cargo.mjs",
+      "test",
+      "--test",
+      "http_security_boundaries",
+      "current_native_http_authority_isolated_from_reference_server",
+      "--",
+      "--exact",
+    ]),
+  );
   await attempt("native behavior", () =>
     runCommand("cargo", [
       "test",

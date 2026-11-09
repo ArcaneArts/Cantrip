@@ -9,7 +9,7 @@ import {
 import { eventually } from "./full-worker.mjs";
 import { label, literal } from "./project-target-state.mjs";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const postgres = require("postgres");
 const id = (n) => `f8f8f8f8-8888-4888-8888-${String(n).padStart(12, "0")}`;

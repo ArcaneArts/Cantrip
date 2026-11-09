@@ -1,11 +1,11 @@
 // Execute the unchanged receipt route against the real migrated repository.
 import { createRequire } from "node:module";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const Fastify = require("fastify");
-import { installInternalNativeCommandRoutes } from "../../cantrip_server/src/app/routes/internal-native-commands.ts";
-import { readServerConfig } from "../../cantrip_server/src/config.ts";
+import { installInternalNativeCommandRoutes } from "../../tests/reference-node-server/src/app/routes/internal-native-commands.ts";
+import { readServerConfig } from "../../tests/reference-node-server/src/config.ts";
 export async function receiptHandlerFixture(repository, input) {
   const app = Fastify(),
     trace = [];

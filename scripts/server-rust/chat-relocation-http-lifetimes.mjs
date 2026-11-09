@@ -5,7 +5,7 @@ import { request } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
 import { eventually } from "./full-worker.mjs";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 
 function deferred() {

@@ -1,4 +1,4 @@
-import { encodeChatRelocationPayload } from "../../cantrip_server/src/db/chat-relocation-jobs.ts";
+import { encodeChatRelocationPayload } from "../../tests/reference-node-server/src/db/chat-relocation-jobs.ts";
 import { createHash } from "node:crypto";
 import { chatHydrationFixture } from "./chat-hydration-node-fixture.mjs";
 export async function chatRelocationFixture(repo, r) {

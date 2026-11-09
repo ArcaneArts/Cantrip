@@ -25,7 +25,7 @@ const { values } = parseArgs({
   },
 });
 const { createClient } = createRequire(
-  path.join(repositoryRoot, "cantrip_server/package.json"),
+  path.join(repositoryRoot, "tests/reference-node-server/package.json"),
 )("redis");
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-redis-coordination-"));
 const report = {

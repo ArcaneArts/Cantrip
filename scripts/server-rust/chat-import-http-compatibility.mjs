@@ -15,7 +15,7 @@ import { password } from "./security-fixtures.mjs";
 import { importLeases } from "./chat-import-http-leases.mjs";
 import { importRestarts } from "./chat-import-http-restart.mjs";
 import { importDiscoveryEdges } from "./chat-import-http-discovery.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import {
   targetStateSql,
   localOwner,

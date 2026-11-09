@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { nativeHistoryPayloadDigest } from "../../cantrip_server/src/db/repository/native-history-digest.ts";
-import { protectedEventId } from "../../cantrip_server/src/db/repository/native-history-output-alias.ts";
+import { nativeHistoryPayloadDigest } from "../../tests/reference-node-server/src/db/repository/native-history-digest.ts";
+import { protectedEventId } from "../../tests/reference-node-server/src/db/repository/native-history-output-alias.ts";
 import {
   retainedPrompt,
   deferredAttachment,

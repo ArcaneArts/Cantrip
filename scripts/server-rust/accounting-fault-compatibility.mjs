@@ -14,7 +14,7 @@ import {
   waitAccounting,
 } from "./accounting-production-peer.mjs";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 const { values } = parseArgs({ options: { report: { type: "string" } } });
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-accounting-fault-"));

@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { setTimeout as delay } from "node:timers/promises";
 import { terminalServerMessageSchema } from "../../packages/protocol/dist/terminals.js";
 const WebSocket = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("ws");
 export async function until(read, name) {
   const end = Date.now() + 15000;

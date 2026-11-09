@@ -1,4 +1,4 @@
-import { osRunExecutionKey } from "../../cantrip_server/src/db/repository/cantrip-os-run-capture.ts";
+import { osRunExecutionKey } from "../../tests/reference-node-server/src/db/repository/cantrip-os-run-capture.ts";
 let input = "";
 for await (const chunk of process.stdin) input += chunk;
 const roots = JSON.parse(input);

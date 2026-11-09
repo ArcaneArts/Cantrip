@@ -9,7 +9,7 @@ import { buildRustServer, buildRustExample, repositoryRoot } from "./build.mjs";
 import { fixtureEnvironment } from "./process.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const postgres = require("postgres");
 const root = await mkdtemp(

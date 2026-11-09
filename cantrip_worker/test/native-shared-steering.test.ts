@@ -3,7 +3,7 @@ import { createServer, type ServerResponse } from "node:http";
 import { chatMessageProtectedClassificationSchema } from "@cantrip/protocol";
 import { decryptChatMessageProtectedContent } from "@cantrip/crypto";
 import { describe, expect, it, vi } from "vitest";
-import * as schema from "../../cantrip_server/src/db/schema.js";
+import * as schema from "../../tests/reference-node-server/src/db/schema.js";
 import { createNativeSharedViewFixture } from "./native-shared-view-fixture.js";
 
 const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();

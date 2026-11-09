@@ -1,7 +1,7 @@
-import { assertNativeRuntimeWritable } from "../../cantrip_server/src/db/repository/native-runtime-handoff-guard.ts";
-import { lockNativeCommandChat } from "../../cantrip_server/src/db/repository/native-command-lock.ts";
-import { runtimeHandoffConfiguration } from "../../cantrip_server/src/terminals/runtime-handoff-configuration.ts";
-import { createModelRoutingRuntime } from "../../cantrip_server/src/app/runtime/model-routing-runtime.ts";
+import { assertNativeRuntimeWritable } from "../../tests/reference-node-server/src/db/repository/native-runtime-handoff-guard.ts";
+import { lockNativeCommandChat } from "../../tests/reference-node-server/src/db/repository/native-command-lock.ts";
+import { runtimeHandoffConfiguration } from "../../tests/reference-node-server/src/terminals/runtime-handoff-configuration.ts";
+import { createModelRoutingRuntime } from "../../tests/reference-node-server/src/app/runtime/model-routing-runtime.ts";
 import { nativeHandoffServiceFixture } from "./native-handoff-service-fixture.mjs";
 export async function nativeHandoffFixture(repository, input) {
   const operations = repository.nativeRuntimeHandoffs;

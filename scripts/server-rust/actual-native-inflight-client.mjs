@@ -9,7 +9,7 @@ import { captureTaskRuntimeState } from "./task-runtime-snapshot.mjs";
 import { eventually } from "./full-worker.mjs";
 
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 
 export async function actualNativeInflightClient({

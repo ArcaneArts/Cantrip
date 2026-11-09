@@ -7,7 +7,10 @@ import * as protocol from "../../packages/protocol/dist/worker-link.js";
 import { workerLinkWireFixtures } from "./worker-link-wire-fixtures.mjs";
 
 const source = await readFile(
-  new URL("../../cantrip_server/src/worker-links/service.ts", import.meta.url),
+  new URL(
+    "../../tests/reference-node-server/src/worker-links/service.ts",
+    import.meta.url,
+  ),
   "utf8",
 );
 const constants = source.match(/^const MAX_ERROR_LENGTH = .*;$/m)[0];

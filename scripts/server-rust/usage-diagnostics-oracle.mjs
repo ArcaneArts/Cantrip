@@ -4,9 +4,9 @@ import {
   createServiceLogger,
   minimizeServiceLogRecordInput,
 } from "../../packages/logging/dist/index.js";
-import { StorageReconciliationService } from "../../cantrip_server/src/account-usage/storage-reconciler.ts";
-import { AccountUsageHistoryMaintenanceService } from "../../cantrip_server/src/account-usage/history-maintenance.ts";
-import { AccountUsageMeter } from "../../cantrip_server/src/account-usage/bandwidth-meter.ts";
+import { StorageReconciliationService } from "../../tests/reference-node-server/src/account-usage/storage-reconciler.ts";
+import { AccountUsageHistoryMaintenanceService } from "../../tests/reference-node-server/src/account-usage/history-maintenance.ts";
+import { AccountUsageMeter } from "../../tests/reference-node-server/src/account-usage/bandwidth-meter.ts";
 
 const base = 1793059200123;
 const cases = [];

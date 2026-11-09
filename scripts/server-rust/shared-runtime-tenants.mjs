@@ -5,7 +5,7 @@ import { LiveProbe, deadline } from "./live-sockets.mjs";
 import { request, requestHeaders } from "./shared-runtime-fixture-tools.mjs";
 import { publication, publish } from "./shared-runtime-live.mjs";
 const WebSocket = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("ws");
 
 export async function prepareForeignAccount(peers) {

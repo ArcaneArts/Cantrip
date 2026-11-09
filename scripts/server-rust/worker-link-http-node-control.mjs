@@ -1,7 +1,7 @@
 // Opt-in facade plumbing. Every lookup executes the actual Redis read before
 // its controlled await/error; production reference handlers stay unchanged.
-import { RedisRelayCoordinator } from "../../cantrip_server/src/coordination/relay-coordinator.ts";
-import { WorkerLinkRelay } from "../../cantrip_server/src/worker-links/relay.ts";
+import { RedisRelayCoordinator } from "../../tests/reference-node-server/src/coordination/relay-coordinator.ts";
+import { WorkerLinkRelay } from "../../tests/reference-node-server/src/worker-links/relay.ts";
 export async function prepareWorkerLinkHttpControl(config) {
   const coordinator = new RedisRelayCoordinator({
     url: config.redisUrl,

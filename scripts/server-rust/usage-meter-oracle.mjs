@@ -2,7 +2,7 @@
 // acceptance is separate; the threshold keeps these deterministic scenarios idle.
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { AccountUsageMeter } from "../../cantrip_server/src/account-usage/bandwidth-meter.ts";
+import { AccountUsageMeter } from "../../tests/reference-node-server/src/account-usage/bandwidth-meter.ts";
 const logger = { event() {}, rateLimited() {} };
 const originalNow = Date.now;
 let clock = 1793059200123;

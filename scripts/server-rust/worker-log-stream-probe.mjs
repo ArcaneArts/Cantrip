@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { workerLogStreamServerMessageSchema } from "../../packages/protocol/dist/index.js";
 import { appOrigin } from "./live-sockets.mjs";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const WebSocket = require("ws");
 export function bounded(promise, label, timeout = 15000) {

@@ -31,7 +31,7 @@ import {
   stamp,
 } from "./project-target-state.mjs";
 import { heartbeat, password } from "./security-fixtures.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { unavailableManagedWebRuntimeCapabilities as runtimes } from "../../packages/protocol/dist/index.js";
 
 const { values } = parseArgs({

@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import {
   exportCanonicalChat,
   projectExportTargetDefinition,
-} from "../../cantrip_server/src/project-exports/service.ts";
-import { installProjectExportRoutes } from "../../cantrip_server/src/app/routes/project-exports.ts";
+} from "../../tests/reference-node-server/src/project-exports/service.ts";
+import { installProjectExportRoutes } from "../../tests/reference-node-server/src/app/routes/project-exports.ts";
 import { projectExportChatResultSchema } from "../../packages/protocol/dist/index.js";
 import { label } from "./project-target-state.mjs";
 const target = { kind: "codex-local" },

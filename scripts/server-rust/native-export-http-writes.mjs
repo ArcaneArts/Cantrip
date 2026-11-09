@@ -2,7 +2,7 @@
 // Full profile/file/key activation and product-wide rollback remain separate.
 import assert from "node:assert/strict";
 import { HttpFixture } from "./http-fixture.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { fixtureEnvironment } from "./process.mjs";
 import {
   initialization,

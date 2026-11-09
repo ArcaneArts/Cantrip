@@ -1,17 +1,17 @@
 import { threadChangeReconcilerFixture } from "./thread-change-reconciler-fixture.mjs";
-import { canonicalMessagesFromThreadSync } from "../../cantrip_server/src/chats/thread-sync.ts";
+import { canonicalMessagesFromThreadSync } from "../../tests/reference-node-server/src/chats/thread-sync.ts";
 import { agentThreadSyncSchema } from "../../packages/protocol/dist/index.js";
 import { taskEligibilityFixture } from "./task-eligibility-node-fixture.mjs";
 import { taskWorkersFixture } from "./task-workers-node-fixture.mjs";
 import {
   nativeCommandContext,
   readNativeCommand,
-} from "../../cantrip_server/src/db/repository/native-command-context.ts";
+} from "../../tests/reference-node-server/src/db/repository/native-command-context.ts";
 import {
   findObservedNativeCommandTurn,
   findObservedNativeInputTurn,
-} from "../../cantrip_server/src/db/repository/native-command-turns.ts";
-import { lockNativeCommandChat } from "../../cantrip_server/src/db/repository/native-command-lock.ts";
+} from "../../tests/reference-node-server/src/db/repository/native-command-turns.ts";
+import { lockNativeCommandChat } from "../../tests/reference-node-server/src/db/repository/native-command-lock.ts";
 import { nativeSettingsFixture } from "./native-settings-node-fixture.mjs";
 import { executionLaneFixture } from "./execution-lane-node-fixture.mjs";
 import { queuedPromptFixture } from "./queued-prompt-node-fixture.mjs";
@@ -19,13 +19,13 @@ import { managedQueueFixture } from "./managed-queue-node-fixture.mjs";
 import { nativeEventFixture } from "./native-event-node-fixture.mjs";
 import { interactionFixture } from "./agent-interaction-node-fixture.mjs";
 import { managedGuiFinishFixture } from "./managed-gui-finish-node-fixture.mjs";
-import { acquireChatTurnExecution } from "../../cantrip_server/src/app/runtime/chat-turn-admission.ts";
+import { acquireChatTurnExecution } from "../../tests/reference-node-server/src/app/runtime/chat-turn-admission.ts";
 import {
   validateChatTurnInput,
   chatTurnModelConfiguration,
-} from "../../cantrip_server/src/app/runtime/chat-turn-configuration.ts";
+} from "../../tests/reference-node-server/src/app/runtime/chat-turn-configuration.ts";
 import { receiptHandlerFixture } from "./receipt-handler-node-fixture.mjs";
-import { protectChatInput } from "../../cantrip_server/src/app/runtime/protect-chat-input.ts";
+import { protectChatInput } from "../../tests/reference-node-server/src/app/runtime/protect-chat-input.ts";
 import { turnPlacementFixture } from "./turn-placement-node-fixture.mjs";
 import { turnBehaviorFixture } from "./turn-behavior-node-fixture.mjs";
 import { guiTelemetryFixture } from "./gui-telemetry-node-fixture.mjs";

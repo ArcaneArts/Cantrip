@@ -1,11 +1,11 @@
 // The production eligibility cache and real routing/repositories. Catalog I/O
 // and connection state are explicitly controlled fixture boundaries.
-import { createTaskDispatchEligibilityRuntime } from "../../cantrip_server/src/app/runtime/task-dispatch-eligibility-runtime.ts";
-import { createModelRoutingRuntime } from "../../cantrip_server/src/app/runtime/model-routing-runtime.ts";
+import { createTaskDispatchEligibilityRuntime } from "../../tests/reference-node-server/src/app/runtime/task-dispatch-eligibility-runtime.ts";
+import { createModelRoutingRuntime } from "../../tests/reference-node-server/src/app/runtime/model-routing-runtime.ts";
 import { createRequire } from "node:module";
 import { setTimeout as delay } from "node:timers/promises";
 const { sql } = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("drizzle-orm");
 export async function taskEligibilityFixture(repository, input) {
   const pending = new Set(),

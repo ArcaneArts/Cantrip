@@ -1,7 +1,7 @@
 import {
   hydrateCanonicalChat,
   requiredSkillsForCanonicalPayload,
-} from "../../cantrip_server/src/chats/hydration.ts";
+} from "../../tests/reference-node-server/src/chats/hydration.ts";
 
 export async function chatHydrationFixture(r) {
   const trace = [];

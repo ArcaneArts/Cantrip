@@ -1,4 +1,4 @@
-import { createRemoteSurfaceWebRtcConfiguration } from "../../cantrip_server/src/remote-surfaces/webrtc.ts";
+import { createRemoteSurfaceWebRtcConfiguration } from "../../tests/reference-node-server/src/remote-surfaces/webrtc.ts";
 const cases = [];
 for (const [stun, turn, policy, ttl, secret] of [
   [[], [], "all", 600, ""],

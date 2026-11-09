@@ -27,7 +27,7 @@ const option = (key) => {
   return i < 0 ? undefined : process.argv[i + 1];
 };
 const WebSocket = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("ws");
 const databaseMode = option("--database") ?? "pglite",
   reportPath = option("--report");

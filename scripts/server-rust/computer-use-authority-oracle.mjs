@@ -1,5 +1,5 @@
 // Current Source projection is the oracle; no generated native schema is read.
-import { resolveComputerUseAgentAuthority } from "../../cantrip_server/src/app/routes/computer-use-agent.ts";
+import { resolveComputerUseAgentAuthority } from "../../tests/reference-node-server/src/app/routes/computer-use-agent.ts";
 
 const now = Date.parse("2026-11-08T09:00:00.000Z");
 const cases = [];

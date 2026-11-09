@@ -16,7 +16,7 @@ import {
   quotaSnapshot,
 } from "./settings-provider-fixtures.mjs";
 import { literal, localOwner } from "./project-target-state.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { password } from "./security-fixtures.mjs";
 import { compareCatalogRefresh } from "./worker-catalog-refresh-observations.mjs";
 import { catalogRefreshShutdown } from "./worker-catalog-refresh-shutdown.mjs";
@@ -93,7 +93,10 @@ try {
         "Observe only the fixture-owned external PostgreSQL database",
       );
       const postgres = createRequire(
-        new URL("../../cantrip_server/package.json", import.meta.url),
+        new URL(
+          "../../tests/reference-node-server/package.json",
+          import.meta.url,
+        ),
       )("postgres");
       observer = postgres(databaseUrl, { max: 1 });
       f.sql = (statements, queries = []) =>

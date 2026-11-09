@@ -1,23 +1,23 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { turnOutcomeFixture } from "./turn-outcome-node-fixture.mjs";
 import { taskBackgroundFixture } from "./task-background-node-fixture.mjs";
-import { createTaskResumedExecutionRuntime } from "../../cantrip_server/src/app/runtime/task-resumed-execution-runtime.ts";
-import { createChatAutomationPauseRuntime } from "../../cantrip_server/src/app/runtime/chat-automation-pause-runtime.ts";
+import { createTaskResumedExecutionRuntime } from "../../tests/reference-node-server/src/app/runtime/task-resumed-execution-runtime.ts";
+import { createChatAutomationPauseRuntime } from "../../tests/reference-node-server/src/app/runtime/chat-automation-pause-runtime.ts";
 import { pausePeer } from "./automation-pause-node-fixture.mjs";
 // Controlled worker/continuation collaborators around the actual Source turn.
 // These tests do not stand in for real CLI receipt/queue HTTP acceptance.
-import { createChatTurnRuntime } from "../../cantrip_server/src/app/runtime/chat-turn-runtime.ts";
-import { createModelRoutingRuntime } from "../../cantrip_server/src/app/runtime/model-routing-runtime.ts";
-import { WorkerUnavailableError } from "../../cantrip_server/src/workers/bridge.ts";
+import { createChatTurnRuntime } from "../../tests/reference-node-server/src/app/runtime/chat-turn-runtime.ts";
+import { createModelRoutingRuntime } from "../../tests/reference-node-server/src/app/runtime/model-routing-runtime.ts";
+import { WorkerUnavailableError } from "../../tests/reference-node-server/src/workers/bridge.ts";
 import { workerServerEnvelopeSchema } from "../../packages/protocol/dist/index.js";
 import { turnLiveEnvironment } from "./turn-live-node-fixture.mjs";
 import { createRequire } from "node:module";
 const { sql } = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("drizzle-orm");
-import { serverLogger } from "../../cantrip_server/src/logger.ts";
-import { createTaskGoalRuntime } from "../../cantrip_server/src/app/runtime/task-goal-runtime.ts";
-import { createTaskClaimedExecutionRuntime } from "../../cantrip_server/src/app/runtime/task-claimed-execution-runtime.ts";
+import { serverLogger } from "../../tests/reference-node-server/src/logger.ts";
+import { createTaskGoalRuntime } from "../../tests/reference-node-server/src/app/runtime/task-goal-runtime.ts";
+import { createTaskClaimedExecutionRuntime } from "../../tests/reference-node-server/src/app/runtime/task-claimed-execution-runtime.ts";
 export function streamTemplate(value, command, attempt) {
   if (Array.isArray(value))
     return value.map((v) => streamTemplate(v, command, attempt));

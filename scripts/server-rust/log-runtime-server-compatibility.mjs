@@ -23,7 +23,7 @@ import { fixtureEnvironment } from "./process.mjs";
 import { repositoryRoot } from "./build.mjs";
 import { databaseHealthCases } from "./database-health-cases.mjs";
 import { logRuntimeAuth } from "./log-runtime-auth.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { verifyAccountingRuntime } from "./accounting-runtime-cases.mjs";
 import {
   workerBridgeRuntimeCases,
@@ -43,7 +43,7 @@ import {
   targetPolicyNormalization,
 } from "./http-target-policy-cases.mjs";
 const WebSocket = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("ws");
 
 const { values } = parseArgs({
@@ -311,7 +311,7 @@ try {
           ? process.execPath
           : process.env.CANTRIP_RUST_SERVER_BINARY,
         kind === "node"
-          ? ["--import", "tsx", "cantrip_server/src/index.ts"]
+          ? ["--import", "tsx", "tests/reference-node-server/src/index.ts"]
           : args,
         { cwd: repositoryRoot, env, stdio: ["ignore", "pipe", "pipe"] },
       );

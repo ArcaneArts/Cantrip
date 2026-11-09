@@ -2,8 +2,8 @@
 import {
   assertCantripMcpBinding,
   cantripMcpBindingReadiness,
-} from "../../cantrip_server/src/agent-tools/binding.ts";
-import { effectivePermissionProfile } from "../../cantrip_server/src/chats/execution-helpers.ts";
+} from "../../tests/reference-node-server/src/agent-tools/binding.ts";
+import { effectivePermissionProfile } from "../../tests/reference-node-server/src/chats/execution-helpers.ts";
 import { operations } from "./agent-run-http-fixtures.mjs";
 import {
   CANTRIP_MCP_OPERATIONS,

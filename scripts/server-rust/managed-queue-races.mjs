@@ -8,7 +8,7 @@ import { command } from "./native-command-admission-cases.mjs";
 import { retainedPrompt } from "./native-settlement-fixtures.mjs";
 import { literal, stamp } from "./project-target-state.mjs";
 const require = createRequire(
-    new URL("../../cantrip_server/package.json", import.meta.url),
+    new URL("../../tests/reference-node-server/package.json", import.meta.url),
   ),
   postgres = require("postgres");
 async function waiters(sql, count) {

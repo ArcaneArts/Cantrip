@@ -1,12 +1,12 @@
 // Actual account selector and durable handoff coordinator, controlled worker.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { createManagedChatAccountFailover } from "../../cantrip_server/src/app/runtime/managed-chat-account-failover.ts";
-import { installChatRuntimeHandoffRoutes } from "../../cantrip_server/src/app/routes/chat-runtime-handoffs.ts";
-import { NativeCommandError } from "../../cantrip_server/src/db/repository/native-command-errors.ts";
+import { createManagedChatAccountFailover } from "../../tests/reference-node-server/src/app/runtime/managed-chat-account-failover.ts";
+import { installChatRuntimeHandoffRoutes } from "../../tests/reference-node-server/src/app/routes/chat-runtime-handoffs.ts";
+import { NativeCommandError } from "../../tests/reference-node-server/src/db/repository/native-command-errors.ts";
 import { nativeHandoffFixture } from "./native-handoff-node-fixture.mjs";
 const Fastify = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("fastify");
 export async function accountFailoverFixture(repository, input) {
   const owner = input.owner,

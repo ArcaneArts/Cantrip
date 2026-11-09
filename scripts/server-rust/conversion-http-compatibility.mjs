@@ -4,7 +4,7 @@ import { conversionLeaseCases } from "./conversion-lease-cases.mjs";
 import { conversionLifetimeCases } from "./conversion-lifetime-cases.mjs";
 import { traceHttpConnections } from "./http-connection-trace.mjs";
 import assert from "node:assert/strict";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";

@@ -5,7 +5,7 @@ import net from "node:net";
 import { once } from "node:events";
 import { createRequire } from "node:module";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 
 export async function relocationFaultRuntime(connection, kind, profile) {

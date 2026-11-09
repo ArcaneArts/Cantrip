@@ -40,7 +40,7 @@ const commits = git(
   "--format=%H%x00%s",
   `${values.baseline}..${values.head}`,
   "--",
-  "cantrip_server/src",
+  "tests/reference-node-server/src",
 )
   .split("\n")
   .filter(Boolean)
@@ -50,7 +50,9 @@ const commits = git(
     return {
       commit,
       subject,
-      nodeFiles: files.filter((file) => file.startsWith("cantrip_server/src/")),
+      nodeFiles: files.filter((file) =>
+        file.startsWith("tests/reference-node-server/src/"),
+      ),
       rustCoreFiles: files.filter((file) =>
         file.startsWith("cantrip_server_rs/src/"),
       ),

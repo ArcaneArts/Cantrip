@@ -97,7 +97,8 @@ Use relevant focused checks as needed:
 
 ```bash
 pnpm --filter @cantrip/protocol test
-pnpm --filter @cantrip/server test
+pnpm server:check
+pnpm server:test
 pnpm --filter @cantrip/worker test
 pnpm --filter @cantrip/app test
 pnpm --filter @cantrip/app build

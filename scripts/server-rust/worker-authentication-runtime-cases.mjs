@@ -8,7 +8,7 @@ import { localOwner } from "./project-target-state.mjs";
 import { cantripVersion } from "../../packages/version/dist/index.js";
 import { workerInferenceStatusSchema } from "../../packages/protocol/dist/index.js";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const WebSocket = require("ws"),
   postgres = require("postgres");

@@ -1,9 +1,9 @@
 import { createRequire } from "node:module";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { sql, eq } = require("drizzle-orm");
-import * as schema from "../../cantrip_server/src/db/schema.ts";
+import * as schema from "../../tests/reference-node-server/src/db/schema.ts";
 import {
   NativeSettingsStateRepository,
   assertNativeSettingsWriteBinding,
@@ -11,10 +11,10 @@ import {
   settleNativeSettingsState,
   settleNativeSettingsTransport,
   changeNativeSettingsState,
-} from "../../cantrip_server/src/db/repository/native-settings-persistence.ts";
-import { lockNativeCommandChat } from "../../cantrip_server/src/db/repository/native-command-lock.ts";
-import { scopedNativeModelAttribution } from "../../cantrip_server/src/db/repository/native-model-attribution.ts";
-import { readNativeModelInventory } from "../../cantrip_server/src/models/native-model-inventory.ts";
+} from "../../tests/reference-node-server/src/db/repository/native-settings-persistence.ts";
+import { lockNativeCommandChat } from "../../tests/reference-node-server/src/db/repository/native-command-lock.ts";
+import { scopedNativeModelAttribution } from "../../tests/reference-node-server/src/db/repository/native-model-attribution.ts";
+import { readNativeModelInventory } from "../../tests/reference-node-server/src/models/native-model-inventory.ts";
 
 export async function nativeSettingsFixture(repository, input) {
   const db = repository.nativeCommands.database;

@@ -8,7 +8,7 @@ import { performance } from "node:perf_hooks";
 import { createHash } from "node:crypto";
 
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const load = (name) => import(pathToFileURL(require.resolve(name)).href);
 const { PGlite } = await load("@electric-sql/pglite");

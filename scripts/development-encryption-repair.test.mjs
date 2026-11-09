@@ -15,7 +15,7 @@ import test from "node:test";
 import { repairDevelopmentEncryption } from "./development-encryption-repair.mjs";
 
 const serverRequire = createRequire(
-  new URL("../cantrip_server/package.json", import.meta.url),
+  new URL("../tests/reference-node-server/package.json", import.meta.url),
 );
 const { PGlite } = serverRequire("@electric-sql/pglite");
 

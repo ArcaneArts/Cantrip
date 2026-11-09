@@ -1,8 +1,8 @@
 // Test oracle: the actual Node service, listening on an OS-assigned port.
-import { buildApp } from "../../cantrip_server/src/app.ts";
-import { readServerConfig } from "../../cantrip_server/src/config.ts";
-import { connectDatabase } from "../../cantrip_server/src/db/index.ts";
-import { WorkerBridge } from "../../cantrip_server/src/workers/bridge.ts";
+import { buildApp } from "../../tests/reference-node-server/src/app.ts";
+import { readServerConfig } from "../../tests/reference-node-server/src/config.ts";
+import { connectDatabase } from "../../tests/reference-node-server/src/db/index.ts";
+import { WorkerBridge } from "../../tests/reference-node-server/src/workers/bridge.ts";
 import { installWorkerIngressFixture } from "./worker-ingress-node-fixture.mjs";
 import { startOperationClock } from "./operation-clock.mjs";
 import { observeCompletionPersistence } from "./completion-persistence-observer.mjs";

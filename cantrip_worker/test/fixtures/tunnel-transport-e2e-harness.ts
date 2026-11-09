@@ -23,12 +23,12 @@ import {
 } from "@cantrip/protocol/tunnel-content";
 import WebSocket, { WebSocketServer } from "ws";
 
-import { DesktopTunnelEndpoint } from "../../../cantrip_server/src/tunnels/desktop-endpoint.js";
+import { DesktopTunnelEndpoint } from "../../../tests/reference-node-server/src/tunnels/desktop-endpoint.js";
 import {
   TunnelStreamBroker,
   type TunnelDataPlaneEndpoint,
   type TunnelEndpointFrameListener,
-} from "../../../cantrip_server/src/tunnels/broker.js";
+} from "../../../tests/reference-node-server/src/tunnels/broker.js";
 import { DirectBroker } from "../../src/direct-broker.js";
 import { protectWorkerEndpointContent } from "../../src/endpoint-content-encryption.js";
 import { subscribeWorkerLogs } from "../../src/logger.js";

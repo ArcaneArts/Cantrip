@@ -7,7 +7,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { buildRustExample } from "./build.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { password } from "./security-fixtures.mjs";
 import {
   settingsHttpFixture,
@@ -21,7 +21,7 @@ import { taskContent } from "./task-wire-fixtures.mjs";
 import { agentTaskCreateWireSchema } from "../../packages/protocol/dist/agent-task-tools.js";
 import { taskRetryDeliveryFixture } from "./task-retry-delivery-fixture.mjs";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const postgres = require("postgres");
 const reportPath = process.argv[process.argv.indexOf("--report") + 1];

@@ -2,13 +2,13 @@
 import {
   summarizeAgentTime,
   groupAgentTime,
-} from "../../cantrip_server/src/analytics/agent-time.ts";
+} from "../../tests/reference-node-server/src/analytics/agent-time.ts";
 import {
   enrichCatalogFromExactOpenRouterMatch,
   exactOpenRouterAliases,
-} from "../../cantrip_server/src/models/catalog-enrichment.ts";
+} from "../../tests/reference-node-server/src/models/catalog-enrichment.ts";
 import { normalizeResponsesBaseUrl } from "../../packages/protocol/src/providers.ts";
-import { catalogMetadataSnapshot } from "../../cantrip_server/src/db/repository/provider-catalog.ts";
+import { catalogMetadataSnapshot } from "../../tests/reference-node-server/src/db/repository/provider-catalog.ts";
 import { routingCases } from "./settings-routing-cases.mjs";
 import { ollamaSemantics } from "./settings-ollama-semantics.mjs";
 import { accountCatalogSemantics } from "./settings-account-catalog-semantics.mjs";

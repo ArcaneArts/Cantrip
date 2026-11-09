@@ -2,7 +2,7 @@ import path from "node:path";
 import type { NativeCommandAdmissionResult } from "@cantrip/protocol";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { expect } from "vitest";
-import type { createNativeCommandWorkerFixture } from "../../cantrip_server/test/native-command-worker-fixture.js";
+import type { createNativeCommandWorkerFixture } from "../../tests/reference-node-server/test/native-command-worker-fixture.js";
 import type { CodexAppServer } from "../src/codex/app-server.js";
 import { CuaAgentCoordinator } from "../src/computer-use/agent.js";
 import { CuaAgentApprovalEvents } from "../src/computer-use/agent-approval-events.js";

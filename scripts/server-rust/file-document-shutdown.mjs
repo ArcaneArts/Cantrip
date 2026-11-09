@@ -12,7 +12,7 @@ import { postgresFixture } from "./postgres-fixture.mjs";
 import { targetStateSql, state } from "./project-target-state.mjs";
 import { eventually } from "./full-worker.mjs";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 const option = (key) => {
   const i = process.argv.indexOf(key);

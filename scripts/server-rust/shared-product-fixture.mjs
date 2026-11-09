@@ -86,7 +86,7 @@ export class SharedProductFixture {
     const peer = this.peers[index];
     if (peer.kind === "node") {
       peer.server = await startPackagedNodeServer(
-        path.join(repositoryRoot, "cantrip_server"),
+        path.join(repositoryRoot, "tests/reference-node-server"),
         peer.environment,
         { nodeExecutable: process.execPath, port: this.ports[index] },
       );

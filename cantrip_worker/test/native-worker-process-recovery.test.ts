@@ -23,11 +23,11 @@ import {
   wrapComponentKeyForWorker,
 } from "@cantrip/crypto";
 import { workerEncryptionComponentScopeSchema } from "@cantrip/protocol/encryption";
-import { buildApp } from "../../cantrip_server/src/app.js";
-import { connectDatabase } from "../../cantrip_server/src/db/index.js";
-import { LOCAL_USER_ID as ownerId } from "../../cantrip_server/src/db/repository.js";
-import type { ServerConfig } from "../../cantrip_server/src/config.js";
-import { WorkerBridge } from "../../cantrip_server/src/workers/bridge.js";
+import { buildApp } from "../../tests/reference-node-server/src/app.js";
+import { connectDatabase } from "../../tests/reference-node-server/src/db/index.js";
+import { LOCAL_USER_ID as ownerId } from "../../tests/reference-node-server/src/db/repository.js";
+import type { ServerConfig } from "../../tests/reference-node-server/src/config.js";
+import { WorkerBridge } from "../../tests/reference-node-server/src/workers/bridge.js";
 
 const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();
 const helper = process.env.CANTRIP_CUA_TEST_BINARY?.trim();

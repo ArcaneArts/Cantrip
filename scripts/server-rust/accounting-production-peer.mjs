@@ -35,7 +35,7 @@ export async function accountingProductionPeer(
   const child = spawn(
     kind === "node" ? process.execPath : process.env.CANTRIP_RUST_SERVER_BINARY,
     kind === "node"
-      ? ["--import", "tsx", "cantrip_server/src/index.ts"]
+      ? ["--import", "tsx", "tests/reference-node-server/src/index.ts"]
       : ["--database", "postgres", "--port", String(port)],
     {
       cwd: repositoryRoot,

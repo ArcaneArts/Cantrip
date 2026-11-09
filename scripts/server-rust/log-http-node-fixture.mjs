@@ -4,12 +4,12 @@ import { access } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
-import { readServerConfig } from "../../cantrip_server/src/config.ts";
+import { readServerConfig } from "../../tests/reference-node-server/src/config.ts";
 import {
   initializeServerLogArchive,
   closeServerLogArchive,
-} from "../../cantrip_server/src/logger.ts";
-import { createApplicationServer } from "../../cantrip_server/src/app/http/server.ts";
+} from "../../tests/reference-node-server/src/logger.ts";
+import { createApplicationServer } from "../../tests/reference-node-server/src/app/http/server.ts";
 const { values } = parseArgs({ options: { "data-dir": { type: "string" } } });
 const root = values["data-dir"];
 await initializeServerLogArchive(root);

@@ -1,16 +1,16 @@
 // Actual scheduler, retry, recovery, routing, launchers, Goal and SQL services.
 // Worker/catalog I/O and worktree/queue continuation are controlled peers.
-import { createTaskSchedulerRuntime } from "../../cantrip_server/src/app/runtime/task-scheduler-runtime.ts";
-import { createTaskDispatchEligibilityRuntime } from "../../cantrip_server/src/app/runtime/task-dispatch-eligibility-runtime.ts";
-import { createTaskGoalRuntime } from "../../cantrip_server/src/app/runtime/task-goal-runtime.ts";
-import { createChatAutomationPauseRuntime } from "../../cantrip_server/src/app/runtime/chat-automation-pause-runtime.ts";
-import { createTaskClaimedExecutionRuntime } from "../../cantrip_server/src/app/runtime/task-claimed-execution-runtime.ts";
-import { createTaskResumedExecutionRuntime } from "../../cantrip_server/src/app/runtime/task-resumed-execution-runtime.ts";
-import { createTaskExecutionRecovery } from "../../cantrip_server/src/app/runtime/task-execution-recovery.ts";
-import { createTaskOperationQueue } from "../../cantrip_server/src/app/runtime/task-operation-queue.ts";
-import { createTaskAutomaticRetry } from "../../cantrip_server/src/app/runtime/task-automatic-retry.ts";
-import { generateAutomaticTitle } from "../../cantrip_server/src/chats/automatic-labeling.ts";
-import { createProjectTaskPauseRuntime } from "../../cantrip_server/src/app/runtime/project-task-pause-runtime.ts";
+import { createTaskSchedulerRuntime } from "../../tests/reference-node-server/src/app/runtime/task-scheduler-runtime.ts";
+import { createTaskDispatchEligibilityRuntime } from "../../tests/reference-node-server/src/app/runtime/task-dispatch-eligibility-runtime.ts";
+import { createTaskGoalRuntime } from "../../tests/reference-node-server/src/app/runtime/task-goal-runtime.ts";
+import { createChatAutomationPauseRuntime } from "../../tests/reference-node-server/src/app/runtime/chat-automation-pause-runtime.ts";
+import { createTaskClaimedExecutionRuntime } from "../../tests/reference-node-server/src/app/runtime/task-claimed-execution-runtime.ts";
+import { createTaskResumedExecutionRuntime } from "../../tests/reference-node-server/src/app/runtime/task-resumed-execution-runtime.ts";
+import { createTaskExecutionRecovery } from "../../tests/reference-node-server/src/app/runtime/task-execution-recovery.ts";
+import { createTaskOperationQueue } from "../../tests/reference-node-server/src/app/runtime/task-operation-queue.ts";
+import { createTaskAutomaticRetry } from "../../tests/reference-node-server/src/app/runtime/task-automatic-retry.ts";
+import { generateAutomaticTitle } from "../../tests/reference-node-server/src/chats/automatic-labeling.ts";
+import { createProjectTaskPauseRuntime } from "../../tests/reference-node-server/src/app/runtime/project-task-pause-runtime.ts";
 export async function taskBackgroundFixture({
   repository,
   input,

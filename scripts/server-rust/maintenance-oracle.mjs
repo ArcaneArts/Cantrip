@@ -1,6 +1,6 @@
 // Expectations execute the existing fingerprint and refresh-decision helpers.
 import * as p from "../../packages/protocol/dist/index.js";
-import { workerEncryptionRefreshChangesSurfaceMaterial } from "../../cantrip_server/src/worker-encryption-refresh.ts";
+import { workerEncryptionRefreshChangesSurfaceMaterial } from "../../tests/reference-node-server/src/worker-encryption-refresh.ts";
 const components = p.workerEncryptionComponentScopeSchema.options;
 const baseline = p.workerEncryptionStatusSchema.parse({
   supported: true,

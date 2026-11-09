@@ -12,7 +12,7 @@ import { osIds } from "./remote-desktop-os-cases.mjs";
 import { literal } from "./project-target-state.mjs";
 import { eventually } from "./full-worker.mjs";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const WebSocket = require("ws");
 export class SurfaceProbe {

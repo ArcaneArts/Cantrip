@@ -1,16 +1,16 @@
 import { createRequire } from "node:module";
-import { ProviderCredentialMigrationCoordinator } from "../../cantrip_server/src/models/provider-credential-migrations.ts";
-import { ProviderAccountLifecycleService } from "../../cantrip_server/src/models/provider-account-lifecycle.ts";
-import { ChatGptCatalogService } from "../../cantrip_server/src/models/chatgpt-catalog.ts";
-import { GrokCatalogService } from "../../cantrip_server/src/models/grok-catalog.ts";
-import { installProviderAccountAuthRoutes } from "../../cantrip_server/src/app/routes/provider-account-auth.ts";
-import { ProviderAccountReconnectRequiredError } from "../../cantrip_server/src/app/shared/errors.ts";
-import { markProviderAccountReauthenticationRequired } from "../../cantrip_server/src/models/provider-account-reauth.ts";
-import { installSettingsRouteRuntime } from "../../cantrip_server/src/app/runtime/settings-routes.ts";
-import { OpenRouterRuntimeCatalogHydrator } from "../../cantrip_server/src/models/openrouter-runtime-catalog.ts";
-import { serverLogger } from "../../cantrip_server/src/logger.ts";
+import { ProviderCredentialMigrationCoordinator } from "../../tests/reference-node-server/src/models/provider-credential-migrations.ts";
+import { ProviderAccountLifecycleService } from "../../tests/reference-node-server/src/models/provider-account-lifecycle.ts";
+import { ChatGptCatalogService } from "../../tests/reference-node-server/src/models/chatgpt-catalog.ts";
+import { GrokCatalogService } from "../../tests/reference-node-server/src/models/grok-catalog.ts";
+import { installProviderAccountAuthRoutes } from "../../tests/reference-node-server/src/app/routes/provider-account-auth.ts";
+import { ProviderAccountReconnectRequiredError } from "../../tests/reference-node-server/src/app/shared/errors.ts";
+import { markProviderAccountReauthenticationRequired } from "../../tests/reference-node-server/src/models/provider-account-reauth.ts";
+import { installSettingsRouteRuntime } from "../../tests/reference-node-server/src/app/runtime/settings-routes.ts";
+import { OpenRouterRuntimeCatalogHydrator } from "../../tests/reference-node-server/src/models/openrouter-runtime-catalog.ts";
+import { serverLogger } from "../../tests/reference-node-server/src/logger.ts";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { sql } = require("drizzle-orm");
 export async function providerServiceOperation(repo, r) {

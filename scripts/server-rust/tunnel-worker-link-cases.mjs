@@ -13,7 +13,7 @@ import {
 } from "./tunnel-state.mjs";
 import { literal } from "./project-target-state.mjs";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 export const tunnelEvents = (live) =>
   live.history

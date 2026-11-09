@@ -1,5 +1,5 @@
 import { setImmediate as turn } from "node:timers/promises";
-import { ChatThreadChangeReconciler } from "../../cantrip_server/src/chats/thread-change-reconciliation.ts";
+import { ChatThreadChangeReconciler } from "../../tests/reference-node-server/src/chats/thread-change-reconciliation.ts";
 export async function threadChangeReconcilerFixture(input) {
   const calls = [],
     accepted = [],

@@ -2,11 +2,11 @@ import {
   reasoningStateForRuntimes,
   configurationReasoningStateForRuntimes,
   prepareRuntimesForReasoning,
-} from "../../cantrip_server/src/models/reasoning.ts";
+} from "../../tests/reference-node-server/src/models/reasoning.ts";
 import {
   resolveModelRoutePairs,
   modelConfigurationFailure,
-} from "../../cantrip_server/src/models/subagent-routing.ts";
+} from "../../tests/reference-node-server/src/models/subagent-routing.ts";
 
 export function routingCases(emit) {
   const attempt = (fn) => {

@@ -13,20 +13,23 @@ import {
 test("application source corpus is deterministic and limited to app modules", async () => {
   const root = await mkdtemp(join(tmpdir(), "cantrip-app-corpus-"));
   try {
-    await mkdir(join(root, "cantrip_server/src/app/nested"), {
+    await mkdir(join(root, "tests/reference-node-server/src/app/nested"), {
       recursive: true,
     });
-    await writeFile(join(root, "cantrip_server/src/app.ts"), "export {};\n");
     await writeFile(
-      join(root, "cantrip_server/src/app/zeta.ts"),
+      join(root, "tests/reference-node-server/src/app.ts"),
+      "export {};\n",
+    );
+    await writeFile(
+      join(root, "tests/reference-node-server/src/app/zeta.ts"),
       "export const zeta = true;\n",
     );
     await writeFile(
-      join(root, "cantrip_server/src/app/nested/alpha.ts"),
+      join(root, "tests/reference-node-server/src/app/nested/alpha.ts"),
       "export const alpha = true;\n",
     );
     await writeFile(
-      join(root, "cantrip_server/src/ignored.ts"),
+      join(root, "tests/reference-node-server/src/ignored.ts"),
       "export const ignored = true;\n",
     );
 
@@ -35,9 +38,9 @@ test("application source corpus is deterministic and limited to app modules", as
     assert.deepEqual(
       corpus.map(({ file }) => file),
       [
-        "cantrip_server/src/app.ts",
-        "cantrip_server/src/app/nested/alpha.ts",
-        "cantrip_server/src/app/zeta.ts",
+        "tests/reference-node-server/src/app.ts",
+        "tests/reference-node-server/src/app/nested/alpha.ts",
+        "tests/reference-node-server/src/app/zeta.ts",
       ],
     );
     assert.match(combineApplicationSources(corpus), /alpha = true/u);

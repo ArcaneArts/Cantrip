@@ -61,7 +61,7 @@ const execute = promisify(execFile);
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-profile-activation-"));
 const report = { suite: "profile-directory-activation", root, cases: [] };
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 let sql, failure;
 const databases = [];

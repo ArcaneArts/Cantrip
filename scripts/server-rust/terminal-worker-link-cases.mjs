@@ -6,7 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { HttpFixture } from "./http-fixture.mjs";
 import { workerLinkResourceGrantSchema } from "../../packages/protocol/dist/worker-link.js";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 export class TerminalLinkFixture extends HttpFixture {
   normalize(value, key = "") {

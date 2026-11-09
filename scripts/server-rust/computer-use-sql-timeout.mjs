@@ -8,7 +8,7 @@ import { activityEvent } from "./computer-use-http-additional.mjs";
 import { protectedInteraction } from "./agent-interaction-fixtures.mjs";
 import { literal } from "./project-target-state.mjs";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 
 export async function computerUseSqlTimeout({

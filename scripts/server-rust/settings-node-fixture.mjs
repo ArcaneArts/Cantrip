@@ -2,20 +2,20 @@
 import { createInterface } from "node:readline";
 import { createRequire } from "node:module";
 import { startOperationClock } from "./operation-clock.mjs";
-import { readServerConfig } from "../../cantrip_server/src/config.ts";
-import { connectDatabase } from "../../cantrip_server/src/db/index.ts";
-import { catalogMetadataSnapshot } from "../../cantrip_server/src/db/repository/provider-catalog.ts";
-import { OllamaCatalogService } from "../../cantrip_server/src/models/ollama-catalog.ts";
-import { ChatGptCatalogService } from "../../cantrip_server/src/models/chatgpt-catalog.ts";
-import { GrokCatalogService } from "../../cantrip_server/src/models/grok-catalog.ts";
-import { serverLogger } from "../../cantrip_server/src/logger.ts";
-import { OpenRouterCatalogService } from "../../cantrip_server/src/models/openrouter-catalog.ts";
+import { readServerConfig } from "../../tests/reference-node-server/src/config.ts";
+import { connectDatabase } from "../../tests/reference-node-server/src/db/index.ts";
+import { catalogMetadataSnapshot } from "../../tests/reference-node-server/src/db/repository/provider-catalog.ts";
+import { OllamaCatalogService } from "../../tests/reference-node-server/src/models/ollama-catalog.ts";
+import { ChatGptCatalogService } from "../../tests/reference-node-server/src/models/chatgpt-catalog.ts";
+import { GrokCatalogService } from "../../tests/reference-node-server/src/models/grok-catalog.ts";
+import { serverLogger } from "../../tests/reference-node-server/src/logger.ts";
+import { OpenRouterCatalogService } from "../../tests/reference-node-server/src/models/openrouter-catalog.ts";
 import { providerServiceOperation } from "./settings-provider-service-fixture.mjs";
 import {
   persistProviderQuotaSnapshot,
   readAndPersistProviderQuotaSnapshot,
   persistProviderRateLimitActivity,
-} from "../../cantrip_server/src/models/provider-quota.ts";
+} from "../../tests/reference-node-server/src/models/provider-quota.ts";
 import {
   ZaiCatalogService,
   isZaiCodingPlanProvider,
@@ -23,9 +23,9 @@ import {
   ZAI_CODEX_CATALOG_VERSION,
   ZAI_CODEX_CATALOG_SCOPE,
   ZAI_CODEX_CATALOG_SOURCE,
-} from "../../cantrip_server/src/models/zai-catalog.ts";
+} from "../../tests/reference-node-server/src/models/zai-catalog.ts";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { sql } = require("drizzle-orm");
 const database = await connectDatabase(readServerConfig());

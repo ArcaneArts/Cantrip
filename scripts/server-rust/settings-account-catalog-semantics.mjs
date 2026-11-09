@@ -2,11 +2,11 @@ import {
   chatGptModelInventorySchema,
   grokModelInventorySchema,
 } from "../../packages/protocol/dist/index.js";
-import { normalizeChatGptModel } from "../../cantrip_server/src/models/chatgpt-catalog.ts";
+import { normalizeChatGptModel } from "../../tests/reference-node-server/src/models/chatgpt-catalog.ts";
 import {
   normalizeGrokCatalogModel,
   enrichGrokCatalogVisionFromOpenRouter,
-} from "../../cantrip_server/src/models/grok-catalog.ts";
+} from "../../tests/reference-node-server/src/models/grok-catalog.ts";
 import {
   chatGptCatalogModel,
   grokCatalogModel,

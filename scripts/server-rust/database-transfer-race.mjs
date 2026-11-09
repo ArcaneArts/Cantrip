@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { setTimeout as delay } from "node:timers/promises";
 
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 
 // Two real CLI processes wait on the same transaction lock used by native

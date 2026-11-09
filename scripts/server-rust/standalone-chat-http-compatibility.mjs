@@ -13,7 +13,7 @@ import { LiveProbe } from "./live-sockets.mjs";
 import { heartbeat, projectLabel, password } from "./security-fixtures.mjs";
 import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
 import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import {
   chatLifecycleHttpCases,
   chatLifecycleWorkerResult,
@@ -22,7 +22,7 @@ import {
 } from "./chat-lifecycle-http-cases.mjs";
 import { createRequire } from "node:module";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 const option = (key) => {
   const i = process.argv.indexOf(key);

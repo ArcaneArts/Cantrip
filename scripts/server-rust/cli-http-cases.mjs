@@ -1,6 +1,6 @@
 // Production HTTP/SDK scenarios. Only the endpoint replies and setup state are controlled.
 import assert from "node:assert/strict";
-import { hashSecret } from "../../cantrip_server/src/auth/service.ts";
+import { hashSecret } from "../../tests/reference-node-server/src/auth/service.ts";
 import {
   invokeCantripCliCommand,
   CantripServerRequestError,

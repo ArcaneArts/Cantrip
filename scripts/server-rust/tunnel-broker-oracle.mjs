@@ -1,4 +1,4 @@
-import { TunnelStreamBroker } from "../../cantrip_server/src/tunnels/broker.ts";
+import { TunnelStreamBroker } from "../../tests/reference-node-server/src/tunnels/broker.ts";
 import { tunnelRecord } from "./tunnel-record-fixture.mjs";
 const base = {
   protocolVersion: 1,

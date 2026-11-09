@@ -1,6 +1,6 @@
 // Development-only oracle for porting configuration. Inputs contain synthetic
 // fixture environments; inherited Cantrip/database settings are never included.
-import { readServerConfig } from "../../cantrip_server/src/config.ts";
+import { readServerConfig } from "../../tests/reference-node-server/src/config.ts";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 

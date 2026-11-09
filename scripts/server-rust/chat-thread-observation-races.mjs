@@ -6,7 +6,7 @@ import { repositoryFixture } from "./repository-fixture.mjs";
 import { command } from "./native-command-admission-cases.mjs";
 import { eventually } from "./full-worker.mjs";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const postgres = require("postgres");
 

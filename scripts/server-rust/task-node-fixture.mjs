@@ -1,5 +1,5 @@
-import { TaskConflictError } from "../../cantrip_server/src/db/tasks.ts";
-import { TaskStateTransitionError } from "../../cantrip_server/src/tasks/state.ts";
+import { TaskConflictError } from "../../tests/reference-node-server/src/db/tasks.ts";
+import { TaskStateTransitionError } from "../../tests/reference-node-server/src/tasks/state.ts";
 export async function taskFixture(repository, input) {
   const task = repository.tasks,
     { owner, chat, operation } = input;

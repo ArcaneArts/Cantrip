@@ -1,7 +1,7 @@
 import {
   ChatImportJobRepository,
   chatImportAttachmentId,
-} from "../../cantrip_server/src/db/chat-import-jobs.ts";
+} from "../../tests/reference-node-server/src/db/chat-import-jobs.ts";
 export async function chatImportFixture(repo, r) {
   if (r.batchSize !== undefined)
     repo = new ChatImportJobRepository(repo.database, r.batchSize);

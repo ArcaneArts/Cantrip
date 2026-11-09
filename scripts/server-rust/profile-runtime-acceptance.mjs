@@ -270,7 +270,7 @@ for (const [name, file] of Object.entries({
   converter: path.join(converter, "dist/index.mjs"),
   nodeProductionEntry: path.join(
     repositoryRoot,
-    "cantrip_server/dist/index.js",
+    "tests/reference-node-server/dist/index.js",
   ),
   ...(process.env.CANTRIP_CODEX_BIN
     ? { nativeWorkerRuntime: process.env.CANTRIP_CODEX_BIN }

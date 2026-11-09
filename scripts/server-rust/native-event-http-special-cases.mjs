@@ -20,7 +20,7 @@ import {
   scrubEventContent,
 } from "./native-event-http-content.mjs";
 const require = createRequire(
-    new URL("../../cantrip_server/package.json", import.meta.url),
+    new URL("../../tests/reference-node-server/package.json", import.meta.url),
   ),
   postgres = require("postgres");
 async function waitForEventLock(sql) {

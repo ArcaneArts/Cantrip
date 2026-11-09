@@ -24,7 +24,7 @@ import {
   relocationRestart,
   relocationConcurrency,
 } from "./chat-relocation-http-lifecycle.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import {
   targetStateSql,
   otherOwner,

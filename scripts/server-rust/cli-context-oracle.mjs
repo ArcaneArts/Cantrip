@@ -1,17 +1,17 @@
 // Execute actual Source CLI and catalog functions with controlled repository
 // views. HTTP/database/worker acceptance is a separate required qualification.
-import { createCliOperationRuntime } from "../../cantrip_server/src/app/runtime/cli-operation-runtime.ts";
-import { ExecutionLaneConflictError } from "../../cantrip_server/src/db/repository/chat-execution-lanes.ts";
+import { createCliOperationRuntime } from "../../tests/reference-node-server/src/app/runtime/cli-operation-runtime.ts";
+import { ExecutionLaneConflictError } from "../../tests/reference-node-server/src/db/repository/chat-execution-lanes.ts";
 import {
   selectExactExecutionTarget,
   selectExplicitExecutionTarget,
   selectExecutionTarget,
-} from "../../cantrip_server/src/execution-targets/catalog.ts";
+} from "../../tests/reference-node-server/src/execution-targets/catalog.ts";
 import { cantripCliCommandNameSchema } from "../../packages/protocol/dist/cantrip-cli.js";
 import {
   requiredToolString,
   optionalToolString,
-} from "../../cantrip_server/src/http/request-helpers.ts";
+} from "../../tests/reference-node-server/src/http/request-helpers.ts";
 
 const chat = (extra = {}) => ({
   contextKind: "project",
@@ -124,7 +124,7 @@ async function execute(input) {
   return { ...input, outcome, calls };
 }
 // The authoritative conversion has no DB/transport dependencies at execution.
-import { createAgentOperationRuntime } from "../../cantrip_server/src/app/runtime/agent-operation-runtime.ts";
+import { createAgentOperationRuntime } from "../../tests/reference-node-server/src/app/runtime/agent-operation-runtime.ts";
 const { chatOperationContext: sourceChatContext } = createAgentOperationRuntime(
   {},
 );

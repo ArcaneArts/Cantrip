@@ -1,4 +1,4 @@
-import { createModelRoutingRuntime } from "../../cantrip_server/src/app/runtime/model-routing-runtime.ts";
+import { createModelRoutingRuntime } from "../../tests/reference-node-server/src/app/runtime/model-routing-runtime.ts";
 import { makeTurnBehaviorTracker } from "./turn-behavior-node-fixture.mjs";
 export async function runtimeTelemetryFixture(repository, input) {
   const publications = [],

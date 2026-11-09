@@ -1,10 +1,10 @@
-import { createLiveMutationRuntime } from "../../cantrip_server/src/app/runtime/live-mutation-runtime.ts";
-import { TaskLiveInvalidationRouter } from "../../cantrip_server/src/live/task-live-routing.ts";
+import { createLiveMutationRuntime } from "../../tests/reference-node-server/src/app/runtime/live-mutation-runtime.ts";
+import { TaskLiveInvalidationRouter } from "../../tests/reference-node-server/src/live/task-live-routing.ts";
 import { createRequire } from "node:module";
 const { sql } = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("drizzle-orm");
-import { createChatRecoveryRuntime } from "../../cantrip_server/src/app/runtime/chat-recovery-runtime.ts";
+import { createChatRecoveryRuntime } from "../../tests/reference-node-server/src/app/runtime/chat-recovery-runtime.ts";
 
 export function turnLiveEnvironment(repository, input, bridgeOverride) {
   const recovery = createChatRecoveryRuntime({

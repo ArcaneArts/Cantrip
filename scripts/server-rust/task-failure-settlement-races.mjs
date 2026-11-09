@@ -5,7 +5,7 @@ import { repositoryFixture } from "./repository-fixture.mjs";
 import { waiters } from "./task-retry-races.mjs";
 import { taskEnvelope } from "./task-wire-fixtures.mjs";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 
 // Observe both actors actually blocked at the shared owner lock before release.

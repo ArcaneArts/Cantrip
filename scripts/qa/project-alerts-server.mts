@@ -5,26 +5,26 @@ import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { PGlite } = require("@electric-sql/pglite");
 const { drizzle } = require("drizzle-orm/pglite");
 const { migrate } = require("drizzle-orm/pglite/migrator");
 const { eq, sql } = require("drizzle-orm");
 import type { WorkerCommand } from "@cantrip/protocol";
-import { buildApp } from "../../cantrip_server/src/app.js";
-import { readServerConfig } from "../../cantrip_server/src/config.js";
+import { buildApp } from "../../tests/reference-node-server/src/app.js";
+import { readServerConfig } from "../../tests/reference-node-server/src/config.js";
 import {
   LOCAL_USER_ID,
   ServerRepository,
-} from "../../cantrip_server/src/db/repository.js";
-import * as schema from "../../cantrip_server/src/db/schema.js";
-import { resolveSecretVault } from "../../cantrip_server/src/security/secret-vault.js";
+} from "../../tests/reference-node-server/src/db/repository.js";
+import * as schema from "../../tests/reference-node-server/src/db/schema.js";
+import { resolveSecretVault } from "../../tests/reference-node-server/src/security/secret-vault.js";
 import {
   WorkerBridge,
   type WorkerRequestOptions,
-} from "../../cantrip_server/src/workers/bridge.js";
-import { installServerShutdownHandlers } from "../../cantrip_server/src/server-shutdown.js";
+} from "../../tests/reference-node-server/src/workers/bridge.js";
+import { installServerShutdownHandlers } from "../../tests/reference-node-server/src/server-shutdown.js";
 
 const token = process.env.CANTRIP_QA_ALERTS_TOKEN;
 if (!token)

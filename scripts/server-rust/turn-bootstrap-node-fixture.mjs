@@ -1,8 +1,8 @@
 // The actual Source turn runs through its durable bootstrap. A deliberate
 // observation boundary stops it immediately after loading worker attribution;
 // this fixture does not claim to exercise the unported worker stream.
-import { createChatTurnRuntime } from "../../cantrip_server/src/app/runtime/chat-turn-runtime.ts";
-import { createModelRoutingRuntime } from "../../cantrip_server/src/app/runtime/model-routing-runtime.ts";
+import { createChatTurnRuntime } from "../../tests/reference-node-server/src/app/runtime/chat-turn-runtime.ts";
+import { createModelRoutingRuntime } from "../../tests/reference-node-server/src/app/runtime/model-routing-runtime.ts";
 import { turnLiveEnvironment } from "./turn-live-node-fixture.mjs";
 class BootstrapBoundary extends Error {}
 export async function turnBootstrapFixture(repository, input) {

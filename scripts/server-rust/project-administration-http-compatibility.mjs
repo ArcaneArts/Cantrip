@@ -20,7 +20,7 @@ import { LiveProbe } from "./live-sockets.mjs";
 import { managementWorker } from "./worker-management-http-worker.mjs";
 import { eventually, auditRows } from "./audit-observations.mjs";
 import { password } from "./security-fixtures.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import {
   projects,
   seed,

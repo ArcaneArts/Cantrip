@@ -1,12 +1,12 @@
 import { createRequire } from "node:module";
-import { nativeCommandReceipt } from "../../cantrip_server/src/db/repository/native-command-receipt.ts";
+import { nativeCommandReceipt } from "../../tests/reference-node-server/src/db/repository/native-command-receipt.ts";
 import {
   samePlacement,
   sameRuntimeRoute,
-} from "../../cantrip_server/src/db/repository/native-command-context.ts";
-import * as schema from "../../cantrip_server/src/db/schema.ts";
+} from "../../tests/reference-node-server/src/db/repository/native-command-context.ts";
+import * as schema from "../../tests/reference-node-server/src/db/schema.ts";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { getTableColumns } = require("drizzle-orm");
 const base = {

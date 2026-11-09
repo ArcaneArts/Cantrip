@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { literal, json, stamp, otherOwner } from "./project-target-state.mjs";
 import { taskMessage, taskEnvelope } from "./task-wire-fixtures.mjs";
-import { nativeHistoryPayloadDigest } from "../../cantrip_server/src/db/repository/native-history-digest.ts";
+import { nativeHistoryPayloadDigest } from "../../tests/reference-node-server/src/db/repository/native-history-digest.ts";
 import { runTaskGoalCyclePublicationCases } from "./task-goal-cycle-publication-cases.mjs";
 
 export async function runTaskResponsePublicationCases(h, finalized, operation) {

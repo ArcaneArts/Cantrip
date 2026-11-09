@@ -1,8 +1,8 @@
 // The production admission/quotas around a controlled asynchronous transport.
-import { LimitedWorkerCommandBus } from "../../cantrip_server/src/workers/limited-command-bus.ts";
-import { RelayQuotaManager } from "../../cantrip_server/src/operations/relay-quotas.ts";
-import { RelayLimitError } from "../../cantrip_server/src/security/abuse-limits.ts";
-import { WorkerUnavailableError } from "../../cantrip_server/src/workers/bridge.ts";
+import { LimitedWorkerCommandBus } from "../../tests/reference-node-server/src/workers/limited-command-bus.ts";
+import { RelayQuotaManager } from "../../tests/reference-node-server/src/operations/relay-quotas.ts";
+import { RelayLimitError } from "../../tests/reference-node-server/src/security/abuse-limits.ts";
+import { WorkerUnavailableError } from "../../tests/reference-node-server/src/workers/bridge.ts";
 import fixtures from "./worker-command-fixtures.json" with { type: "json" };
 let now = 0;
 const originalNow = Date.now;

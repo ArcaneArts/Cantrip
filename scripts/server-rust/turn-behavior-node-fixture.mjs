@@ -1,7 +1,7 @@
 import {
   ModelBehaviorTracker,
   isObservedTestCommand,
-} from "../../cantrip_server/src/analytics/model-behavior.ts";
+} from "../../tests/reference-node-server/src/analytics/model-behavior.ts";
 export function makeTurnBehaviorTracker(input) {
   const tracker = new ModelBehaviorTracker(),
     snapshots = [];

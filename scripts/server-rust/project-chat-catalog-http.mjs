@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildRustServer, buildRustExample } from "./build.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
-import { ARCHIVED_CHAT_RETENTION_MS } from "../../cantrip_server/src/db/repository.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
+import { ARCHIVED_CHAT_RETENTION_MS } from "../../tests/reference-node-server/src/db/repository.ts";
 import { password } from "./security-fixtures.mjs";
 import { literal } from "./project-target-state.mjs";
 import {

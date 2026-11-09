@@ -1,4 +1,4 @@
-import { ModelBehaviorTracker } from "../../cantrip_server/src/analytics/model-behavior.js";
+import { ModelBehaviorTracker } from "../../tests/reference-node-server/src/analytics/model-behavior.js";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";

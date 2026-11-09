@@ -1,7 +1,7 @@
 // Pure scheduling evidence from the unchanged production history service.
 // Actual publication SQL, transport and encrypted archives use the HTTP suite.
 import assert from "node:assert/strict";
-import { createNativeHistoryPublicationDelivery } from "../../cantrip_server/src/app/runtime/native-history-publication-delivery.ts";
+import { createNativeHistoryPublicationDelivery } from "../../tests/reference-node-server/src/app/runtime/native-history-publication-delivery.ts";
 import { cases as completionCases } from "./completion-delivery-cases.mjs";
 function publication(value) {
   if (Array.isArray(value)) return value.map(publication);

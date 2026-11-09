@@ -21,7 +21,10 @@ async function typescriptFiles(directory) {
 export const normalizeSourcePath = (path) => path.replaceAll("\\", "/");
 
 export async function applicationSourcePaths(repositoryRoot) {
-  const serverSourcePath = resolve(repositoryRoot, "cantrip_server/src");
+  const serverSourcePath = resolve(
+    repositoryRoot,
+    "tests/reference-node-server/src",
+  );
   return [
     resolve(serverSourcePath, "app.ts"),
     ...(await typescriptFiles(resolve(serverSourcePath, "app"))),

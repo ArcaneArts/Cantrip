@@ -21,7 +21,7 @@ import {
 } from "./project-target-state.mjs";
 import { fileDocumentWireFixtures } from "./file-document-wire-fixtures.mjs";
 import { fileDocumentHttpWorker } from "./file-document-http-worker.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { password } from "./security-fixtures.mjs";
 import { LiveProbe, currentUser } from "./live-sockets.mjs";
 import { eventually } from "./full-worker.mjs";

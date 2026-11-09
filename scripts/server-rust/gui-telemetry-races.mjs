@@ -7,7 +7,7 @@ import path from "node:path";
 import { repositoryFixture } from "./repository-fixture.mjs";
 import { stamp } from "./project-target-state.mjs";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const postgres = require("postgres");
 async function witness(sql, fragment, count) {

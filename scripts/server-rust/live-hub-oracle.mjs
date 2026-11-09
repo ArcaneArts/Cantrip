@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { mock } from "node:test";
-import { AppLiveHub } from "../../cantrip_server/src/live/hub.ts";
+import { AppLiveHub } from "../../tests/reference-node-server/src/live/hub.ts";
 import { appLiveServerMessageSchema } from "../../packages/protocol/dist/index.js";
 import { buildRustExample } from "./build.mjs";
 import { liveHubCases } from "./live-hub-scenarios.mjs";

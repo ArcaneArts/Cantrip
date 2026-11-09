@@ -13,7 +13,7 @@ import {
   settingsProject,
 } from "./native-settings-http-fixture.mjs";
 import { literal } from "./project-target-state.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { password } from "./security-fixtures.mjs";
 import { prepareManagedConsoleState } from "../../cantrip_worker/src/managed-console-state.ts";
 import { openTerminalPrivateState } from "../../cantrip_worker/src/terminal-private-state.ts";

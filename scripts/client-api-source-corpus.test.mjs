@@ -55,16 +55,18 @@ test("missing client implementations fail actual source reads", async () => {
 
 test("Windows audit source names match canonical inventory names and policy exceptions", () => {
   assert.equal(
-    normalizeSourcePath(String.raw`cantrip_server\src\db\repository.ts`),
-    "cantrip_server/src/db/repository.ts",
+    normalizeSourcePath(
+      String.raw`tests\reference-node-server\src\db\repository.ts`,
+    ),
+    "tests/reference-node-server/src/db/repository.ts",
   );
   assert.equal(
-    normalizeSourcePath("cantrip_server/src/db/repository.ts"),
-    "cantrip_server/src/db/repository.ts",
+    normalizeSourcePath("tests/reference-node-server/src/db/repository.ts"),
+    "tests/reference-node-server/src/db/repository.ts",
   );
   assert.equal(
     normalizeSourcePath(
-      String.raw`cantrip_server\src\policies\templates.ts`,
+      String.raw`tests\reference-node-server\src\policies\templates.ts`,
     ).endsWith("/policies/templates.ts"),
     true,
   );
