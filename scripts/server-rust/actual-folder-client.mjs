@@ -76,6 +76,8 @@ import { verifySharedProductRolling } from "./shared-product-rolling.mjs";
 import { verifySharedProductOfflineShutdown } from "./shared-product-offline-shutdown.mjs";
 import { actualNativeInflightClient } from "./actual-native-inflight-client.mjs";
 import { SingleProductFixture } from "./single-product-fixture.mjs";
+import { ProfileRuntimeFixture } from "./profile-runtime-fixture.mjs";
+import { profileAgentInterruption } from "./profile-agent-interruption.mjs";
 import { actualSingleInflightClient } from "./actual-single-inflight-client.mjs";
 import { actualWorkerInflightClient } from "./actual-worker-inflight-client.mjs";
 import { actualTaskGoalWorkerInflightClient } from "./actual-task-goal-worker-inflight-client.mjs";
@@ -1183,7 +1185,11 @@ async function flow(
         ...(process.argv.includes("--native-single-agent-recovery") ||
         process.argv.includes("--native-shared-agent-recovery")
           ? {
-              interruptNativeStream: nativeAgentInterruption({
+              interruptNativeStream: (process.argv.includes(
+                "--profile-runtime-recovery",
+              )
+                ? profileAgentInterruption
+                : nativeAgentInterruption)({
                 fixture,
                 page,
                 projectId: first.id,
@@ -1424,9 +1430,18 @@ try {
           workerKind: kinds[1],
           databaseUrl: await postgres.database(),
         })
-      : singleProduct
-        ? new SingleProductFixture(fixtureOptions)
-        : new HttpFixture(fixtureOptions);
+      : process.argv.includes("--profile-runtime-recovery")
+        ? new ProfileRuntimeFixture({
+            ...fixtureOptions,
+            nativeAssets: option("--native-assets"),
+            profileConverter: option("--profile-converter"),
+            profileSnapshotProbe: option("--profile-snapshot-probe"),
+            createProfileDatabase: () => postgres.database(),
+            samePostgres: process.argv.includes("--profile-same-postgres"),
+          })
+        : singleProduct
+          ? new SingleProductFixture(fixtureOptions)
+          : new HttpFixture(fixtureOptions);
     if (postgres && !sharedPair) {
       if (kind === "node" || databaseMode === "postgres")
         fixture.environment.DATABASE_URL = await postgres.database();
@@ -1441,6 +1456,10 @@ try {
       workerDiagnostics: [],
     };
     report.runtimes.push(result);
+    if (fixture instanceof ProfileRuntimeFixture) {
+      result.profileRuntimeTransfers = fixture.transfers;
+      result.profileRuntimeGenerations = fixture.generations;
+    }
     if (fullServerLogs) {
       const start = fixture.start.bind(fixture);
       fixture.start = async (...args) => {

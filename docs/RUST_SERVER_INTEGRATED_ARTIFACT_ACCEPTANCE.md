@@ -172,6 +172,11 @@ documentation and the coverage ledger; it does not change production Rust code.
 
 ## Remaining replacement work
 
+The [profile runtime recovery qualification](RUST_SERVER_PROFILE_RUNTIME_RECOVERY.md)
+extends that evidence with real full-worker/native Task state and continuing
+Agent/Goal execution across rollback/re-upgrade on all three stores, plus an
+external PostgreSQL code-only change with the same URL and profile directory.
+
 The subsequent [historical product-state rollback qualification](RUST_SERVER_HISTORICAL_PRODUCT_ROLLBACK.md)
 adds populated old-Node/native/old-Node/native round trips on all three backends,
 with exact database comparisons and retained encrypted product writes. Its
