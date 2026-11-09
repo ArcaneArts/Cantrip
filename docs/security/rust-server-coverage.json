@@ -19894,6 +19894,35 @@
         "Complete remaining operational log consumers and console presentation, and full product, fault, coordination, current-artifact, supported-platform, historical-upgrade/rollback and performance acceptance.",
         "Complete final Rust default selection and production Node-server removal."
       ]
+    },
+    "currentIntegratedArtifactQualification": {
+      "status": "implemented-pending-platform-acceptance",
+      "scope": "Candidate 1.1.2778 at acca4261: native macOS in all three stores, local and hosted; eight production-launcher historical profile conversion cases with post-write reverse conversion; current Linux x64 Debian and exported Ubuntu in all three stores, local and hosted; actual systemd/Caddy installation, failure recovery and rollback in all three stores.",
+      "evidence": [
+        "docs/RUST_SERVER_INTEGRATED_ARTIFACT_ACCEPTANCE.md",
+        "scripts/server-rust/packaged-server-acceptance.mjs",
+        "scripts/server-rust/desktop-profile-upgrade-compatibility.mjs",
+        "scripts/server-rust/container-server-acceptance.mjs",
+        "scripts/server-rust/winterhold-systemd-acceptance.mjs"
+      ],
+      "remaining": [
+        "Current normal desktop app existing-client encryption-ready acceptance remains incomplete at actual macOS Keychain access while the console is locked; no identity/catalog/vault bypass.",
+        "Complete current supported-platform, product, background-service, interruption and coordination acceptance; broader historical upgrades and product-state rollback; remaining representative performance.",
+        "Rust-default cutover and production Node server removal remain unimplemented. Worker remains Node; no production Winterhold deployment."
+      ]
+    },
+    "currentSmallProfilePerformance": {
+      "status": "partial",
+      "scope": "Compiled production Node versus optimized native Rust 1.1.2778 on macOS arm64; isolated local PGlite profiles, five warmups and 20 measured runs per runtime; all 50 passed. Measured readiness, process-tree RSS, HTTP reads and durable writes, eight-client throughput, App Live pings, worker-enrollment publication, paused-client catch-up, SIGTERM and write retention. Same workload and environment; no active builds.",
+      "evidence": [
+        "docs/RUST_SERVER_INTEGRATED_ARTIFACT_ACCEPTANCE.md",
+        "scripts/server-rust/production-runtime-benchmark.mjs",
+        "scripts/server-rust/runtime-performance-summary.mjs"
+      ],
+      "remaining": [
+        "Small-profile metrics do not qualify large datasets, other database modes, bulk stream throughput, sustained backpressure or interruption/recovery performance.",
+        "Supported-platform/full-product acceptance, Rust default and production Node-server removal remain required."
+      ]
     }
   },
   "remainingAcceptance": [
@@ -20218,6 +20247,23 @@
         "scripts/server-rust/http-route-inventory.mjs"
       ],
       "remaining": "Other21 active routes/background services, current platform/package/upgrade/post-write rollback/performance acceptance, final desktop/Winterhold rehearsal, Rust-default cutover and production Node-server removal."
+    },
+    {
+      "branch": "codex/rust-current-desktop-upgrade-acceptance",
+      "observedAt": "2026-11-09",
+      "platforms": ["darwin-arm64", "linux-x64-on-arm64-Docker"],
+      "execution": "Local native macOS package, historical conversion and reverse conversion, Debian and exported Ubuntu distributions, Ubuntu 24 ARM64 systemd with Rosetta x64 service execution and Caddy; current compiled Node versus native small-profile performance. No GitHub Actions or production Winterhold connection.",
+      "conclusion": "Current scoped native/container/service and eight-case profile conversion suites pass. Full normal desktop encryption-ready acceptance remains incomplete at actual locked-console Keychain access; completeReplacement is false.",
+      "scope": "All three storage modes, local and hosted packaging; SQL exports, migrations, restart, writes and identity; 18 systemd installer invocations, post-write rollback, failure/configuration recovery, namespaces, TLS and mapped-binary hashing; 50 small-profile production-entry benchmark runs.",
+      "qualification": "docs/RUST_SERVER_INTEGRATED_ARTIFACT_ACCEPTANCE.md",
+      "harnesses": [
+        "scripts/server-rust/desktop-profile-upgrade-compatibility.mjs",
+        "scripts/server-rust/container-server-acceptance.mjs",
+        "scripts/server-rust/winterhold-systemd-acceptance.mjs",
+        "scripts/server-rust/production-runtime-benchmark.mjs",
+        "scripts/server-rust/runtime-performance-summary.mjs"
+      ],
+      "remaining": "Existing-client desktop encryption and updates; remaining supported-platform, product, background-service, fault and coordination acceptance; broader profiles and product-state rollback; large-profile, other-store, bulk-stream, sustained-backpressure and recovery performance; Rust-default cutover and production Node server removal."
     }
   ]
 }

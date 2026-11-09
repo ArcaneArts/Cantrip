@@ -4,6 +4,11 @@ The full server replacement remains incomplete. Node remains the default server
 and the worker remains Node. This milestone fixes Windows native packaging and
 refreshes scoped local artifact and desktop-supervisor qualification.
 
+The subsequent [integrated artifact qualification](RUST_SERVER_INTEGRATED_ARTIFACT_ACCEPTANCE.md)
+records candidate `1.1.2778` macOS/profile-upgrade, Debian/Ubuntu and systemd
+results, a production-entry Node/Rust performance sample, and the remaining
+existing-client desktop encryption acceptance.
+
 ## Actual Windows failures and repairs
 
 The x64 GNU release build originally failed to link native PGlite's zlib imports.
