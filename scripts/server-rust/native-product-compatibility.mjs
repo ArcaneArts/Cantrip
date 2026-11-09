@@ -14,6 +14,7 @@ const { values } = parseArgs({
     database: { type: "string", multiple: true },
     suite: { type: "string", multiple: true },
     "report-directory": { type: "string" },
+    "production-server": { type: "boolean", default: false },
   },
 });
 const supportedDatabases = ["pglite", "postgres", "bundled-postgres"];
@@ -38,9 +39,9 @@ const summary = {
   architecture: process.arch,
   databaseModes: databases,
   selectedSuites,
+  productionServer: values["production-server"],
   nativeExecutableOverride: process.env.CANTRIP_CODEX_BIN ?? null,
-  scope:
-    "Existing browser SDKs, production server startup/routes with development-only SQL failure capture, full production Node worker, actual native executable, controlled public model HTTP only. Separate disposable stores for every scenario; not packaged/platform/multi-instance acceptance.",
+  scope: `Existing browser SDKs, ${values["production-server"] ? "production server executables without SQL fixture routes" : "production server startup/routes with development-only SQL failure capture"}, full production Node worker, actual native executable, controlled public model HTTP only. Separate disposable stores for every scenario; not packaged/platform/multi-instance acceptance.`,
   cases: [],
 };
 const summaryPath = path.join(directory, "summary.json");
@@ -65,7 +66,7 @@ for (const database of databases) {
         "--database",
         database,
         ...suites[suite],
-        "--task-diagnostics",
+        ...(values["production-server"] ? [] : ["--task-diagnostics"]),
         "--report",
         report,
       ],

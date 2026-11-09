@@ -4,6 +4,14 @@ The server replacement remains incomplete. Node is still the default server,
 and the worker remains Node. Historical ledger entries describe their original
 milestones; their remaining-work text is not a current implementation inventory.
 
+The [current product and shared Agent recovery](RUST_SERVER_SHARED_AGENT_RECOVERY.md)
+qualification refreshes the actual production matrix to the current 92-patch
+native runtime and rebuilt worker. All six local storage/product cases and both
+active Agent/Goal crash roles across all four shared peer pairings pass. It also
+repairs premature logical GUI completion after remote relay-owner loss in both
+servers. Remaining platform/artifact, worker-loss, long-outage, performance and
+cutover acceptance is separate; broader repository checks retain their failures.
+
 The [credential lifecycle comparison](RUST_SERVER_WORKER_CREDENTIAL_LIFECYCLE.md)
 captures enrollment creation/completion/rejection and credential rotation/revocation.
 Its debug and optimized production matrices pass all nine storage/authentication pairs,

@@ -1,5 +1,14 @@
 # Rust server replacement
 
+The current 92-patch native runtime and rebuilt full worker pass the six-case
+production product matrix across all three stores. Active Agent and Goal turns
+also survive either shared peer's SIGKILL across all four Node/Rust pairings,
+retaining original execution authority and producing one canonical answer.
+Both servers repair premature GUI completion on remote relay-owner loss. See
+[current product and shared Agent recovery](RUST_SERVER_SHARED_AGENT_RECOVERY.md)
+for exact qualification, retained failures and remaining acceptance. Node is
+still the default; complete replacement remains unfinished.
+
 Native enrollment and credential lifecycle diagnostics now use shared capture,
 redaction and repetition policy. Actual production comparisons exercise online,
 offline and failed rotation, revocation and account/identity replacement. The

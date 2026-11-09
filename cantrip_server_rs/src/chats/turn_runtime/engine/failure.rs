@@ -1,8 +1,35 @@
 use super::*;
 use crate::chats::{live_mutations::MessageOptions, message_queries::MessageKind};
 impl Runtime {
-    pub(super) async fn retain_suspension(&self, turn: &PreparedTurn) -> Result<bool> {
+    pub(super) async fn retain_suspension(
+        &self,
+        turn: &PreparedTurn,
+        error: &anyhow::Error,
+    ) -> Result<bool> {
         let commands = Commands::new(self.dependencies.events.database.clone());
+        if crate::workers::inference_failure::transport_ended(error)
+            && let Some(receipt) = &turn.native_receipt
+            && commands
+                .pending_logical_gui_after_transport_loss(
+                    &turn.owner,
+                    &events::text(&turn.execution["workerId"])?,
+                    &events::text(&receipt["operationId"])?,
+                    &events::text(&receipt["operationGeneration"])?,
+                )
+                .await?
+        {
+            self.log(
+                "info",
+                "Chat input retained while awaiting its native outcome",
+                json!({
+                    "event":"chat.input.transport-interrupted", "subsystem":"chat-execution",
+                    "operation":"retain-pending-native-input", "status":"retained",
+                    "chatId":turn.execution["chatId"], "workerId":turn.execution["workerId"],
+                    "operationId":receipt["operationId"],
+                }),
+            );
+            return Ok(true);
+        }
         let task_input = turn.task_relay.is_some()
             || (turn.encrypted_task.is_some() && turn.user_message["mode"] == "goal");
         if task_input
@@ -73,7 +100,7 @@ impl Runtime {
         state: Arc<Mutex<TurnState>>,
         error: &Arc<anyhow::Error>,
     ) -> Result<()> {
-        if self.retain_suspension(&turn).await? {
+        if self.retain_suspension(&turn, error).await? {
             return Ok(());
         }
         let e = &turn.execution;

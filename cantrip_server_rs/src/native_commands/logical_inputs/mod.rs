@@ -1,6 +1,7 @@
 //! One accepted GUI input may own several native executions and one durable closure.
 mod continuation;
 mod outcomes;
+mod pending;
 mod restored;
 use super::{Repository, admit::text, context};
 use crate::{

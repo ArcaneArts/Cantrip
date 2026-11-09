@@ -3,6 +3,7 @@ import type {
   TaskInferenceInputReceipt,
 } from "@cantrip/protocol";
 import type { ChatTurnRuntimeDependencies } from "./chat-turn-types.js";
+import { workerTransportEnded } from "../../chats/execution-helpers.js";
 
 /** Preserve the existing logical input on worker loss. This reads the actual
  * committed suspension and current activation, not an error-message heuristic. */
@@ -15,7 +16,32 @@ export async function retainSuspendedChatTurn(
   workerId: string,
   receipt: NativeCommandReceipt | null | undefined,
   taskInput?: TaskInferenceInputReceipt,
+  transportError?: unknown,
 ): Promise<boolean> {
+  if (
+    receipt &&
+    workerTransportEnded(transportError) &&
+    (await dependencies.repository.nativeCommands.pendingLogicalGuiAfterTransportLoss(
+      ownerId,
+      workerId,
+      receipt.operationId,
+      receipt.operationGeneration,
+    ))
+  ) {
+    dependencies.app.log.info(
+      {
+        event: "chat.input.transport-interrupted",
+        subsystem: "chat-execution",
+        operation: "retain-pending-native-input",
+        status: "retained",
+        chatId: receipt.chatId,
+        workerId,
+        operationId: receipt.operationId,
+      },
+      "Chat input retained while awaiting its native outcome",
+    );
+    return true;
+  }
   const stopped = taskInput
     ? await dependencies.repository.nativeSuspensions.taskExecutionStopped(
         ownerId,

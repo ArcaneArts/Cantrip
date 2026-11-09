@@ -194,6 +194,13 @@ export async function nativeCommandFixture(repository, input) {
       input.status,
       input.transportEnded ?? false,
     );
+  if (input.op === "native-command-logical-transport-pending")
+    return repository.nativeCommands.pendingLogicalGuiAfterTransportLoss(
+      owner,
+      worker,
+      operation,
+      generation,
+    );
   if (input.op === "native-command-logical-deferred")
     return repository.nativeCommands.hasDeferredLogicalGui(
       owner,

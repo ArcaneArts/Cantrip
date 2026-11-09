@@ -3,6 +3,7 @@ import {
   reconcileUnstartedGui,
 } from "./native-undispatched-gui.js";
 import { isNativeTransportClosure } from "./native-transport-evidence.js";
+import { pendingLogicalGuiAfterTransportLoss } from "./native-pending-gui.js";
 import { retainTerminalInput } from "./native-terminal-input.js";
 import { finishRestoredLogicalInput } from "./native-restored-logical-input.js";
 import { goalHandoffSessionMatches } from "./native-goal-handoff-affinity.js";
@@ -1817,6 +1818,21 @@ export class NativeCommandRepository {
       ),
     );
   }
+  pendingLogicalGuiAfterTransportLoss(
+    ownerId: string,
+    workerId: string,
+    operationId: string,
+    generation: string,
+  ): Promise<boolean> {
+    return pendingLogicalGuiAfterTransportLoss(
+      this.database,
+      ownerId,
+      workerId,
+      operationId,
+      generation,
+    );
+  }
+
   hasDeferredLogicalGui(
     ...args: Parameters<NativeLogicalInputRepository["hasDeferredLogicalGui"]>
   ) {
