@@ -19952,6 +19952,37 @@
         "Opaque WorkerLink binary throughput, large product datasets, representative other-store performance and complete supported-platform/product/fault/coordination acceptance remain required.",
         "Existing-client desktop encryption/update acceptance, broader historical upgrades and product-state rollback, Rust-default cutover and production Node-server removal remain incomplete. Worker remains Node."
       ]
+    },
+    "currentProductionWorkerLinkQualification": {
+      "status": "partial",
+      "scope": "Local macOS arm64 production Node/native entries with unchanged WorkerConnection/WorkerLinkGateway and real public HTTP-issued observation/tunnel grants. All six peer/store runs pass 64 MiB events download, 64 MiB stream echo, selective revocation preserving a sibling, paused TCP congestion with four lawful 8 MiB windows, endpoint transport/gateway shutdown/recreation with retained enrollment, actual server SIGKILL/reconnect retaining identity/settings/opaque tunnel record, generation/capability rejection and exact default-quota admission. All final endpoint shutdowns remove all worker authority.",
+      "evidence": [
+        "docs/RUST_SERVER_WORKER_LINK_PRODUCTION.md",
+        "scripts/server-rust/production-worker-link-acceptance.mjs",
+        "scripts/server-rust/production-worker-link-fixture.mjs",
+        "scripts/server-rust/production-worker-link-cases.mjs"
+      ],
+      "performance": {
+        "platform": "darwin-arm64",
+        "database": "pglite",
+        "payloadMiB": 64,
+        "warmupsPerSeries": 5,
+        "measuredRunsPerSeries": 20,
+        "totalPassedInvocations": 100,
+        "downloadMedianMiBPerSecond": {
+          "node": 227.8216196718494,
+          "rust": 227.88957743162706
+        },
+        "echoMedianMiBPerSecond": {
+          "node": 124.78269421854127,
+          "rust": 123.53403675909183
+        },
+        "interpretation": "Approximately equal throughput; +0.03% download and -1.00% echo are within noise. Echo counts the application payload once while transferring it in both directions. Complete-command medians, including setup/startup/enrollment/teardown, are separately 41.37% and 40.86% lower for Rust. No maximum-server-capacity claim; endpoints share a driver process. All default quotas remain active."
+      },
+      "remaining": [
+        "These tests do not establish product endpoint encryption, full-worker process crashes or other QoS/platform/multi-instance performance. Existing component/product evidence retains its separate scope; large-profile and remaining representative performance acceptance stays required.",
+        "Complete existing-client encryption/update, historical product-state upgrade/rollback, remaining product/background/fault/coordination/supported-platform acceptance, then Rust default selection and production Node-server removal. Worker remains Node; no Winterhold production deployment."
+      ]
     }
   },
   "remainingAcceptance": [

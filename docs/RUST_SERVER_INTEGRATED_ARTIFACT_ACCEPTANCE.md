@@ -130,6 +130,12 @@ adds production bulk JSON measurements and all-store slow-consumer/crash/reconne
 comparisons. Its scope and remaining binary/product/platform work are recorded
 separately.
 
+The [production WorkerLink qualification](RUST_SERVER_WORKER_LINK_PRODUCTION.md)
+adds real observation/tunnel grants, byte-exact binary traffic, quota and
+slow-consumer boundaries, selective revocation and server/worker-endpoint
+recovery. Its repeated `events`/`stream` measurements and limitations are
+separate from this small-profile HTTP/Live sample.
+
 Build the Node production entry and provide an optimized native package. Run
 from the repository root, using a new owned evidence directory:
 
