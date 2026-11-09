@@ -192,6 +192,20 @@ function jsonVectors() {
   ];
   for (let unit = 0; unit <= 65535; unit++)
     raw.push(`"\\u${unit.toString(16).padStart(4, "0")}"`);
+  for (const length of [63, 64, 65, 4096, 16384, 65536]) {
+    for (const pattern of [
+      "x",
+      "valid UTF-8 \u0080雪🦀",
+      '\u0000\b\t\n\f\r"\\\u2028\u2029',
+      "\ud800x\udfff",
+    ]) {
+      const value = pattern
+        .repeat(Math.ceil(length / pattern.length))
+        .slice(0, length);
+      raw.push(JSON.stringify(value));
+      raw.push(JSON.stringify({ [value]: { value }, again: [value] }));
+    }
+  }
   const bytes = new ArrayBuffer(8),
     view = new DataView(bytes);
   let state = 0x1ba5e;

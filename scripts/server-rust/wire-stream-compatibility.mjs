@@ -7,11 +7,11 @@ import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { createInterface } from "node:readline";
 import { parseArgs } from "node:util";
 import { buildContractManifest } from "./contracts.mjs";
 import { vectorCases } from "./security-oracle.mjs";
 import { securityFixtures } from "./security-fixtures.mjs";
+import { jsonLines } from "./jsonl-lines.mjs";
 
 const { values } = parseArgs({
   options: {
@@ -35,8 +35,7 @@ const closed = new Promise((resolve) => {
 });
 // Writes also receive their error through the callback below.
 child.stdin.on("error", () => {});
-const output = createInterface({ input: child.stdout });
-const lines = output[Symbol.asyncIterator]();
+const lines = jsonLines(child.stdout);
 let current;
 try {
   await once(child, "spawn");
@@ -103,7 +102,7 @@ try {
     if (child.exitCode === null && child.signalCode === null) child.kill();
   }
   report.nativeExit = await closed;
-  output.close();
+  await lines.return();
   if (values.report) {
     await mkdir(path.dirname(path.resolve(values.report)), { recursive: true });
     await writeFile(values.report, JSON.stringify(report, null, 2) + "\n");

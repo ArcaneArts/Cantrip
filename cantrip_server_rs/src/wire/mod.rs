@@ -486,7 +486,13 @@ impl Contracts {
                         output.push(child.value.clone().unwrap_or(Value::Null));
                         result.merge(child);
                     }
-                    result.value = Some(json!(output));
+                    result.value = Some(
+                        if output.iter().all(Value::json_round_trip_preserves_value) {
+                            Value::Array(output)
+                        } else {
+                            json!(output)
+                        },
+                    );
                 } else {
                     result.invalid("array", path);
                 }

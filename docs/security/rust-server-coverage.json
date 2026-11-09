@@ -19923,6 +19923,35 @@
         "Small-profile metrics do not qualify large datasets, other database modes, bulk stream throughput, sustained backpressure or interruption/recovery performance.",
         "Supported-platform/full-product acceptance, Rust default and production Node-server removal remain required."
       ]
+    },
+    "currentWorkerLogStreamingPerformance": {
+      "status": "partial",
+      "scope": "Production-entry controlled worker-log JSON on macOS arm64. PGlite: five warmups and 20 measured 256 MiB runs for original Rust, optimized Rust and Node; all 75 pass with exact payload and wire bytes. All three stores: each production peer passes 64 MiB, slow-consumer 1013/one lease stop and SIGKILL/reconnect with retained identity/write and post-recovery command/stream. Final native package passes all3 local/hosted, embedded fallback, exports/restart/SIGTERM, 1762 file hashes, no Node PATH and denied Homebrew reads/artifact writes.",
+      "evidence": [
+        "docs/RUST_SERVER_STREAMING_PERFORMANCE.md",
+        "scripts/server-rust/production-stream-benchmark.mjs",
+        "scripts/server-rust/production-server-process.mjs",
+        "scripts/server-rust/jsonl-lines.mjs",
+        "scripts/server-rust/jsonl-lines.test.mjs"
+      ],
+      "measuredMedianPayloadMiBPerSecond": {
+        "originalRust": 48.259607748372744,
+        "optimizedRust": 208.4225366033952,
+        "node": 207.10571768327293
+      },
+      "nativeCompatibility": {
+        "schemaRoots": 802,
+        "exactSchemaCases": 899891,
+        "jsonRoundTrips": 69696,
+        "outgoingCommandMutations": 262471,
+        "libraryTests": 85,
+        "strictAllTargetClippy": true,
+        "workerLogPgliteAuthenticationModes": 3
+      },
+      "remaining": [
+        "Opaque WorkerLink binary throughput, large product datasets, representative other-store performance and complete supported-platform/product/fault/coordination acceptance remain required.",
+        "Existing-client desktop encryption/update acceptance, broader historical upgrades and product-state rollback, Rust-default cutover and production Node-server removal remain incomplete. Worker remains Node."
+      ]
     }
   },
   "remainingAcceptance": [

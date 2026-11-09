@@ -174,7 +174,16 @@ impl LogStream {
         if value["type"] == "diagnostics.logs.observed"
             && value["subscriptionId"] == self.subscription
         {
-            self.send(json!({"type":"batch","records":value["records"],"nextCursor":value["nextCursor"],"oldestCursor":value["oldestCursor"],"latestCursor":value["latestCursor"],"truncated":value["truncated"]}))?;
+            // The bridge has validated this notification. Reuse its values;
+            // send still validates the complete outgoing stream message.
+            self.send(Value::object([
+                ("type", Value::String("batch".into())),
+                ("records", value["records"].clone()),
+                ("nextCursor", value["nextCursor"].clone()),
+                ("oldestCursor", value["oldestCursor"].clone()),
+                ("latestCursor", value["latestCursor"].clone()),
+                ("truncated", value["truncated"].clone()),
+            ]))?;
         }
         Ok(())
     }
