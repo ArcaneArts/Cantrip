@@ -172,6 +172,11 @@ documentation and the coverage ledger; it does not change production Rust code.
 
 ## Remaining replacement work
 
+The subsequent [historical product-state rollback qualification](RUST_SERVER_HISTORICAL_PRODUCT_ROLLBACK.md)
+adds populated old-Node/native/old-Node/native round trips on all three backends,
+with exact database comparisons and retained encrypted product writes. Its
+synthetic fixture and execution-replay limits remain explicit.
+
 Complete the encryption-ready existing-client desktop/update matrix, broader
 historical-profile and product-state rollback, outstanding product/background
 and interruption/coordination coverage, supported platform acceptance and

@@ -1,5 +1,16 @@
 # Rust server replacement
 
+Populated historical profile rollback now passes a real old Node distribution
+through each native storage backend, back to old Node after Rust product writes,
+and back to writable Rust after further Node writes. The local run compares all
+137 tables/four sequences, retains the original session/identity/credential
+summary and keys/files, and decrypts the accepted encrypted product state with
+the actual client crypto library. See
+[historical product-state rollback](RUST_SERVER_HISTORICAL_PRODUCT_ROLLBACK.md)
+for its synthetic fixture scope, retained failures and remaining full-client,
+historical-profile, execution-replay and platform acceptance. Node remains the
+default; full replacement is unfinished.
+
 The [current wire comparison](RUST_SERVER_CURRENT_WIRE_COMPATIBILITY.md) restores
 the missing schema and command examples after protocol additions. Broad native
 values, issues and error messages now match the current TypeScript corpus,
