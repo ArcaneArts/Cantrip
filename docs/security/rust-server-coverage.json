@@ -15104,11 +15104,14 @@
         "scripts/server-rust/worker-bridge-diagnostics-oracle.mjs",
         "scripts/server-rust/worker-bridge-runtime-cases.mjs",
         "scripts/server-rust/worker-close-handshake-compatibility.mjs",
-        "scripts/server-rust/worker-authentication-close-cases.mjs"
+        "scripts/server-rust/worker-authentication-close-cases.mjs",
+        "docs/RUST_SERVER_WORKER_AUTHENTICATION.md",
+        "cantrip_server_rs/src/http/worker_socket_logs.rs",
+        "scripts/server-rust/worker-authentication-runtime-cases.mjs"
       ],
       "scope": "Native shared JSON operational log emission, UTF-16 text/key semantics, secret/context/error sanitization, sampled emission and bounded repeated-event windows match 65,937 actual Source sanitizer/error vectors and 2,136 actions/eight policy scenarios locally. Actual direct production log comparisons pass334 cases/15 groups, coordinator diagnostics575 cases, and routing583 cases/31 states per store on native PGlite/private/external PostgreSQL. This is not the complete operational logging/metrics product.",
       "remaining": [
-        "Reconcile remaining bridge and other production diagnostics/background consumers. HTTP target/route-level logging, accounting producers and database lifecycle/health have scoped local qualification; broader product/database interruptions remain unqualified.",
+        "Reconcile remaining coordinated-bridge and other production diagnostics/background consumers. Local bridge, worker authentication, HTTP target/route-level logging, accounting and database lifecycle/health have scoped local qualification; broader product/database interruptions remain unqualified.",
         "Complete current supported-platform, packaged artifact and full replacement acceptance."
       ],
       "operationalHttpQualification": {
@@ -15312,6 +15315,35 @@
           "productionEntrypointPeerRuns": 40,
           "dedicatedWireAuthenticationServerRuns": 18
         }
+      },
+      "workerAuthenticationQualification": {
+        "status": "implemented-with-scoped-local-qualification",
+        "sourceBaseline": "c56eab5431860807eb338237379f2ab5c7c80cb5",
+        "platform": "darwin-arm64",
+        "qualification": "docs/RUST_SERVER_WORKER_AUTHENTICATION.md",
+        "normalStorageAuthenticationPairs": 9,
+        "debugProductionEntrypointPeerRuns": 28,
+        "normalZeroExits": 26,
+        "expectedStartupFailureExits": 2,
+        "authenticationPeerRuns": 18,
+        "websocketAttempts": 192,
+        "pairedDecisionRecords": 60,
+        "libraryTests": 80,
+        "strictAllTargetClippy": true,
+        "redisCoordinatorPairings": 4,
+        "redisCoordinatorRecordedSteps": 56,
+        "coordinatedBridgePairings": 4,
+        "coordinatedBridgeRecordedSteps": 172,
+        "behavior": "Shared rejected/authenticated/claim-failed capture, real request identities, original repetition keys and minimization/redaction. Actual Redis SET refusal and paused-write deadline. Per-manager response timeout disabled to match Node; original authentication deadline extends through attachment; original owned claim and handshake permit survive abandonment. Late successful SET executes then is discarded before60sTTL; late deniedSET logs before a heldcloseACK. No new auth records for unlogged protocol/capacity/timeout decisions.",
+        "remaining": "Other production diagnostic/background consumers, supported platforms/artifacts, complete product/fault/coordination, historical upgrades/post-write rollback, performance, Rust default cutover and production Node-server removal.",
+        "optimizedArtifact": {
+          "bytes": 94168848,
+          "sha256": "f8bb747fb2420d418d97e766a4d5f799201f0d1f81b645c3937100e378f2f94a",
+          "actualBootstrapVersion": "1.1.2771"
+        },
+        "optimizedProductionEntrypointPeerRuns": 28,
+        "optimizedAdditionalFaultAndHandshakePeerRuns": 14,
+        "focusedIntegrationTests": 16
       }
     },
     "legacyPGliteConversion": {
@@ -15459,7 +15491,11 @@
         "scripts/server-rust/worker-bridge-diagnostics-oracle.mjs",
         "scripts/server-rust/worker-bridge-runtime-cases.mjs",
         "scripts/server-rust/worker-close-handshake-compatibility.mjs",
-        "scripts/server-rust/worker-authentication-close-cases.mjs"
+        "scripts/server-rust/worker-authentication-close-cases.mjs",
+        "docs/RUST_SERVER_WORKER_AUTHENTICATION.md",
+        "cantrip_server_rs/src/http/worker_socket_logs.rs",
+        "scripts/server-rust/worker-authentication-runtime-cases.mjs",
+        "scripts/server-rust/log-runtime-server-compatibility.mjs"
       ],
       "scope": "Native HTTP/1 upgrade (versions 8/13, ready v1/v2 and legacy), credential authentication, bounded pre-authentication buffering/capacity, close-frame transport cleanup, response correlation, local reconnect/deadline/event callback sequencing and credential delivery/revocation. Actual browser APIs and unchanged worker components exercise enrollment/rotation/persistence/reconnect/revocation. Full incoming text-envelope validation, ordered events and worker-scoped notification listeners now use the production bridge. Native notification prefixes execute in registration order; asynchronous completions are independent, and subscriptions survive reconnect. A loopback-only observer fixture compares actual HTTP/WS routing through unchanged worker transport components on all three stores locally. This does not implement the command resource domains.",
       "remaining": [
@@ -15496,6 +15532,35 @@
           "productionEntrypointPeerRuns": 40,
           "dedicatedWireAuthenticationServerRuns": 18
         }
+      },
+      "workerAuthenticationQualification": {
+        "status": "implemented-with-scoped-local-qualification",
+        "sourceBaseline": "c56eab5431860807eb338237379f2ab5c7c80cb5",
+        "platform": "darwin-arm64",
+        "qualification": "docs/RUST_SERVER_WORKER_AUTHENTICATION.md",
+        "normalStorageAuthenticationPairs": 9,
+        "debugProductionEntrypointPeerRuns": 28,
+        "normalZeroExits": 26,
+        "expectedStartupFailureExits": 2,
+        "authenticationPeerRuns": 18,
+        "websocketAttempts": 192,
+        "pairedDecisionRecords": 60,
+        "libraryTests": 80,
+        "strictAllTargetClippy": true,
+        "redisCoordinatorPairings": 4,
+        "redisCoordinatorRecordedSteps": 56,
+        "coordinatedBridgePairings": 4,
+        "coordinatedBridgeRecordedSteps": 172,
+        "behavior": "Shared rejected/authenticated/claim-failed capture, real request identities, original repetition keys and minimization/redaction. Actual Redis SET refusal and paused-write deadline. Per-manager response timeout disabled to match Node; original authentication deadline extends through attachment; original owned claim and handshake permit survive abandonment. Late successful SET executes then is discarded before60sTTL; late deniedSET logs before a heldcloseACK. No new auth records for unlogged protocol/capacity/timeout decisions.",
+        "remaining": "Other production diagnostic/background consumers, supported platforms/artifacts, complete product/fault/coordination, historical upgrades/post-write rollback, performance, Rust default cutover and production Node-server removal.",
+        "optimizedArtifact": {
+          "bytes": 94168848,
+          "sha256": "f8bb747fb2420d418d97e766a4d5f799201f0d1f81b645c3937100e378f2f94a",
+          "actualBootstrapVersion": "1.1.2771"
+        },
+        "optimizedProductionEntrypointPeerRuns": 28,
+        "optimizedAdditionalFaultAndHandshakePeerRuns": 14,
+        "focusedIntegrationTests": 16
       }
     },
     "appLiveTransport": {

@@ -1,5 +1,15 @@
 # Rust server replacement
 
+Native worker authentication decisions now use shared capture and noise control.
+Real Redis faults also repair attachment deadlines and preserve late claim
+ownership and diagnostics after a socket closes. Debug and optimized production
+matrices pass all nine storage/authentication pairs; fourteen additional
+optimized/reference process runs qualify Redis faults and authentication closing
+handshakes. See
+[worker authentication qualification](RUST_SERVER_WORKER_AUTHENTICATION.md) for
+the actual fault witnesses, evidence limits and remaining acceptance. Node
+remains the default and complete replacement remains unfinished.
+
 Native local worker-bridge diagnostics, private request sequencing, callback
 order and closing handshakes now pass scoped local qualification. Both candidate
 builds pass all nine storage/authentication production pairs; the optimized

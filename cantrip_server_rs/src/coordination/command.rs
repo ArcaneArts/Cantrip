@@ -4,7 +4,7 @@
 use futures::{FutureExt, future::BoxFuture};
 use redis::{
     Client, Cmd, ErrorKind, Pipeline, RedisError, RedisFuture, RedisResult, Value,
-    aio::{ConnectionLike, ConnectionManager, MultiplexedConnection},
+    aio::{ConnectionLike, ConnectionManager, ConnectionManagerConfig, MultiplexedConnection},
 };
 use std::sync::{Arc, Mutex};
 use tokio::{
@@ -37,7 +37,13 @@ fn closed() -> RedisError {
 }
 impl CommandConnection {
     pub async fn new(client: &Client) -> RedisResult<Self> {
-        let manager = client.get_connection_manager().await?;
+        // Node's command client has no response timeout. A paused Redis write
+        // still owns its eventual effect after its HTTP/socket caller leaves.
+        let manager = client
+            .get_connection_manager_with_config(
+                ConnectionManagerConfig::default().set_response_timeout(None),
+            )
+            .await?;
         let (queue, receiver) = mpsc::unbounded_channel();
         let lifetime = Arc::new(Lifetime {
             closing: watch::channel(false).0,

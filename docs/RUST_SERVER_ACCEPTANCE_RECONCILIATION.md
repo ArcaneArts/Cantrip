@@ -140,3 +140,13 @@ blocked credential storage. Rejected authentication also retains its close ACK.
 The optimized candidate also passes eighteen dedicated wire/authentication
 server runs. Supported-artifact and complete replacement acceptance remain
 separate.
+
+The [worker authentication comparison](RUST_SERVER_WORKER_AUTHENTICATION.md)
+ports rejected/successful authentication and claim-failure capture with the
+existing repetition and redaction policy. Actual Redis paused writes reproduce
+and repair a five-hundred-millisecond command timeout and the missing attachment
+authentication deadline. Late claims remain owned after timeout, with actual
+successful-claim discard and failed-claim capture before a held close ACK. The
+debug and optimized matrices pass all nine storage/authentication pairs, with
+fourteen additional optimized/reference Redis and closing-handshake process
+runs. Current supported artifacts and full replacement acceptance remain separate.

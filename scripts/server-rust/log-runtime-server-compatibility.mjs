@@ -17,6 +17,8 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import { postgresFixture } from "./postgres-fixture.mjs";
+import { redisFixture } from "./coordinated-fixture-tools.mjs";
+import { randomUUID } from "node:crypto";
 import { fixtureEnvironment } from "./process.mjs";
 import { repositoryRoot } from "./build.mjs";
 import { databaseHealthCases } from "./database-health-cases.mjs";
@@ -27,6 +29,10 @@ import {
   workerBridgeRuntimeCases,
   verifyWorkerBridgeRuntime,
 } from "./worker-bridge-runtime-cases.mjs";
+import {
+  workerAuthenticationRuntimeCases,
+  verifyWorkerAuthenticationRuntime,
+} from "./worker-authentication-runtime-cases.mjs";
 import {
   targetPolicyCases,
   verifyTargetPolicy,
@@ -43,6 +49,10 @@ const { values } = parseArgs({
     "http-records": { type: "boolean", default: false },
     "http-targets": { type: "boolean", default: false },
     "worker-bridge-records": { type: "boolean", default: false },
+    "worker-authentication-records": { type: "boolean", default: false },
+    "worker-authentication-coordination": { type: "boolean", default: false },
+    "worker-authentication-pause": { type: "boolean", default: false },
+    "worker-authentication-pause-denied": { type: "boolean", default: false },
     "accounting-records": { type: "boolean", default: false },
     "database-records": { type: "boolean", default: false },
     "database-health": { type: "boolean", default: false },
@@ -67,7 +77,8 @@ const passwordHash =
   values["database-health-outage"] ||
   values["accounting-records"] ||
   values["http-targets"] ||
-  values["worker-bridge-records"]
+  values["worker-bridge-records"] ||
+  values["worker-authentication-records"]
     ? await hashPassword(password)
     : undefined;
 let pg, failure;
@@ -90,7 +101,8 @@ const scenarios = [
 if (
   values["accounting-records"] ||
   values["http-targets"] ||
-  values["worker-bridge-records"]
+  values["worker-bridge-records"] ||
+  values["worker-authentication-records"]
 )
   for (const database of ["pglite", "bundled-postgres", "postgres"])
     for (const auth of ["password", "accounts"])
@@ -158,6 +170,16 @@ if (values["database-records"]) {
     explicitKey: true,
   });
 }
+if (
+  values["worker-authentication-coordination"] ||
+  values["worker-authentication-pause"] ||
+  values["worker-authentication-pause-denied"]
+)
+  scenarios.push({
+    name: "postgres-authentication-coordination",
+    database: "postgres",
+    coordination: true,
+  });
 if (values.scenario) {
   const selected = scenarios.filter(
     (scenario) => scenario.name === values.scenario,
@@ -186,6 +208,26 @@ try {
         CANTRIP_LICENSE_WHITELIST_ENABLED: "false",
         CANTRIP_LOG_LEVEL: scenario.threshold ?? "info",
       };
+      let authenticationCoordination;
+      if (scenario.coordination) {
+        const redisRoot = path.join(dataDirectory, "redis");
+        await mkdir(redisRoot);
+        authenticationCoordination = await redisFixture(
+          process.env.CANTRIP_TEST_REDIS_BIN ?? "redis-server",
+          redisRoot,
+        );
+        authenticationCoordination.faultKind = values[
+          "worker-authentication-pause-denied"
+        ]
+          ? "pause-denied"
+          : values["worker-authentication-pause"]
+            ? "pause"
+            : "deny-set";
+        env.REDIS_URL = authenticationCoordination.url;
+        env.CANTRIP_COORDINATION_MAX_INSTANCES = "2";
+        env.CANTRIP_COORDINATION_PRESENCE_TTL_MS = "60000";
+        env.CANTRIP_SERVER_INSTANCE_ID = randomUUID();
+      }
       const args = ["--port", String(port), "--database", scenario.database];
       if (scenario.auth) {
         env.CANTRIP_AUTH_MODE = scenario.auth;
@@ -347,6 +389,18 @@ try {
           );
           const { cookie } = authentication;
           result.authentication = authentication.evidence;
+          if (
+            (values["worker-authentication-records"] &&
+              (scenario.name.endsWith("-default") || scenario.auth)) ||
+            scenario.coordination
+          )
+            await workerAuthenticationRuntimeCases(
+              origin,
+              cookie,
+              result,
+              scenario.database === "postgres" ? env.DATABASE_URL : undefined,
+              authenticationCoordination,
+            );
           if (
             values["worker-bridge-records"] &&
             (scenario.name.endsWith("-default") || scenario.auth)
@@ -560,7 +614,10 @@ try {
           if (!result.exit) {
             if (child.exitCode === null && child.signalCode === null)
               child.kill(scenario.signal ?? "SIGTERM");
-            stopTimer = setTimeout(() => child.kill("SIGKILL"), 15000);
+            stopTimer = setTimeout(
+              () => child.kill("SIGKILL"),
+              values["worker-authentication-records"] ? 45000 : 15000,
+            );
             try {
               result.exit = await completion;
             } finally {
@@ -570,6 +627,7 @@ try {
         } finally {
           controlledBridgeWorker?.close();
           await healthCases?.close();
+          await authenticationCoordination?.stop();
         }
       }
       assert.deepEqual(result.exit, {
@@ -607,6 +665,12 @@ try {
         result.workerBridgeRecords = verifyWorkerBridgeRuntime(
           result.records,
           result.workerBridge,
+        );
+      if (result.workerAuthentication)
+        result.workerAuthenticationRecords = verifyWorkerAuthenticationRuntime(
+          result.records,
+          result.workerAuthentication,
+          result.stdout,
         );
       if (scenario.failDatabase)
         assert.equal(
@@ -801,6 +865,13 @@ try {
         peers[1].workerBridgeRecords,
         peers[0].workerBridgeRecords,
         "Actual production bridge commands, reconnect and shutdown: " +
+          scenario.name,
+      );
+    if (peers[0].workerAuthenticationRecords)
+      assert.deepEqual(
+        peers[1].workerAuthenticationRecords,
+        peers[0].workerAuthenticationRecords,
+        "Actual worker authentication decisions, request IDs and close behavior: " +
           scenario.name,
       );
     if (
