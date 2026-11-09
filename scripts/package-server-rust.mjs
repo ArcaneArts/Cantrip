@@ -47,10 +47,12 @@ export async function packageNativeServer(options) {
   );
   try {
     let binary = options.binary;
+    let buildEnvironment;
     if (!binary) {
       const environment = await rustEnvironment({
         CARGO_BUILD_TARGET: rustTargets[target.id],
       });
+      buildEnvironment = environment;
       environment.CARGO_INCREMENTAL ??= "0";
       environment.CARGO_BUILD_JOBS ??= "2";
       binary = await buildRustServer({ release: !options.debug, environment });
@@ -100,6 +102,12 @@ export async function packageNativeServer(options) {
       );
     }
     const version = resolveCantripVersion();
+    if (buildEnvironment?.PGLITE_LIB_DIR && target.platform === "linux") {
+      await copyDistributionNotices(
+        buildEnvironment.PGLITE_LIB_DIR,
+        path.join(stage, "licenses", "pglite-engine"),
+      );
+    }
     const environmentLines = `export LD_LIBRARY_PATH="$SCRIPT_DIR/lib\${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"`;
     for (const [name, flags] of [
       ["start", ""],

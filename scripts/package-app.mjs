@@ -8,7 +8,7 @@ import { pnpmCommand } from "./pnpm-command.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 let requestedTarget;
 let fromArtifacts = false;
-let serverRuntime = "node";
+let serverRuntime = "rust";
 let postgresBin;
 for (let index = 2; index < process.argv.length; index += 1) {
   const argument = process.argv[index];
@@ -37,8 +37,8 @@ for (let index = 2; index < process.argv.length; index += 1) {
   } else throw new Error(`Unknown app packaging argument: ${argument}`);
 }
 
-if (!["node", "rust"].includes(serverRuntime))
-  throw new Error("--server-runtime must be node or rust");
+if (serverRuntime !== "rust")
+  throw new Error("The packaged server runtime is Rust.");
 const target = normalizeTarget(requestedTarget);
 
 function run(command, arguments_) {

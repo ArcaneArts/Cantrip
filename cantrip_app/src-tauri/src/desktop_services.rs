@@ -16,10 +16,9 @@ use crate::process_environment::configure_desktop_child;
 #[derive(Deserialize)]
 #[serde(tag = "runtime", rename_all = "lowercase")]
 enum ServerRuntime {
-    Node,
     Rust {
         #[serde(rename = "postgresBin")]
-        postgres_bin: std::path::PathBuf,
+        postgres_bin: Option<std::path::PathBuf>,
         #[serde(rename = "profileConverter")]
         profile_converter: Option<std::path::PathBuf>,
     },
@@ -42,15 +41,14 @@ pub fn server_command(node: &Path, directory: &Path) -> Result<ServerLaunch, Str
     let configuration = match fs::read(&file) {
         Ok(bytes) => serde_json::from_slice(&bytes)
             .map_err(|error| format!("Could not read {}: {error}", file.display()))?,
-        // Existing desktop distributions retain their existing launcher until
-        // explicitly packaged with the native server.
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => ServerRuntime::Node,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => ServerRuntime::Rust {
+            postgres_bin: None,
+            profile_converter: Some("../profile-converter/dist/index.mjs".into()),
+        },
         Err(error) => return Err(format!("Could not read {}: {error}", file.display())),
     };
-    let native = matches!(&configuration, ServerRuntime::Rust { .. });
     let mut preparation = None;
     let mut command = match configuration {
-        ServerRuntime::Node => node_service_command(node, directory),
         ServerRuntime::Rust {
             postgres_bin,
             profile_converter,
@@ -66,10 +64,13 @@ pub fn server_command(node: &Path, directory: &Path) -> Result<ServerLaunch, Str
                     .arg("--env-file-if-exists=.env")
                     .arg("--bundled-pglite-runtime-dir")
                     .arg(directory.join("pglite"))
-                    .arg("--bundled-postgres-bin-dir")
-                    .arg(directory.join(&postgres_bin))
                     .arg("--shutdown-on-stdin-close")
                     .stdin(Stdio::piped());
+                if let Some(bin) = &postgres_bin {
+                    command
+                        .arg("--bundled-postgres-bin-dir")
+                        .arg(directory.join(bin));
+                }
                 #[cfg(target_os = "linux")]
                 {
                     let mut paths = vec![directory.join("lib")];
@@ -100,7 +101,7 @@ pub fn server_command(node: &Path, directory: &Path) -> Result<ServerLaunch, Str
     Ok(ServerLaunch {
         command,
         preparation,
-        native,
+        native: true,
     })
 }
 
@@ -304,6 +305,24 @@ mod tests {
         .unwrap();
         let launch = server_command(Path::new("unused-node"), &directory).unwrap();
         assert!(launch.native);
+        let error = spawn_service(launch.command, &[], false, false).unwrap_err();
+        assert!(error.contains("cantrip-server"), "{error}");
+        assert!(!error.contains("unused-node"), "{error}");
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn missing_package_configuration_still_attempts_the_native_executable() {
+        let directory = std::env::temp_dir().join(format!(
+            "cantrip-native-default-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&directory).unwrap();
+        let launch = server_command(Path::new("unused-node"), &directory).unwrap();
         let error = spawn_service(launch.command, &[], false, false).unwrap_err();
         assert!(error.contains("cantrip-server"), "{error}");
         assert!(!error.contains("unused-node"), "{error}");

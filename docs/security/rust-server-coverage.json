@@ -20059,6 +20059,29 @@
         "serverBoundaryAudit": true,
         "aggregateRepositoryCheck": "Fails Node budgets1539/1500 and2329/1999; reproduced on cleanPrimary; downstreamaggregate stages unrun."
       }
+    },
+    "defaultRuntimeCutover": {
+      "status": "implemented-with-scoped-local-qualification",
+      "implementation": [
+        "scripts/package-distributions.mjs",
+        "scripts/package-app.mjs",
+        "scripts/server-rust/dev.mjs",
+        "cantrip_app/src-tauri/src/desktop_services.rs",
+        "deploy/docker/server.Dockerfile",
+        "scripts/deploy-production.mjs"
+      ],
+      "evidence": [
+        "docs/RUST_SERVER_DEFAULT_CUTOVER.md",
+        "scripts/server-rust/packaged-server-acceptance.mjs",
+        "scripts/server-rust/desktop-runtime-acceptance.mjs",
+        "scripts/server-rust/container-server-acceptance.mjs",
+        "scripts/deploy-production.test.mjs",
+        "scripts/devtop.test.mjs"
+      ],
+      "remaining": [
+        "Remove the production Node server implementation and resolve its remaining source/build/test dependencies.",
+        "Complete final supported shipping and existing-client encrypted desktop/update acceptance; do not infer whole replacement completion from runtime selection."
+      ]
     }
   },
   "remainingAcceptance": [

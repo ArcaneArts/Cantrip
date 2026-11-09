@@ -12,6 +12,7 @@ async function buildRustExecutable({
   manifest = "cantrip_server_rs/Cargo.toml",
   binary = "cantrip-server",
   environment,
+  signal,
 } = {}) {
   const child = spawn(
     "cargo",
@@ -27,6 +28,7 @@ async function buildRustExecutable({
     {
       cwd: repositoryRoot,
       env: environment ?? (await rustEnvironment()),
+      signal,
       stdio: ["ignore", "pipe", "inherit"],
     },
   );

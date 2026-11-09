@@ -12,6 +12,37 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 const exec = promisify(execFile);
+async function defaultPostgresBin(platform) {
+  if (platform === "darwin") {
+    const { stdout } = await exec("brew", ["--prefix", "postgresql@18"]);
+    return (
+      await exec(path.join(stdout.trim(), "bin", "pg_config"), ["--bindir"])
+    ).stdout.trim();
+  }
+  if (platform === "win32") {
+    const script = new URL("./windows-postgres-assets.ps1", import.meta.url);
+    const { fileURLToPath } = await import("node:url");
+    const cache = path.join(
+      process.env.LOCALAPPDATA ?? process.env.TEMP,
+      "Cantrip",
+      "build-cache",
+      "postgresql-18.6-1-win32-x64",
+    );
+    return (
+      await exec("powershell.exe", [
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        fileURLToPath(script),
+        "-CacheDirectory",
+        cache,
+      ])
+    ).stdout.trim();
+  }
+  return (await exec("pg_config", ["--bindir"])).stdout.trim();
+}
 async function files(root) {
   const entries = [];
   for (const entry of await readdir(root, { withFileTypes: true })) {
@@ -64,7 +95,7 @@ export async function bundlePostgres(
   destination,
   { bin, share, lib, platform = process.platform, serverBinary },
 ) {
-  bin ??= (await exec("pg_config", ["--bindir"])).stdout.trim();
+  bin ??= await defaultPostgresBin(platform);
   // pg_config supplies the actual installed layout; explicit asset paths support
   // distribution images that do not contain development headers or pg_config.
   if (!share || !lib) {

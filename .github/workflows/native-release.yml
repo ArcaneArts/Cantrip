@@ -20,6 +20,9 @@ jobs:
   server:
     name: Server (${{ matrix.target }})
     timeout-minutes: 60
+    env:
+      CARGO_BUILD_JOBS: "2"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
     strategy:
       fail-fast: false
       matrix:
@@ -42,7 +45,26 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
           node-version: 24
       - run: pnpm install --frozen-lockfile
-      - run: pnpm package:server --target ${{ matrix.target }}
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - name: Install native server build tools on macOS
+        if: runner.os == 'macOS'
+        run: brew install postgresql@18
+      - name: Install native server GNU target on Windows
+        if: runner.os == 'Windows'
+        run: rustup target add x86_64-pc-windows-gnu
+      - uses: msys2/setup-msys2@v2
+        if: runner.os == 'Windows'
+        with:
+          msystem: MINGW64
+          path-type: inherit
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-pkgconf
+      - name: Package native macOS server
+        if: runner.os == 'macOS'
+        run: pnpm package:server --target ${{ matrix.target }}
+      - name: Package native Windows server
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: pnpm package:server --target ${{ matrix.target }}
       - run: node scripts/archive-distribution.mjs server --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
