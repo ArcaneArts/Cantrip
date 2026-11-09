@@ -3,6 +3,7 @@ import {
   formatHttpLog,
   formatDuration,
   createPinoServiceLogStream,
+  createServiceLogger,
 } from "../../packages/logging/dist/index.js";
 const contexts = [
   undefined,
@@ -152,4 +153,74 @@ for (const input of [
   );
   paths.push({ input, expected: records[0].context.path });
 }
-console.log(JSON.stringify({ services, http, durations, paths }));
+const undefinedContexts = [];
+for (const context of [
+  {
+    event: "worker.credential.rotated",
+    status: "completed",
+    reasonCode: undefined,
+    requestId: "request",
+    workerId: "alpha",
+    counts: { previousCredentials: 2 },
+  },
+  {
+    workerId: "alpha",
+    platform: "darwin",
+    architecture: "arm64",
+    replacedWorkerId: undefined,
+  },
+  { first: undefined, nullable: null, literal: "undefined", last: undefined },
+  { 2: undefined, 1: "one", name: undefined, deep: { key: "value" } },
+  {
+    credential: undefined,
+    reasonCode: undefined,
+    cookie: undefined,
+    message: "token=private",
+  },
+  Object.fromEntries([
+    ["__proto__", undefined],
+    ["reasonCode", undefined],
+    ["after", "value"],
+  ]),
+  Object.fromEntries(
+    Array.from({ length: 102 }, (_, i) => ["key" + i, i >= 99 ? undefined : i]),
+  ),
+]) {
+  for (const colors of [false, true]) {
+    let record, expected;
+    const logger = createServiceLogger("server", {
+      colors,
+      now: () => new Date("2026-11-08T15:34:00.000Z"),
+      output: (line) => {
+        expected = line;
+      },
+      onRecord: (value) => {
+        record = value;
+      },
+    });
+    logger.info("Undefined context", context);
+    const placeholder = (value) =>
+      Object.fromEntries(
+        Object.entries(value).map(([key, item]) => [
+          key,
+          item === undefined ? null : item,
+        ]),
+      );
+    undefinedContexts.push({
+      record: { ...record, context: placeholder(record.context) },
+      fields: Object.keys(record.context).filter(
+        (key) => record.context[key] === undefined,
+      ),
+      input: placeholder(context),
+      inputFields: Object.keys(context).filter(
+        (key) => context[key] === undefined,
+      ),
+      serialized: JSON.parse(JSON.stringify(record)),
+      colors,
+      expected,
+    });
+  }
+}
+console.log(
+  JSON.stringify({ services, http, durations, paths, undefinedContexts }),
+);

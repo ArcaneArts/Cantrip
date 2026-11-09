@@ -6,6 +6,7 @@ use indexmap::IndexMap;
 use std::sync::{Arc, Mutex, OnceLock};
 pub type Clock = Arc<dyn Fn() -> f64 + Send + Sync>;
 pub type Output = Arc<dyn Fn(Value) + Send + Sync>;
+type ContextOutput = Arc<dyn Fn(Value, &[&str]) + Send + Sync>;
 pub type Logger = Arc<dyn Fn(LogCall) + Send + Sync>;
 #[derive(Clone)]
 pub enum Policy {
@@ -98,7 +99,7 @@ struct State {
 pub struct Emitter {
     system: JsString,
     clock: Clock,
-    output: Output,
+    output: ContextOutput,
     state: Mutex<State>,
 }
 fn positive(value: Option<&Value>, fallback: f64) -> Result<f64> {
@@ -143,6 +144,15 @@ fn clipped(at: f64) -> f64 {
 }
 impl Emitter {
     pub fn new(system: JsString, clock: Clock, output: Output) -> Arc<Self> {
+        Self::with_console_context(
+            system,
+            clock,
+            Arc::new(move |record, fields| {
+                output(without_undefined(record, fields));
+            }),
+        )
+    }
+    fn with_console_context(system: JsString, clock: Clock, output: ContextOutput) -> Arc<Self> {
         Arc::new(Self {
             system,
             clock,
@@ -171,7 +181,7 @@ impl Emitter {
     }
     fn emit(&self, records: Vec<Value>) {
         for record in records {
-            (self.output)(record);
+            (self.output)(record, &[]);
         }
     }
     fn summary(&self, state: &mut Repeated, at: f64) -> Result<Option<Value>> {
@@ -199,7 +209,30 @@ impl Emitter {
         Ok(Some(record))
     }
     pub fn event(&self, level: &str, message: &JsString, context: Option<&Value>) -> Result<()> {
-        (self.output)(self.record(level, message, context, (self.clock)())?);
+        self.event_with_undefined(level, message, context, &[])
+    }
+    /// A JavaScript own property may be undefined: retain its console position,
+    /// while ordinary JSON/capture outputs omit it. Null placeholders preserve
+    /// the original field order without extending the protocol JSON value type.
+    pub fn event_with_undefined(
+        &self,
+        level: &str,
+        message: &JsString,
+        context: Option<&Value>,
+        fields: &[&str],
+    ) -> Result<()> {
+        let record = self.record(level, message, context, (self.clock)())?;
+        let fields = fields
+            .iter()
+            .copied()
+            .filter(|field| {
+                record
+                    .get("context")
+                    .is_some_and(|context| context.get(field).is_some())
+                    && !log_sanitize::secret_field(&JsString::from(*field))
+            })
+            .collect::<Vec<_>>();
+        (self.output)(record, &fields);
         Ok(())
     }
     pub fn sampled(
@@ -315,13 +348,24 @@ impl Emitter {
         }
     }
 }
+pub(super) fn without_undefined(mut record: Value, fields: &[&str]) -> Value {
+    if !fields.is_empty()
+        && let Value::Object(record) = &mut record
+        && let Some(Value::Object(context)) = record.get_mut("context")
+    {
+        for field in fields {
+            context.shift_remove(*field);
+        }
+    }
+    record
+}
 pub fn server() -> &'static Arc<Emitter> {
     static LOGGER: OnceLock<Arc<Emitter>> = OnceLock::new();
     LOGGER.get_or_init(|| {
-        Emitter::new(
+        Emitter::with_console_context(
             "server".into(),
             Arc::new(|| chrono::Utc::now().timestamp_millis() as f64),
-            Arc::new(super::log_runtime::capture),
+            Arc::new(super::log_runtime::capture_with_undefined),
         )
     })
 }

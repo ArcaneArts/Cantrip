@@ -4,6 +4,14 @@ The server replacement remains incomplete. Node is still the default server,
 and the worker remains Node. Historical ledger entries describe their original
 milestones; their remaining-work text is not a current implementation inventory.
 
+The [credential lifecycle comparison](RUST_SERVER_WORKER_CREDENTIAL_LIFECYCLE.md)
+captures enrollment creation/completion/rejection and credential rotation/revocation.
+Its debug and optimized production matrices pass all nine storage/authentication pairs,
+including actual account/identity replacement, rejected replacement rollback,
+delivery outcomes and redaction. Separate logger cases preserve console-only
+undefined properties without introducing them into archived JSON. Complete
+current artifact/platform and replacement acceptance remain required.
+
 ## Current implementation and evidence
 
 | Area                          | Current evidence                                                                                                                                                                                                           | Remaining acceptance                                                                                                                        |

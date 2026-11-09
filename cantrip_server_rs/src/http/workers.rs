@@ -22,6 +22,8 @@ use axum::{
 };
 use serde_json::{Value as JsonValue, json};
 use std::{collections::HashMap, sync::Arc, time::Duration};
+#[path = "worker_lifecycle_logs.rs"]
+mod logs;
 
 fn response(status: u16, value: impl serde::Serialize) -> Response {
     json_response(StatusCode::from_u16(status).unwrap(), value)
@@ -142,6 +144,12 @@ async fn execute(
                 expires,
             )
             .await?;
+        logs::created(
+            &ctx.id,
+            &id,
+            worker.as_deref(),
+            input["expiresInSeconds"].as_i64().unwrap(),
+        );
         let mut result = Value::from_serialize(
             &json!({"code":code,"id":id,"expiresAt":crate::auth::iso(expires),"workerId":worker}),
         );
@@ -189,6 +197,7 @@ async fn execute(
                         "denied",
                     )
                     .await;
+                    logs::rejected(&ctx.id, &worker_id);
                     return Ok(super::workers::error(409, error.0));
                 }
                 return Err(error);
@@ -197,13 +206,13 @@ async fn execute(
         for id in provision.revoked_credential_ids {
             state.mark_revoked(&id);
         }
-        if let Some(previous) = provision.replaced_worker_id {
+        if let Some(previous) = &provision.replaced_worker_id {
             state
                 .bridge
-                .disconnect(&previous, "Worker was reassigned to another account", 1008);
-            state.forget_presence(&previous);
-            state.invalidate(&provision.owner_id, "worker", &previous);
-            state.invalidate(&provision.owner_id, "worker-availability", &previous);
+                .disconnect(previous, "Worker was reassigned to another account", 1008);
+            state.forget_presence(previous);
+            state.invalidate(&provision.owner_id, "worker", previous);
+            state.invalidate(&provision.owner_id, "worker-availability", previous);
         }
         audit(
             service,
@@ -216,6 +225,12 @@ async fn execute(
         .await;
         state.publish_presence(&provision.owner_id, &provision.worker);
         state.schedule_offline(&provision.owner_id, &worker_id);
+        logs::enrolled(
+            &ctx.id,
+            &worker_id,
+            &provision.worker,
+            provision.replaced_worker_id.as_deref(),
+        );
         return output(
             201,
             "workerEnrollmentResultSchema",
@@ -394,6 +409,7 @@ async fn execute(
         state
             .bridge
             .disconnect(worker, "Worker credential was revoked", 1008);
+        logs::revoked(&ctx.id, worker, params.get("credentialId").unwrap());
         return Ok(StatusCode::NO_CONTENT.into_response());
     }
     let default = Value::object(Vec::<(&str, Value)>::new());
@@ -429,6 +445,7 @@ async fn execute(
     let Some(credential) = credential else {
         return Ok(error(404, "Worker not found."));
     };
+    let previous_count = previous.as_ref().map_or(0, Vec::len);
     for previous in previous.unwrap_or_default() {
         if previous["active"] == true {
             state.mark_revoked(previous["id"].as_str().unwrap());
@@ -453,6 +470,7 @@ async fn execute(
     state
         .bridge
         .disconnect(worker, "Worker credential was rotated", 1012);
+    logs::rotated(&ctx.id, worker, delivered, previous_count);
     output(
         200,
         "workerCredentialRotateResultSchema",

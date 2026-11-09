@@ -1,5 +1,14 @@
 # Rust server replacement
 
+Native enrollment and credential lifecycle diagnostics now use shared capture,
+redaction and repetition policy. Actual production comparisons exercise online,
+offline and failed rotation, revocation and account/identity replacement. The
+debug and optimized matrices pass all nine storage/authentication pairs. The shared logger
+also preserves console-only undefined fields while omitting them from JSON. See
+[worker credential lifecycle qualification](RUST_SERVER_WORKER_CREDENTIAL_LIFECYCLE.md)
+for evidence and limits. Full replacement remains incomplete and Node remains
+the default server.
+
 Native worker authentication decisions now use shared capture and noise control.
 Real Redis faults also repair attachment deadlines and preserve late claim
 ownership and diagnostics after a socket closes. Debug and optimized production

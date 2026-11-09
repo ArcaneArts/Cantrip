@@ -182,6 +182,20 @@ pub fn service(record: &Value, colors: bool) -> Result<JsString> {
     parts.push(painted(suffix, 90, colors));
     Ok(cat(parts))
 }
+pub fn service_with_undefined(record: &Value, colors: bool, fields: &[&str]) -> Result<JsString> {
+    if fields.is_empty() {
+        return service(record, colors);
+    }
+    let mut record = record.clone();
+    if let Value::Object(context) = &mut record["context"] {
+        for field in fields {
+            if let Some(value) = context.get_mut(*field) {
+                *value = Value::String("undefined".into());
+            }
+        }
+    }
+    service(&record, colors)
+}
 fn number(value: f64) -> JsString {
     coercion::string(&Value::Number(value)).expect("number primitive")
 }

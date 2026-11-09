@@ -51,5 +51,47 @@ fn console_records_http_statuses_and_durations_match_node() -> Result<()> {
             case["input"]
         );
     }
+    for case in corpus["undefinedContexts"].as_array().unwrap() {
+        let fields = case["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            Value::String(log_format::service_with_undefined(
+                &case["record"],
+                case["colors"].as_bool().unwrap(),
+                &fields
+            )?),
+            case["expected"]
+        );
+        let records = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = records.clone();
+        let at =
+            chrono::DateTime::parse_from_rfc3339(case["record"]["timestamp"].as_str().unwrap())?
+                .timestamp_millis() as f64;
+        let emitter = cantrip_server::operations::logging::Emitter::new(
+            "server".into(),
+            std::sync::Arc::new(move || at),
+            std::sync::Arc::new(move |record| sink.lock().unwrap().push(record)),
+        );
+        let fields = case["inputFields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect::<Vec<_>>();
+        emitter.event_with_undefined(
+            "info",
+            &"Undefined context".into(),
+            Some(&case["input"]),
+            &fields,
+        )?;
+        assert_eq!(
+            records.lock().unwrap().as_slice(),
+            &[case["serialized"].clone()]
+        );
+    }
     Ok(())
 }
