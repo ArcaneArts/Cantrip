@@ -1,5 +1,14 @@
 # Rust server replacement
 
+Real native Agent/Goal execution now continues through Rust → Node → Rust
+profile rollback on all three backends, plus a PostgreSQL code-change case
+retaining the same database URL and profile directory. The full worker and
+original model streams survive both intentional server kills; completed Tasks,
+canonical history, server identities, committed rows/sequences and profile
+files are retained. See [profile runtime recovery](RUST_SERVER_PROFILE_RUNTIME_RECOVERY.md)
+for the four-case local matrix, log-prefix checks and remaining acceptance.
+Node remains the normal default and complete replacement remains unfinished.
+
 Populated historical profile rollback now passes a real old Node distribution
 through each native storage backend, back to old Node after Rust product writes,
 and back to writable Rust after further Node writes. The local run compares all

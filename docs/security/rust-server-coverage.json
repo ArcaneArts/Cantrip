@@ -15512,7 +15512,11 @@
         "docs/RUST_SERVER_WINTERHOLD.md",
         "docs/RUST_SERVER_HISTORICAL_PRODUCT_ROLLBACK.md",
         "scripts/server-rust/historical-product-profile-acceptance.mjs",
-        "scripts/server-rust/historical-product-profile-material.mjs"
+        "scripts/server-rust/historical-product-profile-material.mjs",
+        "docs/RUST_SERVER_PROFILE_RUNTIME_RECOVERY.md",
+        "scripts/server-rust/profile-runtime-acceptance.mjs",
+        "scripts/server-rust/profile-runtime-fixture.mjs",
+        "scripts/server-rust/profile-agent-interruption.mjs"
       ],
       "currentPopulatedHistoricalQualification": {
         "status": "implemented-pending-platform-acceptance",
@@ -15525,6 +15529,16 @@
           "Full existing-client encryption, update and restart acceptance, plus representative historical profiles.",
           "Current supported-platform shipping artifacts and complete product, in-flight execution and history replay rollback.",
           "Remaining fault, coordination and performance requirements, Rust defaults and production Node server removal."
+        ]
+      },
+      "currentNativeExecutionQualification": {
+        "status": "implemented-pending-platform-acceptance",
+        "scope": "Local macOS arm64, optimized Rust 1.1.2779 and current compiled Node 1.1.2782, unchanged complete Node worker and actual native Codex 0.166.0. Three explicit full-profile backend round trips and one PostgreSQL code-only rollback retaining the same DATABASE_URL and profile directory.",
+        "localQualification": "Four cases pass: 80 product steps, 48 controlled model POSTs, 28 clean worker stops, 28 server generations including eight intentional SIGKILLs. Each case completes four Tasks with planning/Goal, retry and admission recovery, then preserves every Task DTO and decrypted history through held Agent/Goal implementation switches. The same worker/credential and original native response survive; no repeated inference, Live scope recovery, stable Goal identity/objective/budget and non-regressing accounting. Existing canonical-turn/cold-worker checks remain active.",
+        "preservation": "All 136 tables and three sequences compare exactly before replacement startup; native import receipts/timestamps are explicitly checked. Complete manifest file bytes survive. Same-directory JSONL logs preserve their entire original prefix while startup records append. Sixteen raw source/target snapshots additionally contain none of ten known private payload texts in 9,635 row occurrences.",
+        "remaining": [
+          "Current supported-platform shipping artifacts and full desktop installation/update/client encryption acceptance.",
+          "Remaining prolonged fault/coordination/performance coverage, finite final acceptance reconciliation, Rust defaults and production Node-server removal."
         ]
       }
     },
