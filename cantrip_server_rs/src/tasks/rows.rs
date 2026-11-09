@@ -1,6 +1,36 @@
 use super::*;
 use crate::native_commands::receipt::iso;
 
+/// Goal outcome callers receive the captured Drizzle Chat row, including its
+/// opaque columns. Convert only SQL column names and timestamp representations.
+pub(super) fn goal_chat(row: &Value) -> Result<Value> {
+    let fields = row.as_object().context("Stored Goal Chat row")?;
+    let mut output = Value::object([] as [(&str, Value); 0]);
+    for (column, value) in fields {
+        let column = column.as_str().context("Stored Chat column")?;
+        let mut name = String::new();
+        let mut uppercase = false;
+        for character in column.chars() {
+            if character == '_' {
+                uppercase = true;
+            } else {
+                name.push(if uppercase {
+                    character.to_ascii_uppercase()
+                } else {
+                    character
+                });
+                uppercase = false;
+            }
+        }
+        output[name.as_str()] = if column.ends_with("_at") && !value.is_null() {
+            iso(value)?
+        } else {
+            value.clone()
+        };
+    }
+    Ok(output)
+}
+
 pub(super) async fn one(
     ex: Executor<'_, '_>,
     sql: &str,

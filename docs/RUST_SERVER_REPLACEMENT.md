@@ -1,5 +1,14 @@
 # Rust server replacement
 
+Active implementation Goal recovery after worker loss now retains one canonical
+encrypted answer. Both servers validate native response reuse against the saved
+physical input, preserve legacy assigned replies and reject changed terminal
+replays. The optimized executable passes both servers/all three stores and all
+four shared pairings, plus the six existing Task and Agent/Task product suites.
+See [Task Goal worker recovery](RUST_SERVER_TASK_GOAL_WORKER_RECOVERY.md) for
+transaction, compatibility and retained-failure evidence. Node remains the
+default and full replacement is incomplete.
+
 Explicit Task round recovery after worker-process loss now uses the original
 native terminal turn and rechecks canonical authority after IPC. Both servers
 also fence legacy retry adoption and repeated Recovery requests. Current debug

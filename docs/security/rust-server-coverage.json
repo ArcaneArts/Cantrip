@@ -3,7 +3,7 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "bf11dac673d13ed64af52f2cf2fd49ee2207738750fa0f9dce7679d17b520d38",
+    "sha256": "996ae2eabb360097dc284ef3544b9e29ac5d7fa442ff3f294918f2aafff3cdd3",
     "baselineCommit": "2e99d7ab00f100759003e0ebe08461f557acb599",
     "counts": {
       "routes": 584,
@@ -12,7 +12,7 @@
       "repositoryMethods": 370,
       "liveResources": 47
     },
-    "workingTreeNote": "Current Task worker-process recovery adds an internal native-turn observer and refreshes route source locations; all reviewed contract-set digests and route, worker-command, durable-table, repository-method and live-resource counts are unchanged. Historical category rows retain their original scopes; see RUST_SERVER_ACCEPTANCE_RECONCILIATION.md and RUST_SERVER_TASK_WORKER_RECOVERY.md. Full replacement remains incomplete.",
+    "workingTreeNote": "Current Task Goal worker-loss recovery adds internal opaque-response validation helpers. All reviewed contract-set digests and route, worker-command, durable-table, repository-method and live-resource counts remain unchanged. The optional response-reuse flag retains legacy workers and is advertised only for a prepared canonical Goal input. See RUST_SERVER_TASK_GOAL_WORKER_RECOVERY.md for exact local qualification and remaining final-artifact acceptance. Full replacement remains incomplete.",
     "durableTableCountScope": "All Drizzle tables exported by the actual current schema, independently compared at runtime to the source corpus. Does not count internal migration metadata or assert a current all-backend migration/data-preservation pass."
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
@@ -14678,6 +14678,32 @@
     ]
   },
   "crossCutting": {
+    "currentTaskGoalWorkerProcessRecovery": {
+      "status": "implemented-pending-platform-acceptance",
+      "evidence": [
+        "docs/RUST_SERVER_TASK_GOAL_WORKER_RECOVERY.md",
+        "scripts/server-rust/actual-task-goal-worker-inflight-client.mjs",
+        "scripts/server-rust/task-response-publication-cases.mjs",
+        "scripts/server-rust/task-goal-cycle-publication-cases.mjs",
+        "cantrip_server_rs/tests/task_input_contracts.rs"
+      ],
+      "implementation": "Both servers opt in only bound canonical Goal inputs to worker reuse of the exact privately matched completed native root ciphertext. Active/history input commits validate physical thread/turn/root namespace, pin stable opaque-response digest, retain legacy assigned publishers and fence changed replay. Autonomous cycles retain their whole-note digest. Immediate completion uses the same canonical input transaction. Rust retains UTF16 publisher identity, the full captured Chat row and omitted observation-fence semantics.",
+      "localQualification": {
+        "platform": "darwin-arm64",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "initialDebugProduct": "Both production server entrypoints/all3stores and all4 shared PostgreSQL/Redis pairings pass active Goal worker loss, original operation/native Goal identity, actual native Goal tool completion, one canonical answer and exact restart. Five model POSTs per case. This artifact predates final bound-Goal-only flag restriction and private result shape corrections; final optimized artifact qualification remains pending.",
+        "focusedRepositories": "204 paired observations and six restart snapshots per store; all3stores pass active/history/legacy/autonomous response identity, changed ciphertext/ID/key rejection, authority fences and actual terminal SQL-write rollback.",
+        "broaderGoalRepositories": "367 paired observations and ten restart snapshots per store, all3stores pass. Existing stale-read oracle now requires the current explicit conflict and preserves the actual newer Task; every decoded private observation snapshot authority field is compared.",
+        "rust": "Final source passes all83Rust library tests, Task-input native wire oracle and strict all-target Clippy with warnings denied.",
+        "typescript": "36 focused server tests, seven worker/sealer tests and fifteen inventory tests pass. Actual archived old-worker protocol strips the optional field.",
+        "protocol": "All16 generated graphs/provider map match rebuilt TypeScript. Task-input native wire oracle passes including opt-in true/false and invalid types.",
+        "optimizedProduct": "Final optimized production main fc672af50d6e0d9681a274654711d534a3e0b4fee1720fa33ac8f5f8527c5105 passes all10activeGoalworker-loss cases:bothservers/all3stores andall4sharedpairs;50modelPOSTs,oneanswerpercase,exactGoal/Task/history restart. Existing production Task andAgent/Task matrix also passes all6storage/productcases with bothserverentrypoints andfullcurrent92patch nativeworker."
+      },
+      "remaining": [
+        "Current broad protocol export/discriminator expectations and missing newer schema/command fixtures reproduce on clean Primary; retain failures and complete whole-goal wire reconciliation.",
+        "Supported platforms/current packaged artifacts, updates, historical profiles/full product rollback, prolonged faults, comparative performance, final Rust default cutover and production Node-server removal."
+      ]
+    },
     "currentTaskWorkerProcessRecovery": {
       "status": "partial",
       "evidence": [

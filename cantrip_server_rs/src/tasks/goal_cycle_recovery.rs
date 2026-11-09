@@ -159,7 +159,7 @@ impl Repository {
             let message = if note["outcome"]["ok"] == true {
                 let result = parse("taskMessageRelayResultSchema", &note["outcome"]["result"]["structuredResult"])?;
                 let message = result["message"].clone();
-                if message["id"] != source["publication"]["id"] || message["idempotencyKey"] != source["publication"]["idempotencyKey"] { return stale(); }
+                if super::response_publication::kind(&message,&source["publication"],&note["outcome"]["result"],&source).is_none() { return stale(); }
                 Some(message)
             } else { None };
             let digest = format!("{:x}", Sha256::digest(note.stringify().as_bytes()));
@@ -177,7 +177,7 @@ impl Repository {
             }
             tx.query("UPDATE task_dispatch_cycles SET goal_cycle_recovery=$2::text::jsonb WHERE id=$1", &[&text(&cycle["id"])?,&marker.stringify()]).await?;
             crate::native_commands::task_suspension::retire_goal_cycle_locked(tx,&owner,&source,if ok {"completed"} else {"failed"}).await?;
-            Ok(json!({"committed":true,"message":saved,"chat":json!({"projectId":row["project_id"],"experience":row["experience"]})}))
+            Ok(json!({"committed":true,"message":saved,"chat":super::rows::goal_chat(&row)?}))
         })).await
     }
 

@@ -1,5 +1,7 @@
 import type { InferenceCommandTiming } from "@cantrip/protocol";
 import { RelayLimitError } from "../../security/abuse-limits.js";
+import { taskMessageTurnResultMode } from "./task-turn-result-mode.js";
+import { taskTurnResponse } from "./task-turn-response.js";
 import {
   chatTurnModelConfiguration,
   validateChatTurnInput,
@@ -39,10 +41,7 @@ import {
   type WorkerEvent,
   type WorkerObservationEventIdentity,
 } from "@cantrip/protocol";
-import {
-  taskMessageOpaqueContentSchema,
-  taskMessageRelayResultSchema,
-} from "@cantrip/protocol/tasks";
+import { taskMessageOpaqueContentSchema } from "@cantrip/protocol/tasks";
 
 import { cantripVersion } from "@cantrip/version";
 
@@ -1103,12 +1102,10 @@ export function createChatTurnRuntime({
                       outputSchema: options.structuredResult.outputSchema!,
                     })
                   : encryptedTaskMessages?.response
-                    ? {
-                        kind: "task-message-encrypted" as const,
-                        messageId: encryptedTaskMessages.response.id,
-                        idempotencyKey:
-                          encryptedTaskMessages.response.idempotencyKey,
-                      }
+                    ? taskMessageTurnResultMode(
+                        encryptedTaskMessages.response,
+                        taskInferenceInput?.kind === "goal",
+                      )
                     : encryptedChatMessages
                       ? {
                           kind: "chat-message-encrypted" as const,
@@ -1859,26 +1856,20 @@ export function createChatTurnRuntime({
                 taskInferenceInputOperationId: taskInferenceInput?.operationId,
               });
             } else if (encryptedTaskMessages?.response) {
-              const encryptedResult = taskMessageRelayResultSchema.parse(
-                result.structuredResult,
+              const message = await taskTurnResponse(
+                repository.tasks.inferenceInputs.goals,
+                ownerId,
+                execution.workerId,
+                taskInferenceInput,
+                encryptedTaskMessages.response,
+                result,
+                encryptedTaskMessages.userMessage.classification.mode,
               );
-              if (
-                encryptedResult.message.id !==
-                  encryptedTaskMessages.response.id ||
-                encryptedResult.message.idempotencyKey !==
-                  encryptedTaskMessages.response.idempotencyKey ||
-                encryptedResult.message.classification.mode !==
-                  encryptedTaskMessages.userMessage.classification.mode
-              ) {
-                throw new Error(
-                  "The encrypted Task message result metadata is invalid.",
-                );
-              }
               if (!hasFinal(finals, result.turnId, result.text)) {
                 const assistant = await appendLiveTaskMessage(
                   ownerId,
                   execution.chatId,
-                  encryptedResult.message,
+                  message,
                   attribution,
                   execution,
                 );

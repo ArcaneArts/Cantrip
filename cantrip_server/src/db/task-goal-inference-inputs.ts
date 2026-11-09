@@ -41,6 +41,8 @@ import { recoverGoalInputHistory } from "./task-goal-input-history.js";
 import { bindTaskNativeInput } from "./task-native-input-binding.js";
 import { NativeSuspensionRepository } from "./repository/native-suspensions.js";
 import { currentTaskInputExecution } from "./task-input-execution-state.js";
+import { taskResponsePublicationKind } from "./task-response-publication.js";
+import { nativeHistoryPayloadDigest } from "./repository/native-history-digest.js";
 import {
   taskGoalExecutionReceipt,
   taskGoalExecutionState,
@@ -1159,22 +1161,35 @@ export class TaskGoalInferenceInputRepository {
         }
       }
       let message: TaskMessageOpaqueContent | null = null;
+      let publicationKind: "assigned" | "native-root" | null = null;
       if (notification.outcome.ok) {
         try {
           message = taskMessageRelayResultSchema.parse(
             notification.outcome.result.structuredResult,
           ).message;
-          if (
-            message.idempotencyKey !==
-              (state.publication?.idempotencyKey ??
-                `assistant:${receipt.clientMessageId}`) ||
-            (state.publication && message.id !== state.publication.id)
-          )
-            message = null;
+          publicationKind = taskResponsePublicationKind(
+            message,
+            state.publication ?? {
+              idempotencyKey: `assistant:${receipt.clientMessageId}`,
+            },
+            notification.outcome.result,
+            execution!.nativeExecution,
+          );
+          if (!publicationKind) message = null;
         } catch {
           /* The actual terminal receipt remains useful for recovery. */
         }
       }
+      const responseDigest = message
+        ? nativeHistoryPayloadDigest(message)
+        : null;
+      if (
+        state.terminal &&
+        ((state.terminal.outcomeDigest &&
+          state.terminal.outcomeDigest !== responseDigest) ||
+          (!state.terminal.outcomeDigest && publicationKind === "native-root"))
+      )
+        stale();
       const ok = notification.outcome.ok && message !== null;
       const failureKind = ok
         ? null
@@ -1191,6 +1206,7 @@ export class TaskGoalInferenceInputRepository {
       const terminal = state.terminal ?? {
         ok,
         failureKind,
+        ...(responseDigest ? { outcomeDigest: responseDigest } : {}),
         observedAt: new Date().toISOString(),
         projectedAt: null,
         threadId: notification.outcome.ok

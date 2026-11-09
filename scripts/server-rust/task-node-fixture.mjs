@@ -9,6 +9,27 @@ export async function taskFixture(repository, input) {
       case "get":
         value = await task.get(owner, chat);
         break;
+      case "goal-input-outcome":
+      case "goal-cycle-outcome":
+        try {
+          value =
+            input.action === "goal-input-outcome"
+              ? await task.inferenceInputs.goals.applyOutcome(
+                  owner,
+                  input.worker,
+                  input.notification,
+                  { recordOnly: input.recordOnly ?? true },
+                )
+              : await task.inferenceInputs.goalCycles.commitOutcome(
+                  owner,
+                  input.worker,
+                  input.delivery,
+                );
+        } catch (error) {
+          if (error.name !== "TaskDispatchConflictError") throw error;
+          value = { conflict: error.code };
+        }
+        break;
       case "capture-native-turn":
         value = await task.captureNativeTurnRecovery(owner, chat);
         break;

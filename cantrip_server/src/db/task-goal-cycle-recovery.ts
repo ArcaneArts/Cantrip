@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { taskResponsePublicationKind } from "./task-response-publication.js";
 import {
   taskGoalCycleRecoverySchema,
   taskGoalCycleRecoveryBinding,
@@ -96,8 +97,12 @@ export class TaskGoalCycleRecoveryRepository {
         : null;
       if (
         message &&
-        (message.id !== source.publication.id ||
-          message.idempotencyKey !== source.publication.idempotencyKey)
+        !taskResponsePublicationKind(
+          message,
+          source.publication,
+          note.outcome.ok ? note.outcome.result : { threadId: "" },
+          { threadId: source.threadId, turnId: source.turnId },
+        )
       )
         throw new TaskDispatchConflictError(
           "The Goal cycle result changed its canonical publisher.",

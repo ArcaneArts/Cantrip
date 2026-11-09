@@ -5,6 +5,7 @@ import {
   protectTaskConversationMessage,
   openTaskConversationPrompt,
   encryptTaskTurnResult,
+  EncryptedTaskEventSealer,
 } from "./task-operation.js";
 import type { WorkerEncryptionService } from "./worker-encryption.js";
 import { taskMessageRelayResultSchema } from "@cantrip/protocol/tasks";
@@ -21,6 +22,66 @@ const service = {
 } as unknown as WorkerEncryptionService;
 
 describe("encrypted Task conversation", () => {
+  it.each(["default", "goal"] as const)(
+    "reuses exact published %s ciphertext only when the server opts in",
+    async (mode) => {
+      const sealer = new EncryptedTaskEventSealer(service, mode);
+      const published = await sealer.message({
+        id: "native-item",
+        text: "SENTINEL completed response",
+        phase: null,
+        correlation: {
+          sourceMethod: "item/completed",
+          diagnosticId: null,
+          threadId: "thread",
+          turnId: "turn",
+          itemId: "native-item",
+        },
+      });
+      const result = {
+        threadId: "thread",
+        turnId: "turn",
+        status: "completed" as const,
+        text: "SENTINEL completed response",
+      };
+      const input = {
+        ownerId,
+        messageId: "33333333-3333-4333-8333-333333333333",
+        idempotencyKey: "assistant:input",
+        mode,
+        result,
+        eventSealer: sealer,
+      };
+      const reused = await encryptTaskTurnResult({
+        ...input,
+        reusePublishedResponse: true,
+        getComponentKey: () => {
+          throw new Error("No new encryption is needed.");
+        },
+      });
+      expect(
+        taskMessageRelayResultSchema.parse(reused.structuredResult).message,
+      ).toEqual(published.message);
+      expect(JSON.stringify(reused)).not.toContain("SENTINEL");
+      const legacy = await encryptTaskTurnResult({
+        ...input,
+        getComponentKey: () => service.componentKey("task-content"),
+      });
+      expect(
+        taskMessageRelayResultSchema.parse(legacy.structuredResult).message.id,
+      ).toBe(input.messageId);
+      const unrelated = await encryptTaskTurnResult({
+        ...input,
+        reusePublishedResponse: true,
+        result: { ...result, turnId: "different-turn" },
+        getComponentKey: () => service.componentKey("task-content"),
+      });
+      expect(
+        taskMessageRelayResultSchema.parse(unrelated.structuredResult).message
+          .id,
+      ).toBe(input.messageId);
+    },
+  );
   it("converts composer input to Task ciphertext without exposing prose in the relay", async () => {
     const input = await protectChatTurn({
       service,

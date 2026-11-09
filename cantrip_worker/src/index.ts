@@ -7223,6 +7223,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                         return;
                       }
                       const protectedResult = await encryptTaskTurnResult({
+                        eventSealer: encryptedTaskSealer,
+                        reusePublishedResponse:
+                          command.resultMode.kind ===
+                            "task-message-encrypted" &&
+                          command.resultMode.reusePublishedResponse === true,
                         getComponentKey: () =>
                           workerEncryption.componentKey("task-content"),
                         idempotencyKey: source.publication.idempotencyKey,
@@ -7649,6 +7654,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           await protectedEventQueue;
           if (protectedEventFailure) throw protectedEventFailure;
           return encryptTaskTurnResult({
+            eventSealer: encryptedTaskSealer ?? undefined,
+            reusePublishedResponse:
+              command.resultMode.reusePublishedResponse === true,
             getComponentKey: () =>
               workerEncryption.componentKey("task-content"),
             idempotencyKey: command.resultMode.idempotencyKey,

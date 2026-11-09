@@ -98,13 +98,21 @@ impl Runtime {
                 let parsed =
                     crate::settings::parse_response(schema, result.get("structuredResult"))?;
                 let message = &parsed["message"];
-                if message.is_null()
-                    || message.get("id") != encrypted["response"].get("id")
-                    || message.get("idempotencyKey") != encrypted["response"].get("idempotencyKey")
-                    || (matches!(kind, MessageKind::Task)
-                        && message["classification"]["mode"]
-                            != encrypted["userMessage"]["classification"]["mode"])
-                {
+                let valid = if matches!(kind, MessageKind::Task) {
+                    message["classification"]["mode"] == encrypted["userMessage"]["classification"]["mode"] &&
+                    crate::tasks::Repository::new(self.dependencies.events.database.clone()).accept_turn_response(
+                        &turn.owner, &events::text(&e["workerId"])?, &encrypted["response"],
+                        &json!({"type":"chat.turn.outcome","chatId":e["chatId"],"clientMessageId":turn.user_message["id"],
+                            "executionLaneId":e["executionLaneId"],"worktreeId":e["worktreeId"],"contextKind":"project","scratchRootId":Value::Null,
+                            "taskDispatchFence":turn.options["taskDispatchLease"],"taskInferenceInputOperationId":completion.task_input_operation,
+                            "outcome":json!({"ok":true,"result":result})}),
+                    ).await?
+                } else {
+                    message.get("id") == encrypted["response"].get("id")
+                        && message.get("idempotencyKey")
+                            == encrypted["response"].get("idempotencyKey")
+                };
+                if message.is_null() || !valid {
                     anyhow::bail!(if matches!(kind, MessageKind::Task) {
                         "The encrypted Task message result metadata is invalid."
                     } else {
