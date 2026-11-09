@@ -1,7 +1,7 @@
 // Run an actual relocated distribution, with Node absent from the server PATH.
 // This does not build from source or substitute a repository fixture executable.
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
@@ -12,15 +12,24 @@ import { parseArgs } from "node:util";
 import { fixtureEnvironment, startServer } from "./process.mjs";
 
 const execute = promisify(execFile);
+const windows = process.platform === "win32";
+const executableName = (name) => name + (windows ? ".exe" : "");
+const commandInterpreter = windows
+  ? path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "cmd.exe")
+  : null;
 const { values } = parseArgs({
   options: {
     artifact: { type: "string" },
+    "data-root": { type: "string" },
     report: { type: "string" },
     "isolate-homebrew": { type: "boolean", default: false },
   },
 });
 const artifact = path.resolve(values.artifact);
-const root = await mkdtemp(path.join(tmpdir(), "cantrip-native-package-"));
+const root = values["data-root"]
+  ? path.resolve(values["data-root"])
+  : await mkdtemp(path.join(tmpdir(), "cantrip-native-package-"));
+await mkdir(root, { recursive: true });
 const manifest = JSON.parse(
   await readFile(path.join(artifact, "native-server.json")),
 );
@@ -35,7 +44,12 @@ try {
 const environment = {
   ...fixtureEnvironment(root),
   NODE_ENV: "production",
-  PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
+  PATH: windows
+    ? [
+        path.dirname(commandInterpreter),
+        process.env.SystemRoot ?? "C:\\Windows",
+      ].join(path.delimiter)
+    : "/usr/bin:/bin:/usr/sbin:/sbin",
   LD_LIBRARY_PATH: path.join(artifact, "lib"),
 };
 for (const name of [
@@ -50,10 +64,22 @@ const report = {
   artifact,
   root,
   target: manifest.target,
+  platform: process.platform,
+  driverArchitecture: process.arch,
+  shutdownMethod: windows ? "supervision-stdin-close" : "SIGTERM",
   modes: [],
 };
-const runtimeCommand = (command, arguments_) =>
-  values["isolate-homebrew"]
+const launcher = (name) =>
+  path.join(artifact, name + (windows ? ".cmd" : ".sh"));
+const batch = (command) => windows && command.endsWith(".cmd");
+const runtimeCommand = (command, arguments_) => {
+  if (batch(command)) {
+    const quoted = [command, ...arguments_]
+      .map((value) => `"${value.replaceAll('"', '""')}"`)
+      .join(" ");
+    return [commandInterpreter, ["/d", "/s", "/c", `"${quoted}"`]];
+  }
+  return values["isolate-homebrew"]
     ? [
         "/usr/bin/sandbox-exec",
         [
@@ -64,14 +90,22 @@ const runtimeCommand = (command, arguments_) =>
         ],
       ]
     : [command, arguments_];
+};
+const runtimeOptions = (command, options) =>
+  batch(command) ? { ...options, windowsVerbatimArguments: true } : options;
 const executeRuntime = (command, arguments_, options) => {
   const [executable, args] = runtimeCommand(command, arguments_);
-  return execute(executable, args, options);
+  return execute(executable, args, runtimeOptions(command, options));
 };
+const startRuntime = (command, arguments_, options) =>
+  startServer(
+    ...runtimeCommand(command, arguments_),
+    runtimeOptions(command, options),
+  );
 async function stop(server) {
   if (server.child.exitCode !== null || server.child.signalCode !== null) {
     assert.fail(
-      "server exited before the SIGTERM check: " + server.diagnostics(),
+      "server exited before the shutdown check: " + server.diagnostics(),
     );
   }
   const closed = new Promise((resolve) =>
@@ -83,17 +117,20 @@ async function stop(server) {
     server.child.kill("SIGKILL");
   }, 15_000);
   try {
-    server.child.kill("SIGTERM");
+    // Windows Node SIGTERM terminates a process; it cannot exercise the native
+    // graceful signal handler. The desktop supervises this private stdin pipe.
+    if (windows) server.child.stdin.end();
+    else server.child.kill("SIGTERM");
     const result = await closed;
     assert.equal(
       forced,
       false,
-      "SIGTERM must finish without closing stdin or forcing termination",
+      `${report.shutdownMethod} must finish without forced termination`,
     );
     assert.equal(
       result.code,
       0,
-      `SIGTERM result ${JSON.stringify(result)}: ${server.diagnostics()}`,
+      `${report.shutdownMethod} result ${JSON.stringify(result)}: ${server.diagnostics()}`,
     );
   } finally {
     clearTimeout(deadline);
@@ -107,9 +144,16 @@ try {
   // receive only the restricted runtime PATH, and the final image has no Node.
   let nodeUnavailable = false;
   try {
-    await execute("node", ["--version"], { env: environment });
+    // Probe from cmd.exe on Windows: CreateProcess otherwise searches the test
+    // driver's own Node directory even when that directory is absent from PATH.
+    await execute(
+      windows ? commandInterpreter : "node",
+      windows ? ["/d", "/c", "node --version & exit /b"] : ["--version"],
+      { cwd: root, env: environment, windowsVerbatimArguments: windows },
+    );
   } catch (error) {
-    if (error.code === "ENOENT") nodeUnavailable = true;
+    if (error.code === "ENOENT" || (windows && error.code === 9009))
+      nodeUnavailable = true;
     else throw error;
   }
   assert.ok(
@@ -124,7 +168,7 @@ try {
   const port = listener.address().port;
   await new Promise((resolve) => listener.close(resolve));
   await executeRuntime(
-    path.join(pgBin, "initdb"),
+    path.join(pgBin, executableName("initdb")),
     [
       "-D",
       externalDirectory,
@@ -138,20 +182,44 @@ try {
     ],
     { env: environment },
   );
-  await executeRuntime(
-    path.join(pgBin, "pg_ctl"),
-    [
-      "-D",
-      externalDirectory,
-      "-l",
-      path.join(root, "external.log"),
-      "-o",
-      `-h 127.0.0.1 -p ${port} -k /tmp`,
-      "-w",
-      "start",
-    ],
-    { env: environment },
-  );
+  const postgresStartArguments = [
+    "-D",
+    externalDirectory,
+    "-l",
+    path.join(root, "external.log"),
+    "-o",
+    `-h 127.0.0.1 -p ${port}${windows ? "" : " -k /tmp"}`,
+    "-w",
+    "start",
+  ];
+  if (windows) {
+    // pg_ctl's intermediate cmd.exe retains inherited pipes while PostgreSQL
+    // runs. The external fixture must not wait for those pipes to close.
+    const child = spawn(
+      path.join(pgBin, executableName("pg_ctl")),
+      postgresStartArguments,
+      {
+        env: environment,
+        stdio: "ignore",
+      },
+    );
+    const code = await new Promise((resolve, reject) => {
+      child.once("error", reject);
+      child.once("exit", resolve);
+    });
+    assert.equal(
+      code,
+      0,
+      "external PostgreSQL startup: " +
+        (await readFile(path.join(root, "external.log"), "utf8")),
+    );
+  } else {
+    await executeRuntime(
+      path.join(pgBin, executableName("pg_ctl")),
+      postgresStartArguments,
+      { env: environment },
+    );
+  }
   postgresStarted = true;
   const externalUrl = `postgresql://cantrip@127.0.0.1:${port}/postgres`;
   for (const mode of ["pglite", "bundled-postgres", "postgres"]) {
@@ -171,13 +239,9 @@ try {
       ].join("\n") + "\n";
     await writeFile(path.join(artifact, ".env"), dotenv);
     const launch = (extra = {}, additionalArguments = []) =>
-      startServer(
-        ...runtimeCommand(path.join(artifact, "start.sh"), [
-          "--port",
-          "0",
-          "--shutdown-on-stdin-close",
-          ...additionalArguments,
-        ]),
+      startRuntime(
+        launcher("start"),
+        ["--port", "0", "--shutdown-on-stdin-close", ...additionalArguments],
         { cwd: root, env: { ...environment, ...extra } },
       );
     const visit = async (server, mutate) => {
@@ -228,12 +292,12 @@ try {
       await stop(first);
     }
     // The separate migration launcher must operate on the same existing data.
-    await executeRuntime(path.join(artifact, "migrate.sh"), ["--port", "0"], {
+    await executeRuntime(launcher("migrate"), ["--port", "0"], {
       cwd: root,
       env: environment,
     });
     const exported = await executeRuntime(
-      path.join(artifact, "migrate.sh"),
+      launcher("migrate"),
       ["--port", "0", "--export-sql", path.join(root, `${mode}-export.sql`)],
       { cwd: root, env: environment },
     );
@@ -302,7 +366,7 @@ try {
       );
       await assert.rejects(
         launch({}, ["--data-dir", path.join(root, "invalid-runtime-profile")]),
-        /initdb|No such file|not found/i,
+        /initdb|No such file|not found|cannot find the (?:file|path) specified/i,
       );
       const configured = await launch({
         PGLITE_RUNTIME_DIR: path.join(artifact, "pglite"),
@@ -320,7 +384,7 @@ try {
     }
     if (mode === "bundled-postgres") {
       await executeRuntime(
-        path.join(artifact, "migrate.sh"),
+        launcher("migrate"),
         ["--port", "0", "--remember-database"],
         { cwd: root, env: environment },
       );
@@ -331,8 +395,32 @@ try {
           .filter((line) => !line.startsWith("CANTRIP_DATABASE_MODE="))
           .join("\n"),
       );
-      const saved = await startServer(
-        ...runtimeCommand(path.join(artifact, "bin", "cantrip-server"), [
+      // Distribution fallbacks are deliberately not saved as installation
+      // paths: an update may relocate its bundled PostgreSQL binaries.
+      const portableSelection = JSON.parse(
+        await readFile(path.join(data, "server-database.json"), "utf8"),
+      );
+      assert.deepEqual(portableSelection, {
+        version: 1,
+        runtime: "rust",
+        databaseMode: "bundled-postgres",
+      });
+      const portable = await launch();
+      try {
+        assert.equal(await visit(portable, false), identity);
+      } finally {
+        await stop(portable);
+      }
+      // A user's explicit binary selection is saved and must continue to win
+      // over a different distribution fallback. Exercise the actual selection.
+      await executeRuntime(
+        launcher("migrate"),
+        ["--port", "0", "--postgres-bin-dir", pgBin, "--remember-database"],
+        { cwd: root, env: environment },
+      );
+      const saved = await startRuntime(
+        path.join(artifact, "bin", executableName("cantrip-server")),
+        [
           "--env-file-if-exists",
           envFile,
           "--bundled-postgres-bin-dir",
@@ -340,7 +428,7 @@ try {
           "--port",
           "0",
           "--shutdown-on-stdin-close",
-        ]),
+        ],
         { cwd: root, env: environment },
       );
       try {
@@ -357,7 +445,10 @@ try {
         dotenv +
           `CANTRIP_POSTGRES_BIN_DIR=${path.join(root, "missing-postgres")}\n`,
       );
-      await assert.rejects(launch(), /initdb|No such file|not found/i);
+      await assert.rejects(
+        launch(),
+        /initdb|No such file|not found|cannot find the (?:file|path) specified/i,
+      );
       const explicit = await launch({ CANTRIP_POSTGRES_BIN_DIR: pgBin });
       try {
         assert.equal(await visit(explicit, false), identity);
@@ -372,13 +463,13 @@ try {
       settingsWriteAndRestart: true,
       migrationLauncher: true,
       sqlExport: exportEvent,
-      sigterm: true,
+      ...(windows ? { supervisionStdinClose: true } : { sigterm: true }),
       hostedReopen: true,
       dotenvAndProcessAndCliPrecedence: true,
     });
   }
   await executeRuntime(
-    path.join(artifact, "bin", "cantrip-server"),
+    path.join(artifact, "bin", executableName("cantrip-server")),
     [
       "--migrate-only",
       "--database",
@@ -430,7 +521,7 @@ try {
   else await rm(envFile, { force: true });
   if (postgresStarted)
     await executeRuntime(
-      path.join(pgBin, "pg_ctl"),
+      path.join(pgBin, executableName("pg_ctl")),
       ["-D", externalDirectory, "-m", "fast", "-w", "stop"],
       { env: environment },
     );

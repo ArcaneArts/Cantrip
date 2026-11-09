@@ -2,6 +2,8 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+mod windows_runtime;
+
 const ENGINE_TAG: &str = "engine-06c837c6a303-p3";
 const RELEASE_BASE: &str = "https://github.com/Midwess/pglite-rs/releases/download";
 
@@ -33,9 +35,11 @@ fn main() {
         .collect();
 
     let dest = PathBuf::from(env::var("OUT_DIR").unwrap()).join("pglite-runtime.tar");
+    println!("cargo:rerun-if-changed=windows_runtime.rs");
     if enabled.is_empty() {
         std::fs::copy(&base_tar, &dest)
             .unwrap_or_else(|e| panic!("cannot copy {} into OUT_DIR: {e}", base_tar.display()));
+        windows_runtime::prepare(&dest).expect("prepare embedded Windows runtime");
         return;
     }
 
@@ -70,6 +74,7 @@ fn main() {
         merge_dir.to_str().unwrap(),
         ".",
     ]);
+    windows_runtime::prepare(&dest).expect("prepare embedded Windows runtime");
 }
 
 fn variant_subdir() -> &'static str {

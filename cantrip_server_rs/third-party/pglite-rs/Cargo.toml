@@ -185,3 +185,14 @@ version = "0.19"
 
 [build-dependencies.ruzstd]
 version = "0.8"
+
+[build-dependencies.editpe]
+version = "0.2.4"
+default-features = false
+features = ["std"]
+
+[build-dependencies.tar]
+version = "0.4"
+
+[build-dependencies.xmltree]
+version = "0.11"

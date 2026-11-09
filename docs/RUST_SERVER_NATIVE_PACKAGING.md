@@ -98,7 +98,35 @@ shutdown without closing stdin, verifies every manifested file, and covers
 explicit runtime overrides plus the embedded-runtime fallback. Use a dedicated
 QA distribution when running this driver.
 
+On Windows the same driver executes the actual `.cmd` launchers and native
+`.exe` tools. Shutdown closes the supervision stdin pipe, matching the desktop
+ownership contract; Node's Windows `SIGTERM` would terminate the process rather
+than exercise graceful native shutdown. `--data-root` selects an owned test
+directory, including paths containing spaces and Unicode. Use a fresh directory
+for each run. The test driver may use Node; server and database children receive
+a runtime PATH without Node.
+
+Windows server builds include a per-process UTF-8 manifest. Matching PGlite
+helpers receive that manifest before embedding, including during cross builds.
+The Windows packager also updates its copied native executables, including
+private PostgreSQL tools, before calculating artifact hashes. It preserves
+existing PE resources and manifest settings. These are build operations and do
+not change the machine's code page or require PowerShell at server startup.
+The server links zlib statically on Windows for the native PGlite archive.
+
+The resource-preservation test runs against a copy of an actual executable:
+
+```powershell
+powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+  -File scripts/server-rust/windows-utf8-manifest.test.ps1 `
+  -Executable C:\CantripQA\cantrip-server.exe
+```
+
 ## Evidence and remaining integration
+
+The following table records the original packaging milestone. The
+[current package qualification](RUST_SERVER_CURRENT_PACKAGED_ACCEPTANCE.md)
+adds current macOS and actual Windows artifact results and desktop supervision.
 
 Local candidate results:
 
@@ -124,8 +152,10 @@ Later checks in that command were not run or claimed as passing.
 
 The existing desktop and canonical hosted defaults still use the Node server.
 This milestone supplies native distributions and an opt-in hosted Compose
-overlay (`deploy/compose.rust.yml`). The full replacement still requires desktop
-integration, existing-installation migration and post-write rollback acceptance,
-the remaining platform/product/coordination/performance qualification, default
-cutover, and production Node-server removal. No production deployment or hosted
-development validation was performed.
+overlay (`deploy/compose.rust.yml`). Desktop integration, automatic profile
+conversion and native Winterhold installation now have separate scoped
+qualification. The full replacement still requires current integrated artifacts,
+broader historical upgrades and product post-write rollback, remaining platform,
+product, coordination and performance qualification, default cutover and
+production Node-server removal. No production deployment or hosted development
+validation was performed.
