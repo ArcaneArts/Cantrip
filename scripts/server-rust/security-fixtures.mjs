@@ -1,3 +1,6 @@
+import { taskInputWireFixtures } from "./task-input-wire-fixtures.mjs";
+import { currentWireFixtures } from "./current-wire-fixtures.mjs";
+import { chatImportWireFixtures } from "./chat-import-wire-fixtures.mjs";
 import { agentOperationWireFixtures } from "./agent-operation-wire-fixtures.mjs";
 import { cliWireFixtures } from "./cli-wire-fixtures.mjs";
 import { threadSyncWireFixtures } from "./chat-thread-sync-fixtures.mjs";
@@ -306,6 +309,11 @@ export const projectChatWireCases = (name) =>
   name === "encryptedChatCreateSchema" ? ambiguousOsChatTargets : [];
 
 export const securityFixtures = {
+  ...taskInputWireFixtures().samples,
+  ...chatImportWireFixtures(
+    { ...projectLabel, classification: { recordKind: "chat" } },
+    timestamp,
+  ).samples,
   ...cantripOsWireFixtures(),
   nativeBehaviorAttributionSchema: [
     { version: 1, turnIds: [], captures: [], conflictingTurnKeys: [] },
@@ -848,6 +856,10 @@ Object.assign(securityFixtures, mcpChatReadWireFixtures(securityFixtures));
 Object.assign(securityFixtures, mcpChatSendWireFixtures(securityFixtures));
 Object.assign(securityFixtures, nativeSuspensionWireFixtures());
 Object.assign(securityFixtures, nativeGoalRecoveryWireFixtures());
+Object.assign(
+  securityFixtures,
+  currentWireFixtures(securityFixtures, timestamp),
+);
 Object.assign(securityFixtures, cliWireFixtures());
 const notification = securityFixtures.clientControlRequestSchema.find(
   (input) => input.command.kind === "notify",

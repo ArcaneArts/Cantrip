@@ -113,6 +113,9 @@ export function nativeHandoffWireFixtures(timestamp) {
     })),
   );
   const fixtures = {
+    nativeRuntimeHandoffQueuedSourceSchema: queuedStates.map(
+      ({ queuedSource }) => queuedSource,
+    ),
     nativeGoalRecoveryWithdrawalSchema: [goalWithdrawal],
     nativeRuntimeHandoffRequestSchema: [request],
     nativeRuntimeHandoffPreparedSchema: [

@@ -12,6 +12,13 @@ const admission = {
 
 export function nativeGoalRecoveryWireFixtures() {
   const recovery = { source, admission };
+  const claim = {
+    claimId: "claim",
+    promptId: "prompt",
+    promptRevision: 0,
+    ...source,
+    admission: null,
+  };
   const providerEpisodes = [0, 1, Number.MAX_SAFE_INTEGER].map(
     (orderEpoch) => ({
       source,
@@ -21,6 +28,42 @@ export function nativeGoalRecoveryWireFixtures() {
     }),
   );
   const fixtures = {
+    nativeGoalClaimRecoverySchema: [claim, { ...claim, admission }],
+    nativeGoalClaimRecoveryReceiptSchema: [
+      { status: "queued", claim, admission },
+      ...["recovering", "deferred"].map((status) => ({
+        status,
+        claim,
+        workerGeneration: admission.workerGeneration,
+      })),
+      ...[
+        null,
+        "active",
+        "paused",
+        "blocked",
+        "usageLimited",
+        "budgetLimited",
+        "complete",
+      ].map((goalStatus) => ({
+        status: "ineligible",
+        claim,
+        workerGeneration: admission.workerGeneration,
+        observation: {
+          chatId: "chat",
+          workerId: "worker",
+          threadId: source.threadId,
+          contextKind: "project",
+          projectId: "project",
+          placementId: "worktree",
+          modelRouteId: null,
+          providerAccountId: null,
+          runtimeGeneration: "runtime",
+          nativeEpoch: "native-epoch",
+          goalEpoch: goalStatus === null ? null : source.goalEpoch,
+          goalStatus,
+        },
+      })),
+    ],
     nativeGoalRecoverySourceSchema: [source],
     nativeGoalRecoveryAdmissionSchema: [admission],
     nativeGoalRecoverySchema: [

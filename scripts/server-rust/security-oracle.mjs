@@ -1,3 +1,4 @@
+import { taskInputWireCases } from "./task-input-wire-fixtures.mjs";
 // Only development tests invoke this process. Expectations execute the actual
 // exported protocol schemas, not the native manifest or its interpreter.
 import * as protocol from "../../packages/protocol/dist/index.js";
@@ -91,6 +92,7 @@ export function* vectorCases(name, samples = securityFixtures[name]) {
   for (const input of turnOrchestrationWireCases(name, samples))
     yield prepare(input);
   for (const input of taskWireCases(name, samples)) yield prepare(input);
+  for (const input of taskInputWireCases(name)) yield prepare(input);
   for (const input of publicChatWireCases(name, samples)) yield prepare(input);
   for (const input of projectAutomationWireCases(name, samples))
     yield prepare(input);

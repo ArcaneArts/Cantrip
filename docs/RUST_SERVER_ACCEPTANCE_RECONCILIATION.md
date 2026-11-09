@@ -4,6 +4,14 @@ The server replacement remains incomplete. Node is still the default server,
 and the worker remains Node. Historical ledger entries describe their original
 milestones; their remaining-work text is not a current implementation inventory.
 
+The [current wire reconciliation](RUST_SERVER_CURRENT_WIRE_COMPATIBILITY.md)
+closes the missing schema/command fixtures and stale public-surface expectations.
+Broad native comparisons, complete outgoing command mutations and protocol
+package tests pass locally. Five strengthened fixture families have separate
+current native comparisons; their cases overlap the broad run. This establishes
+the recorded parser coverage, while full product and shipping acceptance remain
+separate.
+
 The [Task Goal worker-loss comparison](RUST_SERVER_TASK_GOAL_WORKER_RECOVERY.md)
 now qualifies active implementation recovery with the final optimized executable
 on all three stores and all four shared pairings. It preserves one opaque native

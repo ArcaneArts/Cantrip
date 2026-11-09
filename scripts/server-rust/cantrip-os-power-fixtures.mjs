@@ -71,6 +71,16 @@ export function cantripOsPowerFixtures() {
     },
   };
   return {
+    cantripOsDockerCarrierSchema: [
+      { kind: "docker", containerId: before.containerId },
+    ],
+    cantripOsPowerTargetSchema: [commandTarget.powerTarget],
+    cantripOsPowerObservationSchema: [before, after],
+    cantripOsPowerActionSchema: ["start", "stop", "restart"],
+    cantripOsPowerEvidenceSchema: [
+      "acknowledged-and-observed",
+      "observed-state",
+    ],
     cantripOsPowerCreateSchema: [input],
     cantripOsPowerTargetSummarySchema: [target],
     cantripOsPowerStatusSchema: [

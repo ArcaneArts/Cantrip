@@ -1,5 +1,12 @@
 # Rust server replacement
 
+The [current wire comparison](RUST_SERVER_CURRENT_WIRE_COMPATIBILITY.md) restores
+the missing schema and command examples after protocol additions. Broad native
+values, issues and error messages now match the current TypeScript corpus,
+including complete outgoing command mutation coverage. Historical public-surface
+fingerprints remain unchanged. This closes the fixture gap; product, platform,
+artifact and final cutover acceptance remain required. Node is still the default.
+
 Active implementation Goal recovery after worker loss now retains one canonical
 encrypted answer. Both servers validate native response reuse against the saved
 physical input, preserve legacy assigned replies and reject changed terminal
