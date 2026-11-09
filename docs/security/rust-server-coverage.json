@@ -14678,6 +14678,17 @@
     ]
   },
   "crossCutting": {
+    "currentProductAndSharedAgentRecovery": {
+      "status": "partial",
+      "evidence": [
+        "docs/RUST_SERVER_SHARED_AGENT_RECOVERY.md",
+        "scripts/server-rust/native-product-compatibility.mjs",
+        "scripts/server-rust/native-agent-interruption.mjs",
+        "scripts/server-rust/native-logical-transport-cases.mjs"
+      ],
+      "qualification": "Current92patch native runtime, rebuilt full Node worker and optimized production Rust main pass all6product cases/all3stores:150steps,54cleanworkerstops,144modelPOSTs. BothactiveAgent/Goal crashroles/all4sharedNodeRustpairings pass120steps,16intentionalSIGKILL,32cleanworkerexits,48normalserverexits,32modelPOSTs with exactnativeauthority/Rediscontinuity/canonicalhistory and noadditional inference.",
+      "remaining": "Worker/native-process loss, prolonged faults, supported-platform/current packaged artifacts and updates, full historical upgrade/rollback, performance, default Rust cutover and production Node removal. Broad repository comparison and decomposition checks retain failures."
+    },
     "nativeProductMatrix": {
       "status": "partial",
       "evidence": [

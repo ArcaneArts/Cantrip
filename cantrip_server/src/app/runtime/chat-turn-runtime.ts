@@ -2054,6 +2054,7 @@ export function createChatTurnRuntime({
                 execution.workerId,
                 nativeCommandReceipt,
                 taskInferenceInput,
+                error,
               )
             )
               return;
@@ -2237,6 +2238,7 @@ export function createChatTurnRuntime({
             execution.workerId,
             nativeCommandReceipt,
             taskInferenceInput,
+            error,
           )
         )
           return;

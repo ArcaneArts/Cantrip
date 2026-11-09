@@ -1,5 +1,12 @@
 # Native Task and Goal product qualification
 
+The [current production qualification](RUST_SERVER_SHARED_AGENT_RECOVERY.md)
+passes all six cases with the current client, rebuilt worker, 92-patch native
+runtime and optimized production Rust executable, without SQL fixture routes.
+It also adds active Agent/Goal crash recovery across shared peers. Earlier
+frozen-artifact results below retain their original scope. Supported-platform,
+packaged, performance and complete replacement acceptance remain separate.
+
 Run development qualification locally. GitHub Actions is reserved for releases
 and deployments. These tests compare the existing browser SDKs through each
 server, the full Node worker and an actual built Cantrip native runtime. Only the

@@ -20,7 +20,11 @@ import path from "node:path";
 import { buildRustExample } from "./build.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
-import { runAdmissionCases } from "./native-command-admission-cases.mjs";
+import {
+  runAdmissionCases,
+  command,
+} from "./native-command-admission-cases.mjs";
+import { runLogicalCases } from "./native-logical-cases.mjs";
 import { runGuiAdmissionCases } from "./gui-admission-cases.mjs";
 import { runTaskRepositoryCases } from "./task-repository-cases.mjs";
 import { runTaskSchedulerCases } from "./task-scheduler-cases.mjs";
@@ -969,45 +973,47 @@ try {
   }
   await reset();
   const runCases =
-    report.domain === "thread-observation"
-      ? runThreadObservationCases
-      : report.domain === "task-background"
-        ? runTaskBackgroundCases
-        : report.domain === "automation-pause"
-          ? runAutomationPauseCases
-          : report.domain === "task-claimed"
-            ? runTaskClaimedCases
-            : report.domain === "task-automatic"
-              ? runTaskAutomaticCases
-              : report.domain === "task-queue"
-                ? runTaskQueueCases
-                : report.domain === "task-eligibility"
-                  ? runTaskEligibilityCases
-                  : report.domain === "task-workers"
-                    ? runTaskWorkerCases
-                    : report.domain === "task-recovery"
-                      ? runTaskRecoveryCases
-                      : report.domain === "task-goal"
-                        ? runTaskGoalCases
-                        : report.domain === "task-retry"
-                          ? runTaskRetryCases
-                          : report.domain === "task-dispatch"
-                            ? runTaskSchedulerCases
-                            : report.domain === "tasks"
-                              ? runTaskRepositoryCases
-                              : report.domain === "gui"
-                                ? runGuiAdmissionCases
-                                : report.domain === "prompts"
-                                  ? runQueuedPromptCases
-                                  : report.domain === "managed-queue"
-                                    ? runManagedQueueCases
-                                    : report.domain === "events"
-                                      ? runNativeEventContextCases
-                                      : report.domain === "models"
-                                        ? runNativeModelInventoryCases
-                                        : report.domain === "interactions"
-                                          ? runAgentInteractionCases
-                                          : runAdmissionCases;
+    report.domain === "logical"
+      ? (h) => runLogicalCases({ ...h, command })
+      : report.domain === "thread-observation"
+        ? runThreadObservationCases
+        : report.domain === "task-background"
+          ? runTaskBackgroundCases
+          : report.domain === "automation-pause"
+            ? runAutomationPauseCases
+            : report.domain === "task-claimed"
+              ? runTaskClaimedCases
+              : report.domain === "task-automatic"
+                ? runTaskAutomaticCases
+                : report.domain === "task-queue"
+                  ? runTaskQueueCases
+                  : report.domain === "task-eligibility"
+                    ? runTaskEligibilityCases
+                    : report.domain === "task-workers"
+                      ? runTaskWorkerCases
+                      : report.domain === "task-recovery"
+                        ? runTaskRecoveryCases
+                        : report.domain === "task-goal"
+                          ? runTaskGoalCases
+                          : report.domain === "task-retry"
+                            ? runTaskRetryCases
+                            : report.domain === "task-dispatch"
+                              ? runTaskSchedulerCases
+                              : report.domain === "tasks"
+                                ? runTaskRepositoryCases
+                                : report.domain === "gui"
+                                  ? runGuiAdmissionCases
+                                  : report.domain === "prompts"
+                                    ? runQueuedPromptCases
+                                    : report.domain === "managed-queue"
+                                      ? runManagedQueueCases
+                                      : report.domain === "events"
+                                        ? runNativeEventContextCases
+                                        : report.domain === "models"
+                                          ? runNativeModelInventoryCases
+                                          : report.domain === "interactions"
+                                            ? runAgentInteractionCases
+                                            : runAdmissionCases;
   await runCases({
     pair,
     urls,

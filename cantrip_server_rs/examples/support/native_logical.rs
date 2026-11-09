@@ -79,6 +79,17 @@ pub async fn run(database: Arc<Database>, input: &Value) -> Result<Value> {
                     .boxed()
                     .await?,
             ),
+            "native-command-logical-transport-pending" => Value::Bool(
+                repository
+                    .pending_logical_gui_after_transport_loss(
+                        owner,
+                        worker,
+                        operation,
+                        input["generation"].as_str().context("Logical generation")?,
+                    )
+                    .boxed()
+                    .await?,
+            ),
             "native-command-logical-deferred" => Value::Bool(
                 repository
                     .has_deferred_logical_gui(

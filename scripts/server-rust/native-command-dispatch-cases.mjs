@@ -395,8 +395,12 @@ export async function runDispatchCases({
       "goal cancellation preserves dispatched parent " + method,
     );
     for (const value of state) {
-      assert.equal(value.claims[0].status, "rejected");
-      assert.equal(value.prompts[0].state, "pending");
+      // A dispatched setter can already have native side effects. Cancellation
+      // retains its claim until the actual receipt proves what happened.
+      assert.equal(value.claims[0].status, "uncertain");
+      assert.equal(value.claims[0].awaiting_goal, true);
+      assert.equal(value.claims[0].goal_cancelled, true);
+      assert.equal(value.prompts[0].state, "claimed");
       assert.equal(
         value.commands.find((c) => c.operation_id === "goal-parent").status,
         "dispatched",

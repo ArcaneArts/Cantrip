@@ -7,8 +7,12 @@ import { runLogicalOutcomeCases } from "./native-logical-outcome-cases.mjs";
 import { runTurnObservationCases } from "./native-turn-observation-cases.mjs";
 import { runLogicalQueueCases } from "./native-logical-queue-cases.mjs";
 import { runManagedGuiFinishCases } from "./managed-gui-finish-cases.mjs";
+import { runLogicalTransportCases } from "./native-logical-transport-cases.mjs";
 export async function runLogicalCases(h) {
   const { reset, seed, observe, snapshot, command } = h;
+  await seed(
+    `INSERT INTO model_profiles(id,owner_id,name,created_at,updated_at) VALUES('queue-model',${literal(h.owner)},'Queue model',${literal(stamp)},${literal(stamp)}) ON CONFLICT(id) DO NOTHING`,
+  );
   const session = {
     ...command().session,
     threadId: "thread",
@@ -94,6 +98,7 @@ export async function runLogicalCases(h) {
     return result;
   }
   const helpers = { ...h, start, session, next, raw, unchanged };
+  await runLogicalTransportCases(helpers);
   await runContinuationCases(helpers);
   await runLogicalCompletionCases(helpers);
   await runLogicalQueueCases(helpers);

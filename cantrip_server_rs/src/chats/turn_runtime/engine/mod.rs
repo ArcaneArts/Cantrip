@@ -254,7 +254,7 @@ impl Runtime {
                             message(&error).lossy().into_owned()
                         ))));
                     }
-                    if self.retain_suspension(&turn).await? {
+                    if self.retain_suspension(&turn, &error).await? {
                         return Ok(());
                     }
                     if let Some(CommandFailure::Limit(limit)) =
