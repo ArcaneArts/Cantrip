@@ -94,6 +94,11 @@ impl JsString {
         Self::new(units)
     }
     fn write_json(&self, output: &mut String) {
+        if let Some(text) = self.as_str() {
+            output.push_str(&serde_json::to_string(text).expect("UTF-8 JSON string"));
+            return;
+        }
+        // The UTF-16 path retains lone surrogates that UTF-8 cannot represent.
         output.push('"');
         let mut at = 0;
         while at < self.units.len() {
@@ -129,8 +134,13 @@ impl JsString {
 }
 impl From<&str> for JsString {
     fn from(value: &str) -> Self {
+        let units = if value.is_ascii() {
+            value.bytes().map(u16::from).collect::<Vec<_>>()
+        } else {
+            value.encode_utf16().collect()
+        };
         Self {
-            units: value.encode_utf16().collect::<Vec<_>>().into(),
+            units: units.into(),
             utf8: Some(Arc::from(value)),
         }
     }
@@ -172,6 +182,9 @@ impl fmt::Display for JsString {
 }
 impl Serialize for JsString {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if let Some(text) = self.as_str() {
+            return serializer.serialize_str(text);
+        }
         let mut s = String::new();
         self.write_json(&mut s);
         serde_json::value::RawValue::from_string(s)
@@ -188,6 +201,9 @@ impl<'de> Deserialize<'de> for JsString {
                 f.write_str("a JSON string")
             }
             fn visit_bytes<E: de::Error>(self, bytes: &[u8]) -> Result<JsString, E> {
+                if let Ok(text) = std::str::from_utf8(bytes) {
+                    return Ok(JsString::from(text));
+                }
                 let mut units = Vec::new();
                 let mut at = 0;
                 while at < bytes.len() {

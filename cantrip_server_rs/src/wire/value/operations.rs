@@ -111,6 +111,33 @@ impl Value {
         output
     }
 
+    /// Avoid an encoding round trip only when it preserves the whole value,
+    /// including number signs and the object's observable property order.
+    pub(in crate::wire) fn json_round_trip_preserves_value(&self) -> bool {
+        let mut pending = vec![self];
+        while let Some(value) = pending.pop() {
+            match value {
+                Self::Number(number)
+                    if !number.is_finite() || (*number == 0.0 && number.is_sign_negative()) =>
+                {
+                    return false;
+                }
+                Self::Array(values) => pending.extend(values),
+                Self::Object(values) => {
+                    if !crate::wire::coercion::keys(values)
+                        .into_iter()
+                        .eq(values.keys())
+                    {
+                        return false;
+                    }
+                    pending.extend(values.values());
+                }
+                _ => {}
+            }
+        }
+        true
+    }
+
     fn drain_children(&mut self, pending: &mut Vec<Value>) {
         match self {
             Self::Array(values) => pending.append(values),
@@ -200,5 +227,43 @@ impl PartialEq for Value {
 impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.stringify())
+    }
+}
+
+#[cfg(test)]
+mod json_round_trip_tests {
+    use super::Value;
+
+    #[test]
+    fn normalization_changes_keep_the_encoding_path() {
+        for raw in [
+            "-0",
+            "1e999",
+            "-1e999",
+            "[0,[-0]]",
+            "{\"nested\":[1e999]}",
+            "{\"z\":0,\"1\":1}",
+            "[{\"nested\":{\"z\":0,\"2\":2}}]",
+        ] {
+            let value: Value = serde_json::from_str(raw).unwrap();
+            assert!(!value.json_round_trip_preserves_value(), "{raw}");
+        }
+        assert!(!Value::Number(f64::NAN).json_round_trip_preserves_value());
+    }
+
+    #[test]
+    fn canonical_values_retain_unicode_numbers_and_property_order() {
+        for raw in [
+            "[]",
+            "[null,true,false,0,5e-324,1.7976931348623157e308]",
+            "{\"1\":1,\"2\":2,\"z\":[\"\\ud800\",\"\\udfff\",\"🦀\"]}",
+            "{\"z\":0,\"4294967295\":1}",
+        ] {
+            let value: Value = serde_json::from_str(raw).unwrap();
+            assert!(value.json_round_trip_preserves_value(), "{raw}");
+            let encoded = Value::from_serialize(&value);
+            assert_eq!(value, encoded, "{raw}");
+            assert_eq!(value.stringify(), encoded.stringify(), "{raw}");
+        }
     }
 }

@@ -125,6 +125,11 @@ same repeated workload. The collections are small, and the paused-client traffic
 does not saturate a bulk relay. Other storage modes, large profiles, sustained
 stream throughput/backpressure and fault-recovery performance remain required.
 
+The subsequent [worker-log streaming qualification](RUST_SERVER_STREAMING_PERFORMANCE.md)
+adds production bulk JSON measurements and all-store slow-consumer/crash/reconnect
+comparisons. Its scope and remaining binary/product/platform work are recorded
+separately.
+
 Build the Node production entry and provide an optimized native package. Run
 from the repository root, using a new owned evidence directory:
 
