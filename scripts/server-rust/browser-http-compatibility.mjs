@@ -22,6 +22,8 @@ import {
 import { heartbeat, password } from "./security-fixtures.mjs";
 import { tunnelRecord } from "./tunnel-record-fixture.mjs";
 import { browserCleanupFailure } from "./browser-cleanup-failure.mjs";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
+import { storedStateClocks } from "./stored-state-clocks.mjs";
 const option = (key) => {
   const i = process.argv.indexOf(key);
   return i < 0 ? undefined : process.argv[i + 1];
@@ -32,6 +34,7 @@ const databaseMode = option("--database") ?? "pglite",
 const report = {
   suite: "actual-browser-management-http",
   databaseMode,
+  root,
   completeReplacement: false,
   profiles: [],
 };
@@ -75,11 +78,17 @@ async function eventually(read, check) {
 }
 let pg, failure;
 try {
-  const executable = await buildRustServer(),
-    repositoryBinary = await buildRustExample("project-repository-fixture");
+  const executable =
+      process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer()),
+    repositoryBinary =
+      process.env.CANTRIP_RUST_PROJECT_REPOSITORY_BINARY ??
+      (await buildRustExample("project-repository-fixture"));
+  const passwordHash = await hashPassword(password);
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
-  for (const profile of ["none", "accounts"]) {
+  for (const profile of ["none", "password", "accounts"].filter(
+    (profile) => !option("--profile") || option("--profile") === profile,
+  )) {
     const runtimes = [];
     report.profiles.push({ profile, runtimes });
     for (const kind of ["node", "rust"]) {
@@ -96,6 +105,9 @@ try {
         environment: {
           CANTRIP_AUTH_MODE: profile,
           CANTRIP_REGISTRATION_ENABLED: "true",
+          ...(profile === "password"
+            ? { CANTRIP_PASSWORD_HASH: passwordHash }
+            : {}),
           ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
           ...(kind === "rust" && databaseMode === "bundled-postgres"
             ? {
@@ -107,10 +119,13 @@ try {
       });
       const result = {
         kind,
+        startedAt: Date.now(),
         observations: [],
         changes: [],
         commands: [],
         states: [],
+        rawStates: [],
+        canonicalStates: [],
       };
       runtimes.push(result);
       let repo,
@@ -173,6 +188,32 @@ try {
         });
         assert.equal(raw.rejected, false, raw.diagnostic);
         result.states.push({ name, value: fixture.normalize(raw.value) });
+        if (process.argv.includes("--canonical-state")) {
+          const sql =
+            "SELECT jsonb_build_object('surfaces',(SELECT jsonb_agg(to_jsonb(s) ORDER BY id) FROM remote_surfaces s),'browsers',(SELECT jsonb_agg(to_jsonb(b) ORDER BY id) FROM browsers b),'tunnels',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM tunnels t)) result";
+          const complete = await repo.request({ op: "query-json", sql });
+          assert.equal(complete.rejected, false, complete.diagnostic);
+          await repo.close();
+          repo = await openRepo();
+          const reopened = await repo.request({ op: "query-json", sql });
+          assert.equal(reopened.rejected, false, reopened.diagnostic);
+          assert.deepEqual(
+            reopened.value,
+            complete.value,
+            name + ": exact raw store reopen",
+          );
+          result.rawStates.push({
+            name,
+            value: complete.value,
+            reopened: reopened.value,
+          });
+          result.canonicalStates.push({
+            name,
+            value: fixture.normalize(
+              storedStateClocks(complete.value, result.startedAt),
+            ),
+          });
+        }
         await repo.close();
         repo = undefined;
       };
@@ -193,7 +234,11 @@ try {
             });
           owner = fixture.records.get("register main").currentUser.id;
           other = fixture.records.get("register other").currentUser.id;
-        } else await visit("session", "GET", "/api/auth/session");
+        } else if (profile === "password")
+          await visit("login", "POST", "/api/auth/login", {
+            json: { password },
+          });
+        else await visit("session", "GET", "/api/auth/session");
         fixture.sqlErrorOwner = owner;
         await fixture.close();
         repo = await openRepo();
@@ -284,6 +329,32 @@ try {
           json: { expectedStateRevision: 1, stateProtection },
           status: 409,
         });
+        if (process.argv.includes("--canonical-state")) {
+          await foreignLive?.close();
+          foreignLive = undefined;
+          await live.close();
+          live = undefined;
+          await stored("complete offline state after committed update");
+          await fixture.start();
+          live = await new LiveProbe(fixture).open();
+          await live.initialized();
+          await live.subscribed("browser scopes after restart", [
+            currentUser,
+            { kind: "project", projectId: "github" },
+          ]);
+          if (profile === "accounts") {
+            foreignLive = await new LiveProbe(fixture, {
+              client: "other",
+            }).open();
+            await foreignLive.initialized();
+            await foreignLive.subscribed();
+          }
+          await visit(
+            "committed browser state after restart",
+            "GET",
+            "/api/projects/github/browsers",
+          );
+        }
         await visit(
           "enrollment code",
           "POST",
@@ -353,7 +424,7 @@ try {
           () => connected,
           (n) => assert.ok(n > 0),
         );
-        if (profile === "accounts") {
+        if (profile !== "none") {
           await visit(
             "create requires CSRF",
             "POST",
@@ -549,7 +620,7 @@ try {
       runtimes[0].observations,
       profile + " complete HTTP contract",
     );
-    for (const key of ["changes", "commands", "states"])
+    for (const key of ["changes", "commands", "states", "canonicalStates"])
       assert.deepEqual(runtimes[1][key], runtimes[0][key], profile + " " + key);
     if (databaseMode === "postgres") {
       for (const key of ["observation", "stored", "expectedSiblings"])
@@ -560,6 +631,7 @@ try {
         );
     }
   }
+  report.passed = true;
 } catch (error) {
   failure = error;
   report.failure = { message: error.message, stack: error.stack };
@@ -569,7 +641,8 @@ try {
     await mkdir(path.dirname(reportPath), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");
   }
-  if (!failure) await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
   else report.fixtureRoot = root;
 }
 console.log(

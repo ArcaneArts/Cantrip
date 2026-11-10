@@ -17,6 +17,15 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current persisted-resource qualification](RUST_SERVER_PERSISTED_RESOURCE_CONTRACTS.md)
+adds complete accounting and browser/surface rows, exact raw reopen and public
+usage/tenant comparisons across all three stores. Browser HTTP also passes all
+three authentication profiles. The 165 repository scenarios, 195 paired SQL
+stages and 504 paired HTTP case observations bind the final six table identities
+and browser configuration command. All 135 tables now have scoped behavioral
+evidence; worker-command and Live totals are 254/323 and 40/47. Partial consumers,
+remaining categories and complete final shipping acceptance remain open.
+
 The [current provisioning-state qualification](RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md)
 passes both nine-cell folder and replica matrices against the production Rust
 HTTP server. It adds complete raw project/job reopen comparisons and 108
