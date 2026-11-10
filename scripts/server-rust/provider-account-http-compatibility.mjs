@@ -9,7 +9,8 @@ import { LiveProbe } from "./live-sockets.mjs";
 import { SocketProbe } from "./worker-sockets.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
-import { heartbeat } from "./security-fixtures.mjs";
+import { heartbeat, password } from "./security-fixtures.mjs";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { policyEnvelope } from "./policy-wire-fixtures.mjs";
 import { capturedCredentialFixture } from "./settings-provider-fixtures.mjs";
 
@@ -29,7 +30,7 @@ const report = {
 };
 const literal = (value) => "'" + String(value).replaceAll("'", "''") + "'";
 const providerLookupQueries = [
-  'select "id", "owner_id", "name", "kind", "base_url", "protected_api_key", "weekly_usage_reserve_percent", "created_at", "updated_at" from "model_providers" where ("model_providers"."id" = $1 and "model_providers"."owner_id" = $2) limit $3',
+  'select "id", "owner_id", "name", "kind", "base_url", "connection_revision", "protected_api_key", "weekly_usage_reserve_percent", "max_concurrent_inference", "inference_config_revision", "inference_catalog_created_revision", "created_at", "updated_at" from "model_providers" where ("model_providers"."id" = $1 and "model_providers"."owner_id" = $2) limit $3',
   'select "id", "kind" from "model_providers" where ("model_providers"."id" = $1 and "model_providers"."owner_id" = $2) limit $3',
   'select "model_provider_accounts"."id", "model_provider_accounts"."credential_home_key" from "model_provider_accounts" inner join "model_providers" on "model_providers"."id" = "model_provider_accounts"."provider_id" where ("model_provider_accounts"."provider_id" = $1 and "model_providers"."owner_id" = $2 and "model_providers"."kind" in ($3, $4) and "model_provider_accounts"."id" = $5) order by "model_provider_accounts"."position" asc limit $6',
 ];
@@ -56,12 +57,15 @@ let postgresOwner, failure;
 try {
   const executable =
     process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer());
-  const repositoryExecutable = await buildRustExample(
-    "settings-repository-fixture",
-  );
+  const repositoryExecutable =
+    process.env.CANTRIP_RUST_SETTINGS_REPOSITORY_BINARY ??
+    (await buildRustExample("settings-repository-fixture"));
   if (databaseMode !== "pglite")
     postgresOwner = await postgresFixture(path.join(root, "postgres"));
-  for (const mode of ["accounts", "none"]) {
+  const passwordHash = await hashPassword(password);
+  for (const mode of ["accounts", "none", "password"].filter(
+    (mode) => !option("--profile") || option("--profile") === mode,
+  )) {
     const profile = { mode, runtimes: [] };
     report.profiles.push(profile);
     for (const kind of ["node", "rust"]) {
@@ -78,6 +82,9 @@ try {
         environment: {
           CANTRIP_AUTH_MODE: mode,
           CANTRIP_REGISTRATION_ENABLED: "true",
+          ...(mode === "password"
+            ? { CANTRIP_PASSWORD_HASH: passwordHash }
+            : {}),
           ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
           ...(kind === "rust" && databaseMode === "bundled-postgres"
             ? {
@@ -93,6 +100,8 @@ try {
         authEvents: [],
         clearChecks: [],
         queryErrors: [],
+        rawWorkerCommands: [],
+        workerCommands: [],
       };
       profile.runtimes.push(result);
       let owner;
@@ -202,6 +211,10 @@ try {
               },
             );
         }
+        if (mode === "password")
+          await fixture.observe("login", "POST", "/api/auth/login", {
+            json: { password },
+          });
         owner =
           mode === "accounts"
             ? fixture.records.get("register main").currentUser.id
@@ -243,7 +256,7 @@ try {
         );
         await fixture.close();
         repository = await openRepository();
-        if (mode === "none")
+        if (mode !== "accounts")
           await repository.seed(
             `INSERT INTO users(id,kind,display_name,email,normalized_email) VALUES(${literal(other)},'account','Other','other-account@example.invalid','other-account@example.invalid')`,
           );
@@ -304,7 +317,7 @@ try {
             },
           );
         }
-        if (mode === "accounts")
+        if (mode !== "none")
           await visit("account CSRF required", "POST", accounts(), {
             csrf: false,
             status: 403,
@@ -622,6 +635,16 @@ try {
           credential: fixture.records.get("paired").credential,
           onRequest(frame, socket) {
             const command = frame.command;
+            if (
+              [
+                "provider.auth.legacy.capture",
+                "provider.auth.legacy.purge",
+                "provider.auth.account.clear",
+              ].includes(command.type)
+            ) {
+              result.rawWorkerCommands.push(structuredClone(command));
+              result.workerCommands.push(fixture.normalize(command));
+            }
             if (command.type === "provider.auth.legacy.capture") {
               const capture = [ids.captured].includes(
                 command.providerAccountId,
@@ -926,6 +949,22 @@ try {
       }
     }
     const [expected, actual] = profile.runtimes;
+    const commandKey = (command) =>
+      [
+        command.type,
+        command.providerId,
+        command.providerAccountId,
+        command.serverCredentialRevision,
+      ].join("\0");
+    for (const runtime of profile.runtimes)
+      runtime.workerCommands.sort((a, b) =>
+        commandKey(a).localeCompare(commandKey(b)),
+      );
+    assert.deepEqual(
+      actual.workerCommands,
+      expected.workerCommands,
+      mode + " complete worker commands by account/type",
+    );
     assert.deepEqual(
       actual.observations,
       expected.observations,
@@ -941,6 +980,7 @@ try {
     ])
       assert.deepEqual(actual[field], expected[field], mode + " " + field);
   }
+  report.passed = true;
 } catch (error) {
   failure = error;
   report.failure = {
