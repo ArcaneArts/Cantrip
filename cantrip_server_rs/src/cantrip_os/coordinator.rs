@@ -10,7 +10,7 @@ mod power;
 mod systems;
 #[path = "workspace_operation_coordinator.rs"]
 mod workspace_operations;
-use super::{InstanceObservation, Repository, checked, text};
+use super::{InstanceObservation, PlacementError, Repository, checked, text};
 use crate::auth::service::AuthService;
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
@@ -57,7 +57,7 @@ impl Coordinator {
     ) -> Result<Value> {
         ensure!(
             input["request"]["projectId"] == project,
-            "The Run definition belongs to another project."
+            PlacementError("The Run definition belongs to another project.")
         );
         if input["request"]["type"] != "project.run-configuration-definitions.delete" {
             return self
@@ -131,7 +131,7 @@ impl Coordinator {
     ) -> Result<Value> {
         ensure!(
             input["request"]["projectId"] == project,
-            "The Run definition belongs to another project."
+            PlacementError("The Run definition belongs to another project.")
         );
         if !input["bindingGeneration"].is_null() || !input["attachmentGeneration"].is_null() {
             let selected = self.repository.context(owner, project, binding).await?;
@@ -141,7 +141,7 @@ impl Coordinator {
                     && (input["attachmentGeneration"].is_null()
                         || selected["instance"]["attachmentGeneration"]
                             == input["attachmentGeneration"]),
-                "The selected Linux definition source changed."
+                PlacementError("The selected Linux definition source changed.")
             );
         }
         let execution = self
@@ -151,22 +151,28 @@ impl Coordinator {
         let action = text(&input["request"], "type")?
             .strip_prefix("project.run-configuration-definitions.")
             .context("Invalid Linux definition action")?;
-        let result = self.request_with_timeout(text(&execution["scope"], "workerId")?,
+        let result = self.request_raw(text(&execution["scope"], "workerId")?,
             json!({"type":"cantrip-os.run-definition", "execution":execution, "request":input["request"]}),
-            crate::run_configurations::definitions::response_schema(action), Duration::from_secs(180)).await?;
-        ensure!(
-            result["projectId"] == project
-                && result["operationId"] == input["request"]["operationId"],
-            "The Linux Run definition response was misrouted."
-        );
+            Duration::from_secs(180)).await?;
+        let result = match result {
+            Some(result) => serde_json::from_str(&result.stringify())?,
+            None => Value::Null,
+        };
         let scope = &execution["scope"];
-        checked(
+        let response = checked(
             "cantripOsRunDefinitionResponseSchema",
             json!({"source":{
             "bindingId":scope["bindingId"], "worktreeId":scope["worktreeId"], "projectSourceId":scope["projectSourceId"],
             "guestPath":scope["guestPath"], "runtimeGeneration":scope["runtimeGeneration"]
         }, "result":result}),
-        )
+        )?;
+        ensure!(
+            response["result"]["projectId"] == project
+                && response["result"]["operationId"] == input["request"]["operationId"]
+                && response["result"]["operation"] == action,
+            PlacementError("The Linux Run definition response was misrouted.")
+        );
+        Ok(response)
     }
     pub fn new(service: Arc<AuthService>) -> Self {
         Self {
@@ -185,7 +191,17 @@ impl Coordinator {
         schema: &str,
         timeout: Duration,
     ) -> Result<Value> {
-        let response = self
+        let response = self.request_raw(worker, command, timeout).await?;
+        let response = crate::settings::parse_response(schema, response.as_ref())?;
+        Ok(serde_json::from_str(&response.stringify())?)
+    }
+    async fn request_raw(
+        &self,
+        worker: &str,
+        command: Value,
+        timeout: Duration,
+    ) -> Result<Option<crate::wire::Value>> {
+        Ok(self
             .service
             .workers
             .commands
@@ -195,11 +211,15 @@ impl Coordinator {
                 Some(timeout),
                 None,
             )
-            .await?;
-        let response = crate::settings::parse_response(schema, response.as_ref())?;
-        Ok(serde_json::from_str(&response.stringify())?)
+            .await?)
     }
     fn scope(&self, owner: &str, instance: &Value) -> Result<Value> {
+        ensure!(
+            instance["runtimeGeneration"]
+                .as_str()
+                .is_some_and(|value| !value.is_empty()),
+            PlacementError("The OS has no current executor generation.")
+        );
         checked(
             "cantripOsDispatchScopeSchema",
             json!({"ownerId":owner,"serverId":self.service.server_id,"workerId":instance["workerId"],"instanceId":instance["id"],"guestInstanceId":instance["guestInstanceId"],"attachmentGeneration":instance["attachmentGeneration"],"runtimeGeneration":instance["runtimeGeneration"]}),
@@ -249,19 +269,25 @@ impl Coordinator {
         let actual = self.inspect(owner, input).await?;
         ensure!(
             actual["guestInstanceId"] == input["guestInstanceId"],
-            "The selected transport points to a different OS instance."
+            PlacementError("The selected transport points to a different OS instance.")
         );
         ensure!(
             actual["attachment"].is_null()
                 || (actual["attachment"]["ownerId"] == owner
                     && actual["attachment"]["workerId"] == input["workerId"]),
-            "The OS is attached elsewhere; explicitly detach it on that OS first."
+            PlacementError("The OS is attached elsewhere; explicitly detach it on that OS first.")
         );
         let admitted = self.repository.attach(owner, input).await?;
         let mut observed = admitted.clone();
         observed["runtimeGeneration"] = actual["runtimeGeneration"].clone();
         let result:Result<Value>=async {
-            self.request(text(input,"workerId")?,json!({"type":"cantrip-os.attach","scope":self.scope(owner,&observed)?,"transport":input["transport"]}),"cantripOsObservedInstanceSchema").await?;
+            // Attachment replies acknowledge the mutation. The reference accepts
+            // a void reply and verifies actual ownership and identity in refresh.
+            self.request_raw(
+                text(input,"workerId")?,
+                json!({"type":"cantrip-os.attach","scope":self.scope(owner,&observed)?,"transport":input["transport"]}),
+                Duration::from_secs(600),
+            ).await?;
             self.refresh(owner,text(&admitted,"id")?).await
         }.await;
         if result.is_err() {
@@ -288,7 +314,7 @@ impl Coordinator {
         let i = &attachment["instance"];
         let result:Result<Value>=async {
             let actual=self.inspect(owner,&json!({"workerId":i["workerId"],"transport":attachment["transport"]})).await?;
-            ensure!(actual["guestInstanceId"]==i["guestInstanceId"] && actual["attachment"]["ownerId"]==owner && actual["attachment"]["workerId"]==i["workerId"],"The OS identity or attachment changed.");
+            ensure!(actual["guestInstanceId"]==i["guestInstanceId"] && actual["attachment"]["ownerId"]==owner && actual["attachment"]["workerId"]==i["workerId"],PlacementError("The OS identity or attachment changed."));
             for workspace in actual["workspaces"].as_array().context("OS workspace observation")? {
                 self.repository.record_workspace(owner,id,text(i,"attachmentGeneration")?,workspace).await?;
             }

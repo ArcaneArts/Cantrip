@@ -9654,6 +9654,123 @@
         "remaining": [
           "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
         ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/:instanceId/backup-operations",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os_backups.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/:instanceId/refresh",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/backup-operations/:operationId/recovery",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os_backups.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/cantrip-os/bindings",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/cantrip-os/bindings/:bindingId/provision",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/cantrip-os/bindings/:bindingId/recover",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/cantrip-os/bindings/:bindingId/run-definitions",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/cantrip-os/bindings/:bindingId/verify",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/repository-operation",
+        "implementation": "cantrip_server_rs/src/http/repository_operations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
       }
     ]
   },
@@ -11791,6 +11908,201 @@
         "remaining": [
           "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
         ]
+      },
+      {
+        "command": "cantrip-os.inspect",
+        "implementation": "cantrip_server_rs/src/cantrip_os/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+        ]
+      },
+      {
+        "command": "cantrip-os.attach",
+        "implementation": "cantrip_server_rs/src/cantrip_os/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+        ]
+      },
+      {
+        "command": "cantrip-os.source.provision",
+        "implementation": "cantrip_server_rs/src/cantrip_os/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+        ]
+      },
+      {
+        "command": "cantrip-os.operation.inspect",
+        "implementation": "cantrip_server_rs/src/cantrip_os/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+        ]
+      },
+      {
+        "command": "cantrip-os.source.inspect",
+        "implementation": "cantrip_server_rs/src/cantrip_os/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+        ]
+      },
+      {
+        "command": "cantrip-os.run-definition",
+        "implementation": "cantrip_server_rs/src/cantrip_os/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+        ]
+      },
+      {
+        "command": "cantrip-os.backup.capture",
+        "implementation": "cantrip_server_rs/src/cantrip_os/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+        ]
+      },
+      {
+        "command": "cantrip-os.backup.observe",
+        "implementation": "cantrip_server_rs/src/cantrip_os/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+        ]
+      },
+      {
+        "command": "worktree.unlock",
+        "implementation": "cantrip_server_rs/src/projects/worktrees.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+        ]
+      },
+      {
+        "command": "worktree.lock",
+        "implementation": "cantrip_server_rs/src/projects/worktrees.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+        ]
+      },
+      {
+        "command": "worktree.reconcile",
+        "implementation": "cantrip_server_rs/src/projects/worktrees.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+        ]
+      },
+      {
+        "command": "worktree.prune",
+        "implementation": "cantrip_server_rs/src/projects/worktrees.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+        ]
+      },
+      {
+        "command": "worktree.create",
+        "implementation": "cantrip_server_rs/src/projects/worktrees.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+        ]
+      },
+      {
+        "command": "worktree.remove",
+        "implementation": "cantrip_server_rs/src/projects/worktrees.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+        ]
+      },
+      {
+        "command": "project.run-configuration-runtime.output",
+        "implementation": "cantrip_server_rs/src/run_configurations/output.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+        ]
       }
     ]
   },
@@ -13763,6 +14075,58 @@
         "remaining": [
           "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
           "Complete periodic consolidation and idempotent accounting flush crash contracts still require ledger reconciliation."
+        ]
+      },
+      {
+        "tableName": "run_configuration_runtimes",
+        "exportName": "runConfigurationRuntimes",
+        "implementation": "cantrip_server_rs/src/run_configurations/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "tableName": "run_configuration_runtime_operations",
+        "exportName": "runConfigurationRuntimeOperations",
+        "implementation": "cantrip_server_rs/src/run_configurations/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "tableName": "run_configuration_secrets",
+        "exportName": "runConfigurationSecrets",
+        "implementation": "cantrip_server_rs/src/run_configurations/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "tableName": "run_configuration_secret_operations",
+        "exportName": "runConfigurationSecretOperations",
+        "implementation": "cantrip_server_rs/src/run_configurations/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
         ]
       }
     ]
@@ -19526,6 +19890,54 @@
         "evidence": [
           "docs/security/rust-server-transport-inference-acceptance.json",
           "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "resource": "run",
+        "implementation": "cantrip_server_rs/src/run_configurations/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "resource": "run-configuration",
+        "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "resource": "project-token-usage",
+        "implementation": "cantrip_server_rs/src/http/repository_operations/project.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "resource": "codegraph-status",
+        "implementation": "cantrip_server_rs/src/projects/observations/codegraph.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-os-execution-acceptance.json",
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
         ],
         "remaining": [
           "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
