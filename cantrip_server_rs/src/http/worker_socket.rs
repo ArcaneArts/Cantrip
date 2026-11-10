@@ -432,6 +432,12 @@ async fn run(
     service
         .worktree_observations
         .schedule_worker(owner.clone(), worker.clone());
+    drop(
+        service
+            .execution
+            .recovery
+            .resume_transitions(&owner, &worker),
+    );
     service.managed_preparation.schedule_worker(
         peer.identity.owner.clone(),
         worker.clone(),

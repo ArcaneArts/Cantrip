@@ -289,6 +289,7 @@ async fn execute(
                 .await?;
             state.publish_presence(owner, &worker);
             state.schedule_offline(owner, &id);
+            drop(service.execution.recovery.resume_transitions(owner, &id));
             let mut result = worker;
             result["computerUseEffects"] = state.computer_use_effects(owner).await?;
             return Ok(response(202, result));

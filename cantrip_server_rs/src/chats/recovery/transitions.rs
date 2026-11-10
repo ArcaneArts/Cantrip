@@ -220,14 +220,37 @@ impl Service {
     pub fn resume_transitions(&self, owner: &str, worker: &str) -> BoxFuture<'static, Result<()>> {
         let (this, owner, worker) = (self.clone(), owner.to_owned(), worker.to_owned());
         self.operations.run(async move {
-            if !this.dependencies.commands.is_connected(&worker){return Ok(())}
-            this.dependencies.tasks.reconcile(owner.clone()).await?;
-            let chats=this.lanes.pending_transition_chat_ids(&owner,&worker).await?;
-            futures::future::join_all(chats.into_iter().map(|chat| {
-                let (this,owner,worker)=(this.clone(),owner.clone(),worker.clone());
-                async move {if let Err(error)=this.continue_worktree_transition(&owner,&chat).await {this.log("error","Could not recover a pending worktree transition",json!({"chatId":chat,"workerId":worker,"err":logging::error_details(&error)}));}}
-            })).await;
-            Ok(())
+            let result = this.resume_connected_transitions(&owner, &worker).await;
+            if let Err(error) = &result {
+                this.log(
+                    "error",
+                    "Could not reconcile execution after worker presence",
+                    json!({"workerId":worker,"err":logging::error_details(error)}),
+                );
+            }
+            result
         })
+    }
+
+    async fn resume_connected_transitions(&self, owner: &str, worker: &str) -> Result<()> {
+        if !self.dependencies.commands.is_connected(worker) {
+            return Ok(());
+        }
+        self.dependencies.tasks.reconcile(owner.to_owned()).await?;
+        let chats = self
+            .lanes
+            .pending_transition_chat_ids(owner, worker)
+            .await?;
+        futures::future::join_all(chats.into_iter().map(|chat| async move {
+            if let Err(error) = self.continue_worktree_transition(owner, &chat).await {
+                self.log(
+                    "error",
+                    "Could not recover a pending worktree transition",
+                    json!({"chatId":chat,"workerId":worker,"err":logging::error_details(&error)}),
+                );
+            }
+        }))
+        .await;
+        Ok(())
     }
 }

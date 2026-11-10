@@ -17,6 +17,15 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current Goal recovery qualification](RUST_SERVER_GOAL_RECOVERY_CONTRACTS.md)
+connects retained Task and worktree recovery to authenticated worker
+connections and heartbeats. All nine storage and authentication combinations
+pass, with 165 paired HTTP observations and 54 exact reopens. The new Task
+source, Task cycle recovery, Agent source recovery and Agent first-cycle claim
+recovery mappings bring scoped worker command coverage to 284 of 323.
+Controlled native observations, the remaining 39 command identities and full
+shipping acceptance remain open.
+
 The [current native interruption/queue qualification](RUST_SERVER_NATIVE_CONTROL_CONTRACTS.md)
 repairs public SQL-error diagnostics after actual failed opaque queue updates.
 All nine storage/authentication cells pass, including both Chat contexts, actual
