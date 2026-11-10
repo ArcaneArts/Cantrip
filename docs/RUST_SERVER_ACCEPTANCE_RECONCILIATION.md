@@ -17,6 +17,14 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current Task execution qualification](RUST_SERVER_TASK_EXECUTION_CONTRACTS.md)
+compares scheduled direct and initial planning operations and protected
+follow-ups across all nine storage and authentication combinations. The
+existing worker codecs and SDK produce 156 paired product HTTP observations,
+108 native input acknowledgements, 180 matching Task message events and 36
+exact reopens. Two partial mappings bring worker command coverage to 286 of 323. The suite controls model replies and leaves final product and shipping
+acceptance open.
+
 The [current Goal recovery qualification](RUST_SERVER_GOAL_RECOVERY_CONTRACTS.md)
 connects retained Task and worktree recovery to authenticated worker
 connections and heartbeats. All nine storage and authentication combinations

@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "baseCommit": "84464ca100f8aec7a1043e37f8ba7557e3849376",
+  "productionSourceTree": "69ead148fc326fba250c297434a24da6c26103e1",
+  "candidateVersion": "1.1.2809",
+  "platform": "darwin-arm64",
+  "productionRustChanges": [],
+  "scope": "Real production HTTP, Live, worker socket and Task codecs with a worker SDK and SQL. The model replies and native binding facts are controlled. The grant bootstrap is retained separately from paired public product responses.",
+  "counts": {
+    "pairedProductHttp": 156,
+    "grantSetupHttpPairs": 36,
+    "tracedRequests": 872,
+    "prepareCommands": 36,
+    "protectCommands": 36,
+    "turnCommands": 54,
+    "sdkAcks": 108,
+    "outcomes": 36,
+    "messageEvents": 180,
+    "exactReopens": 36,
+    "separatelyVerifiedCrypto": 396,
+    "cells": 9,
+    "newWorkerCommands": 2,
+    "mappedWorkerCommands": 286,
+    "unmappedWorkerCommands": 37
+  },
+  "cells": [
+    "pglite/none",
+    "pglite/password",
+    "pglite/accounts",
+    "bundled-postgres/none",
+    "bundled-postgres/password",
+    "bundled-postgres/accounts",
+    "postgres/none",
+    "postgres/password",
+    "postgres/accounts"
+  ],
+  "reports": [
+    {
+      "path": ".qa/rust-task-prepare/matrix-pglite-v6.json",
+      "sha256": "f1dedf31a305c3d74d6c0fd88e9f9c448fe55b7547d7d9886a1bef587f182112",
+      "databaseMode": "pglite"
+    },
+    {
+      "path": ".qa/rust-task-prepare/matrix-bundled-postgres-v7.json",
+      "sha256": "edde659db10ad9f51cc4d32fc18547670497fa2ba9909e72fa6cd37b2e111445",
+      "databaseMode": "bundled-postgres"
+    },
+    {
+      "path": ".qa/rust-task-prepare/matrix-postgres-v7.json",
+      "sha256": "90457b6cb13d7386cb4e529eea379835c183731fc1d99d056f9fbcd6c9824a1d",
+      "databaseMode": "postgres"
+    }
+  ],
+  "traces": [
+    {
+      "path": ".qa/rust-task-prepare/matrix-pglite-v6.requests.json",
+      "sha256": "d15755f89289bb8a0d1b4065baaabcd602d671b93ba327d34b23bd5a2bfc3930",
+      "requests": 284
+    },
+    {
+      "path": ".qa/rust-task-prepare/matrix-bundled-postgres-v7.requests.json",
+      "sha256": "ad7bd577ccbb0a354d421e22c0a31615b1130443c68619c210fd67616891c7bc",
+      "requests": 294
+    },
+    {
+      "path": ".qa/rust-task-prepare/matrix-postgres-v7.requests.json",
+      "sha256": "4ec9ae8c7d7fbdbc363788c93038d41c6b7990f3fc7c8c70e1ca594b7530ac45",
+      "requests": 294
+    }
+  ],
+  "helpers": [
+    {
+      "path": ".qa/rust-task-prepare/helpers-v1/cantrip-server",
+      "sha256": "9307906279260d65d96e86e8543c4bc66c106b6fae87f8de81eec508c8ca3e71"
+    },
+    {
+      "path": ".qa/rust-task-prepare/helpers-v1/database-fixture",
+      "sha256": "02e23f902d69fc8eab2237f49c52637d6d5a7a812de2984efa13fd7bd2aa6f87"
+    },
+    {
+      "path": ".qa/rust-task-prepare/helpers-v1/http-sql-fixture",
+      "sha256": "9551755407ee9739f34e483e2427accde528bddd2e1a15941b9b7c771b9abf18"
+    },
+    {
+      "path": ".qa/rust-task-prepare/helpers-v1/project-repository-fixture",
+      "sha256": "b54c793325f99333406a3e95e8eba187c9b15cd63711edb58eaaf9c4bf68329d"
+    }
+  ],
+  "restoredBuild": {
+    "path": ".qa/rust-task-prepare/restored-v1.json",
+    "sha256": "0cef210850c5a7822047ce1f722185c3a634277bfdbc266aa2cff35460030b8d"
+  },
+  "verified": {
+    "path": ".qa/rust-task-prepare/verified-matrix-v7.json",
+    "sha256": "4eb39d1765ced61355722e0efac72f7913a141fa7887fe416c5534a1d5f74e33"
+  },
+  "verifier": {
+    "path": ".qa/rust-task-prepare/verify-execution.mjs",
+    "sha256": "c557cb5469fb1854339313f2c3de1a5b649371d8a3f98809f406500817f53a7d"
+  },
+  "sources": [
+    {
+      "path": "scripts/server-rust/task-execution-http-compatibility.mjs",
+      "sha256": "772bf0021f3cb902f153d1c3dd1f9e65592dcd27641799720f04e3111d259adc"
+    },
+    {
+      "path": "scripts/server-rust/task-execution-http-cases.mjs",
+      "sha256": "055daaba86102684e2fda11bf408af5f39707ccd477d845d5a3ebe315ea8fc2f"
+    }
+  ],
+  "newCommandMappings": ["task.operation.prepare", "task.message.protect"]
+}
