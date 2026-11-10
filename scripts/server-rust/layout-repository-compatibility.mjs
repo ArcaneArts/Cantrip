@@ -26,9 +26,11 @@ const root = await mkdtemp(path.join(tmpdir(), "cantrip-layout-repository-")),
 const report = {
   suite: "legacy-layout-repository",
   databaseMode,
+  root,
   completeReplacement: false,
   cases: [],
   snapshots: [],
+  cleanupFailures: [],
 };
 let pg, failure;
 const pair = [];
@@ -110,7 +112,7 @@ async function observe(name, changes = {}, options = {}) {
       repository.request(runtime ? nativeInput(request) : request),
     ),
   );
-  report.cases.push({ name, values });
+  report.cases.push({ name, input: request, values });
   for (const v of values)
     assert.equal(
       v.rejected,
@@ -814,17 +816,21 @@ try {
       await p.close();
     } catch (error) {
       failure ??= error;
+      report.cleanupFailures.push(error.stack);
     }
   try {
     await pg?.close();
   } catch (error) {
     failure ??= error;
+    report.cleanupFailures.push(error.stack);
   }
+  if (!failure) report.passed = true;
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");
   }
-  if (!failure) await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
 }
 if (failure) throw failure;
 console.log(
