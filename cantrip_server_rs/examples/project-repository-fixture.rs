@@ -65,6 +65,8 @@ mod native_settings;
 mod pane_layouts;
 #[path = "support/project_automations.rs"]
 mod project_automations;
+#[path = "support/project_state.rs"]
+mod project_state;
 #[path = "support/project_surfaces.rs"]
 mod project_surfaces;
 #[path = "support/queue_delivery.rs"]

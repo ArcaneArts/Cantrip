@@ -177,8 +177,15 @@ export async function bundlePostgres(
     } else if (platform === "darwin" && isMach) {
       macho.push(file);
       const { stdout } = await exec("otool", ["-L", file]);
+      const { stdout: installNames } = await exec("otool", ["-D", file]);
+      const ownInstallNames = new Set(
+        installNames.split("\n").map((line) => line.trim()),
+      );
       for (const line of stdout.split("\n").slice(1)) {
         const reference = line.trim().split(" (")[0];
+        // LC_ID_DYLIB is metadata, even when it still names a previous install.
+        // Resolving it can pull host libraries into a relocated distribution.
+        if (ownInstallNames.has(reference)) continue;
         let source = reference;
         if (source.startsWith("@loader_path/"))
           source = path.resolve(

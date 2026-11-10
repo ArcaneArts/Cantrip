@@ -11,6 +11,7 @@ import { buildExecutionTargetCatalog } from "../../tests/reference-node-server/s
 import { lockNativeCommandChat } from "../../tests/reference-node-server/src/db/repository/native-command-lock.ts";
 import { assertNativeRuntimeWritable } from "../../tests/reference-node-server/src/db/repository/native-runtime-handoff-guard.ts";
 import { managedConsoleFixture } from "./managed-console-node-fixture.mjs";
+import { projectStateFixture } from "./project-state-node-fixture.mjs";
 import { gitManagedOperationContext } from "../../tests/reference-node-server/src/app/shared/git-managed-operations.ts";
 import { worktreeCoordinatorFixture } from "./worktree-coordinator-node-fixture.mjs";
 import { conversionFixture } from "./conversion-node-fixture.mjs";
@@ -55,7 +56,9 @@ try {
       // Seeding owns only this disposable fixture. Runtime TS private storage is
       // used solely to exercise the actual connector on both PostgreSQL and PGlite.
       let value;
-      if (request.op.startsWith("identity-state-")) {
+      if (request.op.startsWith("project-state-")) {
+        value = await projectStateFixture(database.repository, request);
+      } else if (request.op.startsWith("identity-state-")) {
         value = await identityStateFixture(database.repository, request);
       } else if (request.op.startsWith("chat-import-")) {
         value = await chatImportFixture(

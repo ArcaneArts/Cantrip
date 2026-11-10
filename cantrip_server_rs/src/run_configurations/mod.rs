@@ -166,10 +166,24 @@ impl Repository {
         self.database.query("SELECT to_jsonb(r)::text FROM run_configuration_runtimes r JOIN projects p ON p.id=r.project_id AND p.owner_id=$1 WHERE r.project_id=$2 AND ($3::text IS NULL OR r.configuration_id=$3) AND ($4::text IS NULL OR r.worktree_id=$4) AND ($5::text IS NULL OR r.os_execution->'definitions'->'scope'->>'projectSourceId'=$5 OR (r.os_execution IS NULL AND EXISTS(SELECT 1 FROM project_worktrees w WHERE w.id=r.worktree_id AND w.project_source_id=$5))) ORDER BY (r.state IN ('starting','running','restarting','stopping') OR (r.os_execution IS NOT NULL AND r.state='lost')) DESC,r.updated_at DESC,r.configuration_id ASC LIMIT 256", &[&owner,&project,&configuration,&worktree,&source]).await?.iter().map(|row|summary(&raw(row.get(0)?)?)).collect()
     }
     pub async fn captured(&self, owner: &str, runtime_id: &str) -> Result<Option<Value>> {
-        let rows=self.database.query("SELECT to_jsonb(r)::text FROM run_configuration_runtimes r WHERE id=$1 AND owner_id=$2 LIMIT 1",&[&runtime_id,&owner]).await?;
+        static SOURCE: std::sync::OnceLock<serde_json::Value> = std::sync::OnceLock::new();
+        let source = SOURCE.get_or_init(|| {
+            serde_json::from_str(include_str!("../../contracts/run-capture-query.json"))
+                .expect("Source runtime capture statement")
+        });
+        let result=self.database.query("SELECT to_jsonb(r)::text FROM run_configuration_runtimes r WHERE id=$1 AND owner_id=$2 LIMIT 1",&[&runtime_id,&owner]).await;
+        let rows = crate::database::query_error::context(
+            result,
+            source["sql"].as_str().expect("Source capture SQL"),
+            &[json!(runtime_id), json!(owner), json!(1)],
+        )?;
         rows.first().map(|row| {
             let row=raw(row.get(0)?)?;
-            Ok(json!({"runtime":summary(&row)?,"executionKey":row["execution_key"],"osExecution":row["os_execution"]}))
+            let runtime=summary(&row)?;
+            let roots=if row["os_execution"].is_null(){Value::Null}else{
+                crate::settings::parse_response("cantripOsRunRootsSchema",Some(&row["os_execution"]))?
+            };
+            Ok(json!({"runtime":runtime,"executionKey":row["execution_key"],"osExecution":roots}))
         }).transpose()
     }
     pub async fn list_in_definition(

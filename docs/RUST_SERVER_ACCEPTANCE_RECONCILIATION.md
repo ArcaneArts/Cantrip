@@ -17,6 +17,14 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current project/Run state qualification](RUST_SERVER_PROJECT_STATE_CONTRACTS.md)
+adds thirteen active repository identities and two explicit obsolete-helper
+dispositions. It repairs strict captured-root validation, status/output/lifecycle
+error propagation and actual SQL diagnostics, with all-store repository and
+nine-cell HTTP comparisons. Optimized package relocation and public checks pass.
+The ledger now maps 346/370 repository identities; full replacement acceptance
+remains open.
+
 The [current identity-state qualification](RUST_SERVER_IDENTITY_STATE_CONTRACTS.md)
 binds twelve further repository identities, repairs stale model-operation usage
 attribution, and exercises actual session/mobile-grant callers and desktop-update

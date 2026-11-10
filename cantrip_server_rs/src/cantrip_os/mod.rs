@@ -11,6 +11,7 @@ mod power;
 mod recovery;
 pub(crate) mod run;
 mod run_selection;
+pub(crate) use run_selection::CapturedRunReadFailure;
 mod sources;
 mod system_admission;
 mod system_common;

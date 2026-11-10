@@ -85,6 +85,9 @@ async fn execute(
             .await
         {
             Ok(selected) => selected,
+            Err(error) if error.is::<crate::cantrip_os::CapturedRunReadFailure>() => {
+                return Err(error);
+            }
             Err(error) => {
                 return Ok(coded_error(
                     StatusCode::CONFLICT,
@@ -250,7 +253,24 @@ async fn handle(
     .await
     {
         Ok(response) => response,
-        Err(error) => middleware::failure(&service, &ctx.id, &error),
+        Err(failure) => {
+            if let Some(api) =
+                failure.downcast_ref::<crate::run_configurations::lifecycle::ApiError>()
+            {
+                coded_error(
+                    StatusCode::from_u16(api.status).unwrap(),
+                    api.code,
+                    &api.message,
+                )
+            } else {
+                error(
+                    failure
+                        .downcast_ref::<CommandFailure>()
+                        .map_or(502, |failure| failure.status(502)),
+                    crate::settings::operation_error_message(&failure),
+                )
+            }
+        }
     }
 }
 pub(super) fn routes() -> Router<Arc<AuthService>> {

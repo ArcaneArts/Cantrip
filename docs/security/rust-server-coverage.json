@@ -12791,7 +12791,7 @@
   },
   "repositoryMethods": {
     "defaultStatus": "unported",
-    "implementedSubset": "Repository identity is the current reference file plus method name. Overrides retain scoped behavioral evidence; remaining methods and final platform/product acceptance still require reconciliation.",
+    "implementedSubset": "Repository identity is the current reference file plus method name. Overrides retain scoped behavioral evidence or an explicit current-production retirement disposition. A mapped row is not a whole-domain completion percentage; remaining methods, partial entries and final platform/product acceptance still require reconciliation.",
     "overrides": [
       {
         "method": "createWorkerEnrollmentCode",
@@ -17546,6 +17546,203 @@
         "remaining": [
           "Scoped local macOS arm64 comparison; final supported-platform and complete original-goal acceptance remain open.",
           "Real public HTTP owner-scoped nine-count summary, lifecycle filters, SQL failure/recovery and public session callers across all9store/authcells; optimized externalPG repeats all3authmodes."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "listChatSkillAudienceKeys",
+        "implementation": "cantrip_server_rs/src/chats/turn_storage.rs",
+        "evidence": [
+          "scripts/server-rust/project-state-repository-compatibility.mjs",
+          "docs/security/rust-server-project-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped current macOS arm64 repository and relevant HTTP evidence; final supported-platform/original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "updateProjectWorktreePolicy",
+        "implementation": "cantrip_server_rs/src/projects/repository/preferences.rs",
+        "evidence": [
+          "scripts/server-rust/project-state-repository-compatibility.mjs",
+          "docs/security/rust-server-project-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped current macOS arm64 repository and relevant HTTP evidence; final supported-platform/original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "updateProjectPreferredWorker",
+        "implementation": "cantrip_server_rs/src/projects/repository/preferences.rs",
+        "evidence": [
+          "scripts/server-rust/project-state-repository-compatibility.mjs",
+          "docs/security/rust-server-project-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped current macOS arm64 repository and relevant HTTP evidence; final supported-platform/original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getProjectReplica",
+        "implementation": "cantrip_server_rs/src/projects/repository.rs",
+        "evidence": [
+          "scripts/server-rust/project-state-repository-compatibility.mjs",
+          "docs/security/rust-server-project-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped current macOS arm64 repository and relevant HTTP evidence; final supported-platform/original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "resolveExecutionTargetSelector",
+        "implementation": "cantrip_server_rs/src/projects/targets/selectors.rs",
+        "evidence": [
+          "scripts/server-rust/project-state-repository-compatibility.mjs",
+          "docs/security/rust-server-project-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped current macOS arm64 repository and relevant HTTP evidence; final supported-platform/original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "listProjectWorktrees",
+        "implementation": "cantrip_server_rs/src/projects/targets/mod.rs",
+        "evidence": [
+          "scripts/server-rust/project-state-repository-compatibility.mjs",
+          "docs/security/rust-server-project-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped current macOS arm64 repository and relevant HTTP evidence; final supported-platform/original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getRunConfigurationSecretStatuses",
+        "implementation": "cantrip_server_rs/src/run_configurations/secrets.rs",
+        "evidence": [
+          "scripts/server-rust/project-state-repository-compatibility.mjs",
+          "docs/security/rust-server-project-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped current macOS arm64 repository and relevant HTTP evidence; final supported-platform/original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "listRunConfigurationProtectedSecrets",
+        "implementation": "cantrip_server_rs/src/run_configurations/secrets.rs",
+        "evidence": [
+          "scripts/server-rust/project-state-repository-compatibility.mjs",
+          "docs/security/rust-server-project-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped current macOS arm64 repository and relevant HTTP evidence; final supported-platform/original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getRunConfigurationRuntimeOperationResult",
+        "implementation": "cantrip_server_rs/src/run_configurations/operations.rs",
+        "evidence": [
+          "scripts/server-rust/project-state-repository-compatibility.mjs",
+          "docs/security/rust-server-project-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped current macOS arm64 repository and relevant HTTP evidence; final supported-platform/original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getRunConfigurationRuntimeCapture",
+        "implementation": "cantrip_server_rs/src/run_configurations/mod.rs",
+        "evidence": [
+          "scripts/server-rust/project-state-repository-compatibility.mjs",
+          "docs/security/rust-server-project-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped current macOS arm64 repository and relevant HTTP evidence; final supported-platform/original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "hasGithubProject",
+        "implementation": "cantrip_server_rs/src/projects/replicas/github_import.rs",
+        "evidence": [
+          "scripts/server-rust/project-state-repository-compatibility.mjs",
+          "docs/security/rust-server-project-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped current macOS arm64 repository and relevant HTTP evidence; final supported-platform/original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "createGithubProject",
+        "implementation": "cantrip_server_rs/src/projects/replicas/github_import.rs",
+        "evidence": [
+          "scripts/server-rust/project-state-repository-compatibility.mjs",
+          "docs/security/rust-server-project-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped current macOS arm64 repository and relevant HTTP evidence; final supported-platform/original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "deleteProject",
+        "implementation": "cantrip_server_rs/src/projects/workspaces/project_cleanup.rs",
+        "evidence": [
+          "scripts/server-rust/project-state-repository-compatibility.mjs",
+          "docs/security/rust-server-project-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped current macOS arm64 repository and relevant HTTP evidence; final supported-platform/original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "completeGithubProjectSetup",
+        "status": "retired-current-production-helper",
+        "implementation": "cantrip_server_rs/src/projects/replicas/completion.rs",
+        "disposition": "No current production caller: only the facade declaration/forwarding and the child definition remain. Current encrypted import uses leased replica provision/completion; no unleased legacy completion adapter is added.",
+        "evidence": [
+          "docs/RUST_SERVER_PROJECT_STATE_CONTRACTS.md",
+          "docs/security/rust-server-project-state-acceptance.json"
+        ],
+        "remaining": [
+          "Final original-goal audit must preserve this current-production retirement disposition; this row does not claim native implementation of the obsolete private helper."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "listGithubRepositoryIds",
+        "status": "retired-current-production-helper",
+        "implementation": "cantrip_server_rs/src/http/removed_repository.rs",
+        "disposition": "Its only current named app consumers are the plaintext GitHub catalog handlers, which are intercepted by the current HTTP410 contract. All9store/authcells execute those public retirement responses on the optimized executable. The native server does not restore those plaintext handlers.",
+        "evidence": [
+          "docs/RUST_SERVER_PROJECT_STATE_CONTRACTS.md",
+          "docs/security/rust-server-project-state-acceptance.json"
+        ],
+        "remaining": [
+          "Final original-goal audit must preserve this current-production retirement disposition; this row does not claim native implementation of the obsolete private helper."
         ]
       }
     ]
@@ -23515,6 +23712,14 @@
         "docs/security/rust-server-identity-state-acceptance.json"
       ],
       "scope": "Twelve current facade identities; all-store repository and nine-cell session/desktop HTTP parity; optimized auth and relocated package all3stores; focused optimized HTTP externalPG3auth. Source secret-migration aliases remain intentional no-ops covered by the existing canonical SQL0120 chain."
+    },
+    "currentProjectStateContracts": {
+      "status": "implemented-pending-platform-acceptance",
+      "evidence": [
+        "docs/RUST_SERVER_PROJECT_STATE_CONTRACTS.md",
+        "docs/security/rust-server-project-state-acceptance.json"
+      ],
+      "scope": "Thirteen active repository identities plus two explicit obsolete-helper dispositions; all-store82case comparisons and nine-cell public captured-runtime status/output/lifecycle/SQL failure parity. Optimized externalPG repeats3authmodes; relocated package and retired plaintext GitHub catalog exercise all3stores. No new full-worker/UI or Windows/Linux qualification."
     }
   },
   "remainingAcceptance": [
