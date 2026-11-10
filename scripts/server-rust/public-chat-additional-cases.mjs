@@ -20,6 +20,11 @@ export async function additionalPublicChatCases({
   const followupGate = modelWorker.holdNext();
   const parent = await make(5),
     followup = await make(6);
+  mutation(`gui-queue:add:${chat}:${parent.queuedPrompt.id}`, {
+    kind: "add",
+    prompt: parent.queuedPrompt,
+    attachments: [],
+  });
   await visit(
     "queued continuation parent starts",
     "POST",
@@ -60,6 +65,12 @@ export async function additionalPublicChatCases({
   const route = `/api/chats/${standalone}/queue`;
   const a = await make(60, true),
     b = await make(61, true);
+  for (const value of [a, b])
+    mutation(`gui-queue:add:${standalone}:${value.queuedPrompt.id}`, {
+      kind: "add",
+      prompt: value.queuedPrompt,
+      attachments: [],
+    });
   await visit("standalone frozen queue add", "POST", route, {
     json: a.queuedPrompt,
     status: 201,
@@ -69,22 +80,31 @@ export async function additionalPublicChatCases({
     status: 201,
   });
   const listed = await visit(
-    "standalone queue uses legacy array shape",
+    "standalone queue uses canonical snapshot",
     "GET",
     route,
   );
-  assert.ok(Array.isArray(listed));
-  assert.equal(listed.length, 2);
+  assert.ok(Number.isSafeInteger(listed.revision));
+  assert.equal(listed.items.length, 2);
   const ids = [b.queuedPrompt.id, a.queuedPrompt.id];
   await visit(
-    "standalone reorder needs no canonical revision",
+    "standalone reorder requires canonical revision",
     "PATCH",
     route + "/order",
-    { json: { ids }, status: 204 },
+    { json: { ids }, status: 409 },
   );
+  mutation("standalone-order", { kind: "reorder", ids });
+  await visit("standalone canonical reorder", "PATCH", route + "/order", {
+    json: {
+      ids,
+      expectedRevision: listed.revision,
+      operationId: "standalone-order",
+    },
+    status: 204,
+  });
   const order = await visit("standalone queue order", "GET", route);
   assert.deepEqual(
-    order.map((p) => p.id),
+    order.items.map((p) => p.id),
     ids,
   );
   const replacement = await make(62, true);
@@ -103,26 +123,69 @@ export async function additionalPublicChatCases({
     frozen: true,
   });
   await visit(
-    "standalone prompt edit needs no canonical revision",
+    "standalone prompt edit requires canonical revision",
     "PATCH",
     `/api/queued-prompts/${prompt.id}`,
-    { json: { prompt } },
+    { json: { prompt }, status: 409 },
   );
-  for (const id of ids)
+  const update = {
+    prompt,
+    expectedItemRevision: order.items.find((value) => value.id === prompt.id)
+      .revision,
+    operationId: "standalone-edit",
+  };
+  mutation(update.operationId, {
+    kind: "update",
+    id: prompt.id,
+    expectedItemRevision: update.expectedItemRevision,
+    prompt,
+    attachments: [],
+  });
+  await visit(
+    "standalone canonical edit",
+    "PATCH",
+    `/api/queued-prompts/${prompt.id}`,
+    {
+      json: update,
+    },
+  );
+  for (const id of ids) {
+    const snapshot = await visit(
+      "standalone deletion snapshot " + id,
+      "GET",
+      route,
+    );
+    const current = snapshot.items.find((value) => value.id === id);
+    const operationId = "standalone-delete:" + id;
+    mutation(operationId, {
+      kind: "delete",
+      id,
+      expectedItemRevision: current.revision,
+    });
     await visit(
       "standalone deletes " + id,
       "DELETE",
-      `/api/queued-prompts/${id}`,
+      `/api/queued-prompts/${id}?expectedItemRevision=${current.revision}&operationId=${operationId}`,
       { status: 204 },
     );
-  assert.deepEqual(
-    await visit("standalone legacy queue empty", "GET", route),
-    [],
+  }
+  const emptyStandalone = await visit(
+    "standalone canonical queue empty",
+    "GET",
+    route,
   );
+  assert.equal(emptyStandalone.items.length, 0);
+  assert.equal(emptyStandalone.claims.length, 0);
 
   const gate = modelWorker.holdNext();
   const root = await make(63),
     steer = await make(64);
+  for (const value of [root, steer])
+    mutation(`gui-queue:add:${standalone}:${value.queuedPrompt.id}`, {
+      kind: "add",
+      prompt: value.queuedPrompt,
+      attachments: [],
+    });
   await visit(
     "standalone encrypted public turn",
     "POST",
@@ -130,21 +193,47 @@ export async function additionalPublicChatCases({
     { json: root, status: 202 },
   );
   await until(() => gate.dispatched, Boolean);
-  await visit("standalone active queued prompt", "POST", route, {
-    json: steer.queuedPrompt,
-    status: 201,
-  });
+  const queuedStandalone = await visit(
+    "standalone active queued prompt",
+    "POST",
+    route,
+    {
+      json: steer.queuedPrompt,
+      status: 201,
+    },
+  );
+  await visit(
+    "standalone steering requires canonical revision",
+    "POST",
+    `/api/queued-prompts/${steer.queuedPrompt.id}/steer`,
+    {
+      json: {},
+      status: 409,
+    },
+  );
   const steered = await visit(
     "standalone steering uses its active worker",
     "POST",
     `/api/queued-prompts/${steer.queuedPrompt.id}/steer`,
-    { json: {} },
+    {
+      json: {
+        expectedItemRevision: queuedStandalone.revision,
+        operationId: "standalone-steer",
+      },
+    },
   );
   assert.equal(steered.steered, true);
-  assert.deepEqual(
-    await visit("standalone steer removes legacy queue item", "GET", route),
-    [],
+  const afterSteer = await visit(
+    "standalone steer consumes canonical queue item",
+    "GET",
+    route,
   );
+  assert.deepEqual(
+    afterSteer.items.map((item) => item.id),
+    [root.queuedPrompt.id],
+  );
+  assert.equal(afterSteer.claims.length, 1);
+  assert.equal(afterSteer.claims[0].promptId, root.queuedPrompt.id);
   gate.release();
   const deadline = Date.now() + 15000;
   let list, status;
@@ -169,24 +258,35 @@ export async function additionalPublicChatCases({
   } while (Date.now() < deadline);
   assert.equal(list.messages.length, 3);
   assert.equal(status, "idle");
+  const completedStandalone = await visit(
+    "completed standalone root leaves canonical queue",
+    "GET",
+    route,
+  );
+  assert.equal(completedStandalone.items.length, 0);
+  assert.equal(completedStandalone.claims.length, 0);
   await visit(
     "standalone durable messages",
     "GET",
     `/api/chats/${standalone}/messages`,
   );
   const goal = await make(65, false, { mode: "goal" });
-  await visit(
+  const rejectedGoal = await visit(
     "standalone keeps default-mode restriction",
     "POST",
     `/api/chats/${standalone}/turns`,
-    { json: goal, status: 400 },
+    { json: goal, status: 409 },
   );
+  assert.deepEqual(rejectedGoal, {
+    error:
+      "Standalone Chat queued prompts must use default mode without worktree or subagent settings.",
+  });
   assert.equal(modelWorker.turns.length, 6);
-  assert.equal(modelWorker.controls.at(-1).type, "chat.steer");
+  assert.equal(modelWorker.controls.at(-1).type, "chat.native-control");
   return {
     projectMessages: 9,
     standaloneMessages: 3,
-    consumedClaims: 2,
+    consumedClaims: 5,
     workerTurns: 6,
   };
 }

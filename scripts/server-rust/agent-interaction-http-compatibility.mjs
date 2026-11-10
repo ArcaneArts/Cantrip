@@ -37,6 +37,7 @@ const root = await mkdtemp(path.join(tmpdir(), "cantrip-interaction-http-"));
 const report = {
   suite: "agent-interaction-http",
   databaseMode,
+  root,
   completeReplacement: false,
   profiles: [],
 };
@@ -46,8 +47,12 @@ export const interactionMarker = "private-interaction-endpoint-proof";
 export const interactionLane = "77777777-7777-4777-8777-777777777777";
 let pg, h, failure;
 try {
-  const executable = await buildRustExample("http-sql-fixture"),
-    repositoryExecutable = await buildRustExample("project-repository-fixture"),
+  const executable =
+      process.env.CANTRIP_RUST_HTTP_FIXTURE_BINARY ??
+      (await buildRustExample("http-sql-fixture")),
+    repositoryExecutable =
+      process.env.CANTRIP_RUST_PROJECT_REPOSITORY_BINARY ??
+      (await buildRustExample("project-repository-fixture")),
     passwordHash = await hashPassword(password);
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
@@ -61,6 +66,7 @@ try {
         kind,
         observations: [],
         commands: [],
+        rawCommands: [],
         cryptoProofs: 0,
         durable: [],
         recovery: [],
@@ -109,6 +115,7 @@ try {
           `UPDATE chats SET automation_paused=true,model_id='inventory-provider-model-1',reasoning_effort='medium' WHERE id=${literal(chat)}`,
         ],
         onCommand: async (command, _emit, { encryption }) => {
+          result.rawCommands.push(structuredClone(command));
           if (
             ![
               "agent.interaction.respond",
@@ -415,7 +422,8 @@ try {
   );
   await mkdir(path.dirname(destination), { recursive: true });
   await writeFile(destination, JSON.stringify(report, null, 2) + "\n");
-  if (!failure) await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
   console.log(
     JSON.stringify({
       databaseMode,

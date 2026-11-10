@@ -1,0 +1,1720 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "baseCommit": "c65da5e2ea2f6bcd89d99111e3c511545a67aa18",
+  "platform": "darwin-arm64",
+  "productionRustChanges": [
+    "cantrip_server_rs/src/http/chat_execution/queue.rs"
+  ],
+  "referenceCorrections": [
+    "tests/reference-node-server/src/app/routes/chat-queue.ts"
+  ],
+  "scope": "Production HTTP/worker/Live/native SDK comparisons across all three stores and authentication profiles, plus SQL-enabled production-router approval fixtures. Controlled model/GUI/worker replies; no worker rewrite.",
+  "counts": {
+    "pairedCells": 27,
+    "pairedHttpCaseObservations": 2208,
+    "tracedRequests": 6583,
+    "mappedCommandWitnesses": 702,
+    "newWorkerCommands": 8,
+    "newLiveResources": 0,
+    "newDurableTables": 0,
+    "interactionCryptoProofs": 1098,
+    "normalizedInteractionLiveEvents": 450,
+    "taskCiphertextProofs": 90,
+    "publicCryptoProofs": 2287,
+    "nativeSdkReceipts": 144,
+    "nativeSdkHttpRequests": 432,
+    "rawActiveClaimBindings": 36,
+    "rawConsumedProjectClaims": 90,
+    "publicPauseCommands": 180
+  },
+  "reports": [
+    {
+      "path": ".qa/rust-command-controls/approvals-pglite-v5.json",
+      "sha256": "49639729ec00822e3aa87f8853d676e7022e2350586de4e3ef0f2d3e970200a2",
+      "family": "approvals",
+      "databaseMode": "pglite",
+      "pairedHttpCaseObservations": 297
+    },
+    {
+      "path": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+      "sha256": "60a4b38af0a10f6c08df37e88c99a7a1e90491cced53a7a48a183f90589352f6",
+      "family": "approvals",
+      "databaseMode": "bundled-postgres",
+      "pairedHttpCaseObservations": 297
+    },
+    {
+      "path": ".qa/rust-command-controls/approvals-postgres-v5.json",
+      "sha256": "4cf3aef71e87922640239cb211f2c0c0c28bc273cef00c6207bd681ec96aebf9",
+      "family": "approvals",
+      "databaseMode": "postgres",
+      "pairedHttpCaseObservations": 297
+    },
+    {
+      "path": ".qa/rust-command-controls/task-surfaces-pglite-v5.json",
+      "sha256": "77652c5d97fd796fe890d2a1feed50764f7d4e12a17516181b8fa0021138cf5f",
+      "family": "task-surfaces",
+      "databaseMode": "pglite",
+      "pairedHttpCaseObservations": 150
+    },
+    {
+      "path": ".qa/rust-command-controls/task-surfaces-bundled-postgres-v5.json",
+      "sha256": "7f67bbfae2196bbfaf62586d7985e305259246eb86b448c58e00d48cc5b7ac43",
+      "family": "task-surfaces",
+      "databaseMode": "bundled-postgres",
+      "pairedHttpCaseObservations": 150
+    },
+    {
+      "path": ".qa/rust-command-controls/task-surfaces-postgres-v5.json",
+      "sha256": "99c32a58b2ec1b2753f97e332b4eaefc4e2616cf633fed9949bbc89e443ac45d",
+      "family": "task-surfaces",
+      "databaseMode": "postgres",
+      "pairedHttpCaseObservations": 150
+    },
+    {
+      "path": ".qa/rust-command-controls/execution-pglite-v10.json",
+      "sha256": "5dd5690478eb8828b749001da8381cae23096691d4080ca20972eb2a67d89d59",
+      "family": "execution",
+      "databaseMode": "pglite",
+      "pairedHttpCaseObservations": 289
+    },
+    {
+      "path": ".qa/rust-command-controls/execution-bundled-postgres-v10.json",
+      "sha256": "54b9b9d26b06933e106b3f441f9351a63482b9cac957030306e0da592c8e1325",
+      "family": "execution",
+      "databaseMode": "bundled-postgres",
+      "pairedHttpCaseObservations": 289
+    },
+    {
+      "path": ".qa/rust-command-controls/execution-postgres-v10.json",
+      "sha256": "f291441439ba4368003be81f6cfa357f4b74705b0c1c35608f192c6434a669a8",
+      "family": "execution",
+      "databaseMode": "postgres",
+      "pairedHttpCaseObservations": 289
+    }
+  ],
+  "traces": [
+    {
+      "path": ".qa/rust-command-controls/approvals-pglite-v5.requests.json",
+      "sha256": "ab6374c1f8a8d0324cbcd0073433e81e24fbc8db9a777f090991d00a934193bc",
+      "requests": 1053
+    },
+    {
+      "path": ".qa/rust-command-controls/approvals-bundled-postgres-v5.requests.json",
+      "sha256": "4fd93b26255edd184cf1283f58124e0ea7499ee4e10e811ac56d3d5c5043158d",
+      "requests": 1056
+    },
+    {
+      "path": ".qa/rust-command-controls/approvals-postgres-v5.requests.json",
+      "sha256": "f85c77fcccddaad2f51dffbbd3175bd7559048c453c75e828a30af23b62b1392",
+      "requests": 1056
+    },
+    {
+      "path": ".qa/rust-command-controls/task-surfaces-pglite-v5.requests.json",
+      "sha256": "6da66bca568e8c2e22574f4f31ed2933b44474d659c1ddc0015222a8661244ae",
+      "requests": 312
+    },
+    {
+      "path": ".qa/rust-command-controls/task-surfaces-bundled-postgres-v5.requests.json",
+      "sha256": "4aa3aea6e23a4c4d3cc0bcca28de2e348ec2b6ced947cea36b7bc8685a08a74d",
+      "requests": 312
+    },
+    {
+      "path": ".qa/rust-command-controls/task-surfaces-postgres-v5.requests.json",
+      "sha256": "1ec5c1d5339fad306e0236d4ca98a59d86c593bbb8700ca85cec7085e09eea22",
+      "requests": 312
+    },
+    {
+      "path": ".qa/rust-command-controls/execution-pglite-v10.requests.json",
+      "sha256": "d3695da51abbc2282ff845dc61402eae6561727c094a72389eefdaf510d48261",
+      "requests": 813
+    },
+    {
+      "path": ".qa/rust-command-controls/execution-bundled-postgres-v10.requests.json",
+      "sha256": "c9e684cd461c26bd1fdf0e7d1bfb7c1d89f0e66039c93e034e7cfc1aa8865de5",
+      "requests": 833
+    },
+    {
+      "path": ".qa/rust-command-controls/execution-postgres-v10.requests.json",
+      "sha256": "805daa269950991c303e7928d2537b46c1c3dd1c8e5c2d4c8689512be88523d9",
+      "requests": 836
+    }
+  ],
+  "workerCommandMappings": [
+    {
+      "command": "agent.interaction.respond",
+      "implementation": "cantrip_server_rs/src/http/agent_interactions.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [4, 6, 7, 28]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [5, 7, 8, 29]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [4, 6, 7, 28]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [5, 7, 8, 29]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [4, 6, 7, 28]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [5, 7, 8, 29]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [4, 6, 7, 28]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [5, 7, 8, 29]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [4, 6, 7, 28]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [5, 7, 8, 29]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [5, 7, 8, 29]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [4, 6, 7, 28]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [4, 6, 7, 28]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [5, 7, 8, 29]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [4, 6, 7, 28]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [4, 6, 7, 28]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [4, 6, 7, 28]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [5, 7, 8, 29]
+          }
+        }
+      ]
+    },
+    {
+      "command": "agent.interaction.respond.protected",
+      "implementation": "cantrip_server_rs/src/http/agent_interactions.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [5, 29]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [6, 30]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [5, 29]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [6, 30]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [5, 29]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [6, 30]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [5, 29]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [6, 30]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [5, 29]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [6, 30]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [6, 30]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [5, 29]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [5, 29]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [6, 30]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [5, 29]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [5, 29]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [5, 29]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [6, 30]
+          }
+        }
+      ]
+    },
+    {
+      "command": "computer-use.approval.respond",
+      "implementation": "cantrip_server_rs/src/http/agent_interactions.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [12, 15, 18, 19, 22, 24, 26, 30, 32]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [13, 16, 19, 20, 23, 25, 27, 31, 33]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [12, 15, 18, 19, 22, 24, 26, 30, 32]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [13, 16, 19, 20, 23, 25, 27, 31, 33]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [12, 15, 18, 19, 22, 24, 26, 30, 32]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [13, 16, 19, 20, 23, 25, 27, 31, 33]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [12, 15, 18, 19, 22, 24, 26, 30, 32]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [13, 16, 19, 20, 23, 25, 27, 31, 33]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [12, 15, 18, 19, 22, 24, 26, 30, 32]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [13, 16, 19, 20, 23, 25, 27, 31, 33]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [13, 16, 19, 20, 23, 25, 27, 31, 33]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [12, 15, 18, 19, 22, 24, 26, 30, 32]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [12, 15, 18, 19, 22, 24, 26, 30, 32]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [13, 16, 19, 20, 23, 25, 27, 31, 33]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [12, 15, 18, 19, 22, 24, 26, 30, 32]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [12, 15, 18, 19, 22, 24, 26, 30, 32]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [12, 15, 18, 19, 22, 24, 26, 30, 32]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [13, 16, 19, 20, 23, 25, 27, 31, 33]
+          }
+        }
+      ]
+    },
+    {
+      "command": "chat.native-control",
+      "implementation": [
+        "cantrip_server_rs/src/http/agent_interactions.rs",
+        "cantrip_server_rs/src/http/chat_execution/steer.rs"
+      ],
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [8, 9, 10, 20, 21, 23, 25, 27, 31]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [9, 10, 11, 21, 22, 24, 26, 28, 32]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [8, 9, 10, 20, 21, 23, 25, 27, 31]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [9, 10, 11, 21, 22, 24, 26, 28, 32]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [8, 9, 10, 20, 21, 23, 25, 27, 31]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [9, 10, 11, 21, 22, 24, 26, 28, 32]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [8, 9, 10, 20, 21, 23, 25, 27, 31]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [9, 10, 11, 21, 22, 24, 26, 28, 32]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [8, 9, 10, 20, 21, 23, 25, 27, 31]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [9, 10, 11, 21, 22, 24, 26, 28, 32]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [9, 10, 11, 21, 22, 24, 26, 28, 32]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [8, 9, 10, 20, 21, 23, 25, 27, 31]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [8, 9, 10, 20, 21, 23, 25, 27, 31]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [9, 10, 11, 21, 22, 24, 26, 28, 32]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [8, 9, 10, 20, 21, 23, 25, 27, 31]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [8, 9, 10, 20, 21, 23, 25, 27, 31]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "family": "approvals",
+          "node": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [8, 9, 10, 20, 21, 23, 25, 27, 31]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/approvals-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [9, 10, 11, 21, 22, 24, 26, 28, 32]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-pglite-v10.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [8, 22]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-pglite-v10.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [8, 22]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-pglite-v10.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [8, 22]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-pglite-v10.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [8, 22]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-pglite-v10.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [8, 22]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-pglite-v10.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [8, 22]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-bundled-postgres-v10.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [8, 22]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-bundled-postgres-v10.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [8, 22]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-bundled-postgres-v10.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [8, 22]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-bundled-postgres-v10.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [8, 22]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-bundled-postgres-v10.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [8, 22]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-bundled-postgres-v10.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [8, 22]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-postgres-v10.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [8, 21]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-postgres-v10.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [8, 22]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-postgres-v10.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [8, 22]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-postgres-v10.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [8, 22]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-postgres-v10.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [8, 22]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-postgres-v10.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [8, 22]
+          }
+        }
+      ]
+    },
+    {
+      "command": "inference.revoke",
+      "implementation": "cantrip_server_rs/src/workers/resource_revocations.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "family": "task-surfaces",
+          "node": {
+            "report": ".qa/rust-command-controls/task-surfaces-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [5, 7, 9]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/task-surfaces-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [5, 7, 9]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "family": "task-surfaces",
+          "node": {
+            "report": ".qa/rust-command-controls/task-surfaces-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [5, 7, 9]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/task-surfaces-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [5, 7, 9]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "family": "task-surfaces",
+          "node": {
+            "report": ".qa/rust-command-controls/task-surfaces-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [5, 7, 9]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/task-surfaces-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [5, 7, 9]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "family": "task-surfaces",
+          "node": {
+            "report": ".qa/rust-command-controls/task-surfaces-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [6, 7, 9]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/task-surfaces-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [6, 7, 9]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "family": "task-surfaces",
+          "node": {
+            "report": ".qa/rust-command-controls/task-surfaces-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [5, 7, 9]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/task-surfaces-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [6, 7, 9]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "family": "task-surfaces",
+          "node": {
+            "report": ".qa/rust-command-controls/task-surfaces-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [6, 8, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/task-surfaces-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [6, 8, 9]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "family": "task-surfaces",
+          "node": {
+            "report": ".qa/rust-command-controls/task-surfaces-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [6, 7, 9]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/task-surfaces-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [6, 8, 9]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "family": "task-surfaces",
+          "node": {
+            "report": ".qa/rust-command-controls/task-surfaces-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [5, 7, 9]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/task-surfaces-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [6, 7, 9]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "family": "task-surfaces",
+          "node": {
+            "report": ".qa/rust-command-controls/task-surfaces-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [6, 8, 9]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/task-surfaces-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [5, 7, 9]
+          }
+        }
+      ]
+    },
+    {
+      "command": "computer-use.preview.revoke",
+      "implementation": "cantrip_server_rs/src/computer_use_revocations.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "family": "task-surfaces",
+          "node": {
+            "report": ".qa/rust-command-controls/task-surfaces-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [6, 8, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/task-surfaces-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [6, 8, 10]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "family": "task-surfaces",
+          "node": {
+            "report": ".qa/rust-command-controls/task-surfaces-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [6, 8, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/task-surfaces-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [6, 8, 10]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "family": "task-surfaces",
+          "node": {
+            "report": ".qa/rust-command-controls/task-surfaces-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [6, 8, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/task-surfaces-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [6, 8, 10]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "family": "task-surfaces",
+          "node": {
+            "report": ".qa/rust-command-controls/task-surfaces-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [5, 8, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/task-surfaces-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [5, 8, 10]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "family": "task-surfaces",
+          "node": {
+            "report": ".qa/rust-command-controls/task-surfaces-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [6, 8, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/task-surfaces-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [5, 8, 10]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "family": "task-surfaces",
+          "node": {
+            "report": ".qa/rust-command-controls/task-surfaces-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [5, 7, 9]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/task-surfaces-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [5, 7, 10]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "family": "task-surfaces",
+          "node": {
+            "report": ".qa/rust-command-controls/task-surfaces-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [5, 8, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/task-surfaces-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [5, 7, 10]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "family": "task-surfaces",
+          "node": {
+            "report": ".qa/rust-command-controls/task-surfaces-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [6, 8, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/task-surfaces-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [5, 8, 10]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "family": "task-surfaces",
+          "node": {
+            "report": ".qa/rust-command-controls/task-surfaces-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [5, 7, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/task-surfaces-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [6, 8, 10]
+          }
+        }
+      ]
+    },
+    {
+      "command": "chat.native-logical.complete",
+      "implementation": "cantrip_server_rs/src/native_commands/runtime/logical_delivery/native.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-pglite-v10.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [9, 11, 14, 16, 18, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-pglite-v10.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [9, 11, 14, 16, 18, 23]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-pglite-v10.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [9, 11, 14, 16, 18, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-pglite-v10.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [9, 11, 14, 16, 18, 23]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-pglite-v10.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [9, 11, 14, 16, 18, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-pglite-v10.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [9, 11, 14, 16, 18, 23]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-bundled-postgres-v10.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [9, 11, 14, 16, 18, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-bundled-postgres-v10.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [9, 11, 14, 16, 18, 23]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-bundled-postgres-v10.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [9, 11, 14, 16, 18, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-bundled-postgres-v10.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [9, 11, 14, 16, 18, 23]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-bundled-postgres-v10.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [9, 11, 14, 16, 18, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-bundled-postgres-v10.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [9, 11, 14, 16, 18, 23]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-postgres-v10.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [9, 11, 14, 17, 19, 22]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-postgres-v10.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [9, 11, 14, 16, 18, 23]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-postgres-v10.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [9, 11, 14, 16, 18, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-postgres-v10.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [9, 11, 14, 16, 18, 23]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-postgres-v10.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [9, 11, 14, 16, 18, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-postgres-v10.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [9, 11, 14, 16, 18, 23]
+          }
+        }
+      ]
+    },
+    {
+      "command": "chat.turn.rollback",
+      "implementation": "cantrip_server_rs/src/chats/turn_runtime/bootstrap/admitted.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-pglite-v10.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [12]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-pglite-v10.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [12]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-pglite-v10.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [12]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-pglite-v10.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [12]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-pglite-v10.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [12]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-pglite-v10.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [12]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-bundled-postgres-v10.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [12]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-bundled-postgres-v10.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [12]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-bundled-postgres-v10.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [12]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-bundled-postgres-v10.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [12]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-bundled-postgres-v10.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [12]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-bundled-postgres-v10.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [12]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-postgres-v10.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [12]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-postgres-v10.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [12]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-postgres-v10.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [12]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-postgres-v10.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [12]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "family": "execution",
+          "node": {
+            "report": ".qa/rust-command-controls/execution-postgres-v10.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [12]
+          },
+          "rust": {
+            "report": ".qa/rust-command-controls/execution-postgres-v10.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [12]
+          }
+        }
+      ]
+    }
+  ],
+  "liveResourceMappings": [],
+  "sourceSha256": {
+    "scripts/server-rust/agent-interaction-http-compatibility.mjs": "7ab8b118a05415561d2652f7d925050040a7fe3c302a6229b9b67c6c12dc6b1f",
+    "scripts/server-rust/agent-interaction-http-cases.mjs": "3c43a16263258c60f8cedc12bd7252aaa62a04348c6a971b805b46c8e4f7b1e9",
+    "scripts/server-rust/agent-interaction-http-standalone.mjs": "a47fc9d10033be43ecc0d74c89cbff59d7cc05cc2af89cbc985ce6c8351846e0",
+    "scripts/server-rust/native-settings-http-fixture.mjs": "e94c2f77d7eddb5b04f6e89d5290e0ae71969465855443c10199929ba034c1e9",
+    "scripts/server-rust/native-event-http-setup.mjs": "398f7474e800cc89d9f18ebe39bbf48b99d9ff0af8418c1a6651423dd249d1d6",
+    "scripts/server-rust/native-model-inventory-fixtures.mjs": "2568853e6151e5c5de2517f63d4f57405decf1f0b7d177817cd69cb729125f95",
+    "scripts/server-rust/task-surfaces-http.mjs": "b77f8d0689a10bf37e4b81db9a489227b2cc19821f2cd231066416a386a96424",
+    "scripts/server-rust/task-wire-fixtures.mjs": "fe7f1eee9c4de5831d45096a687dbd066f05acd311df3fb35caad19e5b104d2c",
+    "scripts/server-rust/native-settlement-fixtures.mjs": "f9c65b1ed9f85f62f9c9e72f5bf26bbc1a91d52ab203eda16e9930689535537d",
+    "scripts/server-rust/public-chat-execution-http.mjs": "190b33a5862035b8942fb7900bcc01180413715a3171d47651343a658957d889",
+    "scripts/server-rust/public-chat-execution-worker.mjs": "970c729cad6e4486f03c48501a7b564431a5bdff2a77d5bbfd849bc6ba786ee9",
+    "scripts/server-rust/public-chat-additional-cases.mjs": "e6a3d8fb16dc952318387f7d07ff16add88ada80e2bddd1f38acb8134224d203",
+    "scripts/server-rust/public-pause-cases.mjs": "13d5d28476dfb0d29b89993b516acd8088785a5b87b4ca566526e5b334534a1f",
+    "cantrip_server_rs/src/http/chat_execution/queue.rs": "59c01fe1055840739a2292e8d294d8c58630a437504c2b8f0ccf4897e4d8e1d0",
+    "tests/reference-node-server/src/app/routes/chat-queue.ts": "09337793e4534d4c91d7adc2ef75942db3c3f0b9f0219dda6c128f9609f9a6a3",
+    "cantrip_app/src/lib/api/queue.ts": "4604d7801ec44fe3dd853949c2799c7a5698e45a23adbd45d693d9eecce367f8",
+    "cantrip_app/src/lib/api-managed-queue.test.ts": "b18ead08856dec78af74bc6d25003059fd3ae1dfa2ac53f1c79b5b23ff02e9f0",
+    "packages/protocol/src/task-pause.ts": "33899ea59c1ff698e01f39c5ca6c3112daf729fcffe2a7e9611e38225d061ee1",
+    "packages/protocol/src/managed-queue.ts": "615ddfdb4dc5fac26d70de23600629da3bba2e3a4cbd53587d165e672d03b4df",
+    "tests/reference-node-server/src/workers/limited-command-bus.ts": "5e68af593bf26ff4cbaf3cbbed77f609a102db2b2eb9db31ab449385f625c217",
+    "tests/reference-node-server/src/workers/inference-resource-revocations.ts": "5660ef1b4f7b6bbe5ce028c0cec3c727fe8cde3c01bad0dd02ec5cf954fb84fd",
+    "tests/reference-node-server/src/app/runtime/chat-automation-pause-runtime.ts": "111de24f74de39d192b0df71b6fb37d12fcf2c2d4d2449ac79384a6046a8f55b",
+    "tests/reference-node-server/src/app/runtime/task-automation-pause-runtime.ts": "19788eaad416617853b98b72b9e8058459926e2f56ec231871edce8e48818796",
+    "cantrip_server_rs/src/http/agent_interactions.rs": "6dec6d7931ec8d1dac9c360040c1153f0cbc1939b7a31fd620c4889b40d9fe41",
+    "cantrip_server_rs/src/http/chat_execution/steer.rs": "e62929ecbee68186f25b543e4b7796313338024504b77532c49dd5e899143cc1",
+    "cantrip_server_rs/src/native_commands/runtime/logical_delivery/native.rs": "f0eb71e023bb703804d667b94ab4a6a93adffba93713d0e52dbcb54bec629abf",
+    "cantrip_server_rs/src/chats/turn_runtime/bootstrap/admitted.rs": "62b8641c9d1be5c35c665545ea9ab502add2c4623b486b45e0b1bb520dfed6a6",
+    "cantrip_server_rs/src/workers/resource_revocations.rs": "409d69bcd04b91c4a393675049dd281be289fee9b26d4796d80e3809c7d09831",
+    "cantrip_server_rs/src/computer_use_revocations.rs": "e278685e9ac82c390f548c90ad1575d75b49158dbda054b0f778940159fdec51"
+  },
+  "frozenExecutables": {
+    "baseCommit": "c65da5e2ea2f6bcd89d99111e3c511545a67aa18",
+    "productionSourceSha256": {
+      "cantrip_server_rs/src/http/chat_execution/queue.rs": "59c01fe1055840739a2292e8d294d8c58630a437504c2b8f0ccf4897e4d8e1d0",
+      "tests/reference-node-server/src/app/routes/chat-queue.ts": "09337793e4534d4c91d7adc2ef75942db3c3f0b9f0219dda6c128f9609f9a6a3"
+    },
+    "executables": [
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-command-control-contracts/Cantrip/.qa/rust-command-controls/helpers-v2/cantrip-server",
+        "bytes": 179417216,
+        "sha256": "2384d8381e573103868bf02eff151eda928a0db8017efe49a61d6df18d99366e"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-command-control-contracts/Cantrip/.qa/rust-command-controls/helpers-v2/http-sql-fixture",
+        "bytes": 179686608,
+        "sha256": "b89df5c0e5d6e24f29a04af3871ab22dcb35fad26c09d99b554d30ff501ad5db"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-command-control-contracts/Cantrip/.qa/rust-command-controls/helpers-v2/project-repository-fixture",
+        "bytes": 181339968,
+        "sha256": "f2ec96daf1158ffba6e336b7fea4f3ebab30521e4043542695e583468cf03c3f"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-command-control-contracts/Cantrip/.qa/rust-command-controls/helpers-v2/database-fixture",
+        "bytes": 176762976,
+        "sha256": "b3a6b171083546a096ab0e1fb02feaf515e8da922b6722750aa49a77f1964c65"
+      }
+    ]
+  },
+  "localChecks": [
+    {
+      "label": "rust-fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--manifest-path",
+        "cantrip_server_rs/Cargo.toml",
+        "--",
+        "--check"
+      ],
+      "exitCode": 0,
+      "startedAt": 1794344001.745871,
+      "finishedAt": 1794344004.040452,
+      "log": ".qa/rust-command-controls/rust-fmt-v2.log",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "rust-clippy",
+      "command": [
+        "node",
+        "scripts/server-rust/cargo.mjs",
+        "clippy",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exitCode": 0,
+      "startedAt": 1794344004.040838,
+      "finishedAt": 1794344056.838072,
+      "log": ".qa/rust-command-controls/rust-clippy-v2.log",
+      "logSha256": "5a59c8b71c277f510ee6b6a2c24e757825cfffabfbe63bdbb6faafde3ab8be52"
+    },
+    {
+      "label": "rust-lib",
+      "command": ["node", "scripts/server-rust/cargo.mjs", "test", "--lib"],
+      "exitCode": 0,
+      "startedAt": 1794344056.838482,
+      "finishedAt": 1794344162.295205,
+      "log": ".qa/rust-command-controls/rust-lib-v2.log",
+      "logSha256": "4d4918e3116c21b4c5e00bf724e4f2924b08ed75a0d5ad43b06a03b354d210fe"
+    },
+    {
+      "label": "repository-check",
+      "command": ["pnpm", "check"],
+      "exitCode": 1,
+      "startedAt": 1794344162.295826,
+      "finishedAt": 1794344284.534017,
+      "log": ".qa/rust-command-controls/repository-check-v2.log",
+      "logSha256": "df7834bb3ef13fd34f09462fbdff2a42cc342b16e450983b614337702bb5055b"
+    },
+    {
+      "label": "repository-format",
+      "command": ["pnpm", "format:check"],
+      "exitCode": 1,
+      "startedAt": 1794344284.5344808,
+      "finishedAt": 1794344317.074128,
+      "log": ".qa/rust-command-controls/repository-format-v2.log",
+      "logSha256": "995edc3e0fff73686d6ec1767adf1fcf24143a46e4e1e193529a193f465bf619"
+    }
+  ],
+  "appManagedQueueChecks": {
+    "command": [
+      "pnpm",
+      "--filter",
+      "@cantrip/app",
+      "exec",
+      "vitest",
+      "run",
+      "src/lib/api-managed-queue.test.ts"
+    ],
+    "exitCode": 0,
+    "log": ".qa/rust-command-controls/app-managed-queue-v1.log",
+    "logSha256": "3999ecc7dac06eb04c2b56071bb59db56da1fdf41dbc0d1b601a66df22f4ecf0"
+  },
+  "cleanPrimaryWorkerReproduction": {
+    "head": "c65da5e2ea2f6bcd89d99111e3c511545a67aa18",
+    "cwd": "/Users/cyberpwn/development/workspace/ArcaneArts/Cantrip",
+    "statusBefore": "",
+    "command": [
+      "pnpm",
+      "--filter",
+      "@cantrip/worker",
+      "exec",
+      "vitest",
+      "run",
+      "test/app-server.test.ts",
+      "-t",
+      "retries terminal model-capacity failures on the same Codex thread|interrupts a pending model-capacity backoff"
+    ],
+    "files": [
+      {
+        "path": "cantrip_worker/test/app-server.test.ts",
+        "sha256": "8b67d653eedd0fe52e42ea4a37bfdfae953d888a9fbd723dc71328e8b6700acc",
+        "primarySha256": "8b67d653eedd0fe52e42ea4a37bfdfae953d888a9fbd723dc71328e8b6700acc",
+        "identical": true
+      },
+      {
+        "path": "cantrip_worker/src/codex/app-server.ts",
+        "sha256": "916f73c8a9abd3d93b3caaadbc710dc4f00d7b0967f8cebb544832fe4d93ea8b",
+        "primarySha256": "916f73c8a9abd3d93b3caaadbc710dc4f00d7b0967f8cebb544832fe4d93ea8b",
+        "identical": true
+      }
+    ],
+    "startedAt": 1794342616.256135,
+    "exitCode": 1,
+    "finishedAt": 1794342618.375583,
+    "statusAfter": "",
+    "log": ".qa/rust-command-controls/primary-worker-baseline-v1.log",
+    "logSha256": "3349030be6f9795207859bf38cd69271a59b718b3f4d29f8d81917cf22b05c7f"
+  },
+  "unchangedFormattingFailures": [
+    {
+      "path": "cantrip_app/src/lib/client-session.ts",
+      "sha256": "3f83102410aa69135e3df48b4b7746524f9d99645fe2651e03d3845e679ed979",
+      "primarySha256": "3f83102410aa69135e3df48b4b7746524f9d99645fe2651e03d3845e679ed979",
+      "identical": true
+    },
+    {
+      "path": "cantrip_os/packages/remote/root/etc/cantrip-os/remote.json",
+      "sha256": "f80e9fefe14ce0727af3921d768bbf8881ae9589ef99234e7af436fd429ca537",
+      "primarySha256": "f80e9fefe14ce0727af3921d768bbf8881ae9589ef99234e7af436fd429ca537",
+      "identical": true
+    },
+    {
+      "path": "cantrip_os/tests/active-browser.html",
+      "sha256": "26fe72ffa28ee0013289e81afbfc5d03ff21179816a4e4863ceb3384c1a11162",
+      "primarySha256": "26fe72ffa28ee0013289e81afbfc5d03ff21179816a4e4863ceb3384c1a11162",
+      "identical": true
+    },
+    {
+      "path": "cantrip_server_rs/third-party/icu_collator/README.md",
+      "sha256": "2ec35917ed33ca3e8e4b70ce25c20b20d7e8fcd45f0c1098d001bef52cf1e7a4",
+      "primarySha256": "2ec35917ed33ca3e8e4b70ce25c20b20d7e8fcd45f0c1098d001bef52cf1e7a4",
+      "identical": true
+    },
+    {
+      "path": "cantrip_server_rs/third-party/pglite-rs/README.md",
+      "sha256": "f8955fe7862ac82da8b6af3eaad7268bdc889f02a2017ff55df68b5c35890b6d",
+      "primarySha256": "f8955fe7862ac82da8b6af3eaad7268bdc889f02a2017ff55df68b5c35890b6d",
+      "identical": true
+    },
+    {
+      "path": "cantrip_worker/src/computer-use/captures.ts",
+      "sha256": "85b629ab8485264c94154cb3c984bd042eafb5f4f57b1f3ed1bb1e0c9aeed865",
+      "primarySha256": "85b629ab8485264c94154cb3c984bd042eafb5f4f57b1f3ed1bb1e0c9aeed865",
+      "identical": true
+    },
+    {
+      "path": "cantrip_worker/test/project-repository-stats.test.ts",
+      "sha256": "9831ae1c1fb57cbe5caea26aca372165b6f72b737135cf80cdbd779e060ac544",
+      "primarySha256": "9831ae1c1fb57cbe5caea26aca372165b6f72b737135cf80cdbd779e060ac544",
+      "identical": true
+    },
+    {
+      "path": "docs/BROWSER_AGENT_CURSOR_ACCEPTANCE.md",
+      "sha256": "13bfad69648aea77fdc23a9aad6679f829f6389e51f2c50c31471c7f555a86d4",
+      "primarySha256": "13bfad69648aea77fdc23a9aad6679f829f6389e51f2c50c31471c7f555a86d4",
+      "identical": true
+    },
+    {
+      "path": "docs/COMPUTER_USE_EFFECTS.md",
+      "sha256": "b00f4d939586738360123999ffe60c83ec58a0ba7a20e9e065f9017b6dd4cca7",
+      "primarySha256": "b00f4d939586738360123999ffe60c83ec58a0ba7a20e9e065f9017b6dd4cca7",
+      "identical": true
+    },
+    {
+      "path": "docs/REMOTE_DESKTOP_ACCEPTANCE.md",
+      "sha256": "5cfe23748925ffe0ba54d616f3e2c163308706c9cb728246da8c78beaf3ab958",
+      "primarySha256": "5cfe23748925ffe0ba54d616f3e2c163308706c9cb728246da8c78beaf3ab958",
+      "identical": true
+    },
+    {
+      "path": "docs/WQA-2026-10-08.md",
+      "sha256": "0e6a98cc95706f621db347fa15e46413d6d75c533f061d98a47c39506ea2257b",
+      "primarySha256": "0e6a98cc95706f621db347fa15e46413d6d75c533f061d98a47c39506ea2257b",
+      "identical": true
+    },
+    {
+      "path": "scripts/qa/editor-reload-error.test.mjs",
+      "sha256": "5d01421f74afbc34dc3a43ddb103274d397b26ea6697e6d76894b9fee01a690c",
+      "primarySha256": "5d01421f74afbc34dc3a43ddb103274d397b26ea6697e6d76894b9fee01a690c",
+      "identical": true
+    }
+  ],
+  "observedStandaloneQueueFailure": {
+    "path": ".qa/rust-command-controls/observed-standalone-queue-failure-v1.json",
+    "sha256": "e3e0f9dad43523867f0d6dbc551b5207c4ad1231ad751bb8150394934e600e4c"
+  },
+  "retainedEvidenceDirectory": "rust-server-command-controls-delivery-20261110-v1",
+  "remaining": [
+    "Controlled worker boundaries retain actual WorkerConnection, endpoint cryptography and native command/session SDKs, but do not execute Codex/model inference, native GUI capture or physical worker filesystem operations.",
+    "Mappings qualify the executed response, project/standalone steering, logical completion, retry rollback and deletion-revocation consumers. Remaining command identities, other recovery/coordination consumers and historical partial scopes still require reconciliation.",
+    "Final current supported-platform desktop/container/service artifacts, actual product/fault/mixed-instance acceptance, existing-data upgrades and post-write rollback/performance reconciliation remain required for the complete server-replacement goal."
+  ],
+  "oracleChanges": [
+    "Control-lane exhaustion retains two native replies and429for the third. Computer-use replies use the independent ordinary lane and complete200 with exact retained protected response while both controls remain held.",
+    "Managed initial submissions are queued, and their held root claims remain visible until settlement. Five exact project claims replace the former two that omitted direct submissions. Active operation hashes are independently recomputed and matched to real worker receipt/generation before semantic comparison; full raw bindings retained.",
+    "Standalone read/mutation mismatch repaired in both servers using the existing client-supported snapshot union. Frozen queues retain numeric revision, item guards, opaque edit/reorder/delete and native steering; Goal mode remains rejected409 with exact current canonical-queue error.",
+    "Current managed pause intent fences older opposite worker acknowledgments. Task control confirmation errors, ten actual pause commands and conservative offline Task compensation are asserted with exact retained pause state. Earlier fixture status/count/text mismatches remain retained.",
+    "Task deletion uses durable inference/preview revocation, not legacy cached-status interruption. Inference acknowledgments contain the actual owner/worker scope so pending durable deliveries advance; preview acknowledgment is closed:true. All three target identities and original encrypted/SQL/reopen assertions remain.",
+    "Initial PostgreSQL runs exposed the QA runner omitted CANTRIP_TEST_POSTGRES_BIN_DIR. The actual database-fixture launch failed before server scenarios. The runner now supplies restored PG assets and a frozen database helper; no product startup gate was added."
+  ],
+  "currentGeneratedContracts": {
+    "path": ".qa/rust-command-controls/source-drift-v2.json",
+    "sha256": "1af42f178e099ea45835d7faaa3edcb59d5cbc385c8f2c52c49be293d5f9cdc7",
+    "matched": 17
+  },
+  "integrityReview": {
+    "path": ".qa/rust-command-controls/independent-acceptance-verification-v1.json",
+    "sha256": "468ae1409f8fdca394a4599242a3f2bbf30841f983ffcc680d2c7a22c879619d"
+  },
+  "unpatchedFrozenExecutableManifest": {
+    "path": ".qa/rust-command-controls/helpers-v1.json",
+    "sha256": "ec7a297394df8fba360a2e068893dfbc86543f0a4a76fd7750b30a482294160e"
+  },
+  "changedFileChecks": [
+    {
+      "command": [
+        "pnpm",
+        "exec",
+        "prettier",
+        "--check",
+        "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md",
+        "docs/security/rust-server-coverage.json",
+        "scripts/server-rust/agent-interaction-http-cases.mjs",
+        "scripts/server-rust/agent-interaction-http-compatibility.mjs",
+        "scripts/server-rust/public-chat-additional-cases.mjs",
+        "scripts/server-rust/public-chat-execution-http.mjs",
+        "scripts/server-rust/public-chat-execution-worker.mjs",
+        "scripts/server-rust/public-pause-cases.mjs",
+        "scripts/server-rust/task-surfaces-http.mjs",
+        "tests/reference-node-server/src/app/routes/chat-queue.ts",
+        "docs/RUST_SERVER_COMMAND_CONTROL_CONTRACTS.md",
+        "docs/security/rust-server-command-control-acceptance.json"
+      ],
+      "exitCode": 0,
+      "log": ".qa/rust-command-controls/changed-format-v1.log",
+      "logSha256": "17aa973d3f004560237d9a95171210b0671deff23d61628eecf7322ff5938f20"
+    },
+    {
+      "command": ["git", "diff", "--check"],
+      "exitCode": 0,
+      "log": ".qa/rust-command-controls/diff-v1.log",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

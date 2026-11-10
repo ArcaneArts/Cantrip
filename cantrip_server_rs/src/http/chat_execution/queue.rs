@@ -3,7 +3,6 @@ impl Execution {
     pub(super) async fn list(&self, chat: &str) -> Result<Response> {
         if let Some(context) = self.chats.live_routing(&self.owner, chat).await?
             && context["experience"] == "agent"
-            && !context["projectId"].is_null()
         {
             let state = self.queue.snapshot(&self.owner, chat).await?;
             return Ok(json_response(

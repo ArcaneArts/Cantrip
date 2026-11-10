@@ -54,16 +54,18 @@ const model = {
 const report = {
   suite: "public-task-surfaces-http-live",
   databaseMode,
+  root,
   completeReplacement: false,
   fullWorkerProcess: false,
   profiles: [],
 };
 let pg, active, failure;
 try {
-  const executable = await buildRustServer();
-  const repositoryExecutable = await buildRustExample(
-    "project-repository-fixture",
-  );
+  const executable =
+    process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer());
+  const repositoryExecutable =
+    process.env.CANTRIP_RUST_PROJECT_REPOSITORY_BINARY ??
+    (await buildRustExample("project-repository-fixture"));
   const passwordHash = await hashPassword(password);
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
@@ -76,6 +78,7 @@ try {
       const result = {
         kind,
         observations: [],
+        rawCommands: [],
         snapshotProofs: 0,
         encryptedTaskProofs: 0,
         interrupts: [],
@@ -166,6 +169,15 @@ try {
           }
         },
         onCommand: async (command) => {
+          result.rawCommands.push(structuredClone(command));
+          if (command.type === "inference.revoke")
+            return {
+              revoked: true,
+              ownerId: command.ownerId,
+              workerId: settingsWorker,
+            };
+          if (command.type === "computer-use.preview.revoke")
+            return { closed: true };
           if (command.type !== "chat.interrupt") return undefined;
           assert.equal(command.executionProfile, "ide");
           assert.equal(command.threadId, "task-deletion-thread");
@@ -522,7 +534,31 @@ try {
           { status: 404 },
         );
       }
-      assert.deepEqual(result.interrupts, running);
+      assert.deepEqual(
+        result.interrupts,
+        [],
+        "Task deletion uses durable revocation rather than cached-status interruption",
+      );
+      result.revocations = [];
+      for (const type of ["inference.revoke", "computer-use.preview.revoke"]) {
+        await until(
+          () =>
+            result.rawCommands.filter((value) => value.type === type).length,
+          (count) => count >= running.length,
+        );
+        const commands = result.rawCommands.filter(
+          (value) => value.type === type,
+        );
+        assert.equal(commands.length, running.length);
+        for (const [index, command] of commands.entries()) {
+          assert.equal(command.ownerId, h.owner);
+          if (type === "computer-use.preview.revoke")
+            assert.equal(command.serverId, h.serverId);
+          const scope = command.target ?? command.scope;
+          assert.deepEqual(scope, { kind: "chat", chatId: running[index] });
+          result.revocations.push({ type, scope });
+        }
+      }
       await h.visit("delete missing Task", "DELETE", `/api/tasks/${missing}`, {
         status: 404,
       });
@@ -595,11 +631,13 @@ try {
       "observations",
       "creationEvents",
       "interrupts",
+      "revocations",
       "encryptedTaskProofs",
       "durable",
     ])
       assert.deepEqual(outputs[1][key], outputs[0][key], profile + " " + key);
   }
+  report.passed = true;
 } catch (error) {
   failure = error;
   report.failure = { message: error.message, stack: error.stack };
@@ -611,7 +649,8 @@ try {
     await mkdir(path.dirname(reportPath), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");
   }
-  if (!failure) await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
 }
 console.log(
   JSON.stringify({

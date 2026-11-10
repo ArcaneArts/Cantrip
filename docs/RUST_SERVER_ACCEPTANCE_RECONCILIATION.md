@@ -17,6 +17,14 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current Chat/control qualification](RUST_SERVER_COMMAND_CONTROL_CONTRACTS.md)
+repairs standalone queue reads that omitted the revision required by mutations.
+All three nine-cell approval, public Chat and Task matrices pass with 2,208 paired
+HTTP cases, 702 command witnesses, actual endpoint cryptography/native SDKs and
+exact durable reopen checks. Eight new command mappings bring scoped coverage
+to 277/323. Controlled native/model replies, historical partials and full final
+supported-artifact/product acceptance remain separate.
+
 The [current filesystem/progress Live qualification](RUST_SERVER_LIVE_OBSERVATION_CONTRACTS.md)
 passes eighteen production HTTP storage/authentication cells, retaining 1,821
 paired cases and 90 original filesystem/progress frames. Separate core Hub
