@@ -5,6 +5,64 @@ use crate::wire::{Value, value::json};
 use anyhow::{Context, Result, bail};
 
 impl TargetRepository {
+    pub async fn record_worktree_status(
+        &self,
+        owner: &str,
+        project: &str,
+        worktree: &str,
+        status: &Value,
+    ) -> Result<Option<Value>> {
+        let Some(context) = self.worktree_context(owner, project, worktree).await? else {
+            return Ok(None);
+        };
+        let observed = &status["worktree"];
+        if context["worktree"]["path"] != observed["path"] {
+            bail!("Worker status referred to a different worktree path.");
+        }
+        let rows = self
+            .database
+            .query(
+                "SELECT to_jsonb(w)::text FROM project_worktrees w WHERE id=$1 LIMIT 1",
+                &[&worktree],
+            )
+            .await?;
+        let Some(row) = rows.first() else {
+            return Ok(None);
+        };
+        let current = reads::parse(row.get(0)?)?;
+        let lifecycle = if observed["missing"] == true {
+            "missing"
+        } else if observed["prunable"] == true {
+            "prunable"
+        } else {
+            "ready"
+        };
+        let metadata_changed = current["branch"] != observed["branch"]
+            || current["detached"] != observed["detached"]
+            || current["head"] != observed["head"]
+            || current["lifecycle_state"] != lifecycle
+            || current["locked"] != observed["locked"]
+            || current["lock_reason"] != observed["lockReason"];
+        // The reference compares JSON.stringify of the actual JSONB projection
+        // and decoded notification. Retain its ordering-sensitive replay rule.
+        let snapshot_changed = current["status_snapshot"].stringify() != status.stringify();
+        let mapped = if !metadata_changed && !snapshot_changed {
+            context["worktree"].clone()
+        } else {
+            let now = crate::auth::now();
+            let observed = postgres_types::Json(observed);
+            let snapshot = postgres_types::Json(status);
+            let rows = self.database.query("UPDATE project_worktrees w SET branch=$1::jsonb->>'branch',detached=($1::jsonb->>'detached')::boolean,head=$1::jsonb->>'head',lifecycle_state=$2,locked=($1::jsonb->>'locked')::boolean,lock_reason=$1::jsonb->>'lockReason',last_scanned_at=$3,status_observed_at=$3,status_snapshot=$5::jsonb,updated_at=$3 WHERE id=$4 RETURNING to_jsonb(w)::text", &[&observed,&lifecycle,&now,&worktree,&snapshot]).await?;
+            let Some(row) = rows.first() else {
+                return Ok(None);
+            };
+            reads::worktree(&reads::parse(row.get(0)?)?, project)?
+        };
+        Ok(Some(
+            json!({"metadataChanged":metadata_changed,"snapshotChanged":snapshot_changed,"status":status,"worktree":mapped}),
+        ))
+    }
+
     pub async fn rollback_worktree_creation(
         &self,
         owner: &str,

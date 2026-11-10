@@ -17,6 +17,12 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current worktree observation qualification](RUST_SERVER_WORKTREE_OBSERVATIONS.md)
+repairs the omitted native worker-status consumer and compares its durable state,
+Live events, failures and restart behavior across all nine local storage/authentication
+cells. Historical durable Git-operation reconciliation remains an explicit active
+gap despite the retired plaintext Git HTTP routes.
+
 The [current Chat/model identity qualification](RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md)
 adds 3,368 paired observations across all three stores and repairs empty model
 route selection, offline Plan status handling and missing/null resume identity.

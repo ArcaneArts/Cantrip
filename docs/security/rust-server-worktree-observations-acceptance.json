@@ -1,0 +1,709 @@
+{
+  "schemaVersion": 1,
+  "baseCommit": "f11ca266a9a33f351d629229f27cffbcdd2ba9ac",
+  "completeReplacement": false,
+  "scope": "Current macOS arm64 repository adapters and actual WorkerConnection/control WebSocket, production notification callbacks, HTTP/App Live and real stores. Worker runtime command responses are controlled; this is not a full worker/UI or new Windows/Linux qualification.",
+  "reports": [
+    {
+      "suite": "targets",
+      "mode": "pglite",
+      "report": "qa/targets-v1/pglite.json",
+      "sha256": "c4881b430e3cbdcd49c384fa8b1db23ab3604c274462f70bd7372280d0660fb3",
+      "driverExit": 0,
+      "cases": 431,
+      "databaseCases": 1
+    },
+    {
+      "suite": "targets",
+      "mode": "bundled-postgres",
+      "report": "qa/targets-v1/bundled-postgres.json",
+      "sha256": "9c65bbe75c1eba815bc8a9149e64fa9004a5ebc5d08a7b41876b5d5e5a08e19e",
+      "driverExit": 0,
+      "cases": 431,
+      "databaseCases": 1
+    },
+    {
+      "suite": "targets",
+      "mode": "postgres",
+      "report": "qa/targets-v1/postgres.json",
+      "sha256": "055733679b7193a6fd63b1976ee1e09d64da84d48e83a0f502c88ec2335a87b7",
+      "driverExit": 0,
+      "cases": 431,
+      "databaseCases": 1
+    },
+    {
+      "suite": "status",
+      "mode": "pglite",
+      "report": "qa/status-final-v7/pglite.json",
+      "sha256": "6e2f806a33729f6113275a96fc69b337802f9056c88b0fedd19a80beefad2429",
+      "driverExit": 0,
+      "profiles": [
+        {
+          "profile": "none",
+          "pairedNotifications": 13,
+          "pairedActions": 10,
+          "pairedLiveEvents": 18,
+          "sqlFailureRetainsAllFieldsAndClocks": true,
+          "publicationFailureRetainsAcceptedWrite": true,
+          "actualServerRestarts": 2,
+          "cleanServerExits": 4,
+          "matchingObservationConfigurations": 1
+        },
+        {
+          "profile": "password",
+          "pairedNotifications": 13,
+          "pairedActions": 10,
+          "pairedLiveEvents": 18,
+          "sqlFailureRetainsAllFieldsAndClocks": true,
+          "publicationFailureRetainsAcceptedWrite": true,
+          "actualServerRestarts": 2,
+          "cleanServerExits": 4,
+          "matchingObservationConfigurations": 1
+        },
+        {
+          "profile": "accounts",
+          "pairedNotifications": 13,
+          "pairedActions": 10,
+          "pairedLiveEvents": 18,
+          "sqlFailureRetainsAllFieldsAndClocks": true,
+          "publicationFailureRetainsAcceptedWrite": true,
+          "actualServerRestarts": 2,
+          "cleanServerExits": 4,
+          "matchingObservationConfigurations": 1
+        }
+      ]
+    },
+    {
+      "suite": "status",
+      "mode": "bundled-postgres",
+      "report": "qa/status-final-v7/bundled-postgres.json",
+      "sha256": "4d6fe4251492a025493d9e43d92dcc72fb8ea06de2a993376413f44316f9a87b",
+      "driverExit": 0,
+      "profiles": [
+        {
+          "profile": "none",
+          "pairedNotifications": 13,
+          "pairedActions": 10,
+          "pairedLiveEvents": 18,
+          "sqlFailureRetainsAllFieldsAndClocks": true,
+          "publicationFailureRetainsAcceptedWrite": true,
+          "actualServerRestarts": 2,
+          "cleanServerExits": 4,
+          "matchingObservationConfigurations": 1
+        },
+        {
+          "profile": "password",
+          "pairedNotifications": 13,
+          "pairedActions": 10,
+          "pairedLiveEvents": 18,
+          "sqlFailureRetainsAllFieldsAndClocks": true,
+          "publicationFailureRetainsAcceptedWrite": true,
+          "actualServerRestarts": 2,
+          "cleanServerExits": 4,
+          "matchingObservationConfigurations": 1
+        },
+        {
+          "profile": "accounts",
+          "pairedNotifications": 13,
+          "pairedActions": 10,
+          "pairedLiveEvents": 18,
+          "sqlFailureRetainsAllFieldsAndClocks": true,
+          "publicationFailureRetainsAcceptedWrite": true,
+          "actualServerRestarts": 2,
+          "cleanServerExits": 4,
+          "matchingObservationConfigurations": 1
+        }
+      ]
+    },
+    {
+      "suite": "status",
+      "mode": "postgres",
+      "report": "qa/status-final-v7/postgres.json",
+      "sha256": "38b10d5f4ece4816324ada862cc2e92b8ee3196e8a5a67b9406a1f06a9152ce1",
+      "driverExit": 0,
+      "profiles": [
+        {
+          "profile": "none",
+          "pairedNotifications": 13,
+          "pairedActions": 10,
+          "pairedLiveEvents": 18,
+          "sqlFailureRetainsAllFieldsAndClocks": true,
+          "publicationFailureRetainsAcceptedWrite": true,
+          "actualServerRestarts": 2,
+          "cleanServerExits": 4,
+          "matchingObservationConfigurations": 1
+        },
+        {
+          "profile": "password",
+          "pairedNotifications": 13,
+          "pairedActions": 10,
+          "pairedLiveEvents": 18,
+          "sqlFailureRetainsAllFieldsAndClocks": true,
+          "publicationFailureRetainsAcceptedWrite": true,
+          "actualServerRestarts": 2,
+          "cleanServerExits": 4,
+          "matchingObservationConfigurations": 1
+        },
+        {
+          "profile": "accounts",
+          "pairedNotifications": 13,
+          "pairedActions": 10,
+          "pairedLiveEvents": 18,
+          "sqlFailureRetainsAllFieldsAndClocks": true,
+          "publicationFailureRetainsAcceptedWrite": true,
+          "actualServerRestarts": 2,
+          "cleanServerExits": 4,
+          "matchingObservationConfigurations": 1
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "targetCases": 1293,
+    "pairedNotifications": 117,
+    "pairedActions": 90,
+    "pairedLiveEvents": 162,
+    "sqlFailures": 9,
+    "publicationFailures": 9,
+    "serverRestarts": 18,
+    "cleanServerExits": 36
+  },
+  "repositoryMethods": [
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "getProjectSource",
+      "operation": "observation-source",
+      "implementation": "cantrip_server_rs/src/projects/targets/observations.rs",
+      "nativeSymbol": "observation_source",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 117,
+            "name": "observation source selection "
+          },
+          {
+            "caseIndex": 118,
+            "name": "observation source selection alpha"
+          },
+          {
+            "caseIndex": 119,
+            "name": "observation source selection beta"
+          },
+          {
+            "caseIndex": 120,
+            "name": "observation source selection missing"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 117,
+            "name": "observation source selection "
+          },
+          {
+            "caseIndex": 118,
+            "name": "observation source selection alpha"
+          },
+          {
+            "caseIndex": 119,
+            "name": "observation source selection beta"
+          },
+          {
+            "caseIndex": 120,
+            "name": "observation source selection missing"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 117,
+            "name": "observation source selection "
+          },
+          {
+            "caseIndex": 118,
+            "name": "observation source selection alpha"
+          },
+          {
+            "caseIndex": 119,
+            "name": "observation source selection beta"
+          },
+          {
+            "caseIndex": 120,
+            "name": "observation source selection missing"
+          }
+        ]
+      },
+      "scope": "Actual current facade and complete returned projection or positive path-write count/readback; surrounding suite retains isolation, lifecycle, transaction, clock, reopen and contention checks."
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "getProjectWorktreeContext",
+      "operation": "worktree-context",
+      "implementation": "cantrip_server_rs/src/projects/targets/worktree_context.rs",
+      "nativeSymbol": "worktree_context",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 0,
+            "name": "worktree execution context github"
+          },
+          {
+            "caseIndex": 2,
+            "name": "worktree execution context folder"
+          },
+          {
+            "caseIndex": 4,
+            "name": "worktree execution context local-git"
+          },
+          {
+            "caseIndex": 161,
+            "name": "resolved observation context"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 0,
+            "name": "worktree execution context github"
+          },
+          {
+            "caseIndex": 2,
+            "name": "worktree execution context folder"
+          },
+          {
+            "caseIndex": 4,
+            "name": "worktree execution context local-git"
+          },
+          {
+            "caseIndex": 161,
+            "name": "resolved observation context"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 0,
+            "name": "worktree execution context github"
+          },
+          {
+            "caseIndex": 2,
+            "name": "worktree execution context folder"
+          },
+          {
+            "caseIndex": 4,
+            "name": "worktree execution context local-git"
+          },
+          {
+            "caseIndex": 161,
+            "name": "resolved observation context"
+          }
+        ]
+      },
+      "scope": "Actual current facade and complete returned projection or positive path-write count/readback; surrounding suite retains isolation, lifecycle, transaction, clock, reopen and contention checks."
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "getGithubProjectExecutionContext",
+      "operation": "github-context",
+      "implementation": "cantrip_server_rs/src/projects/targets/context.rs",
+      "nativeSymbol": "github_context",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 11,
+            "name": "GitHub execution context worker undefined"
+          },
+          {
+            "caseIndex": 12,
+            "name": "GitHub execution context worker "
+          },
+          {
+            "caseIndex": 13,
+            "name": "GitHub execution context worker alpha"
+          },
+          {
+            "caseIndex": 14,
+            "name": "GitHub execution context worker beta"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 11,
+            "name": "GitHub execution context worker undefined"
+          },
+          {
+            "caseIndex": 12,
+            "name": "GitHub execution context worker "
+          },
+          {
+            "caseIndex": 13,
+            "name": "GitHub execution context worker alpha"
+          },
+          {
+            "caseIndex": 14,
+            "name": "GitHub execution context worker beta"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 11,
+            "name": "GitHub execution context worker undefined"
+          },
+          {
+            "caseIndex": 12,
+            "name": "GitHub execution context worker "
+          },
+          {
+            "caseIndex": 13,
+            "name": "GitHub execution context worker alpha"
+          },
+          {
+            "caseIndex": 14,
+            "name": "GitHub execution context worker beta"
+          }
+        ]
+      },
+      "scope": "Actual current facade and complete returned projection or positive path-write count/readback; surrounding suite retains isolation, lifecycle, transaction, clock, reopen and contention checks."
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "getProjectWorktreeObservationContext",
+      "operation": "observation-context",
+      "implementation": "cantrip_server_rs/src/projects/targets/observations.rs",
+      "nativeSymbol": "observation_context",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 124,
+            "name": "filesystem observation context {}"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 124,
+            "name": "filesystem observation context {}"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 124,
+            "name": "filesystem observation context {}"
+          }
+        ]
+      },
+      "scope": "Actual current facade and complete returned projection or positive path-write count/readback; surrounding suite retains isolation, lifecycle, transaction, clock, reopen and contention checks."
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "listWorkerWorktreeObservationTargets",
+      "operation": "observation-targets",
+      "implementation": "cantrip_server_rs/src/projects/targets/observations.rs",
+      "nativeSymbol": "observation_targets",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 141,
+            "name": "observation targets true alpha"
+          },
+          {
+            "caseIndex": 142,
+            "name": "observation targets true beta"
+          },
+          {
+            "caseIndex": 145,
+            "name": "observation bounded targets true 0"
+          },
+          {
+            "caseIndex": 146,
+            "name": "observation bounded targets true 1"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 141,
+            "name": "observation targets true alpha"
+          },
+          {
+            "caseIndex": 142,
+            "name": "observation targets true beta"
+          },
+          {
+            "caseIndex": 145,
+            "name": "observation bounded targets true 0"
+          },
+          {
+            "caseIndex": 146,
+            "name": "observation bounded targets true 1"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 141,
+            "name": "observation targets true alpha"
+          },
+          {
+            "caseIndex": 142,
+            "name": "observation targets true beta"
+          },
+          {
+            "caseIndex": 145,
+            "name": "observation bounded targets true 0"
+          },
+          {
+            "caseIndex": 146,
+            "name": "observation bounded targets true 1"
+          }
+        ]
+      },
+      "scope": "Actual current facade and complete returned projection or positive path-write count/readback; surrounding suite retains isolation, lifecycle, transaction, clock, reopen and contention checks."
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "listWorkerExecutionRootContexts",
+      "operation": "observation-targets",
+      "implementation": "cantrip_server_rs/src/projects/targets/observations.rs",
+      "nativeSymbol": "observation_targets",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 148,
+            "name": "observation targets false alpha"
+          },
+          {
+            "caseIndex": 149,
+            "name": "observation targets false beta"
+          },
+          {
+            "caseIndex": 152,
+            "name": "observation bounded targets false 0"
+          },
+          {
+            "caseIndex": 153,
+            "name": "observation bounded targets false 1"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 148,
+            "name": "observation targets false alpha"
+          },
+          {
+            "caseIndex": 149,
+            "name": "observation targets false beta"
+          },
+          {
+            "caseIndex": 152,
+            "name": "observation bounded targets false 0"
+          },
+          {
+            "caseIndex": 153,
+            "name": "observation bounded targets false 1"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 148,
+            "name": "observation targets false alpha"
+          },
+          {
+            "caseIndex": 149,
+            "name": "observation targets false beta"
+          },
+          {
+            "caseIndex": 152,
+            "name": "observation bounded targets false 0"
+          },
+          {
+            "caseIndex": 153,
+            "name": "observation bounded targets false 1"
+          }
+        ]
+      },
+      "scope": "Actual current facade and complete returned projection or positive path-write count/readback; surrounding suite retains isolation, lifecycle, transaction, clock, reopen and contention checks."
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "reconcileWorkerProjectObservationPaths",
+      "operation": "observation-paths",
+      "implementation": "cantrip_server_rs/src/projects/targets/observations.rs",
+      "nativeSymbol": "reconcile_observation_paths",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 159,
+            "name": "observation source and worktree paths update"
+          },
+          {
+            "caseIndex": 162,
+            "name": "observation restore"
+          },
+          {
+            "caseIndex": 163,
+            "name": "inconsistent source retains source but updates worktrees"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 159,
+            "name": "observation source and worktree paths update"
+          },
+          {
+            "caseIndex": 162,
+            "name": "observation restore"
+          },
+          {
+            "caseIndex": 163,
+            "name": "inconsistent source retains source but updates worktrees"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 159,
+            "name": "observation source and worktree paths update"
+          },
+          {
+            "caseIndex": 162,
+            "name": "observation restore"
+          },
+          {
+            "caseIndex": 163,
+            "name": "inconsistent source retains source but updates worktrees"
+          }
+        ]
+      },
+      "scope": "Actual current facade and complete returned projection or positive path-write count/readback; surrounding suite retains isolation, lifecycle, transaction, clock, reopen and contention checks."
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "recordProjectWorktreeStatus",
+      "implementation": "cantrip_server_rs/src/projects/targets/worktree_state.rs",
+      "nativeSymbol": "record_worktree_status",
+      "scope": "Actual worker control callback invokes the reference facade. Nine storage/authentication cells prove accepted status/metadata, replay writes, clocks, SQL-failure preservation, commit before failed publication and restart retention.",
+      "cases": {
+        "pglite": [
+          {
+            "profile": "none",
+            "actionIndices": [0, 1, 2, 3, 6, 7, 8, 9]
+          },
+          {
+            "profile": "password",
+            "actionIndices": [0, 1, 2, 3, 6, 7, 8, 9]
+          },
+          {
+            "profile": "accounts",
+            "actionIndices": [0, 1, 2, 3, 6, 7, 8, 9]
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "none",
+            "actionIndices": [0, 1, 2, 3, 6, 7, 8, 9]
+          },
+          {
+            "profile": "password",
+            "actionIndices": [0, 1, 2, 3, 6, 7, 8, 9]
+          },
+          {
+            "profile": "accounts",
+            "actionIndices": [0, 1, 2, 3, 6, 7, 8, 9]
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "none",
+            "actionIndices": [0, 1, 2, 3, 6, 7, 8, 9]
+          },
+          {
+            "profile": "password",
+            "actionIndices": [0, 1, 2, 3, 6, 7, 8, 9]
+          },
+          {
+            "profile": "accounts",
+            "actionIndices": [0, 1, 2, 3, 6, 7, 8, 9]
+          }
+        ]
+      }
+    }
+  ],
+  "partialRepositoryMethod": {
+    "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+    "method": "getActiveGitOperation",
+    "status": "partial",
+    "implementation": "cantrip_server_rs/src/projects/targets/observations.rs",
+    "evidence": [
+      "docs/RUST_SERVER_WORKTREE_OBSERVATIONS.md",
+      "docs/security/rust-server-worktree-observations-acceptance.json"
+    ],
+    "remaining": [
+      "Current active_observation_operation compares only the observation configuration projection: id, worker and managed context. It is not a full native GitManagedOperationRecord repository.",
+      "Source still consumes git.operation.observed through durable get/update and reconciliation despite retired plaintext HTTP routes. Port and qualify that historical-operation path; HTTP tombstones do not establish its retirement."
+    ]
+  },
+  "baseline": {
+    "base": "f11ca266a9a33f351d629229f27cffbcdd2ba9ac",
+    "report": "qa/status-baseline-v1.json",
+    "helpers": [
+      {
+        "name": "project-repository-fixture",
+        "original": "/Users/cyberpwn/development/workspace/ArcaneArts/Cantrip/.git/cantrip/rust-server-target/aarch64-apple-darwin/debug/examples/project-repository-fixture",
+        "executable": "/Users/cyberpwn/.codex/worktrees/rust-project-contracts/Cantrip/.qa/rust-project-contracts/helpers-v1/project-repository-fixture",
+        "bytes": 181614048,
+        "sha256": "cc79a1e4ae7bef98a6e820c34ade142148cc7ea9a4e4a8ad8376cbeb7108756f"
+      },
+      {
+        "name": "database-fixture",
+        "original": "/Users/cyberpwn/development/workspace/ArcaneArts/Cantrip/.git/cantrip/rust-server-target/aarch64-apple-darwin/debug/examples/database-fixture",
+        "executable": "/Users/cyberpwn/.codex/worktrees/rust-project-contracts/Cantrip/.qa/rust-project-contracts/helpers-v1/database-fixture",
+        "bytes": 177120432,
+        "sha256": "38b3143f28281f773f0463b275b2f72f5c54dce5bc229a3a0f5e24dc77c3f69c"
+      },
+      {
+        "name": "http-sql-fixture",
+        "original": "/Users/cyberpwn/development/workspace/ArcaneArts/Cantrip/.git/cantrip/rust-server-target/aarch64-apple-darwin/debug/examples/http-sql-fixture",
+        "executable": "/Users/cyberpwn/.codex/worktrees/rust-project-contracts/Cantrip/.qa/rust-project-contracts/helpers-v1/http-sql-fixture",
+        "bytes": 180040912,
+        "sha256": "3ea80f337e21c63e15ebd47e0bae19cd2515b3296f9ceac0b3aefb0f648f9244"
+      }
+    ],
+    "scope": "Actual authenticated worker control WebSocket and production callback; Node persists worktree status and emits two scoped Live events, native old helper retains null snapshot. Dedicated migrated PGlite fixture; no callback replacement."
+  },
+  "archiveDirectory": "rust-server-worktree-observations-delivery-20261110-v1",
+  "optimizedPackage": {
+    "version": "1.1.2792",
+    "runtime": "rust",
+    "serverRequiresNode": false,
+    "binaryBytes": 93763088,
+    "binarySha256": "1f5b2dd259aa0aa9c8b9196fa64ecdf22b8eabdae93392ba6a9b22c47b155cb2",
+    "verifiedPackageFiles": 1762,
+    "buildSession": 14741,
+    "buildExit": 0,
+    "scope": "Unflagged pnpm package:server with final worktree status persistence, publication and disabled-publication behavior; macOS arm64.",
+    "changedProductionSources": {
+      "cantrip_server_rs/src/projects/targets/worktree_state.rs": "032bb7b42fe394d03e582e605150b1c7b895472fdce27d03d0de51e14aaf25ba",
+      "cantrip_server_rs/src/projects/observations/notifications.rs": "f81db5841c43a7921dfbcec239d65a51e283c5c2b1afd777f9891c009b357cb0"
+    }
+  },
+  "optimizedProductionComparison": {
+    "report": "qa/production-status-v1.json",
+    "sha256": "4f82a5722f328a993a156dc3920502e7a3236b6af8018c4589b93000bdc93dc0",
+    "scope": "Actual optimized Rust executable, external PostgreSQL direct test-client SQL, real worker WebSocket/Live, SQL test HTTP route absent and retained restart state."
+  },
+  "coverageCounts": {
+    "repositoryMethods": {
+      "mapped": 313,
+      "inventory": 370
+    },
+    "durableTables": {
+      "mapped": 110,
+      "inventory": 135
+    },
+    "routes": {
+      "mapped": 523,
+      "inventory": 584
+    },
+    "workerCommands": {
+      "mapped": 116,
+      "inventory": 323
+    },
+    "liveResources": {
+      "mapped": 27,
+      "inventory": 47
+    }
+  }
+}
