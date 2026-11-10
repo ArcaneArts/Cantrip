@@ -31,10 +31,12 @@ process.env.PGLITE_RUNTIME_DIR = path.join(root, "native-runtime");
 const report = {
   suite: "chat-runtime-repository",
   databaseMode,
+  root,
   scope: option("--scope") ?? "all",
   completeReplacement: false,
   cases: [],
   snapshots: [],
+  cleanupFailures: [],
 };
 const pair = [],
   urls = [],
@@ -411,11 +413,14 @@ try {
       [...(failure ? [failure] : []), ...errors],
       "Runtime repository scenario/cleanup failed",
     );
-  await rm(root, { recursive: true, force: true });
+  report.cleanupFailures = errors.map((error) => error.stack ?? String(error));
+  report.passed = !failure;
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");
   }
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
 }
 console.log(
   JSON.stringify({

@@ -12589,6 +12589,70 @@
         "remaining": [
           "Other domain consumers and final supported-platform complete replacement acceptance remain separately scoped."
         ]
+      },
+      {
+        "exportName": "tunnels",
+        "tableName": "tunnels",
+        "classification": "endpoint-protected",
+        "implementation": "cantrip_server_rs/src/tunnels/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "observedScope": "User/managed catalog CRUD, ownership, managed identity, defaults, rollback and retained reopen.",
+        "remaining": [
+          "Other domain consumers and final supported-platform complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "tunnelAttachments",
+        "tableName": "tunnel_attachments",
+        "classification": "minimized-operational-metadata",
+        "implementation": "cantrip_server_rs/src/tunnels/attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "observedScope": "Creation, credential authorization, activation generations, stop/offline/expiry fencing and restart retention.",
+        "remaining": [
+          "Other domain consumers and final supported-platform complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "tunnelAttachmentDirectLeases",
+        "tableName": "tunnel_attachment_direct_leases",
+        "classification": "minimized-operational-metadata",
+        "implementation": "cantrip_server_rs/src/tunnels/leases.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "observedScope": "Activate, renew, finalize and expire direct leases; generation/lifetime fencing and retention across relay reset.",
+        "remaining": [
+          "Other domain consumers and final supported-platform complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "tokenUsageRecords",
+        "tableName": "token_usage_records",
+        "classification": "minimized-operational-metadata",
+        "implementation": "cantrip_server_rs/src/settings/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "observedScope": "Agent-time analytics reads of actual rows, overlapping intervals, nullable model/provider grouping and invalid/extended dates. This scope does not qualify usage ingestion/accounting writes.",
+        "remaining": [
+          "Other domain consumers and final supported-platform complete replacement acceptance remain separately scoped."
+        ]
       }
     ]
   },
@@ -15201,15 +15265,18 @@
         "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
         "method": "hasModelRoutesForProvider",
         "implementation": "cantrip_server_rs/src/settings/providers.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/settings-repository-compatibility.mjs",
           "docs/security/rust-server-foundation-acceptance.json",
-          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
         ],
         "remaining": [
-          "Positive attached-route lookup evidence remains to be reconciled."
-        ]
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ],
+        "observedScope": "Current all-three-store positive membership for enabled and disabled attached routes, foreign model ownership rejection and missing provider false results. See exact per-store case references."
       },
       {
         "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
@@ -16130,6 +16197,524 @@
           "scripts/server-rust/layout-repository-compatibility.mjs",
           "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
           "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "listTunnels",
+        "implementation": "cantrip_server_rs/src/tunnels/catalog.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getTunnel",
+        "implementation": "cantrip_server_rs/src/tunnels/catalog.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "createUserTunnel",
+        "implementation": "cantrip_server_rs/src/tunnels/management.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "updateUserTunnel",
+        "implementation": "cantrip_server_rs/src/tunnels/management.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "deleteUserTunnel",
+        "implementation": "cantrip_server_rs/src/tunnels/management.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "registerManagedTunnel",
+        "implementation": "cantrip_server_rs/src/tunnels/managed.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getManagedTunnel",
+        "implementation": "cantrip_server_rs/src/tunnels/managed.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "removeManagedTunnel",
+        "implementation": "cantrip_server_rs/src/tunnels/managed.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getDesktopTunnelAttachment",
+        "implementation": "cantrip_server_rs/src/tunnels/attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "authorizeDesktopTunnelAttachment",
+        "implementation": "cantrip_server_rs/src/tunnels/attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "createDesktopTunnelAttachment",
+        "implementation": "cantrip_server_rs/src/tunnels/attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "activateDesktopTunnelAttachment",
+        "implementation": "cantrip_server_rs/src/tunnels/attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "markDesktopTunnelAttachmentOffline",
+        "implementation": "cantrip_server_rs/src/tunnels/attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "stopDesktopTunnelAttachment",
+        "implementation": "cantrip_server_rs/src/tunnels/attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "activateDesktopTunnelDirectLease",
+        "implementation": "cantrip_server_rs/src/tunnels/leases.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "renewDesktopTunnelDirectLease",
+        "implementation": "cantrip_server_rs/src/tunnels/leases.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "finalizeDesktopTunnelDirectLease",
+        "implementation": "cantrip_server_rs/src/tunnels/leases.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "expireDesktopTunnelDirectLeases",
+        "implementation": "cantrip_server_rs/src/tunnels/leases.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "expireDesktopTunnelAttachments",
+        "implementation": "cantrip_server_rs/src/tunnels/recovery.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "resetTransientTunnelAttachments",
+        "implementation": "cantrip_server_rs/src/tunnels/recovery.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/tunnel-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "listChatExecutionLanes",
+        "implementation": "cantrip_server_rs/src/chats/execution_lanes/reads.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "listProjectExecutionLanes",
+        "implementation": "cantrip_server_rs/src/chats/execution_lanes/reads.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getChatExecutionLaneContext",
+        "implementation": "cantrip_server_rs/src/chats/execution_lanes/reads.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getChatExecutionRecoveryContext",
+        "implementation": "cantrip_server_rs/src/chats/execution_lanes/reads.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "resetInterruptedChatExecutions",
+        "implementation": "cantrip_server_rs/src/chats/execution_lanes/restart.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "releaseChatExecutionLane",
+        "implementation": "cantrip_server_rs/src/chats/execution_lanes/release.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "scheduleChatWorktreeTransition",
+        "implementation": "cantrip_server_rs/src/chats/execution_lanes/transitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getPendingChatWorktreeTransition",
+        "implementation": "cantrip_server_rs/src/chats/execution_lanes/reads.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "listPendingWorktreeTransitionChatIds",
+        "implementation": "cantrip_server_rs/src/chats/execution_lanes/reads.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "cancelChatWorktreeTransition",
+        "implementation": "cantrip_server_rs/src/chats/execution_lanes/transitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "applyChatWorktreeTransition",
+        "implementation": "cantrip_server_rs/src/chats/execution_lanes/transitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "startChatExecutionLane",
+        "implementation": "cantrip_server_rs/src/chats/execution_lanes/start.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "finishChatExecutionLane",
+        "implementation": "cantrip_server_rs/src/chats/execution_lanes/mutations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "updateChatExecutionLaneRuntime",
+        "implementation": "cantrip_server_rs/src/chats/execution_lanes/mutations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "setChatModel",
+        "implementation": "cantrip_server_rs/src/chats/runtime.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/chat-runtime-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "updateChatRuntime",
+        "implementation": "cantrip_server_rs/src/chats/runtime.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/chat-runtime-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "getAgentTimeAnalytics",
+        "implementation": "cantrip_server_rs/src/settings/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/RUST_SERVER_REPOSITORY_CONTRACTS.md",
+          "docs/security/rust-server-repository-contracts-acceptance.json"
         ],
         "remaining": [
           "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
