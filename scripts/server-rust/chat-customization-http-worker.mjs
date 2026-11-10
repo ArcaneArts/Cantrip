@@ -145,6 +145,8 @@ export function customizationHttpWorker(result, current) {
     held,
     profileMode = "normal",
     permissionMode = "applied",
+    planMode = "default",
+    planFailure = null,
     profileHold;
   const envelopeKey = (value) =>
     JSON.stringify(
@@ -284,6 +286,12 @@ export function customizationHttpWorker(result, current) {
     setPermissionMode: (value) => {
       permissionMode = value;
     },
+    setPlanMode: (value) => {
+      planMode = value;
+    },
+    setPlanFailure: (value) => {
+      planFailure = value;
+    },
     hold() {
       mode = "hold";
       held = { requested: false, requests: 0, releases: [] };
@@ -353,6 +361,18 @@ export function customizationHttpWorker(result, current) {
       return opened;
     },
     async onCommand(command, _emit, { encryption }) {
+      if (["chat.plan.get", "chat.plan.set"].includes(command.type)) {
+        result.commands.push(current().fixture.normalize(command));
+        assert.equal(typeof command.cwd, "string");
+        assert.equal(typeof command.model.id, "string");
+        assert.equal(typeof command.provider.id, "string");
+        if (planFailure === "error") throw new Error("controlled Plan failure");
+        if (command.type === "chat.plan.get") return { mode: planMode };
+        if (planFailure === "thread")
+          return { mode: command.mode, threadId: null };
+        planMode = command.mode;
+        return { mode: planMode, threadId: command.threadId ?? "thread" };
+      }
       if (command.type === "chat.permissions.update") {
         result.commands.push(current().fixture.normalize(command));
         if (permissionMode.startsWith("reject:")) {

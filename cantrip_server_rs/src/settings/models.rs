@@ -40,6 +40,7 @@ impl SettingsRepository {
         worker: &str,
         route: Option<&str>,
     ) -> Result<Option<Value>> {
+        let route = route.filter(|id| !id.is_empty());
         let rows = self.json_rows("SELECT jsonb_build_object('route',to_jsonb(r),'provider',to_jsonb(p),'catalog',to_jsonb(c)) FROM model_profiles m INNER JOIN model_routes r ON r.model_id=m.id INNER JOIN model_providers p ON p.id=r.provider_id AND p.owner_id=$1 LEFT JOIN provider_models c ON c.provider_id=r.provider_id AND (c.id=r.provider_model_id OR (r.provider_model_id IS NULL AND c.native_model_id=r.model_name)) WHERE m.owner_id=$1 AND m.operation=$2 AND m.id=$3 AND r.enabled=true AND ($4::text IS NULL OR r.id=$4) ORDER BY r.position ASC LIMIT 1", &[&owner,&operation,&model,&route]).await?;
         let Some(row) = rows.first() else {
             return Ok(None);

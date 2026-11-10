@@ -153,7 +153,7 @@ export async function runGuiAdmissionCases(h) {
   );
   await acquire("primary GUI admission inherits read-only permission fence");
   await snapshot("effective GUI permission is captured in native intent");
-  for (const chat of ["task", standalone]) {
+  for (const chat of ["task"]) {
     await reset();
     const values = await acquire("legacy execution path " + chat, {
       chat,
@@ -168,6 +168,83 @@ export async function runGuiAdmissionCases(h) {
     );
     for (const state of states) assert.equal(state.commands, null);
   }
+  await reset();
+  await unchanged("standalone GUI requires protected input", () =>
+    acquire(
+      "unencrypted standalone input refused",
+      { chat: standalone, protectedInput: null },
+      { error: true },
+    ),
+  );
+  await seed([
+    `INSERT INTO model_providers(id,owner_id,name,kind,base_url) VALUES('gui-standalone-provider',${literal(owner)},'Standalone GUI','ollama','http://localhost:11434')`,
+    `INSERT INTO model_profiles(id,owner_id,name) VALUES('gui-standalone-model',${literal(owner)},'Standalone GUI')`,
+    "INSERT INTO model_routes(id,model_id,provider_id,model_name,position,enabled) VALUES('gui-standalone-route','gui-standalone-model','gui-standalone-provider','native-model',0,true)",
+  ]);
+  const standaloneContexts = await observe(
+    "capture actual standalone GUI placement",
+    { chat: standalone },
+    { op: "chat-context", shape: "raw" },
+  );
+  // Both production turn bootstraps select the standalone runtime before
+  // admission; a fresh thread stays null until actual worker dispatch.
+  const preparedStandalone = standaloneContexts.map((context) => ({
+    ...context,
+    threadId: null,
+    modelRouteId: "gui-standalone-route",
+    providerAccountId: null,
+  }));
+  const standaloneInput = (i) => ({
+    chat: standalone,
+    context: preparedStandalone[i],
+    protectedInput,
+  });
+  const standaloneAdmissions = await acquire(
+    "standalone GUI admits the selected protected runtime",
+    standaloneInput,
+  );
+  for (const admission of standaloneAdmissions) {
+    assert.equal(admission.nativeCommandReceipt.status, "accepted");
+    assert.equal(admission.nativeCommandReceipt.chatId, standalone);
+    assert.equal(admission.nativeCommandReceipt.startsExecution, true);
+    assert.equal(admission.nativeCommandReceipt.threadId, null);
+    assert.equal(admission.nativeCommandReceipt.payloadDigest, digest);
+    assert.equal(
+      admission.nativeCommandReceipt.executionLaneId,
+      admission.execution.executionLaneId,
+    );
+  }
+  const standaloneState = await snapshot(
+    "standalone protected admission retains one native receipt and binding",
+  );
+  for (const state of standaloneState) {
+    assert.equal(state.commands.length, 1);
+    assert.equal(state.commands[0].identity.contextKind, "standalone");
+    assert.equal(state.commands[0].identity.projectId, null);
+    assert.equal(
+      state.commands[0].identity.modelRouteId,
+      "gui-standalone-route",
+    );
+    const runtime = state.runtimes.find((row) => row.chat_id === standalone);
+    assert.equal(runtime.model_route_id, "gui-standalone-route");
+    assert.equal(runtime.codex_thread_id, null);
+    assert.equal(
+      state.lanes.find((row) => row.chat_id === standalone).runtime_session_id,
+      runtime.id,
+    );
+  }
+  await unchanged(
+    "standalone native GUI replay preserves the admitted state",
+    () =>
+      acquire("standalone native GUI replay refused", standaloneInput, {
+        error: true,
+      }),
+  );
+  await reset();
+  await seed([
+    "DELETE FROM model_profiles WHERE id='gui-standalone-model'",
+    "DELETE FROM model_providers WHERE id='gui-standalone-provider'",
+  ]);
   await reset();
   await seed(
     `INSERT INTO model_profiles(id,owner_id,name) VALUES('queue-model',${literal(owner)},'Queued GUI fixture') ON CONFLICT DO NOTHING`,

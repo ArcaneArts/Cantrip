@@ -385,6 +385,27 @@ try {
         case "model-create":
           value = await repo.createModelProfile(r.owner, r.input);
           break;
+        case "model-runtime":
+          value = await repo.getModelRuntime(r.owner, r.model, r.route);
+          break;
+        case "model-runtime-route":
+          value = await repo.getModelRuntimeByRoute(r.owner, r.route);
+          break;
+        case "model-operation-route":
+          value = await repo.getModelOperationRoute(
+            r.owner,
+            r.operation,
+            r.model,
+            r.worker,
+            r.route,
+          );
+          break;
+        case "inference-catalog":
+          value = await repo.readProviderInferenceCatalog(r.owner);
+          break;
+        case "inference-configurations":
+          value = await repo.listProviderInferenceConfigurations(r.owner);
+          break;
         case "model-update":
           value = await repo.updateModelProfile(r.owner, r.model, r.input);
           break;

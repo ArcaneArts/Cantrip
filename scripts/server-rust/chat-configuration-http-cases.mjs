@@ -12,6 +12,10 @@ import {
 import { runBoundPermissionHttpCases } from "./chat-permission-bound-http-cases.mjs";
 import { eventually } from "./full-worker.mjs";
 import { LiveProbe } from "./live-sockets.mjs";
+import {
+  runChatPlanHttpCases,
+  runOfflineChatPlanHttpCases,
+} from "./chat-plan-http-cases.mjs";
 
 export async function runChatConfigurationHttpCases({
   h,
@@ -261,6 +265,7 @@ export async function runChatConfigurationHttpCases({
     choice,
     sql,
   });
+  await runChatPlanHttpCases({ h, profile, controller });
   h.worker.close();
   await eventually(
     async () => {
@@ -283,6 +288,7 @@ export async function runChatConfigurationHttpCases({
     "GET",
     permissions,
   );
+  await runOfflineChatPlanHttpCases({ h });
   assert.equal(offline.available, false);
   for (const [n, [method, path, operation]] of customizationRoutes.entries())
     await visit(

@@ -45,8 +45,10 @@ async fn read(service: &AuthService, owner: &str, chat: &str) -> Result<Response
     let refresh: Result<()> = async {
         let Some(context) = repository.execution_context(owner, chat).await? else { return Ok(()) };
         if !truthy(context.get("threadId")) { return Ok(()) }
+        let worker = text(&context["workerId"])?;
+        if !service.workers.commands.is_connected(&worker) { return Ok(()) }
         let Some(runtime) = service.model_routing.runtime_for_context(owner, &context).await? else { return Ok(()) };
-        let reply = service.workers.commands.request(&text(&context["workerId"])?, json!({
+        let reply = service.workers.commands.request(&worker, json!({
             "type":"chat.plan.get","cwd":context["cwd"],"threadId":context["threadId"],"fallbackMode":context["planMode"],
             "model":runtime["model"],"provider":runtime["provider"],"permissionProfileId":managed_console::permission_profile(&context)["effectiveId"]
         }), None, None).await?;
@@ -75,6 +77,10 @@ async fn change(service: &AuthService, owner: &str, chat: &str, input: &Value) -
     if context["status"] == "running" {
         return Ok(error(409, "Wait for the active turn to finish."));
     }
+    let worker = text(&context["workerId"])?;
+    if !service.workers.commands.is_connected(&worker) {
+        return Ok(error(503, "Project worker is offline."));
+    }
     let result: Result<Response> = async {
         let model = service.model_routing.resolve_model_id(owner, &context, None).await?;
         let runtime = match service.model_routing.runtime_for_context(owner, &context).await? {
@@ -83,7 +89,7 @@ async fn change(service: &AuthService, owner: &str, chat: &str, input: &Value) -
         };
         let same_route = runtime["routeId"] == context["modelRouteId"]
             && runtime["provider"].get("accountId").unwrap_or(&Value::Null) == &context["providerAccountId"];
-        let reply = service.workers.commands.request(&text(&context["workerId"])?, json!({
+        let reply = service.workers.commands.request(&worker, json!({
             "type":"chat.plan.set","cwd":context["cwd"],"threadId":if same_route {context["threadId"].clone()}else{Value::Null},"mode":input["mode"],
             "model":runtime["model"],"provider":runtime["provider"],"permissionProfileId":managed_console::permission_profile(&context)["effectiveId"]
         }), None, None).await?.context("Codex did not return a Plan Mode thread.")?;

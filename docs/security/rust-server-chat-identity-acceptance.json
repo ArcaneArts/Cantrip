@@ -1,0 +1,1478 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "baseCommit": "d9f45c49bf4ca42aefb3abf318d75f76e052b448",
+  "scope": "Current macOS arm64 actual repositories, real HTTP/App Live and controlled worker runtime boundary across all three stores. Independent generated identities/clocks are verified before comparison normalization. No full worker/UI/new-platform claim.",
+  "reports": [
+    {
+      "suite": "identity",
+      "databaseMode": "pglite",
+      "report": "qa/fixed-v5/identity-pglite.json",
+      "sha256": "9513c87e68280afd96cb8aaaeac8bfc2c3f51f669f0aaa5669bc641b64ce8940",
+      "driverExit": 0,
+      "cases": 39,
+      "snapshots": 0
+    },
+    {
+      "suite": "identity",
+      "databaseMode": "bundled-postgres",
+      "report": "qa/fixed-v5/identity-bundled-postgres.json",
+      "sha256": "38b9bff8863580402dfd4f9ca29459064ddfa5bc9940ff385d1d98c9207e8d3d",
+      "driverExit": 0,
+      "cases": 39,
+      "snapshots": 0
+    },
+    {
+      "suite": "identity",
+      "databaseMode": "postgres",
+      "report": "qa/fixed-v5/identity-postgres.json",
+      "sha256": "ff5b0a6c77dab769a2b13975a89aa9d722d883092d1477d0d6a0771ebf5a23c5",
+      "driverExit": 0,
+      "cases": 39,
+      "snapshots": 0
+    },
+    {
+      "suite": "prompts",
+      "databaseMode": "pglite",
+      "report": "qa/fixed-v5/prompts-pglite.json",
+      "sha256": "fff24ecfc8e81fb1306b32e1da6f867a0f03f283392903557b459ce1861052fa",
+      "driverExit": 0,
+      "cases": 84,
+      "snapshots": 74
+    },
+    {
+      "suite": "prompts",
+      "databaseMode": "bundled-postgres",
+      "report": "qa/fixed-v5/prompts-bundled-postgres.json",
+      "sha256": "4617ee85106c763de7fade824e4b816621a84813293d0c3d820443d8bc2e76ea",
+      "driverExit": 0,
+      "cases": 84,
+      "snapshots": 74
+    },
+    {
+      "suite": "prompts",
+      "databaseMode": "postgres",
+      "report": "qa/fixed-v5/prompts-postgres.json",
+      "sha256": "aba3b74dd93bffdb43806075d71e103db0dfa3241df627bbfa72aa70945f0753",
+      "driverExit": 0,
+      "cases": 86,
+      "snapshots": 80
+    },
+    {
+      "suite": "gui",
+      "databaseMode": "pglite",
+      "report": "qa/fixed-v12/gui-pglite.json",
+      "sha256": "e0572d506501ee4b4f21a351b6315b5d300b210b77bebdeeda2aa3d022224038",
+      "driverExit": 0,
+      "cases": 702,
+      "snapshots": 177
+    },
+    {
+      "suite": "gui",
+      "databaseMode": "bundled-postgres",
+      "report": "qa/fixed-v12/gui-bundled-postgres.json",
+      "sha256": "1e84e7284431748471fc2419ddf2ceff8802df6903534a133229b83305549d10",
+      "driverExit": 0,
+      "cases": 702,
+      "snapshots": 177
+    },
+    {
+      "suite": "gui",
+      "databaseMode": "postgres",
+      "report": "qa/fixed-v12/gui-postgres.json",
+      "sha256": "744d31fda09ecead494b7392938933ebf9173da005282cfd98f179b8b005cc6f",
+      "driverExit": 0,
+      "cases": 714,
+      "snapshots": 183
+    },
+    {
+      "suite": "configuration",
+      "databaseMode": "pglite",
+      "report": "qa/fixed-v5/configuration-pglite.json",
+      "sha256": "2bf13e0e338ba844045375bff50ca9db79bf7829ea9c3990cca0932a1f59cfaa",
+      "driverExit": 0,
+      "authenticationProfiles": [
+        {
+          "profile": "none",
+          "pairedHttpObservations": 93,
+          "pairedPlanInvalidations": 4,
+          "planWorkerRequests": 10
+        },
+        {
+          "profile": "password",
+          "pairedHttpObservations": 98,
+          "pairedPlanInvalidations": 4,
+          "planWorkerRequests": 10
+        },
+        {
+          "profile": "accounts",
+          "pairedHttpObservations": 102,
+          "pairedPlanInvalidations": 4,
+          "planWorkerRequests": 10
+        }
+      ]
+    },
+    {
+      "suite": "configuration",
+      "databaseMode": "bundled-postgres",
+      "report": "qa/fixed-v5/configuration-bundled-postgres.json",
+      "sha256": "49cf88ee6d013483cd941adeddaddf413659d551517a44f11e02605bc3047a2a",
+      "driverExit": 0,
+      "authenticationProfiles": [
+        {
+          "profile": "none",
+          "pairedHttpObservations": 93,
+          "pairedPlanInvalidations": 4,
+          "planWorkerRequests": 10
+        },
+        {
+          "profile": "password",
+          "pairedHttpObservations": 98,
+          "pairedPlanInvalidations": 4,
+          "planWorkerRequests": 10
+        },
+        {
+          "profile": "accounts",
+          "pairedHttpObservations": 102,
+          "pairedPlanInvalidations": 4,
+          "planWorkerRequests": 10
+        }
+      ]
+    },
+    {
+      "suite": "configuration",
+      "databaseMode": "postgres",
+      "report": "qa/fixed-v5/configuration-postgres.json",
+      "sha256": "fc99a9e18a7f2ec5b43b166cd5f91b4dd798e8f24a21460704ddc27f16d9fa81",
+      "driverExit": 0,
+      "authenticationProfiles": [
+        {
+          "profile": "none",
+          "pairedHttpObservations": 93,
+          "pairedPlanInvalidations": 4,
+          "planWorkerRequests": 10
+        },
+        {
+          "profile": "password",
+          "pairedHttpObservations": 98,
+          "pairedPlanInvalidations": 4,
+          "planWorkerRequests": 10
+        },
+        {
+          "profile": "accounts",
+          "pairedHttpObservations": 102,
+          "pairedPlanInvalidations": 4,
+          "planWorkerRequests": 10
+        }
+      ]
+    }
+  ],
+  "pairedObservations": {
+    "identity": 117,
+    "prompts": 254,
+    "gui": 2118,
+    "http": 879
+  },
+  "pairedSqlSnapshots": 765,
+  "repositoryMethods": [
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "getModelRuntime",
+      "suite": "identity",
+      "implementation": "cantrip_server_rs/src/settings/repository.rs",
+      "nativeSymbol": "get_model_runtimes",
+      "caseSelection": "Successful actual facade calls with nonempty results; complete suite retains rejection, ownership and persistence checks.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 7,
+            "name": "owned selected runtime"
+          },
+          {
+            "caseIndex": 8,
+            "name": "empty runtime route means no selector"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 7,
+            "name": "owned selected runtime"
+          },
+          {
+            "caseIndex": 8,
+            "name": "empty runtime route means no selector"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 7,
+            "name": "owned selected runtime"
+          },
+          {
+            "caseIndex": 8,
+            "name": "empty runtime route means no selector"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "getModelRuntimeByRoute",
+      "suite": "identity",
+      "implementation": "cantrip_server_rs/src/settings/repository.rs",
+      "nativeSymbol": "get_model_runtimes",
+      "caseSelection": "Successful actual facade calls with nonempty results; complete suite retains rejection, ownership and persistence checks.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 14,
+            "name": "explicit disabled route runtime"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 14,
+            "name": "explicit disabled route runtime"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 14,
+            "name": "explicit disabled route runtime"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "getModelOperationRoute",
+      "suite": "identity",
+      "implementation": "cantrip_server_rs/src/settings/models.rs",
+      "nativeSymbol": "get_model_operation_route",
+      "caseSelection": "Successful actual facade calls with nonempty results; complete suite retains rejection, ownership and persistence checks.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 18,
+            "name": "embedding catalog fallback"
+          },
+          {
+            "caseIndex": 19,
+            "name": "embedding worker scope wins over newer global"
+          },
+          {
+            "caseIndex": 20,
+            "name": "embedding unmatched worker uses global"
+          },
+          {
+            "caseIndex": 21,
+            "name": "embedding unrelated worker prevents catalog fallback"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 18,
+            "name": "embedding catalog fallback"
+          },
+          {
+            "caseIndex": 19,
+            "name": "embedding worker scope wins over newer global"
+          },
+          {
+            "caseIndex": 20,
+            "name": "embedding unmatched worker uses global"
+          },
+          {
+            "caseIndex": 21,
+            "name": "embedding unrelated worker prevents catalog fallback"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 18,
+            "name": "embedding catalog fallback"
+          },
+          {
+            "caseIndex": 19,
+            "name": "embedding worker scope wins over newer global"
+          },
+          {
+            "caseIndex": 20,
+            "name": "embedding unmatched worker uses global"
+          },
+          {
+            "caseIndex": 21,
+            "name": "embedding unrelated worker prevents catalog fallback"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "readProviderInferenceCatalog",
+      "suite": "identity",
+      "implementation": "cantrip_server_rs/src/settings/providers.rs",
+      "nativeSymbol": "provider_inference_catalog",
+      "caseSelection": "Successful actual facade calls with nonempty results; complete suite retains rejection, ownership and persistence checks.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 0,
+            "name": "owned inference catalog"
+          },
+          {
+            "caseIndex": 2,
+            "name": "inference catalog identity-owner"
+          },
+          {
+            "caseIndex": 4,
+            "name": "inference catalog identity-other"
+          },
+          {
+            "caseIndex": 6,
+            "name": "inference catalog missing-owner"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 0,
+            "name": "owned inference catalog"
+          },
+          {
+            "caseIndex": 2,
+            "name": "inference catalog identity-owner"
+          },
+          {
+            "caseIndex": 4,
+            "name": "inference catalog identity-other"
+          },
+          {
+            "caseIndex": 6,
+            "name": "inference catalog missing-owner"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 0,
+            "name": "owned inference catalog"
+          },
+          {
+            "caseIndex": 2,
+            "name": "inference catalog identity-owner"
+          },
+          {
+            "caseIndex": 4,
+            "name": "inference catalog identity-other"
+          },
+          {
+            "caseIndex": 6,
+            "name": "inference catalog missing-owner"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "listProviderInferenceConfigurations",
+      "suite": "identity",
+      "implementation": "cantrip_server_rs/src/settings/providers.rs",
+      "nativeSymbol": "provider_inference_configurations",
+      "caseSelection": "Successful actual facade calls with nonempty results; complete suite retains rejection, ownership and persistence checks.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 1,
+            "name": "inference configurations identity-owner"
+          },
+          {
+            "caseIndex": 3,
+            "name": "inference configurations identity-other"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 1,
+            "name": "inference configurations identity-owner"
+          },
+          {
+            "caseIndex": 3,
+            "name": "inference configurations identity-other"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 1,
+            "name": "inference configurations identity-owner"
+          },
+          {
+            "caseIndex": 3,
+            "name": "inference configurations identity-other"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "listEncryptedQueuedPrompts",
+      "suite": "prompts",
+      "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/reads.rs",
+      "nativeSymbol": "list_encrypted",
+      "caseSelection": "Successful actual facade calls with nonempty results; complete suite retains rejection, ownership and persistence checks.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 5,
+            "name": "encrypted queue order"
+          },
+          {
+            "caseIndex": 8,
+            "name": "visible encrypted queue state pending"
+          },
+          {
+            "caseIndex": 10,
+            "name": "visible encrypted queue state claimed"
+          },
+          {
+            "caseIndex": 12,
+            "name": "visible encrypted queue state consumed"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 5,
+            "name": "encrypted queue order"
+          },
+          {
+            "caseIndex": 8,
+            "name": "visible encrypted queue state pending"
+          },
+          {
+            "caseIndex": 10,
+            "name": "visible encrypted queue state claimed"
+          },
+          {
+            "caseIndex": 12,
+            "name": "visible encrypted queue state consumed"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 5,
+            "name": "encrypted queue order"
+          },
+          {
+            "caseIndex": 8,
+            "name": "visible encrypted queue state pending"
+          },
+          {
+            "caseIndex": 10,
+            "name": "visible encrypted queue state claimed"
+          },
+          {
+            "caseIndex": 12,
+            "name": "visible encrypted queue state consumed"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "getEncryptedQueuedPrompt",
+      "suite": "prompts",
+      "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/reads.rs",
+      "nativeSymbol": "get_encrypted",
+      "caseSelection": "Successful actual facade calls with nonempty results; complete suite retains rejection, ownership and persistence checks.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 7,
+            "name": "get historical encrypted prompt pending"
+          },
+          {
+            "caseIndex": 9,
+            "name": "get historical encrypted prompt claimed"
+          },
+          {
+            "caseIndex": 11,
+            "name": "get historical encrypted prompt consumed"
+          },
+          {
+            "caseIndex": 13,
+            "name": "get historical encrypted prompt removed"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 7,
+            "name": "get historical encrypted prompt pending"
+          },
+          {
+            "caseIndex": 9,
+            "name": "get historical encrypted prompt claimed"
+          },
+          {
+            "caseIndex": 11,
+            "name": "get historical encrypted prompt consumed"
+          },
+          {
+            "caseIndex": 13,
+            "name": "get historical encrypted prompt removed"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 7,
+            "name": "get historical encrypted prompt pending"
+          },
+          {
+            "caseIndex": 9,
+            "name": "get historical encrypted prompt claimed"
+          },
+          {
+            "caseIndex": 11,
+            "name": "get historical encrypted prompt consumed"
+          },
+          {
+            "caseIndex": 13,
+            "name": "get historical encrypted prompt removed"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "listQueuedPrompts",
+      "suite": "prompts",
+      "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/reads.rs",
+      "nativeSymbol": "list_visible",
+      "caseSelection": "Successful actual facade calls with nonempty results; complete suite retains rejection, ownership and persistence checks.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 34,
+            "name": "legacy queue list"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 34,
+            "name": "legacy queue list"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 34,
+            "name": "legacy queue list"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "getQueuedPrompt",
+      "suite": "prompts",
+      "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/reads.rs",
+      "nativeSymbol": "get_visible",
+      "caseSelection": "Successful actual facade calls with nonempty results; complete suite retains rejection, ownership and persistence checks.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 44,
+            "name": "Task does not hide pre-existing visible row"
+          },
+          {
+            "caseIndex": 49,
+            "name": "legacy patch preserved unset fields"
+          },
+          {
+            "caseIndex": 79,
+            "name": "legacy lookup encodes UTF16 only at SQL boundary"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 44,
+            "name": "Task does not hide pre-existing visible row"
+          },
+          {
+            "caseIndex": 49,
+            "name": "legacy patch preserved unset fields"
+          },
+          {
+            "caseIndex": 79,
+            "name": "legacy lookup encodes UTF16 only at SQL boundary"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 44,
+            "name": "Task does not hide pre-existing visible row"
+          },
+          {
+            "caseIndex": 49,
+            "name": "legacy patch preserved unset fields"
+          },
+          {
+            "caseIndex": 79,
+            "name": "legacy lookup encodes UTF16 only at SQL boundary"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "getQueuedPromptByIdempotencyKey",
+      "suite": "prompts",
+      "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/reads.rs",
+      "nativeSymbol": "visible_by_key",
+      "caseSelection": "Successful actual facade calls with nonempty results; complete suite retains rejection, ownership and persistence checks.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 35,
+            "name": "legacy lookup by key"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 35,
+            "name": "legacy lookup by key"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 35,
+            "name": "legacy lookup by key"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "createEncryptedQueuedPrompt",
+      "suite": "prompts",
+      "implementation": "cantrip_server_rs/src/native_commands/queued_prompt.rs",
+      "nativeSymbol": "create_encrypted",
+      "caseSelection": "Successful actual facade calls with nonempty results; complete suite retains rejection, ownership and persistence checks.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 0,
+            "name": "encrypted queue create exact opaque payload"
+          },
+          {
+            "caseIndex": 1,
+            "name": "encrypted create replays by idempotency key only"
+          },
+          {
+            "caseIndex": 4,
+            "name": "second encrypted queue position"
+          },
+          {
+            "caseIndex": 15,
+            "name": "Task composer retains opaque Chat-domain queue"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 0,
+            "name": "encrypted queue create exact opaque payload"
+          },
+          {
+            "caseIndex": 1,
+            "name": "encrypted create replays by idempotency key only"
+          },
+          {
+            "caseIndex": 4,
+            "name": "second encrypted queue position"
+          },
+          {
+            "caseIndex": 15,
+            "name": "Task composer retains opaque Chat-domain queue"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 0,
+            "name": "encrypted queue create exact opaque payload"
+          },
+          {
+            "caseIndex": 1,
+            "name": "encrypted create replays by idempotency key only"
+          },
+          {
+            "caseIndex": 4,
+            "name": "second encrypted queue position"
+          },
+          {
+            "caseIndex": 15,
+            "name": "Task composer retains opaque Chat-domain queue"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "replaceEncryptedQueuedPrompt",
+      "suite": "prompts",
+      "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/changes.rs",
+      "nativeSymbol": "replace_encrypted",
+      "caseSelection": "Successful actual facade calls with nonempty results; complete suite retains rejection, ownership and persistence checks.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 25,
+            "name": "replace exact encrypted fields"
+          },
+          {
+            "caseIndex": 28,
+            "name": "replacement retains terminal queue state"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 25,
+            "name": "replace exact encrypted fields"
+          },
+          {
+            "caseIndex": 28,
+            "name": "replacement retains terminal queue state"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 25,
+            "name": "replace exact encrypted fields"
+          },
+          {
+            "caseIndex": 28,
+            "name": "replacement retains terminal queue state"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "createQueuedPrompt",
+      "suite": "prompts",
+      "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/visible.rs",
+      "nativeSymbol": "create_visible",
+      "caseSelection": "Successful actual facade calls with nonempty results; complete suite retains rejection, ownership and persistence checks.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 32,
+            "name": "legacy queue create"
+          },
+          {
+            "caseIndex": 33,
+            "name": "legacy replay uses SQL idempotency key"
+          },
+          {
+            "caseIndex": 57,
+            "name": "legacy row outside encrypted mapper"
+          },
+          {
+            "caseIndex": 71,
+            "name": "delete visible fixture"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 32,
+            "name": "legacy queue create"
+          },
+          {
+            "caseIndex": 33,
+            "name": "legacy replay uses SQL idempotency key"
+          },
+          {
+            "caseIndex": 57,
+            "name": "legacy row outside encrypted mapper"
+          },
+          {
+            "caseIndex": 71,
+            "name": "delete visible fixture"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 32,
+            "name": "legacy queue create"
+          },
+          {
+            "caseIndex": 33,
+            "name": "legacy replay uses SQL idempotency key"
+          },
+          {
+            "caseIndex": 57,
+            "name": "legacy row outside encrypted mapper"
+          },
+          {
+            "caseIndex": 71,
+            "name": "delete visible fixture"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "updateQueuedPrompt",
+      "suite": "prompts",
+      "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/visible.rs",
+      "nativeSymbol": "update_visible",
+      "caseSelection": "Successful actual facade calls with nonempty results; complete suite retains rejection, ownership and persistence checks.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 45,
+            "name": "legacy partial patch {\"text\":\"updated\"}"
+          },
+          {
+            "caseIndex": 46,
+            "name": "legacy partial patch {\"mode\":\"goal\"}"
+          },
+          {
+            "caseIndex": 47,
+            "name": "legacy partial patch {\"reasoningEffort\":null}"
+          },
+          {
+            "caseIndex": 48,
+            "name": "legacy partial patch {\"frozen\":true}"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 45,
+            "name": "legacy partial patch {\"text\":\"updated\"}"
+          },
+          {
+            "caseIndex": 46,
+            "name": "legacy partial patch {\"mode\":\"goal\"}"
+          },
+          {
+            "caseIndex": 47,
+            "name": "legacy partial patch {\"reasoningEffort\":null}"
+          },
+          {
+            "caseIndex": 48,
+            "name": "legacy partial patch {\"frozen\":true}"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 45,
+            "name": "legacy partial patch {\"text\":\"updated\"}"
+          },
+          {
+            "caseIndex": 46,
+            "name": "legacy partial patch {\"mode\":\"goal\"}"
+          },
+          {
+            "caseIndex": 47,
+            "name": "legacy partial patch {\"reasoningEffort\":null}"
+          },
+          {
+            "caseIndex": 48,
+            "name": "legacy partial patch {\"frozen\":true}"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "deleteQueuedPrompt",
+      "suite": "prompts",
+      "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/changes.rs",
+      "nativeSymbol": "delete",
+      "caseSelection": "Successful actual facade calls with nonempty results; complete suite retains rejection, ownership and persistence checks.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 68,
+            "name": "delete encrypted returns captured protected row"
+          },
+          {
+            "caseIndex": 72,
+            "name": "delete legacy visible row"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 68,
+            "name": "delete encrypted returns captured protected row"
+          },
+          {
+            "caseIndex": 72,
+            "name": "delete legacy visible row"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 68,
+            "name": "delete encrypted returns captured protected row"
+          },
+          {
+            "caseIndex": 72,
+            "name": "delete legacy visible row"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "reorderQueuedPrompts",
+      "suite": "prompts",
+      "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/changes.rs",
+      "nativeSymbol": "reorder",
+      "caseSelection": "Successful actual facade calls with nonempty results; complete suite retains rejection, ownership and persistence checks.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 66,
+            "name": "reorder includes terminal state rows"
+          },
+          {
+            "caseIndex": 70,
+            "name": "empty order on missing chat follows Source"
+          },
+          {
+            "caseIndex": 80,
+            "name": "actual replacement character matches stored order"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 66,
+            "name": "reorder includes terminal state rows"
+          },
+          {
+            "caseIndex": 70,
+            "name": "empty order on missing chat follows Source"
+          },
+          {
+            "caseIndex": 80,
+            "name": "actual replacement character matches stored order"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 66,
+            "name": "reorder includes terminal state rows"
+          },
+          {
+            "caseIndex": 70,
+            "name": "empty order on missing chat follows Source"
+          },
+          {
+            "caseIndex": 80,
+            "name": "actual replacement character matches stored order"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "getEncryptedChatPlanState",
+      "suite": "gui",
+      "implementation": "cantrip_server_rs/src/chats/turn_storage.rs",
+      "nativeSymbol": "encrypted_plan",
+      "caseSelection": "Actual owned read returns the exact seeded opaque envelope, then null after default mode clears it.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 415,
+            "name": "protected Plan state and plan mode use the actual durable writers"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 415,
+            "name": "protected Plan state and plan mode use the actual durable writers"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 427,
+            "name": "protected Plan state and plan mode use the actual durable writers"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "getChatPlanWireState",
+      "suite": "gui",
+      "implementation": "cantrip_server_rs/src/chats/turn_storage.rs",
+      "nativeSymbol": "plan_wire_state",
+      "caseSelection": "Actual Plan-mode writer calls its facade collaborator; positive wire state is asserted before and after writes. Real HTTP adds all nine authentication/storage cells.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 415,
+            "name": "protected Plan state and plan mode use the actual durable writers"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 415,
+            "name": "protected Plan state and plan mode use the actual durable writers"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 427,
+            "name": "protected Plan state and plan mode use the actual durable writers"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "updateChatPlanMode",
+      "suite": "gui",
+      "implementation": "cantrip_server_rs/src/chats/turn_storage.rs",
+      "nativeSymbol": "update_plan_mode",
+      "caseSelection": "Positive plan/default writes return actual wire states; default clears the encrypted state and question flag.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 415,
+            "name": "protected Plan state and plan mode use the actual durable writers"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 415,
+            "name": "protected Plan state and plan mode use the actual durable writers"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 427,
+            "name": "protected Plan state and plan mode use the actual durable writers"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "updateEncryptedChatPlanState",
+      "suite": "gui",
+      "implementation": "cantrip_server_rs/src/chats/turn_storage.rs",
+      "nativeSymbol": "update_encrypted_plan",
+      "caseSelection": "Void encrypted writer has exact subsequent facade read, SQL-state comparison and Plan invalidation proof.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 415,
+            "name": "protected Plan state and plan mode use the actual durable writers"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 415,
+            "name": "protected Plan state and plan mode use the actual durable writers"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 427,
+            "name": "protected Plan state and plan mode use the actual durable writers"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "getChatLiveRouting",
+      "suite": "gui",
+      "implementation": "cantrip_server_rs/src/chats/turn_storage.rs",
+      "nativeSymbol": "live_routing",
+      "caseSelection": "Actual publication-factory repository callback resolves current Chat/Task routing; exact scoped event sequences and subsequent routing refresh are asserted.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 407,
+            "name": "turn boundary event group chat"
+          },
+          {
+            "caseIndex": 408,
+            "name": "turn boundary event group task"
+          },
+          {
+            "caseIndex": 410,
+            "name": "Task routing lookups are discarded after their current invalidations settle"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 407,
+            "name": "turn boundary event group chat"
+          },
+          {
+            "caseIndex": 408,
+            "name": "turn boundary event group task"
+          },
+          {
+            "caseIndex": 410,
+            "name": "Task routing lookups are discarded after their current invalidations settle"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 419,
+            "name": "turn boundary event group chat"
+          },
+          {
+            "caseIndex": 420,
+            "name": "turn boundary event group task"
+          },
+          {
+            "caseIndex": 422,
+            "name": "Task routing lookups are discarded after their current invalidations settle"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "getChatAttachments",
+      "suite": "gui",
+      "implementation": "cantrip_server_rs/src/native_commands/attachments.rs",
+      "nativeSymbol": "get",
+      "caseSelection": "Actual recovery runtime facade query returns ready owned attachment rows; order, duplicates, missing attachment and worker ownership are asserted. Native adapter also performs the runtime checks in chats/turn_storage.rs.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 421,
+            "name": "prompt attachment order and duplicates use the real owned query"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 421,
+            "name": "prompt attachment order and duplicates use the real owned query"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 433,
+            "name": "prompt attachment order and duplicates use the real owned query"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "updateChatWorktree",
+      "suite": "gui",
+      "implementation": "cantrip_server_rs/src/chats/worktree_selection.rs",
+      "nativeSymbol": "update_worktree",
+      "caseSelection": "Successful actual facade calls with nonempty results; complete suite retains rejection, ownership and persistence checks.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 130,
+            "name": "direct placement reuses the target runtime"
+          },
+          {
+            "caseIndex": 132,
+            "name": "same worktree can change mode while retaining placement revision"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 130,
+            "name": "direct placement reuses the target runtime"
+          },
+          {
+            "caseIndex": 132,
+            "name": "same worktree can change mode while retaining placement revision"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 130,
+            "name": "direct placement reuses the target runtime"
+          },
+          {
+            "caseIndex": 132,
+            "name": "same worktree can change mode while retaining placement revision"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "setChatModelConfiguration",
+      "suite": "gui",
+      "implementation": "cantrip_server_rs/src/chats/model_configuration.rs",
+      "nativeSymbol": "set_model_configuration",
+      "caseSelection": "Actual facade returns an owned selected model; rejected foreign selection and existing native handoff fences retain state in the surrounding suite.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 545,
+            "name": "full model configuration uses real ownership and runtime fence"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 545,
+            "name": "full model configuration uses real ownership and runtime fence"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 557,
+            "name": "full model configuration uses real ownership and runtime fence"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "recordTokenUsage",
+      "suite": "gui",
+      "implementation": "cantrip_server_rs/src/settings/telemetry/usage_identity.rs",
+      "nativeSymbol": "record_token_usage",
+      "caseSelection": "Actual void facade writer; next real SQL query proves nonempty persisted rows. Full suite retains counter/attribution/replay/privacy/clock and reopen assertions.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 232,
+            "name": "persist a zero-count GUI bootstrap"
+          },
+          {
+            "caseIndex": 234,
+            "name": "native capture adopts its GUI bootstrap source"
+          },
+          {
+            "caseIndex": 236,
+            "name": "native responses own the deduplicated turn subtotal"
+          },
+          {
+            "caseIndex": 238,
+            "name": "late GUI finalizer cannot replace native counters or model evidence"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 232,
+            "name": "persist a zero-count GUI bootstrap"
+          },
+          {
+            "caseIndex": 234,
+            "name": "native capture adopts its GUI bootstrap source"
+          },
+          {
+            "caseIndex": 236,
+            "name": "native responses own the deduplicated turn subtotal"
+          },
+          {
+            "caseIndex": 238,
+            "name": "late GUI finalizer cannot replace native counters or model evidence"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 238,
+            "name": "persist a zero-count GUI bootstrap"
+          },
+          {
+            "caseIndex": 240,
+            "name": "native capture adopts its GUI bootstrap source"
+          },
+          {
+            "caseIndex": 242,
+            "name": "native responses own the deduplicated turn subtotal"
+          },
+          {
+            "caseIndex": 244,
+            "name": "late GUI finalizer cannot replace native counters or model evidence"
+          }
+        ]
+      },
+      "voidSqlProof": {
+        "pglite": {
+          "caseIndex": 233,
+          "name": "actual GUI bootstrap usage",
+          "rows": [1, 1]
+        },
+        "bundled-postgres": {
+          "caseIndex": 233,
+          "name": "actual GUI bootstrap usage",
+          "rows": [1, 1]
+        },
+        "postgres": {
+          "caseIndex": 239,
+          "name": "actual GUI bootstrap usage",
+          "rows": [1, 1]
+        }
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "recordModelBehaviorObservation",
+      "suite": "gui",
+      "implementation": "cantrip_server_rs/src/settings/telemetry/behavior_writes.rs",
+      "nativeSymbol": "record_model_behavior_observation",
+      "caseSelection": "Actual void facade writer; next real SQL query proves nonempty persisted rows. Full suite retains counter/attribution/replay/privacy/clock and reopen assertions.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 181,
+            "name": "legacy behavior input retains its selected route"
+          },
+          {
+            "caseIndex": 183,
+            "name": "empty observed evidence stays explicitly unattributed"
+          },
+          {
+            "caseIndex": 185,
+            "name": "captured native route replaces the bootstrap route"
+          },
+          {
+            "caseIndex": 186,
+            "name": "completion retains actual attribution"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 181,
+            "name": "legacy behavior input retains its selected route"
+          },
+          {
+            "caseIndex": 183,
+            "name": "empty observed evidence stays explicitly unattributed"
+          },
+          {
+            "caseIndex": 185,
+            "name": "captured native route replaces the bootstrap route"
+          },
+          {
+            "caseIndex": 186,
+            "name": "completion retains actual attribution"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 187,
+            "name": "legacy behavior input retains its selected route"
+          },
+          {
+            "caseIndex": 189,
+            "name": "empty observed evidence stays explicitly unattributed"
+          },
+          {
+            "caseIndex": 191,
+            "name": "captured native route replaces the bootstrap route"
+          },
+          {
+            "caseIndex": 192,
+            "name": "completion retains actual attribution"
+          }
+        ]
+      },
+      "voidSqlProof": {
+        "pglite": {
+          "caseIndex": 182,
+          "name": "actual legacy behavior metrics",
+          "rows": [1, 1]
+        },
+        "bundled-postgres": {
+          "caseIndex": 182,
+          "name": "actual legacy behavior metrics",
+          "rows": [1, 1]
+        },
+        "postgres": {
+          "caseIndex": 188,
+          "name": "actual legacy behavior metrics",
+          "rows": [1, 1]
+        }
+      }
+    }
+  ],
+  "coverageCounts": {
+    "repositoryMethods": {
+      "mapped": 304,
+      "inventory": 370
+    },
+    "durableTables": {
+      "mapped": 107,
+      "inventory": 135
+    },
+    "routes": {
+      "mapped": 523,
+      "inventory": 584
+    },
+    "workerCommands": {
+      "mapped": 115,
+      "inventory": 323
+    },
+    "liveResources": {
+      "mapped": 25,
+      "inventory": 47
+    }
+  },
+  "baselineReproductions": [
+    {
+      "baselineCore": "d9f45c49bf4ca42aefb3abf318d75f76e052b448",
+      "artifact": "qa/baseline-settings-repository-fixture",
+      "bytes": 177874656,
+      "sha256": "5b03b7fef45e03cd17106443934a33ec308589d29e2086035bc2a9bdeaa9d5e7",
+      "failureReport": "qa/baseline-v2/identity-pglite.json",
+      "scope": "Development adapter exposing actual baseline SettingsRepository.27pairedqueries;empty optionalembeddingroute Sourceobject vsRustnull. Firstattempt baseline-v1 failedfixture emailconstraint before cases and is not parity evidence."
+    },
+    {
+      "artifact": "qa/baseline-http-sql-fixture",
+      "bytes": 180044432,
+      "sha256": "cf0592d0d41cb2c93b38d3aa70daaa03bcd9bc9d717e89e422848e540ab06a69",
+      "report": "qa/plan-baseline-v2/configuration-pglite.json",
+      "reportSha256": "3e31dba1f7bd56e0bfb60764048f84f0a703d95dc4b986b32337ef5a57fed10e",
+      "scope": "Current realHTTP Node503expectedbody vsRust409WorkerIDbuserror after allpositivePlanHTTPcases pass. Nativecore alreadyincludesisolatedmodelselectorfix; Planmoduleunchangedfromd9f45. FirstPlanbaselinev1 failedtestexpectedwirekind/chatIdandisnotparityproof."
+    },
+    {
+      "artifact": "qa/baseline-runtime-resume-project-fixture",
+      "bytes": 181597344,
+      "sha256": "17b19c9e178e66fa605bf2a43cf2ce758ee8516dbacae6cb8f064f384d152f7b",
+      "report": "qa/fixed-v4/gui-pglite.json",
+      "scope": "Actual current runtimeCanResumeContext Sourcefalse vsNativecan_resume true for missing provider account on both context/runtime. Source normalizes missing runtime account to null and retains missing context distinction."
+    }
+  ],
+  "archiveDirectory": "rust-server-chat-identity-delivery-20261109-v1",
+  "optimizedPackage": {
+    "version": "1.1.2791",
+    "runtime": "rust",
+    "serverRequiresNode": false,
+    "binaryBytes": 93784736,
+    "binarySha256": "95d10958ab921f02ac4463cd767bcdd6d4b01a9b3c8277a59bf4ba203cffffc2",
+    "buildSession": 5542,
+    "buildExit": 0,
+    "scope": "Unflagged optimized pnpm package:server after all three production Rust fixes; current macOS arm64 artifact. No new Linux/Windows qualification.",
+    "changedProductionSources": {
+      "cantrip_server_rs/src/settings/models.rs": "66d3ca425e53e0b3949c6cff1bd3f859215b39b24ab71d761ecf776a057e6629",
+      "cantrip_server_rs/src/http/chat_plan.rs": "b2ef319917019bd5cdb2001712bbb6e3c7dd5e2ec267742bcca436b486939de8",
+      "cantrip_server_rs/src/chats/runtime_telemetry.rs": "d440447859925fa2fe3a39e188c0f533eef33d2611506c26889646b0b4444cfb"
+    },
+    "versionMetadata": {
+      "major": 1,
+      "minor": 1,
+      "patch": 2791,
+      "version": "1.1.2791",
+      "synthetic": false,
+      "commitSha": null,
+      "builtAt": null,
+      "buildId": null,
+      "overlayDigest": null
+    }
+  },
+  "optimizedPlanHttp": {
+    "report": "qa/production-plan-v2.json",
+    "sha256": "d260982d830f4e0ecaa4d860a6b2e43063649d90c9135160ec1ad277cae11da2",
+    "pairedRequests": 3,
+    "databaseMode": "postgres",
+    "scope": "Actual packaged native executable and built reference distribution, external PostgreSQL, no SQL test routes. Direct disposable test-database seeding; offline Plan history/status and retained opaque bytes only."
+  }
+}

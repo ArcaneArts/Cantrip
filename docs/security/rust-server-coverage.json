@@ -8989,6 +8989,34 @@
         "remaining": [
           "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats/:chatId/plan",
+        "implementation": "cantrip_server_rs/src/http/chat_plan.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/chat-plan-http-cases.mjs",
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Nine local storage/authentication HTTP cells with controlled worker runtime replies; full worker/UI and final supported-platform artifacts remain separately qualified."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/chats/:chatId/plan",
+        "implementation": "cantrip_server_rs/src/http/chat_plan.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/chat-plan-http-cases.mjs",
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Nine local storage/authentication HTTP cells with controlled worker runtime replies; full worker/UI and final supported-platform artifacts remain separately qualified."
+        ]
       }
     ]
   },
@@ -10787,6 +10815,32 @@
         ],
         "remaining": [
           "Current supported-platform, packaged desktop/container and complete replacement acceptance remain required."
+        ]
+      },
+      {
+        "command": "chat.plan.get",
+        "implementation": "cantrip_server_rs/src/http/chat_plan.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Actual server WebSocket requests and controlled replies/errors qualify this producer; actual worker Plan execution and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "command": "chat.plan.set",
+        "implementation": "cantrip_server_rs/src/http/chat_plan.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Actual server WebSocket requests and controlled replies/errors qualify this producer; actual worker Plan execution and final supported-artifact reconciliation remain separate."
         ]
       }
     ]
@@ -12652,6 +12706,20 @@
         "observedScope": "Agent-time analytics reads of actual rows, overlapping intervals, nullable model/provider grouping and invalid/extended dates. This scope does not qualify usage ingestion/accounting writes.",
         "remaining": [
           "Other domain consumers and final supported-platform complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "tableName": "provider_inference_catalogs",
+        "exportName": "providerInferenceCatalogs",
+        "implementation": "cantrip_server_rs/src/settings/providers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/identity-repository-compatibility.mjs",
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Scope covers owner catalog/membership revisions, actual configuration write and reopen. No new concurrent MVCC-race or final platform claim."
         ]
       }
     ]
@@ -16719,6 +16787,344 @@
         "remaining": [
           "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
         ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "getModelRuntime",
+        "implementation": "cantrip_server_rs/src/settings/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "getModelRuntimeByRoute",
+        "implementation": "cantrip_server_rs/src/settings/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "getModelOperationRoute",
+        "implementation": "cantrip_server_rs/src/settings/models.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "readProviderInferenceCatalog",
+        "implementation": "cantrip_server_rs/src/settings/providers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "listProviderInferenceConfigurations",
+        "implementation": "cantrip_server_rs/src/settings/providers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "listEncryptedQueuedPrompts",
+        "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/reads.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "getEncryptedQueuedPrompt",
+        "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/reads.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "listQueuedPrompts",
+        "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/reads.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "getQueuedPrompt",
+        "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/reads.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "getQueuedPromptByIdempotencyKey",
+        "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/reads.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "createEncryptedQueuedPrompt",
+        "implementation": "cantrip_server_rs/src/native_commands/queued_prompt.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "replaceEncryptedQueuedPrompt",
+        "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/changes.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "createQueuedPrompt",
+        "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/visible.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "updateQueuedPrompt",
+        "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/visible.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "deleteQueuedPrompt",
+        "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/changes.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "reorderQueuedPrompts",
+        "implementation": "cantrip_server_rs/src/native_commands/queued_prompt/changes.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "getEncryptedChatPlanState",
+        "implementation": "cantrip_server_rs/src/chats/turn_storage.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "getChatPlanWireState",
+        "implementation": "cantrip_server_rs/src/chats/turn_storage.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "updateChatPlanMode",
+        "implementation": "cantrip_server_rs/src/chats/turn_storage.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "updateEncryptedChatPlanState",
+        "implementation": "cantrip_server_rs/src/chats/turn_storage.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "getChatLiveRouting",
+        "implementation": "cantrip_server_rs/src/chats/turn_storage.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "getChatAttachments",
+        "implementation": "cantrip_server_rs/src/native_commands/attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "updateChatWorktree",
+        "implementation": "cantrip_server_rs/src/chats/worktree_selection.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "setChatModelConfiguration",
+        "implementation": "cantrip_server_rs/src/chats/model_configuration.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "recordTokenUsage",
+        "implementation": "cantrip_server_rs/src/settings/telemetry/usage_identity.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "recordModelBehaviorObservation",
+        "implementation": "cantrip_server_rs/src/settings/telemetry/behavior_writes.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
+        ],
+        "remaining": [
+          "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
+        ]
       }
     ]
   },
@@ -16982,9 +17388,13 @@
         "evidence": [
           "scripts/server-rust/native-event-http-compatibility.mjs",
           "scripts/server-rust/native-event-http-special-cases.mjs",
-          "scripts/server-rust/chat-message-http-compatibility.mjs"
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "docs/RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md",
+          "docs/security/rust-server-chat-identity-acceptance.json"
         ],
         "remaining": [
+          "Current Plan HTTP producer additionally passes all nine local storage/authentication cells: four exact scoped/null-payload invalidations per cell, plus owned repository writers and reads. Other producers retain their existing separate scope.",
           "Protected native event publications and current Agent-project flows are compared through real HTTP/Live on all three local storage/authentication modes. Historical Task message/plan/interaction project fanout and commit/rollback fences are verified on external PostgreSQL.",
           "Other domain publishers, client/worker native execution, complete Task/Goal orchestration, shared coordination, supported platforms and packaged acceptance remain required."
         ]
