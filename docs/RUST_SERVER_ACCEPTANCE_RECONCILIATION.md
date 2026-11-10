@@ -17,6 +17,15 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current OS and execution qualification](RUST_SERVER_OS_EXECUTION_CONTRACTS.md)
+repairs attachment acknowledgement, Run response routing and public placement
+errors. Current nine-cell HTTP comparisons cover source/backup recovery after
+server restart, protected repository operations, worktree commands, durable Run
+and secret receipts, and four further Live resources. The ledger now maps
+581/584 routes; three internal suspension/Task Goal routes remain unmapped.
+Controlled worker replies do not qualify actual guest archive execution, and
+remaining category gaps and final supported-artifact acceptance remain open.
+
 The [current resource-state qualification](RUST_SERVER_RESOURCE_STATE_CONTRACTS.md)
 reconciles the remaining 24 repository identities and refreshes the historical
 partial Chat execution-context mapping. It preserves owned-null model defaults,
