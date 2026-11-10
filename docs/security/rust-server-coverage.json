@@ -14183,7 +14183,10 @@
           "scripts/server-rust/chat-control-http-runner.mjs",
           "scripts/server-rust/chat-control-http-cases.mjs",
           "scripts/server-rust/chat-control-http-boundaries.mjs",
-          "scripts/server-rust/native-settings-http-fixture.mjs"
+          "scripts/server-rust/native-settings-http-fixture.mjs",
+          "docs/RUST_SERVER_GOAL_RECOVERY_CONTRACTS.md",
+          "docs/security/rust-server-goal-recovery-acceptance.json",
+          "scripts/server-rust/native-goal-recovery-http-compatibility.mjs"
         ],
         "remaining": [
           "The existing worker transport and actual endpoint cryptography execute, while worktree/native/model completion replies are controlled. This batch does not execute leaf Git/Codex model compaction or full native Task inference.",
@@ -14600,6 +14603,73 @@
           "Controlled native interruption/logical cancellation responses qualify server admission, transaction, notification and transport behavior; actual native Core execution/cleanup remains separate.",
           "Queue preparation uses the real worker encryption codec with retained GUI text inputs and empty attachments. Other actions/attachments, Task/Goal recovery and other command consumers remain open.",
           "Final supported-platform artifacts and complete product/fault/shared-instance, upgrade/post-write rollback and performance acceptance remain required."
+        ]
+      },
+      {
+        "command": "task.goal.source",
+        "implementation": [
+          "cantrip_server_rs/src/native_handoffs/service.rs",
+          "cantrip_server_rs/src/native_handoffs/task_goal_capture.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_GOAL_RECOVERY_CONTRACTS.md",
+          "docs/security/rust-server-goal-recovery-acceptance.json",
+          "scripts/server-rust/native-goal-recovery-http-compatibility.mjs",
+          "scripts/server-rust/native-goal-recovery-http-agent.mjs",
+          "scripts/server-rust/native-goal-recovery-http-task.mjs"
+        ],
+        "remaining": [
+          "The worker supplies a controlled private native-cycle capture through the unchanged transport, with real endpoint encryption. Native Core capture and the first-input handoff arm remain open.",
+          "Final supported-platform artifacts and complete product, fault, coordination, migration, post-write rollback and performance acceptance remain required."
+        ]
+      },
+      {
+        "command": "task.goal.recover",
+        "implementation": "cantrip_server_rs/src/chats/goals/cycle_recovery.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_GOAL_RECOVERY_CONTRACTS.md",
+          "docs/security/rust-server-goal-recovery-acceptance.json",
+          "scripts/server-rust/native-goal-recovery-http-compatibility.mjs",
+          "scripts/server-rust/native-goal-recovery-http-agent.mjs",
+          "scripts/server-rust/native-goal-recovery-http-task.mjs"
+        ],
+        "remaining": [
+          "Durable queue delivery qualifies stale-generation rejection, scheduled adoption and duplicate wake for a retained private cycle. Full native execution and the ineligible and invalidated receipt variants remain open.",
+          "Final supported-platform artifacts and complete product, fault, coordination, migration, post-write rollback and performance acceptance remain required."
+        ]
+      },
+      {
+        "command": "chat.goal.recover",
+        "implementation": "cantrip_server_rs/src/chats/goals/automation.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_GOAL_RECOVERY_CONTRACTS.md",
+          "docs/security/rust-server-goal-recovery-acceptance.json",
+          "scripts/server-rust/native-goal-recovery-http-compatibility.mjs",
+          "scripts/server-rust/native-goal-recovery-http-agent.mjs",
+          "scripts/server-rust/native-goal-recovery-http-task.mjs"
+        ],
+        "remaining": [
+          "Durable queue delivery qualifies current-scope source retention and retirement with controlled receipts. Scheduled native work and remaining receipt variants require separate acceptance.",
+          "Final supported-platform artifacts and complete product, fault, coordination, migration, post-write rollback and performance acceptance remain required."
+        ]
+      },
+      {
+        "command": "chat.goal.claim-recover",
+        "implementation": "cantrip_server_rs/src/chats/goals/claim_recovery.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_GOAL_RECOVERY_CONTRACTS.md",
+          "docs/security/rust-server-goal-recovery-acceptance.json",
+          "scripts/server-rust/native-goal-recovery-http-compatibility.mjs",
+          "scripts/server-rust/native-goal-recovery-http-agent.mjs",
+          "scripts/server-rust/native-goal-recovery-http-task.mjs"
+        ],
+        "remaining": [
+          "Durable queue delivery qualifies deferred retention and current-scope negative retirement of a first-cycle claim. Successful native scheduling and Core observation remain open.",
+          "Final supported-platform artifacts and complete product, fault, coordination, migration, post-write rollback and performance acceptance remain required."
         ]
       }
     ]
