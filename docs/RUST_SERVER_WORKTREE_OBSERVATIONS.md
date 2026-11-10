@@ -75,16 +75,21 @@ The ledger now maps 313 of 370 repository identities, operation scopes on
 Live resources. These counts include an explicit partial active-Git-operation
 projection and table entry. They do not represent full completion percentages.
 
-Historical durable Git-operation reconciliation remains open. Its worker
+At this milestone, historical durable Git-operation reconciliation remained open. Its worker
 notification consumer is still active in Node despite the retired plaintext
 Git HTTP routes. Native currently has the configuration projection used to
 observe active operations; full durable get/update and reconciliation require
 implementation and actual comparison. The audit therefore keeps that method
 and table partial rather than treating HTTP 410 as retirement evidence.
 
-There remain 57 unmapped repository identities, 25 tables, 61 routes, 207 worker
-commands and 20 Live resources, plus historical partial entries and the complete
-original-goal audit. Unmapped entries are evidence gaps and may already have
+The subsequent [Git-operation qualification](RUST_SERVER_GIT_OBSERVATIONS.md)
+implements and exercises the complete durable consumer. The counts above retain
+this earlier milestone’s scope.
+
+At that point, 57 repository identities, 25 tables, 61 routes, 207 worker
+commands and 20 Live resources remained unmapped, alongside historical partial
+entries and the complete original-goal audit. The linked Git qualification
+records the subsequent coverage. Unmapped entries are evidence gaps and may already have
 implementations. Final supported-artifact and deployment acceptance remains
 separate. The Node worker and shared-crate extraction are outside this milestone.
 

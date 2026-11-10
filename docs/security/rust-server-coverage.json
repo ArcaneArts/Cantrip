@@ -10854,6 +10854,18 @@
         "remaining": [
           "Matching actual server WebSocket requests and controlled acknowledgements across all nine local storage/authentication cells. Full worker observation execution and active historical Git-operation reconciliation retain separate scope."
         ]
+      },
+      {
+        "command": "git.operation.inspect",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/observations/git.rs",
+        "evidence": [
+          "docs/RUST_SERVER_GIT_OBSERVATIONS.md",
+          "docs/security/rust-server-git-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped macOS arm64 actual repository/notification/production-artifact qualification. Complete original-goal and final supported-platform acceptance remain separate."
+        ]
       }
     ]
   },
@@ -12765,15 +12777,14 @@
       {
         "tableName": "git_operations",
         "exportName": "gitOperations",
-        "status": "partial",
-        "implementation": "cantrip_server_rs/src/projects/targets/",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/git_operations.rs",
         "evidence": [
-          "docs/RUST_SERVER_WORKTREE_OBSERVATIONS.md",
-          "docs/security/rust-server-worktree-observations-acceptance.json"
+          "docs/RUST_SERVER_GIT_OBSERVATIONS.md",
+          "docs/security/rust-server-git-observations-acceptance.json"
         ],
         "remaining": [
-          "Positive active-operation configuration projection only. Full historical durable mutation/reconciliation and worker notification processing remain required; legacy HTTP410 does not retire these consumers.",
-          "Complete original-goal and final supported-artifact/platform reconciliation."
+          "Scoped macOS arm64 actual repository/notification/production-artifact qualification. Complete original-goal and final supported-platform acceptance remain separate."
         ]
       }
     ]
@@ -17287,15 +17298,92 @@
       {
         "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
         "method": "getActiveGitOperation",
-        "status": "partial",
-        "implementation": "cantrip_server_rs/src/projects/targets/observations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/git_operations.rs",
         "evidence": [
-          "docs/RUST_SERVER_WORKTREE_OBSERVATIONS.md",
-          "docs/security/rust-server-worktree-observations-acceptance.json"
+          "docs/RUST_SERVER_GIT_OBSERVATIONS.md",
+          "docs/security/rust-server-git-observations-acceptance.json"
         ],
         "remaining": [
-          "Current active_observation_operation compares only the observation configuration projection: id, worker and managed context. It is not a full native GitManagedOperationRecord repository.",
-          "Source still consumes git.operation.observed through durable get/update and reconciliation despite retired plaintext HTTP routes. Port and qualify that historical-operation path; HTTP tombstones do not establish its retirement."
+          "Scoped macOS arm64 actual repository/notification/production-artifact qualification. Complete original-goal and final supported-platform acceptance remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "createGitOperation",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/git_operations.rs",
+        "evidence": [
+          "docs/RUST_SERVER_GIT_OBSERVATIONS.md",
+          "docs/security/rust-server-git-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped macOS arm64 actual repository/notification/production-artifact qualification. Complete original-goal and final supported-platform acceptance remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "markGitOperationRunning",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/git_operations.rs",
+        "evidence": [
+          "docs/RUST_SERVER_GIT_OBSERVATIONS.md",
+          "docs/security/rust-server-git-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped macOS arm64 actual repository/notification/production-artifact qualification. Complete original-goal and final supported-platform acceptance remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getGitOperation",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/git_operations.rs",
+        "evidence": [
+          "docs/RUST_SERVER_GIT_OBSERVATIONS.md",
+          "docs/security/rust-server-git-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped macOS arm64 actual repository/notification/production-artifact qualification. Complete original-goal and final supported-platform acceptance remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getLatestGitOperation",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/git_operations.rs",
+        "evidence": [
+          "docs/RUST_SERVER_GIT_OBSERVATIONS.md",
+          "docs/security/rust-server-git-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped macOS arm64 actual repository/notification/production-artifact qualification. Complete original-goal and final supported-platform acceptance remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "updateGitOperation",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/git_operations.rs",
+        "evidence": [
+          "docs/RUST_SERVER_GIT_OBSERVATIONS.md",
+          "docs/security/rust-server-git-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped macOS arm64 actual repository/notification/production-artifact qualification. Complete original-goal and final supported-platform acceptance remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "failGitOperation",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/git_operations.rs",
+        "evidence": [
+          "docs/RUST_SERVER_GIT_OBSERVATIONS.md",
+          "docs/security/rust-server-git-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped macOS arm64 actual repository/notification/production-artifact qualification. Complete original-goal and final supported-platform acceptance remain separate."
         ]
       }
     ]
@@ -17726,6 +17814,30 @@
         "remaining": [
           "Current worker-status producer passes exact scoped publications, failed SQL/no success publication, committed state after payload rejection and restart retention on all nine local storage/authentication cells.",
           "Other producers/consumers and full worker/UI, shared coordination and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "resource": "git-operation",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/observations/git_publication.rs",
+        "evidence": [
+          "docs/RUST_SERVER_GIT_OBSERVATIONS.md",
+          "docs/security/rust-server-git-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped macOS arm64 actual repository/notification/production-artifact qualification. Complete original-goal and final supported-platform acceptance remain separate."
+        ]
+      },
+      {
+        "resource": "git-conflict",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/observations/git_publication.rs",
+        "evidence": [
+          "docs/RUST_SERVER_GIT_OBSERVATIONS.md",
+          "docs/security/rust-server-git-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped macOS arm64 actual repository/notification/production-artifact qualification. Complete original-goal and final supported-platform acceptance remain separate."
         ]
       }
     ]

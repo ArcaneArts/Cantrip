@@ -22,6 +22,7 @@ import {
   projectInsightContractRoots,
   remoteSurfaceHttpContractRoots,
   computerUseHttpContractRoots,
+  gitObservationContractRoots,
 } from "./contracts.mjs";
 import { repositoryRoot } from "./build.mjs";
 
@@ -81,6 +82,7 @@ for (const [file, roots] of [
   ["project-insights.json", projectInsightContractRoots],
   ["remote-surface-http.json", remoteSurfaceHttpContractRoots],
   ["computer-use-http.json", computerUseHttpContractRoots],
+  ["git-observations.json", gitObservationContractRoots],
   ["endpoint-providers.json", null],
 ]) {
   const raw = await readFile(

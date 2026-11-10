@@ -789,6 +789,53 @@ try {
           request.inventory,
           request.created,
         );
+      } else if (request.op === "git-operation-create") {
+        value = await database.repository.createGitOperation(
+          request.owner,
+          request.project,
+          request.worktree,
+          request.worker,
+          request.context,
+        );
+      } else if (request.op === "git-operation-active") {
+        value = await database.repository.getActiveGitOperation(
+          request.owner,
+          request.project,
+          request.worktree,
+        );
+      } else if (request.op === "git-operation-latest") {
+        value = await database.repository.getLatestGitOperation(
+          request.owner,
+          request.project,
+          request.worktree,
+        );
+      } else if (request.op === "git-operation-get") {
+        value = await database.repository.getGitOperation(
+          request.owner,
+          request.project,
+          request.worktree,
+          request.operationId,
+        );
+      } else if (request.op === "git-operation-running") {
+        value = await database.repository.markGitOperationRunning(
+          request.operationId,
+        );
+      } else if (request.op === "git-operation-update") {
+        value = await database.repository.updateGitOperation(
+          request.owner,
+          request.project,
+          request.worktree,
+          request.operationId,
+          request.state,
+        );
+      } else if (request.op === "git-operation-fail") {
+        value = await database.repository.failGitOperation(
+          request.owner,
+          request.project,
+          request.worktree,
+          request.operationId,
+          request.error,
+        );
       } else if (request.op === "observation-context") {
         value = await database.repository.getProjectWorktreeObservationContext(
           request.owner,
