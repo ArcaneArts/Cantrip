@@ -14671,6 +14671,39 @@
           "Durable queue delivery qualifies deferred retention and current-scope negative retirement of a first-cycle claim. Successful native scheduling and Core observation remain open.",
           "Final supported-platform artifacts and complete product, fault, coordination, migration, post-write rollback and performance acceptance remain required."
         ]
+      },
+      {
+        "command": "task.operation.prepare",
+        "implementation": "cantrip_server_rs/src/task_scheduling/claimed_execution/run.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_TASK_EXECUTION_CONTRACTS.md",
+          "docs/security/rust-server-task-execution-acceptance.json",
+          "scripts/server-rust/task-execution-http-compatibility.mjs",
+          "scripts/server-rust/task-execution-http-cases.mjs"
+        ],
+        "remaining": [
+          "Scheduled direct and initial-plan preparation use the real worker codec. Continued planning, finalization, other preparation failure and deadline paths and full native model execution retain separate scopes.",
+          "Complete supported-platform, product, fault, coordination, migration, post-write rollback and performance acceptance remains open."
+        ]
+      },
+      {
+        "command": "task.message.protect",
+        "implementation": [
+          "cantrip_server_rs/src/chats/turn_runtime/bootstrap/preflight.rs",
+          "cantrip_server_rs/src/chats/goals/continuation.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_TASK_EXECUTION_CONTRACTS.md",
+          "docs/security/rust-server-task-execution-acceptance.json",
+          "scripts/server-rust/task-execution-http-compatibility.mjs",
+          "scripts/server-rust/task-execution-http-cases.mjs"
+        ],
+        "remaining": [
+          "The public Task conversation path qualifies authenticated conversion, a rejected ciphertext and exact idempotent history. Goal continuation, attachment cases and other consumers retain separate scopes.",
+          "Complete supported-platform, product, fault, coordination, migration, post-write rollback and performance acceptance remains open."
+        ]
       }
     ]
   },
