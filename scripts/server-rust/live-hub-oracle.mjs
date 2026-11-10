@@ -221,7 +221,9 @@ function normalize(value) {
   }
   return visit(value);
 }
-const binary = await buildRustExample("live-hub-oracle");
+const binary =
+  process.env.CANTRIP_RUST_LIVE_HUB_BINARY ??
+  (await buildRustExample("live-hub-oracle"));
 const caseOption = process.argv.indexOf("--case");
 const cases = liveHubCases().filter(
   (c) => caseOption < 0 || c.name.includes(process.argv[caseOption + 1]),
@@ -254,10 +256,45 @@ let failure;
 for (let i = 0; i < cases.length; i++) {
   try {
     assert.deepEqual(normalize(actual[i]), normalize(expected[i]));
+    if (cases[i].name.startsWith("server bootstrap resource")) {
+      const events = (snapshots, index, socket = "one") =>
+        snapshots[index].sockets[socket].sent.filter(
+          (frame) => frame.type === "event" && frame.resource === "server",
+        );
+      for (const snapshots of [expected[i], actual[i]]) {
+        if (cases[i].name.endsWith("fanout and unsubscribe")) {
+          assert.equal(events(snapshots, snapshots.length - 1).length, 1);
+          const other = events(snapshots, snapshots.length - 1, "other");
+          assert.equal(other.length, 1);
+          assert.equal(other[0].entityId, "other-server");
+        } else {
+          assert.equal(
+            events(snapshots, 4).length,
+            1,
+            "prior server event replays",
+          );
+          assert.equal(events(snapshots, snapshots.length - 1).length, 2);
+        }
+        for (const frame of events(snapshots, snapshots.length - 1)) {
+          assert.deepEqual(frame.scope, { kind: "current-user" });
+          assert.equal(frame.action, "invalidated");
+          assert.equal(frame.entityId, null);
+          assert.equal(frame.payload, null);
+          assert.equal(frame.revision, null);
+        }
+      }
+    }
     report.cases.push({
       name: cases[i].name,
       steps: cases[i].steps.length,
       passed: true,
+      ...(process.argv.includes("--capture-snapshots")
+        ? {
+            input: cases[i],
+            rawReference: expected[i],
+            rawNative: actual[i],
+          }
+        : {}),
     });
   } catch (error) {
     report.cases.push({ name: cases[i].name, passed: false });
@@ -269,6 +306,7 @@ for (let i = 0; i < cases.length; i++) {
     };
   }
 }
+report.passed = !failure;
 const index = process.argv.indexOf("--report");
 if (index >= 0) {
   const file = path.resolve(process.argv[index + 1]);

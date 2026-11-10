@@ -1,0 +1,679 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "baseCommit": "48180077c2b879f79232dd48aac75d1cb01903a8",
+  "platform": "darwin-arm64",
+  "productionRustChanges": false,
+  "scope": "Two production HTTP/worker/Live suites across all three stores and authentication modes; separate controlled-IO core Hub comparisons. No worker rewrite or production Rust changes.",
+  "counts": {
+    "pairedCells": 18,
+    "pairedHttpCaseObservations": 1821,
+    "tracedRequests": 4064,
+    "filesystemLiveFrames": 36,
+    "inferenceProgressLiveFrames": 54,
+    "emittedWorkerProgressPackets": 72,
+    "goalLiveFramesInProgressSuite": 306,
+    "newWorkerCommands": 0,
+    "newLiveResources": 3,
+    "newDurableTables": 0,
+    "coreHubCases": 46,
+    "coreHubSteps": 704
+  },
+  "reports": [
+    {
+      "path": ".qa/rust-live-observations/progress-pglite-v2.json",
+      "sha256": "b8295fd1c32ab39431c0e21efdc976710b1ac764f64ef7377d0eebabd1091e93",
+      "family": "progress",
+      "databaseMode": "pglite",
+      "pairedHttpCaseObservations": 244
+    },
+    {
+      "path": ".qa/rust-live-observations/progress-bundled-postgres-v2.json",
+      "sha256": "8d9c91c037a595bc8fdcaf2f629e4cafced7fed86ab7a7e5451242290ca4bacf",
+      "family": "progress",
+      "databaseMode": "bundled-postgres",
+      "pairedHttpCaseObservations": 244
+    },
+    {
+      "path": ".qa/rust-live-observations/progress-postgres-v2.json",
+      "sha256": "b3a5a4d56ff8a751279460dd26c7017e7014c9d3257deb75150360bd96904a85",
+      "family": "progress",
+      "databaseMode": "postgres",
+      "pairedHttpCaseObservations": 244
+    },
+    {
+      "path": ".qa/rust-live-observations/filesystem-pglite-v2.json",
+      "sha256": "c19a29e7f1c797abe3ec98cd72068f292ceb9723da3b3fe53af4923a2aa6a204",
+      "family": "filesystem",
+      "databaseMode": "pglite",
+      "pairedHttpCaseObservations": 363
+    },
+    {
+      "path": ".qa/rust-live-observations/filesystem-bundled-postgres-v2.json",
+      "sha256": "4223f800af7b6083855620cf077fd15ee361d0e518817db92d3abce6702483f0",
+      "family": "filesystem",
+      "databaseMode": "bundled-postgres",
+      "pairedHttpCaseObservations": 363
+    },
+    {
+      "path": ".qa/rust-live-observations/filesystem-postgres-v2.json",
+      "sha256": "bdcff503991ce9faf10bc8df8e186664df04ed07b1d3506648cfcbadf3fefb1d",
+      "family": "filesystem",
+      "databaseMode": "postgres",
+      "pairedHttpCaseObservations": 363
+    },
+    {
+      "path": ".qa/rust-live-observations/hub-v2.json",
+      "sha256": "20a524263645f4166e1889e2257843fbf90c673c8204dabc4276df95e4c98a88",
+      "family": "core-hub",
+      "databaseMode": null,
+      "cases": 46,
+      "steps": 704
+    }
+  ],
+  "traces": [
+    {
+      "path": ".qa/rust-live-observations/progress-pglite-v2.requests.json",
+      "sha256": "c2f95716211dbde8e0fb5f299facd90623ef0e8d9be7b94196c465f33d9b85dc",
+      "requests": 506
+    },
+    {
+      "path": ".qa/rust-live-observations/progress-bundled-postgres-v2.requests.json",
+      "sha256": "94aaf15bee5fcb9d14bbf6d0732532b71dbe3be8e6df6cb04ec84c58c1e7e619",
+      "requests": 506
+    },
+    {
+      "path": ".qa/rust-live-observations/progress-postgres-v2.requests.json",
+      "sha256": "d389b91bbb2bdd73cbd8dd786716e206299560b8e19689ec4c56a5b133d01529",
+      "requests": 506
+    },
+    {
+      "path": ".qa/rust-live-observations/filesystem-pglite-v2.requests.json",
+      "sha256": "8ffc36a0c9647816ac0b43c8ee223cd33521ea175c9a28ad1455f2261ef283ff",
+      "requests": 850
+    },
+    {
+      "path": ".qa/rust-live-observations/filesystem-bundled-postgres-v2.requests.json",
+      "sha256": "fcea13e815b3fff4aef33926e795f831e693e676c2a53815df3a8883be85f620",
+      "requests": 846
+    },
+    {
+      "path": ".qa/rust-live-observations/filesystem-postgres-v2.requests.json",
+      "sha256": "151a09b031e05724642ae71000fa82d65932ea3fc8f913a68d19c8c53c8c6a99",
+      "requests": 850
+    }
+  ],
+  "workerCommandMappings": [],
+  "liveResourceMappings": [
+    {
+      "resource": "explorer-filesystem",
+      "implementation": "cantrip_server_rs/src/projects/observations/notifications.rs",
+      "scope": "Actual worker notification before/after reconnect, production HTTP/Live sockets on nine storage/authentication cells.",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-live-observations/filesystem-pglite-v2.json",
+            "pointer": "/profiles/0/runtimes/0/rawFilesystemEvents",
+            "indexes": [0, 1]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/filesystem-pglite-v2.json",
+            "pointer": "/profiles/0/runtimes/1/rawFilesystemEvents",
+            "indexes": [0, 1]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-live-observations/filesystem-pglite-v2.json",
+            "pointer": "/profiles/1/runtimes/0/rawFilesystemEvents",
+            "indexes": [0, 1]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/filesystem-pglite-v2.json",
+            "pointer": "/profiles/1/runtimes/1/rawFilesystemEvents",
+            "indexes": [0, 1]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-live-observations/filesystem-pglite-v2.json",
+            "pointer": "/profiles/2/runtimes/0/rawFilesystemEvents",
+            "indexes": [0, 1]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/filesystem-pglite-v2.json",
+            "pointer": "/profiles/2/runtimes/1/rawFilesystemEvents",
+            "indexes": [0, 1]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-live-observations/filesystem-bundled-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/0/rawFilesystemEvents",
+            "indexes": [0, 1]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/filesystem-bundled-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/1/rawFilesystemEvents",
+            "indexes": [0, 1]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-live-observations/filesystem-bundled-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/0/rawFilesystemEvents",
+            "indexes": [0, 1]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/filesystem-bundled-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/1/rawFilesystemEvents",
+            "indexes": [0, 1]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-live-observations/filesystem-bundled-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/0/rawFilesystemEvents",
+            "indexes": [0, 1]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/filesystem-bundled-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/1/rawFilesystemEvents",
+            "indexes": [0, 1]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-live-observations/filesystem-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/0/rawFilesystemEvents",
+            "indexes": [0, 1]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/filesystem-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/1/rawFilesystemEvents",
+            "indexes": [0, 1]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-live-observations/filesystem-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/0/rawFilesystemEvents",
+            "indexes": [0, 1]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/filesystem-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/1/rawFilesystemEvents",
+            "indexes": [0, 1]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-live-observations/filesystem-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/0/rawFilesystemEvents",
+            "indexes": [0, 1]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/filesystem-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/1/rawFilesystemEvents",
+            "indexes": [0, 1]
+          }
+        }
+      ]
+    },
+    {
+      "resource": "inference-progress",
+      "implementation": "cantrip_server_rs/src/chats/live_mutations/mod.rs",
+      "scope": "Actual correlated worker progress during held protected Task continuation; request filtering, order, payload, scope and clear on nine storage/authentication cells.",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-live-observations/progress-pglite-v2.json",
+            "pointer": "/profiles/0/outputs/0/rawInferenceProgressEvents",
+            "indexes": [0, 1, 2]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/progress-pglite-v2.json",
+            "pointer": "/profiles/0/outputs/1/rawInferenceProgressEvents",
+            "indexes": [0, 1, 2]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-live-observations/progress-pglite-v2.json",
+            "pointer": "/profiles/1/outputs/0/rawInferenceProgressEvents",
+            "indexes": [0, 1, 2]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/progress-pglite-v2.json",
+            "pointer": "/profiles/1/outputs/1/rawInferenceProgressEvents",
+            "indexes": [0, 1, 2]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-live-observations/progress-pglite-v2.json",
+            "pointer": "/profiles/2/outputs/0/rawInferenceProgressEvents",
+            "indexes": [0, 1, 2]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/progress-pglite-v2.json",
+            "pointer": "/profiles/2/outputs/1/rawInferenceProgressEvents",
+            "indexes": [0, 1, 2]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-live-observations/progress-bundled-postgres-v2.json",
+            "pointer": "/profiles/0/outputs/0/rawInferenceProgressEvents",
+            "indexes": [0, 1, 2]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/progress-bundled-postgres-v2.json",
+            "pointer": "/profiles/0/outputs/1/rawInferenceProgressEvents",
+            "indexes": [0, 1, 2]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-live-observations/progress-bundled-postgres-v2.json",
+            "pointer": "/profiles/1/outputs/0/rawInferenceProgressEvents",
+            "indexes": [0, 1, 2]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/progress-bundled-postgres-v2.json",
+            "pointer": "/profiles/1/outputs/1/rawInferenceProgressEvents",
+            "indexes": [0, 1, 2]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-live-observations/progress-bundled-postgres-v2.json",
+            "pointer": "/profiles/2/outputs/0/rawInferenceProgressEvents",
+            "indexes": [0, 1, 2]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/progress-bundled-postgres-v2.json",
+            "pointer": "/profiles/2/outputs/1/rawInferenceProgressEvents",
+            "indexes": [0, 1, 2]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-live-observations/progress-postgres-v2.json",
+            "pointer": "/profiles/0/outputs/0/rawInferenceProgressEvents",
+            "indexes": [0, 1, 2]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/progress-postgres-v2.json",
+            "pointer": "/profiles/0/outputs/1/rawInferenceProgressEvents",
+            "indexes": [0, 1, 2]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-live-observations/progress-postgres-v2.json",
+            "pointer": "/profiles/1/outputs/0/rawInferenceProgressEvents",
+            "indexes": [0, 1, 2]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/progress-postgres-v2.json",
+            "pointer": "/profiles/1/outputs/1/rawInferenceProgressEvents",
+            "indexes": [0, 1, 2]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-live-observations/progress-postgres-v2.json",
+            "pointer": "/profiles/2/outputs/0/rawInferenceProgressEvents",
+            "indexes": [0, 1, 2]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/progress-postgres-v2.json",
+            "pointer": "/profiles/2/outputs/1/rawInferenceProgressEvents",
+            "indexes": [0, 1, 2]
+          }
+        }
+      ]
+    },
+    {
+      "resource": "server",
+      "implementation": "cantrip_server_rs/src/live/hub.rs",
+      "scope": "Partial generic core Hub transport only, controlled IO/session/clocks; no dedicated HTTP publisher or Redis/database authorization claim.",
+      "witnesses": [
+        {
+          "case": "server bootstrap resource preserves owner fanout and unsubscribe",
+          "scope": "core Hub only, controlled IO/session callbacks/clocks",
+          "node": {
+            "report": ".qa/rust-live-observations/hub-v2.json",
+            "pointer": "/cases/44/rawReference/9/sockets/one/sent",
+            "indexes": [2]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/hub-v2.json",
+            "pointer": "/cases/44/rawNative/9/sockets/one/sent",
+            "indexes": [2]
+          }
+        },
+        {
+          "case": "server bootstrap resource preserves owner-scoped replay",
+          "scope": "core Hub only, controlled IO/session callbacks/clocks",
+          "node": {
+            "report": ".qa/rust-live-observations/hub-v2.json",
+            "pointer": "/cases/45/rawReference/5/sockets/one/sent",
+            "indexes": [2, 4]
+          },
+          "rust": {
+            "report": ".qa/rust-live-observations/hub-v2.json",
+            "pointer": "/cases/45/rawNative/5/sockets/one/sent",
+            "indexes": [2, 4]
+          }
+        }
+      ]
+    }
+  ],
+  "sourceSha256": {
+    "scripts/server-rust/task-dashboard-goals-http.mjs": "58d50950e5b964c3a4fe948cec55829a5e07d833bd2d102f291bd45063fbacdc",
+    "scripts/server-rust/task-dashboard-inference-progress.mjs": "3f7fccf06361788e86c9d58a81764c7a839f38e05d5d98d8af8e38cd99f0240f",
+    "scripts/server-rust/task-dashboard-goal-worker.mjs": "4153d6e3527fcfc582694c4c24732eb3724e6d110296925f5b621551ae81eeae",
+    "scripts/server-rust/native-settings-http-fixture.mjs": "e94c2f77d7eddb5b04f6e89d5290e0ae71969465855443c10199929ba034c1e9",
+    "scripts/server-rust/run-lifecycle-http-cases.mjs": "4bf43ff69008ce40c80d7349d9ccb5bd5ba2d26a845683eb397cfdc556eedc86",
+    "scripts/server-rust/project-git-http-compatibility.mjs": "89dedf38388a2227e147c1d2ae9a3706cba51da155fb97b09208b176ec056bcc",
+    "scripts/server-rust/live-hub-oracle.mjs": "dd0f813e898bd329f3794072e274403ba8997e875b5097841e28c33f358faed7",
+    "scripts/server-rust/live-hub-scenarios.mjs": "6d6e360c1103fbb49d40799a228e5cc1953b25a64b0e34411fdc41495c9b570c",
+    "packages/protocol/src/live.ts": "2e059dd45e7a0b5d933213ceacae830eeae41805da9deb034ebc70ba00edd406",
+    "packages/protocol/src/worker-events.ts": "1000312ce8fce68938fecf2d7401c1168bdac676c761fa89d0c353e1fb5fd672",
+    "cantrip_app/src/lib/app-live-query.ts": "e8711b7eef7080e953af44aa42e6d2749ba76387abebdf5d3da24e30620ae528",
+    "cantrip_server_rs/src/live/hub.rs": "39cd88c9bd5d7e0cf7a850e8c54723b1bd125ff42c7ee750979e2f0909491636",
+    "cantrip_server_rs/examples/live-hub-oracle.rs": "e15168dcc3db534bd2a5ef8177c652652329b1334f140bf952735910b7190ced",
+    "cantrip_server_rs/src/projects/observations/notifications.rs": "8d030fe164534fc3fd1acfc3252f6cd27f8167e7ed69127938df26634df39884",
+    "cantrip_server_rs/src/chats/live_mutations/mod.rs": "9b0e6d4888e553388433937ab3e2eb524a8c3dc94250c01871165cca6c6e68a7",
+    "tests/reference-node-server/src/live/hub.ts": "cb75eca4110be830522e1fb245b62246cd65beae0529048f95e678412c05c2e0",
+    "tests/reference-node-server/src/app/runtime/worker-notification-runtime.ts": "cb85a072003284cde1744fad6ab51387d471f61182cec9a143f5401ef172a843",
+    "tests/reference-node-server/src/app/runtime/chat-turn-runtime.ts": "c53637e7580be86d6f0847d87918530becddd3c238180b128e1c3fb98e8dad0e",
+    "tests/reference-node-server/src/app/runtime/live-mutation-runtime.ts": "81799d85837856b4d9b697933a0b3b6f93cb01712a1fdad32fdfb45e4a770ec5",
+    "tests/reference-node-server/src/app/runtime/live-infrastructure-runtime.ts": "d688f406b72b587af872d2dc244cf339fd21862a4e71367ff481f14f438b3124",
+    "tests/reference-node-server/src/app/http/mutation-live-invalidation.ts": "311335daf3ad2b8e1414bde306fb1d363b8ea63f5bba8219cdbe51811c887172",
+    "tests/reference-node-server/src/app/shared/live-resources.ts": "bb22aabc9db9d97dcc8aa3c50dfba369fd923d63edfd655e2bfaa89a725c8291"
+  },
+  "frozenExecutables": {
+    "baseCommit": "48180077c2b879f79232dd48aac75d1cb01903a8",
+    "executables": [
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-live-observations/Cantrip/.qa/rust-live-observations/helpers-v1/cantrip-server",
+        "bytes": 179437792,
+        "sha256": "a843a76eba4a53cbaa4b4d5be3b27b91b0c59097ee2499959611a032781d6548"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-live-observations/Cantrip/.qa/rust-live-observations/helpers-v1/http-sql-fixture",
+        "bytes": 179686624,
+        "sha256": "4e4280e7a8e88573d50ed297e0088df1abd2545bcd769f46c5e63ec1d03ab099"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-live-observations/Cantrip/.qa/rust-live-observations/helpers-v1/project-repository-fixture",
+        "bytes": 181339984,
+        "sha256": "e5866e5b4df62f2be47d1ed98878bb64fa65d0c6117d0454b4485e25f17d0d3d"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-live-observations/Cantrip/.qa/rust-live-observations/helpers-v1/live-hub-oracle",
+        "bytes": 176957344,
+        "sha256": "0d913eb335e7b25110a9e0a8f1a473d1675b9436971b59f698c3ef0335614d18"
+      }
+    ]
+  },
+  "localChecks": [
+    {
+      "label": "rust-fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--manifest-path",
+        "cantrip_server_rs/Cargo.toml",
+        "--",
+        "--check"
+      ],
+      "exitCode": 0,
+      "startedAt": 1794341397.928323,
+      "finishedAt": 1794341400.0114849,
+      "log": ".qa/rust-live-observations/rust-fmt-v1.log",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "rust-clippy",
+      "command": [
+        "node",
+        "scripts/server-rust/cargo.mjs",
+        "clippy",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exitCode": 0,
+      "startedAt": 1794341400.011905,
+      "finishedAt": 1794341446.7231,
+      "log": ".qa/rust-live-observations/rust-clippy-v1.log",
+      "logSha256": "2853871178328879307d30560d333f7b3dd45e2406a749a980f78a157b65e020"
+    },
+    {
+      "label": "rust-lib",
+      "command": ["node", "scripts/server-rust/cargo.mjs", "test", "--lib"],
+      "exitCode": 0,
+      "startedAt": 1794341446.7235682,
+      "finishedAt": 1794341530.1019661,
+      "log": ".qa/rust-live-observations/rust-lib-v1.log",
+      "logSha256": "f98f65da8cf7ce762ca86964ce73fce428543354df40f1c117d0942bbedc36a4"
+    },
+    {
+      "label": "repository-check",
+      "command": ["pnpm", "check"],
+      "exitCode": 1,
+      "startedAt": 1794341530.102447,
+      "finishedAt": 1794341671.359065,
+      "log": ".qa/rust-live-observations/repository-check-v1.log",
+      "logSha256": "4643189ec7dc2e0ef4ee05a29f76ecb0c7897fbdd9ea7245a354880d27fe483a"
+    },
+    {
+      "label": "repository-format",
+      "command": ["pnpm", "format:check"],
+      "exitCode": 1,
+      "startedAt": 1794341671.3597062,
+      "finishedAt": 1794341701.429991,
+      "log": ".qa/rust-live-observations/repository-format-v1.log",
+      "logSha256": "995edc3e0fff73686d6ec1767adf1fcf24143a46e4e1e193529a193f465bf619"
+    }
+  ],
+  "cleanPrimaryWorkerReproduction": {
+    "head": "48180077c2b879f79232dd48aac75d1cb01903a8",
+    "cwd": "/Users/cyberpwn/development/workspace/ArcaneArts/Cantrip",
+    "statusBefore": "",
+    "command": [
+      "pnpm",
+      "--filter",
+      "@cantrip/worker",
+      "exec",
+      "vitest",
+      "run",
+      "test/app-server.test.ts",
+      "-t",
+      "retries terminal model-capacity failures on the same Codex thread|interrupts a pending model-capacity backoff"
+    ],
+    "files": [
+      {
+        "path": "cantrip_worker/test/app-server.test.ts",
+        "sha256": "8b67d653eedd0fe52e42ea4a37bfdfae953d888a9fbd723dc71328e8b6700acc",
+        "primarySha256": "8b67d653eedd0fe52e42ea4a37bfdfae953d888a9fbd723dc71328e8b6700acc",
+        "identical": true
+      },
+      {
+        "path": "cantrip_worker/src/codex/app-server.ts",
+        "sha256": "916f73c8a9abd3d93b3caaadbc710dc4f00d7b0967f8cebb544832fe4d93ea8b",
+        "primarySha256": "916f73c8a9abd3d93b3caaadbc710dc4f00d7b0967f8cebb544832fe4d93ea8b",
+        "identical": true
+      }
+    ],
+    "startedAt": 1794341398.0065951,
+    "exitCode": 1,
+    "finishedAt": 1794341399.8618088,
+    "statusAfter": "",
+    "log": ".qa/rust-live-observations/primary-worker-baseline-v1.log",
+    "logSha256": "a690431938e8962b240f8d552deb3e54cc1b64cb4094683c0c46e87b0a70ee83"
+  },
+  "unchangedFormattingFailures": [
+    {
+      "path": "cantrip_app/src/lib/client-session.ts",
+      "sha256": "3f83102410aa69135e3df48b4b7746524f9d99645fe2651e03d3845e679ed979",
+      "primarySha256": "3f83102410aa69135e3df48b4b7746524f9d99645fe2651e03d3845e679ed979",
+      "identical": true
+    },
+    {
+      "path": "cantrip_os/packages/remote/root/etc/cantrip-os/remote.json",
+      "sha256": "f80e9fefe14ce0727af3921d768bbf8881ae9589ef99234e7af436fd429ca537",
+      "primarySha256": "f80e9fefe14ce0727af3921d768bbf8881ae9589ef99234e7af436fd429ca537",
+      "identical": true
+    },
+    {
+      "path": "cantrip_os/tests/active-browser.html",
+      "sha256": "26fe72ffa28ee0013289e81afbfc5d03ff21179816a4e4863ceb3384c1a11162",
+      "primarySha256": "26fe72ffa28ee0013289e81afbfc5d03ff21179816a4e4863ceb3384c1a11162",
+      "identical": true
+    },
+    {
+      "path": "cantrip_server_rs/third-party/icu_collator/README.md",
+      "sha256": "2ec35917ed33ca3e8e4b70ce25c20b20d7e8fcd45f0c1098d001bef52cf1e7a4",
+      "primarySha256": "2ec35917ed33ca3e8e4b70ce25c20b20d7e8fcd45f0c1098d001bef52cf1e7a4",
+      "identical": true
+    },
+    {
+      "path": "cantrip_server_rs/third-party/pglite-rs/README.md",
+      "sha256": "f8955fe7862ac82da8b6af3eaad7268bdc889f02a2017ff55df68b5c35890b6d",
+      "primarySha256": "f8955fe7862ac82da8b6af3eaad7268bdc889f02a2017ff55df68b5c35890b6d",
+      "identical": true
+    },
+    {
+      "path": "cantrip_worker/src/computer-use/captures.ts",
+      "sha256": "85b629ab8485264c94154cb3c984bd042eafb5f4f57b1f3ed1bb1e0c9aeed865",
+      "primarySha256": "85b629ab8485264c94154cb3c984bd042eafb5f4f57b1f3ed1bb1e0c9aeed865",
+      "identical": true
+    },
+    {
+      "path": "cantrip_worker/test/project-repository-stats.test.ts",
+      "sha256": "9831ae1c1fb57cbe5caea26aca372165b6f72b737135cf80cdbd779e060ac544",
+      "primarySha256": "9831ae1c1fb57cbe5caea26aca372165b6f72b737135cf80cdbd779e060ac544",
+      "identical": true
+    },
+    {
+      "path": "docs/BROWSER_AGENT_CURSOR_ACCEPTANCE.md",
+      "sha256": "13bfad69648aea77fdc23a9aad6679f829f6389e51f2c50c31471c7f555a86d4",
+      "primarySha256": "13bfad69648aea77fdc23a9aad6679f829f6389e51f2c50c31471c7f555a86d4",
+      "identical": true
+    },
+    {
+      "path": "docs/COMPUTER_USE_EFFECTS.md",
+      "sha256": "b00f4d939586738360123999ffe60c83ec58a0ba7a20e9e065f9017b6dd4cca7",
+      "primarySha256": "b00f4d939586738360123999ffe60c83ec58a0ba7a20e9e065f9017b6dd4cca7",
+      "identical": true
+    },
+    {
+      "path": "docs/REMOTE_DESKTOP_ACCEPTANCE.md",
+      "sha256": "5cfe23748925ffe0ba54d616f3e2c163308706c9cb728246da8c78beaf3ab958",
+      "primarySha256": "5cfe23748925ffe0ba54d616f3e2c163308706c9cb728246da8c78beaf3ab958",
+      "identical": true
+    },
+    {
+      "path": "docs/WQA-2026-10-08.md",
+      "sha256": "0e6a98cc95706f621db347fa15e46413d6d75c533f061d98a47c39506ea2257b",
+      "primarySha256": "0e6a98cc95706f621db347fa15e46413d6d75c533f061d98a47c39506ea2257b",
+      "identical": true
+    },
+    {
+      "path": "scripts/qa/editor-reload-error.test.mjs",
+      "sha256": "5d01421f74afbc34dc3a43ddb103274d397b26ea6697e6d76894b9fee01a690c",
+      "primarySha256": "5d01421f74afbc34dc3a43ddb103274d397b26ea6697e6d76894b9fee01a690c",
+      "identical": true
+    }
+  ],
+  "publisherSourceAudit": {
+    "path": ".qa/rust-live-observations/publisher-source-audit-v1.json",
+    "sha256": "580bb5cce26396efda50eda53152282f41c89c495f22c31e1da76a5849589ac4"
+  },
+  "retainedEvidenceDirectory": "rust-server-live-observations-delivery-20261110-v1",
+  "remaining": [
+    "Controlled filesystem and model replies qualify the actual worker connection and server routing, not leaf Git/filesystem or model inference execution.",
+    "The server resource has only generic core Hub transport evidence with controlled socket IO, sessions and clocks. Dedicated publisher/consumer disposition, HTTP/database authorization and Redis integration are not established by those two cases.",
+    "Remaining command identities, historical partial consumers, broader interruption/coordination, current supported-platform artifacts and the complete original-goal product/shipping acceptance remain open."
+  ],
+  "currentGeneratedContracts": {
+    "path": ".qa/rust-live-observations/source-drift-v1.json",
+    "sha256": "5c0b96617c3aacb7fc817764175efe8eff7bc904e4958dab53a188a5e7dfa2ee",
+    "matched": 17
+  },
+  "integrityReview": {
+    "path": ".qa/rust-live-observations/independent-acceptance-verification-v1.json",
+    "sha256": "613029537d22dbea3e4d1acbd6c27af3dc2ca423658eda0999b86db9a176814f"
+  },
+  "changedFileChecks": [
+    {
+      "command": [
+        "pnpm",
+        "exec",
+        "prettier",
+        "--check",
+        "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md",
+        "docs/security/rust-server-coverage.json",
+        "scripts/server-rust/live-hub-oracle.mjs",
+        "scripts/server-rust/live-hub-scenarios.mjs",
+        "scripts/server-rust/project-git-http-compatibility.mjs",
+        "scripts/server-rust/task-dashboard-goal-worker.mjs",
+        "scripts/server-rust/task-dashboard-goals-http.mjs",
+        "scripts/server-rust/task-dashboard-inference-progress.mjs",
+        "docs/RUST_SERVER_LIVE_OBSERVATION_CONTRACTS.md",
+        "docs/security/rust-server-live-observation-acceptance.json"
+      ],
+      "exitCode": 0,
+      "log": ".qa/rust-live-observations/changed-format-v1.log",
+      "logSha256": "17aa973d3f004560237d9a95171210b0671deff23d61628eecf7322ff5938f20"
+    },
+    {
+      "command": ["git", "diff", "--check"],
+      "exitCode": 0,
+      "log": ".qa/rust-live-observations/diff-v1.log",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}
