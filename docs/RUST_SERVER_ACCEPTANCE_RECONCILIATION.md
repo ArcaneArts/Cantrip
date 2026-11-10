@@ -1,8 +1,16 @@
 # Current replacement acceptance
 
-The server replacement remains incomplete. Node is still the default server,
-and the worker remains Node. Historical ledger entries describe their original
-milestones; their remaining-work text is not a current implementation inventory.
+The server replacement remains incomplete. Rust is the default server, and the
+production Node workspace and entrypoints have been retired. The worker remains
+Node. The old server is an explicit development compatibility reference. See
+[default cutover](RUST_SERVER_DEFAULT_CUTOVER.md) and
+[production Node retirement](RUST_SERVER_NODE_RETIREMENT.md) for their qualification.
+Historical ledger entries describe their original milestones; their remaining-work
+text is not a current implementation inventory. The
+[current macOS encrypted desktop qualification](RUST_SERVER_DESKTOP_ENCRYPTED_ACCEPTANCE.md)
+passes all three original-profile upgrades and restarts with retained client keys.
+Final supported-platform shipping and requirement-by-requirement reconciliation
+remain open.
 
 The [Linux ABI qualification](RUST_SERVER_LINUX_ABI.md) fixes the actual Debian 12
 ARM64 native PGlite link failure. Fresh `1.1.2783` ARM64 and x64 images, exported
