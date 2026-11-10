@@ -7,13 +7,16 @@ import { buildRustExample } from "./build.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
 import { verifyGuestStorage } from "./usage-guest-storage.mjs";
+import { storedStateClocks } from "./stored-state-clocks.mjs";
 const option = (name) => {
   const i = process.argv.indexOf(name);
   return i < 0 ? undefined : process.argv[i + 1];
 };
 const databaseMode = option("--database") ?? "pglite",
   reportPath = option("--report");
-const executable = await buildRustExample("usage-repository-fixture");
+const executable =
+  process.env.CANTRIP_RUST_USAGE_REPOSITORY_BINARY ??
+  (await buildRustExample("usage-repository-fixture"));
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-usage-repository-"));
 const report = {
   suite: "actual-usage-repository-differential",
@@ -21,6 +24,8 @@ const report = {
   completeReplacement: false,
   root,
   cases: [],
+  startedAt: Date.now(),
+  stages: [],
 };
 const owner = "usage-owner",
   other = "usage-other",
@@ -47,6 +52,7 @@ async function compare(
   assert.equal(actual.rejected, expected.rejected, label);
   if (!rejected)
     assert.deepEqual(normalize(actual.value), normalize(expected.value), label);
+  if (process.argv.includes("--canonical-state")) await snapshots(label);
   return expected.value;
 }
 const entry = (ownerId, bytes = "9007199254740993", bucketStart = stamp) => ({
@@ -75,19 +81,31 @@ const history = (kind, principal = owner, resolution = "hour") => ({
 });
 const snapshotSql =
   "SELECT jsonb_build_object('current',(SELECT jsonb_agg(to_jsonb(t)||jsonb_build_object('logical_bytes',logical_bytes::text,'row_count',row_count::text) ORDER BY owner_id,storage_class,category) FROM account_storage_usage_current t),'snapshots',(SELECT jsonb_agg(to_jsonb(t)||jsonb_build_object('logical_bytes',logical_bytes::text,'row_count',row_count::text) ORDER BY owner_id,bucket_start,resolution,storage_class,category) FROM account_storage_usage_snapshots t),'bandwidth',(SELECT jsonb_agg(to_jsonb(t)||jsonb_build_object('bytes',bytes::text,'operation_count',operation_count::text) ORDER BY owner_id,bucket_start,resolution,channel,direction) FROM account_bandwidth_usage_buckets t),'receipts',(SELECT jsonb_agg(to_jsonb(t)||jsonb_build_object('bytes',bytes::text,'sequence',sequence::text) ORDER BY meter_id,sequence) FROM account_bandwidth_flushes t),'leases',(SELECT jsonb_agg(to_jsonb(t) ORDER BY key) FROM account_storage_reconciliation_leases t)) AS result";
-async function snapshots() {
-  return Promise.all(
+async function snapshots(label = "raw snapshot") {
+  const values = await Promise.all(
     pair.map(async (f) => {
       const result = await f.request({ op: "query-json", sql: snapshotSql });
       assert.equal(result.rejected, false, result.diagnostic);
       return result.value;
     }),
   );
+  if (process.argv.includes("--canonical-state")) {
+    const canonical = values.map((value) =>
+      storedStateClocks(value, report.startedAt),
+    );
+    report.stages.push({ label, values, canonical });
+    assert.deepEqual(
+      canonical[1],
+      canonical[0],
+      label + ": complete accounting rows",
+    );
+  }
+  return values;
 }
 async function noWrites(label, operation) {
-  const before = await snapshots();
+  const before = await snapshots(label + " before");
   await compare(label, operation, true);
-  const after = await snapshots();
+  const after = await snapshots(label + " after");
   before.forEach((value, index) =>
     assert.deepEqual(
       after[index],
@@ -426,12 +444,12 @@ try {
     "DROP TRIGGER fixture_usage_lease_loss ON account_storage_reconciliation_leases;",
   );
   await seed("DROP FUNCTION fixture_usage_lease_loss();");
-  const retained = await snapshots();
+  const retained = await snapshots("before actual store reopen");
   await Promise.all(pair.map((f) => f.close()));
   pair.length = 0;
   for (const options of fixtureOptions)
     pair.push(await repositoryFixture(options));
-  const reopened = await snapshots();
+  const reopened = await snapshots("after actual store reopen");
   reopened.forEach((value, index) =>
     assert.deepEqual(
       value,

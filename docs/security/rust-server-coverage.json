@@ -13992,6 +13992,26 @@
         "remaining": [
           "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
         ]
+      },
+      {
+        "command": "surface.configure",
+        "implementation": "cantrip_server_rs/src/browsers/runtime.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PERSISTED_RESOURCE_CONTRACTS.md",
+          "docs/security/rust-server-persisted-resource-acceptance.json",
+          "scripts/server-rust/stored-state-clocks.mjs",
+          "scripts/server-rust/usage-repository-compatibility.mjs",
+          "scripts/server-rust/usage-http-compatibility.mjs",
+          "scripts/server-rust/usage-account-compatibility.mjs",
+          "scripts/server-rust/browser-http-compatibility.mjs",
+          "scripts/server-rust/browser-cleanup-failure.mjs",
+          "scripts/server-rust/usage-guest-storage.mjs"
+        ],
+        "remaining": [
+          "These table bindings qualify complete rows within executed accounting and browser consumers, not every writer. Controlled browser worker acknowledgments do not establish native browser rendering, endpoint cryptographic execution or every remote-surface consumer.",
+          "Historical partial scopes, remaining worker-command/Live identities, broader faults/coordination and final current supported-platform/product/package acceptance remain required by the complete server-replacement goal."
+        ]
       }
     ]
   },
@@ -16247,6 +16267,132 @@
         ],
         "remaining": [
           "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
+        ]
+      },
+      {
+        "tableName": "account_bandwidth_flushes",
+        "exportName": "accountBandwidthFlushes",
+        "implementation": "cantrip_server_rs/src/usage/repository.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PERSISTED_RESOURCE_CONTRACTS.md",
+          "docs/security/rust-server-persisted-resource-acceptance.json",
+          "scripts/server-rust/stored-state-clocks.mjs",
+          "scripts/server-rust/usage-repository-compatibility.mjs",
+          "scripts/server-rust/usage-http-compatibility.mjs",
+          "scripts/server-rust/usage-account-compatibility.mjs",
+          "scripts/server-rust/browser-http-compatibility.mjs",
+          "scripts/server-rust/browser-cleanup-failure.mjs",
+          "scripts/server-rust/usage-guest-storage.mjs"
+        ],
+        "remaining": [
+          "These table bindings qualify complete rows within executed accounting and browser consumers, not every writer. Controlled browser worker acknowledgments do not establish native browser rendering, endpoint cryptographic execution or every remote-surface consumer.",
+          "Historical partial scopes, remaining worker-command/Live identities, broader faults/coordination and final current supported-platform/product/package acceptance remain required by the complete server-replacement goal."
+        ]
+      },
+      {
+        "tableName": "account_storage_reconciliation_leases",
+        "exportName": "accountStorageReconciliationLeases",
+        "implementation": "cantrip_server_rs/src/usage/repository.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PERSISTED_RESOURCE_CONTRACTS.md",
+          "docs/security/rust-server-persisted-resource-acceptance.json",
+          "scripts/server-rust/stored-state-clocks.mjs",
+          "scripts/server-rust/usage-repository-compatibility.mjs",
+          "scripts/server-rust/usage-http-compatibility.mjs",
+          "scripts/server-rust/usage-account-compatibility.mjs",
+          "scripts/server-rust/browser-http-compatibility.mjs",
+          "scripts/server-rust/browser-cleanup-failure.mjs",
+          "scripts/server-rust/usage-guest-storage.mjs"
+        ],
+        "remaining": [
+          "These table bindings qualify complete rows within executed accounting and browser consumers, not every writer. Controlled browser worker acknowledgments do not establish native browser rendering, endpoint cryptographic execution or every remote-surface consumer.",
+          "Historical partial scopes, remaining worker-command/Live identities, broader faults/coordination and final current supported-platform/product/package acceptance remain required by the complete server-replacement goal."
+        ]
+      },
+      {
+        "tableName": "account_storage_usage_current",
+        "exportName": "accountStorageUsageCurrent",
+        "implementation": "cantrip_server_rs/src/usage/repository.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PERSISTED_RESOURCE_CONTRACTS.md",
+          "docs/security/rust-server-persisted-resource-acceptance.json",
+          "scripts/server-rust/stored-state-clocks.mjs",
+          "scripts/server-rust/usage-repository-compatibility.mjs",
+          "scripts/server-rust/usage-http-compatibility.mjs",
+          "scripts/server-rust/usage-account-compatibility.mjs",
+          "scripts/server-rust/browser-http-compatibility.mjs",
+          "scripts/server-rust/browser-cleanup-failure.mjs",
+          "scripts/server-rust/usage-guest-storage.mjs"
+        ],
+        "remaining": [
+          "These table bindings qualify complete rows within executed accounting and browser consumers, not every writer. Controlled browser worker acknowledgments do not establish native browser rendering, endpoint cryptographic execution or every remote-surface consumer.",
+          "Historical partial scopes, remaining worker-command/Live identities, broader faults/coordination and final current supported-platform/product/package acceptance remain required by the complete server-replacement goal."
+        ]
+      },
+      {
+        "tableName": "account_storage_usage_snapshots",
+        "exportName": "accountStorageUsageSnapshots",
+        "implementation": "cantrip_server_rs/src/usage/repository.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PERSISTED_RESOURCE_CONTRACTS.md",
+          "docs/security/rust-server-persisted-resource-acceptance.json",
+          "scripts/server-rust/stored-state-clocks.mjs",
+          "scripts/server-rust/usage-repository-compatibility.mjs",
+          "scripts/server-rust/usage-http-compatibility.mjs",
+          "scripts/server-rust/usage-account-compatibility.mjs",
+          "scripts/server-rust/browser-http-compatibility.mjs",
+          "scripts/server-rust/browser-cleanup-failure.mjs",
+          "scripts/server-rust/usage-guest-storage.mjs"
+        ],
+        "remaining": [
+          "These table bindings qualify complete rows within executed accounting and browser consumers, not every writer. Controlled browser worker acknowledgments do not establish native browser rendering, endpoint cryptographic execution or every remote-surface consumer.",
+          "Historical partial scopes, remaining worker-command/Live identities, broader faults/coordination and final current supported-platform/product/package acceptance remain required by the complete server-replacement goal."
+        ]
+      },
+      {
+        "tableName": "browsers",
+        "exportName": "browsers",
+        "implementation": "cantrip_server_rs/src/browsers/mod.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PERSISTED_RESOURCE_CONTRACTS.md",
+          "docs/security/rust-server-persisted-resource-acceptance.json",
+          "scripts/server-rust/stored-state-clocks.mjs",
+          "scripts/server-rust/usage-repository-compatibility.mjs",
+          "scripts/server-rust/usage-http-compatibility.mjs",
+          "scripts/server-rust/usage-account-compatibility.mjs",
+          "scripts/server-rust/browser-http-compatibility.mjs",
+          "scripts/server-rust/browser-cleanup-failure.mjs",
+          "scripts/server-rust/usage-guest-storage.mjs"
+        ],
+        "remaining": [
+          "These table bindings qualify complete rows within executed accounting and browser consumers, not every writer. Controlled browser worker acknowledgments do not establish native browser rendering, endpoint cryptographic execution or every remote-surface consumer.",
+          "Historical partial scopes, remaining worker-command/Live identities, broader faults/coordination and final current supported-platform/product/package acceptance remain required by the complete server-replacement goal."
+        ]
+      },
+      {
+        "tableName": "remote_surfaces",
+        "exportName": "remoteSurfaces",
+        "implementation": "cantrip_server_rs/src/browsers/mod.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PERSISTED_RESOURCE_CONTRACTS.md",
+          "docs/security/rust-server-persisted-resource-acceptance.json",
+          "scripts/server-rust/stored-state-clocks.mjs",
+          "scripts/server-rust/usage-repository-compatibility.mjs",
+          "scripts/server-rust/usage-http-compatibility.mjs",
+          "scripts/server-rust/usage-account-compatibility.mjs",
+          "scripts/server-rust/browser-http-compatibility.mjs",
+          "scripts/server-rust/browser-cleanup-failure.mjs",
+          "scripts/server-rust/usage-guest-storage.mjs"
+        ],
+        "remaining": [
+          "These table bindings qualify complete rows within executed accounting and browser consumers, not every writer. Controlled browser worker acknowledgments do not establish native browser rendering, endpoint cryptographic execution or every remote-surface consumer.",
+          "Historical partial scopes, remaining worker-command/Live identities, broader faults/coordination and final current supported-platform/product/package acceptance remain required by the complete server-replacement goal."
         ]
       }
     ]
@@ -27743,6 +27889,28 @@
       "remaining": [
         "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation.",
         "Remaining command/table/Live identities, historical partial scopes and the complete original server-replacement goal remain open."
+      ]
+    },
+    "currentPersistedResourceContracts": {
+      "status": "partial",
+      "qualification": "docs/RUST_SERVER_PERSISTED_RESOURCE_CONTRACTS.md",
+      "acceptance": "docs/security/rust-server-persisted-resource-acceptance.json",
+      "counts": {
+        "pairedRepositoryScenarios": 165,
+        "pairedAccountingStages": 195,
+        "pairedHttpCaseObservations": 504,
+        "browserCanonicalStages": 36,
+        "rawStoreReopenComparisons": 42,
+        "receivedBrowserConfigureCommands": 36,
+        "browserLiveEvents": 612,
+        "tracedRequests": 1115,
+        "newDurableTables": 6,
+        "newWorkerCommands": 1,
+        "newLiveResources": 0
+      },
+      "remaining": [
+        "These table bindings qualify complete rows within executed accounting and browser consumers, not every writer. Controlled browser worker acknowledgments do not establish native browser rendering, endpoint cryptographic execution or every remote-surface consumer.",
+        "Historical partial scopes, remaining worker-command/Live identities, broader faults/coordination and final current supported-platform/product/package acceptance remain required by the complete server-replacement goal."
       ]
     }
   },
