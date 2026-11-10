@@ -16838,14 +16838,16 @@
         "scripts/server-rust/workspace-repository-compatibility.mjs",
         "scripts/server-rust/workspace-http-compatibility.mjs",
         "scripts/server-rust/workspace-http-lifetimes.mjs",
-        "scripts/server-rust/actual-workspace-client.mjs"
+        "scripts/server-rust/actual-workspace-client.mjs",
+        "docs/RUST_SERVER_DESKTOP_WORKSPACE_ACCEPTANCE.md"
       ],
       "validatedSubset": "Native read/seed/execute/import repository methods and four HTTP routes; all24command variants, exact receipt identity/current attachment fencing, canonical opaque titles, Code/Explorer document authority, legacy resource/dock seeding and transactional Overview cleanup. Actual three-store repository and anonymous/password/account HTTP comparisons; observed PostgreSQL row locks through receipt commit, concurrent seeds/commands and admitted caller-disconnect/shutdown. Existing browser API/queue and full worker retain an unsaved editor model via encrypted BroadcastChannel transfer and ownership across server restart on all three stores. Deletion uses the same native command reducer. Source mutationLiveResources deliberately emits no broad project invalidations for these routes. External PostgreSQL also passes Node/Rust/Node read/write/receipt roundtrip on retained databases; full-server conversion and rollback remain required.",
       "remaining": [
-        "Current-head supported-platform acceptance, native desktop window hosting and complete editor/UI recovery.",
+        "Final requirement/domain reconciliation and supported-platform artifact alignment; current native macOS all-store window/editor flows have dedicated qualification.",
         "Shared coordination and remaining project-workspace CRUD/resource lifecycle consumers.",
-        "All migration/post-write rollback, packaging/Winterhold rehearsal/performance/default cutover and Node removal requirements."
-      ]
+        "Reconcile the wider migration, rollback, packaging, deployment and performance qualifications; this domain pass alone does not establish full replacement."
+      ],
+      "nativeDesktopQualification": "currentNativeDesktopWorkspaceRecovery: actual macOS native windows and complete tested file-editor recovery flows on all three stores; normal release-app encryption remains separately qualified."
     },
     "legacyPaneLayouts": {
       "status": "implemented-pending-platform-acceptance",
@@ -20137,6 +20139,29 @@
           "scripts/server-rust/desktop-client-continuity.mjs"
         ]
       }
+    },
+    "currentNativeDesktopWorkspaceRecovery": {
+      "status": "implemented-with-scoped-local-qualification",
+      "evidence": [
+        "docs/RUST_SERVER_DESKTOP_WORKSPACE_ACCEPTANCE.md",
+        "scripts/server-rust/native-desktop-workspace-acceptance.mjs",
+        "scripts/server-rust/native-desktop-workspace-flow.mjs",
+        "scripts/server-rust/native-desktop-bridge.mjs",
+        "scripts/server-rust/native-desktop-window-inventory.swift"
+      ],
+      "qualification": {
+        "platform": "darwin-arm64",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "sourceBaseline": "8afe9c5674efc46cce66fee59c8df5f499111360",
+        "serverVersion": "1.1.2786",
+        "serverSha256": "c3c69893735427df0eef1ea9379fafe3540a59f363aef3529c54b833ca84a864",
+        "scope": "Actual current debug Tauri/WKWebView app and full worker, immutable frontend plus acceptance-only loopback DOM controller, actual packaged Rust executable and worker files. Twenty-four checkpoints, three Rust restarts, three actual native app SIGKILL/restarts, exact workspace/tab/draft/undo/selection/scroll retention and native close/return. Fifteen owned-window screenshots; all final native launcher/server/worker exits zero with no surviving owned processes. An early setup worker SIGTERM is retained separately."
+      },
+      "limits": [
+        "Isolated development vault; normal release-app OS-key-store and original-profile preservation have separate encrypted desktop qualification.",
+        "No Windows/Linux GUI, every transfer-failure phase, power-loss or performance-capacity claim.",
+        "Final whole-server coverage and supported-artifact reconciliation remains open."
+      ]
     }
   },
   "remainingAcceptance": [
