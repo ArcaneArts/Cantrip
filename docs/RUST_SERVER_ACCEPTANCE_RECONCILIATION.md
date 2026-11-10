@@ -17,6 +17,14 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current Git/GitHub command qualification](RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md)
+reconciles 88 protected repository inner types across both current HTTP scopes,
+all stores and authentication modes. It separately qualifies the active Task
+dashboard PR-list producer and proves 76 legacy plaintext HTTP identities return
+410 without dispatch. The ledger accounts for 244/323 worker-command identities,
+including 87 worker-owned protected operations. Full leaf Git/GitHub execution,
+remaining category scopes and original-goal shipping acceptance remain open.
+
 The [current suspension and Task outcome qualification](RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md)
 compares the three previously unmapped internal HTTP identities across all three
 stores and authentication modes. It repairs suspension error text, an autonomous

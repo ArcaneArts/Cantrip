@@ -15,7 +15,7 @@
     "workingTreeNote": "The original Node contract/schema classification inventory now reads the explicit development baseline in tests/reference-node-server. Its source paths and line positions change with relocation; this is not itself current Rust runtime proof. The normal boundary audit additionally executes current Rust authority/retention tests, and production artifact acceptance runs with baseline src/dist physically unavailable. See RUST_SERVER_NODE_RETIREMENT.md. Full replacement acceptance remains incomplete.",
     "durableTableCountScope": "All Drizzle tables exported by the actual current schema, independently compared at runtime to the source corpus. Does not count internal migration metadata or assert a current all-backend migration/data-preservation pass."
   },
-  "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
+  "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence. Worker-owned-encrypted-inner-operation identities have qualified server opaque boundaries and retained worker consumers; they do not require a Rust leaf implementation in the server. Actual worker leaf execution remains separately scoped.",
   "routes": {
     "defaultStatus": "unported",
     "overrides": [
@@ -12159,6 +12159,1678 @@
         "remaining": [
           "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
           "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+        ]
+      },
+      {
+        "command": "git.history",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.change-summary",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.graph.snapshot",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.graph.metrics",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.graph.commit-overlay",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.file.history",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.file.blame",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.commit.search",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.recovery.list",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.recovery.preview",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.recovery.apply",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.commit.get",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.commit.signature.get",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.refs.list",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.compare",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.revision.diff",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.status",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.diff",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.patch.preview",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.patch.apply",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.stash.list",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.stash.create",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.stash.diff",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.stash.action.preview",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.stash.action.apply",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.branch.list",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.branch.action.preview",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.branch.action.apply",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.remote.list",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.remote.action.preview",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.remote.action.apply",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.submodule.list",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.submodule.action.preview",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.submodule.action.apply",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.lfs.status",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.lfs.action.preview",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.lfs.action.apply",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.tag.list",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.tag.get",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.tag.action.preview",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.tag.action.apply",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.commit.action.preview",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.commit.action.apply",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.worktree.changes.preview",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.worktree.changes.apply",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.operation.preview",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.operation.start",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.operation.control",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.operation.amend",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.conflicts.list",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.conflicts.get",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.conflicts.preview",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.conflicts.apply",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.action",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.force-push.preview",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "git.force-push.apply",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.auth.status",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.repositories.cached",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.repositories.list",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.repository-owners.list",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.repositories.create",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.issues.list",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.inbox.list",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.issue.get",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.issue.create",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.issue.comment",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.issue.close",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.pull-requests.list",
+        "status": "partial",
+        "implementation": [
+          "cantrip_server_rs/src/http/task_controls/dashboard.rs",
+          "cantrip_server_rs/src/http/repository_operations.rs"
+        ],
+        "scope": "Current direct Task dashboard open/closed PR-list producer plus protected repository inner variant.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.pull-request.get",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.pull-request.agent-context",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.pull-request.create",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.pull-request.comment",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.pull-request.review.submit",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.pull-request.review.comment",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.pull-request.review.reply",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.pull-request.review.mutate",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.pull-request.lifecycle.preview",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.pull-request.lifecycle.apply",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.pull-request.checkout.prepare",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.actions.overview",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.actions.run.get",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.actions.run.logs",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.actions.workflow.dispatch",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.actions.run.action",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.actions.run.checkout.prepare",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.releases.list",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.release.get",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
+        ]
+      },
+      {
+        "command": "github.release.create",
+        "status": "worker-owned-encrypted-inner-operation",
+        "implementation": [
+          "cantrip_server_rs/src/http/repository_operations.rs",
+          "cantrip_worker/src/repository-operation-dispatch.ts"
+        ],
+        "scope": "Worker-owned protected inner operation. Current server routes repository.operation unchanged; latent plaintext HTTP producer is tombstoned.",
+        "evidence": [
+          "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+          "docs/security/rust-server-repository-command-acceptance.json",
+          "scripts/server-rust/repository-command-http-compatibility.mjs",
+          "scripts/server-rust/repository-command-relay.mjs",
+          "scripts/server-rust/repository-command-dashboard.mjs"
+        ],
+        "remaining": [
+          "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations."
         ]
       }
     ]
@@ -25602,6 +27274,26 @@
         "Actual native Core/TUI execution, complete product/fault/coordination and final supported-platform/package acceptance remain separate. This controlled worker provides checkpoint and outcome facts over the unchanged production connection protocol.",
         "Active-round scheduling/projection and all other Task writers retain their existing separate qualification; historical-round preservation does not establish all Task behavior.",
         "Remaining worker-command, durable-table and Live identities, historical partial scopes and original-goal final acceptance remain open."
+      ]
+    },
+    "currentRepositoryCommandBoundaries": {
+      "status": "partial",
+      "qualification": "docs/RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md",
+      "acceptance": "docs/security/rust-server-repository-command-acceptance.json",
+      "counts": {
+        "pairedHttpObservations": 2361,
+        "endpointDecryptionProofs": 6426,
+        "tracedRequests": 4848,
+        "actualRepositoryWrapperCommands": 3204,
+        "actualDashboardPrListCommands": 36,
+        "newWorkerIdentities": 88,
+        "workerOwnedProtectedIdentities": 87,
+        "retainedServerProducerIdentities": 1,
+        "retiredPlaintextRoutes": 76
+      },
+      "remaining": [
+        "Full Git/filesystem/GitHub execution, provider failure/fault and supported-platform/product/package acceptance retain their separate scope. The controlled endpoint opens protected requests and seals outcomes but does not execute leaf operations.",
+        "Remaining worker-command/table/Live scopes, historical partials and final original-goal acceptance remain open."
       ]
     }
   },
