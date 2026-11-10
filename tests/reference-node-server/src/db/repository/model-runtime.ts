@@ -302,7 +302,7 @@ export class ModelRepository {
       // only for this owner's selected profile in the same transaction.
       await transaction.execute(sql`
         update ${schema.userSettings}
-        set default_custom_subagent_model = false, updated_at = ${new Date()}
+        set default_custom_subagent_model = false, updated_at = ${new Date().toISOString()}
         where ${schema.userSettings.userId} = ${ownerId}
           and ${schema.userSettings.defaultSubagentModelId} = ${modelId}
           and exists (

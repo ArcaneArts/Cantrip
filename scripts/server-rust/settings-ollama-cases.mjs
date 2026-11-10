@@ -71,19 +71,28 @@ export async function ollamaCases({
     ],
     [
       "worker lookup precedes family check",
-      { provider: "openrouter", worker: "missing" },
+      { provider: "chatgpt", worker: "missing" },
       "Worker not found.",
     ],
     [
       "wrong provider family is rejected",
-      { provider: "openrouter" },
-      "Provider is not an Ollama provider.",
+      { provider: "chatgpt" },
+      "Provider does not use worker endpoint discovery.",
     ],
   ]) {
     const value = await unchanged("Ollama " + name, call(extra));
     assert.deepEqual(value.calls, []);
     assert.equal(value.error ?? value.result, expected);
   }
+  const endpoint = await compare(
+    "OpenAI-compatible endpoint discovery retains its catalog while offline",
+    call({ provider: "openrouter" }),
+  );
+  assert.deepEqual(endpoint.calls, []);
+  assert.equal(endpoint.result.servedStale, true);
+  assert.equal(endpoint.result.models[0].id, "router-catalog");
+  assert.equal(endpoint.result.syncStates[0].scopeKey, "worker:worker");
+  assert.equal(endpoint.result.syncStates[0].error, "worker-offline");
   let result = await compare(
     "offline uncached discovery persists stale state before failing",
     call(),
@@ -101,7 +110,10 @@ export async function ollamaCases({
     call({ input: { connected: true, inventory } }),
   );
   assert.equal(result.calls.length, 1);
-  assert.equal(result.calls[0].options.timeoutMs, 120000);
+  assert.ok(result.calls[0].options.timeoutMs > 0);
+  assert.ok(result.calls[0].options.timeoutMs <= 120000);
+  assert.equal(result.calls[0].options.ownerId, owner);
+  assert.equal(result.calls[0].command.catalogPage.offset, 0);
   assert.equal(result.result.models[0].contextWindow, 128001);
   assert.deepEqual(result.result.models[0].inputModalities, ["text", "image"]);
   const retained = result.result.models[0].id;
