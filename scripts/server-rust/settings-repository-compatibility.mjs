@@ -747,6 +747,21 @@ try {
     await compare(op + " owned", { op, owner, provider: providerId });
     await compare(op + " foreign", { op, owner: other, provider: providerId });
   }
+  for (const [label, principal, provider, expected] of [
+    ["owned enabled route", owner, "ollama", true],
+    ["owned disabled route", owner, "openrouter", true],
+    ["foreign model route", other, "ollama", false],
+    ["missing provider", owner, "missing-provider", false],
+  ]) {
+    assert.equal(
+      await compare("provider membership " + label, {
+        op: "provider-routes",
+        owner: principal,
+        provider,
+      }),
+      expected,
+    );
+  }
   await compare("update provider omits protected key", {
     op: "provider-update",
     owner,

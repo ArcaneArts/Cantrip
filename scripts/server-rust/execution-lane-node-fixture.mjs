@@ -124,5 +124,7 @@ export async function executionLaneFixture(repository, input) {
       );
       return result;
     });
-  return run(lanes);
+  // Ordinary calls exercise the production facade as well as its repository.
+  // Nested-transaction cases above retain the actual transaction-bound adapter.
+  return run(repository);
 }

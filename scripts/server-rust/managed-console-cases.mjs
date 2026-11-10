@@ -527,28 +527,43 @@ export async function managedConsoleCases({
   await seed(
     "INSERT INTO model_routes(id,model_id,provider_id,model_name,provider_model_id,position,enabled) VALUES('api-route','api-model','api-provider','api-native','api-catalog',0,true);",
   );
-  await check(
-    "actual Ollama route requires worker-scoped availability",
-    { op: "console-available", context, model: "api-model" },
-    { rejected: true },
+  const endpointRoute = async (name, endpointContext = context) => {
+    const routes = await check(name, {
+      op: "console-available",
+      context: endpointContext,
+      model: "api-model",
+    });
+    assert.equal(routes.length, 1);
+    assert.equal(routes[0].routeId, "api-route");
+    assert.equal(routes[0].model.providerModelId, "api-catalog");
+    assert.equal(routes[0].provider.id, "api-provider");
+    assert.equal(routes[0].provider.kind, "ollama");
+    assert.equal(routes[0].provider.accountId, null);
+  };
+  // Worker endpoint listings are observations. Current routing lets the
+  // authorized worker attempt the configured endpoint even without a listing.
+  await endpointRoute("missing Ollama listing permits the actual endpoint");
+  await seed(
+    "INSERT INTO provider_model_availability(id,provider_model_id,scope_key,worker_id,state) VALUES('api-availability','api-catalog','worker:alpha','alpha','unavailable');",
+  );
+  await endpointRoute(
+    "unavailable Ollama observation permits endpoint attempt",
   );
   await seed(
-    "INSERT INTO provider_model_availability(id,provider_model_id,scope_key,worker_id,state) VALUES('api-availability','api-catalog','worker:alpha','alpha','available');",
+    "UPDATE provider_model_availability SET state='stale' WHERE id='api-availability';",
   );
-  await check("actual Ollama route reads current worker scope", {
-    op: "console-available",
-    context,
-    model: "api-model",
-  });
-  await check(
-    "other worker cannot inherit Ollama scope",
+  await endpointRoute("stale Ollama observation permits endpoint attempt");
+  await endpointRoute(
+    "other worker observation does not gate endpoint attempt",
     {
-      op: "console-available",
-      context: { ...context, workerId: "beta" },
-      model: "api-model",
+      ...context,
+      workerId: "beta",
     },
-    { rejected: true },
   );
+  await seed(
+    "UPDATE provider_model_availability SET state='available' WHERE id='api-availability';",
+  );
+  await endpointRoute("available Ollama observation retains endpoint identity");
   await check(
     "nonaccount route cooldown",
     {

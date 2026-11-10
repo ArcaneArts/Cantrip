@@ -1,0 +1,2060 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "baseCommit": "4086a41799804618b6a8ade4d066d13aa434dd9b",
+  "scope": "Current macOS arm64 actual repository adapters, real migrations/stores/transactions and controlled routing collaborators. No full worker/UI/client decryption or new shipping artifact/platform claim. Current native production source is unchanged.",
+  "reports": [
+    {
+      "suite": "tunnel",
+      "databaseMode": "pglite",
+      "report": "qa/matrix-v1/tunnel-repository-pglite.json",
+      "sha256": "ba4b271ce6594f6d7f35c8b6444fdd7be8d03e7573dccb03db5a3b37ee3a86fe",
+      "cases": 311,
+      "snapshots": 146,
+      "driverExit": 0
+    },
+    {
+      "suite": "tunnel",
+      "databaseMode": "bundled-postgres",
+      "report": "qa/matrix-v1/tunnel-repository-bundled-postgres.json",
+      "sha256": "84ea56ce7f75dcff6b3bc91b15a5e5f4c52c04e6371eb8bb53abf5795ab68932",
+      "cases": 311,
+      "snapshots": 146,
+      "driverExit": 0
+    },
+    {
+      "suite": "tunnel",
+      "databaseMode": "postgres",
+      "report": "qa/matrix-v1/tunnel-repository-postgres.json",
+      "sha256": "18e106dac921b379b10b7aff6232dc4b4456d5e7b66d707a55aeede9ebba0e26",
+      "cases": 311,
+      "snapshots": 146,
+      "driverExit": 0
+    },
+    {
+      "suite": "execution-lane",
+      "databaseMode": "pglite",
+      "report": "qa/matrix-v1/execution-lane-repository-pglite.json",
+      "sha256": "dd32cfef8e450a0e7e787858400da49712b768f60bd1d76d5ad743d28d74c893",
+      "cases": 256,
+      "snapshots": 198,
+      "driverExit": 0
+    },
+    {
+      "suite": "execution-lane",
+      "databaseMode": "bundled-postgres",
+      "report": "qa/matrix-v1/execution-lane-repository-bundled-postgres.json",
+      "sha256": "6ab8e36b06da37c6043a2dca2384e60240cc2de058f705961941090c7f4ac261",
+      "cases": 256,
+      "snapshots": 198,
+      "driverExit": 0
+    },
+    {
+      "suite": "execution-lane",
+      "databaseMode": "postgres",
+      "report": "qa/matrix-v1/execution-lane-repository-postgres.json",
+      "sha256": "2cceafd62ffbe5ff520a277c5b5c550323780fd7c9a4d5f7e3b6246f8bed3bb1",
+      "cases": 270,
+      "snapshots": 206,
+      "driverExit": 0
+    },
+    {
+      "suite": "chat-runtime",
+      "databaseMode": "pglite",
+      "report": "qa/matrix-v2/chat-runtime-repository-pglite.json",
+      "sha256": "07466da5a866a330726018dab78c46d47bbf45e68900010a011cfd4d18a001c3",
+      "cases": 591,
+      "snapshots": 41,
+      "driverExit": 0
+    },
+    {
+      "suite": "chat-runtime",
+      "databaseMode": "bundled-postgres",
+      "report": "qa/matrix-v2/chat-runtime-repository-bundled-postgres.json",
+      "sha256": "5fda8acad93695ac24a767a1665e529991ad70c514c36e76d4404d4db31beb9d",
+      "cases": 591,
+      "snapshots": 41,
+      "driverExit": 0
+    },
+    {
+      "suite": "chat-runtime",
+      "databaseMode": "postgres",
+      "report": "qa/matrix-v2/chat-runtime-repository-postgres.json",
+      "sha256": "285ced21bcaeae8a41e28ecd318ff21f3cc697fa5b3e5b6ef7b335928f6438ea",
+      "cases": 591,
+      "snapshots": 41,
+      "driverExit": 0
+    },
+    {
+      "suite": "settings",
+      "databaseMode": "pglite",
+      "report": "qa/matrix-v1/settings-repository-pglite.json",
+      "sha256": "7538443f0289c061f4e2056357c8093e5eb524a2034609bb2011c1e078efe1b6",
+      "cases": 792,
+      "snapshots": 0,
+      "driverExit": 0
+    },
+    {
+      "suite": "settings",
+      "databaseMode": "bundled-postgres",
+      "report": "qa/matrix-v1/settings-repository-bundled-postgres.json",
+      "sha256": "2f3507942a3d3b28dd70e18c9407e92c105b16c36c2052d974addf0b1bff59cf",
+      "cases": 792,
+      "snapshots": 0,
+      "driverExit": 0
+    },
+    {
+      "suite": "settings",
+      "databaseMode": "postgres",
+      "report": "qa/matrix-v1/settings-repository-postgres.json",
+      "sha256": "df3f902e8bf5a2a67e6ea6a67b37a2c3b940a59264c9dc1d5f7672a20f998392",
+      "cases": 792,
+      "snapshots": 0,
+      "driverExit": 0
+    }
+  ],
+  "pairedObservations": 5864,
+  "pairedSqlSnapshots": 1163,
+  "repositoryMethods": [
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "listTunnels",
+      "suite": "tunnel",
+      "operation": "tunnel-list",
+      "implementation": "cantrip_server_rs/src/tunnels/catalog.rs",
+      "nativeSymbol": "list",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 39,
+            "name": "owner catalog"
+          },
+          {
+            "caseIndex": 40,
+            "name": "project catalog"
+          },
+          {
+            "caseIndex": 43,
+            "name": "empty project string is no filter"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 39,
+            "name": "owner catalog"
+          },
+          {
+            "caseIndex": 40,
+            "name": "project catalog"
+          },
+          {
+            "caseIndex": 43,
+            "name": "empty project string is no filter"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 39,
+            "name": "owner catalog"
+          },
+          {
+            "caseIndex": 40,
+            "name": "project catalog"
+          },
+          {
+            "caseIndex": 43,
+            "name": "empty project string is no filter"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "getTunnel",
+      "suite": "tunnel",
+      "operation": "tunnel-get",
+      "implementation": "cantrip_server_rs/src/tunnels/catalog.rs",
+      "nativeSymbol": "get",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 50,
+            "name": "attachments tie-break by id"
+          },
+          {
+            "caseIndex": 51,
+            "name": "catalog user capabilities stopped/stopped"
+          },
+          {
+            "caseIndex": 52,
+            "name": "catalog user capabilities stopped/starting"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 50,
+            "name": "attachments tie-break by id"
+          },
+          {
+            "caseIndex": 51,
+            "name": "catalog user capabilities stopped/stopped"
+          },
+          {
+            "caseIndex": 52,
+            "name": "catalog user capabilities stopped/starting"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 50,
+            "name": "attachments tie-break by id"
+          },
+          {
+            "caseIndex": 51,
+            "name": "catalog user capabilities stopped/stopped"
+          },
+          {
+            "caseIndex": 52,
+            "name": "catalog user capabilities stopped/starting"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "createUserTunnel",
+      "suite": "tunnel",
+      "operation": "tunnel-create",
+      "implementation": "cantrip_server_rs/src/tunnels/management.rs",
+      "nativeSymbol": "create_user",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 135,
+            "name": "create detached protected user tunnel"
+          },
+          {
+            "caseIndex": 181,
+            "name": "create protocol tcp"
+          },
+          {
+            "caseIndex": 183,
+            "name": "create protocol http"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 135,
+            "name": "create detached protected user tunnel"
+          },
+          {
+            "caseIndex": 181,
+            "name": "create protocol tcp"
+          },
+          {
+            "caseIndex": 183,
+            "name": "create protocol http"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 135,
+            "name": "create detached protected user tunnel"
+          },
+          {
+            "caseIndex": 181,
+            "name": "create protocol tcp"
+          },
+          {
+            "caseIndex": 183,
+            "name": "create protocol http"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "updateUserTunnel",
+      "suite": "tunnel",
+      "operation": "tunnel-update",
+      "implementation": "cantrip_server_rs/src/tunnels/management.rs",
+      "nativeSymbol": "update_user",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 152,
+            "name": "failed attachment permits edit regardless of active tunnel status"
+          },
+          {
+            "caseIndex": 153,
+            "name": "nullable project is explicitly assigned"
+          },
+          {
+            "caseIndex": 154,
+            "name": "omitted fields preserve project and destination"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 152,
+            "name": "failed attachment permits edit regardless of active tunnel status"
+          },
+          {
+            "caseIndex": 153,
+            "name": "nullable project is explicitly assigned"
+          },
+          {
+            "caseIndex": 154,
+            "name": "omitted fields preserve project and destination"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 152,
+            "name": "failed attachment permits edit regardless of active tunnel status"
+          },
+          {
+            "caseIndex": 153,
+            "name": "nullable project is explicitly assigned"
+          },
+          {
+            "caseIndex": 154,
+            "name": "omitted fields preserve project and destination"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "deleteUserTunnel",
+      "suite": "tunnel",
+      "operation": "tunnel-delete",
+      "implementation": "cantrip_server_rs/src/tunnels/management.rs",
+      "nativeSymbol": "delete_user",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 179,
+            "name": "delete user with failed attachment"
+          },
+          {
+            "caseIndex": 182,
+            "name": "delete protocol tcp"
+          },
+          {
+            "caseIndex": 184,
+            "name": "delete protocol http"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 179,
+            "name": "delete user with failed attachment"
+          },
+          {
+            "caseIndex": 182,
+            "name": "delete protocol tcp"
+          },
+          {
+            "caseIndex": 184,
+            "name": "delete protocol http"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 179,
+            "name": "delete user with failed attachment"
+          },
+          {
+            "caseIndex": 182,
+            "name": "delete protocol tcp"
+          },
+          {
+            "caseIndex": 184,
+            "name": "delete protocol http"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "registerManagedTunnel",
+      "suite": "tunnel",
+      "operation": "tunnel-managed-register",
+      "implementation": "cantrip_server_rs/src/tunnels/managed.rs",
+      "nativeSymbol": "register_managed",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 6,
+            "name": "identical UTF16 worker identities deduplicate before text binding"
+          },
+          {
+            "caseIndex": 9,
+            "name": "public adapter registration uses native ID/defaults"
+          },
+          {
+            "caseIndex": 14,
+            "name": "private TCP managed registration"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 6,
+            "name": "identical UTF16 worker identities deduplicate before text binding"
+          },
+          {
+            "caseIndex": 9,
+            "name": "public adapter registration uses native ID/defaults"
+          },
+          {
+            "caseIndex": 14,
+            "name": "private TCP managed registration"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 6,
+            "name": "identical UTF16 worker identities deduplicate before text binding"
+          },
+          {
+            "caseIndex": 9,
+            "name": "public adapter registration uses native ID/defaults"
+          },
+          {
+            "caseIndex": 14,
+            "name": "private TCP managed registration"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "getManagedTunnel",
+      "suite": "tunnel",
+      "operation": "tunnel-managed-get",
+      "implementation": "cantrip_server_rs/src/tunnels/managed.rs",
+      "nativeSymbol": "get_managed",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 10,
+            "name": "managed tuple selects public row"
+          },
+          {
+            "caseIndex": 26,
+            "name": "read listener managed tunnel"
+          },
+          {
+            "caseIndex": 28,
+            "name": "foreign owner selects its own tuple"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 10,
+            "name": "managed tuple selects public row"
+          },
+          {
+            "caseIndex": 26,
+            "name": "read listener managed tunnel"
+          },
+          {
+            "caseIndex": 28,
+            "name": "foreign owner selects its own tuple"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 10,
+            "name": "managed tuple selects public row"
+          },
+          {
+            "caseIndex": 26,
+            "name": "read listener managed tunnel"
+          },
+          {
+            "caseIndex": 28,
+            "name": "foreign owner selects its own tuple"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "removeManagedTunnel",
+      "suite": "tunnel",
+      "operation": "tunnel-managed-remove",
+      "implementation": "cantrip_server_rs/src/tunnels/managed.rs",
+      "nativeSymbol": "remove_managed",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 7,
+            "name": "remove UTF16 managed fixture"
+          },
+          {
+            "caseIndex": 13,
+            "name": "remove public managed row"
+          },
+          {
+            "caseIndex": 30,
+            "name": "remove foreign tuple only"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 7,
+            "name": "remove UTF16 managed fixture"
+          },
+          {
+            "caseIndex": 13,
+            "name": "remove public managed row"
+          },
+          {
+            "caseIndex": 30,
+            "name": "remove foreign tuple only"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 7,
+            "name": "remove UTF16 managed fixture"
+          },
+          {
+            "caseIndex": 13,
+            "name": "remove public managed row"
+          },
+          {
+            "caseIndex": 30,
+            "name": "remove foreign tuple only"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "getDesktopTunnelAttachment",
+      "suite": "tunnel",
+      "operation": "tunnel-attachment-get",
+      "implementation": "cantrip_server_rs/src/tunnels/attachments.rs",
+      "nativeSymbol": "attachment",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 232,
+            "name": "authorization status starting"
+          },
+          {
+            "caseIndex": 234,
+            "name": "authorization status active"
+          },
+          {
+            "caseIndex": 236,
+            "name": "authorization status offline"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 232,
+            "name": "authorization status starting"
+          },
+          {
+            "caseIndex": 234,
+            "name": "authorization status active"
+          },
+          {
+            "caseIndex": 236,
+            "name": "authorization status offline"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 232,
+            "name": "authorization status starting"
+          },
+          {
+            "caseIndex": 234,
+            "name": "authorization status active"
+          },
+          {
+            "caseIndex": 236,
+            "name": "authorization status offline"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "authorizeDesktopTunnelAttachment",
+      "suite": "tunnel",
+      "operation": "tunnel-attachment-authorize",
+      "implementation": "cantrip_server_rs/src/tunnels/attachments.rs",
+      "nativeSymbol": "authorize_attachment",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 233,
+            "name": "secret authorization status starting"
+          },
+          {
+            "caseIndex": 235,
+            "name": "secret authorization status active"
+          },
+          {
+            "caseIndex": 237,
+            "name": "secret authorization status offline"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 233,
+            "name": "secret authorization status starting"
+          },
+          {
+            "caseIndex": 235,
+            "name": "secret authorization status active"
+          },
+          {
+            "caseIndex": 237,
+            "name": "secret authorization status offline"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 233,
+            "name": "secret authorization status starting"
+          },
+          {
+            "caseIndex": 235,
+            "name": "secret authorization status active"
+          },
+          {
+            "caseIndex": 237,
+            "name": "secret authorization status offline"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "createDesktopTunnelAttachment",
+      "suite": "tunnel",
+      "operation": "tunnel-attachment-create",
+      "implementation": "cantrip_server_rs/src/tunnels/attachments.rs",
+      "nativeSymbol": "create_attachment",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 231,
+            "name": "real-clock production credential rotation"
+          },
+          {
+            "caseIndex": 264,
+            "name": "attachment admission main"
+          },
+          {
+            "caseIndex": 266,
+            "name": "attachment admission placement"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 231,
+            "name": "real-clock production credential rotation"
+          },
+          {
+            "caseIndex": 264,
+            "name": "attachment admission main"
+          },
+          {
+            "caseIndex": 266,
+            "name": "attachment admission placement"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 231,
+            "name": "real-clock production credential rotation"
+          },
+          {
+            "caseIndex": 264,
+            "name": "attachment admission main"
+          },
+          {
+            "caseIndex": 266,
+            "name": "attachment admission placement"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "activateDesktopTunnelAttachment",
+      "suite": "tunnel",
+      "operation": "tunnel-attachment-activate",
+      "implementation": "cantrip_server_rs/src/tunnels/attachments.rs",
+      "nativeSymbol": "activate_attachment",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 277,
+            "name": "matching generation activates"
+          },
+          {
+            "caseIndex": 278,
+            "name": "same-clock activation advances marker"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 277,
+            "name": "matching generation activates"
+          },
+          {
+            "caseIndex": 278,
+            "name": "same-clock activation advances marker"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 277,
+            "name": "matching generation activates"
+          },
+          {
+            "caseIndex": 278,
+            "name": "same-clock activation advances marker"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "markDesktopTunnelAttachmentOffline",
+      "suite": "tunnel",
+      "operation": "tunnel-attachment-offline",
+      "implementation": "cantrip_server_rs/src/tunnels/attachments.rs",
+      "nativeSymbol": "mark_offline",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 280,
+            "name": "current relay can mark offline"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 280,
+            "name": "current relay can mark offline"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 280,
+            "name": "current relay can mark offline"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "stopDesktopTunnelAttachment",
+      "suite": "tunnel",
+      "operation": "tunnel-attachment-stop",
+      "implementation": "cantrip_server_rs/src/tunnels/attachments.rs",
+      "nativeSymbol": "stop_attachment",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 301,
+            "name": "current stop fence stops only attachment"
+          },
+          {
+            "caseIndex": 304,
+            "name": "explicit error stop propagates"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 301,
+            "name": "current stop fence stops only attachment"
+          },
+          {
+            "caseIndex": 304,
+            "name": "explicit error stop propagates"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 301,
+            "name": "current stop fence stops only attachment"
+          },
+          {
+            "caseIndex": 304,
+            "name": "explicit error stop propagates"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "activateDesktopTunnelDirectLease",
+      "suite": "tunnel",
+      "operation": "tunnel-direct-activate",
+      "implementation": "cantrip_server_rs/src/tunnels/leases.rs",
+      "nativeSymbol": "activate_direct",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 284,
+            "name": "direct lease activates independently of relay"
+          },
+          {
+            "caseIndex": 285,
+            "name": "duplicate direct activation never shortens lease"
+          },
+          {
+            "caseIndex": 295,
+            "name": "second direct capability"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 284,
+            "name": "direct lease activates independently of relay"
+          },
+          {
+            "caseIndex": 285,
+            "name": "duplicate direct activation never shortens lease"
+          },
+          {
+            "caseIndex": 295,
+            "name": "second direct capability"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 284,
+            "name": "direct lease activates independently of relay"
+          },
+          {
+            "caseIndex": 285,
+            "name": "duplicate direct activation never shortens lease"
+          },
+          {
+            "caseIndex": 295,
+            "name": "second direct capability"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "renewDesktopTunnelDirectLease",
+      "suite": "tunnel",
+      "operation": "tunnel-direct-renew",
+      "implementation": "cantrip_server_rs/src/tunnels/leases.rs",
+      "nativeSymbol": "renew_direct",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 286,
+            "name": "renewal never shortens lease"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 286,
+            "name": "renewal never shortens lease"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 286,
+            "name": "renewal never shortens lease"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "finalizeDesktopTunnelDirectLease",
+      "suite": "tunnel",
+      "operation": "tunnel-direct-finalize",
+      "implementation": "cantrip_server_rs/src/tunnels/leases.rs",
+      "nativeSymbol": "finalize_direct",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 291,
+            "name": "finalization retains bounded final report"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 291,
+            "name": "finalization retains bounded final report"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 291,
+            "name": "finalization retains bounded final report"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "expireDesktopTunnelDirectLeases",
+      "suite": "tunnel",
+      "operation": "tunnel-direct-expire",
+      "implementation": "cantrip_server_rs/src/tunnels/leases.rs",
+      "nativeSymbol": "expire_direct",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 296,
+            "name": "lease sweep returns changed attachments once"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 296,
+            "name": "lease sweep returns changed attachments once"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 296,
+            "name": "lease sweep returns changed attachments once"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "expireDesktopTunnelAttachments",
+      "suite": "tunnel",
+      "operation": "tunnel-attachment-expire",
+      "implementation": "cantrip_server_rs/src/tunnels/recovery.rs",
+      "nativeSymbol": "expire_attachments",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 305,
+            "name": "hard expiry sweeps nonterminal attachments"
+          },
+          {
+            "caseIndex": 307,
+            "name": "millisecond API expiry can be stopped"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 305,
+            "name": "hard expiry sweeps nonterminal attachments"
+          },
+          {
+            "caseIndex": 307,
+            "name": "millisecond API expiry can be stopped"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 305,
+            "name": "hard expiry sweeps nonterminal attachments"
+          },
+          {
+            "caseIndex": 307,
+            "name": "millisecond API expiry can be stopped"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "resetTransientTunnelAttachments",
+      "suite": "tunnel",
+      "operation": "tunnel-reset",
+      "implementation": "cantrip_server_rs/src/tunnels/recovery.rs",
+      "nativeSymbol": "reset_transient",
+      "caseSelection": "Successful facade operations; nonempty/true results, or explicit void mutation with SQL-state proof below.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 308,
+            "name": "startup recovery after terminal attachments"
+          },
+          {
+            "caseIndex": 310,
+            "name": "restart preserves live direct ownership"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 308,
+            "name": "startup recovery after terminal attachments"
+          },
+          {
+            "caseIndex": 310,
+            "name": "restart preserves live direct ownership"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 308,
+            "name": "startup recovery after terminal attachments"
+          },
+          {
+            "caseIndex": 310,
+            "name": "restart preserves live direct ownership"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "listChatExecutionLanes",
+      "suite": "execution-lane",
+      "operation": "list-chat",
+      "implementation": "cantrip_server_rs/src/chats/execution_lanes/reads.rs",
+      "nativeSymbol": "list_chat",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 86,
+            "name": "list current chat lanes"
+          },
+          {
+            "caseIndex": 89,
+            "name": "chat history ordering"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 86,
+            "name": "list current chat lanes"
+          },
+          {
+            "caseIndex": 89,
+            "name": "chat history ordering"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 86,
+            "name": "list current chat lanes"
+          },
+          {
+            "caseIndex": 89,
+            "name": "chat history ordering"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "listProjectExecutionLanes",
+      "suite": "execution-lane",
+      "operation": "list-project",
+      "implementation": "cantrip_server_rs/src/chats/execution_lanes/reads.rs",
+      "nativeSymbol": "list_project",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 87,
+            "name": "list active project lanes"
+          },
+          {
+            "caseIndex": 90,
+            "name": "project current excludes released"
+          },
+          {
+            "caseIndex": 91,
+            "name": "project complete lane history"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 87,
+            "name": "list active project lanes"
+          },
+          {
+            "caseIndex": 90,
+            "name": "project current excludes released"
+          },
+          {
+            "caseIndex": 91,
+            "name": "project complete lane history"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 87,
+            "name": "list active project lanes"
+          },
+          {
+            "caseIndex": 90,
+            "name": "project current excludes released"
+          },
+          {
+            "caseIndex": 91,
+            "name": "project complete lane history"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "getChatExecutionLaneContext",
+      "suite": "execution-lane",
+      "operation": "context",
+      "implementation": "cantrip_server_rs/src/chats/execution_lanes/reads.rs",
+      "nativeSymbol": "lane_context",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 78,
+            "name": "project lane context"
+          },
+          {
+            "caseIndex": 88,
+            "name": "lane context preserves historical archived removed replica scope"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 78,
+            "name": "project lane context"
+          },
+          {
+            "caseIndex": 88,
+            "name": "lane context preserves historical archived removed replica scope"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 78,
+            "name": "project lane context"
+          },
+          {
+            "caseIndex": 88,
+            "name": "lane context preserves historical archived removed replica scope"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "getChatExecutionRecoveryContext",
+      "suite": "execution-lane",
+      "operation": "recovery",
+      "implementation": "cantrip_server_rs/src/chats/execution_lanes/reads.rs",
+      "nativeSymbol": "recovery_context",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 82,
+            "name": "project lane recovery"
+          },
+          {
+            "caseIndex": 96,
+            "name": "standalone recovery exact protected root"
+          },
+          {
+            "caseIndex": 102,
+            "name": "recovery can inspect unready project worktree"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 82,
+            "name": "project lane recovery"
+          },
+          {
+            "caseIndex": 96,
+            "name": "standalone recovery exact protected root"
+          },
+          {
+            "caseIndex": 102,
+            "name": "recovery can inspect unready project worktree"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 82,
+            "name": "project lane recovery"
+          },
+          {
+            "caseIndex": 96,
+            "name": "standalone recovery exact protected root"
+          },
+          {
+            "caseIndex": 102,
+            "name": "recovery can inspect unready project worktree"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "resetInterruptedChatExecutions",
+      "suite": "execution-lane",
+      "operation": "reset",
+      "implementation": "cantrip_server_rs/src/chats/execution_lanes/restart.rs",
+      "nativeSymbol": "reset_interrupted",
+      "caseSelection": "Successful facade operations; nonempty/true results, or explicit void mutation with SQL-state proof below.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 233,
+            "name": "reset interrupted executions atomically"
+          },
+          {
+            "caseIndex": 234,
+            "name": "repeated interruption reset"
+          },
+          {
+            "caseIndex": 238,
+            "name": "Task reset Goal enabled=false started=false"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 233,
+            "name": "reset interrupted executions atomically"
+          },
+          {
+            "caseIndex": 234,
+            "name": "repeated interruption reset"
+          },
+          {
+            "caseIndex": 238,
+            "name": "Task reset Goal enabled=false started=false"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 233,
+            "name": "reset interrupted executions atomically"
+          },
+          {
+            "caseIndex": 234,
+            "name": "repeated interruption reset"
+          },
+          {
+            "caseIndex": 238,
+            "name": "Task reset Goal enabled=false started=false"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "releaseChatExecutionLane",
+      "suite": "execution-lane",
+      "operation": "release",
+      "implementation": "cantrip_server_rs/src/chats/execution_lanes/release.rs",
+      "nativeSymbol": "release",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 105,
+            "name": "release private lane return=false"
+          },
+          {
+            "caseIndex": 106,
+            "name": "already released lane false"
+          },
+          {
+            "caseIndex": 109,
+            "name": "release private lane return=true"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 105,
+            "name": "release private lane return=false"
+          },
+          {
+            "caseIndex": 106,
+            "name": "already released lane false"
+          },
+          {
+            "caseIndex": 109,
+            "name": "release private lane return=true"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 105,
+            "name": "release private lane return=false"
+          },
+          {
+            "caseIndex": 106,
+            "name": "already released lane false"
+          },
+          {
+            "caseIndex": 109,
+            "name": "release private lane return=true"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "scheduleChatWorktreeTransition",
+      "suite": "execution-lane",
+      "operation": "schedule",
+      "implementation": "cantrip_server_rs/src/chats/execution_lanes/transitions.rs",
+      "nativeSymbol": "schedule_transition",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 143,
+            "name": "reserve private destination before changing placement"
+          },
+          {
+            "caseIndex": 154,
+            "name": "release transition reserves Primary"
+          },
+          {
+            "caseIndex": 162,
+            "name": "UTF16 transition identity before SQL encoding"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 143,
+            "name": "reserve private destination before changing placement"
+          },
+          {
+            "caseIndex": 154,
+            "name": "release transition reserves Primary"
+          },
+          {
+            "caseIndex": 162,
+            "name": "UTF16 transition identity before SQL encoding"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 143,
+            "name": "reserve private destination before changing placement"
+          },
+          {
+            "caseIndex": 154,
+            "name": "release transition reserves Primary"
+          },
+          {
+            "caseIndex": 162,
+            "name": "UTF16 transition identity before SQL encoding"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "getPendingChatWorktreeTransition",
+      "suite": "execution-lane",
+      "operation": "pending",
+      "implementation": "cantrip_server_rs/src/chats/execution_lanes/reads.rs",
+      "nativeSymbol": "pending_transition",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 144,
+            "name": "read pending transition"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 144,
+            "name": "read pending transition"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 144,
+            "name": "read pending transition"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "listPendingWorktreeTransitionChatIds",
+      "suite": "execution-lane",
+      "operation": "pending-chats",
+      "implementation": "cantrip_server_rs/src/chats/execution_lanes/reads.rs",
+      "nativeSymbol": "pending_transition_chat_ids",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 145,
+            "name": "owner pending transition chat ids"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 145,
+            "name": "owner pending transition chat ids"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 145,
+            "name": "owner pending transition chat ids"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "cancelChatWorktreeTransition",
+      "suite": "execution-lane",
+      "operation": "cancel",
+      "implementation": "cantrip_server_rs/src/chats/execution_lanes/transitions.rs",
+      "nativeSymbol": "cancel_transition",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 187,
+            "name": "cancel delivering transition Primary=false"
+          },
+          {
+            "caseIndex": 192,
+            "name": "cancel delivering transition Primary=true"
+          },
+          {
+            "caseIndex": 225,
+            "name": "private cancellation does not release branch lease"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 187,
+            "name": "cancel delivering transition Primary=false"
+          },
+          {
+            "caseIndex": 192,
+            "name": "cancel delivering transition Primary=true"
+          },
+          {
+            "caseIndex": 225,
+            "name": "private cancellation does not release branch lease"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 187,
+            "name": "cancel delivering transition Primary=false"
+          },
+          {
+            "caseIndex": 192,
+            "name": "cancel delivering transition Primary=true"
+          },
+          {
+            "caseIndex": 225,
+            "name": "private cancellation does not release branch lease"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "applyChatWorktreeTransition",
+      "suite": "execution-lane",
+      "operation": "apply",
+      "implementation": "cantrip_server_rs/src/chats/execution_lanes/transitions.rs",
+      "nativeSymbol": "apply_transition",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 150,
+            "name": "apply destination and chat placement atomically"
+          },
+          {
+            "caseIndex": 156,
+            "name": "release transition releases previous private lane"
+          },
+          {
+            "caseIndex": 207,
+            "name": "apply after transition fault removed"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 150,
+            "name": "apply destination and chat placement atomically"
+          },
+          {
+            "caseIndex": 156,
+            "name": "release transition releases previous private lane"
+          },
+          {
+            "caseIndex": 207,
+            "name": "apply after transition fault removed"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 150,
+            "name": "apply destination and chat placement atomically"
+          },
+          {
+            "caseIndex": 156,
+            "name": "release transition releases previous private lane"
+          },
+          {
+            "caseIndex": 207,
+            "name": "apply after transition fault removed"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "startChatExecutionLane",
+      "suite": "execution-lane",
+      "operation": "start",
+      "implementation": "cantrip_server_rs/src/chats/execution_lanes/start.rs",
+      "nativeSymbol": "start",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 3,
+            "name": "start first project execution"
+          },
+          {
+            "caseIndex": 9,
+            "name": "reuse suspended lane and its runtime"
+          },
+          {
+            "caseIndex": 11,
+            "name": "project activation fence advances even ahead of wall clock"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 3,
+            "name": "start first project execution"
+          },
+          {
+            "caseIndex": 9,
+            "name": "reuse suspended lane and its runtime"
+          },
+          {
+            "caseIndex": 11,
+            "name": "project activation fence advances even ahead of wall clock"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 3,
+            "name": "start first project execution"
+          },
+          {
+            "caseIndex": 9,
+            "name": "reuse suspended lane and its runtime"
+          },
+          {
+            "caseIndex": 11,
+            "name": "project activation fence advances even ahead of wall clock"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "finishChatExecutionLane",
+      "suite": "execution-lane",
+      "operation": "finish",
+      "implementation": "cantrip_server_rs/src/chats/execution_lanes/mutations.rs",
+      "nativeSymbol": "finish",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 7,
+            "name": "finish current primary lane and pause queue"
+          },
+          {
+            "caseIndex": 10,
+            "name": "finish reused lane"
+          },
+          {
+            "caseIndex": 12,
+            "name": "suspend future activation"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 7,
+            "name": "finish current primary lane and pause queue"
+          },
+          {
+            "caseIndex": 10,
+            "name": "finish reused lane"
+          },
+          {
+            "caseIndex": 12,
+            "name": "suspend future activation"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 7,
+            "name": "finish current primary lane and pause queue"
+          },
+          {
+            "caseIndex": 10,
+            "name": "finish reused lane"
+          },
+          {
+            "caseIndex": 12,
+            "name": "suspend future activation"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "updateChatExecutionLaneRuntime",
+      "suite": "execution-lane",
+      "operation": "runtime",
+      "implementation": "cantrip_server_rs/src/chats/execution_lanes/mutations.rs",
+      "nativeSymbol": "update_runtime",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 5,
+            "name": "bind acquired lane runtime"
+          },
+          {
+            "caseIndex": 29,
+            "name": "standalone runtime binding"
+          },
+          {
+            "caseIndex": 75,
+            "name": "successful runtime bind after fault rollback"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 5,
+            "name": "bind acquired lane runtime"
+          },
+          {
+            "caseIndex": 29,
+            "name": "standalone runtime binding"
+          },
+          {
+            "caseIndex": 75,
+            "name": "successful runtime bind after fault rollback"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 5,
+            "name": "bind acquired lane runtime"
+          },
+          {
+            "caseIndex": 29,
+            "name": "standalone runtime binding"
+          },
+          {
+            "caseIndex": 75,
+            "name": "successful runtime bind after fault rollback"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "setChatModel",
+      "suite": "chat-runtime",
+      "operation": "chat-model",
+      "implementation": "cantrip_server_rs/src/chats/runtime.rs",
+      "nativeSymbol": "select_model",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 5,
+            "name": "select model"
+          },
+          {
+            "caseIndex": 6,
+            "name": "explicit reasoning"
+          },
+          {
+            "caseIndex": 7,
+            "name": "missing reasoning retains selection"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 5,
+            "name": "select model"
+          },
+          {
+            "caseIndex": 6,
+            "name": "explicit reasoning"
+          },
+          {
+            "caseIndex": 7,
+            "name": "missing reasoning retains selection"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 5,
+            "name": "select model"
+          },
+          {
+            "caseIndex": 6,
+            "name": "explicit reasoning"
+          },
+          {
+            "caseIndex": 7,
+            "name": "missing reasoning retains selection"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "updateChatRuntime",
+      "suite": "chat-runtime",
+      "operation": "chat-runtime",
+      "implementation": "cantrip_server_rs/src/chats/runtime.rs",
+      "nativeSymbol": "update_runtime",
+      "caseSelection": "Successful facade operations; nonempty/true results, or explicit void mutation with SQL-state proof below.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 11,
+            "name": "create project runtime"
+          },
+          {
+            "caseIndex": 12,
+            "name": "omitted account retains existing account"
+          },
+          {
+            "caseIndex": 13,
+            "name": "explicit null clears account"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 11,
+            "name": "create project runtime"
+          },
+          {
+            "caseIndex": 12,
+            "name": "omitted account retains existing account"
+          },
+          {
+            "caseIndex": 13,
+            "name": "explicit null clears account"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 11,
+            "name": "create project runtime"
+          },
+          {
+            "caseIndex": 12,
+            "name": "omitted account retains existing account"
+          },
+          {
+            "caseIndex": 13,
+            "name": "explicit null clears account"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "getAgentTimeAnalytics",
+      "suite": "settings",
+      "operation": "analytics",
+      "implementation": "cantrip_server_rs/src/settings/repository.rs",
+      "nativeSymbol": "agent_time_analytics",
+      "caseSelection": "Successful facade operations with nonempty/true results.",
+      "cases": {
+        "pglite": [
+          {
+            "caseIndex": 56,
+            "name": "fixed clock analytics with nullable groups"
+          },
+          {
+            "caseIndex": 789,
+            "name": "database invalid and extended date analytics"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 56,
+            "name": "fixed clock analytics with nullable groups"
+          },
+          {
+            "caseIndex": 789,
+            "name": "database invalid and extended date analytics"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 56,
+            "name": "fixed clock analytics with nullable groups"
+          },
+          {
+            "caseIndex": 789,
+            "name": "database invalid and extended date analytics"
+          }
+        ]
+      }
+    }
+  ],
+  "voidAndMembershipProof": [
+    {
+      "databaseMode": "pglite",
+      "tunnelResetRetainsDirectLeaseAndClearsRelaySecrets": true,
+      "interruptionResetSuspendsLanesDetachesRuntimesInterruptsApproval": true,
+      "runtimeMutationSharesCanonicalBindingWithLane": true,
+      "positiveAnalyticsExact": true,
+      "providerMembership": [
+        {
+          "caseIndex": 75,
+          "name": "provider membership owned enabled route",
+          "value": true
+        },
+        {
+          "caseIndex": 76,
+          "name": "provider membership owned disabled route",
+          "value": true
+        },
+        {
+          "caseIndex": 77,
+          "name": "provider membership foreign model route",
+          "value": false
+        },
+        {
+          "caseIndex": 78,
+          "name": "provider membership missing provider",
+          "value": false
+        }
+      ]
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "tunnelResetRetainsDirectLeaseAndClearsRelaySecrets": true,
+      "interruptionResetSuspendsLanesDetachesRuntimesInterruptsApproval": true,
+      "runtimeMutationSharesCanonicalBindingWithLane": true,
+      "positiveAnalyticsExact": true,
+      "providerMembership": [
+        {
+          "caseIndex": 75,
+          "name": "provider membership owned enabled route",
+          "value": true
+        },
+        {
+          "caseIndex": 76,
+          "name": "provider membership owned disabled route",
+          "value": true
+        },
+        {
+          "caseIndex": 77,
+          "name": "provider membership foreign model route",
+          "value": false
+        },
+        {
+          "caseIndex": 78,
+          "name": "provider membership missing provider",
+          "value": false
+        }
+      ]
+    },
+    {
+      "databaseMode": "postgres",
+      "tunnelResetRetainsDirectLeaseAndClearsRelaySecrets": true,
+      "interruptionResetSuspendsLanesDetachesRuntimesInterruptsApproval": true,
+      "runtimeMutationSharesCanonicalBindingWithLane": true,
+      "positiveAnalyticsExact": true,
+      "providerMembership": [
+        {
+          "caseIndex": 75,
+          "name": "provider membership owned enabled route",
+          "value": true
+        },
+        {
+          "caseIndex": 76,
+          "name": "provider membership owned disabled route",
+          "value": true
+        },
+        {
+          "caseIndex": 77,
+          "name": "provider membership foreign model route",
+          "value": false
+        },
+        {
+          "caseIndex": 78,
+          "name": "provider membership missing provider",
+          "value": false
+        }
+      ]
+    }
+  ],
+  "archiveDirectory": "rust-server-repository-contracts-delivery-20261109-v1",
+  "endpointAvailabilityObservationPolicy": {
+    "reference": "tests/reference-node-server/src/models/model-route-availability.ts",
+    "referenceSha256": "e199c58c586836f2be2a25714c7ecbb737c0c10b438392c1f1fc33a923d00660",
+    "scope": "Current worker-endpoint catalog observations must not prevent attempting the configured authorized endpoint. OpenRouter retains its account discovery requirement. Both current servers already match; no production implementation changed.",
+    "originalFailures": [
+      {
+        "databaseMode": "pglite",
+        "report": "qa/matrix-v1/chat-runtime-repository-pglite.json",
+        "sha256": "95186ccf4a7d4963e4618b0ad5ed0828c7424e1d374900e9c34e2ef990f216c4",
+        "scope": "Obsolete expected rejection; both current implementations returned a successful actual route. This failed run is not counted as acceptance."
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "report": "qa/matrix-v1/chat-runtime-repository-bundled-postgres.json",
+        "sha256": "c31f8514b85224177bea0593c7c337734bf9d92c3fd05b5cbd9124e40eebf2f6",
+        "scope": "Obsolete expected rejection; both current implementations returned a successful actual route. This failed run is not counted as acceptance."
+      },
+      {
+        "databaseMode": "postgres",
+        "report": "qa/matrix-v1/chat-runtime-repository-postgres.json",
+        "sha256": "4500a43ca3312d7647bb34174703e1231bcb35c47163dd849566e44f00bd4343",
+        "scope": "Obsolete expected rejection; both current implementations returned a successful actual route. This failed run is not counted as acceptance."
+      }
+    ],
+    "passingCases": {
+      "pglite": [
+        {
+          "caseIndex": 561,
+          "name": "missing Ollama listing permits the actual endpoint"
+        },
+        {
+          "caseIndex": 562,
+          "name": "unavailable Ollama observation permits endpoint attempt"
+        },
+        {
+          "caseIndex": 563,
+          "name": "stale Ollama observation permits endpoint attempt"
+        },
+        {
+          "caseIndex": 564,
+          "name": "other worker observation does not gate endpoint attempt"
+        },
+        {
+          "caseIndex": 565,
+          "name": "available Ollama observation retains endpoint identity"
+        },
+        {
+          "caseIndex": 569,
+          "name": "OpenRouter requires actual global account scope"
+        },
+        {
+          "caseIndex": 571,
+          "name": "stale OpenRouter scope is unavailable"
+        }
+      ],
+      "bundled-postgres": [
+        {
+          "caseIndex": 561,
+          "name": "missing Ollama listing permits the actual endpoint"
+        },
+        {
+          "caseIndex": 562,
+          "name": "unavailable Ollama observation permits endpoint attempt"
+        },
+        {
+          "caseIndex": 563,
+          "name": "stale Ollama observation permits endpoint attempt"
+        },
+        {
+          "caseIndex": 564,
+          "name": "other worker observation does not gate endpoint attempt"
+        },
+        {
+          "caseIndex": 565,
+          "name": "available Ollama observation retains endpoint identity"
+        },
+        {
+          "caseIndex": 569,
+          "name": "OpenRouter requires actual global account scope"
+        },
+        {
+          "caseIndex": 571,
+          "name": "stale OpenRouter scope is unavailable"
+        }
+      ],
+      "postgres": [
+        {
+          "caseIndex": 561,
+          "name": "missing Ollama listing permits the actual endpoint"
+        },
+        {
+          "caseIndex": 562,
+          "name": "unavailable Ollama observation permits endpoint attempt"
+        },
+        {
+          "caseIndex": 563,
+          "name": "stale Ollama observation permits endpoint attempt"
+        },
+        {
+          "caseIndex": 564,
+          "name": "other worker observation does not gate endpoint attempt"
+        },
+        {
+          "caseIndex": 565,
+          "name": "available Ollama observation retains endpoint identity"
+        },
+        {
+          "caseIndex": 569,
+          "name": "OpenRouter requires actual global account scope"
+        },
+        {
+          "caseIndex": 571,
+          "name": "stale OpenRouter scope is unavailable"
+        }
+      ]
+    }
+  }
+}
