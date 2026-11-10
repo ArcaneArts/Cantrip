@@ -17,6 +17,16 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current worker/provider state qualification](RUST_SERVER_WORKER_PROVIDER_CONTRACTS.md)
+passes the existing twelve-cell worker-management matrix and a new nine-cell
+provider-state matrix. Actual catalog commands, SQL rollback, durable model
+suppression, worker/server replacement and inference Live identity fences have
+864 paired HTTP observations across all three stores. The ledger now accounts
+for 248/323 worker commands, 126/135 tables and 37/47 Live resources, including
+partial scopes. Controlled catalog replies do not qualify actual provider
+execution or successful inference configuration; final shipping and complete
+replacement acceptance remain open.
+
 The [current Git/GitHub command qualification](RUST_SERVER_REPOSITORY_COMMAND_BOUNDARIES.md)
 reconciles 88 protected repository inner types across both current HTTP scopes,
 all stores and authentication modes. It separately qualifies the active Task
