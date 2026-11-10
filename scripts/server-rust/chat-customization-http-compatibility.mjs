@@ -29,8 +29,10 @@ const databaseMode = option("--database") ?? "pglite",
 const report = {
   suite: "chat-customization-and-configuration-http",
   databaseMode,
+  root,
   completeReplacement: false,
   profiles: [],
+  cleanupFailures: [],
 };
 let pg, h, controller, failure;
 try {
@@ -114,7 +116,7 @@ try {
           .filter(
             (e) =>
               e.type === "event" &&
-              ["customization", "chat"].includes(e.resource),
+              ["customization", "chat", "chat-plan"].includes(e.resource),
           )
           .map(({ scope, resource, action, entityId, revision, payload }) =>
             h.fixture.normalize({
@@ -126,6 +128,20 @@ try {
               payload,
             }),
           );
+        if (!process.argv.includes("--customizations-only")) {
+          const planEvents = result.events.filter(
+            (e) => e.resource === "chat-plan",
+          );
+          assert.ok(
+            planEvents.length > 0,
+            "Actual Plan writes publish Live invalidations",
+          );
+          for (const event of planEvents) {
+            assert.deepEqual(event.scope, { kind: "chat", chatId: chat });
+            assert.equal(event.action, "invalidated");
+            assert.equal(event.payload, null);
+          }
+        }
         result.observations = controller.canonical(result.observations);
         for (const value of [
           ...h.fixture.records.values(),
@@ -164,15 +180,27 @@ try {
   report.retainedRoot = root;
 } finally {
   controller?.release();
-  await h?.close().catch(() => {});
-  await pg?.close();
+  try {
+    await h?.close();
+  } catch (error) {
+    failure ??= error;
+    report.cleanupFailures.push(error.stack ?? String(error));
+  }
+  try {
+    await pg?.close();
+  } catch (error) {
+    failure ??= error;
+    report.cleanupFailures.push(error.stack ?? String(error));
+  }
+  if (failure) report.passed = false;
   const destination = path.resolve(
     option("--report") ??
       `.qa/rust-server/chat-customizations-http-${databaseMode}.json`,
   );
   await mkdir(path.dirname(destination), { recursive: true });
   await writeFile(destination, JSON.stringify(report, null, 2) + "\n");
-  if (!failure) await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
   console.log(
     JSON.stringify({
       databaseMode,

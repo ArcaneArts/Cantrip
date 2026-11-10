@@ -14,6 +14,8 @@ import { runTaskQueueCases } from "./task-queue-cases.mjs";
 import { runTaskEligibilityCases } from "./task-eligibility-cases.mjs";
 // Calls both actual repositories against isolated, migrated databases.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { chatMessageOpaqueContentSchema } from "../../packages/protocol/dist/index.js";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -64,6 +66,7 @@ const databaseMode = option("--database") ?? "pglite",
 const pair = [],
   urls = [],
   aliases = [new Map(), new Map()],
+  protectedDigests = [new Map(), new Map()],
   counts = [{}, {}];
 const startedAt = Date.now();
 const claimedWindows = [null, null];
@@ -78,6 +81,7 @@ let executable, pg, failure;
 const report = {
   suite: "actual-native-command-admission-repositories",
   databaseMode,
+  root,
   completeReplacement: false,
   lifecycleComplete: false,
   domain: option("--domain") ?? "all",
@@ -145,6 +149,11 @@ function automaticOrder(value) {
   return result;
 }
 function normalized(value, i, key = "") {
+  if (
+    ["payloadDigest", "payload_digest"].includes(key) &&
+    protectedDigests[i].has(value)
+  )
+    return protectedDigests[i].get(value);
   if (
     key === "observationFence" &&
     value &&
@@ -403,7 +412,8 @@ async function observe(
 ) {
   report.lastOperation = { name };
   const outcomes = [],
-    requests = [];
+    requests = [],
+    protectedDigestProofs = [];
   for (const [i, r] of pair.entries()) {
     const actual = typeof input === "function" ? input(i) : input;
     const request =
@@ -866,7 +876,50 @@ async function observe(
         }
     }
   }
-  report.cases.push({ name, requests, outcomes });
+  if (op === "native-command-automatic-title")
+    for (const [i, outcome] of outcomes.entries())
+      for (const item of outcome.value?.commands ?? []) {
+        if (item.command.type !== "label.generate") continue;
+        assert.match(
+          item.command.operationId,
+          /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/,
+        );
+        register(item.command.operationId, "label-operation", i);
+      }
+  if (op === "native-command-turn-bootstrap")
+    for (const [i, outcome] of outcomes.entries()) {
+      const command = outcome.value?.commands?.find(
+        (item) => item.command.type === "chat.message.protect",
+      )?.command;
+      const receipt = outcome.value?.nativeCommandReceipt;
+      if (outcome.rejected || !command || !receipt) continue;
+      const preimage = chatMessageOpaqueContentSchema.parse({
+        ...requests[i].protectedMessage,
+        id: command.message.id,
+        idempotencyKey: command.message.idempotencyKey,
+      });
+      const digest = createHash("sha256")
+        .update(JSON.stringify(preimage))
+        .digest("hex");
+      assert.equal(
+        receipt.payloadDigest,
+        digest,
+        name + ": actual protected admission digest",
+      );
+      // Isolated peers allocate different client-message UUIDs. Relate their
+      // digests only after independently verifying each exact opaque preimage.
+      protectedDigests[i].set(
+        digest,
+        `<verified protected digest:${report.cases.length}>`,
+      );
+      protectedDigestProofs.push({ runtime: i, digest, preimage });
+    }
+  report.cases.push({
+    name,
+    requests,
+    outcomes,
+    ...(protectedDigestProofs.length ? { protectedDigestProofs } : {}),
+  });
   delete report.inFlightComparison;
   for (const result of outcomes) {
     assert.equal(result.rejected, error, name + ": " + result.diagnostic);
@@ -959,7 +1012,9 @@ async function reopen(name) {
   (report.reopens ??= []).push({ name, passed: true });
 }
 try {
-  executable = await buildRustExample("project-repository-fixture");
+  executable =
+    option("--executable") ??
+    (await buildRustExample("project-repository-fixture"));
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
   for (const [i, kind] of ["node", "rust"].entries()) {
@@ -1309,7 +1364,8 @@ try {
     await mkdir(path.dirname(p), { recursive: true });
     await writeFile(p, JSON.stringify(report, null, 2) + "\n");
   }
-  if (!failure) await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
 }
 if (failure) throw failure;
 console.log(

@@ -190,6 +190,7 @@ impl RuntimeTelemetry {
     }
     pub fn can_resume(context: &Value, runtime: &Value) -> bool {
         runtime.get("routeId") == context.get("modelRouteId")
-            && runtime["provider"].get("accountId") == context.get("providerAccountId")
+            && Some(runtime["provider"].get("accountId").unwrap_or(&Value::Null))
+                == context.get("providerAccountId")
     }
 }

@@ -48,21 +48,21 @@ export async function runTurnLiveCases(h) {
     assert.equal(value.events[0].payload.id, message.id);
     assert.deepEqual(value.logs, []);
   }
+  const originalMessages = values.map((value) => value.results[0]);
+  const originalPublications = values.map((value) => value.events);
   await snapshot("live Agent row keeps opaque content");
-  const beforeReplay = await snapshot(
-    "before Source encrypted append replay rejection",
-  );
+  const beforeReplay = await snapshot("before encrypted append replay");
   values = await run(
-    "encrypted append preserves Source JSONB metadata replay rejection",
+    "encrypted append replay retains its stored row and publication",
     { action: "write", message },
-    { captureErrors: true },
   );
-  for (const value of values) {
-    assert.deepEqual(value.results, [{ failed: true }]);
-    assert.deepEqual(value.events, []);
+  for (const [index, value] of values.entries()) {
+    assert.deepEqual(value.results, [originalMessages[index]]);
+    assert.deepEqual(value.events, originalPublications[index]);
+    assert.deepEqual(value.logs, []);
   }
   assert.deepEqual(
-    await snapshot("rejected encrypted append leaves actual rows unchanged"),
+    await snapshot("encrypted append replay leaves actual rows unchanged"),
     beforeReplay,
   );
   values = await run("encrypted upsert republishes its real persisted result", {

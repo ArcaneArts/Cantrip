@@ -17,6 +17,13 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current Chat/model identity qualification](RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md)
+adds 3,368 paired observations across all three stores and repairs empty model
+route selection, offline Plan status handling and missing/null resume identity.
+It also binds 26 additional current repository identities and both Plan routes
+to successful operations. These scoped results advance the remaining contract
+audit; they do not close full supported-artifact or original-goal acceptance.
+
 The [Linux ABI qualification](RUST_SERVER_LINUX_ABI.md) fixes the actual Debian 12
 ARM64 native PGlite link failure. Fresh `1.1.2783` ARM64 and x64 images, exported
 Ubuntu distributions and systemd/Caddy rehearsals pass their three-store matrix.

@@ -141,21 +141,48 @@ export async function runRecoveryCases(h) {
     await clean();
     await enqueue("unmanaged opaque queue input " + chat, { chat });
     values = await run(
-      "unmanaged completed bootstrap deletes its actual queued input " + chat,
+      "queued bootstrap retains its current managed or Task boundary " + chat,
       { chat },
     );
     for (const v of values) {
       assert.deepEqual(
         v.trace.map((t) => t.kind),
-        ["begin"],
+        chat === standalone ? ["prepare-account", "begin"] : ["begin"],
       );
-      assert.ok(!Object.hasOwn(v.trace[0].options, "managedQueueClaim"));
-      assert.ok(v.events.some((e) => e.resource === "chat-queue"));
+      if (chat === standalone) {
+        assert.equal(v.trace[0].owner, owner);
+        assert.equal(v.trace[0].context.chatId, standalone);
+        assert.equal(v.trace[0].context.contextKind, "standalone");
+      }
+      const begin = v.trace.find((t) => t.kind === "begin");
+      if (chat === standalone) {
+        assert.match(
+          begin.options.managedQueueClaim.id,
+          /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/,
+        );
+        assert.equal(begin.options.managedQueueClaim.promptRevision, 0);
+      } else assert.ok(!Object.hasOwn(begin.options, "managedQueueClaim"));
+      if (chat === standalone) assert.deepEqual(v.events, []);
+      else assert.ok(v.events.some((e) => e.resource === "chat-queue"));
     }
-    states = await snapshot("unmanaged queue deletion is durable " + chat);
-    for (const s of states) {
-      assert.equal(s.prompts, null);
-      assert.equal(s.claims, null);
+    states = await snapshot(
+      "managed retention or Task queue deletion is durable " + chat,
+    );
+    for (const [index, s] of states.entries()) {
+      if (chat === standalone) {
+        const claim = values[index].trace.find((t) => t.kind === "begin")
+          .options.managedQueueClaim;
+        assert.equal(s.prompts.length, 1);
+        assert.equal(s.prompts[0].state, "claimed");
+        assert.equal(s.claims.length, 1);
+        assert.equal(s.claims[0].id, claim.id);
+        assert.equal(s.claims[0].status, "claimed");
+        assert.equal(s.queueInputs.length, 1);
+        assert.equal(s.queueInputs[0].claim_id, claim.id);
+      } else {
+        assert.equal(s.prompts, null);
+        assert.equal(s.claims, null);
+      }
     }
   }
   await clean();

@@ -265,6 +265,12 @@ export async function runGuiRuntimeTelemetryCases(h) {
       "both missing account fields",
       { modelRouteId: "gui-anchor" },
       { routeId: "gui-anchor", provider: {} },
+      false,
+    ],
+    [
+      "missing runtime account normalizes to explicit context null",
+      { modelRouteId: "gui-anchor", providerAccountId: null },
+      { routeId: "gui-anchor", provider: {} },
       true,
     ],
   ]) {
