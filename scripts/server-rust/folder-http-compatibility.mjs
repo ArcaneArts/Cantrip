@@ -15,6 +15,8 @@ import {
 import { heartbeat, projectLabel, password } from "./security-fixtures.mjs";
 import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
 import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
+import { provisioningStateReopen } from "./provisioning-state-reopen.mjs";
 const option = (key) => {
   const i = process.argv.indexOf(key);
   return i < 0 ? undefined : process.argv[i + 1];
@@ -25,6 +27,7 @@ const root = await mkdtemp(path.join(tmpdir(), "cantrip-folder-http-"));
 const report = {
   suite: "actual-folder-http-executor",
   databaseMode,
+  root,
   completeReplacement: false,
   profiles: [],
 };
@@ -50,9 +53,12 @@ let pg, failure;
 try {
   const executable =
     process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer());
+  const passwordHash = await hashPassword(password);
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
-  for (const profile of ["none", "accounts"]) {
+  for (const profile of ["none", "password", "accounts"].filter(
+    (profile) => !option("--profile") || option("--profile") === profile,
+  )) {
     const outputs = [];
     report.profiles.push({ profile, runtimes: outputs });
     for (const kind of ["node", "rust"]) {
@@ -69,6 +75,9 @@ try {
         environment: {
           CANTRIP_AUTH_MODE: profile,
           CANTRIP_REGISTRATION_ENABLED: "true",
+          ...(profile === "password"
+            ? { CANTRIP_PASSWORD_HASH: passwordHash }
+            : {}),
           ...(url ? { DATABASE_URL: url } : {}),
           ...(kind === "rust" && databaseMode === "bundled-postgres"
             ? {
@@ -80,6 +89,7 @@ try {
       });
       const result = {
         kind,
+        startedAt: Date.now(),
         observations: [],
         commands: [],
         repositoryCommands: [],
@@ -158,6 +168,10 @@ try {
                 password,
               },
             });
+        else if (profile === "password")
+          await visit("login", "POST", "/api/auth/login", {
+            json: { password },
+          });
         else await visit("session", "GET", "/api/auth/session");
         await visit("link code", "POST", "/api/workers/enrollment-codes", {
           status: 201,
@@ -891,6 +905,13 @@ try {
         await foreignLive?.close();
         await fixture.close();
       }
+      if (process.argv.includes("--canonical-state"))
+        result.durableState = await provisioningStateReopen({
+          fixture,
+          root,
+          profile,
+          startedAt: result.startedAt,
+        });
     }
     assert.deepEqual(
       outputs[1].observations,
@@ -915,13 +936,21 @@ try {
         outputs[0].events.filter((e) => e.scope.projectId === id),
         profile + ": scoped ordered publications " + id,
       );
+    if (process.argv.includes("--canonical-state"))
+      assert.deepEqual(
+        outputs[1].durableState.canonical,
+        outputs[0].durableState.canonical,
+        profile + ": complete project/job persistence",
+      );
   }
+  report.passed = true;
 } catch (error) {
   failure = error;
   report.failure = { message: error.message, stack: error.stack };
 } finally {
   await pg?.close();
-  await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");

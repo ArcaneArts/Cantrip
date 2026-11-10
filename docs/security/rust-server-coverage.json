@@ -13892,6 +13892,106 @@
         "remaining": [
           "Actual native model/OAuth/provider execution, successful inference.configure acknowledgements, broader faults/coordination and supported-platform/current shipping artifacts remain separate from controlled catalog facts and worker restart acknowledgements."
         ]
+      },
+      {
+        "command": "project.replica.provision",
+        "implementation": "cantrip_server_rs/src/projects/replicas/execute.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-provisioning-state-acceptance.json",
+          "scripts/server-rust/folder-http-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/provisioning-state-reopen.mjs",
+          "scripts/server-rust/folder-creation-shutdown.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "scripts/server-rust/replica-converted-cases.mjs",
+          "scripts/server-rust/replica-shutdown-cases.mjs",
+          "scripts/server-rust/replica-concurrency-cases.mjs"
+        ],
+        "remaining": [
+          "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
+        ]
+      },
+      {
+        "command": "project.replica.synchronize",
+        "implementation": "cantrip_server_rs/src/projects/replicas/execute.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-provisioning-state-acceptance.json",
+          "scripts/server-rust/folder-http-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/provisioning-state-reopen.mjs",
+          "scripts/server-rust/folder-creation-shutdown.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "scripts/server-rust/replica-converted-cases.mjs",
+          "scripts/server-rust/replica-shutdown-cases.mjs",
+          "scripts/server-rust/replica-concurrency-cases.mjs"
+        ],
+        "remaining": [
+          "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
+        ]
+      },
+      {
+        "command": "project.replica.remove",
+        "implementation": "cantrip_server_rs/src/projects/replicas/execute.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-provisioning-state-acceptance.json",
+          "scripts/server-rust/folder-http-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/provisioning-state-reopen.mjs",
+          "scripts/server-rust/folder-creation-shutdown.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "scripts/server-rust/replica-converted-cases.mjs",
+          "scripts/server-rust/replica-shutdown-cases.mjs",
+          "scripts/server-rust/replica-concurrency-cases.mjs"
+        ],
+        "remaining": [
+          "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
+        ]
+      },
+      {
+        "command": "project.replica.link.repair",
+        "implementation": "cantrip_server_rs/src/http/replicas.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-provisioning-state-acceptance.json",
+          "scripts/server-rust/folder-http-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/provisioning-state-reopen.mjs",
+          "scripts/server-rust/folder-creation-shutdown.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "scripts/server-rust/replica-converted-cases.mjs",
+          "scripts/server-rust/replica-shutdown-cases.mjs",
+          "scripts/server-rust/replica-concurrency-cases.mjs"
+        ],
+        "remaining": [
+          "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
+        ]
+      },
+      {
+        "command": "project.folder.delete",
+        "implementation": "cantrip_server_rs/src/projects/replicas/execute.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-provisioning-state-acceptance.json",
+          "scripts/server-rust/folder-http-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/provisioning-state-reopen.mjs",
+          "scripts/server-rust/folder-creation-shutdown.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "scripts/server-rust/replica-converted-cases.mjs",
+          "scripts/server-rust/replica-shutdown-cases.mjs",
+          "scripts/server-rust/replica-concurrency-cases.mjs"
+        ],
+        "remaining": [
+          "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
+        ]
       }
     ]
   },
@@ -16084,6 +16184,69 @@
         ],
         "remaining": [
           "Actual native model/OAuth/provider execution, successful inference.configure acknowledgements, broader faults/coordination and supported-platform/current shipping artifacts remain separate from controlled catalog facts and worker restart acknowledgements."
+        ]
+      },
+      {
+        "tableName": "projects",
+        "exportName": "projects",
+        "implementation": "cantrip_server_rs/src/projects/folders/mod.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-provisioning-state-acceptance.json",
+          "scripts/server-rust/folder-http-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/provisioning-state-reopen.mjs",
+          "scripts/server-rust/folder-creation-shutdown.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "scripts/server-rust/replica-converted-cases.mjs",
+          "scripts/server-rust/replica-shutdown-cases.mjs",
+          "scripts/server-rust/replica-concurrency-cases.mjs"
+        ],
+        "remaining": [
+          "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
+        ]
+      },
+      {
+        "tableName": "project_folder_setup_jobs",
+        "exportName": "projectFolderSetupJobs",
+        "implementation": "cantrip_server_rs/src/projects/folders/jobs.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-provisioning-state-acceptance.json",
+          "scripts/server-rust/folder-http-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/provisioning-state-reopen.mjs",
+          "scripts/server-rust/folder-creation-shutdown.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "scripts/server-rust/replica-converted-cases.mjs",
+          "scripts/server-rust/replica-shutdown-cases.mjs",
+          "scripts/server-rust/replica-concurrency-cases.mjs"
+        ],
+        "remaining": [
+          "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
+        ]
+      },
+      {
+        "tableName": "project_replica_jobs",
+        "exportName": "projectReplicaJobs",
+        "implementation": "cantrip_server_rs/src/projects/replicas/admission.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-provisioning-state-acceptance.json",
+          "scripts/server-rust/folder-http-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/provisioning-state-reopen.mjs",
+          "scripts/server-rust/folder-creation-shutdown.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "scripts/server-rust/replica-converted-cases.mjs",
+          "scripts/server-rust/replica-shutdown-cases.mjs",
+          "scripts/server-rust/replica-concurrency-cases.mjs"
+        ],
+        "remaining": [
+          "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
         ]
       }
     ]
@@ -21919,6 +22082,66 @@
         "remaining": [
           "Actual native model/OAuth/provider execution, successful inference.configure acknowledgements, broader faults/coordination and supported-platform/current shipping artifacts remain separate from controlled catalog facts and worker restart acknowledgements."
         ]
+      },
+      {
+        "resource": "project",
+        "implementation": "cantrip_server_rs/src/projects/folders/service.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-provisioning-state-acceptance.json",
+          "scripts/server-rust/folder-http-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/provisioning-state-reopen.mjs",
+          "scripts/server-rust/folder-creation-shutdown.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "scripts/server-rust/replica-converted-cases.mjs",
+          "scripts/server-rust/replica-shutdown-cases.mjs",
+          "scripts/server-rust/replica-concurrency-cases.mjs"
+        ],
+        "remaining": [
+          "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
+        ]
+      },
+      {
+        "resource": "project-folder-setup-job",
+        "implementation": "cantrip_server_rs/src/projects/folders/service.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-provisioning-state-acceptance.json",
+          "scripts/server-rust/folder-http-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/provisioning-state-reopen.mjs",
+          "scripts/server-rust/folder-creation-shutdown.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "scripts/server-rust/replica-converted-cases.mjs",
+          "scripts/server-rust/replica-shutdown-cases.mjs",
+          "scripts/server-rust/replica-concurrency-cases.mjs"
+        ],
+        "remaining": [
+          "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
+        ]
+      },
+      {
+        "resource": "project-replica-job",
+        "implementation": "cantrip_server_rs/src/projects/replicas/service.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-provisioning-state-acceptance.json",
+          "scripts/server-rust/folder-http-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/provisioning-state-reopen.mjs",
+          "scripts/server-rust/folder-creation-shutdown.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "scripts/server-rust/replica-converted-cases.mjs",
+          "scripts/server-rust/replica-shutdown-cases.mjs",
+          "scripts/server-rust/replica-concurrency-cases.mjs"
+        ],
+        "remaining": [
+          "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
+        ]
       }
     ]
   },
@@ -27499,6 +27722,27 @@
       "remaining": [
         "Actual native model/OAuth/provider execution, successful inference.configure acknowledgements, broader faults/coordination and supported-platform/current shipping artifacts remain separate from controlled catalog facts and worker restart acknowledgements.",
         "Remaining command/table/Live identities, historical partial scopes and the full original replacement goal remain incomplete."
+      ]
+    },
+    "currentProvisioningStateContracts": {
+      "status": "partial",
+      "qualification": "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+      "acceptance": "docs/security/rust-server-provisioning-state-acceptance.json",
+      "counts": {
+        "pairedHttpObservations": 1119,
+        "rawStoreReopenComparisons": 36,
+        "verifiedAdmissionFingerprints": 108,
+        "receivedFolderCommands": 198,
+        "receivedReplicaCommands": 342,
+        "qualifiedLiveEvents": 1116,
+        "tracedRequests": 4361,
+        "newWorkerCommands": 5,
+        "newDurableTables": 3,
+        "newLiveResources": 3
+      },
+      "remaining": [
+        "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation.",
+        "Remaining command/table/Live identities, historical partial scopes and the complete original server-replacement goal remain open."
       ]
     }
   },
