@@ -395,6 +395,12 @@ async fn handle(
     Path(chat): Path<String>,
     request: Request,
 ) -> Response {
+    let mutation = !matches!(
+        request.method(),
+        &Method::GET | &Method::HEAD | &Method::OPTIONS
+    );
+    let event_owner = context.principal.user.as_ref().map(|user| user.id.clone());
+    let event_chat = chat.clone();
     let result: Result<Response> = async {
         let owner = context
             .principal
@@ -441,9 +447,15 @@ async fn handle(
             .await
     }
     .await;
-    match result {
-        Ok(response) => response,
-        Err(cause) => middleware::failure(&service, &context.id, &cause),
+    match (result, event_owner) {
+        (Ok(response), Some(owner)) if mutation && response.status().as_u16() < 400 => {
+            let live = service.chat_mutations.clone();
+            super::on_response::completed(response, move || {
+                live.publish_invalidation(&owner, &event_chat, "chat-goal", None);
+            })
+        }
+        (Ok(response), _) => response,
+        (Err(cause), _) => middleware::failure(&service, &context.id, &cause),
     }
 }
 pub(super) fn routes() -> Router<Arc<AuthService>> {

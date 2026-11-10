@@ -35,8 +35,10 @@ assert.ok(
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-chat-control-http-"));
 console.error(JSON.stringify({ event: "chat-control.created", root }));
 const report = {
+  suite: "actual-chat-control-http",
   root,
   database: values.database,
+  databaseMode: values.database,
   completeReplacement: false,
   profiles: [],
   scope:
@@ -93,6 +95,9 @@ try {
         environment: { CANTRIP_FIXTURE_LOGGING: "true" },
         logPath: path.join(root, profile + "-" + kind + ".log"),
       });
+      result.rawCaseCommands = structuredClone(
+        result.rawCases.flatMap((item) => item.commands),
+      );
     }
     if (results.length === 2) {
       assert.deepEqual(
@@ -113,6 +118,7 @@ try {
         );
     }
   }
+  report.passed = true;
 } catch (error) {
   failure = error;
   report.failure = { message: error.message, stack: error.stack };

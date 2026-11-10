@@ -29,13 +29,17 @@ const root = await mkdtemp(path.join(tmpdir(), "cantrip-native-queue-http-"));
 const report = {
   suite: "actual-native-queue-http",
   databaseMode,
+  root,
   completeReplacement: false,
   profiles: [],
 };
 let pg, active, failure;
 try {
-  const executable = await buildRustServer(),
-    repositoryExecutable = await buildRustExample("project-repository-fixture"),
+  const executable =
+      process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer()),
+    repositoryExecutable =
+      process.env.CANTRIP_RUST_PROJECT_REPOSITORY_BINARY ??
+      (await buildRustExample("project-repository-fixture")),
     passwordHash = await hashPassword(password);
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
@@ -89,6 +93,17 @@ try {
         });
         h.prepared = await prepareEventCommands(h);
         await nativeQueueHttpCases({ h, client, result });
+        await h.live.ping("complete canonical queue effects");
+        result.rawQueueEvents = h.live.history.filter(
+          (event) => event.type === "event" && event.resource === "chat-queue",
+        );
+        assert.ok(
+          result.rawQueueEvents.length > 0,
+          "actual queue Live effects",
+        );
+        result.queueEvents = result.rawQueueEvents.map(({ cursor, ...event }) =>
+          h.fixture.normalize(event),
+        );
         result.diagnostics = h.diagnostics();
       } finally {
         await h.close();
@@ -100,6 +115,7 @@ try {
       "cryptoProofs",
       "workerSdkOperations",
       "sdkObservations",
+      "queueEvents",
     ])
       assert.deepEqual(outputs[1][key], outputs[0][key], profile + " " + key);
   }
@@ -117,7 +133,8 @@ try {
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, JSON.stringify(report, null, 2) + "\n");
   }
-  if (!failure) await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
 }
 if (failure) throw failure;
 console.log(

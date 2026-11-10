@@ -17,6 +17,14 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current Chat Goal/queue qualification](RUST_SERVER_CHAT_GOAL_QUEUE_CONTRACTS.md)
+repairs missing native response-completion Goal invalidations. Its three nine-cell
+matrices retain 2,403 paired HTTP cases, 18 caller-disappearance phases, actual
+worker transport/cryptography and 468 complete Goal/queue Live events. The new
+bindings account for eight commands and two Live types, bringing scoped totals
+to 269/323 and 44/47. Controlled worker replies do not qualify leaf Git/native
+model execution or complete current supported-artifact shipping acceptance.
+
 The [current provider authentication/quota/inference qualification](RUST_SERVER_PROVIDER_LIVE_CONTRACTS.md)
 passes all four nine-cell storage/authentication matrices. It repairs public
 SQL-error projection drift, retains account/device/quota effects and validates

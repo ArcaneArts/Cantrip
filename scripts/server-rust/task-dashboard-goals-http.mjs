@@ -70,16 +70,18 @@ const variants = [
 const report = {
   suite: "public-task-dashboard-goals-http",
   databaseMode,
+  root,
   completeReplacement: false,
   fullWorkerProcess: false,
   profiles: [],
 };
 let pg, active, controller, failure;
 try {
-  const executable = await buildRustServer();
-  const repositoryExecutable = await buildRustExample(
-    "project-repository-fixture",
-  );
+  const executable =
+    process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer());
+  const repositoryExecutable =
+    process.env.CANTRIP_RUST_PROJECT_REPOSITORY_BINARY ??
+    (await buildRustExample("project-repository-fixture"));
   const passwordHash = await hashPassword(password);
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
@@ -581,6 +583,18 @@ try {
         result.taskEvents.map((event) => event.scope.kind),
         Array.from({ length: 8 }, () => ["chat", "project"]).flat(),
       );
+      await h.live.ping("complete Goal effects");
+      result.rawGoalEvents = h.live.history.filter(
+        (event) => event.type === "event" && event.resource === "chat-goal",
+      );
+      assert.ok(result.rawGoalEvents.length > 0, "actual Goal Live effects");
+      result.goalEvents = result.rawGoalEvents.map(({ cursor, ...event }) =>
+        h.fixture.normalize(event),
+      );
+      result.rawCommands = worker.commands.map((command) =>
+        structuredClone(command),
+      );
+      result.rawTurns = worker.turns.map((command) => structuredClone(command));
       result.observations = worker.redact(result.observations);
       const normalizeCommand = (value) => {
         if (Array.isArray(value)) return value.map(normalizeCommand);
@@ -654,6 +668,7 @@ try {
       "observations",
       "commands",
       "taskEvents",
+      "goalEvents",
       "taskProofs",
       "goalProofs",
       "pairedPrAdmission",
@@ -662,6 +677,7 @@ try {
     ])
       assert.deepEqual(outputs[1][key], outputs[0][key], profile + " " + key);
   }
+  report.passed = true;
 } catch (error) {
   failure = error;
   report.failure = { message: error.message, stack: error.stack };
@@ -674,7 +690,8 @@ try {
     await mkdir(path.dirname(reportPath), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");
   }
-  if (!failure) await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
 }
 console.log(
   JSON.stringify({

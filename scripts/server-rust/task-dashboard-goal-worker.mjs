@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { protectChatMessage } from "../../cantrip_worker/src/chat-message-encryption.ts";
-import { GOAL_RESUME_PROMPT } from "../../tests/reference-node-server/src/app/shared/constants.ts";
+import { taskMessageOpaqueContentSchema } from "../../packages/protocol/dist/index.js";
 import {
   encryptTaskProtectedContent,
   decryptTaskProtectedContent,
@@ -412,9 +412,18 @@ export function dashboardGoalWorker() {
           message,
           "Goal resumes using the worker's admitted encrypted Task message",
         );
-        const content = await proveMessage(owner, message, true);
+        assert.deepEqual(
+          command.protectedTaskPrompt,
+          taskMessageOpaqueContentSchema.parse(message),
+          "Goal resumes with the exact admitted protected Task input",
+        );
+        const content = await proveMessage(
+          owner,
+          command.protectedTaskPrompt,
+          true,
+        );
         assert.equal(content.content[0].text, goalMarker);
-        assert.equal(command.prompt, GOAL_RESUME_PROMPT);
+        assert.equal(command.prompt, undefined);
         assert.equal(command.resultMode.kind, "task-message-encrypted");
         assert.equal(
           command.resultMode.idempotencyKey,
