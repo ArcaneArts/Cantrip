@@ -1,0 +1,1820 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "baseCommit": "0f2a36e36c9e5107e313a771866c2b2ad63e1ee8",
+  "platform": "darwin-arm64",
+  "productionRustChanges": false,
+  "scope": "Current real HTTP/SQL/App Live and unchanged worker transport; controlled catalog/model and restart effects, real failure/deadline/unlink/re-enrollment/restart and canonical native store reopen. No actual native model/OAuth/Git execution.",
+  "counts": {
+    "pairedHttpObservations": 864,
+    "workerSqlCaseObservations": 1038,
+    "catalogCanonicalStages": 126,
+    "actualCatalogAndTestCommands": 288,
+    "acceptedInferenceLiveEvents": 36,
+    "tracedRequests": 6126,
+    "newWorkerCommands": 4,
+    "newDurableTables": 5,
+    "newLiveResources": 1
+  },
+  "reports": [
+    {
+      "suite": "provider-state-public-http",
+      "databaseMode": "pglite",
+      "path": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+      "sha256": "4eac297eef0cc77f579339efb0c313bbdf23ec11924628f929f7e1272e705c37",
+      "pairedHttpObservations": 91
+    },
+    {
+      "suite": "worker-management-http",
+      "databaseMode": "pglite",
+      "path": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+      "sha256": "f79fadc38e10bcd6e382a9a3cbf35311a0ce004116d434e580639681190afadd",
+      "pairedHttpObservations": 197
+    },
+    {
+      "suite": "provider-state-public-http",
+      "databaseMode": "bundled-postgres",
+      "path": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+      "sha256": "89e92906028d79c019e23a18fa12e4343bd11e876797ae8e217dbbc92f676629",
+      "pairedHttpObservations": 91
+    },
+    {
+      "suite": "worker-management-http",
+      "databaseMode": "bundled-postgres",
+      "path": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+      "sha256": "34b6c6948e7eb559d4dde5f95655be0de21eb76d75e4ca797621d7157c8927ae",
+      "pairedHttpObservations": 197
+    },
+    {
+      "suite": "provider-state-public-http",
+      "databaseMode": "postgres",
+      "path": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+      "sha256": "b16648dc3269a3ad5897e383aba407408c8b5e6e5ec252fc03c27045532c57f1",
+      "pairedHttpObservations": 91
+    },
+    {
+      "suite": "worker-management-http",
+      "databaseMode": "postgres",
+      "path": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+      "sha256": "aec797cd98d4087fa546b113b0d0b85023d625b46550a9726eda30e724c4a5f9",
+      "pairedHttpObservations": 197
+    }
+  ],
+  "traces": [
+    {
+      "path": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.requests.json",
+      "sha256": "4ce9d19a005629fa00f00d3375d0d949c8b8ac8ed3b95233e596fd9a74930c28",
+      "requests": 290
+    },
+    {
+      "path": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.requests.json",
+      "sha256": "5b739b6c3f57e2de7e336b2007bfa4d45bb6d62ac9215179599b29aecbe7f824",
+      "requests": 1752
+    },
+    {
+      "path": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.requests.json",
+      "sha256": "7d055778073ea73ac52bc8b2492668588b6a51913c76f8f3e53b5059027036ea",
+      "requests": 290
+    },
+    {
+      "path": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.requests.json",
+      "sha256": "b232e3f84acb3cbc8abc532e11d1599fbe62922cc5a643896fc1520b661bc5a9",
+      "requests": 1752
+    },
+    {
+      "path": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.requests.json",
+      "sha256": "701a460a349eef391c86d4d56ef35607a9afc3dada6f9736d089f5c5cb2064d8",
+      "requests": 290
+    },
+    {
+      "path": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.requests.json",
+      "sha256": "4b9e5f9dba7484eed844e3df46c77bf73bf2c1b2cf20aa36079917d4d6b69873",
+      "requests": 1752
+    }
+  ],
+  "workerCommandMappings": [
+    {
+      "command": "model.chatgpt.catalog",
+      "implementation": "cantrip_server_rs/src/settings/account_catalog.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCatalogCommands",
+            "indexes": [1, 4, 7, 8, 9, 10, 14, 15]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCatalogCommands",
+            "indexes": [1, 4, 7, 8, 9, 10, 14, 15]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCatalogCommands",
+            "indexes": [1, 4, 7, 8, 9, 10, 14, 15]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCatalogCommands",
+            "indexes": [1, 4, 7, 8, 9, 10, 14, 15]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCatalogCommands",
+            "indexes": [1, 4, 7, 8, 9, 10, 14, 15]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCatalogCommands",
+            "indexes": [1, 4, 7, 8, 9, 10, 14, 15]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCatalogCommands",
+            "indexes": [1, 4, 7, 8, 9, 10, 14, 15]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCatalogCommands",
+            "indexes": [1, 4, 7, 8, 9, 10, 14, 15]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCatalogCommands",
+            "indexes": [1, 4, 7, 8, 9, 10, 14, 15]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCatalogCommands",
+            "indexes": [1, 4, 7, 8, 9, 10, 14, 15]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCatalogCommands",
+            "indexes": [1, 4, 7, 8, 9, 10, 14, 15]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCatalogCommands",
+            "indexes": [1, 4, 7, 8, 9, 10, 14, 15]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCatalogCommands",
+            "indexes": [1, 4, 7, 8, 9, 10, 14, 15]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCatalogCommands",
+            "indexes": [1, 4, 7, 8, 9, 10, 14, 15]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCatalogCommands",
+            "indexes": [1, 4, 7, 8, 9, 10, 14, 15]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCatalogCommands",
+            "indexes": [1, 4, 7, 8, 9, 10, 14, 15]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCatalogCommands",
+            "indexes": [1, 4, 7, 8, 9, 10, 14, 15]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCatalogCommands",
+            "indexes": [1, 4, 7, 8, 9, 10, 14, 15]
+          }
+        }
+      ]
+    },
+    {
+      "command": "model.grok.catalog",
+      "implementation": "cantrip_server_rs/src/settings/account_catalog.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCatalogCommands",
+            "indexes": [2, 5, 11, 12]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCatalogCommands",
+            "indexes": [2, 5, 11, 12]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCatalogCommands",
+            "indexes": [2, 5, 11, 12]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCatalogCommands",
+            "indexes": [2, 5, 11, 12]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCatalogCommands",
+            "indexes": [2, 5, 11, 12]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCatalogCommands",
+            "indexes": [2, 5, 11, 12]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCatalogCommands",
+            "indexes": [2, 5, 11, 12]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCatalogCommands",
+            "indexes": [2, 5, 11, 12]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCatalogCommands",
+            "indexes": [2, 5, 11, 12]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCatalogCommands",
+            "indexes": [2, 5, 11, 12]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCatalogCommands",
+            "indexes": [2, 5, 11, 12]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCatalogCommands",
+            "indexes": [2, 5, 11, 12]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCatalogCommands",
+            "indexes": [2, 5, 11, 12]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCatalogCommands",
+            "indexes": [2, 5, 11, 12]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCatalogCommands",
+            "indexes": [2, 5, 11, 12]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCatalogCommands",
+            "indexes": [2, 5, 11, 12]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCatalogCommands",
+            "indexes": [2, 5, 11, 12]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCatalogCommands",
+            "indexes": [2, 5, 11, 12]
+          }
+        }
+      ]
+    },
+    {
+      "command": "model.ollama.catalog",
+      "implementation": "cantrip_server_rs/src/settings/worker_catalog_pages.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCatalogCommands",
+            "indexes": [0, 3, 6]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCatalogCommands",
+            "indexes": [0, 3, 6]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCatalogCommands",
+            "indexes": [0, 3, 6]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCatalogCommands",
+            "indexes": [0, 3, 6]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCatalogCommands",
+            "indexes": [0, 3, 6]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCatalogCommands",
+            "indexes": [0, 3, 6]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCatalogCommands",
+            "indexes": [0, 3, 6]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCatalogCommands",
+            "indexes": [0, 3, 6]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCatalogCommands",
+            "indexes": [0, 3, 6]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCatalogCommands",
+            "indexes": [0, 3, 6]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCatalogCommands",
+            "indexes": [0, 3, 6]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCatalogCommands",
+            "indexes": [0, 3, 6]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCatalogCommands",
+            "indexes": [0, 3, 6]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCatalogCommands",
+            "indexes": [0, 3, 6]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCatalogCommands",
+            "indexes": [0, 3, 6]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCatalogCommands",
+            "indexes": [0, 3, 6]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCatalogCommands",
+            "indexes": [0, 3, 6]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCatalogCommands",
+            "indexes": [0, 3, 6]
+          }
+        }
+      ]
+    },
+    {
+      "command": "model.provider.test",
+      "implementation": "cantrip_server_rs/src/http/settings_operations.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCatalogCommands",
+            "indexes": [13]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCatalogCommands",
+            "indexes": [13]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCatalogCommands",
+            "indexes": [13]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCatalogCommands",
+            "indexes": [13]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCatalogCommands",
+            "indexes": [13]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCatalogCommands",
+            "indexes": [13]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCatalogCommands",
+            "indexes": [13]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCatalogCommands",
+            "indexes": [13]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCatalogCommands",
+            "indexes": [13]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCatalogCommands",
+            "indexes": [13]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCatalogCommands",
+            "indexes": [13]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCatalogCommands",
+            "indexes": [13]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCatalogCommands",
+            "indexes": [13]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCatalogCommands",
+            "indexes": [13]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCatalogCommands",
+            "indexes": [13]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCatalogCommands",
+            "indexes": [13]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCatalogCommands",
+            "indexes": [13]
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCatalogCommands",
+            "indexes": [13]
+          }
+        }
+      ]
+    }
+  ],
+  "durableTableMappings": [
+    {
+      "tableName": "workers",
+      "exportName": "workers",
+      "implementation": "cantrip_server_rs/src/workers/repository.rs",
+      "scope": "Actual enrolled identity, rename, runtime versus display name, UTF16/NUL boundaries, unlink, re-enrollment and exact post-write restart; complete canonical worker rows.",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "development",
+          "authenticationMode": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/0/runtimes/0/cases/43/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/development/node/observations/043.json",
+            "rawStateSha256": "84205a1e7c492c15d1fbca11ef6437191de577c573a770be02ebcc93c7288be1"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/0/runtimes/1/cases/43/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/development/rust/observations/043.json",
+            "rawStateSha256": "0634b02a9e7b05be51959e642b6c2bc7d3f9f3b940ac04a9258fd8dc0ec21c00"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "authenticationMode": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/1/runtimes/0/cases/42/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/password/node/observations/042.json",
+            "rawStateSha256": "fdf45458aa677ce3789f692c1fb81f2ecee8842962a3c604ff814a9a279d1fd7"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/1/runtimes/1/cases/42/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/password/rust/observations/042.json",
+            "rawStateSha256": "d430a642b6db65672d01f4fac85a5500cbb14e0089754aa6451c961e855d566d"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "authenticationMode": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/2/runtimes/0/cases/42/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/accounts/node/observations/042.json",
+            "rawStateSha256": "d5083c27772570c4c43c41eaed4285b1f56a33105ccb145a6024db6bb8e6798a"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/2/runtimes/1/cases/42/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/accounts/rust/observations/042.json",
+            "rawStateSha256": "893bdc4045a5d4bd6ae9ec448e79ef9e45bcb36ea7c1b95449707ea354faa651"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "standalone",
+          "authenticationMode": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/3/runtimes/0/cases/42/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/standalone/node/observations/042.json",
+            "rawStateSha256": "6e40dcc7ad90df7bd1b3a51a64e890ee080ea2533f27a88e6f96c5262dd12cfe"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/3/runtimes/1/cases/42/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/standalone/rust/observations/042.json",
+            "rawStateSha256": "c5c2a15d4d23e07c5c3e62f09fbf5bdda815ee905bd4e8b3cfeb857a0fdef338"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "development",
+          "authenticationMode": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/0/runtimes/0/cases/43/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/development/node/observations/043.json",
+            "rawStateSha256": "3846b0f785d7789862bca7ad31a9b5966050880353601b71f1c4b6d3e9bc98c5"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/0/runtimes/1/cases/43/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/development/rust/observations/043.json",
+            "rawStateSha256": "6842e3288cbcb97bd15f3db61f60c27a055bc62cff019713c7528c7867a458e7"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "authenticationMode": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/1/runtimes/0/cases/42/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/password/node/observations/042.json",
+            "rawStateSha256": "d493c91bd218e42aeaf3d951c8d82df8fd3159940f45933a9cd4413a29f6e12c"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/1/runtimes/1/cases/42/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/password/rust/observations/042.json",
+            "rawStateSha256": "3384d9c67c99420f4f38cde6b19b884a58ff8103e8dc1f469e9ad154cd010d86"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "authenticationMode": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/2/runtimes/0/cases/42/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/accounts/node/observations/042.json",
+            "rawStateSha256": "b7dbace60bd1ff7916613ea6604cc1d4f6c5c0e6a988b5249ee9aebf0734fb5e"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/2/runtimes/1/cases/42/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/accounts/rust/observations/042.json",
+            "rawStateSha256": "957ea1fe08c81ce4e0ac1d2e44919c9adcf9817b471267aa969feaaccb227117"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "standalone",
+          "authenticationMode": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/3/runtimes/0/cases/42/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/standalone/node/observations/042.json",
+            "rawStateSha256": "ca43c88840e306fe51ca09ec2077ad4c67da56a2ebd45d1fb1dec21818b2b80b"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/3/runtimes/1/cases/42/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/standalone/rust/observations/042.json",
+            "rawStateSha256": "4f792309ee5f4ac8113d27bf56b258fa68091dbb4878db67e838f969e85c2180"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "development",
+          "authenticationMode": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/0/runtimes/0/cases/43/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/development/node/observations/043.json",
+            "rawStateSha256": "535c8fa9226a4af0ae124c7ef4194ada237b67c900246c8b0fccc42a88fb2897"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/0/runtimes/1/cases/43/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/development/rust/observations/043.json",
+            "rawStateSha256": "babd80be19d9a942714b39844f9a965470f9ccaf644e9c6f4d8363062b639ff6"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "authenticationMode": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/1/runtimes/0/cases/42/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/password/node/observations/042.json",
+            "rawStateSha256": "de2d1ce2461589774cd563eed82a71007252093ef3dd3e3fee56c703c4757dcd"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/1/runtimes/1/cases/42/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/password/rust/observations/042.json",
+            "rawStateSha256": "07c3e3cf78572c94084e2847e328822f6cb2f069002b57fcd8d604b8e1423539"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "authenticationMode": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/2/runtimes/0/cases/42/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/accounts/node/observations/042.json",
+            "rawStateSha256": "4d837742111bff7b3e60329bfff579aab4243890c10befe8ed84151d9f3432fc"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/2/runtimes/1/cases/42/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/accounts/rust/observations/042.json",
+            "rawStateSha256": "ed53e005e33eba0342993839f1cb0957143159ba0a60cbe9ab1eb94edf902386"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "standalone",
+          "authenticationMode": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/3/runtimes/0/cases/42/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/standalone/node/observations/042.json",
+            "rawStateSha256": "8bb063169fc45ab9315263aec1a409925878da393c1b36126f1dbacb4fb827c0"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/3/runtimes/1/cases/42/after/workers",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/standalone/rust/observations/042.json",
+            "rawStateSha256": "6b0a79e0e6f5e35122f603ee50efdd1f0f68bfe4e15c6bc204d86a1f74bcd2ed"
+          }
+        }
+      ]
+    },
+    {
+      "tableName": "worker_credentials",
+      "exportName": "workerCredentials",
+      "implementation": "cantrip_server_rs/src/workers/repository.rs",
+      "scope": "Actually issued enrollment credentials match stored SHA256, scopes/counts and revocation; real unlink SQL rollback, concurrent unlink, rejected old credentials and exact post-write reopen.",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "development",
+          "authenticationMode": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/0/runtimes/0/cases/43/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/development/node/observations/043.json",
+            "rawStateSha256": "84205a1e7c492c15d1fbca11ef6437191de577c573a770be02ebcc93c7288be1"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/0/runtimes/1/cases/43/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/development/rust/observations/043.json",
+            "rawStateSha256": "0634b02a9e7b05be51959e642b6c2bc7d3f9f3b940ac04a9258fd8dc0ec21c00"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "authenticationMode": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/1/runtimes/0/cases/42/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/password/node/observations/042.json",
+            "rawStateSha256": "fdf45458aa677ce3789f692c1fb81f2ecee8842962a3c604ff814a9a279d1fd7"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/1/runtimes/1/cases/42/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/password/rust/observations/042.json",
+            "rawStateSha256": "d430a642b6db65672d01f4fac85a5500cbb14e0089754aa6451c961e855d566d"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "authenticationMode": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/2/runtimes/0/cases/42/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/accounts/node/observations/042.json",
+            "rawStateSha256": "d5083c27772570c4c43c41eaed4285b1f56a33105ccb145a6024db6bb8e6798a"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/2/runtimes/1/cases/42/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/accounts/rust/observations/042.json",
+            "rawStateSha256": "893bdc4045a5d4bd6ae9ec448e79ef9e45bcb36ea7c1b95449707ea354faa651"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "standalone",
+          "authenticationMode": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/3/runtimes/0/cases/42/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/standalone/node/observations/042.json",
+            "rawStateSha256": "6e40dcc7ad90df7bd1b3a51a64e890ee080ea2533f27a88e6f96c5262dd12cfe"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/3/runtimes/1/cases/42/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/standalone/rust/observations/042.json",
+            "rawStateSha256": "c5c2a15d4d23e07c5c3e62f09fbf5bdda815ee905bd4e8b3cfeb857a0fdef338"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "development",
+          "authenticationMode": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/0/runtimes/0/cases/43/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/development/node/observations/043.json",
+            "rawStateSha256": "3846b0f785d7789862bca7ad31a9b5966050880353601b71f1c4b6d3e9bc98c5"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/0/runtimes/1/cases/43/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/development/rust/observations/043.json",
+            "rawStateSha256": "6842e3288cbcb97bd15f3db61f60c27a055bc62cff019713c7528c7867a458e7"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "authenticationMode": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/1/runtimes/0/cases/42/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/password/node/observations/042.json",
+            "rawStateSha256": "d493c91bd218e42aeaf3d951c8d82df8fd3159940f45933a9cd4413a29f6e12c"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/1/runtimes/1/cases/42/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/password/rust/observations/042.json",
+            "rawStateSha256": "3384d9c67c99420f4f38cde6b19b884a58ff8103e8dc1f469e9ad154cd010d86"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "authenticationMode": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/2/runtimes/0/cases/42/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/accounts/node/observations/042.json",
+            "rawStateSha256": "b7dbace60bd1ff7916613ea6604cc1d4f6c5c0e6a988b5249ee9aebf0734fb5e"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/2/runtimes/1/cases/42/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/accounts/rust/observations/042.json",
+            "rawStateSha256": "957ea1fe08c81ce4e0ac1d2e44919c9adcf9817b471267aa969feaaccb227117"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "standalone",
+          "authenticationMode": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/3/runtimes/0/cases/42/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/standalone/node/observations/042.json",
+            "rawStateSha256": "ca43c88840e306fe51ca09ec2077ad4c67da56a2ebd45d1fb1dec21818b2b80b"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/3/runtimes/1/cases/42/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/standalone/rust/observations/042.json",
+            "rawStateSha256": "4f792309ee5f4ac8113d27bf56b258fa68091dbb4878db67e838f969e85c2180"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "development",
+          "authenticationMode": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/0/runtimes/0/cases/43/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/development/node/observations/043.json",
+            "rawStateSha256": "535c8fa9226a4af0ae124c7ef4194ada237b67c900246c8b0fccc42a88fb2897"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/0/runtimes/1/cases/43/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/development/rust/observations/043.json",
+            "rawStateSha256": "babd80be19d9a942714b39844f9a965470f9ccaf644e9c6f4d8363062b639ff6"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "authenticationMode": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/1/runtimes/0/cases/42/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/password/node/observations/042.json",
+            "rawStateSha256": "de2d1ce2461589774cd563eed82a71007252093ef3dd3e3fee56c703c4757dcd"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/1/runtimes/1/cases/42/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/password/rust/observations/042.json",
+            "rawStateSha256": "07c3e3cf78572c94084e2847e328822f6cb2f069002b57fcd8d604b8e1423539"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "authenticationMode": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/2/runtimes/0/cases/42/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/accounts/node/observations/042.json",
+            "rawStateSha256": "4d837742111bff7b3e60329bfff579aab4243890c10befe8ed84151d9f3432fc"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/2/runtimes/1/cases/42/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/accounts/rust/observations/042.json",
+            "rawStateSha256": "ed53e005e33eba0342993839f1cb0957143159ba0a60cbe9ab1eb94edf902386"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "standalone",
+          "authenticationMode": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/3/runtimes/0/cases/42/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/standalone/node/observations/042.json",
+            "rawStateSha256": "8bb063169fc45ab9315263aec1a409925878da393c1b36126f1dbacb4fb827c0"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/3/runtimes/1/cases/42/after/credentials",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/standalone/rust/observations/042.json",
+            "rawStateSha256": "6b0a79e0e6f5e35122f603ee50efdd1f0f68bfe4e15c6bc204d86a1f74bcd2ed"
+          }
+        }
+      ]
+    },
+    {
+      "tableName": "worker_enrollment_codes",
+      "exportName": "workerEnrollmentCodes",
+      "implementation": "cantrip_server_rs/src/workers/repository.rs",
+      "scope": "Actual issued enrollment-code hashes, consumption and re-enrollment persist alongside credential revocation through complete canonical SQL snapshots and restart.",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "development",
+          "authenticationMode": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/0/runtimes/0/cases/43/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/development/node/observations/043.json",
+            "rawStateSha256": "84205a1e7c492c15d1fbca11ef6437191de577c573a770be02ebcc93c7288be1"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/0/runtimes/1/cases/43/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/development/rust/observations/043.json",
+            "rawStateSha256": "0634b02a9e7b05be51959e642b6c2bc7d3f9f3b940ac04a9258fd8dc0ec21c00"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "authenticationMode": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/1/runtimes/0/cases/42/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/password/node/observations/042.json",
+            "rawStateSha256": "fdf45458aa677ce3789f692c1fb81f2ecee8842962a3c604ff814a9a279d1fd7"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/1/runtimes/1/cases/42/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/password/rust/observations/042.json",
+            "rawStateSha256": "d430a642b6db65672d01f4fac85a5500cbb14e0089754aa6451c961e855d566d"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "authenticationMode": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/2/runtimes/0/cases/42/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/accounts/node/observations/042.json",
+            "rawStateSha256": "d5083c27772570c4c43c41eaed4285b1f56a33105ccb145a6024db6bb8e6798a"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/2/runtimes/1/cases/42/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/accounts/rust/observations/042.json",
+            "rawStateSha256": "893bdc4045a5d4bd6ae9ec448e79ef9e45bcb36ea7c1b95449707ea354faa651"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "standalone",
+          "authenticationMode": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/3/runtimes/0/cases/42/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/standalone/node/observations/042.json",
+            "rawStateSha256": "6e40dcc7ad90df7bd1b3a51a64e890ee080ea2533f27a88e6f96c5262dd12cfe"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-pglite-v1.json",
+            "pointer": "/profiles/3/runtimes/1/cases/42/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-6M9fFk/standalone/rust/observations/042.json",
+            "rawStateSha256": "c5c2a15d4d23e07c5c3e62f09fbf5bdda815ee905bd4e8b3cfeb857a0fdef338"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "development",
+          "authenticationMode": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/0/runtimes/0/cases/43/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/development/node/observations/043.json",
+            "rawStateSha256": "3846b0f785d7789862bca7ad31a9b5966050880353601b71f1c4b6d3e9bc98c5"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/0/runtimes/1/cases/43/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/development/rust/observations/043.json",
+            "rawStateSha256": "6842e3288cbcb97bd15f3db61f60c27a055bc62cff019713c7528c7867a458e7"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "authenticationMode": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/1/runtimes/0/cases/42/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/password/node/observations/042.json",
+            "rawStateSha256": "d493c91bd218e42aeaf3d951c8d82df8fd3159940f45933a9cd4413a29f6e12c"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/1/runtimes/1/cases/42/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/password/rust/observations/042.json",
+            "rawStateSha256": "3384d9c67c99420f4f38cde6b19b884a58ff8103e8dc1f469e9ad154cd010d86"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "authenticationMode": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/2/runtimes/0/cases/42/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/accounts/node/observations/042.json",
+            "rawStateSha256": "b7dbace60bd1ff7916613ea6604cc1d4f6c5c0e6a988b5249ee9aebf0734fb5e"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/2/runtimes/1/cases/42/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/accounts/rust/observations/042.json",
+            "rawStateSha256": "957ea1fe08c81ce4e0ac1d2e44919c9adcf9817b471267aa969feaaccb227117"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "standalone",
+          "authenticationMode": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/3/runtimes/0/cases/42/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/standalone/node/observations/042.json",
+            "rawStateSha256": "ca43c88840e306fe51ca09ec2077ad4c67da56a2ebd45d1fb1dec21818b2b80b"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-bundled-postgres-v1.json",
+            "pointer": "/profiles/3/runtimes/1/cases/42/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-VNILwK/standalone/rust/observations/042.json",
+            "rawStateSha256": "4f792309ee5f4ac8113d27bf56b258fa68091dbb4878db67e838f969e85c2180"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "development",
+          "authenticationMode": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/0/runtimes/0/cases/43/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/development/node/observations/043.json",
+            "rawStateSha256": "535c8fa9226a4af0ae124c7ef4194ada237b67c900246c8b0fccc42a88fb2897"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/0/runtimes/1/cases/43/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/development/rust/observations/043.json",
+            "rawStateSha256": "babd80be19d9a942714b39844f9a965470f9ccaf644e9c6f4d8363062b639ff6"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "authenticationMode": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/1/runtimes/0/cases/42/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/password/node/observations/042.json",
+            "rawStateSha256": "de2d1ce2461589774cd563eed82a71007252093ef3dd3e3fee56c703c4757dcd"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/1/runtimes/1/cases/42/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/password/rust/observations/042.json",
+            "rawStateSha256": "07c3e3cf78572c94084e2847e328822f6cb2f069002b57fcd8d604b8e1423539"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "authenticationMode": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/2/runtimes/0/cases/42/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/accounts/node/observations/042.json",
+            "rawStateSha256": "4d837742111bff7b3e60329bfff579aab4243890c10befe8ed84151d9f3432fc"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/2/runtimes/1/cases/42/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/accounts/rust/observations/042.json",
+            "rawStateSha256": "ed53e005e33eba0342993839f1cb0957143159ba0a60cbe9ab1eb94edf902386"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "standalone",
+          "authenticationMode": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/3/runtimes/0/cases/42/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/standalone/node/observations/042.json",
+            "rawStateSha256": "8bb063169fc45ab9315263aec1a409925878da393c1b36126f1dbacb4fb827c0"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/worker-management-http-compatibility-postgres-v1.json",
+            "pointer": "/profiles/3/runtimes/1/cases/42/after/codes",
+            "rawStatePath": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-worker-management-http-ee2AW9/standalone/rust/observations/042.json",
+            "rawStateSha256": "6b0a79e0e6f5e35122f603ee50efdd1f0f68bfe4e15c6bc204d86a1f74bcd2ed"
+          }
+        }
+      ]
+    },
+    {
+      "tableName": "provider_model_catalog_snapshots",
+      "exportName": "providerModelCatalogSnapshots",
+      "implementation": "cantrip_server_rs/src/settings/catalog.rs",
+      "scope": "Four original model metadata versions, exact reuse on repeated refresh, one changed version, real SQL rollback and stable original IDs/hashes after worker/server replacement and native store reopen.",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawStages/2/value/snapshots",
+            "reopened": "/profiles/0/outputs/0/reopened/snapshots"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawStages/2/value/snapshots",
+            "reopened": "/profiles/0/outputs/1/reopened/snapshots"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawStages/2/value/snapshots",
+            "reopened": "/profiles/1/outputs/0/reopened/snapshots"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawStages/2/value/snapshots",
+            "reopened": "/profiles/1/outputs/1/reopened/snapshots"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawStages/2/value/snapshots",
+            "reopened": "/profiles/2/outputs/0/reopened/snapshots"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawStages/2/value/snapshots",
+            "reopened": "/profiles/2/outputs/1/reopened/snapshots"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawStages/2/value/snapshots",
+            "reopened": "/profiles/0/outputs/0/reopened/snapshots"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawStages/2/value/snapshots",
+            "reopened": "/profiles/0/outputs/1/reopened/snapshots"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawStages/2/value/snapshots",
+            "reopened": "/profiles/1/outputs/0/reopened/snapshots"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawStages/2/value/snapshots",
+            "reopened": "/profiles/1/outputs/1/reopened/snapshots"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawStages/2/value/snapshots",
+            "reopened": "/profiles/2/outputs/0/reopened/snapshots"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawStages/2/value/snapshots",
+            "reopened": "/profiles/2/outputs/1/reopened/snapshots"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawStages/2/value/snapshots",
+            "reopened": "/profiles/0/outputs/0/reopened/snapshots"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawStages/2/value/snapshots",
+            "reopened": "/profiles/0/outputs/1/reopened/snapshots"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawStages/2/value/snapshots",
+            "reopened": "/profiles/1/outputs/0/reopened/snapshots"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawStages/2/value/snapshots",
+            "reopened": "/profiles/1/outputs/1/reopened/snapshots"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawStages/2/value/snapshots",
+            "reopened": "/profiles/2/outputs/0/reopened/snapshots"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawStages/2/value/snapshots",
+            "reopened": "/profiles/2/outputs/1/reopened/snapshots"
+          }
+        }
+      ]
+    },
+    {
+      "tableName": "provider_model_suppressions",
+      "exportName": "providerModelSuppressions",
+      "implementation": "cantrip_server_rs/src/settings/models.rs",
+      "scope": "Public discovered-model deletion creates an exact provider-model/operation suppression; refresh, SQL failure, worker replacement, server restart and store reopen do not recreate the removed logical model.",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawStages/4/value/suppressions",
+            "reopened": "/profiles/0/outputs/0/reopened/suppressions"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawStages/4/value/suppressions",
+            "reopened": "/profiles/0/outputs/1/reopened/suppressions"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawStages/4/value/suppressions",
+            "reopened": "/profiles/1/outputs/0/reopened/suppressions"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawStages/4/value/suppressions",
+            "reopened": "/profiles/1/outputs/1/reopened/suppressions"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawStages/4/value/suppressions",
+            "reopened": "/profiles/2/outputs/0/reopened/suppressions"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawStages/4/value/suppressions",
+            "reopened": "/profiles/2/outputs/1/reopened/suppressions"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawStages/4/value/suppressions",
+            "reopened": "/profiles/0/outputs/0/reopened/suppressions"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawStages/4/value/suppressions",
+            "reopened": "/profiles/0/outputs/1/reopened/suppressions"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawStages/4/value/suppressions",
+            "reopened": "/profiles/1/outputs/0/reopened/suppressions"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawStages/4/value/suppressions",
+            "reopened": "/profiles/1/outputs/1/reopened/suppressions"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawStages/4/value/suppressions",
+            "reopened": "/profiles/2/outputs/0/reopened/suppressions"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawStages/4/value/suppressions",
+            "reopened": "/profiles/2/outputs/1/reopened/suppressions"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawStages/4/value/suppressions",
+            "reopened": "/profiles/0/outputs/0/reopened/suppressions"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawStages/4/value/suppressions",
+            "reopened": "/profiles/0/outputs/1/reopened/suppressions"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawStages/4/value/suppressions",
+            "reopened": "/profiles/1/outputs/0/reopened/suppressions"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawStages/4/value/suppressions",
+            "reopened": "/profiles/1/outputs/1/reopened/suppressions"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawStages/4/value/suppressions",
+            "reopened": "/profiles/2/outputs/0/reopened/suppressions"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawStages/4/value/suppressions",
+            "reopened": "/profiles/2/outputs/1/reopened/suppressions"
+          }
+        }
+      ]
+    }
+  ],
+  "liveResourceMappings": [
+    {
+      "resource": "worker-inference",
+      "implementation": "cantrip_server_rs/src/chats/execution_services/inference_feedback.rs",
+      "scope": "Actual owned private/no-store HTTP status, four identity fences, malformed status rejection, actual accepted revision1000/1005 notifications, duplicate and stale/foreign suppression over the unchanged worker and App Live connections.",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/0/workerInferenceEvents"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/1/workerInferenceEvents"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/0/workerInferenceEvents"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/1/workerInferenceEvents"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/0/workerInferenceEvents"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/1/workerInferenceEvents"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/workerInferenceEvents"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/workerInferenceEvents"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/workerInferenceEvents"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/workerInferenceEvents"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/workerInferenceEvents"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/workerInferenceEvents"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/workerInferenceEvents"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/workerInferenceEvents"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/workerInferenceEvents"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/workerInferenceEvents"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/workerInferenceEvents"
+          },
+          "rust": {
+            "report": ".qa/rust-worker-provider/provider-state-http-compatibility-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/workerInferenceEvents"
+          }
+        }
+      ]
+    }
+  ],
+  "sourceSha256": {
+    "scripts/server-rust/provider-state-worker.mjs": "5c0afa35322dc23299e2045f9d87eddfb00665167279eeababf07a623eed432a",
+    "scripts/server-rust/provider-state-http-cases.mjs": "7d932c198232aebae3407cb706a0576ef17775ba9b96510435aaa0eb00f879c2",
+    "scripts/server-rust/provider-state-http-compatibility.mjs": "f567a51d71a28c90b19f88ed54150cb3a00f7382f527e6ee18f7dad795c15a22",
+    "scripts/server-rust/worker-management-http-compatibility.mjs": "a00f987c57975ffe3ab778b389b59acb90dbdbf4c113e76bac5fb161681235fd",
+    "scripts/server-rust/worker-management-http-worker.mjs": "b4bd91b69eb4ae5180ff971d7b58f3d73ba96ef11be7c9e0a48603455d95da91",
+    "scripts/server-rust/worker-management-http-reopen.mjs": "b3c249b13d492aadda70656a21c7dd8500207c5ba7cb0f9b82084c24c19bd6e1",
+    "scripts/server-rust/settings-inference-status-http-cases.mjs": "5a212a3b683aba92314d72fc73a4526a8e1329e74a386a5a5d26a1a666119dcb"
+  },
+  "frozenExecutables": {
+    "baseCommit": "0f2a36e36c9e5107e313a771866c2b2ad63e1ee8",
+    "executables": [
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-worker-provider-contracts/Cantrip/.qa/rust-worker-provider/helpers-v1/cantrip-server",
+        "bytes": 179413008,
+        "sha256": "a8a15b102dd01a729825b82066107eb4bf57dac8a435f9e84c67875f41e3be35"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-worker-provider-contracts/Cantrip/.qa/rust-worker-provider/helpers-v1/http-sql-fixture",
+        "bytes": 179667056,
+        "sha256": "94ea988104d7ad8b6b014de0a698efc9ade6fa6c68b5c0825ac364a31ab62970"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-worker-provider-contracts/Cantrip/.qa/rust-worker-provider/helpers-v1/project-repository-fixture",
+        "bytes": 181320416,
+        "sha256": "3be2703d41d078bbe856b1eb2d2a889de2e5081cef6b836f19fcdae133ca83c4"
+      }
+    ]
+  },
+  "localChecks": {
+    "standard": {
+      "command": ["pnpm", "check"],
+      "exitCode": 1
+    },
+    "cleanPrimaryWorkerReproduction": {
+      "command": [
+        "pnpm",
+        "--filter",
+        "@cantrip/worker",
+        "exec",
+        "vitest",
+        "run",
+        "test/app-server.test.ts",
+        "-t",
+        "retries terminal model-capacity failures on the same Codex thread|interrupts a pending model-capacity backoff"
+      ],
+      "cwd": "/Users/cyberpwn/development/workspace/ArcaneArts/Cantrip",
+      "head": "0f2a36e36c9e5107e313a771866c2b2ad63e1ee8",
+      "exitCode": 1,
+      "files": [
+        {
+          "path": "cantrip_worker/test/app-server.test.ts",
+          "sha256": "8b67d653eedd0fe52e42ea4a37bfdfae953d888a9fbd723dc71328e8b6700acc",
+          "primarySha256": "8b67d653eedd0fe52e42ea4a37bfdfae953d888a9fbd723dc71328e8b6700acc",
+          "identical": true
+        },
+        {
+          "path": "cantrip_worker/src/codex/app-server.ts",
+          "sha256": "916f73c8a9abd3d93b3caaadbc710dc4f00d7b0967f8cebb544832fe4d93ea8b",
+          "primarySha256": "916f73c8a9abd3d93b3caaadbc710dc4f00d7b0967f8cebb544832fe4d93ea8b",
+          "identical": true
+        }
+      ]
+    },
+    "fullFormatting": {
+      "command": ["pnpm", "format:check"],
+      "exitCode": 1,
+      "files": [
+        {
+          "path": "cantrip_app/src/lib/client-session.ts",
+          "sha256": "3f83102410aa69135e3df48b4b7746524f9d99645fe2651e03d3845e679ed979",
+          "primarySha256": "3f83102410aa69135e3df48b4b7746524f9d99645fe2651e03d3845e679ed979",
+          "identical": true
+        },
+        {
+          "path": "cantrip_os/packages/remote/root/etc/cantrip-os/remote.json",
+          "sha256": "f80e9fefe14ce0727af3921d768bbf8881ae9589ef99234e7af436fd429ca537",
+          "primarySha256": "f80e9fefe14ce0727af3921d768bbf8881ae9589ef99234e7af436fd429ca537",
+          "identical": true
+        },
+        {
+          "path": "cantrip_os/tests/active-browser.html",
+          "sha256": "26fe72ffa28ee0013289e81afbfc5d03ff21179816a4e4863ceb3384c1a11162",
+          "primarySha256": "26fe72ffa28ee0013289e81afbfc5d03ff21179816a4e4863ceb3384c1a11162",
+          "identical": true
+        },
+        {
+          "path": "cantrip_server_rs/third-party/icu_collator/README.md",
+          "sha256": "2ec35917ed33ca3e8e4b70ce25c20b20d7e8fcd45f0c1098d001bef52cf1e7a4",
+          "primarySha256": "2ec35917ed33ca3e8e4b70ce25c20b20d7e8fcd45f0c1098d001bef52cf1e7a4",
+          "identical": true
+        },
+        {
+          "path": "cantrip_server_rs/third-party/pglite-rs/README.md",
+          "sha256": "f8955fe7862ac82da8b6af3eaad7268bdc889f02a2017ff55df68b5c35890b6d",
+          "primarySha256": "f8955fe7862ac82da8b6af3eaad7268bdc889f02a2017ff55df68b5c35890b6d",
+          "identical": true
+        },
+        {
+          "path": "cantrip_worker/src/computer-use/captures.ts",
+          "sha256": "85b629ab8485264c94154cb3c984bd042eafb5f4f57b1f3ed1bb1e0c9aeed865",
+          "primarySha256": "85b629ab8485264c94154cb3c984bd042eafb5f4f57b1f3ed1bb1e0c9aeed865",
+          "identical": true
+        },
+        {
+          "path": "cantrip_worker/test/project-repository-stats.test.ts",
+          "sha256": "9831ae1c1fb57cbe5caea26aca372165b6f72b737135cf80cdbd779e060ac544",
+          "primarySha256": "9831ae1c1fb57cbe5caea26aca372165b6f72b737135cf80cdbd779e060ac544",
+          "identical": true
+        },
+        {
+          "path": "docs/BROWSER_AGENT_CURSOR_ACCEPTANCE.md",
+          "sha256": "13bfad69648aea77fdc23a9aad6679f829f6389e51f2c50c31471c7f555a86d4",
+          "primarySha256": "13bfad69648aea77fdc23a9aad6679f829f6389e51f2c50c31471c7f555a86d4",
+          "identical": true
+        },
+        {
+          "path": "docs/COMPUTER_USE_EFFECTS.md",
+          "sha256": "b00f4d939586738360123999ffe60c83ec58a0ba7a20e9e065f9017b6dd4cca7",
+          "primarySha256": "b00f4d939586738360123999ffe60c83ec58a0ba7a20e9e065f9017b6dd4cca7",
+          "identical": true
+        },
+        {
+          "path": "docs/REMOTE_DESKTOP_ACCEPTANCE.md",
+          "sha256": "5cfe23748925ffe0ba54d616f3e2c163308706c9cb728246da8c78beaf3ab958",
+          "primarySha256": "5cfe23748925ffe0ba54d616f3e2c163308706c9cb728246da8c78beaf3ab958",
+          "identical": true
+        },
+        {
+          "path": "docs/WQA-2026-10-08.md",
+          "sha256": "0e6a98cc95706f621db347fa15e46413d6d75c533f061d98a47c39506ea2257b",
+          "primarySha256": "0e6a98cc95706f621db347fa15e46413d6d75c533f061d98a47c39506ea2257b",
+          "identical": true
+        },
+        {
+          "path": "scripts/qa/editor-reload-error.test.mjs",
+          "sha256": "5d01421f74afbc34dc3a43ddb103274d397b26ea6697e6d76894b9fee01a690c",
+          "primarySha256": "5d01421f74afbc34dc3a43ddb103274d397b26ea6697e6d76894b9fee01a690c",
+          "identical": true
+        }
+      ]
+    },
+    "changedScriptFormatting": {
+      "command": [
+        "pnpm",
+        "exec",
+        "prettier",
+        "--check",
+        "scripts/server-rust/provider-state-worker.mjs",
+        "scripts/server-rust/provider-state-http-cases.mjs",
+        "scripts/server-rust/provider-state-http-compatibility.mjs"
+      ],
+      "exitCode": 0
+    },
+    "boundaryAudit": {
+      "command": ["pnpm", "audit:server-boundaries"],
+      "exitCode": 0
+    },
+    "diffCheck": {
+      "command": ["git", "diff", "--check"],
+      "exitCode": 0
+    }
+  },
+  "retainedFailures": [
+    "v1 observation query referenced nonexistent provider_models.owner_id; actual Source SQL42703 retained and corrected to parent provider ownership join.",
+    "v2/v3 runtime and durable discovered:model/route UUID namespaces initially compared literally across isolated stores; exact endpoint and stored profile/route/provider-model relationships now independently verified before known-value normalization, with all raw values retained."
+  ],
+  "retainedEvidenceDirectory": "rust-server-worker-provider-delivery-20261110-v1",
+  "remaining": [
+    "Actual native model/OAuth/provider execution, successful inference.configure acknowledgements, broader faults/coordination and supported-platform/current shipping artifacts remain separate from controlled catalog facts and worker restart acknowledgements.",
+    "Remaining command/table/Live identities, historical partial scopes and the full original replacement goal remain incomplete."
+  ]
+}
