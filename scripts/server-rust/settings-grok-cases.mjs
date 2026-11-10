@@ -174,7 +174,7 @@ export async function grokCases({
   assert.equal(result.calls.length, 2);
   assert.equal(result.publicCalls.length, 1);
   assert.deepEqual(result.publicCalls[0], {
-    url: "https://openrouter.ai/api/v1/models",
+    url: "https://openrouter.ai/api/v1/models?output_modalities=all",
     accept: "application/json",
     etag: null,
     authorization: null,

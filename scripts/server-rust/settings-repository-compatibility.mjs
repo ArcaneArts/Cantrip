@@ -46,7 +46,20 @@ const protectedLabel = {
 };
 const identityMaps = [new Map(), new Map()],
   logicalIds = [new Map(), new Map()];
+// These rows are seeded below with legacy IDs. Preserve their exact identity;
+// the UUID and alias-consistency checks still apply to newly allocated rows.
+const seededCatalogIdentities = new Map([
+  ["model:ollama:gpt-5", "native-catalog"],
+  ["model:openrouter:gpt-5", "router-catalog"],
+  ["model:openrouter:alias", "ambiguous"],
+  ["availability:native-catalog:specific", "specific"],
+  ["availability:native-catalog:global", "global"],
+]);
 function rememberIdentity(runtime, logical, id) {
+  if (seededCatalogIdentities.has(logical)) {
+    assert.equal(id, seededCatalogIdentities.get(logical), logical);
+    return;
+  }
   assert.match(
     id,
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
@@ -153,9 +166,13 @@ async function compare(
   input,
   { rejected = false, exactError = true, fixedDates = [] } = {},
 ) {
-  const expected = await pair[0].request(input),
-    actual = await pair[1].request(translate(input, 1));
-  report.cases.push({ label, input, expected, actual });
+  const started = performance.now();
+  const expected = await pair[0].request(input);
+  const referenceElapsed = performance.now() - started;
+  const nativeStarted = performance.now();
+  const actual = await pair[1].request(translate(input, 1));
+  const elapsedMs = [referenceElapsed, performance.now() - nativeStarted];
+  report.cases.push({ label, input, expected, actual, elapsedMs });
   assert.equal(
     expected.rejected,
     rejected,
@@ -185,6 +202,36 @@ async function compare(
       registerCatalog(actual.value, 1, input.provider);
     }
     const canonical = (value, runtime) => {
+      if (Array.isArray(value?.calls)) {
+        value = {
+          ...value,
+          calls: value.calls.map((call) => {
+            if (!call.command?.catalogPage) return call;
+            rememberIdentity(
+              runtime,
+              `catalog-transfer:${report.cases.length}`,
+              call.command.catalogPage.transferId,
+            );
+            // The service passes its remaining two-minute deadline, not a
+            // constant timeout. Validate against this actual completed call's
+            // elapsed time before comparing the otherwise exact command.
+            const remaining = call.options.timeoutMs;
+            assert.ok(Number.isInteger(remaining) && remaining > 0);
+            assert.ok(remaining <= 120_000);
+            assert.ok(
+              remaining >= 120_000 - Math.ceil(elapsedMs[runtime]) - 1,
+              label + ": catalog deadline lost more than the operation elapsed",
+            );
+            return {
+              ...call,
+              options: {
+                ...call.options,
+                timeoutMs: "<remaining-catalog-deadline>",
+              },
+            };
+          }),
+        };
+      }
       if (input.op === "credential-parallel")
         return [...value].sort(
           (a, b) => Number(Boolean(a.error)) - Number(Boolean(b.error)),
@@ -873,14 +920,47 @@ try {
       })),
     });
   assert.deepEqual(canonical(created[1]), canonical(created[0]));
+  report.modelDeletionOutcomes = [];
   for (let i = 0; i < pair.length; i++) {
+    const fixture = pair[i];
+    const model = created[i].value.id;
+    await fixture.seed(
+      `UPDATE user_settings SET default_custom_subagent_model=true,default_subagent_model_id=${literal(model)} WHERE user_id=${literal(owner)}`,
+    );
+    const stateSql = `SELECT jsonb_build_object('owner',(SELECT jsonb_build_object('model',default_subagent_model_id,'custom',default_custom_subagent_model) FROM user_settings WHERE user_id=${literal(owner)}),'other',(SELECT jsonb_build_object('model',default_subagent_model_id,'custom',default_custom_subagent_model) FROM user_settings WHERE user_id=${literal(other)}),'routes',(SELECT count(*) FROM model_routes WHERE model_id=${literal(model)})) AS result`;
+    const readState = async () => {
+      const state = await fixture.request({ op: "query-json", sql: stateSql });
+      assert.equal(state.rejected, false, state.diagnostic);
+      return state.value;
+    };
+    const before = await readState();
+    assert.deepEqual(before.owner, { model, custom: true });
+    assert.equal(before.routes, 2);
+    const outcome = { runtime: i === 0 ? "node" : "rust", before };
+    report.modelDeletionOutcomes.push(outcome);
+    outcome.foreign = await fixture.request({
+      op: "model-delete",
+      owner: other,
+      model,
+    });
+    assert.equal(outcome.foreign.rejected, false, outcome.foreign.diagnostic);
+    assert.equal(outcome.foreign.value, false);
+    outcome.afterForeign = await readState();
+    assert.deepEqual(outcome.afterForeign, before);
     const deleted = await pair[i].request({
       op: "model-delete",
       owner,
-      model: created[i].value.id,
+      model,
     });
+    outcome.deleted = deleted;
     assert.equal(deleted.rejected, false, deleted.diagnostic);
     assert.equal(deleted.value, true);
+    outcome.afterDelete = await readState();
+    assert.deepEqual(outcome.afterDelete, {
+      owner: { model: null, custom: false },
+      other: before.other,
+      routes: 0,
+    });
   }
   await seed(
     `INSERT INTO model_profiles(id,owner_id,name) VALUES('editable',${literal(owner)},'Editable');`,
@@ -960,7 +1040,7 @@ try {
   await seed(
     "UPDATE chat_runtime_sessions SET codex_thread_id='again',status='attached' WHERE id='edit-runtime';",
   );
-  await compare("provider update detaches every route runtime", {
+  await compare("provider rename retains route runtimes", {
     op: "provider-update",
     owner,
     provider: "ollama",
@@ -968,6 +1048,21 @@ try {
       name: "A local updated",
       kind: "ollama",
       baseUrl: "http://localhost:11434",
+    },
+  });
+  result = await compare("provider rename preserves the attached thread", {
+    op: "query-json",
+    sql: "SELECT jsonb_build_object('thread',codex_thread_id,'status',status) AS result FROM chat_runtime_sessions WHERE id='edit-runtime'",
+  });
+  assert.deepEqual(result, { thread: "again", status: "attached" });
+  await compare("provider connection update detaches every route runtime", {
+    op: "provider-update",
+    owner,
+    provider: "ollama",
+    input: {
+      name: "A local updated",
+      kind: "ollama",
+      baseUrl: "http://localhost:11435",
     },
   });
   result = await compare("provider runtime invalidation persisted", {

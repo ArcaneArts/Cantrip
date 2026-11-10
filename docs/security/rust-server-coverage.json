@@ -10710,7 +10710,7 @@
   "durableTables": {
     "defaultStatus": "schema-migrated-only",
     "evidence": ["cantrip_server_rs/tests/database_contract.rs"],
-    "implementedSubset": "Account/session, mobile sign-in, local provisioning, configured-administrator, license-whitelist, audit-query/write and encryption-registry operations in the native auth and encryption repositories. Complete domain operations remain unported. Worker, enrollment-code and credential persistence, atomic replacement/rotation/revocation and heartbeat storage are implemented in workers/repository.rs; Owner-scoped worker management, display-name updates and transactional unlink/revocation now execute in workers/management.rs; remaining lifecycle/execution consumers and full product acceptance remain required. Policy owner/bootstrap/collection state, opaque policy CRUD/order, project/workspace assignment transactions, cascade handling and IDE/standalone effective-policy resolution execute natively in policies/repository.rs; project/workspace creation and chat execution remain unported. Settings/model/provider/account/catalog persistence and quota-observation insert/deduplication/weekly projections execute natively; telemetry analytics/export/atomic deletion now execute natively; remaining execution and telemetry write consumers are unported.",
+    "implementedSubset": "Per-table overrides identify executed native persistence operations. Unlisted tables retain schema-only status until their domain evidence is reconciled. An override does not qualify every consumer of that table.",
     "overrides": [
       {
         "tableName": "file_documents",
@@ -12042,12 +12042,363 @@
         "remaining": [
           "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
         ]
+      },
+      {
+        "exportName": "users",
+        "tableName": "users",
+        "classification": "intentionally-public-control-plane",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/auth/",
+        "evidence": [
+          "scripts/server-rust/auth-compatibility.mjs",
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "userSessions",
+        "tableName": "user_sessions",
+        "classification": "hashed-validator",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/auth/",
+        "evidence": [
+          "scripts/server-rust/auth-compatibility.mjs",
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "mobileSignInGrants",
+        "tableName": "mobile_sign_in_grants",
+        "classification": "hashed-validator",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/auth/",
+        "evidence": [
+          "scripts/server-rust/auth-compatibility.mjs",
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "accountLicenseWhitelist",
+        "tableName": "account_license_whitelist",
+        "classification": "intentionally-public-control-plane",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/auth/",
+        "evidence": [
+          "scripts/server-rust/auth-compatibility.mjs",
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "auditEvents",
+        "tableName": "audit_events",
+        "classification": "minimized-operational-metadata",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/auth/",
+        "evidence": [
+          "scripts/server-rust/auth-compatibility.mjs",
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "systemState",
+        "tableName": "system_state",
+        "classification": "intentionally-public-control-plane",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/auth/",
+        "evidence": [
+          "scripts/server-rust/auth-compatibility.mjs",
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "accountEncryptionProfiles",
+        "tableName": "account_encryption_profiles",
+        "classification": "endpoint-protected",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/encryption/",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "encryptionPrincipals",
+        "tableName": "encryption_principals",
+        "classification": "endpoint-protected",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/encryption/",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "encryptionKeyGrants",
+        "tableName": "encryption_key_grants",
+        "classification": "endpoint-protected",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/encryption/",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "userSettings",
+        "tableName": "user_settings",
+        "classification": "intentionally-public-control-plane",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/settings/",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "modelProviders",
+        "tableName": "model_providers",
+        "classification": "endpoint-protected",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/settings/",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "modelProviderAccounts",
+        "tableName": "model_provider_accounts",
+        "classification": "endpoint-protected",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/settings/",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "modelProviderAccountWorkers",
+        "tableName": "model_provider_account_workers",
+        "classification": "intentionally-public-control-plane",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/settings/",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "modelProfiles",
+        "tableName": "model_profiles",
+        "classification": "intentionally-public-control-plane",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/settings/",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "modelRoutes",
+        "tableName": "model_routes",
+        "classification": "intentionally-public-control-plane",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/settings/",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "providerModels",
+        "tableName": "provider_models",
+        "classification": "intentionally-public-control-plane",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/settings/",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "providerModelAvailability",
+        "tableName": "provider_model_availability",
+        "classification": "minimized-operational-metadata",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/settings/",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "providerCatalogSyncStates",
+        "tableName": "provider_catalog_sync_states",
+        "classification": "minimized-operational-metadata",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/settings/",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "providerQuotaObservations",
+        "tableName": "provider_quota_observations",
+        "classification": "minimized-operational-metadata",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/settings/",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "policies",
+        "tableName": "policies",
+        "classification": "endpoint-protected",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/policies/",
+        "evidence": [
+          "scripts/server-rust/policy-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "policyOwnerStates",
+        "tableName": "policy_owner_states",
+        "classification": "intentionally-public-control-plane",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/policies/",
+        "evidence": [
+          "scripts/server-rust/policy-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "projectPolicyAssignments",
+        "tableName": "project_policy_assignments",
+        "classification": "intentionally-public-control-plane",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/policies/",
+        "evidence": [
+          "scripts/server-rust/policy-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "workspacePolicyAssignments",
+        "tableName": "workspace_policy_assignments",
+        "classification": "intentionally-public-control-plane",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/policies/",
+        "evidence": [
+          "scripts/server-rust/policy-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
+        ]
       }
     ]
   },
   "repositoryMethods": {
     "defaultStatus": "unported",
-    "implementedSubset": "Native auth/security and encryption repositories retain their existing SQL and transaction semantics. Complete method-level correspondence remains required.",
+    "implementedSubset": "Repository identity is the current reference file plus method name. Overrides retain scoped behavioral evidence; remaining methods and final platform/product acceptance still require reconciliation.",
     "overrides": [
       {
         "method": "createWorkerEnrollmentCode",
@@ -12056,7 +12407,8 @@
         "evidence": [
           "cantrip_server_rs/tests/worker_repository.rs",
           "scripts/server-rust/worker-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "findReusableWorkerId",
@@ -12065,7 +12417,8 @@
         "evidence": [
           "cantrip_server_rs/tests/worker_repository.rs",
           "scripts/server-rust/worker-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "getWorkerEnrollmentCodeStatus",
@@ -12074,7 +12427,8 @@
         "evidence": [
           "cantrip_server_rs/tests/worker_repository.rs",
           "scripts/server-rust/worker-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "exchangeWorkerEnrollmentCode",
@@ -12083,7 +12437,8 @@
         "evidence": [
           "cantrip_server_rs/tests/worker_repository.rs",
           "scripts/server-rust/worker-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "authenticateWorkerCredential",
@@ -12092,7 +12447,8 @@
         "evidence": [
           "cantrip_server_rs/tests/worker_repository.rs",
           "scripts/server-rust/worker-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "listWorkerCredentials",
@@ -12101,7 +12457,8 @@
         "evidence": [
           "cantrip_server_rs/tests/worker_repository.rs",
           "scripts/server-rust/worker-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "rotateWorkerCredential",
@@ -12110,7 +12467,8 @@
         "evidence": [
           "cantrip_server_rs/tests/worker_repository.rs",
           "scripts/server-rust/worker-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "revokeWorkerCredential",
@@ -12119,7 +12477,8 @@
         "evidence": [
           "cantrip_server_rs/tests/worker_repository.rs",
           "scripts/server-rust/worker-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "recordWorker",
@@ -12128,7 +12487,8 @@
         "evidence": [
           "cantrip_server_rs/tests/worker_repository.rs",
           "scripts/server-rust/worker-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "listWorkers",
@@ -12137,7 +12497,8 @@
         "evidence": [
           "cantrip_server_rs/tests/worker_repository.rs",
           "scripts/server-rust/worker-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "getWorker",
@@ -12146,7 +12507,8 @@
         "evidence": [
           "cantrip_server_rs/tests/worker_repository.rs",
           "scripts/server-rust/worker-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "getWorkerOwnerId",
@@ -12155,13 +12517,17 @@
         "evidence": [
           "cantrip_server_rs/tests/worker_repository.rs",
           "scripts/server-rust/worker-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "listProjects",
         "implementation": "cantrip_server_rs/src/projects/repository.rs",
         "status": "implemented-pending-platform-acceptance",
-        "evidence": ["scripts/server-rust/project-repository-compatibility.mjs"]
+        "evidence": [
+          "scripts/server-rust/project-repository-compatibility.mjs"
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "getChatExecutionContext",
@@ -12170,13 +12536,15 @@
         "evidence": ["scripts/server-rust/live-repository-compatibility.mjs"],
         "remaining": [
           "Complete context DTO and its resource/execution consumers remain unported; the exact repository read/validation path needed by Live scope authorization is implemented."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "isUserSessionActive",
         "implementation": "cantrip_server_rs/src/live/repository.rs",
         "status": "implemented-pending-platform-acceptance",
-        "evidence": ["scripts/server-rust/live-repository-compatibility.mjs"]
+        "evidence": ["scripts/server-rust/live-repository-compatibility.mjs"],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "recordProviderQuotaObservation",
@@ -12184,7 +12552,8 @@
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/settings-repository-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "getQuotaTokenAnalytics",
@@ -12194,7 +12563,8 @@
           "scripts/server-rust/telemetry-repository-compatibility.mjs",
           "cantrip_server_rs/tests/telemetry_semantics.rs"
         ],
-        "remaining": ["Current-head supported-platform acceptance."]
+        "remaining": ["Current-head supported-platform acceptance."],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "getProviderTelemetryAnalytics",
@@ -12204,7 +12574,8 @@
           "scripts/server-rust/telemetry-repository-compatibility.mjs",
           "cantrip_server_rs/tests/telemetry_semantics.rs"
         ],
-        "remaining": ["Current-head supported-platform acceptance."]
+        "remaining": ["Current-head supported-platform acceptance."],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "exportProviderTelemetry",
@@ -12214,7 +12585,8 @@
           "scripts/server-rust/telemetry-repository-compatibility.mjs",
           "cantrip_server_rs/tests/telemetry_semantics.rs"
         ],
-        "remaining": ["Current-head supported-platform acceptance."]
+        "remaining": ["Current-head supported-platform acceptance."],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "deleteProviderTelemetry",
@@ -12224,7 +12596,8 @@
           "scripts/server-rust/telemetry-repository-compatibility.mjs",
           "cantrip_server_rs/tests/telemetry_semantics.rs"
         ],
-        "remaining": ["Current-head supported-platform acceptance."]
+        "remaining": ["Current-head supported-platform acceptance."],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "getProject",
@@ -12238,7 +12611,8 @@
         ],
         "remaining": [
           "Observe supported-platform results for this milestone; complete Redis/shared worker presence and packaged/full-product acceptance."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "listProjectReplicas",
@@ -12252,7 +12626,8 @@
         ],
         "remaining": [
           "Observe supported-platform results for this milestone; complete Redis/shared worker presence and packaged/full-product acceptance."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "resolveProjectExecutionPlacement",
@@ -12266,7 +12641,8 @@
         ],
         "remaining": [
           "Observe supported-platform results for this milestone; complete Redis/shared worker presence and packaged/full-product acceptance."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "listProjectExecutionTargets",
@@ -12280,7 +12656,8 @@
         ],
         "remaining": [
           "Observe supported-platform results for this milestone; complete Redis/shared worker presence and packaged/full-product acceptance."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "resolveExecutionTarget",
@@ -12294,7 +12671,8 @@
         ],
         "remaining": [
           "Observe supported-platform results for this milestone; complete Redis/shared worker presence and packaged/full-product acceptance."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "createManagedFolderProject",
@@ -12304,7 +12682,8 @@
           "scripts/server-rust/folder-repository-compatibility.mjs",
           "scripts/server-rust/folder-http-compatibility.mjs",
           "scripts/server-rust/actual-folder-client.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "getProjectWorkspaceStorageContext",
@@ -12314,7 +12693,8 @@
           "scripts/server-rust/folder-repository-compatibility.mjs",
           "scripts/server-rust/folder-http-compatibility.mjs",
           "scripts/server-rust/actual-folder-client.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "listTerminalServicesForWorker",
@@ -12324,7 +12704,8 @@
           "cantrip_server_rs/tests/worker_maintenance.rs",
           "scripts/server-rust/maintenance-repository-compatibility.mjs",
           "scripts/server-rust/maintenance-http-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "setTerminalStatus",
@@ -12334,7 +12715,8 @@
           "cantrip_server_rs/tests/worker_maintenance.rs",
           "scripts/server-rust/maintenance-repository-compatibility.mjs",
           "scripts/server-rust/maintenance-http-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "listTerminals",
@@ -12344,7 +12726,8 @@
           "cantrip_server_rs/tests/terminal_contracts.rs",
           "scripts/server-rust/terminal-repository-compatibility.mjs",
           "scripts/server-rust/terminal-http-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "createTerminal",
@@ -12354,7 +12737,8 @@
           "cantrip_server_rs/tests/terminal_contracts.rs",
           "scripts/server-rust/terminal-repository-compatibility.mjs",
           "scripts/server-rust/terminal-http-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "getTerminalExecutionContext",
@@ -12364,7 +12748,8 @@
           "cantrip_server_rs/tests/terminal_contracts.rs",
           "scripts/server-rust/terminal-repository-compatibility.mjs",
           "scripts/server-rust/terminal-http-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "updateTerminal",
@@ -12374,7 +12759,8 @@
           "cantrip_server_rs/tests/terminal_contracts.rs",
           "scripts/server-rust/terminal-repository-compatibility.mjs",
           "scripts/server-rust/terminal-http-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "updateTerminalService",
@@ -12384,7 +12770,8 @@
           "cantrip_server_rs/tests/terminal_contracts.rs",
           "scripts/server-rust/terminal-repository-compatibility.mjs",
           "scripts/server-rust/terminal-http-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "listBrowsers",
@@ -12394,7 +12781,8 @@
           "scripts/server-rust/browser-repository-compatibility.mjs",
           "scripts/server-rust/browser-repository-locks.mjs",
           "scripts/server-rust/browser-http-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "createBrowser",
@@ -12404,7 +12792,8 @@
           "scripts/server-rust/browser-repository-compatibility.mjs",
           "scripts/server-rust/browser-repository-locks.mjs",
           "scripts/server-rust/browser-http-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "updateBrowser",
@@ -12414,7 +12803,8 @@
           "scripts/server-rust/browser-repository-compatibility.mjs",
           "scripts/server-rust/browser-repository-locks.mjs",
           "scripts/server-rust/browser-http-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "deleteBrowser",
@@ -12424,7 +12814,8 @@
           "scripts/server-rust/browser-repository-compatibility.mjs",
           "scripts/server-rust/browser-repository-locks.mjs",
           "scripts/server-rust/browser-http-compatibility.mjs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "listExplorers",
@@ -12438,7 +12829,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "createExplorer",
@@ -12452,7 +12844,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "updateExplorerWorktree",
@@ -12466,7 +12859,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "getExplorerExecutionContext",
@@ -12480,7 +12874,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "updateExplorer",
@@ -12494,7 +12889,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "pinExplorer",
@@ -12508,7 +12904,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "updateExplorerViewState",
@@ -12522,7 +12919,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "deleteExplorer",
@@ -12536,7 +12934,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "listCodeTabs",
@@ -12550,7 +12949,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "createCodeTab",
@@ -12564,7 +12964,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "getCodeTabExecutionContext",
@@ -12578,7 +12979,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "updateCodeTab",
@@ -12592,7 +12994,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "updateCodeTabWorktree",
@@ -12606,7 +13009,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "deleteCodeTab",
@@ -12620,7 +13024,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "listProjectViews",
@@ -12634,7 +13039,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "getProjectViewProjectId",
@@ -12648,7 +13054,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "createProjectView",
@@ -12662,7 +13069,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "updateProjectView",
@@ -12676,7 +13084,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "updateProjectViewWorktree",
@@ -12690,7 +13099,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "deleteProjectView",
@@ -12704,7 +13114,8 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "reconcileProjectWorktrees",
@@ -12717,7 +13128,8 @@
         ],
         "remaining": [
           "Complete worktree coordinator and HTTP integration, managed Git recovery, supported-platform and packaged acceptance."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "rollbackProjectWorktreeCreation",
@@ -12730,7 +13142,8 @@
         ],
         "remaining": [
           "Complete worktree coordinator and HTTP integration, managed Git recovery, supported-platform and packaged acceptance."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "setProjectWorktreeLifecycle",
@@ -12743,7 +13156,8 @@
         ],
         "remaining": [
           "Complete worktree coordinator and HTTP integration, managed Git recovery, supported-platform and packaged acceptance."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "observeProjectWorktree",
@@ -12756,7 +13170,8 @@
         ],
         "remaining": [
           "Complete worktree coordinator and HTTP integration, managed Git recovery, supported-platform and packaged acceptance."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "getWorktreeRemovalBlockers",
@@ -12769,7 +13184,8 @@
         ],
         "remaining": [
           "Complete worktree coordinator and HTTP integration, managed Git recovery, supported-platform and packaged acceptance."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "getRunConfigurationRuntime",
@@ -12784,7 +13200,8 @@
         ],
         "remaining": [
           "Actual worker process stop/retirement integration, remaining HTTP lifecycle and supported-platform/package verification. Local three-store duplicate start, competing stop and duplicate observation contention checks pass; controlled-worker retirement and reconnect pass across all nine storage/authentication combinations."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "listRunConfigurationRuntimes",
@@ -12799,7 +13216,8 @@
         ],
         "remaining": [
           "Actual worker process stop/retirement integration, remaining HTTP lifecycle and supported-platform/package verification. Local three-store duplicate start, competing stop and duplicate observation contention checks pass; controlled-worker retirement and reconnect pass across all nine storage/authentication combinations."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "listActiveRunConfigurationRuntimeIdentitiesForWorker",
@@ -12814,7 +13232,8 @@
         ],
         "remaining": [
           "Actual worker process stop/retirement integration, remaining HTTP lifecycle and supported-platform/package verification. Local three-store duplicate start, competing stop and duplicate observation contention checks pass; controlled-worker retirement and reconnect pass across all nine storage/authentication combinations."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "deleteRunConfigurationRuntimes",
@@ -12829,7 +13248,8 @@
         ],
         "remaining": [
           "Actual worker process stop/retirement integration, remaining HTTP lifecycle and supported-platform/package verification. Local three-store duplicate start, competing stop and duplicate observation contention checks pass; controlled-worker retirement and reconnect pass across all nine storage/authentication combinations."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "applyRunConfigurationRuntimeObservation",
@@ -12844,7 +13264,8 @@
         ],
         "remaining": [
           "Actual worker process stop/retirement integration, remaining HTTP lifecycle and supported-platform/package verification. Local three-store duplicate start, competing stop and duplicate observation contention checks pass; controlled-worker retirement and reconnect pass across all nine storage/authentication combinations."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "requestRunConfigurationRuntimeOperation",
@@ -12859,7 +13280,8 @@
         ],
         "remaining": [
           "Actual worker process stop/retirement integration, remaining HTTP lifecycle and supported-platform/package verification. Local three-store duplicate start, competing stop and duplicate observation contention checks pass; controlled-worker retirement and reconnect pass across all nine storage/authentication combinations."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "listRunConfigurationSecretSummaries",
@@ -12871,7 +13293,8 @@
         ],
         "remaining": [
           "Supported-platform and packaged acceptance; Run definition administration remains separate and incomplete."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "setRunConfigurationSecret",
@@ -12883,7 +13306,8 @@
         ],
         "remaining": [
           "Supported-platform and packaged acceptance; Run definition administration remains separate and incomplete."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "ensureDefaultProjectWorkspace",
@@ -12898,7 +13322,8 @@
         ],
         "remaining": [
           "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "listProjectWorkspaceWire",
@@ -12913,7 +13338,8 @@
         ],
         "remaining": [
           "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "createEncryptedProjectWorkspace",
@@ -12928,7 +13354,8 @@
         ],
         "remaining": [
           "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "createVerifiedAttachedProjectWorkspace",
@@ -12943,7 +13370,8 @@
         ],
         "remaining": [
           "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "updateEncryptedProjectWorkspace",
@@ -12958,7 +13386,8 @@
         ],
         "remaining": [
           "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "deleteProjectWorkspace",
@@ -12973,7 +13402,8 @@
         ],
         "remaining": [
           "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "getProjectWorkspaceDeletionPlan",
@@ -12988,7 +13418,8 @@
         ],
         "remaining": [
           "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "getProjectRemovalContext",
@@ -13003,7 +13434,8 @@
         ],
         "remaining": [
           "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "listStandaloneChats",
@@ -13017,7 +13449,8 @@
         "remaining": [
           "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
           "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "listArchivedStandaloneChats",
@@ -13031,7 +13464,8 @@
         "remaining": [
           "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
           "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "createStandaloneChat",
@@ -13045,7 +13479,8 @@
         "remaining": [
           "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
           "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "archiveAgentConversation",
@@ -13060,7 +13495,8 @@
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
           "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "deleteChat",
@@ -13075,7 +13511,8 @@
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
           "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "archiveStandaloneChat",
@@ -13090,7 +13527,8 @@
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
           "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "restoreStandaloneChat",
@@ -13105,7 +13543,8 @@
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
           "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "getStandaloneChatRootForDeletion",
@@ -13120,7 +13559,8 @@
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
           "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "restoreArchivedChat",
@@ -13135,7 +13575,8 @@
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
           "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "permanentlyDeleteArchivedChat",
@@ -13150,7 +13591,8 @@
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
           "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "purgeExpiredArchivedChats",
@@ -13165,7 +13607,8 @@
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
           "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "updateChat",
@@ -13180,7 +13623,8 @@
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
           "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "acknowledgeChatCompletion",
@@ -13195,7 +13639,8 @@
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
           "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "getChatComposerDraftWireState",
@@ -13210,7 +13655,8 @@
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
           "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "updateChatComposerDraft",
@@ -13225,7 +13671,8 @@
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
           "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "forkChat",
@@ -13239,7 +13686,8 @@
         "remaining": [
           "Full client/full-worker key provisioning and filesystem integration, supported-platform acceptance, multi-instance coordination and further interruption boundaries remain required.",
           "Native history ingestion, execution queues, Tasks, Goal/automation continuity and packaging remain unfinished."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "forkStandaloneChat",
@@ -13253,7 +13701,8 @@
         "remaining": [
           "Full client/full-worker key provisioning and filesystem integration, supported-platform acceptance, multi-instance coordination and further interruption boundaries remain required.",
           "Native history ingestion, execution queues, Tasks, Goal/automation continuity and packaging remain unfinished."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "listMessages",
@@ -13269,7 +13718,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "listEncryptedMessages",
@@ -13285,7 +13735,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "getLatestEncryptedUserMessage",
@@ -13301,7 +13752,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "listEncryptedMessagePage",
@@ -13317,7 +13769,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "listAgentMessageWire",
@@ -13333,7 +13786,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "listTaskMessages",
@@ -13349,7 +13803,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "listTaskMessagePage",
@@ -13365,7 +13820,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "listMessageHeaders",
@@ -13381,7 +13837,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "appendMessage",
@@ -13397,7 +13854,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "appendEncryptedMessage",
@@ -13413,7 +13871,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "upsertEncryptedMessage",
@@ -13429,7 +13888,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "getEncryptedMessageByIdempotencyKey",
@@ -13445,7 +13905,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "setEncryptedMessageModelRoute",
@@ -13461,7 +13922,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "appendTaskMessage",
@@ -13477,7 +13939,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "upsertTaskMessage",
@@ -13493,7 +13956,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "setTaskMessageModelRoute",
@@ -13509,7 +13973,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "getTaskMessageByIdempotencyKey",
@@ -13525,7 +13990,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "setMessageModelRoute",
@@ -13541,7 +14007,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "upsertMessage",
@@ -13557,7 +14024,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "getMessageByIdempotencyKey",
@@ -13573,7 +14041,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "trimLatestEncryptedTurn",
@@ -13589,7 +14058,8 @@
         "remaining": [
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "recordAgentInteractionRequest",
@@ -13605,7 +14075,8 @@
         "remaining": [
           "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
           "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "recordEncryptedAgentInteractionRequest",
@@ -13621,7 +14092,8 @@
         "remaining": [
           "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
           "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "listAgentInteractionRequests",
@@ -13637,7 +14109,8 @@
         "remaining": [
           "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
           "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "getAgentInteractionRequest",
@@ -13653,7 +14126,8 @@
         "remaining": [
           "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
           "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "getAgentInteractionRequestByKey",
@@ -13669,7 +14143,8 @@
         "remaining": [
           "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
           "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "resolveAgentInteractionRequest",
@@ -13685,7 +14160,8 @@
         "remaining": [
           "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
           "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "validateAgentInteractionResolution",
@@ -13701,7 +14177,8 @@
         "remaining": [
           "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
           "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "resolveEncryptedAgentInteractionRequest",
@@ -13717,7 +14194,8 @@
         "remaining": [
           "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
           "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "validateEncryptedAgentInteractionResolution",
@@ -13733,7 +14211,8 @@
         "remaining": [
           "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
           "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "expireAgentInteractionRequests",
@@ -13749,7 +14228,8 @@
         "remaining": [
           "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
           "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "interruptAgentInteractionRequests",
@@ -13765,7 +14245,8 @@
         "remaining": [
           "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
           "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "terminalizeAgentInteractionRequestFromWorker",
@@ -13781,7 +14262,8 @@
         "remaining": [
           "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
           "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "getProjectWorktreeStatusSnapshot",
@@ -13795,7 +14277,8 @@
         ],
         "remaining": [
           "Controlled-worker HTTP/command/crypto comparisons pass all nine local storage/authentication profiles (244 paired HTTP observations per store). Full unchanged client/worker model execution, supported-platform acceptance, packaging and replacement requirements remain."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "listChats",
@@ -13808,7 +14291,8 @@
         ],
         "remaining": [
           "Local paired public HTTP comparisons pass all nine storage/authentication profiles. Supported-platform and packaged acceptance remains required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "listArchivedChats",
@@ -13821,7 +14305,8 @@
         ],
         "remaining": [
           "Local paired public HTTP comparisons pass all nine storage/authentication profiles. Supported-platform and packaged acceptance remains required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "createChat",
@@ -13836,7 +14321,8 @@
         ],
         "remaining": [
           "Supported-platform and packaged acceptance, remaining conversation APIs, Redis/multi-instance behavior and all original upgrade/post-write rollback, packaging, performance, Winterhold rehearsal and default-cutover requirements remain."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts"
       },
       {
         "method": "listChatExecutionContextsByThreadId",
@@ -13852,11 +14338,12 @@
         ],
         "remaining": [
           "Supported-platform and packaged acceptance, archive cleanup and other unfinished domains, Redis/multi-instance operation, complete upgrade/post-write rollback acceptance, final artifacts, desktop packaging, performance, Winterhold rehearsal and default cutover remain required. Node remains the default server."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "create",
-        "file": "cantrip_server/src/db/project-automations.ts",
+        "file": "tests/reference-node-server/src/db/project-automations.ts",
         "implementation": "cantrip_server_rs/src/project_automations/repository.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
@@ -13874,7 +14361,7 @@
       },
       {
         "method": "list",
-        "file": "cantrip_server/src/db/project-automations.ts",
+        "file": "tests/reference-node-server/src/db/project-automations.ts",
         "implementation": "cantrip_server_rs/src/project_automations/repository.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
@@ -13892,7 +14379,7 @@
       },
       {
         "method": "listForWorker",
-        "file": "cantrip_server/src/db/project-automations.ts",
+        "file": "tests/reference-node-server/src/db/project-automations.ts",
         "implementation": "cantrip_server_rs/src/project_automations/repository.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
@@ -13910,7 +14397,7 @@
       },
       {
         "method": "get",
-        "file": "cantrip_server/src/db/project-automations.ts",
+        "file": "tests/reference-node-server/src/db/project-automations.ts",
         "implementation": "cantrip_server_rs/src/project_automations/repository.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
@@ -13928,7 +14415,7 @@
       },
       {
         "method": "update",
-        "file": "cantrip_server/src/db/project-automations.ts",
+        "file": "tests/reference-node-server/src/db/project-automations.ts",
         "implementation": "cantrip_server_rs/src/project_automations/repository.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
@@ -13946,7 +14433,7 @@
       },
       {
         "method": "delete",
-        "file": "cantrip_server/src/db/project-automations.ts",
+        "file": "tests/reference-node-server/src/db/project-automations.ts",
         "implementation": "cantrip_server_rs/src/project_automations/repository.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
@@ -13964,7 +14451,7 @@
       },
       {
         "method": "claimDue",
-        "file": "cantrip_server/src/db/project-automations.ts",
+        "file": "tests/reference-node-server/src/db/project-automations.ts",
         "implementation": "cantrip_server_rs/src/project_automations/repository.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
@@ -13982,7 +14469,7 @@
       },
       {
         "method": "finishDispatch",
-        "file": "cantrip_server/src/db/project-automations.ts",
+        "file": "tests/reference-node-server/src/db/project-automations.ts",
         "implementation": "cantrip_server_rs/src/project_automations/repository.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
@@ -14000,7 +14487,7 @@
       },
       {
         "method": "setChatPermissionProfile",
-        "file": "cantrip_server/src/db/repository.ts",
+        "file": "tests/reference-node-server/src/db/repository.ts",
         "implementation": "cantrip_server_rs/src/chats/model_configuration.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
@@ -14019,7 +14506,7 @@
       },
       {
         "method": "listSkillAudiences",
-        "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
         "implementation": "cantrip_server_rs/src/settings/skill_audiences.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
@@ -14036,7 +14523,7 @@
       },
       {
         "method": "updateSkillAudience",
-        "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
         "implementation": "cantrip_server_rs/src/settings/skill_audiences.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
@@ -14053,7 +14540,7 @@
       },
       {
         "method": "listMcpServers",
-        "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
         "implementation": "cantrip_server_rs/src/settings/mcp_servers.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
@@ -14071,7 +14558,7 @@
       },
       {
         "method": "createMcpServer",
-        "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
         "implementation": "cantrip_server_rs/src/settings/mcp_servers.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
@@ -14089,7 +14576,7 @@
       },
       {
         "method": "updateMcpServer",
-        "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
         "implementation": "cantrip_server_rs/src/settings/mcp_servers.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
@@ -14107,7 +14594,7 @@
       },
       {
         "method": "deleteMcpServer",
-        "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
         "implementation": "cantrip_server_rs/src/settings/mcp_servers.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
@@ -14125,7 +14612,7 @@
       },
       {
         "method": "listEffectiveMcpServers",
-        "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
         "implementation": "cantrip_server_rs/src/chats/mcp.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
@@ -14157,7 +14644,8 @@
         "remaining": [
           "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
           "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "getChatAttachment",
@@ -14175,7 +14663,8 @@
         "remaining": [
           "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
           "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "getChatAttachmentReplicaWorkerIds",
@@ -14193,7 +14682,8 @@
         "remaining": [
           "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
           "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "deleteChatAttachment",
@@ -14211,7 +14701,8 @@
         "remaining": [
           "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
           "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
       },
       {
         "method": "listWorkerManagement",
@@ -14228,7 +14719,8 @@
         "remaining": [
           "Actual browser/full-worker supervisor restart, shared/mixed Redis consumers and current supported-platform/packaged acceptance remain required.",
           "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and default cutover remain required for complete replacement."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "updateWorkerDisplayName",
@@ -14245,7 +14737,8 @@
         "remaining": [
           "Actual browser/full-worker supervisor restart, shared/mixed Redis consumers and current supported-platform/packaged acceptance remain required.",
           "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and default cutover remain required for complete replacement."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "unlinkWorker",
@@ -14262,7 +14755,8 @@
         "remaining": [
           "Actual browser/full-worker supervisor restart, shared/mixed Redis consumers and current supported-platform/packaged acceptance remain required.",
           "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and default cutover remain required for complete replacement."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "getProjectTokenUsage",
@@ -14280,7 +14774,8 @@
         ],
         "remaining": [
           "Current supported-platform, packaged desktop/container and complete replacement acceptance remain required."
-        ]
+        ],
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts"
       },
       {
         "method": "expireOwnedAgentInteractionRequests",
@@ -14293,6 +14788,959 @@
         "scope": "Private global expiry result retains the stored owner outside public wire objects; the original public expiry method still returns its prior result shape.",
         "remaining": [
           "Supported-platform/artifact and complete product/fault acceptance."
+        ],
+        "file": "tests/reference-node-server/src/db/repository.ts"
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "ensureAccountConfiguration",
+        "implementation": "cantrip_server_rs/src/settings/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "ensureDefaultModelConfiguration",
+        "implementation": "cantrip_server_rs/src/settings/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "getSettings",
+        "implementation": "cantrip_server_rs/src/settings/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "getUserSettings",
+        "implementation": "cantrip_server_rs/src/settings/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "updateSettings",
+        "implementation": "cantrip_server_rs/src/settings/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "updateAppDestination",
+        "implementation": "cantrip_server_rs/src/settings/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "getModelRuntimes",
+        "implementation": "cantrip_server_rs/src/settings/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "createModelProfile",
+        "implementation": "cantrip_server_rs/src/settings/models.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "updateModelProfile",
+        "implementation": "cantrip_server_rs/src/settings/models.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "deleteModelProfile",
+        "implementation": "cantrip_server_rs/src/settings/models.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "createModelProvider",
+        "implementation": "cantrip_server_rs/src/settings/providers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "getModelProvider",
+        "implementation": "cantrip_server_rs/src/settings/providers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "updateModelProvider",
+        "implementation": "cantrip_server_rs/src/settings/providers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "deleteModelProvider",
+        "implementation": "cantrip_server_rs/src/settings/providers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "getModelProviderCatalogRuntime",
+        "implementation": "cantrip_server_rs/src/settings/providers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "hasModelRoutesForProvider",
+        "implementation": "cantrip_server_rs/src/settings/providers.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Positive attached-route lookup evidence remains to be reconciled."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "listModelProviderAccountRuntimes",
+        "implementation": "cantrip_server_rs/src/settings/models.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "listModelProviderAccounts",
+        "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "createModelProviderAccount",
+        "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "updateModelProviderAccount",
+        "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "reorderModelProviderAccounts",
+        "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "deleteModelProviderAccount",
+        "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "getModelProviderAccountRuntime",
+        "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "getModelProviderAccountCredential",
+        "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "listModelProviderAccountCredentialMigrations",
+        "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "getModelProviderAccountCredentialMigration",
+        "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "storeModelProviderAccountCredential",
+        "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "updateModelProviderAccountCredentialState",
+        "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "clearModelProviderAccountCredential",
+        "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "takeModelProviderAccountCredentialForSignOut",
+        "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "recordModelProviderAccountStatus",
+        "implementation": "cantrip_server_rs/src/settings/account_observations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "recordModelProviderAccountCredits",
+        "implementation": "cantrip_server_rs/src/settings/account_observations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "recordModelProviderAccountUsage",
+        "implementation": "cantrip_server_rs/src/settings/account_observations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "listModelProviderCatalogTargets",
+        "implementation": "cantrip_server_rs/src/settings/catalog.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "listModelProviderRefreshTargets",
+        "implementation": "cantrip_server_rs/src/settings/catalog.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "setProviderCatalogSyncState",
+        "implementation": "cantrip_server_rs/src/settings/catalog.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "getProviderModelCatalog",
+        "implementation": "cantrip_server_rs/src/settings/catalog.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "listProviderModelAvailability",
+        "implementation": "cantrip_server_rs/src/settings/catalog.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "reconcileProviderModelCatalog",
+        "implementation": "cantrip_server_rs/src/settings/catalog.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "ensureLocalIdentity",
+        "implementation": "cantrip_server_rs/src/auth/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/auth-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "countAccountUsers",
+        "implementation": "cantrip_server_rs/src/auth/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/auth-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "listAccountLicenseWhitelist",
+        "implementation": "cantrip_server_rs/src/auth/security_repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "createAccountLicenseWhitelistEntry",
+        "implementation": "cantrip_server_rs/src/auth/security_repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "deleteAccountLicenseWhitelistEntry",
+        "implementation": "cantrip_server_rs/src/auth/security_repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "createAccount",
+        "implementation": "cantrip_server_rs/src/auth/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "findAccountCredential",
+        "implementation": "cantrip_server_rs/src/auth/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "findAccountCredentialById",
+        "implementation": "cantrip_server_rs/src/auth/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "createUserSession",
+        "implementation": "cantrip_server_rs/src/auth/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "getActiveUserSession",
+        "implementation": "cantrip_server_rs/src/auth/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "createMobileSignInGrant",
+        "implementation": "cantrip_server_rs/src/auth/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/auth-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "consumeMobileSignInGrant",
+        "implementation": "cantrip_server_rs/src/auth/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/auth-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "revokeUserSession",
+        "implementation": "cantrip_server_rs/src/auth/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/auth-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "revokeAllUserSessions",
+        "implementation": "cantrip_server_rs/src/auth/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/auth-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "listUserSessions",
+        "implementation": "cantrip_server_rs/src/auth/security_repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "appendAuditEvent",
+        "implementation": "cantrip_server_rs/src/auth/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "listAuditEvents",
+        "implementation": "cantrip_server_rs/src/auth/security_repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "getOrCreateServerId",
+        "implementation": "cantrip_server_rs/src/auth/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/auth-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+        "method": "getProfile",
+        "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+        "method": "initializeProfile",
+        "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+        "method": "updateMigrationStatus",
+        "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+        "method": "changeAccountPassword",
+        "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+        "method": "listPrincipals",
+        "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+        "method": "createPrincipal",
+        "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+        "method": "approvePrincipal",
+        "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+        "method": "revokePrincipal",
+        "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+        "method": "listActiveGrants",
+        "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+        "method": "createGrant",
+        "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+        "method": "revokeGrant",
+        "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "docs/security/rust-server-foundation-acceptance.json",
+          "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md"
+        ],
+        "remaining": [
+          "Final supported-platform and complete replacement acceptance are tracked separately."
         ]
       }
     ]
@@ -20161,6 +21609,24 @@
         "Isolated development vault; normal release-app OS-key-store and original-profile preservation have separate encrypted desktop qualification.",
         "No Windows/Linux GUI, every transfer-failure phase, power-loss or performance-capacity claim.",
         "Final whole-server coverage and supported-artifact reconciliation remains open."
+      ]
+    },
+    "currentFoundationReconciliation": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/auth/",
+        "cantrip_server_rs/src/encryption/",
+        "cantrip_server_rs/src/settings/",
+        "cantrip_server_rs/src/policies/"
+      ],
+      "evidence": [
+        "docs/RUST_SERVER_FOUNDATION_RECONCILIATION.md",
+        "docs/security/rust-server-foundation-acceptance.json"
+      ],
+      "scope": "Current macOS arm64 native/Node foundation comparisons on all three stores. Authentication 1083, account security 1161, policies 186 and settings 2364 paired observations; separate owner-safe deletion regression. Existing 159 repository overrides now use current file+method identities; 68 additional method identities and 23 table operation scopes have explicit evidence, with positive provider-route membership still open.",
+      "remaining": [
+        "Complete remaining inventory/domain and original-goal acceptance reconciliation.",
+        "Reconcile final supported-platform shipping artifacts and evidence."
       ]
     }
   },

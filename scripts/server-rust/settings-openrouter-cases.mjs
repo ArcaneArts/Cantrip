@@ -108,7 +108,7 @@ export async function openRouterCases({ seed, compare, unchanged, literal }) {
   assert.equal(first.result.servedStale, false);
   assert.deepEqual(first.calls, [
     {
-      url: "https://openrouter.ai/api/v1/models",
+      url: "https://openrouter.ai/api/v1/models?output_modalities=all",
       accept: "application/json",
       etag: null,
       authorization: null,
@@ -164,21 +164,21 @@ export async function openRouterCases({ seed, compare, unchanged, literal }) {
     assert.equal(invalid.result.servedStale, true);
     assert.equal(invalid.result.models.length, 2);
   }
-  // Cache keys use origin, so a second provider on the same host can reuse
-  // public metadata without sending any account/provider authorization.
-  await compare("create same-origin public provider", {
+  // Cache keys use the normalized base URL. Providers on the same endpoint
+  // share public metadata without sending account/provider authorization.
+  await compare("create same-endpoint public provider", {
     op: "provider-create",
     owner,
     input: {
       id: "public-shared",
       name: "Shared",
       kind: "openai-compatible",
-      baseUrl: "https://openrouter.ai/different/path",
+      baseUrl: "https://openrouter.ai/api/v1/",
       protectedApiKey: policyEnvelope,
     },
   });
   const shared = await compare(
-    "same-origin public cache is shared across providers",
+    "same-endpoint public cache is shared across providers",
     call({
       provider: "public-shared",
       now: 1099,
@@ -187,6 +187,34 @@ export async function openRouterCases({ seed, compare, unchanged, literal }) {
   );
   assert.deepEqual(shared.calls, []);
   assert.equal(shared.result.models.length, 2);
+  await compare("create same-origin different-endpoint public provider", {
+    op: "provider-create",
+    owner,
+    input: {
+      id: "public-isolated",
+      name: "Isolated",
+      kind: "openai-compatible",
+      baseUrl: "https://openrouter.ai/different/path",
+      protectedApiKey: policyEnvelope,
+    },
+  });
+  const isolated = await compare(
+    "different endpoint does not reuse same-origin public metadata",
+    call({
+      provider: "public-isolated",
+      now: 1099,
+      input: { payload: { data: [] } },
+    }),
+  );
+  assert.equal(isolated.result.models.length, 0);
+  assert.deepEqual(isolated.calls, [
+    {
+      url: "https://openrouter.ai/different/path/models?output_modalities=all",
+      accept: "application/json",
+      etag: null,
+      authorization: null,
+    },
+  ]);
   const stale = await compare(
     "expired public read returns before blocked background refresh",
     call({

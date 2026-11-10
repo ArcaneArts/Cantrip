@@ -113,23 +113,21 @@ export async function providerServiceOperation(repo, r) {
         return false;
       }
     });
+    const app = require("fastify")({ logger: false });
     let runtime;
     try {
-      runtime = installSettingsRouteRuntime(
-        { get() {}, post() {}, patch() {}, delete() {}, put() {} },
-        {
-          applicationOwnerId: () =>
-            input.ambientOwner ?? "unrelated-ambient-owner",
-          bridge,
-          repository: repo,
-          zaiCatalogService: service("zai"),
-          providerCatalogService: publicService,
-          chatGptCatalogService: service("chatgpt"),
-          grokCatalogService: service("grok"),
-          ollamaCatalogService: service("ollama"),
-          openRouterRuntimeCatalogs: hydrator,
-        },
-      );
+      runtime = installSettingsRouteRuntime(app, {
+        applicationOwnerId: () =>
+          input.ambientOwner ?? "unrelated-ambient-owner",
+        bridge,
+        repository: repo,
+        zaiCatalogService: service("zai"),
+        providerCatalogService: publicService,
+        chatGptCatalogService: service("chatgpt"),
+        grokCatalogService: service("grok"),
+        ollamaCatalogService: service("ollama"),
+        openRouterRuntimeCatalogs: hydrator,
+      });
       const pending = runtime.loadProviderCatalog(
         r.owner,
         r.provider,
@@ -167,10 +165,14 @@ export async function providerServiceOperation(repo, r) {
         }
       }
     } finally {
-      if (runtime) clearInterval(runtime.workerCatalogRefreshTimer);
-      Date.now = original.now;
-      serverLogger.event = original.event;
-      serverLogger.rateLimited = original.rateLimited;
+      try {
+        if (runtime) clearInterval(runtime.workerCatalogRefreshTimer);
+        await app.close();
+      } finally {
+        Date.now = original.now;
+        serverLogger.event = original.event;
+        serverLogger.rateLimited = original.rateLimited;
+      }
     }
   } else if (r.op.startsWith("auth-")) {
     const migration = new ProviderCredentialMigrationCoordinator(repo, bridge, {

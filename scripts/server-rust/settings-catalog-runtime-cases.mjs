@@ -71,7 +71,7 @@ export async function catalogRuntimeCases({
       }),
     );
     assert.equal(value.calls.length, 1);
-    assert.equal(value.calls[0].kind, family === "custom" ? "public" : family);
+    assert.equal(value.calls[0].kind, family === "custom" ? "ollama" : family);
     assert.equal(
       value.calls[0].owner,
       owner,
@@ -80,7 +80,7 @@ export async function catalogRuntimeCases({
     assert.deepEqual(value.result, { fixture: "catalog" });
     assert.equal(value.logs.at(-1).context.durationMs, 17);
   }
-  for (const family of ["chatgpt", "grok", "ollama"]) {
+  for (const family of ["chatgpt", "grok", "ollama", "custom"]) {
     await setDefault(null);
     let value = await unchanged(
       "runtime chooses first connected owned worker " + family,
@@ -119,9 +119,12 @@ export async function catalogRuntimeCases({
       "runtime missing worker produces family error " + family,
       call(family, { input: { connected: false } }),
     );
-    const label = { chatgpt: "ChatGPT", grok: "Grok", ollama: "Ollama" }[
-      family
-    ];
+    const label = {
+      chatgpt: "ChatGPT",
+      grok: "Grok",
+      ollama: "Ollama",
+      custom: "OpenAI compatible",
+    }[family];
     assert.deepEqual(value.result, {
       error: `No worker is available for ${label} discovery.`,
     });
