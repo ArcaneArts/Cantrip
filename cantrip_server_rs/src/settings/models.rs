@@ -85,8 +85,9 @@ impl SettingsRepository {
         &self,
         owner: &str,
         model: &str,
-    ) -> Result<Option<String>> {
-        self.database.query("SELECT default_reasoning_effort FROM model_profiles WHERE id=$1 AND owner_id=$2 LIMIT 1", &[&model, &owner]).await?.first().map(|row| row.get::<Option<String>>(0)).transpose().map(Option::flatten)
+    ) -> Result<Option<Option<String>>> {
+        // Absence of an owned model is distinct from its explicitly null default.
+        self.database.query("SELECT default_reasoning_effort FROM model_profiles WHERE id=$1 AND owner_id=$2 LIMIT 1", &[&model, &owner]).await?.first().map(|row| row.get::<Option<String>>(0)).transpose()
     }
     async fn owned_providers(&self, owner: &str, routes: &[WireValue]) -> Result<bool> {
         let providers: HashSet<JsString> = self

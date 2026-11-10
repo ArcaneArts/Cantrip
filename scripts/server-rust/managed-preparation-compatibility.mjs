@@ -29,6 +29,7 @@ const root = await mkdtemp(path.join(tmpdir(), "cantrip-preparation-")),
 const report = {
   suite: "managed-chat-preparation",
   databaseMode,
+  root,
   completeReplacement: false,
   cases: [],
   snapshots: [],
@@ -102,7 +103,9 @@ const input = {
   stateProtection: state("terminal-state"),
 };
 try {
-  executable = await buildRustExample("project-repository-fixture");
+  executable =
+    process.env.CANTRIP_RUST_PROJECT_FIXTURE_BINARY ??
+    (await buildRustExample("project-repository-fixture"));
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
   for (const [i, kind] of ["node", "rust"].entries()) {
@@ -406,7 +409,8 @@ try {
       [...(failure ? [failure] : []), ...errors],
       "Preparation cleanup failed",
     );
-  await rm(root, { recursive: true, force: true });
+  if (!process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");

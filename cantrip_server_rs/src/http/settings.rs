@@ -239,6 +239,7 @@ async fn execute(
         let effort = repository
             .get_model_reasoning_default(owner, &id)
             .await?
+            .flatten()
             .map_or(Value::Null, |effort| Value::String(effort.into()));
         let runtimes = runtimes
             .iter()

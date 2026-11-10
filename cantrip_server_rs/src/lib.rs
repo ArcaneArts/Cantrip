@@ -33,7 +33,7 @@ pub mod policies;
 pub mod profile;
 pub mod project_alerts;
 pub mod project_automations;
-mod project_layout;
+pub mod project_layout;
 pub mod project_shares;
 pub mod projects;
 pub mod relay;

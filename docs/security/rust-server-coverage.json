@@ -12924,11 +12924,14 @@
       },
       {
         "method": "getChatExecutionContext",
-        "implementation": "cantrip_server_rs/src/live/repository.rs",
-        "status": "partial",
-        "evidence": ["scripts/server-rust/live-repository-compatibility.mjs"],
+        "implementation": "cantrip_server_rs/src/chats/context.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
         "remaining": [
-          "Complete context DTO and its resource/execution consumers remain unported; the exact repository read/validation path needed by Live scope authorization is implemented."
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
         ],
         "file": "tests/reference-node-server/src/db/repository.ts"
       },
@@ -17743,6 +17746,321 @@
         ],
         "remaining": [
           "Final original-goal audit must preserve this current-production retirement disposition; this row does not claim native implementation of the obsolete private helper."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "createTask",
+        "implementation": "cantrip_server_rs/src/chats/task_creation.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getOrCreateChatConsole",
+        "implementation": "cantrip_server_rs/src/terminals/linked_console.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "updateTerminalWorktree",
+        "implementation": "cantrip_server_rs/src/terminals/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "deleteTerminal",
+        "implementation": "cantrip_server_rs/src/terminals/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "ensureBrowserRemoteSurfaces",
+        "implementation": "cantrip_server_rs/src/remote_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "listRemoteSurfaces",
+        "implementation": "cantrip_server_rs/src/remote_surfaces/catalog.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "createRemoteSurface",
+        "implementation": "cantrip_server_rs/src/remote_surfaces/mutations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getRemoteSurfaceExecutionContext",
+        "implementation": "cantrip_server_rs/src/remote_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "updateRemoteSurface",
+        "implementation": "cantrip_server_rs/src/remote_surfaces/mutations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "setRemoteSurfaceStatus",
+        "implementation": "cantrip_server_rs/src/remote_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "resetTransientRemoteSurfaceStatuses",
+        "implementation": "cantrip_server_rs/src/remote_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "deleteRemoteSurface",
+        "implementation": "cantrip_server_rs/src/remote_surfaces/mutations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "listRemoteDesktops",
+        "implementation": "cantrip_server_rs/src/remote_surfaces/catalog.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getRemoteDesktop",
+        "implementation": "cantrip_server_rs/src/remote_surfaces/catalog.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "createRemoteDesktop",
+        "implementation": "cantrip_server_rs/src/remote_surfaces/desktops.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "setChatAutomationPaused",
+        "implementation": "cantrip_server_rs/src/chats/state.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "getModelReasoningDefault",
+        "implementation": "cantrip_server_rs/src/settings/models.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "setChatStatus",
+        "implementation": "cantrip_server_rs/src/chats/runtime.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "nextProjectTabPosition",
+        "implementation": "cantrip_server_rs/src/project_layout/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "reorderProjects",
+        "implementation": "cantrip_server_rs/src/projects/repository/preferences.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "reorderProjects",
+        "implementation": "cantrip_server_rs/src/projects/repository/preferences.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 repository and public-caller qualification. Final supported-platform and original-goal acceptance remains open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "getChatModelConfiguration",
+        "status": "retired-current-production-helper",
+        "implementation": "cantrip_server_rs/src/http/chat_configuration/models.rs",
+        "disposition": "No current named production caller remains; only facade declaration/forwarding and child definition occur in active source. Current public model/reasoning routes use execution context and the atomic full configuration setter. This does not retire those public routes or claim a separate native implementation of this obsolete private helper.",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Preserve this explicit private-helper disposition in the final audit; public model/reasoning behavior remains active and separately qualified."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "setChatReasoningEffort",
+        "status": "retired-current-production-helper",
+        "implementation": "cantrip_server_rs/src/http/chat_configuration/models.rs",
+        "disposition": "No current named production caller remains; only facade declaration/forwarding and child definition occur in active source. Current public model/reasoning routes use execution context and the atomic full configuration setter. This does not retire those public routes or claim a separate native implementation of this obsolete private helper.",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Preserve this explicit private-helper disposition in the final audit; public model/reasoning behavior remains active and separately qualified."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository.ts",
+        "method": "setChatReasoningEffortAndRememberDefault",
+        "status": "retired-current-production-helper",
+        "implementation": "cantrip_server_rs/src/http/chat_configuration/models.rs",
+        "disposition": "No current named production caller remains; only facade declaration/forwarding and child definition occur in active source. Current public model/reasoning routes use execution context and the atomic full configuration setter. This does not retire those public routes or claim a separate native implementation of this obsolete private helper.",
+        "evidence": [
+          "docs/RUST_SERVER_RESOURCE_STATE_CONTRACTS.md",
+          "docs/security/rust-server-resource-state-acceptance.json"
+        ],
+        "remaining": [
+          "Preserve this explicit private-helper disposition in the final audit; public model/reasoning behavior remains active and separately qualified."
         ]
       }
     ]

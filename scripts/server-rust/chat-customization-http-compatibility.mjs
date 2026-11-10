@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { buildRustExample } from "./build.mjs";
+import { buildRustExample, buildRustServer } from "./build.mjs";
+import { createRequire } from "node:module";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { password } from "./security-fixtures.mjs";
@@ -24,20 +25,35 @@ const option = (key) => {
   const i = process.argv.indexOf(key);
   return i < 0 ? undefined : process.argv[i + 1];
 };
-const databaseMode = option("--database") ?? "pglite",
+const production = process.argv.includes("--production");
+const databaseMode =
+    option("--database") ?? (production ? "postgres" : "pglite"),
   root = await mkdtemp(path.join(tmpdir(), "cantrip-customization-http-"));
 const report = {
   suite: "chat-customization-and-configuration-http",
   databaseMode,
   root,
   completeReplacement: false,
+  productionRuntime: production,
+  usesSqlHttpFixture: !production,
   profiles: [],
   cleanupFailures: [],
 };
-let pg, h, controller, failure;
+let pg, h, controller, failure, databaseClient;
+const postgres = createRequire(
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
+)("postgres");
 try {
-  const executable = await buildRustExample("http-sql-fixture"),
-    repositoryExecutable = await buildRustExample("project-repository-fixture"),
+  const executable =
+      (production
+        ? process.env.CANTRIP_RUST_SERVER_BINARY
+        : process.env.CANTRIP_RUST_HTTP_FIXTURE_BINARY) ??
+      (production
+        ? await buildRustServer()
+        : await buildRustExample("http-sql-fixture")),
+    repositoryExecutable =
+      process.env.CANTRIP_RUST_PROJECT_FIXTURE_BINARY ??
+      (await buildRustExample("project-repository-fixture")),
     passwordHash = await hashPassword(password);
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
@@ -60,6 +76,10 @@ try {
       };
       outputs.push(result);
       controller = customizationHttpWorker(result, () => h);
+      const databaseUrl =
+        pg && (kind === "node" || databaseMode === "postgres")
+          ? await pg.database()
+          : undefined;
       h = await settingsHttpFixture({
         kind,
         profile,
@@ -69,12 +89,9 @@ try {
         databaseMode,
         passwordHash,
         result,
-        liveSqlFixture: true,
+        liveSqlFixture: !production,
         environment: { CANTRIP_WORKER_COMMAND_CONCURRENCY: "2" },
-        url:
-          pg && (kind === "node" || databaseMode === "postgres")
-            ? await pg.database()
-            : undefined,
+        url: databaseUrl,
         configure: (owner) => [
           ...inventorySeed(owner, { kind: "openai-compatible", worker }),
           ...inventorySeed(owner, {
@@ -88,6 +105,25 @@ try {
         onCommand: controller.onCommand,
       });
       try {
+        if (production) {
+          databaseClient = postgres(databaseUrl, { max: 2, prepare: false });
+          h.fixture.sql = async (statements = [], queries = []) =>
+            databaseClient.begin(async (tx) => {
+              for (const statement of statements) await tx.unsafe(statement);
+              const results = [];
+              for (const query of queries) {
+                const rows = await tx.unsafe(query);
+                results.push(rows[0] ? JSON.parse(rows[0].result) : null);
+              }
+              return results;
+            });
+          result.sqlRouteAbsent = await h.fixture.observe(
+            "SQL test route absent",
+            "POST",
+            "/__fixture/sql",
+            { csrf: true, json: { statements: [], queries: [] }, status: 404 },
+          );
+        }
         if (!process.argv.includes("--configuration-only"))
           await runChatCustomizationHttpCases({
             h,
@@ -156,8 +192,16 @@ try {
       } finally {
         result.diagnostics = h.diagnostics();
         controller.release();
+        const server = h.fixture.server;
         await h.close();
         h = null;
+        result.exit = {
+          code: server.child.exitCode,
+          signal: server.child.signalCode,
+        };
+        assert.deepEqual(result.exit, { code: 0, signal: null });
+        await databaseClient?.end({ timeout: 5 });
+        databaseClient = null;
       }
     }
     for (const key of [
@@ -187,6 +231,7 @@ try {
     report.cleanupFailures.push(error.stack ?? String(error));
   }
   try {
+    await databaseClient?.end({ timeout: 5 });
     await pg?.close();
   } catch (error) {
     failure ??= error;

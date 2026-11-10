@@ -55,6 +55,7 @@ async fn remembered(service: &AuthService, owner: &str, model: &Value) -> Result
     Ok(SettingsRepository::new(service.repository.database.clone())
         .get_model_reasoning_default(owner, &text(model)?)
         .await?
+        .flatten()
         .map_or(Value::Null, |effort| Value::String(effort.into())))
 }
 pub(super) async fn execute(
