@@ -2,19 +2,16 @@ use super::{
     middleware::{self, Context},
     settings::{error, output, parse},
 };
-use crate::{
-    auth::service::AuthService,
-    project_alerts::Repository,
-    wire::{Value, value::json},
-};
+use crate::{auth::service::AuthService, project_alerts::Repository};
 use anyhow::Result;
 use axum::{
     Extension, Router,
-    extract::{Path, Query, State},
+    extract::{Path, State},
+    http::Uri,
     response::Response,
     routing::get,
 };
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 async fn counts(
     State(service): State<Arc<AuthService>>,
@@ -33,10 +30,10 @@ async fn list(
     State(service): State<Arc<AuthService>>,
     Extension(ctx): Extension<Arc<Context>>,
     Path(project): Path<String>,
-    Query(query): Query<HashMap<String, String>>,
+    uri: Uri,
 ) -> Response {
     let result: Result<Response> = async {
-        let query = Value::from_serialize(&json!(query));
+        let query = super::account::query(&uri);
         let query = match parse("projectAlertQuerySchema", Some(&query))? {
             Ok(value) => value,
             Err(response) => return Ok(response),

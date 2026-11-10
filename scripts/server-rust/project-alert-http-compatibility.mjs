@@ -89,6 +89,16 @@ try {
           "/api/projects/missing/alerts?extra=1",
           400,
         );
+        await visit(
+          "duplicate limit",
+          "/api/projects/missing/alerts?limit=1&limit=2",
+          400,
+        );
+        await visit(
+          "duplicate cursor",
+          `/api/projects/missing/alerts?after=alert_${"a".repeat(64)}&after=alert_${"b".repeat(64)}`,
+          400,
+        );
         results.push(observations);
       } finally {
         await fixture.close();

@@ -8905,6 +8905,90 @@
           "cantrip_server_rs/src/operations/metrics.rs",
           "cantrip_server_rs/src/operations/metrics/prometheus.rs"
         ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/project-alerts/goals",
+        "implementation": [
+          "cantrip_server_rs/src/http/project_goal_observations.rs",
+          "cantrip_server_rs/src/project_alerts.rs"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-alert-populated-compatibility.mjs",
+          "scripts/server-rust/project-alert-populated-cases.mjs",
+          "scripts/server-rust/project-alert-http-compatibility.mjs",
+          "scripts/server-rust/project-alert-source-http.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "observedScope": "Current macOS arm64, all three storage modes and all three authentication profiles: positive HTTP projection, tenant isolation, real worker enrollment/credential authentication and retained restart. SQL-seeded resources and controlled opaque envelopes. Separate production package query regressions and Goal/source operations.",
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/project-alerts/counts",
+        "implementation": [
+          "cantrip_server_rs/src/http/project_alerts.rs",
+          "cantrip_server_rs/src/project_alerts.rs"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-alert-populated-compatibility.mjs",
+          "scripts/server-rust/project-alert-populated-cases.mjs",
+          "scripts/server-rust/project-alert-http-compatibility.mjs",
+          "scripts/server-rust/project-alert-source-http.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "observedScope": "Current macOS arm64, all three storage modes and all three authentication profiles: positive HTTP projection, tenant isolation, real worker enrollment/credential authentication and retained restart. SQL-seeded resources and controlled opaque envelopes. Separate production package query regressions and Goal/source operations.",
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/alerts",
+        "implementation": [
+          "cantrip_server_rs/src/http/project_alerts.rs",
+          "cantrip_server_rs/src/project_alerts.rs"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-alert-populated-compatibility.mjs",
+          "scripts/server-rust/project-alert-populated-cases.mjs",
+          "scripts/server-rust/project-alert-http-compatibility.mjs",
+          "scripts/server-rust/project-alert-source-http.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "observedScope": "Current macOS arm64, all three storage modes and all three authentication profiles: positive HTTP projection, tenant isolation, real worker enrollment/credential authentication and retained restart. SQL-seeded resources and controlled opaque envelopes. Separate production package query regressions and Goal/source operations.",
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/alerts/:alertId/goal",
+        "implementation": [
+          "cantrip_server_rs/src/http/project_alerts.rs",
+          "cantrip_server_rs/src/project_alerts.rs"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-alert-populated-compatibility.mjs",
+          "scripts/server-rust/project-alert-populated-cases.mjs",
+          "scripts/server-rust/project-alert-http-compatibility.mjs",
+          "scripts/server-rust/project-alert-source-http.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "observedScope": "Current macOS arm64, all three storage modes and all three authentication profiles: positive HTTP projection, tenant isolation, real worker enrollment/credential authentication and retained restart. SQL-seeded resources and controlled opaque envelopes. Separate production package query regressions and Goal/source operations.",
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
       }
     ]
   },
@@ -12393,6 +12477,118 @@
         "remaining": [
           "Other domain consumers and final supported-platform replacement acceptance remain separately scoped."
         ]
+      },
+      {
+        "exportName": "projectAlerts",
+        "tableName": "project_alerts",
+        "classification": "endpoint-protected",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_alerts.rs",
+        "evidence": [
+          "scripts/server-rust/project-alert-populated-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "observedScope": "Goal and agent source projection, owner-bound IDs, ordering/cursors/counts, resolved tombstones and retained restart.",
+        "remaining": [
+          "Other domain consumers and final supported-platform complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "chatGoalObservations",
+        "tableName": "chat_goal_observations",
+        "classification": "endpoint-protected",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_alerts.rs",
+        "evidence": [
+          "scripts/server-rust/project-alert-populated-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "observedScope": "Authenticated Goal observations, revision/generation fences, clear/resume and opaque snapshot projection.",
+        "remaining": [
+          "Other domain consumers and final supported-platform complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "tabGroups",
+        "tableName": "tab_groups",
+        "classification": "endpoint-protected",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/pane_layouts/",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "observedScope": "Pane title/order, topology mutations, retained revision and transaction rollback.",
+        "remaining": [
+          "Other domain consumers and final supported-platform complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "tabGroupMembers",
+        "tableName": "tab_group_members",
+        "classification": "intentionally-public-control-plane",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/pane_layouts/",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "observedScope": "Member reorder/move/split, pane close, ownership and topology invariants.",
+        "remaining": [
+          "Other domain consumers and final supported-platform complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "projectBuiltInSurfaceStates",
+        "tableName": "project_builtin_surface_states",
+        "classification": "intentionally-public-control-plane",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/pane_layouts/",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "observedScope": "Built-in surface worktree binding and retained preference/resource invariants.",
+        "remaining": [
+          "Other domain consumers and final supported-platform complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "projectSurfaceLauncherPreferences",
+        "tableName": "project_surface_launcher_preferences",
+        "classification": "intentionally-public-control-plane",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/pane_layouts/",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "observedScope": "Launcher reads, pin ordering and retained preferences.",
+        "remaining": [
+          "Other domain consumers and final supported-platform complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "exportName": "projectDockPresentationPreferences",
+        "tableName": "project_dock_presentation_preferences",
+        "classification": "intentionally-public-control-plane",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/pane_layouts/",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "observedScope": "Dock presentation updates, no-op/revision and rollback behavior.",
+        "remaining": [
+          "Other domain consumers and final supported-platform complete replacement acceptance remain separately scoped."
+        ]
       }
     ]
   },
@@ -15742,6 +15938,202 @@
         "remaining": [
           "Final supported-platform and complete replacement acceptance are tracked separately."
         ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "get",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "updatePane",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "reorderPanes",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "reorderLegacyPanes",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "reorderMembers",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "updateDockPresentation",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "resizeCenterSplit",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "moveMember",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "splitMember",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "listSurfaceLaunchers",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "setSurfaceLauncherPin",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "openSurfaceView",
+        "implementation": "cantrip_server_rs/src/pane_layouts/surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "closeSurfaceView",
+        "implementation": "cantrip_server_rs/src/pane_layouts/surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "updateBuiltInSurfaceWorktree",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
       }
     ]
   },
@@ -16121,6 +16513,24 @@
         "remaining": [
           "Actual client/full worker encryption, filesystem attachment transfer and native replay remain required.",
           "Additional caller-interruption and mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "resource": "project-alert",
+        "implementation": [
+          "cantrip_server_rs/src/project_alerts.rs",
+          "cantrip_server_rs/src/http/project_goal_observations.rs"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-alert-populated-compatibility.mjs",
+          "scripts/server-rust/project-alert-populated-cases.mjs",
+          "docs/RUST_SERVER_ALERT_LAYOUT_ACCEPTANCE.md",
+          "docs/security/rust-server-alert-layout-acceptance.json"
+        ],
+        "observedScope": "Actual source mutations emit 54 matching paired current-user invalidations across nine storage/authentication cells; the other account receives none. This does not independently qualify every App Live producer, replay or Redis fault.",
+        "remaining": [
+          "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
         ]
       }
     ]
