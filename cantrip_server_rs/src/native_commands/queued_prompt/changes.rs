@@ -80,9 +80,10 @@ pub(crate) async fn replace_with(
     ] {
         fields.push((column, prompt[field].clone()));
     }
-    fields.push(("updated_at", json!(crate::auth::iso(crate::auth::now()))));
-    update(ex, &id, Some(owner), fields)
-        .await?
+    let at = json!(crate::auth::iso(crate::auth::now()));
+    fields.push(("updated_at", at.clone()));
+    let result = update(ex, &id, Some(owner), fields).await;
+    super::queries::replacement(result, owner, &id, &prompt, attachments, at)?
         .map(|row| encrypted(&row))
         .transpose()
 }

@@ -14433,7 +14433,8 @@
         "command": "chat.native-control",
         "implementation": [
           "cantrip_server_rs/src/http/agent_interactions.rs",
-          "cantrip_server_rs/src/http/chat_execution/steer.rs"
+          "cantrip_server_rs/src/http/chat_execution/steer.rs",
+          "cantrip_server_rs/src/http/chat_execution/interrupt.rs"
         ],
         "status": "partial",
         "evidence": [
@@ -14445,7 +14446,14 @@
           "scripts/server-rust/public-chat-execution-worker.mjs",
           "scripts/server-rust/public-chat-additional-cases.mjs",
           "scripts/server-rust/public-pause-cases.mjs",
-          "scripts/server-rust/task-surfaces-http.mjs"
+          "scripts/server-rust/task-surfaces-http.mjs",
+          "docs/RUST_SERVER_NATIVE_CONTROL_CONTRACTS.md",
+          "docs/security/rust-server-native-control-acceptance.json",
+          "scripts/server-rust/native-control-http-compatibility.mjs",
+          "scripts/server-rust/native-control-http-cases.mjs",
+          "scripts/server-rust/native-control-http-state.mjs",
+          "scripts/server-rust/native-control-queue-cases.mjs",
+          "scripts/server-rust/queued-prompt-query-manifest.mjs"
         ],
         "remaining": [
           "Controlled worker boundaries retain actual WorkerConnection, endpoint cryptography and native command/session SDKs, but do not execute Codex/model inference, native GUI capture or physical worker filesystem operations.",
@@ -14535,6 +14543,63 @@
           "Controlled worker boundaries retain actual WorkerConnection, endpoint cryptography and native command/session SDKs, but do not execute Codex/model inference, native GUI capture or physical worker filesystem operations.",
           "Mappings qualify the executed response, project/standalone steering, logical completion, retry rollback and deletion-revocation consumers. Remaining command identities, other recovery/coordination consumers and historical partial scopes still require reconciliation.",
           "Final current supported-platform desktop/container/service artifacts, actual product/fault/mixed-instance acceptance, existing-data upgrades and post-write rollback/performance reconciliation remain required for the complete server-replacement goal."
+        ]
+      },
+      {
+        "command": "chat.interrupt",
+        "implementation": "cantrip_server_rs/src/http/chat_execution/interrupt.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_NATIVE_CONTROL_CONTRACTS.md",
+          "docs/security/rust-server-native-control-acceptance.json",
+          "scripts/server-rust/native-control-http-compatibility.mjs",
+          "scripts/server-rust/native-control-http-cases.mjs",
+          "scripts/server-rust/native-control-http-state.mjs",
+          "scripts/server-rust/native-control-queue-cases.mjs",
+          "scripts/server-rust/queued-prompt-query-manifest.mjs"
+        ],
+        "remaining": [
+          "Controlled native interruption/logical cancellation responses qualify server admission, transaction, notification and transport behavior; actual native Core execution/cleanup remains separate.",
+          "Queue preparation uses the real worker encryption codec with retained GUI text inputs and empty attachments. Other actions/attachments, Task/Goal recovery and other command consumers remain open.",
+          "Final supported-platform artifacts and complete product/fault/shared-instance, upgrade/post-write rollback and performance acceptance remain required."
+        ]
+      },
+      {
+        "command": "chat.native-logical.cancel",
+        "implementation": "cantrip_server_rs/src/http/chat_execution/interrupt.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_NATIVE_CONTROL_CONTRACTS.md",
+          "docs/security/rust-server-native-control-acceptance.json",
+          "scripts/server-rust/native-control-http-compatibility.mjs",
+          "scripts/server-rust/native-control-http-cases.mjs",
+          "scripts/server-rust/native-control-http-state.mjs",
+          "scripts/server-rust/native-control-queue-cases.mjs",
+          "scripts/server-rust/queued-prompt-query-manifest.mjs"
+        ],
+        "remaining": [
+          "Controlled native interruption/logical cancellation responses qualify server admission, transaction, notification and transport behavior; actual native Core execution/cleanup remains separate.",
+          "Queue preparation uses the real worker encryption codec with retained GUI text inputs and empty attachments. Other actions/attachments, Task/Goal recovery and other command consumers remain open.",
+          "Final supported-platform artifacts and complete product/fault/shared-instance, upgrade/post-write rollback and performance acceptance remain required."
+        ]
+      },
+      {
+        "command": "chat.queue.prepare",
+        "implementation": "cantrip_server_rs/src/http/chat_execution/changes.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_NATIVE_CONTROL_CONTRACTS.md",
+          "docs/security/rust-server-native-control-acceptance.json",
+          "scripts/server-rust/native-control-http-compatibility.mjs",
+          "scripts/server-rust/native-control-http-cases.mjs",
+          "scripts/server-rust/native-control-http-state.mjs",
+          "scripts/server-rust/native-control-queue-cases.mjs",
+          "scripts/server-rust/queued-prompt-query-manifest.mjs"
+        ],
+        "remaining": [
+          "Controlled native interruption/logical cancellation responses qualify server admission, transaction, notification and transport behavior; actual native Core execution/cleanup remains separate.",
+          "Queue preparation uses the real worker encryption codec with retained GUI text inputs and empty attachments. Other actions/attachments, Task/Goal recovery and other command consumers remain open.",
+          "Final supported-platform artifacts and complete product/fault/shared-instance, upgrade/post-write rollback and performance acceptance remain required."
         ]
       }
     ]

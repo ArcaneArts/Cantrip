@@ -17,6 +17,15 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current native interruption/queue qualification](RUST_SERVER_NATIVE_CONTROL_CONTRACTS.md)
+repairs public SQL-error diagnostics after actual failed opaque queue updates.
+All nine storage/authentication cells pass, including both Chat contexts, actual
+worker codec cryptography, transaction rollback, caller loss, worker replacement,
+real notification deadlines and complete retained reopen. Its 531 paired HTTP
+observations bind three new command identities, bringing scoped coverage to
+280/323. Controlled native replies, remaining 43 identities, historical partials
+and full final supported-artifact/product acceptance remain separate.
+
 The [current Chat/control qualification](RUST_SERVER_COMMAND_CONTROL_CONTRACTS.md)
 repairs standalone queue reads that omitted the revision required by mutations.
 All three nine-cell approval, public Chat and Task matrices pass with 2,208 paired
