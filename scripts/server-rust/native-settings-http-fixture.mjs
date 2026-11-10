@@ -370,10 +370,20 @@ export async function settingsHttpFixture({
           )
             return onLogicalCompletion(command);
           if (command.type === "inference.configure") {
-            for (const configuration of command.configurations)
-              inference.configure(configuration);
-            const status = inference.snapshot();
+            if (command.catalogRevision === undefined)
+              for (const configuration of command.configurations)
+                inference.configure({
+                  ...configuration,
+                  inferenceCatalogCreatedRevision: undefined,
+                });
+            else
+              inference.configureCatalog({
+                catalogRevision: command.catalogRevision,
+                configurations: command.configurations,
+              });
+            const status = inferenceSnapshot();
             inferenceSyncs.push({
+              command: structuredClone(command),
               configurations: structuredClone(command.configurations),
               status,
             });

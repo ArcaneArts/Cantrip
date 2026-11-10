@@ -17,6 +17,15 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current provider authentication/quota/inference qualification](RUST_SERVER_PROVIDER_LIVE_CONTRACTS.md)
+passes all four nine-cell storage/authentication matrices. It repairs public
+SQL-error projection drift, retains account/device/quota effects and validates
+coalesced inference delivery with held and rejected-owner acknowledgements,
+retry and exact raw provider reopen. Its 2,115 paired HTTP observations bind
+seven further commands and two Live resources. Totals are 261/323 commands and
+42/47 Live types, including partial scopes. Controlled worker replies do not
+establish real OAuth/native inference or final supported-artifact acceptance.
+
 The [current persisted-resource qualification](RUST_SERVER_PERSISTED_RESOURCE_CONTRACTS.md)
 adds complete accounting and browser/surface rows, exact raw reopen and public
 usage/tenant comparisons across all three stores. Browser HTTP also passes all

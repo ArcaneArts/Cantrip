@@ -14012,6 +14012,153 @@
           "These table bindings qualify complete rows within executed accounting and browser consumers, not every writer. Controlled browser worker acknowledgments do not establish native browser rendering, endpoint cryptographic execution or every remote-surface consumer.",
           "Historical partial scopes, remaining worker-command/Live identities, broader faults/coordination and final current supported-platform/product/package acceptance remain required by the complete server-replacement goal."
         ]
+      },
+      {
+        "command": "provider.auth.legacy.capture",
+        "implementation": "cantrip_server_rs/src/settings/credential_migrations.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVIDER_LIVE_CONTRACTS.md",
+          "docs/security/rust-server-provider-live-acceptance.json",
+          "scripts/server-rust/provider-account-http-compatibility.mjs",
+          "scripts/server-rust/provider-auth-http-compatibility.mjs",
+          "scripts/server-rust/provider-quota-http-compatibility.mjs",
+          "scripts/server-rust/provider-inference-http-compatibility.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs",
+          "scripts/server-rust/settings-inference-http-cases.mjs",
+          "scripts/server-rust/provider-device-scenarios.mjs"
+        ],
+        "remaining": [
+          "Controlled worker authentication and quota replies do not execute real provider OAuth or native credential-file encryption/deletion. Worker-side behavior remains separately scoped.",
+          "The inference fixture uses the actual unchanged WorkerInferenceAdmission catalog class and controlled runtime RPC. It does not execute native model inference or qualify all inference scheduling/revocation consumers.",
+          "These comparisons qualify the executed command and Live producers, not every consumer, supported platform or mixed-server interruption. Historical partial scopes and the complete final product/artifact/shipping acceptance remain open."
+        ]
+      },
+      {
+        "command": "provider.auth.legacy.purge",
+        "implementation": "cantrip_server_rs/src/settings/credential_migrations.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVIDER_LIVE_CONTRACTS.md",
+          "docs/security/rust-server-provider-live-acceptance.json",
+          "scripts/server-rust/provider-account-http-compatibility.mjs",
+          "scripts/server-rust/provider-auth-http-compatibility.mjs",
+          "scripts/server-rust/provider-quota-http-compatibility.mjs",
+          "scripts/server-rust/provider-inference-http-compatibility.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs",
+          "scripts/server-rust/settings-inference-http-cases.mjs",
+          "scripts/server-rust/provider-device-scenarios.mjs"
+        ],
+        "remaining": [
+          "Controlled worker authentication and quota replies do not execute real provider OAuth or native credential-file encryption/deletion. Worker-side behavior remains separately scoped.",
+          "The inference fixture uses the actual unchanged WorkerInferenceAdmission catalog class and controlled runtime RPC. It does not execute native model inference or qualify all inference scheduling/revocation consumers.",
+          "These comparisons qualify the executed command and Live producers, not every consumer, supported platform or mixed-server interruption. Historical partial scopes and the complete final product/artifact/shipping acceptance remain open."
+        ]
+      },
+      {
+        "command": "provider.auth.account.clear",
+        "implementation": "cantrip_server_rs/src/settings/lifecycle.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVIDER_LIVE_CONTRACTS.md",
+          "docs/security/rust-server-provider-live-acceptance.json",
+          "scripts/server-rust/provider-account-http-compatibility.mjs",
+          "scripts/server-rust/provider-auth-http-compatibility.mjs",
+          "scripts/server-rust/provider-quota-http-compatibility.mjs",
+          "scripts/server-rust/provider-inference-http-compatibility.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs",
+          "scripts/server-rust/settings-inference-http-cases.mjs",
+          "scripts/server-rust/provider-device-scenarios.mjs"
+        ],
+        "remaining": [
+          "Controlled worker authentication and quota replies do not execute real provider OAuth or native credential-file encryption/deletion. Worker-side behavior remains separately scoped.",
+          "The inference fixture uses the actual unchanged WorkerInferenceAdmission catalog class and controlled runtime RPC. It does not execute native model inference or qualify all inference scheduling/revocation consumers.",
+          "These comparisons qualify the executed command and Live producers, not every consumer, supported platform or mixed-server interruption. Historical partial scopes and the complete final product/artifact/shipping acceptance remain open."
+        ]
+      },
+      {
+        "command": "codex.auth.login.start",
+        "implementation": "cantrip_server_rs/src/settings/account_service/auth_flow.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVIDER_LIVE_CONTRACTS.md",
+          "docs/security/rust-server-provider-live-acceptance.json",
+          "scripts/server-rust/provider-account-http-compatibility.mjs",
+          "scripts/server-rust/provider-auth-http-compatibility.mjs",
+          "scripts/server-rust/provider-quota-http-compatibility.mjs",
+          "scripts/server-rust/provider-inference-http-compatibility.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs",
+          "scripts/server-rust/settings-inference-http-cases.mjs",
+          "scripts/server-rust/provider-device-scenarios.mjs"
+        ],
+        "remaining": [
+          "Controlled worker authentication and quota replies do not execute real provider OAuth or native credential-file encryption/deletion. Worker-side behavior remains separately scoped.",
+          "The inference fixture uses the actual unchanged WorkerInferenceAdmission catalog class and controlled runtime RPC. It does not execute native model inference or qualify all inference scheduling/revocation consumers.",
+          "These comparisons qualify the executed command and Live producers, not every consumer, supported platform or mixed-server interruption. Historical partial scopes and the complete final product/artifact/shipping acceptance remain open."
+        ]
+      },
+      {
+        "command": "provider.quota.read",
+        "implementation": "cantrip_server_rs/src/settings/quota.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVIDER_LIVE_CONTRACTS.md",
+          "docs/security/rust-server-provider-live-acceptance.json",
+          "scripts/server-rust/provider-account-http-compatibility.mjs",
+          "scripts/server-rust/provider-auth-http-compatibility.mjs",
+          "scripts/server-rust/provider-quota-http-compatibility.mjs",
+          "scripts/server-rust/provider-inference-http-compatibility.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs",
+          "scripts/server-rust/settings-inference-http-cases.mjs",
+          "scripts/server-rust/provider-device-scenarios.mjs"
+        ],
+        "remaining": [
+          "Controlled worker authentication and quota replies do not execute real provider OAuth or native credential-file encryption/deletion. Worker-side behavior remains separately scoped.",
+          "The inference fixture uses the actual unchanged WorkerInferenceAdmission catalog class and controlled runtime RPC. It does not execute native model inference or qualify all inference scheduling/revocation consumers.",
+          "These comparisons qualify the executed command and Live producers, not every consumer, supported platform or mixed-server interruption. Historical partial scopes and the complete final product/artifact/shipping acceptance remain open."
+        ]
+      },
+      {
+        "command": "provider.rate-limit-reset.consume",
+        "implementation": "cantrip_server_rs/src/settings/account_service/quota.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVIDER_LIVE_CONTRACTS.md",
+          "docs/security/rust-server-provider-live-acceptance.json",
+          "scripts/server-rust/provider-account-http-compatibility.mjs",
+          "scripts/server-rust/provider-auth-http-compatibility.mjs",
+          "scripts/server-rust/provider-quota-http-compatibility.mjs",
+          "scripts/server-rust/provider-inference-http-compatibility.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs",
+          "scripts/server-rust/settings-inference-http-cases.mjs",
+          "scripts/server-rust/provider-device-scenarios.mjs"
+        ],
+        "remaining": [
+          "Controlled worker authentication and quota replies do not execute real provider OAuth or native credential-file encryption/deletion. Worker-side behavior remains separately scoped.",
+          "The inference fixture uses the actual unchanged WorkerInferenceAdmission catalog class and controlled runtime RPC. It does not execute native model inference or qualify all inference scheduling/revocation consumers.",
+          "These comparisons qualify the executed command and Live producers, not every consumer, supported platform or mixed-server interruption. Historical partial scopes and the complete final product/artifact/shipping acceptance remain open."
+        ]
+      },
+      {
+        "command": "inference.configure",
+        "implementation": "cantrip_server_rs/src/settings/account_service/inference_delivery.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVIDER_LIVE_CONTRACTS.md",
+          "docs/security/rust-server-provider-live-acceptance.json",
+          "scripts/server-rust/provider-account-http-compatibility.mjs",
+          "scripts/server-rust/provider-auth-http-compatibility.mjs",
+          "scripts/server-rust/provider-quota-http-compatibility.mjs",
+          "scripts/server-rust/provider-inference-http-compatibility.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs",
+          "scripts/server-rust/settings-inference-http-cases.mjs",
+          "scripts/server-rust/provider-device-scenarios.mjs"
+        ],
+        "remaining": [
+          "Controlled worker authentication and quota replies do not execute real provider OAuth or native credential-file encryption/deletion. Worker-side behavior remains separately scoped.",
+          "The inference fixture uses the actual unchanged WorkerInferenceAdmission catalog class and controlled runtime RPC. It does not execute native model inference or qualify all inference scheduling/revocation consumers.",
+          "These comparisons qualify the executed command and Live producers, not every consumer, supported platform or mixed-server interruption. Historical partial scopes and the complete final product/artifact/shipping acceptance remain open."
+        ]
       }
     ]
   },
@@ -22288,6 +22435,48 @@
         "remaining": [
           "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
         ]
+      },
+      {
+        "resource": "provider-auth",
+        "implementation": "cantrip_server_rs/src/settings/account_service.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVIDER_LIVE_CONTRACTS.md",
+          "docs/security/rust-server-provider-live-acceptance.json",
+          "scripts/server-rust/provider-account-http-compatibility.mjs",
+          "scripts/server-rust/provider-auth-http-compatibility.mjs",
+          "scripts/server-rust/provider-quota-http-compatibility.mjs",
+          "scripts/server-rust/provider-inference-http-compatibility.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs",
+          "scripts/server-rust/settings-inference-http-cases.mjs",
+          "scripts/server-rust/provider-device-scenarios.mjs"
+        ],
+        "remaining": [
+          "Controlled worker authentication and quota replies do not execute real provider OAuth or native credential-file encryption/deletion. Worker-side behavior remains separately scoped.",
+          "The inference fixture uses the actual unchanged WorkerInferenceAdmission catalog class and controlled runtime RPC. It does not execute native model inference or qualify all inference scheduling/revocation consumers.",
+          "These comparisons qualify the executed command and Live producers, not every consumer, supported platform or mixed-server interruption. Historical partial scopes and the complete final product/artifact/shipping acceptance remain open."
+        ]
+      },
+      {
+        "resource": "settings",
+        "implementation": "cantrip_server_rs/src/settings/account_service/quota.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVIDER_LIVE_CONTRACTS.md",
+          "docs/security/rust-server-provider-live-acceptance.json",
+          "scripts/server-rust/provider-account-http-compatibility.mjs",
+          "scripts/server-rust/provider-auth-http-compatibility.mjs",
+          "scripts/server-rust/provider-quota-http-compatibility.mjs",
+          "scripts/server-rust/provider-inference-http-compatibility.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs",
+          "scripts/server-rust/settings-inference-http-cases.mjs",
+          "scripts/server-rust/provider-device-scenarios.mjs"
+        ],
+        "remaining": [
+          "Controlled worker authentication and quota replies do not execute real provider OAuth or native credential-file encryption/deletion. Worker-side behavior remains separately scoped.",
+          "The inference fixture uses the actual unchanged WorkerInferenceAdmission catalog class and controlled runtime RPC. It does not execute native model inference or qualify all inference scheduling/revocation consumers.",
+          "These comparisons qualify the executed command and Live producers, not every consumer, supported platform or mixed-server interruption. Historical partial scopes and the complete final product/artifact/shipping acceptance remain open."
+        ]
       }
     ]
   },
@@ -27911,6 +28100,33 @@
       "remaining": [
         "These table bindings qualify complete rows within executed accounting and browser consumers, not every writer. Controlled browser worker acknowledgments do not establish native browser rendering, endpoint cryptographic execution or every remote-surface consumer.",
         "Historical partial scopes, remaining worker-command/Live identities, broader faults/coordination and final current supported-platform/product/package acceptance remain required by the complete server-replacement goal."
+      ]
+    },
+    "currentProviderLiveContracts": {
+      "status": "partial",
+      "qualification": "docs/RUST_SERVER_PROVIDER_LIVE_CONTRACTS.md",
+      "acceptance": "docs/security/rust-server-provider-live-acceptance.json",
+      "counts": {
+        "pairedCells": 36,
+        "receivedAccountCommands": 180,
+        "providerAuthLiveEvents": 1026,
+        "pairedHttpObservations": 2115,
+        "tracedRequests": 4987,
+        "receivedDeviceLoginCommands": 672,
+        "receivedQuotaCommands": 504,
+        "settingsLiveInvalidations": 270,
+        "receivedInferenceConfigureCommands": 126,
+        "acknowledgedInferenceDeliveries": 108,
+        "rejectedOwnerAcknowledgements": 18,
+        "rawProviderReopenComparisons": 18,
+        "newWorkerCommands": 7,
+        "newLiveResources": 2,
+        "newDurableTables": 0
+      },
+      "remaining": [
+        "Controlled worker authentication and quota replies do not execute real provider OAuth or native credential-file encryption/deletion. Worker-side behavior remains separately scoped.",
+        "The inference fixture uses the actual unchanged WorkerInferenceAdmission catalog class and controlled runtime RPC. It does not execute native model inference or qualify all inference scheduling/revocation consumers.",
+        "These comparisons qualify the executed command and Live producers, not every consumer, supported platform or mixed-server interruption. Historical partial scopes and the complete final product/artifact/shipping acceptance remain open."
       ]
     }
   },

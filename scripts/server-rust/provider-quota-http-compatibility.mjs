@@ -7,6 +7,8 @@ import path from "node:path";
 import { buildRustExample, buildRustServer } from "./build.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { LiveProbe } from "./live-sockets.mjs";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
+import { password } from "./security-fixtures.mjs";
 import { SocketProbe } from "./worker-sockets.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
@@ -96,12 +98,15 @@ let postgresOwner, failure;
 try {
   const executable =
     process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer());
-  const repositoryExecutable = await buildRustExample(
-    "settings-repository-fixture",
-  );
+  const repositoryExecutable =
+    process.env.CANTRIP_RUST_SETTINGS_REPOSITORY_BINARY ??
+    (await buildRustExample("settings-repository-fixture"));
   if (databaseMode !== "pglite")
     postgresOwner = await postgresFixture(path.join(root, "postgres"));
-  for (const mode of ["accounts", "none"]) {
+  const passwordHash = await hashPassword(password);
+  for (const mode of ["accounts", "none", "password"].filter(
+    (mode) => !option("--profile") || option("--profile") === mode,
+  )) {
     const profile = { mode, runtimes: [] };
     report.profiles.push(profile);
     for (const kind of ["node", "rust"]) {
@@ -118,6 +123,9 @@ try {
         environment: {
           CANTRIP_AUTH_MODE: mode,
           CANTRIP_REGISTRATION_ENABLED: "true",
+          ...(mode === "password"
+            ? { CANTRIP_PASSWORD_HASH: passwordHash }
+            : {}),
           ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
           ...(kind === "rust" && databaseMode === "bundled-postgres"
             ? {
@@ -264,6 +272,10 @@ try {
               },
             );
         }
+        if (mode === "password")
+          await fixture.observe("login", "POST", "/api/auth/login", {
+            json: { password },
+          });
         await fixture.observe("session", "GET", "/api/auth/session");
         owner =
           mode === "accounts"
@@ -300,7 +312,7 @@ try {
         );
         await fixture.close();
         repository = await openRepository();
-        if (mode === "none")
+        if (mode !== "accounts")
           await repository.seed(
             `INSERT INTO users(id,kind,display_name,email,normalized_email) VALUES(${literal(other)},'account','Other','quota-other@example.invalid','quota-other@example.invalid')`,
           );
@@ -392,7 +404,7 @@ try {
           "consume CSRF",
           ids.signedIn,
           {},
-          { csrf: false, status: mode === "accounts" ? 403 : 502 },
+          { csrf: false, status: mode === "none" ? 502 : 403 },
         );
         worker = new SocketProbe(fixture, {
           credential: fixture.records.get("paired").credential,
@@ -841,6 +853,7 @@ try {
     ])
       assert.deepEqual(rust[field], node[field], mode + ": " + field);
   }
+  report.passed = true;
 } catch (error) {
   failure = error;
   report.failure = { message: error.message, stack: error.stack };

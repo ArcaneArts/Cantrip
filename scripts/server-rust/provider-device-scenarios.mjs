@@ -290,7 +290,7 @@ export function deviceScenarios({
       await post(
         "device csrf required",
         { providerId: provider, workerId },
-        fixture.environment.CANTRIP_AUTH_MODE === "accounts" ? 403 : 200,
+        fixture.environment.CANTRIP_AUTH_MODE === "none" ? 200 : 403,
         { csrf: false },
       );
       for (const [label, body] of [

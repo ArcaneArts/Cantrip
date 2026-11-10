@@ -12,7 +12,8 @@ import {
 import { SocketProbe } from "./worker-sockets.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
-import { heartbeat } from "./security-fixtures.mjs";
+import { heartbeat, password } from "./security-fixtures.mjs";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { policyEnvelope } from "./policy-wire-fixtures.mjs";
 import { capturedCredentialFixture } from "./settings-provider-fixtures.mjs";
 const option = (key) => {
@@ -74,12 +75,15 @@ let postgresOwner, failure;
 try {
   const executable =
       process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer()),
-    repositoryExecutable = await buildRustExample(
-      "settings-repository-fixture",
-    );
+    repositoryExecutable =
+      process.env.CANTRIP_RUST_SETTINGS_REPOSITORY_BINARY ??
+      (await buildRustExample("settings-repository-fixture"));
   if (databaseMode !== "pglite")
     postgresOwner = await postgresFixture(path.join(root, "postgres"));
-  for (const mode of ["accounts", "none"]) {
+  const passwordHash = await hashPassword(password);
+  for (const mode of ["accounts", "none", "password"].filter(
+    (mode) => !option("--profile") || option("--profile") === mode,
+  )) {
     const profile = { mode, runtimes: [] };
     report.profiles.push(profile);
     for (const kind of ["node", "rust"]) {
@@ -97,6 +101,9 @@ try {
         environment: {
           CANTRIP_AUTH_MODE: mode,
           CANTRIP_REGISTRATION_ENABLED: "true",
+          ...(mode === "password"
+            ? { CANTRIP_PASSWORD_HASH: passwordHash }
+            : {}),
           ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
           ...(kind === "rust" && databaseMode === "bundled-postgres"
             ? {
@@ -111,6 +118,7 @@ try {
         observations: [],
         captureCalls: [],
         catalogAccounts: [],
+        rawWorkerCommands: [],
       };
       profile.runtimes.push(result);
       const visit = async (label, url, options = {}) => {
@@ -159,6 +167,10 @@ try {
               },
             );
         }
+        if (mode === "password")
+          await fixture.observe("login", "POST", "/api/auth/login", {
+            json: { password },
+          });
         const owner =
           mode === "accounts"
             ? fixture.records.get("register main").currentUser.id
@@ -201,7 +213,7 @@ try {
         );
         await fixture.close();
         repository = await openRepository();
-        if (mode === "none")
+        if (mode !== "accounts")
           await repository.seed(
             `INSERT INTO users(id,kind,display_name,email,normalized_email) VALUES(${literal(other)},'account','Other','provider-auth-other@example.invalid','provider-auth-other@example.invalid')`,
           );
@@ -298,8 +310,9 @@ try {
             "workerId=fixture-worker%2C%EF%BF%BD&connectionGeneration=99999999-9999-4999-8999-999999999999",
           credential: fixture.records.get("paired").credential,
           onRequest(frame, socket) {
-            if (device.onRequest(frame, socket)) return true;
             const command = frame.command;
+            result.rawWorkerCommands.push(structuredClone(command));
+            if (device.onRequest(frame, socket)) return true;
             const reply = (ok, value) =>
               socket.send(
                 JSON.stringify({
@@ -573,6 +586,7 @@ try {
     ])
       assert.equal(actual[key], true, key);
   }
+  report.passed = true;
 } catch (error) {
   failure = error;
   report.failure = { message: error.message, stack: error.stack };
