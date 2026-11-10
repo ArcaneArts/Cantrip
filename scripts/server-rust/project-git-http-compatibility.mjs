@@ -852,6 +852,7 @@ try {
             );
           assert.equal(events.length, 1);
           assert.equal(events[0].entityId, "github-alpha-main");
+          (result.rawFilesystemEvents ??= []).push(...structuredClone(events));
           result.filesystemChanges.push(
             ...events.map(
               ({ resource, scope, entityId, revision, payload, action }) => ({
@@ -1419,6 +1420,7 @@ try {
     ])
       assert.deepEqual(runtimes[1][key], runtimes[0][key], profile + " " + key);
   }
+  report.passed = true;
 } catch (error) {
   failure = error;
   report.failure = error.stack;

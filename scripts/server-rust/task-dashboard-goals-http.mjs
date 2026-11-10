@@ -29,6 +29,7 @@ import {
   goalMarker,
   ordinaryObjective,
 } from "./task-dashboard-goal-worker.mjs";
+import { dashboardInferenceProgress } from "./task-dashboard-inference-progress.mjs";
 
 const option = (key) => {
   const i = process.argv.indexOf(key);
@@ -99,7 +100,10 @@ try {
         goalProofs: 0,
       };
       outputs.push(result);
-      const worker = (controller = dashboardGoalWorker());
+      const inferenceProgress = process.argv.includes("--inference-progress")
+        ? dashboardInferenceProgress()
+        : undefined;
+      const worker = (controller = dashboardGoalWorker({ inferenceProgress }));
       const url =
         pg && (kind === "node" || databaseMode === "postgres")
           ? await pg.database()
@@ -196,6 +200,7 @@ try {
       await h.live.subscribed("dashboard-goal-effects", [
         { kind: "chat", chatId: task },
         { kind: "project", projectId: taskProject },
+        ...(inferenceProgress ? [{ kind: "chat", chatId: resume }] : []),
       ]);
       async function visit(name, method, route, options) {
         const value = await h.visit(name, method, route, options);
@@ -496,6 +501,7 @@ try {
       await until(() => gate.requested, Boolean);
       assert.equal(gate.settled, false);
       assert.equal(worker.turns.length, 1);
+      await inferenceProgress?.verify(h, result, worker.turns[0], resume);
       gate.release();
       await until(() => gate.settled, Boolean);
       result.resumeAdmission = true;
@@ -669,6 +675,8 @@ try {
       "commands",
       "taskEvents",
       "goalEvents",
+      "inferenceProgressEvents",
+      "inferenceProgressWhileReplyHeld",
       "taskProofs",
       "goalProofs",
       "pairedPrAdmission",

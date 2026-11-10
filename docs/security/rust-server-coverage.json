@@ -22727,6 +22727,69 @@
           "These command and Live mappings qualify the executed consumers, not every queue/Goal recovery path or all supported shipping platforms. Existing native admission, recovery, rollback and product evidence retain their separate scopes.",
           "Remaining inventory identities, historical partial scopes, broader interruption/coordination and final current supported-platform/product/artifact acceptance remain required by the complete server-replacement goal."
         ]
+      },
+      {
+        "resource": "explorer-filesystem",
+        "implementation": "cantrip_server_rs/src/projects/observations/notifications.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_LIVE_OBSERVATION_CONTRACTS.md",
+          "docs/security/rust-server-live-observation-acceptance.json",
+          "scripts/server-rust/task-dashboard-goals-http.mjs",
+          "scripts/server-rust/task-dashboard-inference-progress.mjs",
+          "scripts/server-rust/task-dashboard-goal-worker.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/live-hub-oracle.mjs",
+          "scripts/server-rust/live-hub-scenarios.mjs"
+        ],
+        "qualificationScope": "Actual worker notification before/after reconnect, production HTTP/Live sockets on nine storage/authentication cells.",
+        "remaining": [
+          "Controlled filesystem and model replies qualify the actual worker connection and server routing, not leaf Git/filesystem or model inference execution.",
+          "The server resource has only generic core Hub transport evidence with controlled socket IO, sessions and clocks. Dedicated publisher/consumer disposition, HTTP/database authorization and Redis integration are not established by those two cases.",
+          "Remaining command identities, historical partial consumers, broader interruption/coordination, current supported-platform artifacts and the complete original-goal product/shipping acceptance remain open."
+        ]
+      },
+      {
+        "resource": "inference-progress",
+        "implementation": "cantrip_server_rs/src/chats/live_mutations/mod.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_LIVE_OBSERVATION_CONTRACTS.md",
+          "docs/security/rust-server-live-observation-acceptance.json",
+          "scripts/server-rust/task-dashboard-goals-http.mjs",
+          "scripts/server-rust/task-dashboard-inference-progress.mjs",
+          "scripts/server-rust/task-dashboard-goal-worker.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/live-hub-oracle.mjs",
+          "scripts/server-rust/live-hub-scenarios.mjs"
+        ],
+        "qualificationScope": "Actual correlated worker progress during held protected Task continuation; request filtering, order, payload, scope and clear on nine storage/authentication cells.",
+        "remaining": [
+          "Controlled filesystem and model replies qualify the actual worker connection and server routing, not leaf Git/filesystem or model inference execution.",
+          "The server resource has only generic core Hub transport evidence with controlled socket IO, sessions and clocks. Dedicated publisher/consumer disposition, HTTP/database authorization and Redis integration are not established by those two cases.",
+          "Remaining command identities, historical partial consumers, broader interruption/coordination, current supported-platform artifacts and the complete original-goal product/shipping acceptance remain open."
+        ]
+      },
+      {
+        "resource": "server",
+        "implementation": "cantrip_server_rs/src/live/hub.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_LIVE_OBSERVATION_CONTRACTS.md",
+          "docs/security/rust-server-live-observation-acceptance.json",
+          "scripts/server-rust/task-dashboard-goals-http.mjs",
+          "scripts/server-rust/task-dashboard-inference-progress.mjs",
+          "scripts/server-rust/task-dashboard-goal-worker.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/live-hub-oracle.mjs",
+          "scripts/server-rust/live-hub-scenarios.mjs"
+        ],
+        "qualificationScope": "Partial generic core Hub transport only, controlled IO/session/clocks; no dedicated HTTP publisher or Redis/database authorization claim.",
+        "remaining": [
+          "Controlled filesystem and model replies qualify the actual worker connection and server routing, not leaf Git/filesystem or model inference execution.",
+          "The server resource has only generic core Hub transport evidence with controlled socket IO, sessions and clocks. Dedicated publisher/consumer disposition, HTTP/database authorization and Redis integration are not established by those two cases.",
+          "Remaining command identities, historical partial consumers, broader interruption/coordination, current supported-platform artifacts and the complete original-goal product/shipping acceptance remain open."
+        ]
       }
     ]
   },

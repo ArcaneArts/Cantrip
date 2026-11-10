@@ -17,6 +17,16 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current filesystem/progress Live qualification](RUST_SERVER_LIVE_OBSERVATION_CONTRACTS.md)
+passes eighteen production HTTP storage/authentication cells, retaining 1,821
+paired cases and 90 original filesystem/progress frames. Separate core Hub
+comparisons qualify owner fanout, unsubscribe and replay for `server` with
+controlled IO. All 47 Live identities now have scoped mappings; the `server`
+mapping is partial transport evidence, without a verified dedicated HTTP
+publisher. Worker commands remain 269/323. No production Rust change was needed;
+remaining command identities, historical partials and full final product/artifact
+acceptance remain open.
+
 The [current Chat Goal/queue qualification](RUST_SERVER_CHAT_GOAL_QUEUE_CONTRACTS.md)
 repairs missing native response-completion Goal invalidations. Its three nine-cell
 matrices retain 2,403 paired HTTP cases, 18 caller-disappearance phases, actual

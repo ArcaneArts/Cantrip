@@ -19,7 +19,7 @@ import { dashboardPullRequest } from "./task-dashboard-fixtures.mjs";
 
 export const goalMarker = "private-task-dashboard-goal-content";
 export const ordinaryObjective = "Controlled ordinary Goal";
-export function dashboardGoalWorker() {
+export function dashboardGoalWorker({ inferenceProgress } = {}) {
   const protectedTasks = new Map(),
     objectives = new Map(),
     messages = new Map();
@@ -429,6 +429,7 @@ export function dashboardGoalWorker() {
           command.resultMode.idempotencyKey,
           `assistant:${message.id}`,
         );
+        inferenceProgress?.emit(command, emit);
         turns.push(command);
         if (turnGate) {
           const current = turnGate;
