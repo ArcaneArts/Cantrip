@@ -125,22 +125,11 @@ async fn apply(
             let committed = tasks
                 .commit_goal_cycle_outcome(&owner, input["workerId"].as_str().unwrap(), &input)
                 .await?;
-            if committed["committed"] == true {
-                if !committed["message"].is_null() {
-                    service
-                        .execution
-                        .publish_task_outcome_message(
-                            &owner,
-                            &committed["message"],
-                            &committed["chat"],
-                        )
-                        .await;
-                }
+            if committed["committed"] == true && !committed["message"].is_null() {
                 service
                     .execution
-                    .goals
-                    .observe_cycle_outcome(&owner, &input["goalCycleSource"])
-                    .await?;
+                    .publish_task_outcome_message(&owner, &committed["message"], &committed["chat"])
+                    .await;
             }
             let mut receipt = json!({"deliveryId":input["deliveryId"],"goalCycleSourceKey":input["goalCycleSource"]["sourceKey"],"committed":committed["committed"]});
             if !committed["retiredReason"].is_null() {
@@ -479,7 +468,11 @@ async fn handle(
         Err(cause) => return middleware::failure(&service, &ctx.id, &cause),
     };
     let task_goal_cycle_dispatch = phase == "task-goal-cycle-dispatch";
-    let inference_resource_authorization = phase == "inference-resource-authorize";
+    let goal_cycle_outcome = phase == "task-goal-outcome" && input["inputKind"] == "goal-cycle";
+    let public_error_message = matches!(
+        phase.as_str(),
+        "inference-resource-authorize" | "suspension-execution"
+    );
     match service
         .scratch_roots
         .owned(apply(service.clone(), owner, input, phase))
@@ -488,7 +481,7 @@ async fn handle(
         Ok(v) => json_response(StatusCode::OK, v),
         Err(cause) => {
             if let Some(e) = cause.downcast_ref::<CommandError>() {
-                if inference_resource_authorization && e.code != "stale-worker-generation" {
+                if public_error_message && e.code != "stale-worker-generation" {
                     json_response(
                         StatusCode::from_u16(e.status).unwrap(),
                         json!({"code":e.code,"error":e.message}),
@@ -496,7 +489,7 @@ async fn handle(
                 } else {
                     code(e.status, &e.code)
                 }
-            } else if cause.is::<crate::task_dispatch::Conflict>() {
+            } else if !goal_cycle_outcome && cause.is::<crate::task_dispatch::Conflict>() {
                 code(
                     409,
                     if task_goal_cycle_dispatch {
