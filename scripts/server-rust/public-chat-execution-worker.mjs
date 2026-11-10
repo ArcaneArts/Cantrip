@@ -22,12 +22,17 @@ export function publicExecutionWorker() {
     requests = [],
     failures = [];
   function session(command) {
+    const standalone = command.contextKind === "standalone";
     return {
       chatId: command.chatId,
       threadId: command.threadId ?? "thread",
       contextKind: command.contextKind ?? "project",
-      projectId: command.policyProjectId ?? fixture.scope.projectId,
-      placementId: command.worktreeId ?? fixture.scope.placementId,
+      projectId: standalone
+        ? null
+        : (command.policyProjectId ?? fixture.scope.projectId),
+      placementId: standalone
+        ? command.scratchRootId
+        : (command.worktreeId ?? fixture.scope.placementId),
       modelRouteId: command.model?.routeId ?? "public-route",
       providerAccountId: command.provider?.accountId ?? null,
       runtimeGeneration: "public-http-runtime",

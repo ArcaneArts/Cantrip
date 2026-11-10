@@ -113,7 +113,7 @@ export function installChatQueueRoutes(
         applicationOwnerId(),
         request.params.chatId,
       );
-      if (context?.experience === "agent" && context.projectId !== null) {
+      if (context?.experience === "agent") {
         const { revision, items, pendingImports, claims } =
           await repository.managedQueue.snapshot(
             applicationOwnerId(),

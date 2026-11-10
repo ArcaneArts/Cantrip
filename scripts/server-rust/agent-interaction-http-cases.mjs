@@ -400,14 +400,20 @@ export async function runInteractionHttpCases(c) {
     429,
     "normal reply preserves relay limit status",
   );
+  // Computer-use approvals use the ordinary lane. Held native replies exhaust
+  // only the control lane, so this independent acknowledgement must complete.
+  c.setMode("normal");
+  const independentBody = await response(29, true, "permissions");
+  const independent = await reply(
+    29,
+    independentBody,
+    200,
+    "computer-use approval bypasses exhausted control lane",
+  );
+  assert.equal(independent.status, "resolved");
   assert.deepEqual(
-    await reply(
-      29,
-      await response(29, true, "permissions"),
-      409,
-      "computer-use relay limit redaction",
-    ),
-    { error: "The worker no longer accepts this computer-use approval." },
+    independent.protectedResponse,
+    independentBody.protectedResponse,
   );
   // Source also completes independent replies in either order. Keep both
   // outstanding for the quota proof, then control each actual acknowledgment.
@@ -420,7 +426,8 @@ export async function runInteractionHttpCases(c) {
     case: "concurrent-worker-limit",
     outstanding: 2,
     normalStatus: 429,
-    computerUseStatus: 409,
+    computerUseStatus: 200,
+    ordinaryLaneIndependent: true,
   });
 
   // Inject a real database failure after the worker has acknowledged.

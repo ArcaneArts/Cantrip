@@ -3704,7 +3704,13 @@
           "scripts/server-rust/public-chat-execution-http.mjs",
           "scripts/server-rust/public-chat-additional-cases.mjs",
           "scripts/server-rust/public-chat-execution-worker.mjs",
-          "cantrip_server_rs/tests/public_chat_contracts.rs"
+          "cantrip_server_rs/tests/public_chat_contracts.rs",
+          "docs/RUST_SERVER_COMMAND_CONTROL_CONTRACTS.md",
+          "docs/security/rust-server-command-control-acceptance.json",
+          "scripts/server-rust/agent-interaction-http-compatibility.mjs",
+          "scripts/server-rust/agent-interaction-http-cases.mjs",
+          "scripts/server-rust/public-pause-cases.mjs",
+          "scripts/server-rust/task-surfaces-http.mjs"
         ],
         "remaining": [
           "Local macOS full Source/native matrix passes268pairedHTTP observations per database across all9database/authentication profiles. Exact route regression, encrypted chat/queue and consumed-claim identity proofs, typed pause errors, committed partial failures, caller disconnect, actual worker disconnect and post-shutdown encrypted Task preservation pass. Model execution/rollback and pause acknowledgments are controlled boundaries.",
@@ -14358,6 +14364,177 @@
           "The existing worker transport and actual endpoint cryptography execute, while worktree/native/model completion replies are controlled. This batch does not execute leaf Git/Codex model compaction or full native Task inference.",
           "These command and Live mappings qualify the executed consumers, not every queue/Goal recovery path or all supported shipping platforms. Existing native admission, recovery, rollback and product evidence retain their separate scopes.",
           "Remaining inventory identities, historical partial scopes, broader interruption/coordination and final current supported-platform/product/artifact acceptance remain required by the complete server-replacement goal."
+        ]
+      },
+      {
+        "command": "agent.interaction.respond",
+        "implementation": "cantrip_server_rs/src/http/agent_interactions.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_COMMAND_CONTROL_CONTRACTS.md",
+          "docs/security/rust-server-command-control-acceptance.json",
+          "scripts/server-rust/agent-interaction-http-compatibility.mjs",
+          "scripts/server-rust/agent-interaction-http-cases.mjs",
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "scripts/server-rust/public-chat-additional-cases.mjs",
+          "scripts/server-rust/public-pause-cases.mjs",
+          "scripts/server-rust/task-surfaces-http.mjs"
+        ],
+        "remaining": [
+          "Controlled worker boundaries retain actual WorkerConnection, endpoint cryptography and native command/session SDKs, but do not execute Codex/model inference, native GUI capture or physical worker filesystem operations.",
+          "Mappings qualify the executed response, project/standalone steering, logical completion, retry rollback and deletion-revocation consumers. Remaining command identities, other recovery/coordination consumers and historical partial scopes still require reconciliation.",
+          "Final current supported-platform desktop/container/service artifacts, actual product/fault/mixed-instance acceptance, existing-data upgrades and post-write rollback/performance reconciliation remain required for the complete server-replacement goal."
+        ]
+      },
+      {
+        "command": "agent.interaction.respond.protected",
+        "implementation": "cantrip_server_rs/src/http/agent_interactions.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_COMMAND_CONTROL_CONTRACTS.md",
+          "docs/security/rust-server-command-control-acceptance.json",
+          "scripts/server-rust/agent-interaction-http-compatibility.mjs",
+          "scripts/server-rust/agent-interaction-http-cases.mjs",
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "scripts/server-rust/public-chat-additional-cases.mjs",
+          "scripts/server-rust/public-pause-cases.mjs",
+          "scripts/server-rust/task-surfaces-http.mjs"
+        ],
+        "remaining": [
+          "Controlled worker boundaries retain actual WorkerConnection, endpoint cryptography and native command/session SDKs, but do not execute Codex/model inference, native GUI capture or physical worker filesystem operations.",
+          "Mappings qualify the executed response, project/standalone steering, logical completion, retry rollback and deletion-revocation consumers. Remaining command identities, other recovery/coordination consumers and historical partial scopes still require reconciliation.",
+          "Final current supported-platform desktop/container/service artifacts, actual product/fault/mixed-instance acceptance, existing-data upgrades and post-write rollback/performance reconciliation remain required for the complete server-replacement goal."
+        ]
+      },
+      {
+        "command": "computer-use.approval.respond",
+        "implementation": "cantrip_server_rs/src/http/agent_interactions.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_COMMAND_CONTROL_CONTRACTS.md",
+          "docs/security/rust-server-command-control-acceptance.json",
+          "scripts/server-rust/agent-interaction-http-compatibility.mjs",
+          "scripts/server-rust/agent-interaction-http-cases.mjs",
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "scripts/server-rust/public-chat-additional-cases.mjs",
+          "scripts/server-rust/public-pause-cases.mjs",
+          "scripts/server-rust/task-surfaces-http.mjs"
+        ],
+        "remaining": [
+          "Controlled worker boundaries retain actual WorkerConnection, endpoint cryptography and native command/session SDKs, but do not execute Codex/model inference, native GUI capture or physical worker filesystem operations.",
+          "Mappings qualify the executed response, project/standalone steering, logical completion, retry rollback and deletion-revocation consumers. Remaining command identities, other recovery/coordination consumers and historical partial scopes still require reconciliation.",
+          "Final current supported-platform desktop/container/service artifacts, actual product/fault/mixed-instance acceptance, existing-data upgrades and post-write rollback/performance reconciliation remain required for the complete server-replacement goal."
+        ]
+      },
+      {
+        "command": "chat.native-control",
+        "implementation": [
+          "cantrip_server_rs/src/http/agent_interactions.rs",
+          "cantrip_server_rs/src/http/chat_execution/steer.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_COMMAND_CONTROL_CONTRACTS.md",
+          "docs/security/rust-server-command-control-acceptance.json",
+          "scripts/server-rust/agent-interaction-http-compatibility.mjs",
+          "scripts/server-rust/agent-interaction-http-cases.mjs",
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "scripts/server-rust/public-chat-additional-cases.mjs",
+          "scripts/server-rust/public-pause-cases.mjs",
+          "scripts/server-rust/task-surfaces-http.mjs"
+        ],
+        "remaining": [
+          "Controlled worker boundaries retain actual WorkerConnection, endpoint cryptography and native command/session SDKs, but do not execute Codex/model inference, native GUI capture or physical worker filesystem operations.",
+          "Mappings qualify the executed response, project/standalone steering, logical completion, retry rollback and deletion-revocation consumers. Remaining command identities, other recovery/coordination consumers and historical partial scopes still require reconciliation.",
+          "Final current supported-platform desktop/container/service artifacts, actual product/fault/mixed-instance acceptance, existing-data upgrades and post-write rollback/performance reconciliation remain required for the complete server-replacement goal."
+        ]
+      },
+      {
+        "command": "inference.revoke",
+        "implementation": "cantrip_server_rs/src/workers/resource_revocations.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_COMMAND_CONTROL_CONTRACTS.md",
+          "docs/security/rust-server-command-control-acceptance.json",
+          "scripts/server-rust/agent-interaction-http-compatibility.mjs",
+          "scripts/server-rust/agent-interaction-http-cases.mjs",
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "scripts/server-rust/public-chat-additional-cases.mjs",
+          "scripts/server-rust/public-pause-cases.mjs",
+          "scripts/server-rust/task-surfaces-http.mjs"
+        ],
+        "remaining": [
+          "Controlled worker boundaries retain actual WorkerConnection, endpoint cryptography and native command/session SDKs, but do not execute Codex/model inference, native GUI capture or physical worker filesystem operations.",
+          "Mappings qualify the executed response, project/standalone steering, logical completion, retry rollback and deletion-revocation consumers. Remaining command identities, other recovery/coordination consumers and historical partial scopes still require reconciliation.",
+          "Final current supported-platform desktop/container/service artifacts, actual product/fault/mixed-instance acceptance, existing-data upgrades and post-write rollback/performance reconciliation remain required for the complete server-replacement goal."
+        ]
+      },
+      {
+        "command": "computer-use.preview.revoke",
+        "implementation": "cantrip_server_rs/src/computer_use_revocations.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_COMMAND_CONTROL_CONTRACTS.md",
+          "docs/security/rust-server-command-control-acceptance.json",
+          "scripts/server-rust/agent-interaction-http-compatibility.mjs",
+          "scripts/server-rust/agent-interaction-http-cases.mjs",
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "scripts/server-rust/public-chat-additional-cases.mjs",
+          "scripts/server-rust/public-pause-cases.mjs",
+          "scripts/server-rust/task-surfaces-http.mjs"
+        ],
+        "remaining": [
+          "Controlled worker boundaries retain actual WorkerConnection, endpoint cryptography and native command/session SDKs, but do not execute Codex/model inference, native GUI capture or physical worker filesystem operations.",
+          "Mappings qualify the executed response, project/standalone steering, logical completion, retry rollback and deletion-revocation consumers. Remaining command identities, other recovery/coordination consumers and historical partial scopes still require reconciliation.",
+          "Final current supported-platform desktop/container/service artifacts, actual product/fault/mixed-instance acceptance, existing-data upgrades and post-write rollback/performance reconciliation remain required for the complete server-replacement goal."
+        ]
+      },
+      {
+        "command": "chat.native-logical.complete",
+        "implementation": "cantrip_server_rs/src/native_commands/runtime/logical_delivery/native.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_COMMAND_CONTROL_CONTRACTS.md",
+          "docs/security/rust-server-command-control-acceptance.json",
+          "scripts/server-rust/agent-interaction-http-compatibility.mjs",
+          "scripts/server-rust/agent-interaction-http-cases.mjs",
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "scripts/server-rust/public-chat-additional-cases.mjs",
+          "scripts/server-rust/public-pause-cases.mjs",
+          "scripts/server-rust/task-surfaces-http.mjs"
+        ],
+        "remaining": [
+          "Controlled worker boundaries retain actual WorkerConnection, endpoint cryptography and native command/session SDKs, but do not execute Codex/model inference, native GUI capture or physical worker filesystem operations.",
+          "Mappings qualify the executed response, project/standalone steering, logical completion, retry rollback and deletion-revocation consumers. Remaining command identities, other recovery/coordination consumers and historical partial scopes still require reconciliation.",
+          "Final current supported-platform desktop/container/service artifacts, actual product/fault/mixed-instance acceptance, existing-data upgrades and post-write rollback/performance reconciliation remain required for the complete server-replacement goal."
+        ]
+      },
+      {
+        "command": "chat.turn.rollback",
+        "implementation": "cantrip_server_rs/src/chats/turn_runtime/bootstrap/admitted.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_COMMAND_CONTROL_CONTRACTS.md",
+          "docs/security/rust-server-command-control-acceptance.json",
+          "scripts/server-rust/agent-interaction-http-compatibility.mjs",
+          "scripts/server-rust/agent-interaction-http-cases.mjs",
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "scripts/server-rust/public-chat-additional-cases.mjs",
+          "scripts/server-rust/public-pause-cases.mjs",
+          "scripts/server-rust/task-surfaces-http.mjs"
+        ],
+        "remaining": [
+          "Controlled worker boundaries retain actual WorkerConnection, endpoint cryptography and native command/session SDKs, but do not execute Codex/model inference, native GUI capture or physical worker filesystem operations.",
+          "Mappings qualify the executed response, project/standalone steering, logical completion, retry rollback and deletion-revocation consumers. Remaining command identities, other recovery/coordination consumers and historical partial scopes still require reconciliation.",
+          "Final current supported-platform desktop/container/service artifacts, actual product/fault/mixed-instance acceptance, existing-data upgrades and post-write rollback/performance reconciliation remain required for the complete server-replacement goal."
         ]
       }
     ]

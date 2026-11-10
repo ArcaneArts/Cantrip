@@ -51,6 +51,7 @@ const root = await mkdtemp(
 const report = {
   suite: "public-chat-execution-http-live-native-receipts",
   databaseMode,
+  root,
   completeReplacement: false,
   fullWorkerProcess: false,
   profiles: [],
@@ -66,10 +67,11 @@ const stable = (value) =>
   );
 let pg, active, activeWorker, failure;
 try {
-  const executable = await buildRustServer();
-  const repositoryExecutable = await buildRustExample(
-    "project-repository-fixture",
-  );
+  const executable =
+    process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer());
+  const repositoryExecutable =
+    process.env.CANTRIP_RUST_PROJECT_REPOSITORY_BINARY ??
+    (await buildRustExample("project-repository-fixture"));
   const passwordHash = await hashPassword(password);
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
@@ -82,6 +84,7 @@ try {
       const result = {
         kind,
         observations: [],
+        rawCommands: [],
         snapshotProofs: 0,
         notificationProofs: [],
         nativeReceiptProofs: 0,
@@ -114,7 +117,10 @@ try {
         url,
         passwordHash,
         result,
-        onCommand: (...args) => modelWorker.handle(...args),
+        onCommand: (command, ...args) => {
+          result.rawCommands.push(structuredClone(command));
+          return modelWorker.handle(command, ...args);
+        },
         configure: (owner) => [
           ...seedEventChats(owner),
           `INSERT INTO model_providers(id,owner_id,name,kind,base_url) VALUES('public-provider',${literal(owner)},'Public fixture','openai-compatible','http://fixture.invalid')`,
@@ -146,7 +152,8 @@ try {
       const processHandle = h.fixture.server;
       const expectedMessages = new Map(),
         verifiedContent = new Set(),
-        digests = new Map();
+        digests = new Map(),
+        derivedOperations = new Map();
       let cryptographicChecks = 0;
       async function prove(value) {
         if (Array.isArray(value)) {
@@ -154,6 +161,51 @@ try {
           return;
         }
         if (!value || typeof value !== "object") return;
+        if (Array.isArray(value.claims) && Array.isArray(value.items))
+          for (const claim of value.claims) {
+            if (!claim.operationId?.startsWith("gui:")) continue;
+            const prompt = value.items.find(
+              (item) => item.id === claim.promptId,
+            );
+            assert.ok(prompt?.pendingMessage);
+            const messageKey = prompt.pendingMessage.idempotencyKey;
+            const expected =
+              "gui:" +
+              createHash("sha256")
+                .update(
+                  JSON.stringify([
+                    h.owner,
+                    prompt.chatId,
+                    messageKey,
+                    claim.id,
+                  ]),
+                )
+                .digest("hex");
+            assert.equal(claim.operationId, expected);
+            const turn = modelWorker.turns.find(
+              ({ command }) =>
+                command.chatId === prompt.chatId &&
+                command.clientMessageId === prompt.pendingMessage.id,
+            );
+            assert.ok(turn?.command.nativeCommandReceipt);
+            const receipt = turn.command.nativeCommandReceipt;
+            assert.equal(receipt.operationId, expected);
+            assert.equal(
+              receipt.operationGeneration,
+              claim.operationGeneration,
+            );
+            derivedOperations.set(
+              expected,
+              `<verified gui claim:${prompt.chatId}:${messageKey}>`,
+            );
+            (result.rawClaimBindings ??= []).push({
+              claim: structuredClone(claim),
+              chatId: prompt.chatId,
+              messageId: prompt.pendingMessage.id,
+              messageKey,
+              receipt: structuredClone(receipt),
+            });
+          }
         if (value.id && value.protectedContent) {
           const classification = value.classification?.role
             ? value.classification
@@ -200,6 +252,17 @@ try {
         for (const entry of Object.values(value)) await prove(entry);
       }
       function normalized(value, key = "") {
+        if (
+          key === "operationId" &&
+          typeof value === "string" &&
+          value.startsWith("gui:")
+        ) {
+          assert.ok(
+            derivedOperations.has(value),
+            "only independently derived claim operation IDs can be compared by identity",
+          );
+          return derivedOperations.get(value);
+        }
         if (key === "protectedContent" && value) {
           assert.ok(
             verifiedContent.has(stable(value)),
@@ -518,13 +581,19 @@ try {
         assert.equal(state.items.length, 0);
         await notified("mutations delivered", state);
         const gate = modelWorker.holdNext();
+        mutation(`gui-queue:add:${chat}:${first.queuedPrompt.id}`, {
+          kind: "add",
+          prompt: first.queuedPrompt,
+          attachments: [],
+        });
         const started = await visit(
           "public turn starts",
           "POST",
           `/api/chats/${chat}/turns`,
           { json: first, status: 202 },
         );
-        assert.equal(started.status, "started");
+        assert.equal(started.status, "queued");
+        assert.equal(started.prompt.id, first.queuedPrompt.id);
         await until(() => gate.dispatched, Boolean);
         await visit("public turn replay", "POST", `/api/chats/${chat}/turns`, {
           json: first,
@@ -573,15 +642,23 @@ try {
           "GET",
           queueRoute,
         );
-        assert.equal(consumed.items.length, 0);
-        assert.equal(
-          consumed.claims.length,
-          0,
-          "consumed claims leave the active queue snapshot",
+        assert.deepEqual(
+          consumed.items.map((item) => item.id),
+          [first.queuedPrompt.id],
+          "the held root remains while the steered item is consumed",
         );
+        assert.equal(consumed.claims.length, 1);
+        assert.equal(consumed.claims[0].promptId, first.queuedPrompt.id);
         gate.release();
         await messages(3);
         await until(() => modelWorker.acknowledgments.length >= 1, Boolean);
+        const completedQueue = await visit(
+          "completed root leaves canonical queue",
+          "GET",
+          queueRoute,
+        );
+        assert.equal(completedQueue.items.length, 0);
+        assert.equal(completedQueue.claims.length, 0);
         await visit("completed messages", "GET", messagesRoute);
         await visit(
           "only latest user can retry",
@@ -596,6 +673,11 @@ try {
           { json: editedTurn, status: 409 },
         );
         const latestTurn = await make(4);
+        mutation(`gui-queue:add:${chat}:${latestTurn.queuedPrompt.id}`, {
+          kind: "add",
+          prompt: latestTurn.queuedPrompt,
+          attachments: [],
+        });
         await visit(
           "next public turn starts",
           "POST",
@@ -700,7 +782,7 @@ try {
           plaintext: 0,
           activeLanes: 0,
           pendingPrompts: 0,
-          consumedClaims: 2,
+          consumedClaims: 5,
           standaloneMessages: 3,
           standaloneStatus: "idle",
           status: "idle",
@@ -711,7 +793,7 @@ try {
         });
         assert.equal(claims.rejected, false, claims.diagnostic);
         result.rawClaims = claims.value.claims;
-        assert.equal(result.rawClaims.length, 2);
+        assert.equal(result.rawClaims.length, 5);
         for (const claim of result.rawClaims) {
           assert.equal(claim.owner, h.owner);
           assert.equal(claim.chat, chat);
@@ -742,7 +824,7 @@ try {
         assert.equal(actual.operationId, followed.operationId);
         assert.equal(actual.operationGeneration, followed.operationGeneration);
         result.queueInputBindingProof = {
-          consumedClaims: 2,
+          consumedClaims: 5,
           ownerChatWorkerVerified: true,
           immutableMessageVerified: true,
           actualClaimOperationHashVerified: true,
@@ -756,7 +838,7 @@ try {
         const { protectedTask, ...paused } = pauseState.value;
         assert.deepEqual(paused, {
           taskState: "implementing",
-          taskPaused: false,
+          taskPaused: true,
           taskThread: null,
           projectPaused: false,
           projectRevision: 5,
@@ -778,6 +860,18 @@ try {
         await repository.close();
       }
       result.observations = normalized(result.observations);
+      result.executionCommandTypes = result.rawCommands
+        .filter((command) =>
+          [
+            "chat.turn.rollback",
+            "chat.queue.prepare",
+            "chat.native-logical.complete",
+            "chat.native-control",
+            "chat.steer",
+          ].includes(command.type),
+        )
+        .map((command) => command.type)
+        .sort();
       result.diagnostics = processHandle.diagnostics();
       assert.equal(result.diagnostics.includes("private-public-chat-"), false);
     }
@@ -788,6 +882,7 @@ try {
       "queueInputBindingProof",
       "pauseProofs",
       "pauseDurableState",
+      "executionCommandTypes",
     ])
       assert.deepEqual(
         outputs[1][field],
@@ -811,7 +906,8 @@ try {
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, JSON.stringify(report, null, 2) + "\n");
   }
-  if (!failure) await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
 }
 if (failure) throw failure;
 console.log(

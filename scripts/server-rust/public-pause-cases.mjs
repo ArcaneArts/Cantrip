@@ -68,10 +68,17 @@ export async function publicPauseCases({ h, modelWorker, visit, profile }) {
     status: 502,
   });
   modelWorker.failNextPause("opposite");
-  await visit("standalone opposite pause acknowledgement", "PATCH", chatRoute, {
-    json: { paused: false },
-    status: 502,
-  });
+  assert.deepEqual(
+    await visit(
+      "standalone older pause acknowledgement preserves resume intent",
+      "PATCH",
+      chatRoute,
+      {
+        json: { paused: false },
+      },
+    ),
+    { paused: false },
+  );
   assert.deepEqual(
     await visit("standalone resume acknowledged", "PATCH", chatRoute, {
       json: { paused: false },
@@ -121,7 +128,7 @@ export async function publicPauseCases({ h, modelWorker, visit, profile }) {
   );
   assert.match(
     failed.error,
-    /^1 Task could not pause: The worker could not pause this chat at a safe boundary: Controlled worker pause failure$/,
+    /^1 Task could not pause: The worker could not confirm this Task control: Controlled worker pause failure$/,
   );
   assert.equal(failed.pauseState.paused, true);
   assert.equal(failed.pauseState.rowVersion, state.rowVersion + 1);
@@ -148,7 +155,7 @@ export async function publicPauseCases({ h, modelWorker, visit, profile }) {
   assert.equal(state.pausedAt, null);
   const final = await visit("project final pause state", "GET", projectRoute);
   assert.deepEqual(final, state);
-  assert.equal(modelWorker.pauses.length, 7);
+  assert.equal(modelWorker.pauses.length, 8);
 
   async function observeUntil(name, route, predicate) {
     const deadline = Date.now() + 15000;
@@ -195,7 +202,7 @@ export async function publicPauseCases({ h, modelWorker, visit, profile }) {
     }),
     { paused: false },
   );
-  assert.equal(modelWorker.pauses.length, 9);
+  assert.equal(modelWorker.pauses.length, 10);
   await modelWorker.drained();
   h.worker.close();
   await observeUntil(
@@ -224,29 +231,39 @@ export async function publicPauseCases({ h, modelWorker, visit, profile }) {
       chats.find((chat) => chat.id === standalone)?.automationPaused === true,
   );
   const taskRoute = `/api/chats/${task}/pause`;
-  assert.deepEqual(
-    await visit("offline empty Task pause", "PATCH", taskRoute, {
+  const offlineTaskPause = await visit(
+    "offline empty Task pause retains intent without acknowledgment",
+    "PATCH",
+    taskRoute,
+    {
       json: { paused: true },
-    }),
-    { paused: true },
+      status: 502,
+    },
   );
-  assert.deepEqual(
-    await visit(
-      "offline empty Task resumes without worker action",
-      "PATCH",
-      taskRoute,
-      { json: { paused: false } },
-    ),
-    { paused: false },
+  assert.match(
+    offlineTaskPause.error,
+    /^The worker could not confirm this Task control:/,
   );
-  assert.equal(modelWorker.pauses.length, 9);
+  const offlineTaskResume = await visit(
+    "offline empty Task resume failure restores pause intent",
+    "PATCH",
+    taskRoute,
+    { json: { paused: false }, status: 502 },
+  );
+  assert.match(
+    offlineTaskResume.error,
+    /^The worker could not confirm this Task control:/,
+  );
+  assert.equal(modelWorker.pauses.length, 10);
   return {
-    workerPauseAcknowledgments: 9,
+    workerPauseCommands: 10,
+    olderManagedAcknowledgmentPreservesIntent: true,
     projectInvalidations: 4,
     partialFailureRetainsState: true,
     staleRevisionRejected: true,
     callerDisconnectStateRetained: true,
     offlineThreadedResumeRetainsPause: true,
-    offlineEmptyTaskCanResume: true,
+    offlineEmptyTaskRequiresWorkerAcknowledgment: true,
+    failedOfflineTaskResumeRestoresPause: true,
   };
 }
