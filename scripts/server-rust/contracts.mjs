@@ -900,6 +900,12 @@ export const projectInsightContractRoots = [
   "scriptCommandOperationIdSchema",
 ];
 
+export const gitObservationContractRoots = [
+  "gitManagedOperationWorkerStateSchema",
+  "gitManagedOperationResponseSchema",
+  "gitConflictListSchema",
+];
+
 export const remoteSurfaceHttpContractRoots = [
   "encryptedRemoteSurfaceCreateSchema",
   "encryptedRemoteSurfaceUpdateSchema",
@@ -1888,6 +1894,20 @@ if (
   const computerUseDestination = new URL(
     "../../cantrip_server_rs/contracts/computer-use-http.json",
     import.meta.url,
+  );
+  const gitObservationsDestination = new URL(
+    "../../cantrip_server_rs/contracts/git-observations.json",
+    import.meta.url,
+  );
+  await writeFile(
+    gitObservationsDestination,
+    await format(
+      JSON.stringify(buildContractManifest(gitObservationContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(gitObservationsDestination))),
+        filepath: fileURLToPath(gitObservationsDestination),
+      },
+    ),
   );
   await writeFile(
     computerUseDestination,

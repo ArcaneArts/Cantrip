@@ -37,6 +37,8 @@ mod execution_lane_rest;
 mod execution_lanes;
 #[path = "support/file_documents.rs"]
 mod file_documents;
+#[path = "support/git_operations.rs"]
+mod git_operations;
 #[path = "support/managed_gui_finish.rs"]
 mod managed_gui_finish;
 #[path = "support/managed_preparation.rs"]

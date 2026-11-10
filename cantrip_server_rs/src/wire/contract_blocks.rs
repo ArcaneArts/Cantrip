@@ -17,6 +17,7 @@ const PROJECT_INSIGHTS: &str = include_str!("../../contracts/project-insights.js
 
 const REMOTE_SURFACE_HTTP: &str = include_str!("../../contracts/remote-surface-http.json");
 const COMPUTER_USE_HTTP: &str = include_str!("../../contracts/computer-use-http.json");
+const GIT_OBSERVATIONS: &str = include_str!("../../contracts/git-observations.json");
 
 pub(super) fn load() -> Contracts {
     let mut contracts: Contracts = serde_json::from_str(BASE).expect("embedded protocol contracts");
@@ -49,6 +50,9 @@ pub(super) fn load() -> Contracts {
     );
     contracts.append(
         serde_json::from_str(COMPUTER_USE_HTTP).expect("embedded computer-use HTTP contracts"),
+    );
+    contracts.append(
+        serde_json::from_str(GIT_OBSERVATIONS).expect("embedded Git observation contracts"),
     );
     contracts.compile_patterns();
     contracts
@@ -117,6 +121,11 @@ mod tests {
     #[test]
     fn run_source_contracts_survive_unrelated_base_graph_growth() -> Result<()> {
         source_contracts_survive_growth(RUN, "Run")
+    }
+
+    #[test]
+    fn git_observation_contracts_survive_unrelated_base_graph_growth() -> Result<()> {
+        source_contracts_survive_growth(GIT_OBSERVATIONS, "Git observations")
     }
 
     #[test]
@@ -391,6 +400,7 @@ mod tests {
             graph.append(serde_json::from_str(PROJECT_INSIGHTS)?);
             graph.append(serde_json::from_str(REMOTE_SURFACE_HTTP)?);
             graph.append(serde_json::from_str(COMPUTER_USE_HTTP)?);
+            graph.append(serde_json::from_str(GIT_OBSERVATIONS)?);
             graph.compile_patterns();
             graphs.push(graph);
         }
@@ -399,7 +409,14 @@ mod tests {
         let mut count = 0;
         for schema in schemas {
             let mut command = Command::new("node");
-            if label == "computer-use HTTP" {
+            if label == "Git observations" {
+                command.args([
+                    "--import",
+                    "tsx",
+                    "scripts/server-rust/git-observation-contract-oracle.mjs",
+                    schema,
+                ]);
+            } else if label == "computer-use HTTP" {
                 command.args([
                     "--import",
                     "tsx",

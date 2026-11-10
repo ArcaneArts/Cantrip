@@ -1,5 +1,6 @@
 pub mod coordinator;
 pub mod exports;
+pub mod git_operations;
 pub mod observations;
 pub mod placement;
 mod placement_queries;

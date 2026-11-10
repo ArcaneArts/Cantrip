@@ -339,12 +339,31 @@ impl AuthService {
             workers.bridge.clone(),
         );
         let publisher = Arc::downgrade(&live);
+        // The coordinator and observer refer to each other. The callback uses
+        // a weak binding so admitted mutations share one gate without a cycle.
+        let observations = Arc::new(std::sync::Mutex::new(std::sync::Weak::<
+            crate::projects::observations::Service,
+        >::new()));
+        let observation_callback = observations.clone();
+        let project_operations =
+            crate::projects::coordinator::Coordinator::new(Arc::new(move |owner, project| {
+                if let Some(live) = publisher.upgrade() {
+                    crate::projects::repository_operation::publish(
+                        &live, owner, project, "worktree",
+                    );
+                }
+                if let Some(observations) = observation_callback.lock().unwrap().upgrade() {
+                    observations.schedule_project(owner.to_owned(), project.to_owned());
+                }
+            }));
         let worktree_observations = crate::projects::observations::Service::new(
             repository.database.clone(),
             workers.bridge.clone(),
             workers.commands.clone(),
             &live,
+            project_operations.clone(),
         );
+        *observations.lock().unwrap() = Arc::downgrade(&worktree_observations);
         let project_replicas = crate::projects::replicas::service::ReplicaService::new(
             repository.database.clone(),
             workers.commands.clone(),
@@ -419,16 +438,6 @@ impl AuthService {
             live.clone(),
         );
         scratch_roots.start(force_job_recovery).await?;
-        let observations = worktree_observations.clone();
-        let project_operations =
-            crate::projects::coordinator::Coordinator::new(Arc::new(move |owner, project| {
-                if let Some(live) = publisher.upgrade() {
-                    crate::projects::repository_operation::publish(
-                        &live, owner, project, "worktree",
-                    );
-                }
-                observations.schedule_project(owner.to_owned(), project.to_owned());
-            }));
         let worktrees = crate::projects::worktrees::Service::new(
             repository.database.clone(),
             workers.bridge.clone(),

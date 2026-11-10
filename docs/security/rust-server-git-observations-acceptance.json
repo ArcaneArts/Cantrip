@@ -1,0 +1,374 @@
+{
+  "schemaVersion": 1,
+  "baseCommit": "67892ac7ed5e173f9592c1c9b339a87d85f0b092",
+  "completeReplacement": false,
+  "scope": "Local macOS arm64 production callback, real authenticated worker WebSocket, durable SQL and App Live. Controlled Git inspection replies; no full worker/UI or new Windows/Linux qualification.",
+  "reports": [
+    {
+      "suite": "http",
+      "mode": "pglite",
+      "report": "qa/matrix-v1/pglite/http.json",
+      "sha256": "dc5628e66345e3b607ee9a049f53c74ed935fd8d1e83638c5b964389c297472f",
+      "driverExit": 0,
+      "profiles": [
+        {
+          "profile": "none",
+          "pairedActions": 24,
+          "pairedLiveEvents": 71,
+          "pairedInspections": 14,
+          "actualServerRestarts": 2,
+          "cleanServerExits": 4,
+          "heldInspectionShutdown": "passed without releasing held reply",
+          "retainedStateAndReconnectCompletion": true
+        },
+        {
+          "profile": "password",
+          "pairedActions": 24,
+          "pairedLiveEvents": 71,
+          "pairedInspections": 14,
+          "actualServerRestarts": 2,
+          "cleanServerExits": 4,
+          "heldInspectionShutdown": "passed without releasing held reply",
+          "retainedStateAndReconnectCompletion": true
+        },
+        {
+          "profile": "accounts",
+          "pairedActions": 24,
+          "pairedLiveEvents": 71,
+          "pairedInspections": 14,
+          "actualServerRestarts": 2,
+          "cleanServerExits": 4,
+          "heldInspectionShutdown": "passed without releasing held reply",
+          "retainedStateAndReconnectCompletion": true
+        }
+      ]
+    },
+    {
+      "suite": "repository",
+      "mode": "pglite",
+      "report": "qa/matrix-v1/pglite/repository.json",
+      "sha256": "370a9a33ff070553c9460183723b261714ded632f72affcc2c46604692191e4a",
+      "driverExit": 0,
+      "cases": 50
+    },
+    {
+      "suite": "targets",
+      "mode": "pglite",
+      "report": "qa/matrix-v1/pglite/targets.json",
+      "sha256": "fb84af3447e5c491e64cb24a93a2950f376ae9df73fdc1936662926c1254f963",
+      "driverExit": 0,
+      "cases": 431
+    },
+    {
+      "suite": "http",
+      "mode": "bundled-postgres",
+      "report": "qa/matrix-v1/bundled-postgres/http.json",
+      "sha256": "d8d8f50bb20125cd7c26f7deea3e3e3c5ac1fb2f4074b5facecca1cb3d1b1358",
+      "driverExit": 0,
+      "profiles": [
+        {
+          "profile": "none",
+          "pairedActions": 24,
+          "pairedLiveEvents": 71,
+          "pairedInspections": 14,
+          "actualServerRestarts": 2,
+          "cleanServerExits": 4,
+          "heldInspectionShutdown": "passed without releasing held reply",
+          "retainedStateAndReconnectCompletion": true
+        },
+        {
+          "profile": "password",
+          "pairedActions": 24,
+          "pairedLiveEvents": 71,
+          "pairedInspections": 14,
+          "actualServerRestarts": 2,
+          "cleanServerExits": 4,
+          "heldInspectionShutdown": "passed without releasing held reply",
+          "retainedStateAndReconnectCompletion": true
+        },
+        {
+          "profile": "accounts",
+          "pairedActions": 24,
+          "pairedLiveEvents": 71,
+          "pairedInspections": 14,
+          "actualServerRestarts": 2,
+          "cleanServerExits": 4,
+          "heldInspectionShutdown": "passed without releasing held reply",
+          "retainedStateAndReconnectCompletion": true
+        }
+      ]
+    },
+    {
+      "suite": "repository",
+      "mode": "bundled-postgres",
+      "report": "qa/matrix-v1/bundled-postgres/repository.json",
+      "sha256": "449397e038a09b0a3132fa64a11dc5cf55c83669409dc00a342ab3a1cd8cfb9e",
+      "driverExit": 0,
+      "cases": 50
+    },
+    {
+      "suite": "targets",
+      "mode": "bundled-postgres",
+      "report": "qa/matrix-v1/bundled-postgres/targets.json",
+      "sha256": "cc18b6130d328ed72ebc91b12aba26e8ad180fc2c7164ad7dea07a709db99ae1",
+      "driverExit": 0,
+      "cases": 431
+    },
+    {
+      "suite": "http",
+      "mode": "postgres",
+      "report": "qa/matrix-v1/postgres/http.json",
+      "sha256": "e6a611e1c18e9b05a84c2bb3ba7f6581c5e31cad0993361d3c7b88c4e7429ebe",
+      "driverExit": 0,
+      "profiles": [
+        {
+          "profile": "none",
+          "pairedActions": 24,
+          "pairedLiveEvents": 71,
+          "pairedInspections": 14,
+          "actualServerRestarts": 2,
+          "cleanServerExits": 4,
+          "heldInspectionShutdown": "passed without releasing held reply",
+          "retainedStateAndReconnectCompletion": true
+        },
+        {
+          "profile": "password",
+          "pairedActions": 24,
+          "pairedLiveEvents": 71,
+          "pairedInspections": 14,
+          "actualServerRestarts": 2,
+          "cleanServerExits": 4,
+          "heldInspectionShutdown": "passed without releasing held reply",
+          "retainedStateAndReconnectCompletion": true
+        },
+        {
+          "profile": "accounts",
+          "pairedActions": 24,
+          "pairedLiveEvents": 71,
+          "pairedInspections": 14,
+          "actualServerRestarts": 2,
+          "cleanServerExits": 4,
+          "heldInspectionShutdown": "passed without releasing held reply",
+          "retainedStateAndReconnectCompletion": true
+        }
+      ]
+    },
+    {
+      "suite": "repository",
+      "mode": "postgres",
+      "report": "qa/matrix-v1/postgres/repository.json",
+      "sha256": "dbacba9b8c882cb53ab2091ee14af227169fa00178d6d6cee60fa6d8d060b591",
+      "driverExit": 0,
+      "cases": 50
+    },
+    {
+      "suite": "targets",
+      "mode": "postgres",
+      "report": "qa/matrix-v1/postgres/targets.json",
+      "sha256": "bc1561a4dbe1b7dcfa8b52c33b5c8644854dcdba9c9ced82c7d9545f9e54d5dd",
+      "driverExit": 0,
+      "cases": 431
+    },
+    {
+      "suite": "production-git",
+      "mode": "postgres",
+      "report": "qa/production-git-v1.json",
+      "sha256": "4dce2913ea4fca231cdf7af12cbe1d030f30e9783fd509d7b806e651e658915d",
+      "driverExit": 0,
+      "profiles": 3,
+      "pairedActions": 72,
+      "pairedLiveEvents": 213,
+      "actualServerRestarts": 6,
+      "cleanServerExits": 12,
+      "sqlHttpRouteAbsent": true,
+      "workerRuntime": "controlled actual WorkerConnection; not full worker process"
+    },
+    {
+      "suite": "relocated-package",
+      "report": "qa/relocated-package-v1.json",
+      "sha256": "e2c45506593dcbb1e32d2d86f0941862805bd764eaa2fa436f606905fd3b4089",
+      "driverExit": 0,
+      "storageModes": ["pglite", "bundled-postgres", "postgres"],
+      "verifiedFiles": 1762,
+      "nodeAbsent": true,
+      "homebrewReadsDenied": true,
+      "artifactWritesDenied": true
+    }
+  ],
+  "repositoryMethodEvidence": {
+    "createGitOperation": [
+      {
+        "mode": "pglite",
+        "report": "qa/matrix-v1/pglite/repository.json",
+        "caseIndex": 3,
+        "case": "create queued operation"
+      },
+      {
+        "mode": "bundled-postgres",
+        "report": "qa/matrix-v1/bundled-postgres/repository.json",
+        "caseIndex": 3,
+        "case": "create queued operation"
+      },
+      {
+        "mode": "postgres",
+        "report": "qa/matrix-v1/postgres/repository.json",
+        "caseIndex": 3,
+        "case": "create queued operation"
+      }
+    ],
+    "getActiveGitOperation": [
+      {
+        "mode": "pglite",
+        "report": "qa/matrix-v1/pglite/repository.json",
+        "caseIndex": 9,
+        "case": "owned active"
+      },
+      {
+        "mode": "bundled-postgres",
+        "report": "qa/matrix-v1/bundled-postgres/repository.json",
+        "caseIndex": 9,
+        "case": "owned active"
+      },
+      {
+        "mode": "postgres",
+        "report": "qa/matrix-v1/postgres/repository.json",
+        "caseIndex": 9,
+        "case": "owned active"
+      }
+    ],
+    "markGitOperationRunning": [
+      {
+        "mode": "pglite",
+        "report": "qa/matrix-v1/pglite/repository.json",
+        "caseIndex": 17,
+        "case": "mark queued running"
+      },
+      {
+        "mode": "bundled-postgres",
+        "report": "qa/matrix-v1/bundled-postgres/repository.json",
+        "caseIndex": 17,
+        "case": "mark queued running"
+      },
+      {
+        "mode": "postgres",
+        "report": "qa/matrix-v1/postgres/repository.json",
+        "caseIndex": 17,
+        "case": "mark queued running"
+      }
+    ],
+    "getGitOperation": [
+      {
+        "mode": "pglite",
+        "report": "qa/matrix-v1/pglite/repository.json",
+        "caseIndex": 5,
+        "case": "owned get"
+      },
+      {
+        "mode": "bundled-postgres",
+        "report": "qa/matrix-v1/bundled-postgres/repository.json",
+        "caseIndex": 5,
+        "case": "owned get"
+      },
+      {
+        "mode": "postgres",
+        "report": "qa/matrix-v1/postgres/repository.json",
+        "caseIndex": 5,
+        "case": "owned get"
+      }
+    ],
+    "getLatestGitOperation": [
+      {
+        "mode": "pglite",
+        "report": "qa/matrix-v1/pglite/repository.json",
+        "caseIndex": 42,
+        "case": "terminal latest"
+      },
+      {
+        "mode": "bundled-postgres",
+        "report": "qa/matrix-v1/bundled-postgres/repository.json",
+        "caseIndex": 42,
+        "case": "terminal latest"
+      },
+      {
+        "mode": "postgres",
+        "report": "qa/matrix-v1/postgres/repository.json",
+        "caseIndex": 42,
+        "case": "terminal latest"
+      }
+    ],
+    "updateGitOperation": [
+      {
+        "mode": "pglite",
+        "report": "qa/matrix-v1/pglite/repository.json",
+        "caseIndex": 39,
+        "case": "persist conflicts and pause"
+      },
+      {
+        "mode": "bundled-postgres",
+        "report": "qa/matrix-v1/bundled-postgres/repository.json",
+        "caseIndex": 39,
+        "case": "persist conflicts and pause"
+      },
+      {
+        "mode": "postgres",
+        "report": "qa/matrix-v1/postgres/repository.json",
+        "caseIndex": 39,
+        "case": "persist conflicts and pause"
+      }
+    ],
+    "failGitOperation": [
+      {
+        "mode": "pglite",
+        "report": "qa/matrix-v1/pglite/repository.json",
+        "caseIndex": 45,
+        "case": "UTF16 error prefix truncation"
+      },
+      {
+        "mode": "bundled-postgres",
+        "report": "qa/matrix-v1/bundled-postgres/repository.json",
+        "caseIndex": 45,
+        "case": "UTF16 error prefix truncation"
+      },
+      {
+        "mode": "postgres",
+        "report": "qa/matrix-v1/postgres/repository.json",
+        "caseIndex": 45,
+        "case": "UTF16 error prefix truncation"
+      }
+    ]
+  },
+  "totals": {
+    "pairedRepositoryCases": 150,
+    "pairedTargetCases": 1293,
+    "matrixCells": 9,
+    "pairedGitActions": 216,
+    "pairedGitLiveEvents": 639,
+    "actualServerRestarts": 18,
+    "cleanServerExits": 36
+  },
+  "optimizedPackage": {
+    "archivePath": "qa/production-package-v2",
+    "target": "darwin-arm64",
+    "version": "1.1.2793",
+    "binaryBytes": 93423376,
+    "binarySha256": "f646bbd3358f97418291cb707194668a69b0a0ba337ce5c667715fd9c06dc368",
+    "manifestSha256": "25ab188e09fc50c3c670c60b525003ed69ed0c2fdc8ae289d688558fa9265e11"
+  },
+  "localChecks": {
+    "rustLibraryPass": 86,
+    "strictAllTargetClippy": "passed",
+    "scriptPass": 278,
+    "scriptSkip": 1,
+    "generatedSchemaGraphs": 16,
+    "endpointProviderMap": "matched",
+    "nativeAuthority": "passed",
+    "largeFiles": "passed",
+    "serverDecomposition": "passed",
+    "rustfmt": "passed"
+  },
+  "originalGoalRemaining": [
+    "Complete unmapped and historical partial inventory dispositions and background/runtime invariants.",
+    "Reconcile the complete original goal and final supported desktop/container/service artifacts; prior platform passes retain their original scope.",
+    "Worker Rust rewrite and shared crate extraction are outside this server goal."
+  ]
+}

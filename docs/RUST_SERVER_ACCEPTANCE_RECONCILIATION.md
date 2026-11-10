@@ -20,8 +20,10 @@ remain open.
 The [current worktree observation qualification](RUST_SERVER_WORKTREE_OBSERVATIONS.md)
 repairs the omitted native worker-status consumer and compares its durable state,
 Live events, failures and restart behavior across all nine local storage/authentication
-cells. Historical durable Git-operation reconciliation remains an explicit active
-gap despite the retired plaintext Git HTTP routes.
+cells. The subsequent [durable Git-operation qualification](RUST_SERVER_GIT_OBSERVATIONS.md)
+implements the remaining consumer and all seven repository methods, including
+real SQL failures, shared FIFO ordering, held-inspection shutdown, retained
+restart and worker reconnect. Complete original-goal acceptance remains open.
 
 The [current Chat/model identity qualification](RUST_SERVER_CHAT_IDENTITY_CONTRACTS.md)
 adds 3,368 paired observations across all three stores and repairs empty model
@@ -91,7 +93,7 @@ current artifact/platform and replacement acceptance remain required.
 | Area                          | Current evidence                                                                                                                                                                                                           | Remaining acceptance                                                                                                                        |
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Declared HTTP routes          | The computer-use milestone's production probe completes 584 requests per peer with zero generic fallback differences.                                                                                                      | Successful behavior, events and recovery across complete domains; invalid-input routing alone is insufficient.                              |
-| Generated contracts           | The refreshed source audit compares all 15 embedded schema graphs plus the endpoint-provider map with rebuilt TypeScript. All 16 match.                                                                                    | Custom semantics and full runtime/product/platform qualification.                                                                           |
+| Generated contracts           | The refreshed source audit compares all 16 embedded schema graphs plus the endpoint-provider map with rebuilt TypeScript. All 17 match.                                                                                    | Custom semantics and full runtime/product/platform qualification.                                                                           |
 | Desktop packaging             | PR #2749 integrates the production supervisor and explicit Rust runtime packaging.                                                                                                                                         | Current integrated artifacts, supported platforms, update behavior and final default selection.                                             |
 | Existing desktop profiles     | PR #2752 packages and automatically invokes bounded conversion. Its archived eight-case acceptance and actual app upgrade, post-write Node rollback and native re-upgrade pass locally.                                    | Broader historical profiles, current artifacts, other platforms and full product rollback.                                                  |
 | Winterhold                    | PR #2753 implements native distribution installation, migrations, systemd and Caddy. Its archived local three-store rehearsal exercises 18 installer calls and external PostgreSQL Node/Rust post-write rollback over TLS. | Current artifacts and remaining platform/product/coordination/performance qualification. No production deployment is authorized or claimed. |

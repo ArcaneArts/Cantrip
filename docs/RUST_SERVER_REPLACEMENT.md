@@ -9,6 +9,11 @@ and final shipping acceptance remains unfinished. Older sections below retain
 their milestone-time observations; their statements about Node being the default
 describe those earlier revisions.
 
+The [durable Git-operation qualification](RUST_SERVER_GIT_OBSERVATIONS.md) now
+implements the worker notification consumer and all seven repository methods,
+with actual failure, shutdown, restart and reconnect comparisons across all three
+stores. Full coverage disposition and final shipping acceptance remain open.
+
 Real native Agent/Goal execution now continues through Rust → Node → Rust
 profile rollback on all three backends, plus a PostgreSQL code-change case
 retaining the same database URL and profile directory. The full worker and

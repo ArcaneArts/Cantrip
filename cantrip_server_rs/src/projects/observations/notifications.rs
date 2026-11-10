@@ -48,6 +48,10 @@ impl Service {
                                 ),
                             );
                         }
+                        if notification["type"] == "git.operation.observed" {
+                            service.git_observed(owner, worker.clone(), (*notification).clone());
+                            return async { Ok(()) }.boxed();
+                        }
                         let kind = match notification["type"].as_str() {
                             Some("worktree.filesystem.changed") => "worktree.filesystem.changed",
                             Some("worktree.inventory.observed") => "worktree.inventory.observed",
@@ -123,6 +127,17 @@ impl Service {
         let worktree = context["worktreeId"]
             .as_str()
             .context("Status observation worktree identity")?;
+        self.record_live_status(owner, project, worktree, status)
+            .await
+    }
+
+    pub(super) async fn record_live_status(
+        &self,
+        owner: &str,
+        project: &str,
+        worktree: &str,
+        status: &Value,
+    ) -> anyhow::Result<()> {
         let Some(recorded) = self
             .repository
             .record_worktree_status(owner, project, worktree, status)

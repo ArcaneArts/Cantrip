@@ -1,0 +1,453 @@
+{
+  "schemaVersion": 1,
+  "roots": {
+    "gitManagedOperationWorkerStateSchema": 0,
+    "gitManagedOperationResponseSchema": 45,
+    "gitConflictListSchema": 64
+  },
+  "nodes": [
+    {
+      "type": "object",
+      "name": "gitManagedOperationWorkerStateSchema",
+      "shape": {
+        "type": 1,
+        "originalHead": 2,
+        "sourceRef": 3,
+        "sourceRevision": 5,
+        "targetRef": 6,
+        "targetRevision": 2,
+        "pendingCommits": 8,
+        "totalSteps": 9,
+        "checkpointRef": 10,
+        "state": 12,
+        "currentHead": 2,
+        "currentStep": 13,
+        "conflictedPaths": 14,
+        "output": 16,
+        "status": 17,
+        "pausedAction": 42
+      },
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "gitManagedOperationTypeSchema",
+      "values": ["merge", "rebase", "bisect", "cherry-pick", "revert", "stash"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{40,64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{40,64}$/u"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 4, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1024, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 2, "checks": [] },
+    { "type": "nullable", "innerType": 7, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1024, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 2,
+      "checks": [{ "check": "max_length", "maximum": 10000, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 10000, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 11, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1024, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "gitManagedOperationStateSchema",
+      "values": [
+        "queued",
+        "running",
+        "conflicted",
+        "awaiting-user-action",
+        "completed",
+        "failed",
+        "aborted"
+      ],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 10000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 15,
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "name": "repositoryRelativePathSchema",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 4096, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-wire-repository-path",
+          "messageAfterPath": true,
+          "message": "Expected a safe repository-relative path."
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "gitStatusSchema",
+      "shape": {
+        "branch": 18,
+        "head": 19,
+        "upstream": 21,
+        "ahead": 23,
+        "behind": 24,
+        "files": 25,
+        "branches": 34
+      },
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 20, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 22, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "array", "element": 26, "checks": [] },
+    {
+      "type": "object",
+      "name": "gitFileChangeSchema",
+      "shape": {
+        "path": 27,
+        "originalPath": 28,
+        "indexStatus": 30,
+        "worktreeStatus": 31,
+        "staged": 32,
+        "unstaged": 33
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 29, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "length_equals", "length": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "length_equals", "length": 1, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "array", "element": 35, "checks": [] },
+    {
+      "type": "object",
+      "name": "gitBranchSchema",
+      "shape": {
+        "name": 36,
+        "kind": 37,
+        "current": 38,
+        "hash": 39,
+        "upstream": 40
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "enum", "values": ["local", "remote"], "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 41, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 43,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 44, "checks": [] },
+    {
+      "type": "enum",
+      "name": "gitInteractiveRebaseTodoActionSchema",
+      "values": ["pick", "reword", "edit", "squash", "fixup", "drop"],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "gitManagedOperationResponseSchema",
+      "shape": { "operation": 46 },
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 47, "checks": [] },
+    {
+      "type": "object",
+      "name": "gitManagedOperationRecordSchema",
+      "shape": {
+        "type": 1,
+        "originalHead": 2,
+        "sourceRef": 3,
+        "sourceRevision": 5,
+        "targetRef": 6,
+        "targetRevision": 2,
+        "pendingCommits": 48,
+        "totalSteps": 9,
+        "checkpointRef": 10,
+        "id": 49,
+        "projectId": 50,
+        "worktreeId": 51,
+        "workerId": 52,
+        "state": 12,
+        "currentHead": 2,
+        "currentStep": 53,
+        "conflictedPaths": 54,
+        "output": 55,
+        "error": 56,
+        "createdAt": 58,
+        "updatedAt": 59,
+        "completedAt": 60,
+        "pausedAction": 62
+      },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 2,
+      "checks": [{ "check": "max_length", "maximum": 10000, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 10000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 15,
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 57, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 61, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 63,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 44, "checks": [] },
+    {
+      "type": "object",
+      "name": "gitConflictListSchema",
+      "shape": { "files": 65, "truncated": 72 },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 66,
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "gitConflictSummarySchema",
+      "shape": {
+        "path": 15,
+        "code": 67,
+        "kind": 68,
+        "baseAvailable": 69,
+        "oursAvailable": 70,
+        "theirsAvailable": 71
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "length_equals", "length": 2, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "name": "gitConflictKindSchema",
+      "values": [
+        "both-modified",
+        "both-added",
+        "both-deleted",
+        "added-by-ours",
+        "added-by-theirs",
+        "deleted-by-ours",
+        "deleted-by-theirs",
+        "unknown"
+      ],
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] }
+  ]
+}
