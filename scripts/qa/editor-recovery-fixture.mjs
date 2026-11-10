@@ -72,6 +72,9 @@ export async function startEditorRecoveryFixture({
   nativeLoopbackOrigin = false,
   cuaBinary,
   projectAlerts = false,
+  serverExecutable,
+  serverEnvironment = {},
+  clientPlugins = [],
 } = {}) {
   const runId = randomUUID();
   const directory = path.join(root, ".qa", `editor-${runId}`);
@@ -292,6 +295,7 @@ export async function startEditorRecoveryFixture({
       cacheDir: path.join(directory, "vite-cache"),
       configFile: path.join(root, "cantrip_app/vite.config.ts"),
       plugins: [
+        ...clientPlugins,
         ...(projectAlerts
           ? [
               (
@@ -405,26 +409,32 @@ export async function startEditorRecoveryFixture({
         flags: "a",
       });
       logStreams.push(stream);
+      const nativeServer = name === "server" && serverExecutable;
+      const environment =
+        name === "server"
+          ? { ...childEnvironment, ...serverEnvironment }
+          : cuaBinary
+            ? { ...childEnvironment, CANTRIP_CUA_BIN: cuaBinary }
+            : childEnvironment;
       const child = spawn(
-        process.execPath,
-        [
-          "--import",
-          "tsx",
-          name === "server"
-            ? path.join(
-                root,
-                projectAlerts
-                  ? "scripts/qa/project-alerts-server.mts"
-                  : "scripts/qa/editor-recovery-server.mts",
-              )
-            : "src/index.ts",
-        ],
+        nativeServer ? path.resolve(serverExecutable) : process.execPath,
+        nativeServer
+          ? []
+          : [
+              "--import",
+              "tsx",
+              name === "server"
+                ? path.join(
+                    root,
+                    projectAlerts
+                      ? "scripts/qa/project-alerts-server.mts"
+                      : "scripts/qa/editor-recovery-server.mts",
+                  )
+                : "src/index.ts",
+            ],
         {
           cwd: path.join(root, `cantrip_${name}`),
-          env:
-            name === "worker" && cuaBinary
-              ? { ...childEnvironment, CANTRIP_CUA_BIN: cuaBinary }
-              : childEnvironment,
+          env: environment,
           stdio: ["ignore", "pipe", "pipe"],
         },
       );
@@ -437,7 +447,13 @@ export async function startEditorRecoveryFixture({
       child.once("exit", (code, signal) =>
         event("process.exit", { name, code, signal }),
       );
-      event("process.start", { name, pid: child.pid });
+      event("process.start", {
+        name,
+        pid: child.pid,
+        ...(name === "server"
+          ? { runtime: nativeServer ? "rust" : "node-reference" }
+          : {}),
+      });
       return child;
     };
     const stop = async (name) => {
