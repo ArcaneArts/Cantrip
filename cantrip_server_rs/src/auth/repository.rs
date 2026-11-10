@@ -224,9 +224,10 @@ impl AuthRepository {
         self.database.query("INSERT INTO user_sessions(id,user_id,auth_method,token_hash,csrf_token_hash,expires_at,label) VALUES ($1,$2,$3,$4,$5,$6,NULL)",&[&Uuid::new_v4().to_string(),&user_id,&method,&secrets.token_hash,&secrets.csrf_token_hash,&expires]).await?;
         Ok(())
     }
-    pub async fn rotate_csrf(&self, id: &str, hash: &str) -> Result<()> {
-        self.database.query("UPDATE user_sessions SET csrf_token_hash=$2,last_seen_at=$3,updated_at=$3 WHERE id=$1 AND revoked_at IS NULL",&[&id,&hash,&now()]).await?;
-        Ok(())
+    pub async fn rotate_csrf(&self, id: &str, hash: &str) -> Result<bool> {
+        let seen = now();
+        let updated = now();
+        Ok(!self.database.query("UPDATE user_sessions SET csrf_token_hash=$2,last_seen_at=$3,updated_at=$4 WHERE id=$1 AND revoked_at IS NULL RETURNING id",&[&id,&hash,&seen,&updated]).await?.is_empty())
     }
     pub async fn revoke(&self, id: &str, owner: bool, reason: &str) -> Result<usize> {
         let predicate = if owner { "user_id" } else { "id" };
@@ -257,8 +258,7 @@ impl AuthRepository {
             rows.first().map(|row|user(row,0)).transpose()
         })).await
     }
-    pub async fn prune_mobile(&self) -> Result<()> {
-        let cutoff = now() - chrono::Duration::days(1);
+    pub async fn prune_mobile(&self, cutoff: DateTime<Utc>) -> Result<()> {
         self.database
             .query(
                 "DELETE FROM mobile_sign_in_grants WHERE expires_at<$1",

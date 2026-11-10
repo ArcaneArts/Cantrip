@@ -56,6 +56,22 @@ export async function runSettingsActiveWorkHttpCases(h, visit) {
     backgroundJobs: 0,
   };
   const read = (name) => visit(name, "GET", "/api/desktop-update/active-work");
+  for (const status of ["running", "waiting-for-approval"]) {
+    await h.fixture.sql([
+      `UPDATE chats SET status=${literal(status)},archived_at=NULL WHERE id=${literal(chat)}`,
+    ]);
+    assert.deepEqual(await read("owned active chat " + status), {
+      ...base,
+      activeChats: 1,
+    });
+  }
+  await h.fixture.sql([
+    `UPDATE chats SET archived_at=now() WHERE id=${literal(chat)}`,
+  ]);
+  assert.deepEqual(await read("archived active chat excluded"), base);
+  await h.fixture.sql([
+    `UPDATE chats SET status='idle',archived_at=NULL WHERE id=${literal(chat)}`,
+  ]);
   await h.fixture.sql([
     insert(schema.users, {
       id: foreign,

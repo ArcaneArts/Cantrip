@@ -39,6 +39,8 @@ mod execution_lanes;
 mod file_documents;
 #[path = "support/git_operations.rs"]
 mod git_operations;
+#[path = "support/identity_state.rs"]
+mod identity_state;
 #[path = "support/managed_gui_finish.rs"]
 mod managed_gui_finish;
 #[path = "support/managed_preparation.rs"]

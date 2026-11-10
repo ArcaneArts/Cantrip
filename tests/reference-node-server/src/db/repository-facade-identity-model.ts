@@ -96,15 +96,15 @@ export abstract class IdentityModelRepositoryFacade {
   abstract readonly workers: WorkerRepository;
 
   async migrateProviderSecrets(): Promise<void> {
-    // Pre-release migration 0119 removes every server-readable predecessor.
+    // Pre-release migration 0120 removes every server-readable predecessor.
   }
 
   async migrateProviderAccountCredentialSecrets(): Promise<void> {
-    // Pre-release migration 0119 signs legacy accounts out.
+    // Pre-release migration 0120 signs legacy accounts out.
   }
 
   async migrateMcpServerSecrets(): Promise<void> {
-    // Pre-release migration 0119 deletes legacy MCP rows.
+    // Pre-release migration 0120 deletes legacy MCP rows.
   }
 
   async ensureLocalIdentity(): Promise<UserSummary> {

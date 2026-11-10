@@ -28,6 +28,7 @@ import { NativeCommandError } from "../../tests/reference-node-server/src/db/rep
 import { ExecutionLaneConflictError } from "../../tests/reference-node-server/src/db/repository/chat-execution-lanes.ts";
 import { AgentInteractionConflictError } from "../../tests/reference-node-server/src/db/repository/agent-interactions.ts";
 import { projectAutomationFixture } from "./project-automation-node-fixture.mjs";
+import { identityStateFixture } from "./identity-state-node-fixture.mjs";
 // readline also recognizes Unicode line separators. Keep replies one record
 // without changing any decoded string, including lone UTF-16 surrogates.
 const replyJson = (value) =>
@@ -54,7 +55,9 @@ try {
       // Seeding owns only this disposable fixture. Runtime TS private storage is
       // used solely to exercise the actual connector on both PostgreSQL and PGlite.
       let value;
-      if (request.op.startsWith("chat-import-")) {
+      if (request.op.startsWith("identity-state-")) {
+        value = await identityStateFixture(database.repository, request);
+      } else if (request.op.startsWith("chat-import-")) {
         value = await chatImportFixture(
           database.repository.chatImportJobs,
           request,
