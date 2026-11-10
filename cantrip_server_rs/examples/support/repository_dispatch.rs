@@ -18,6 +18,9 @@ impl Dispatcher<'_> {
         trace: Arc<std::sync::Mutex<Vec<Value>>>,
     ) -> BoxFuture<'a, Result<Value>> {
         let operation = request["op"].as_str().unwrap_or_default();
+        if operation.starts_with("project-state-") {
+            return project_state::run(self.database.clone(), request).boxed();
+        }
         if operation.starts_with("identity-state-") {
             return identity_state::run(self.database.clone(), request).boxed();
         }

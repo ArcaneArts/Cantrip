@@ -3,6 +3,19 @@ use crate::{database::Executor, wire};
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 
+#[derive(Debug)]
+pub(crate) struct CapturedRunReadFailure(anyhow::Error);
+impl std::fmt::Display for CapturedRunReadFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.0, formatter)
+    }
+}
+impl std::error::Error for CapturedRunReadFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.0.as_ref())
+    }
+}
+
 impl Repository {
     pub async fn run_sources(&self, owner: &str, project: &str) -> Result<Vec<Value>> {
         let mut sources = Vec::new();
@@ -28,7 +41,8 @@ impl Repository {
         if selection["kind"] == "runtime" {
             let captured = crate::run_configurations::Repository::new(self.database.clone())
                 .captured(owner, text(selection, "runtimeId")?)
-                .await?
+                .await
+                .map_err(CapturedRunReadFailure)?
                 .context("The captured Linux Run was not found for this target.")?;
             let captured: Value = serde_json::from_str(&captured.stringify())?;
             ensure!(

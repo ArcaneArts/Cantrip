@@ -114,7 +114,13 @@ async fn execute(service: Arc<AuthService>, owner: String, input: Value) -> Resu
                 input["targetWorktreeId"].as_str(),
             )
             .await
-            .map_err(|error| conflict(error.to_string()))?;
+            .map_err(|error| {
+                if error.is::<crate::cantrip_os::CapturedRunReadFailure>() {
+                    error
+                } else {
+                    conflict(error.to_string())
+                }
+            })?;
         let selected = Value::from_serialize(&selected);
         if !selected["runtime"].is_null()
             && selected["runtime"]["configurationId"] != input["configurationId"]

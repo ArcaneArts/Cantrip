@@ -17,7 +17,8 @@ const root = await mkdtemp(path.join(tmpdir(), "cantrip-github-catalog-"));
 const report = { databaseMode, root, completeReplacement: false, profiles: [] };
 let database, failure;
 try {
-  const executable = await buildRustServer();
+  const executable =
+    process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer());
   const password = "catalog-fixture-password";
   const passwordHash = await hashPassword(password);
   if (databaseMode !== "pglite")
@@ -175,7 +176,8 @@ try {
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, JSON.stringify(report, null, 2) + "\n");
   }
-  if (!failure) await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
 }
 if (failure) throw failure;
 console.log(JSON.stringify(report));
