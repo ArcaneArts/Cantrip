@@ -14159,6 +14159,206 @@
           "The inference fixture uses the actual unchanged WorkerInferenceAdmission catalog class and controlled runtime RPC. It does not execute native model inference or qualify all inference scheduling/revocation consumers.",
           "These comparisons qualify the executed command and Live producers, not every consumer, supported platform or mixed-server interruption. Historical partial scopes and the complete final product/artifact/shipping acceptance remain open."
         ]
+      },
+      {
+        "command": "chat.goal.get",
+        "implementation": "cantrip_server_rs/src/http/chat_goals.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_GOAL_QUEUE_CONTRACTS.md",
+          "docs/security/rust-server-chat-goal-queue-acceptance.json",
+          "scripts/server-rust/task-dashboard-goals-http.mjs",
+          "scripts/server-rust/task-dashboard-goal-worker.mjs",
+          "scripts/server-rust/native-queue-http-compatibility.mjs",
+          "scripts/server-rust/native-queue-http-cases.mjs",
+          "scripts/server-rust/native-queue-http-content.mjs",
+          "scripts/server-rust/native-queue-http-imports.mjs",
+          "scripts/server-rust/chat-control-http-compatibility.mjs",
+          "scripts/server-rust/chat-control-http-runner.mjs",
+          "scripts/server-rust/chat-control-http-cases.mjs",
+          "scripts/server-rust/chat-control-http-boundaries.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs"
+        ],
+        "remaining": [
+          "The existing worker transport and actual endpoint cryptography execute, while worktree/native/model completion replies are controlled. This batch does not execute leaf Git/Codex model compaction or full native Task inference.",
+          "These command and Live mappings qualify the executed consumers, not every queue/Goal recovery path or all supported shipping platforms. Existing native admission, recovery, rollback and product evidence retain their separate scopes.",
+          "Remaining inventory identities, historical partial scopes, broader interruption/coordination and final current supported-platform/product/artifact acceptance remain required by the complete server-replacement goal."
+        ]
+      },
+      {
+        "command": "chat.goal.update",
+        "implementation": "cantrip_server_rs/src/http/chat_goals.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_GOAL_QUEUE_CONTRACTS.md",
+          "docs/security/rust-server-chat-goal-queue-acceptance.json",
+          "scripts/server-rust/task-dashboard-goals-http.mjs",
+          "scripts/server-rust/task-dashboard-goal-worker.mjs",
+          "scripts/server-rust/native-queue-http-compatibility.mjs",
+          "scripts/server-rust/native-queue-http-cases.mjs",
+          "scripts/server-rust/native-queue-http-content.mjs",
+          "scripts/server-rust/native-queue-http-imports.mjs",
+          "scripts/server-rust/chat-control-http-compatibility.mjs",
+          "scripts/server-rust/chat-control-http-runner.mjs",
+          "scripts/server-rust/chat-control-http-cases.mjs",
+          "scripts/server-rust/chat-control-http-boundaries.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs"
+        ],
+        "remaining": [
+          "The existing worker transport and actual endpoint cryptography execute, while worktree/native/model completion replies are controlled. This batch does not execute leaf Git/Codex model compaction or full native Task inference.",
+          "These command and Live mappings qualify the executed consumers, not every queue/Goal recovery path or all supported shipping platforms. Existing native admission, recovery, rollback and product evidence retain their separate scopes.",
+          "Remaining inventory identities, historical partial scopes, broader interruption/coordination and final current supported-platform/product/artifact acceptance remain required by the complete server-replacement goal."
+        ]
+      },
+      {
+        "command": "chat.goal.clear",
+        "implementation": "cantrip_server_rs/src/http/chat_goals.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_GOAL_QUEUE_CONTRACTS.md",
+          "docs/security/rust-server-chat-goal-queue-acceptance.json",
+          "scripts/server-rust/task-dashboard-goals-http.mjs",
+          "scripts/server-rust/task-dashboard-goal-worker.mjs",
+          "scripts/server-rust/native-queue-http-compatibility.mjs",
+          "scripts/server-rust/native-queue-http-cases.mjs",
+          "scripts/server-rust/native-queue-http-content.mjs",
+          "scripts/server-rust/native-queue-http-imports.mjs",
+          "scripts/server-rust/chat-control-http-compatibility.mjs",
+          "scripts/server-rust/chat-control-http-runner.mjs",
+          "scripts/server-rust/chat-control-http-cases.mjs",
+          "scripts/server-rust/chat-control-http-boundaries.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs"
+        ],
+        "remaining": [
+          "The existing worker transport and actual endpoint cryptography execute, while worktree/native/model completion replies are controlled. This batch does not execute leaf Git/Codex model compaction or full native Task inference.",
+          "These command and Live mappings qualify the executed consumers, not every queue/Goal recovery path or all supported shipping platforms. Existing native admission, recovery, rollback and product evidence retain their separate scopes.",
+          "Remaining inventory identities, historical partial scopes, broader interruption/coordination and final current supported-platform/product/artifact acceptance remain required by the complete server-replacement goal."
+        ]
+      },
+      {
+        "command": "chat.goal.create",
+        "implementation": "cantrip_server_rs/src/chats/goals/start.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_GOAL_QUEUE_CONTRACTS.md",
+          "docs/security/rust-server-chat-goal-queue-acceptance.json",
+          "scripts/server-rust/task-dashboard-goals-http.mjs",
+          "scripts/server-rust/task-dashboard-goal-worker.mjs",
+          "scripts/server-rust/native-queue-http-compatibility.mjs",
+          "scripts/server-rust/native-queue-http-cases.mjs",
+          "scripts/server-rust/native-queue-http-content.mjs",
+          "scripts/server-rust/native-queue-http-imports.mjs",
+          "scripts/server-rust/chat-control-http-compatibility.mjs",
+          "scripts/server-rust/chat-control-http-runner.mjs",
+          "scripts/server-rust/chat-control-http-cases.mjs",
+          "scripts/server-rust/chat-control-http-boundaries.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs"
+        ],
+        "remaining": [
+          "The existing worker transport and actual endpoint cryptography execute, while worktree/native/model completion replies are controlled. This batch does not execute leaf Git/Codex model compaction or full native Task inference.",
+          "These command and Live mappings qualify the executed consumers, not every queue/Goal recovery path or all supported shipping platforms. Existing native admission, recovery, rollback and product evidence retain their separate scopes.",
+          "Remaining inventory identities, historical partial scopes, broader interruption/coordination and final current supported-platform/product/artifact acceptance remain required by the complete server-replacement goal."
+        ]
+      },
+      {
+        "command": "chat.turn",
+        "implementation": "cantrip_server_rs/src/chats/turn_runtime/payload.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_GOAL_QUEUE_CONTRACTS.md",
+          "docs/security/rust-server-chat-goal-queue-acceptance.json",
+          "scripts/server-rust/task-dashboard-goals-http.mjs",
+          "scripts/server-rust/task-dashboard-goal-worker.mjs",
+          "scripts/server-rust/native-queue-http-compatibility.mjs",
+          "scripts/server-rust/native-queue-http-cases.mjs",
+          "scripts/server-rust/native-queue-http-content.mjs",
+          "scripts/server-rust/native-queue-http-imports.mjs",
+          "scripts/server-rust/chat-control-http-compatibility.mjs",
+          "scripts/server-rust/chat-control-http-runner.mjs",
+          "scripts/server-rust/chat-control-http-cases.mjs",
+          "scripts/server-rust/chat-control-http-boundaries.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs"
+        ],
+        "remaining": [
+          "The existing worker transport and actual endpoint cryptography execute, while worktree/native/model completion replies are controlled. This batch does not execute leaf Git/Codex model compaction or full native Task inference.",
+          "These command and Live mappings qualify the executed consumers, not every queue/Goal recovery path or all supported shipping platforms. Existing native admission, recovery, rollback and product evidence retain their separate scopes.",
+          "Remaining inventory identities, historical partial scopes, broader interruption/coordination and final current supported-platform/product/artifact acceptance remain required by the complete server-replacement goal."
+        ]
+      },
+      {
+        "command": "worktree.status",
+        "implementation": "cantrip_server_rs/src/http/chat_control.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_GOAL_QUEUE_CONTRACTS.md",
+          "docs/security/rust-server-chat-goal-queue-acceptance.json",
+          "scripts/server-rust/task-dashboard-goals-http.mjs",
+          "scripts/server-rust/task-dashboard-goal-worker.mjs",
+          "scripts/server-rust/native-queue-http-compatibility.mjs",
+          "scripts/server-rust/native-queue-http-cases.mjs",
+          "scripts/server-rust/native-queue-http-content.mjs",
+          "scripts/server-rust/native-queue-http-imports.mjs",
+          "scripts/server-rust/chat-control-http-compatibility.mjs",
+          "scripts/server-rust/chat-control-http-runner.mjs",
+          "scripts/server-rust/chat-control-http-cases.mjs",
+          "scripts/server-rust/chat-control-http-boundaries.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs"
+        ],
+        "remaining": [
+          "The existing worker transport and actual endpoint cryptography execute, while worktree/native/model completion replies are controlled. This batch does not execute leaf Git/Codex model compaction or full native Task inference.",
+          "These command and Live mappings qualify the executed consumers, not every queue/Goal recovery path or all supported shipping platforms. Existing native admission, recovery, rollback and product evidence retain their separate scopes.",
+          "Remaining inventory identities, historical partial scopes, broader interruption/coordination and final current supported-platform/product/artifact acceptance remain required by the complete server-replacement goal."
+        ]
+      },
+      {
+        "command": "chat.message.protect",
+        "implementation": "cantrip_server_rs/src/chats/live_mutations/messages.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_GOAL_QUEUE_CONTRACTS.md",
+          "docs/security/rust-server-chat-goal-queue-acceptance.json",
+          "scripts/server-rust/task-dashboard-goals-http.mjs",
+          "scripts/server-rust/task-dashboard-goal-worker.mjs",
+          "scripts/server-rust/native-queue-http-compatibility.mjs",
+          "scripts/server-rust/native-queue-http-cases.mjs",
+          "scripts/server-rust/native-queue-http-content.mjs",
+          "scripts/server-rust/native-queue-http-imports.mjs",
+          "scripts/server-rust/chat-control-http-compatibility.mjs",
+          "scripts/server-rust/chat-control-http-runner.mjs",
+          "scripts/server-rust/chat-control-http-cases.mjs",
+          "scripts/server-rust/chat-control-http-boundaries.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs"
+        ],
+        "remaining": [
+          "The existing worker transport and actual endpoint cryptography execute, while worktree/native/model completion replies are controlled. This batch does not execute leaf Git/Codex model compaction or full native Task inference.",
+          "These command and Live mappings qualify the executed consumers, not every queue/Goal recovery path or all supported shipping platforms. Existing native admission, recovery, rollback and product evidence retain their separate scopes.",
+          "Remaining inventory identities, historical partial scopes, broader interruption/coordination and final current supported-platform/product/artifact acceptance remain required by the complete server-replacement goal."
+        ]
+      },
+      {
+        "command": "chat.compact",
+        "implementation": "cantrip_server_rs/src/http/chat_control.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_GOAL_QUEUE_CONTRACTS.md",
+          "docs/security/rust-server-chat-goal-queue-acceptance.json",
+          "scripts/server-rust/task-dashboard-goals-http.mjs",
+          "scripts/server-rust/task-dashboard-goal-worker.mjs",
+          "scripts/server-rust/native-queue-http-compatibility.mjs",
+          "scripts/server-rust/native-queue-http-cases.mjs",
+          "scripts/server-rust/native-queue-http-content.mjs",
+          "scripts/server-rust/native-queue-http-imports.mjs",
+          "scripts/server-rust/chat-control-http-compatibility.mjs",
+          "scripts/server-rust/chat-control-http-runner.mjs",
+          "scripts/server-rust/chat-control-http-cases.mjs",
+          "scripts/server-rust/chat-control-http-boundaries.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs"
+        ],
+        "remaining": [
+          "The existing worker transport and actual endpoint cryptography execute, while worktree/native/model completion replies are controlled. This batch does not execute leaf Git/Codex model compaction or full native Task inference.",
+          "These command and Live mappings qualify the executed consumers, not every queue/Goal recovery path or all supported shipping platforms. Existing native admission, recovery, rollback and product evidence retain their separate scopes.",
+          "Remaining inventory identities, historical partial scopes, broader interruption/coordination and final current supported-platform/product/artifact acceptance remain required by the complete server-replacement goal."
+        ]
       }
     ]
   },
@@ -22477,6 +22677,56 @@
           "The inference fixture uses the actual unchanged WorkerInferenceAdmission catalog class and controlled runtime RPC. It does not execute native model inference or qualify all inference scheduling/revocation consumers.",
           "These comparisons qualify the executed command and Live producers, not every consumer, supported platform or mixed-server interruption. Historical partial scopes and the complete final product/artifact/shipping acceptance remain open."
         ]
+      },
+      {
+        "resource": "chat-goal",
+        "implementation": "cantrip_server_rs/src/http/chat_goals.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_GOAL_QUEUE_CONTRACTS.md",
+          "docs/security/rust-server-chat-goal-queue-acceptance.json",
+          "scripts/server-rust/task-dashboard-goals-http.mjs",
+          "scripts/server-rust/task-dashboard-goal-worker.mjs",
+          "scripts/server-rust/native-queue-http-compatibility.mjs",
+          "scripts/server-rust/native-queue-http-cases.mjs",
+          "scripts/server-rust/native-queue-http-content.mjs",
+          "scripts/server-rust/native-queue-http-imports.mjs",
+          "scripts/server-rust/chat-control-http-compatibility.mjs",
+          "scripts/server-rust/chat-control-http-runner.mjs",
+          "scripts/server-rust/chat-control-http-cases.mjs",
+          "scripts/server-rust/chat-control-http-boundaries.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs"
+        ],
+        "remaining": [
+          "The existing worker transport and actual endpoint cryptography execute, while worktree/native/model completion replies are controlled. This batch does not execute leaf Git/Codex model compaction or full native Task inference.",
+          "These command and Live mappings qualify the executed consumers, not every queue/Goal recovery path or all supported shipping platforms. Existing native admission, recovery, rollback and product evidence retain their separate scopes.",
+          "Remaining inventory identities, historical partial scopes, broader interruption/coordination and final current supported-platform/product/artifact acceptance remain required by the complete server-replacement goal."
+        ]
+      },
+      {
+        "resource": "chat-queue",
+        "implementation": "cantrip_server_rs/src/http/native_queue.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_CHAT_GOAL_QUEUE_CONTRACTS.md",
+          "docs/security/rust-server-chat-goal-queue-acceptance.json",
+          "scripts/server-rust/task-dashboard-goals-http.mjs",
+          "scripts/server-rust/task-dashboard-goal-worker.mjs",
+          "scripts/server-rust/native-queue-http-compatibility.mjs",
+          "scripts/server-rust/native-queue-http-cases.mjs",
+          "scripts/server-rust/native-queue-http-content.mjs",
+          "scripts/server-rust/native-queue-http-imports.mjs",
+          "scripts/server-rust/chat-control-http-compatibility.mjs",
+          "scripts/server-rust/chat-control-http-runner.mjs",
+          "scripts/server-rust/chat-control-http-cases.mjs",
+          "scripts/server-rust/chat-control-http-boundaries.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs"
+        ],
+        "remaining": [
+          "The existing worker transport and actual endpoint cryptography execute, while worktree/native/model completion replies are controlled. This batch does not execute leaf Git/Codex model compaction or full native Task inference.",
+          "These command and Live mappings qualify the executed consumers, not every queue/Goal recovery path or all supported shipping platforms. Existing native admission, recovery, rollback and product evidence retain their separate scopes.",
+          "Remaining inventory identities, historical partial scopes, broader interruption/coordination and final current supported-platform/product/artifact acceptance remain required by the complete server-replacement goal."
+        ]
       }
     ]
   },
@@ -28127,6 +28377,36 @@
         "Controlled worker authentication and quota replies do not execute real provider OAuth or native credential-file encryption/deletion. Worker-side behavior remains separately scoped.",
         "The inference fixture uses the actual unchanged WorkerInferenceAdmission catalog class and controlled runtime RPC. It does not execute native model inference or qualify all inference scheduling/revocation consumers.",
         "These comparisons qualify the executed command and Live producers, not every consumer, supported platform or mixed-server interruption. Historical partial scopes and the complete final product/artifact/shipping acceptance remain open."
+      ]
+    },
+    "currentChatGoalQueueContracts": {
+      "status": "partial",
+      "qualification": "docs/RUST_SERVER_CHAT_GOAL_QUEUE_CONTRACTS.md",
+      "acceptance": "docs/security/rust-server-chat-goal-queue-acceptance.json",
+      "counts": {
+        "pairedCells": 27,
+        "receivedGoalCommands": 738,
+        "receivedProtectedTaskTurns": 18,
+        "goalLiveEvents": 270,
+        "taskCiphertextProofs": 288,
+        "goalCiphertextProofs": 162,
+        "pairedHttpCaseObservations": 2403,
+        "tracedRequests": 9499,
+        "queueLiveEvents": 198,
+        "queueCryptoProofs": 720,
+        "workerSdkOperations": 90,
+        "pairedControlCases": 756,
+        "pairedCallerDisappearancePhases": 18,
+        "receivedControlCaseCommands": 432,
+        "controlSnapshotProofs": 0,
+        "newWorkerCommands": 8,
+        "newLiveResources": 2,
+        "newDurableTables": 0
+      },
+      "remaining": [
+        "The existing worker transport and actual endpoint cryptography execute, while worktree/native/model completion replies are controlled. This batch does not execute leaf Git/Codex model compaction or full native Task inference.",
+        "These command and Live mappings qualify the executed consumers, not every queue/Goal recovery path or all supported shipping platforms. Existing native admission, recovery, rollback and product evidence retain their separate scopes.",
+        "Remaining inventory identities, historical partial scopes, broader interruption/coordination and final current supported-platform/product/artifact acceptance remain required by the complete server-replacement goal."
       ]
     }
   },

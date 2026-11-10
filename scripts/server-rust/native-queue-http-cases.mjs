@@ -58,6 +58,7 @@ export async function nativeQueueHttpCases({ h, client, result }) {
   const empty = {
     revision: 0,
     paused: false,
+    goalRecovery: null,
     items: [],
     claims: [],
     pendingImports: [],
