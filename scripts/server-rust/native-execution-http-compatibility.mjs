@@ -43,6 +43,7 @@ const root = await mkdtemp(
 const report = {
   suite: "production-native-receipts-and-outcomes-http",
   databaseMode,
+  root,
   completeReplacement: false,
   actualFullWorkerRuntime: false,
   profiles: [],
@@ -65,10 +66,11 @@ function assertReplay(previous, current) {
 }
 let pg, active, failure;
 try {
-  const executable = await buildRustServer();
-  const repositoryExecutable = await buildRustExample(
-    "project-repository-fixture",
-  );
+  const executable =
+    process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer());
+  const repositoryExecutable =
+    process.env.CANTRIP_RUST_PROJECT_FIXTURE_BINARY ??
+    (await buildRustExample("project-repository-fixture"));
   const passwordHash = await hashPassword(password);
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
@@ -409,7 +411,8 @@ try {
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, JSON.stringify(report, null, 2) + "\n");
   }
-  if (!failure) await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
 }
 if (failure) throw failure;
 console.log(

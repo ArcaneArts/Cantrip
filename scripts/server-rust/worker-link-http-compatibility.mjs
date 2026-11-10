@@ -16,6 +16,7 @@ import {
 import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
 import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
 import { buildRustServer } from "./build.mjs";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { HttpFixture } from "./http-fixture.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { heartbeat, password } from "./security-fixtures.mjs";
@@ -187,9 +188,10 @@ let postgres, failure;
 try {
   const executable =
     process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer());
+  const passwordHash = await hashPassword(password);
   if (databaseMode !== "pglite")
     postgres = await postgresFixture(path.join(root, "postgres"));
-  for (const profile of ["none", "accounts"]) {
+  for (const profile of ["none", "password", "accounts"]) {
     const outputs = [];
     report.profiles.push({ profile, runtimes: outputs });
     for (const kind of ["node", "rust"]) {
@@ -205,6 +207,9 @@ try {
         databaseMode,
         environment: {
           CANTRIP_AUTH_MODE: profile,
+          ...(profile === "password"
+            ? { CANTRIP_PASSWORD_HASH: passwordHash }
+            : {}),
           CANTRIP_REGISTRATION_ENABLED: "true",
           CANTRIP_WORKER_LINK_LAN_ENABLED: "true",
           CANTRIP_BANDWIDTH_USAGE_FLUSH_THRESHOLD_BYTES: "1024",
@@ -316,7 +321,13 @@ try {
               json: { email: "link-main@example.invalid", password },
             },
           );
-        } else await visit("local session", "GET", "/api/auth/session");
+        } else {
+          await visit("local session", "GET", "/api/auth/session");
+          if (profile === "password")
+            await visit("local login", "POST", "/api/auth/login", {
+              json: { password },
+            });
+        }
         const bootstrap = await visit("bootstrap", "GET", "/api/bootstrap"),
           owner = bootstrap.auth.currentUser.id;
         for (const json of [

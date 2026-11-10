@@ -479,6 +479,7 @@ async fn handle(
         Err(cause) => return middleware::failure(&service, &ctx.id, &cause),
     };
     let task_goal_cycle_dispatch = phase == "task-goal-cycle-dispatch";
+    let inference_resource_authorization = phase == "inference-resource-authorize";
     match service
         .scratch_roots
         .owned(apply(service.clone(), owner, input, phase))
@@ -487,7 +488,14 @@ async fn handle(
         Ok(v) => json_response(StatusCode::OK, v),
         Err(cause) => {
             if let Some(e) = cause.downcast_ref::<CommandError>() {
-                code(e.status, &e.code)
+                if inference_resource_authorization && e.code != "stale-worker-generation" {
+                    json_response(
+                        StatusCode::from_u16(e.status).unwrap(),
+                        json!({"code":e.code,"error":e.message}),
+                    )
+                } else {
+                    code(e.status, &e.code)
+                }
             } else if cause.is::<crate::task_dispatch::Conflict>() {
                 code(
                     409,

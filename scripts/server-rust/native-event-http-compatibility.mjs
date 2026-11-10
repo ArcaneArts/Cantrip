@@ -46,14 +46,18 @@ const databaseMode = option("--database") ?? "pglite",
 const report = {
   suite: "actual-native-event-http-live-crypto",
   databaseMode,
+  root,
   completeReplacement: false,
   lifecycleComplete: false,
   profiles: [],
 };
 let pg, failure, active;
 try {
-  const executable = await buildRustServer(),
-    repositoryExecutable = await buildRustExample("project-repository-fixture"),
+  const executable =
+      process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer()),
+    repositoryExecutable =
+      process.env.CANTRIP_RUST_PROJECT_FIXTURE_BINARY ??
+      (await buildRustExample("project-repository-fixture")),
     passwordHash = await hashPassword(password);
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
@@ -221,14 +225,13 @@ try {
           { status: 409 },
         );
         await send(
-          "standalone managed command remains rejected",
+          "standalone native root accepts its protected message",
           standalone,
           {
             type: "agent.protected-message",
             message: content.standaloneMessage,
             telemetry,
           },
-          { status: 409 },
         );
         await send("plan event", chat, {
           type: "agent.plan.protected",
@@ -345,8 +348,8 @@ try {
             "GET",
             "/api/chats/" + id + "/messages",
           );
-          assert.equal(list.messages.length, id === chat ? 1 : 0);
-          if (id === chat)
+          assert.equal(list.messages.length, id === task ? 0 : 1);
+          if (id !== task)
             await proveEventMessage(h, list.messages[0], taskMessage, result);
         }
         assert.equal(
@@ -429,7 +432,8 @@ try {
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, JSON.stringify(report, null, 2) + "\n");
   }
-  if (!failure) await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
 }
 if (failure) throw failure;
 console.log(

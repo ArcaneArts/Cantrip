@@ -9017,6 +9017,643 @@
         "remaining": [
           "Nine local storage/authentication HTTP cells with controlled worker runtime replies; full worker/UI and final supported-platform artifacts remain separately qualified."
         ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/direct-attachments/:capabilityId",
+        "implementation": "cantrip_server_rs/src/http/direct_attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/terminals/:terminalId",
+        "implementation": "cantrip_server_rs/src/http/terminals.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/tunnel-attachments/:attachmentId",
+        "implementation": "cantrip_server_rs/src/http/tunnel_attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/tunnels/:tunnelId",
+        "implementation": "cantrip_server_rs/src/http/tunnels.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/worker-links/:sessionId",
+        "implementation": "cantrip_server_rs/src/http/worker_links.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/worker-links/:sessionId/grants/:grantId",
+        "implementation": "cantrip_server_rs/src/http/worker_links.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/worker-links/:sessionId/peers/:peerSessionId",
+        "implementation": "cantrip_server_rs/src/http/worker_links.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats/:chatId/preparation",
+        "implementation": "cantrip_server_rs/src/http/chat_preparation.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats/:chatId/runtime-handoffs",
+        "implementation": "cantrip_server_rs/src/http/native_handoffs.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats/:chatId/runtime-handoffs/:operationId",
+        "implementation": "cantrip_server_rs/src/http/native_handoffs.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/tunnels",
+        "implementation": "cantrip_server_rs/src/http/tunnels.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/terminals/:terminalId/connect",
+        "implementation": "cantrip_server_rs/src/http/terminal_socket.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/tunnel-attachments/:attachmentId/connect",
+        "implementation": "cantrip_server_rs/src/http/tunnel_socket.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/tunnels",
+        "implementation": "cantrip_server_rs/src/http/tunnels.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/tunnels/:tunnelId",
+        "implementation": "cantrip_server_rs/src/http/tunnels.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/worker-links/:sessionId/connect",
+        "implementation": "cantrip_server_rs/src/http/worker_link_socket.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/terminals/:terminalId/worktree",
+        "implementation": "cantrip_server_rs/src/http/terminals.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/tunnels/:tunnelId",
+        "implementation": "cantrip_server_rs/src/http/tunnels.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/console",
+        "implementation": "cantrip_server_rs/src/http/chat_console.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/preparation",
+        "implementation": "cantrip_server_rs/src/http/chat_preparation.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/runtime-handoffs",
+        "implementation": "cantrip_server_rs/src/http/native_handoffs.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/runtime-handoffs/:operationId/cancel",
+        "implementation": "cantrip_server_rs/src/http/native_handoffs.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/runtime-handoffs/:operationId/retry",
+        "implementation": "cantrip_server_rs/src/http/native_handoffs.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/direct-attachments/:capabilityId/telemetry",
+        "implementation": "cantrip_server_rs/src/http/direct_attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-commands/inference-recovery",
+        "implementation": "cantrip_server_rs/src/http/native_admission.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-commands/inference-resource-authorize",
+        "implementation": "cantrip_server_rs/src/http/native_admission.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-runtime-handoffs",
+        "implementation": "cantrip_server_rs/src/http/native_handoffs.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-runtime-handoffs/configuration",
+        "implementation": "cantrip_server_rs/src/http/native_handoffs.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/terminals/:terminalId/direct",
+        "implementation": "cantrip_server_rs/src/http/direct_attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/tunnel-attachments/:attachmentId/direct",
+        "implementation": "cantrip_server_rs/src/http/tunnel_attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/tunnel-attachments/:attachmentId/direct-activate",
+        "implementation": "cantrip_server_rs/src/http/tunnel_attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/tunnel-attachments/:attachmentId/lease",
+        "implementation": "cantrip_server_rs/src/http/tunnel_attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/tunnels",
+        "implementation": "cantrip_server_rs/src/http/tunnels.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/tunnels/:tunnelId/attachments",
+        "implementation": "cantrip_server_rs/src/http/tunnel_attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/worker-links/:sessionId/direct",
+        "implementation": "cantrip_server_rs/src/http/worker_link_sessions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/worker-links/:sessionId/direct-activate",
+        "implementation": "cantrip_server_rs/src/http/worker_link_sessions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/worker-links/:sessionId/grants/:grantId/renew",
+        "implementation": "cantrip_server_rs/src/http/worker_links.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/worker-links/:sessionId/observations/grant",
+        "implementation": "cantrip_server_rs/src/http/worker_links.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/worker-links/:sessionId/peers",
+        "implementation": "cantrip_server_rs/src/http/worker_links.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/worker-links/:sessionId/peers/:peerSessionId/mailbox",
+        "implementation": "cantrip_server_rs/src/http/worker_links.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/worker-links/:sessionId/peers/:peerSessionId/signals",
+        "implementation": "cantrip_server_rs/src/http/worker_links.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/worker-links/:sessionId/remote-surfaces/:surfaceId/grant",
+        "implementation": "cantrip_server_rs/src/http/worker_links.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/worker-links/:sessionId/renew",
+        "implementation": "cantrip_server_rs/src/http/worker_links.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/worker-links/:sessionId/route",
+        "implementation": "cantrip_server_rs/src/http/worker_link_sessions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/worker-links/:sessionId/telemetry",
+        "implementation": "cantrip_server_rs/src/http/worker_link_sessions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/worker-links/:sessionId/terminals/:terminalId/grant",
+        "implementation": "cantrip_server_rs/src/http/worker_links.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/worker-links/:sessionId/tunnel-attachments/:attachmentId/grant",
+        "implementation": "cantrip_server_rs/src/http/worker_links.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/workers/:workerId/direct-probe",
+        "implementation": "cantrip_server_rs/src/http/direct_attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/workers/:workerId/worker-link/sessions",
+        "implementation": "cantrip_server_rs/src/http/worker_links.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
       }
     ]
   },
@@ -10865,6 +11502,294 @@
         ],
         "remaining": [
           "Scoped macOS arm64 actual repository/notification/production-artifact qualification. Complete original-goal and final supported-platform acceptance remain separate."
+        ]
+      },
+      {
+        "command": "worker-link.identity.resolve",
+        "implementation": "cantrip_server_rs/src/worker_links/sessions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "worker-link.session.install",
+        "implementation": "cantrip_server_rs/src/worker_links/sessions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "worker-link.session.revoke",
+        "implementation": "cantrip_server_rs/src/worker_links/sessions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "worker-link.session.renew",
+        "implementation": "cantrip_server_rs/src/worker_links/sessions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "worker-link.session.route",
+        "implementation": "cantrip_server_rs/src/worker_links/sessions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "worker-link.peer.install",
+        "implementation": "cantrip_server_rs/src/worker_links/peers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "worker-link.peer.signal",
+        "implementation": "cantrip_server_rs/src/worker_links/peers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "worker-link.peer.revoke",
+        "implementation": "cantrip_server_rs/src/worker_links/peers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "worker-link.grant.install",
+        "implementation": "cantrip_server_rs/src/worker_links/grants.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "worker-link.grant.renew",
+        "implementation": "cantrip_server_rs/src/worker_links/grants.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "worker-link.grant.revoke",
+        "implementation": "cantrip_server_rs/src/worker_links/grants.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "terminal.open",
+        "implementation": "cantrip_server_rs/src/terminals/relay.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "terminal.detach",
+        "implementation": "cantrip_server_rs/src/terminals/relay.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "terminal.close",
+        "implementation": "cantrip_server_rs/src/http/terminals.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "terminal.input",
+        "implementation": "cantrip_server_rs/src/terminals/relay.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "terminal.resize",
+        "implementation": "cantrip_server_rs/src/terminals/relay.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "terminal.prepare-state",
+        "implementation": "cantrip_server_rs/src/chats/managed_preparation/work.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "chat.thread.ensure",
+        "implementation": "cantrip_server_rs/src/chats/managed_console.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "chat.runtime.handoff",
+        "implementation": "cantrip_server_rs/src/native_handoffs/service.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "direct.capability.prepare",
+        "implementation": "cantrip_server_rs/src/direct_attachments/prepare.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "direct.capability.revoke",
+        "implementation": "cantrip_server_rs/src/direct_attachments/lifecycle.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "surface.attach",
+        "implementation": "cantrip_server_rs/src/http/worker_link_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "surface.detach",
+        "implementation": "cantrip_server_rs/src/http/worker_link_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
+        ]
+      },
+      {
+        "command": "surface.close",
+        "implementation": "cantrip_server_rs/src/http/remote_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
         ]
       }
     ]
@@ -12785,6 +13710,59 @@
         ],
         "remaining": [
           "Scoped macOS arm64 actual repository/notification/production-artifact qualification. Complete original-goal and final supported-platform acceptance remain separate."
+        ]
+      },
+      {
+        "tableName": "terminals",
+        "exportName": "terminals",
+        "implementation": "cantrip_server_rs/src/terminals/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "tableName": "managed_chat_preparations",
+        "exportName": "managedChatPreparations",
+        "implementation": "cantrip_server_rs/src/chats/managed_preparation/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "tableName": "native_runtime_handoffs",
+        "exportName": "nativeRuntimeHandoffs",
+        "implementation": "cantrip_server_rs/src/native_handoffs/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "tableName": "account_bandwidth_usage_buckets",
+        "exportName": "accountBandwidthUsageBuckets",
+        "implementation": "cantrip_server_rs/src/usage/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
+          "Complete periodic consolidation and idempotent accounting flush crash contracts still require ledger reconciliation."
         ]
       }
     ]
@@ -18515,6 +19493,42 @@
         ],
         "remaining": [
           "Scoped macOS arm64 actual repository/notification/production-artifact qualification. Complete original-goal and final supported-platform acceptance remain separate."
+        ]
+      },
+      {
+        "resource": "chat-preparation",
+        "implementation": "cantrip_server_rs/src/chats/managed_preparation/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "resource": "tunnel",
+        "implementation": "cantrip_server_rs/src/tunnels/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "resource": "remote-desktop",
+        "implementation": "cantrip_server_rs/src/http/worker_link_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-transport-inference-acceptance.json",
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+        ],
+        "remaining": [
+          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
         ]
       }
     ]

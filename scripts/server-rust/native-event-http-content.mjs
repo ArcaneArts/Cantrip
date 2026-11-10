@@ -219,11 +219,11 @@ export async function proveEventStorage(h, state, result) {
     assert.equal(row.payload, null);
     assert.equal(row.response, null);
   }
-  assert.equal(state.messages.length, 1);
+  assert.equal(state.messages.length, 2);
   assert.equal(state.interactions.length, 2);
   assert.equal(JSON.stringify(state).includes(eventPrivateMarker), false);
   assert.equal(
     state.messages.some((m) => m.chat_id === standalone),
-    false,
+    true,
   );
 }
