@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildRustServer, buildRustExample } from "./build.mjs";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { AttachmentFixture } from "./tunnel-attachment-fixture.mjs";
 import { tunnelAttachmentCases } from "./tunnel-attachment-cases.mjs";
 import { tunnelAttachmentLocks } from "./tunnel-attachment-locks.mjs";
@@ -40,16 +41,21 @@ const report = {
       ? "actual-tunnel-runtime-faults"
       : "actual-tunnel-attachment-http-ws",
   databaseMode,
+  root,
   completeReplacement: false,
   profiles: [],
 };
 let pg, failure;
 try {
-  const executable = await buildRustServer(),
-    repositoryBinary = await buildRustExample("project-repository-fixture");
+  const executable =
+      process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer()),
+    repositoryBinary =
+      process.env.CANTRIP_RUST_PROJECT_FIXTURE_BINARY ??
+      (await buildRustExample("project-repository-fixture")),
+    passwordHash = await hashPassword(password);
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
-  for (const profile of ["none", "accounts"]) {
+  for (const profile of ["none", "password", "accounts"]) {
     const runtimes = [];
     report.profiles.push({ profile, runtimes });
     for (const kind of ["node", "rust"]) {
@@ -65,6 +71,9 @@ try {
         databaseMode,
         environment: {
           CANTRIP_AUTH_MODE: profile,
+          ...(profile === "password"
+            ? { CANTRIP_PASSWORD_HASH: passwordHash }
+            : {}),
           CANTRIP_REGISTRATION_ENABLED: "true",
           ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
           ...(kind === "rust" && databaseMode === "bundled-postgres"
@@ -113,7 +122,13 @@ try {
             });
           owner = fixture.records.get("register main").currentUser.id;
           other = fixture.records.get("register other").currentUser.id;
-        } else await visit("session", "GET", "/api/auth/session");
+        } else {
+          await visit("session", "GET", "/api/auth/session");
+          if (profile === "password")
+            await visit("login", "POST", "/api/auth/login", {
+              json: { password },
+            });
+        }
         await fixture.close();
         repo = await openRepo();
         for (const sql of [
@@ -330,7 +345,8 @@ try {
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");
   }
   if (failure) console.error("Retained failed attachment fixture:", root);
-  else await rm(root, { recursive: true, force: true });
+  else if (!process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
 }
 if (failure) throw failure;
 console.log(

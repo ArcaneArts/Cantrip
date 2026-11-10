@@ -19,6 +19,7 @@ import { terminalDirectCases } from "./terminal-direct-cases.mjs";
 import { terminalRelayCases } from "./terminal-relay-cases.mjs";
 import { directAttachmentWireFixtures } from "./direct-attachment-wire-fixtures.mjs";
 import { workspaceState } from "./workspace-wire-fixtures.mjs";
+import { terminalWireSummarySchema } from "../../packages/protocol/dist/index.js";
 import {
   tunnelWorkerLinkCases,
   tunnelEvents,
@@ -688,6 +689,42 @@ try {
           databaseMode,
           live,
         });
+        const consoleInput = { id: ids[6], titleProtection, stateProtection };
+        const commandCount = result.commands.length;
+        const console = await visit(
+          "resolve existing linked console through Chat API",
+          "POST",
+          "/api/chats/chat/console",
+          { json: consoleInput, status: 201 },
+        );
+        terminalWireSummarySchema.parse(console);
+        assert.equal(console.id, "linked-console");
+        assert.equal(console.linkedChatId, "chat");
+        assert.equal(console.kind, "chat-console");
+        assert.deepEqual(
+          await visit(
+            "replay linked console resolution",
+            "POST",
+            "/api/chats/chat/console",
+            {
+              json: consoleInput,
+              status: 201,
+            },
+          ),
+          console,
+        );
+        assert.equal(result.commands.length, commandCount);
+        if (profile === "accounts")
+          await visit(
+            "foreign Chat console remains hidden",
+            "POST",
+            "/api/chats/chat/console",
+            {
+              client: "other",
+              json: consoleInput,
+              status: 404,
+            },
+          );
         await terminalDirectCases({
           fixture,
           visit,

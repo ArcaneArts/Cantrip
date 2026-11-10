@@ -6,6 +6,7 @@ import path from "node:path";
 import { repositoryRoot } from "./build.mjs";
 import { fixtureEnvironment, startServer } from "./process.mjs";
 import { observeAuditCompletion } from "./audit-observations.mjs";
+import { registerHttpTraceOrigin } from "./http-request-trace.mjs";
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -114,6 +115,12 @@ export class HttpFixture {
             ],
             { cwd: repositoryRoot, env: this.environment },
           );
+    registerHttpTraceOrigin(this.server.origin, {
+      kind: this.kind,
+      databaseMode: this.databaseMode,
+      profile: this.environment.CANTRIP_AUTH_MODE,
+      name: this.name,
+    });
   }
   async close(options) {
     const server = this.server;
