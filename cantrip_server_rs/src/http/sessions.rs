@@ -451,8 +451,9 @@ async fn execute(
                 .mobile_grant(&user.id, session, &generated.code_hash, expires)
                 .await?;
             let repository = service.repository.clone();
+            let cutoff = auth::now() - chrono::Duration::days(1);
             tokio::spawn(async move {
-                let _ = repository.prune_mobile().await;
+                let _ = repository.prune_mobile(cutoff).await;
             });
             audit(
                 service,

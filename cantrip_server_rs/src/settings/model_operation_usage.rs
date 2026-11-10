@@ -181,6 +181,7 @@ impl SettingsRepository {
                 "model_id":model_owned.then_some(model),"provider_id":provider_owned.then_some(provider),
                 "model_route_id":(model_owned && provider_owned && route_owned).then_some(route),
                 "worker_id":worker,"execution_attempt_id":operation_id,"attempt_kind":operation,
+                "provider_account_id":null,"turn_id":null,"reasoning_effort":null,
                 "attempt_status":receipt.and_then(|receipt|receipt["status"].as_str()).unwrap_or(if running {"running"}else{"unknown"}),
                 "worker_version":receipt.and_then(|receipt|receipt["workerVersion"].as_str()),
                 "input_tokens":counter("inputTokens"),"output_tokens":counter("outputTokens"),

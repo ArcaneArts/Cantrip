@@ -17385,6 +17385,168 @@
         "remaining": [
           "Scoped macOS arm64 actual repository/notification/production-artifact qualification. Complete original-goal and final supported-platform acceptance remain separate."
         ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+        "method": "findActiveWorkerPrincipal",
+        "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+        "evidence": [
+          "scripts/server-rust/identity-state-repository-compatibility.mjs",
+          "docs/security/rust-server-identity-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped local macOS arm64 comparison; final supported-platform and complete original-goal acceptance remain open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+        "method": "findWorkerPrincipalById",
+        "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+        "evidence": [
+          "scripts/server-rust/identity-state-repository-compatibility.mjs",
+          "docs/security/rust-server-identity-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped local macOS arm64 comparison; final supported-platform and complete original-goal acceptance remain open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+        "method": "replaceActiveWorkerPrincipal",
+        "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+        "evidence": [
+          "scripts/server-rust/identity-state-repository-compatibility.mjs",
+          "docs/security/rust-server-identity-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped local macOS arm64 comparison; final supported-platform and complete original-goal acceptance remain open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "accountEmailIsWhitelisted",
+        "implementation": "cantrip_server_rs/src/auth/repository.rs",
+        "evidence": [
+          "scripts/server-rust/identity-state-repository-compatibility.mjs",
+          "docs/security/rust-server-identity-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped local macOS arm64 comparison; final supported-platform and complete original-goal acceptance remain open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "pruneMobileSignInGrants",
+        "implementation": "cantrip_server_rs/src/auth/repository.rs",
+        "evidence": [
+          "scripts/server-rust/identity-state-repository-compatibility.mjs",
+          "docs/security/rust-server-identity-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped local macOS arm64 comparison; final supported-platform and complete original-goal acceptance remain open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "rotateSessionCsrfToken",
+        "implementation": "cantrip_server_rs/src/auth/repository.rs",
+        "evidence": [
+          "scripts/server-rust/identity-state-repository-compatibility.mjs",
+          "docs/security/rust-server-identity-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped local macOS arm64 comparison; final supported-platform and complete original-goal acceptance remain open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "recordModelOperationUsage",
+        "implementation": "cantrip_server_rs/src/settings/model_operation_usage.rs",
+        "evidence": [
+          "scripts/server-rust/identity-state-repository-compatibility.mjs",
+          "docs/security/rust-server-identity-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped local macOS arm64 comparison; final supported-platform and complete original-goal acceptance remain open."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "onlineWorkerCount",
+        "implementation": "cantrip_server_rs/src/workers/repository.rs",
+        "evidence": [
+          "scripts/server-rust/identity-state-repository-compatibility.mjs",
+          "docs/security/rust-server-identity-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped local macOS arm64 comparison; final supported-platform and complete original-goal acceptance remain open.",
+          "Existing list_workers plus the Source online-status filter; no separate production counter API."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "migrateProviderSecrets",
+        "implementation": "cantrip_server_rs/src/migrations.rs",
+        "evidence": [
+          "scripts/server-rust/identity-state-repository-compatibility.mjs",
+          "docs/security/rust-server-identity-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped local macOS arm64 comparison; final supported-platform and complete original-goal acceptance remain open.",
+          "Current Source method is intentionally empty. Canonical SQL0120 is already embedded in the native migration chain. Source no-op invocation and native migration replay preserve current protected rows; no new runtime reset or deletion."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "migrateProviderAccountCredentialSecrets",
+        "implementation": "cantrip_server_rs/src/migrations.rs",
+        "evidence": [
+          "scripts/server-rust/identity-state-repository-compatibility.mjs",
+          "docs/security/rust-server-identity-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped local macOS arm64 comparison; final supported-platform and complete original-goal acceptance remain open.",
+          "Current Source method is intentionally empty. Canonical SQL0120 is already embedded in the native migration chain. Source no-op invocation and native migration replay preserve current protected rows; no new runtime reset or deletion."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "migrateMcpServerSecrets",
+        "implementation": "cantrip_server_rs/src/migrations.rs",
+        "evidence": [
+          "scripts/server-rust/identity-state-repository-compatibility.mjs",
+          "docs/security/rust-server-identity-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped local macOS arm64 comparison; final supported-platform and complete original-goal acceptance remain open.",
+          "Current Source method is intentionally empty. Canonical SQL0120 is already embedded in the native migration chain. Source no-op invocation and native migration replay preserve current protected rows; no new runtime reset or deletion."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "method": "desktopUpdateActiveWork",
+        "implementation": "cantrip_server_rs/src/http/settings_operations.rs",
+        "evidence": [
+          "scripts/server-rust/desktop-update-state-http-compatibility.mjs",
+          "scripts/server-rust/settings-active-work-http-cases.mjs",
+          "docs/security/rust-server-identity-state-acceptance.json"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "remaining": [
+          "Scoped local macOS arm64 comparison; final supported-platform and complete original-goal acceptance remain open.",
+          "Real public HTTP owner-scoped nine-count summary, lifecycle filters, SQL failure/recovery and public session callers across all9store/authcells; optimized externalPG repeats all3authmodes."
+        ]
       }
     ]
   },
@@ -23345,6 +23507,14 @@
         "Complete remaining inventory/domain and original-goal acceptance reconciliation.",
         "Reconcile final supported-platform shipping artifacts and evidence."
       ]
+    },
+    "currentIdentityStateContracts": {
+      "status": "implemented-pending-platform-acceptance",
+      "evidence": [
+        "docs/RUST_SERVER_IDENTITY_STATE_CONTRACTS.md",
+        "docs/security/rust-server-identity-state-acceptance.json"
+      ],
+      "scope": "Twelve current facade identities; all-store repository and nine-cell session/desktop HTTP parity; optimized auth and relocated package all3stores; focused optimized HTTP externalPG3auth. Source secret-migration aliases remain intentional no-ops covered by the existing canonical SQL0120 chain."
     }
   },
   "remainingAcceptance": [

@@ -17,6 +17,14 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current identity-state qualification](RUST_SERVER_IDENTITY_STATE_CONTRACTS.md)
+binds twelve further repository identities, repairs stale model-operation usage
+attribution, and exercises actual session/mobile-grant callers and desktop-update
+counts across all nine storage/authentication cells. Optimized authentication and
+relocated-package checks pass all three stores. The ledger now maps 331/370
+repository identities; remaining category gaps and final supported-artifact
+acceptance remain open.
+
 The [current worktree observation qualification](RUST_SERVER_WORKTREE_OBSERVATIONS.md)
 repairs the omitted native worker-status consumer and compares its durable state,
 Live events, failures and restart behavior across all nine local storage/authentication

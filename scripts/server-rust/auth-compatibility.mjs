@@ -21,6 +21,7 @@ const uuid =
 const report = {
   schemaVersion: 1,
   suite: "authentication-http",
+  root,
   completeReplacement: false,
   profiles: [],
 };
@@ -912,7 +913,8 @@ try {
   };
 } finally {
   await postgresOwner?.close();
-  await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
