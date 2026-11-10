@@ -17,6 +17,16 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current suspension and Task outcome qualification](RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md)
+compares the three previously unmapped internal HTTP identities across all three
+stores and authentication modes. It repairs suspension error text, an autonomous
+Goal post-commit failure and Goal-cycle conflict status. Actual SQL rollback,
+worker replacement, server restart, original encrypted answers and historical
+round preservation have current paired evidence. The ledger now maps all 584
+HTTP identities, including partial scopes, and 121/135 tables. Remaining
+command/table/Live scopes, historical partials and final supported-artifact
+acceptance remain open; controlled checkpoint facts do not execute native Core.
+
 The [current OS and execution qualification](RUST_SERVER_OS_EXECUTION_CONTRACTS.md)
 repairs attachment acknowledgement, Run response routing and public placement
 errors. Current nine-cell HTTP comparisons cover source/backup recovery after

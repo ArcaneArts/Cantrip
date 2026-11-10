@@ -9771,6 +9771,63 @@
         "remaining": [
           "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
         ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-commands/suspension-execution",
+        "implementation": "cantrip_server_rs/src/http/native_admission.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/native-recovery-http-compatibility.mjs",
+          "scripts/server-rust/native-recovery-http-content.mjs",
+          "scripts/server-rust/native-recovery-http-goal-content.mjs",
+          "scripts/server-rust/native-recovery-http-goal.mjs",
+          "scripts/server-rust/native-recovery-http-round.mjs",
+          "scripts/server-rust/native-recovery-http-suspension.mjs",
+          "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
+          "docs/security/rust-server-native-recovery-acceptance.json"
+        ],
+        "remaining": [
+          "Actual native Core/TUI execution, complete product/fault/coordination and final supported-platform/package acceptance remain separate. This controlled worker provides checkpoint and outcome facts over the unchanged production connection protocol."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-commands/task-goal-cycle-dispatch",
+        "implementation": "cantrip_server_rs/src/http/native_admission.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/native-recovery-http-compatibility.mjs",
+          "scripts/server-rust/native-recovery-http-content.mjs",
+          "scripts/server-rust/native-recovery-http-goal-content.mjs",
+          "scripts/server-rust/native-recovery-http-goal.mjs",
+          "scripts/server-rust/native-recovery-http-round.mjs",
+          "scripts/server-rust/native-recovery-http-suspension.mjs",
+          "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
+          "docs/security/rust-server-native-recovery-acceptance.json"
+        ],
+        "remaining": [
+          "Actual native Core/TUI execution, complete product/fault/coordination and final supported-platform/package acceptance remain separate. This controlled worker provides checkpoint and outcome facts over the unchanged production connection protocol."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-commands/task-goal-outcome",
+        "implementation": "cantrip_server_rs/src/http/native_admission.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/native-recovery-http-compatibility.mjs",
+          "scripts/server-rust/native-recovery-http-content.mjs",
+          "scripts/server-rust/native-recovery-http-goal-content.mjs",
+          "scripts/server-rust/native-recovery-http-goal.mjs",
+          "scripts/server-rust/native-recovery-http-round.mjs",
+          "scripts/server-rust/native-recovery-http-suspension.mjs",
+          "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
+          "docs/security/rust-server-native-recovery-acceptance.json"
+        ],
+        "remaining": [
+          "Actual native Core/TUI execution, complete product/fault/coordination and final supported-platform/package acceptance remain separate. This controlled worker provides checkpoint and outcome facts over the unchanged production connection protocol."
+        ]
       }
     ]
   },
@@ -14127,6 +14184,69 @@
         ],
         "remaining": [
           "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
+        ]
+      },
+      {
+        "tableName": "tasks",
+        "exportName": "tasks",
+        "implementation": "cantrip_server_rs/src/tasks/",
+        "status": "partial",
+        "scope": "The complete current Task row and endpoint ciphertext remain unchanged when an older round publishes history, including SQL rollback, worker replacement, server restart and exact replay.",
+        "evidence": [
+          "scripts/server-rust/native-recovery-http-compatibility.mjs",
+          "scripts/server-rust/native-recovery-http-content.mjs",
+          "scripts/server-rust/native-recovery-http-goal-content.mjs",
+          "scripts/server-rust/native-recovery-http-goal.mjs",
+          "scripts/server-rust/native-recovery-http-round.mjs",
+          "scripts/server-rust/native-recovery-http-suspension.mjs",
+          "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
+          "docs/security/rust-server-native-recovery-acceptance.json"
+        ],
+        "remaining": [
+          "Actual native Core/TUI execution, complete product/fault/coordination and final supported-platform/package acceptance remain separate. This controlled worker provides checkpoint and outcome facts over the unchanged production connection protocol.",
+          "Active-round scheduling/projection and all other Task writers retain their existing separate qualification; historical-round preservation does not establish all Task behavior."
+        ]
+      },
+      {
+        "tableName": "task_planning_rounds",
+        "exportName": "taskPlanningRounds",
+        "implementation": "cantrip_server_rs/src/tasks/round_input_history.rs",
+        "status": "partial",
+        "scope": "Historical round receipt validation, atomic protected answer/terminal commit, history-only outcome digest, exact replay and canonical input replacement/deletion retirement; the current newer Task and released lane are preserved.",
+        "evidence": [
+          "scripts/server-rust/native-recovery-http-compatibility.mjs",
+          "scripts/server-rust/native-recovery-http-content.mjs",
+          "scripts/server-rust/native-recovery-http-goal-content.mjs",
+          "scripts/server-rust/native-recovery-http-goal.mjs",
+          "scripts/server-rust/native-recovery-http-round.mjs",
+          "scripts/server-rust/native-recovery-http-suspension.mjs",
+          "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
+          "docs/security/rust-server-native-recovery-acceptance.json"
+        ],
+        "remaining": [
+          "Actual native Core/TUI execution, complete product/fault/coordination and final supported-platform/package acceptance remain separate. This controlled worker provides checkpoint and outcome facts over the unchanged production connection protocol.",
+          "Active-round scheduling/projection and all other Task writers retain their existing separate qualification; historical-round preservation does not establish all Task behavior."
+        ]
+      },
+      {
+        "tableName": "task_dispatch_cycles",
+        "exportName": "taskDispatchCycles",
+        "implementation": "cantrip_server_rs/src/tasks/goal_cycle_recovery.rs",
+        "status": "partial",
+        "scope": "Actual worker-authorized Goal-cycle scope dispatch and stable publication identity, original-source authority, atomic protected answer/terminal commit and digest, rollback, worker replacement, restart and exact replay.",
+        "evidence": [
+          "scripts/server-rust/native-recovery-http-compatibility.mjs",
+          "scripts/server-rust/native-recovery-http-content.mjs",
+          "scripts/server-rust/native-recovery-http-goal-content.mjs",
+          "scripts/server-rust/native-recovery-http-goal.mjs",
+          "scripts/server-rust/native-recovery-http-round.mjs",
+          "scripts/server-rust/native-recovery-http-suspension.mjs",
+          "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
+          "docs/security/rust-server-native-recovery-acceptance.json"
+        ],
+        "remaining": [
+          "Actual native Core/TUI execution, complete product/fault/coordination and final supported-platform/package acceptance remain separate. This controlled worker provides checkpoint and outcome facts over the unchanged production connection protocol.",
+          "Active-round scheduling/projection and all other Task writers retain their existing separate qualification; historical-round preservation does not establish all Task behavior."
         ]
       }
     ]
@@ -25464,6 +25584,25 @@
         "docs/security/rust-server-project-state-acceptance.json"
       ],
       "scope": "Thirteen active repository identities plus two explicit obsolete-helper dispositions; all-store82case comparisons and nine-cell public captured-runtime status/output/lifecycle/SQL failure parity. Optimized externalPG repeats3authmodes; relocated package and retired plaintext GitHub catalog exercise all3stores. No new full-worker/UI or Windows/Linux qualification."
+    },
+    "currentNativeRecoveryContracts": {
+      "status": "partial",
+      "qualification": "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
+      "acceptance": "docs/security/rust-server-native-recovery-acceptance.json",
+      "counts": {
+        "pairedHttpObservations": 888,
+        "cryptographicProofs": 504,
+        "tracedRequests": 2784,
+        "newRoutes": 3,
+        "newWorkerCommands": 0,
+        "newDurableTables": 3,
+        "newLiveResources": 0
+      },
+      "remaining": [
+        "Actual native Core/TUI execution, complete product/fault/coordination and final supported-platform/package acceptance remain separate. This controlled worker provides checkpoint and outcome facts over the unchanged production connection protocol.",
+        "Active-round scheduling/projection and all other Task writers retain their existing separate qualification; historical-round preservation does not establish all Task behavior.",
+        "Remaining worker-command, durable-table and Live identities, historical partial scopes and original-goal final acceptance remain open."
+      ]
     }
   },
   "remainingAcceptance": [
