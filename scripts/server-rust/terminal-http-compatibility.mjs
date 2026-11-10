@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { buildRustServer, buildRustExample } from "./build.mjs";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import {
   TerminalLinkFixture,
   terminalGrantWorker,
@@ -50,6 +51,7 @@ const root = await mkdtemp(path.join(tmpdir(), "cantrip-terminal-http-"));
 const report = {
   suite: "actual-terminal-management-http",
   databaseMode,
+  root,
   completeReplacement: false,
   profiles: [],
 };
@@ -94,10 +96,13 @@ let pg, failure;
 try {
   const executable =
       process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer()),
-    repoExecutable = await buildRustExample("project-repository-fixture");
+    repoExecutable =
+      process.env.CANTRIP_RUST_PROJECT_FIXTURE_BINARY ??
+      (await buildRustExample("project-repository-fixture")),
+    passwordHash = await hashPassword(password);
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
-  for (const profile of ["none", "accounts"]) {
+  for (const profile of ["none", "password", "accounts"]) {
     const outputs = [];
     report.profiles.push({ profile, runtimes: outputs });
     for (const kind of ["node", "rust"]) {
@@ -115,6 +120,9 @@ try {
         observeTunnelExpiry: true,
         environment: {
           CANTRIP_AUTH_MODE: profile,
+          ...(profile === "password"
+            ? { CANTRIP_PASSWORD_HASH: passwordHash }
+            : {}),
           CANTRIP_REGISTRATION_ENABLED: "true",
           ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
           ...(kind === "rust" && databaseMode === "bundled-postgres"
@@ -179,7 +187,13 @@ try {
             });
           owner = fixture.records.get("register main").currentUser.id;
           other = fixture.records.get("register other").currentUser.id;
-        } else await visit("session", "GET", "/api/auth/session");
+        } else {
+          await visit("session", "GET", "/api/auth/session");
+          if (profile === "password")
+            await visit("login", "POST", "/api/auth/login", {
+              json: { password },
+            });
+        }
         await fixture.close();
         repo = await openRepo();
         for (const sql of targetStateSql(owner, other)) await repo.seed(sql);
@@ -275,7 +289,7 @@ try {
         assert.equal(recovered.rejected, false);
         result.startupSurfaces = recovered.value;
         assert.deepEqual(result.startupSurfaces, {
-          browserWorker: profile === "none" ? "alpha" : null,
+          browserWorker: profile === "accounts" ? null : "alpha",
           surfaces: [
             {
               id: "browser",
@@ -891,7 +905,8 @@ try {
 } finally {
   await pg?.close();
   if (failure) report.retainedRoot = root;
-  else await rm(root, { recursive: true, force: true });
+  else if (!process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");

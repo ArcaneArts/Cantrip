@@ -33,6 +33,7 @@ const root = await mkdtemp(path.join(tmpdir(), "cantrip-terminal-repository-"));
 const report = {
   suite: "actual-terminal-resource-repositories",
   databaseMode,
+  root,
   completeReplacement: false,
   cases: [],
   snapshots: [],
@@ -207,7 +208,9 @@ async function rollback(label, run) {
     );
 }
 try {
-  executable = await buildRustExample("project-repository-fixture");
+  executable =
+    process.env.CANTRIP_RUST_PROJECT_FIXTURE_BINARY ??
+    (await buildRustExample("project-repository-fixture"));
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
   for (const [i, kind] of ["node", "rust"].entries()) {
@@ -870,7 +873,8 @@ try {
 } finally {
   for (const repo of pair) await repo.close();
   await pg?.close();
-  await rm(root, { recursive: true, force: true });
+  if (!process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");

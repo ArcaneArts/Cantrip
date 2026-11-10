@@ -27,6 +27,7 @@ const root = await mkdtemp(path.join(tmpdir(), "cantrip-preparation-http-"));
 const report = {
   suite: "managed-preparation-http",
   databaseMode,
+  root,
   completeReplacement: false,
   profiles: [],
 };
@@ -42,8 +43,11 @@ async function wait(read, predicate, label) {
   assert.ok(predicate(value), `${label}: ${JSON.stringify(value)}`);
 }
 try {
-  const executable = await buildRustServer(),
-    repositoryExecutable = await buildRustExample("project-repository-fixture"),
+  const executable =
+      process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer()),
+    repositoryExecutable =
+      process.env.CANTRIP_RUST_PROJECT_FIXTURE_BINARY ??
+      (await buildRustExample("project-repository-fixture")),
     passwordHash = await hashPassword(password);
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
@@ -334,7 +338,8 @@ try {
       "Preparation HTTP cleanup failed",
     );
   }
-  await rm(root, { recursive: true, force: true });
+  if (!process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");

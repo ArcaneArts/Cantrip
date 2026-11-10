@@ -17,6 +17,14 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current resource-state qualification](RUST_SERVER_RESOURCE_STATE_CONTRACTS.md)
+reconciles the remaining 24 repository identities and refreshes the historical
+partial Chat execution-context mapping. It preserves owned-null model defaults,
+qualifies Task/queue/status/ordering and terminal/remote-surface behavior, and
+records three unused private-helper dispositions. All 370 repository identities
+are now accounted for, including five obsolete helpers; other category gaps and
+complete supported-artifact/original-goal acceptance remain open.
+
 The [current project/Run state qualification](RUST_SERVER_PROJECT_STATE_CONTRACTS.md)
 adds thirteen active repository identities and two explicit obsolete-helper
 dispositions. It repairs strict captured-root validation, status/output/lifecycle

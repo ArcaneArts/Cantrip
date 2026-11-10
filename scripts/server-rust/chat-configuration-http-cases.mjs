@@ -35,6 +35,47 @@ export async function runChatConfigurationHttpCases({
     "GET",
     permissions,
   );
+  const modelReasoning =
+    "/api/settings/models/inventory-provider-model-1/reasoning";
+  for (const effort of [null, "low"]) {
+    await sql(
+      `UPDATE model_profiles SET default_reasoning_effort=${literal(effort)} WHERE id='inventory-provider-model-1'`,
+    );
+    await visit(
+      "owned settings reasoning default " + effort,
+      "GET",
+      modelReasoning,
+    );
+  }
+  await sql(
+    "UPDATE model_profiles SET default_reasoning_effort=NULL WHERE id='inventory-provider-model-1'",
+  );
+  await visit(
+    "missing settings reasoning model",
+    "GET",
+    "/api/settings/models/missing/reasoning",
+    { status: 404 },
+  );
+  await sql(
+    "ALTER TABLE model_profiles RENAME COLUMN default_reasoning_effort TO fixture_reasoning_default",
+  );
+  try {
+    await visit(
+      "actual settings reasoning query failure",
+      "GET",
+      modelReasoning,
+      { status: 500 },
+    );
+  } finally {
+    await sql(
+      "ALTER TABLE model_profiles RENAME COLUMN fixture_reasoning_default TO default_reasoning_effort",
+    );
+  }
+  await visit(
+    "settings reasoning recovers after actual query failure",
+    "GET",
+    modelReasoning,
+  );
   assert.equal(initial.available, true);
   assert.ok(initial.profiles.some((p) => p.id === ":yolo"));
   for (const mode of ["error", "invalid", "unavailable", "denied"]) {

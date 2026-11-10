@@ -1,0 +1,1127 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "baseCommit": "f5a5282c07e92e48f6e356a82b3182372654d5c9",
+  "platform": "darwin-arm64",
+  "scope": "Current resource repository contracts and public callers; controlled worker replies, not a new full worker/UI or Windows/Linux acceptance.",
+  "implementation": "Owned null model defaults remain distinct from a missing owned model; HTTP callers retain explicit null coalescing.",
+  "repositoryMappings": [
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "createTask",
+      "implementation": "cantrip_server_rs/src/chats/task_creation.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/resource-state-repository-pglite-v10.json",
+          "successfulCaseIndices": [29, 31]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-bundled-postgres-v10.json",
+          "successfulCaseIndices": [29, 31]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-postgres-v10.json",
+          "successfulCaseIndices": [29, 31]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "getOrCreateChatConsole",
+      "implementation": "cantrip_server_rs/src/terminals/linked_console.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/managed-preparation-pglite-v1.json",
+          "successfulCaseIndices": [12, 13]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/managed-preparation-bundled-postgres-v1.json",
+          "successfulCaseIndices": [12, 13]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/managed-preparation-postgres-v1.json",
+          "successfulCaseIndices": [12, 13]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "updateTerminalWorktree",
+      "implementation": "cantrip_server_rs/src/terminals/repository.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/terminal-repository-pglite-v1.json",
+          "successfulCaseIndices": [33, 34, 36]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/terminal-repository-bundled-postgres-v1.json",
+          "successfulCaseIndices": [33, 34, 36]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/terminal-repository-postgres-v1.json",
+          "successfulCaseIndices": [33, 34, 36]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "deleteTerminal",
+      "implementation": "cantrip_server_rs/src/terminals/repository.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/terminal-repository-pglite-v1.json",
+          "successfulCaseIndices": [52, 58, 59, 60, 61, 62, 63, 64, 69]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/terminal-repository-bundled-postgres-v1.json",
+          "successfulCaseIndices": [52, 58, 59, 60, 61, 62, 63, 64, 69]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/terminal-repository-postgres-v1.json",
+          "successfulCaseIndices": [52, 58, 59, 60, 61, 62, 63, 64, 69]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "ensureBrowserRemoteSurfaces",
+      "implementation": "cantrip_server_rs/src/remote_surfaces.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/remote-surface-repository-pglite-v1.json",
+          "successfulCaseIndices": [40, 42, 44, 46, 48, 50]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/remote-surface-repository-bundled-postgres-v1.json",
+          "successfulCaseIndices": [40, 42, 44, 46, 48, 50]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/remote-surface-repository-postgres-v1.json",
+          "successfulCaseIndices": [40, 42, 44, 46, 48, 50]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "listRemoteSurfaces",
+      "implementation": "cantrip_server_rs/src/remote_surfaces/catalog.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/resource-state-repository-pglite-v10.json",
+          "successfulCaseIndices": [83, 97]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-bundled-postgres-v10.json",
+          "successfulCaseIndices": [83, 97]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-postgres-v10.json",
+          "successfulCaseIndices": [83, 97]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "createRemoteSurface",
+      "implementation": "cantrip_server_rs/src/remote_surfaces/mutations.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/resource-state-repository-pglite-v10.json",
+          "successfulCaseIndices": [89]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-bundled-postgres-v10.json",
+          "successfulCaseIndices": [89]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-postgres-v10.json",
+          "successfulCaseIndices": [89]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "getRemoteSurfaceExecutionContext",
+      "implementation": "cantrip_server_rs/src/remote_surfaces.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/remote-surface-repository-pglite-v1.json",
+          "successfulCaseIndices": [
+            0, 1, 2, 3, 16, 17, 18, 19, 22, 24, 26, 28, 30, 32, 45, 47, 49, 51
+          ]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/remote-surface-repository-bundled-postgres-v1.json",
+          "successfulCaseIndices": [
+            0, 1, 2, 3, 16, 17, 18, 19, 22, 24, 26, 28, 30, 32, 45, 47, 49, 51
+          ]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/remote-surface-repository-postgres-v1.json",
+          "successfulCaseIndices": [
+            0, 1, 2, 3, 16, 17, 18, 19, 22, 24, 26, 28, 30, 32, 45, 47, 49, 51
+          ]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "updateRemoteSurface",
+      "implementation": "cantrip_server_rs/src/remote_surfaces/mutations.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/resource-state-repository-pglite-v10.json",
+          "successfulCaseIndices": [94]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-bundled-postgres-v10.json",
+          "successfulCaseIndices": [94]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-postgres-v10.json",
+          "successfulCaseIndices": [94]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "setRemoteSurfaceStatus",
+      "implementation": "cantrip_server_rs/src/remote_surfaces.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/remote-surface-repository-pglite-v1.json",
+          "successfulCaseIndices": [21, 23, 25, 27, 29, 31, 33, 35, 36, 37, 38]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/remote-surface-repository-bundled-postgres-v1.json",
+          "successfulCaseIndices": [21, 23, 25, 27, 29, 31, 33, 35, 36, 37, 38]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/remote-surface-repository-postgres-v1.json",
+          "successfulCaseIndices": [21, 23, 25, 27, 29, 31, 33, 35, 36, 37, 38]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "resetTransientRemoteSurfaceStatuses",
+      "implementation": "cantrip_server_rs/src/remote_surfaces.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/remote-surface-repository-pglite-v1.json",
+          "successfulCaseIndices": [39]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/remote-surface-repository-bundled-postgres-v1.json",
+          "successfulCaseIndices": [39]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/remote-surface-repository-postgres-v1.json",
+          "successfulCaseIndices": [39]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "deleteRemoteSurface",
+      "implementation": "cantrip_server_rs/src/remote_surfaces/mutations.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/resource-state-repository-pglite-v10.json",
+          "successfulCaseIndices": [110, 112]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-bundled-postgres-v10.json",
+          "successfulCaseIndices": [110, 112]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-postgres-v10.json",
+          "successfulCaseIndices": [110, 112]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "listRemoteDesktops",
+      "implementation": "cantrip_server_rs/src/remote_surfaces/catalog.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/resource-state-repository-pglite-v10.json",
+          "successfulCaseIndices": [84, 105]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-bundled-postgres-v10.json",
+          "successfulCaseIndices": [84, 105]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-postgres-v10.json",
+          "successfulCaseIndices": [84, 105]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "getRemoteDesktop",
+      "implementation": "cantrip_server_rs/src/remote_surfaces/catalog.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/resource-state-repository-pglite-v10.json",
+          "successfulCaseIndices": [85, 104, 106]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-bundled-postgres-v10.json",
+          "successfulCaseIndices": [85, 104, 106]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-postgres-v10.json",
+          "successfulCaseIndices": [85, 104, 106]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "createRemoteDesktop",
+      "implementation": "cantrip_server_rs/src/remote_surfaces/desktops.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/resource-state-repository-pglite-v10.json",
+          "successfulCaseIndices": [103]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-bundled-postgres-v10.json",
+          "successfulCaseIndices": [103]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-postgres-v10.json",
+          "successfulCaseIndices": [103]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "setChatAutomationPaused",
+      "implementation": "cantrip_server_rs/src/chats/state.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/resource-state-repository-pglite-v10.json",
+          "successfulCaseIndices": [37, 38, 39, 40, 41, 42, 43]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-bundled-postgres-v10.json",
+          "successfulCaseIndices": [37, 38, 39, 40, 41, 42, 43]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-postgres-v10.json",
+          "successfulCaseIndices": [37, 38, 39, 40, 41, 42, 43]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "getModelReasoningDefault",
+      "implementation": "cantrip_server_rs/src/settings/models.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/resource-state-repository-pglite-v10.json",
+          "successfulCaseIndices": [0, 1, 5]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-bundled-postgres-v10.json",
+          "successfulCaseIndices": [0, 1, 5]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-postgres-v10.json",
+          "successfulCaseIndices": [0, 1, 5]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "setChatStatus",
+      "implementation": "cantrip_server_rs/src/chats/runtime.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/resource-state-repository-pglite-v10.json",
+          "successfulCaseIndices": [
+            45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61,
+            62
+          ]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-bundled-postgres-v10.json",
+          "successfulCaseIndices": [
+            45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61,
+            62
+          ]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-postgres-v10.json",
+          "successfulCaseIndices": [
+            45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61,
+            62
+          ]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+      "method": "nextProjectTabPosition",
+      "implementation": "cantrip_server_rs/src/project_layout/mod.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/resource-state-repository-pglite-v10.json",
+          "successfulCaseIndices": [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-bundled-postgres-v10.json",
+          "successfulCaseIndices": [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-postgres-v10.json",
+          "successfulCaseIndices": [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "reorderProjects",
+      "implementation": "cantrip_server_rs/src/projects/repository/preferences.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/resource-state-repository-pglite-v10.json",
+          "successfulCaseIndices": [22]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-bundled-postgres-v10.json",
+          "successfulCaseIndices": [22]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-postgres-v10.json",
+          "successfulCaseIndices": [22]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+      "method": "reorderProjects",
+      "implementation": "cantrip_server_rs/src/projects/repository/preferences.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/resource-state-repository-pglite-v10.json",
+          "successfulCaseIndices": [27]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-bundled-postgres-v10.json",
+          "successfulCaseIndices": [27]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-postgres-v10.json",
+          "successfulCaseIndices": [27]
+        }
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "getChatExecutionContext",
+      "implementation": "cantrip_server_rs/src/chats/context.rs",
+      "evidence": [
+        {
+          "databaseMode": "pglite",
+          "report": ".qa/rust-resource-state/resource-state-repository-pglite-v10.json",
+          "successfulCaseIndices": [67, 68, 69, 70, 72, 74]
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-bundled-postgres-v10.json",
+          "successfulCaseIndices": [67, 68, 69, 70, 72, 74]
+        },
+        {
+          "databaseMode": "postgres",
+          "report": ".qa/rust-resource-state/resource-state-repository-postgres-v10.json",
+          "successfulCaseIndices": [67, 68, 69, 70, 72, 74]
+        }
+      ]
+    }
+  ],
+  "retiredHelpers": [
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "getChatModelConfiguration",
+      "status": "retired-current-production-helper",
+      "implementation": "cantrip_server_rs/src/http/chat_configuration/models.rs",
+      "disposition": "No current named production caller remains; only facade declaration/forwarding and child definition occur in active source. Current public model/reasoning routes use execution context and the atomic full configuration setter. This does not retire those public routes or claim a separate native implementation of this obsolete private helper."
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "setChatReasoningEffort",
+      "status": "retired-current-production-helper",
+      "implementation": "cantrip_server_rs/src/http/chat_configuration/models.rs",
+      "disposition": "No current named production caller remains; only facade declaration/forwarding and child definition occur in active source. Current public model/reasoning routes use execution context and the atomic full configuration setter. This does not retire those public routes or claim a separate native implementation of this obsolete private helper."
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository.ts",
+      "method": "setChatReasoningEffortAndRememberDefault",
+      "status": "retired-current-production-helper",
+      "implementation": "cantrip_server_rs/src/http/chat_configuration/models.rs",
+      "disposition": "No current named production caller remains; only facade declaration/forwarding and child definition occur in active source. Current public model/reasoning routes use execution context and the atomic full configuration setter. This does not retire those public routes or claim a separate native implementation of this obsolete private helper."
+    }
+  ],
+  "repositoryReports": {
+    "resource": [
+      {
+        "receipt": {
+          "path": ".qa/rust-resource-state/resource-state-repository-pglite-v10.json",
+          "bytes": 27822964,
+          "sha256": "ab1fc1fda47933d4d3649b673ac07fd150da55d1261b70b3624099da3463ed81"
+        },
+        "root": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-resource-state-skw93x",
+        "caseCount": 113,
+        "snapshotCount": 0,
+        "restartCount": 8
+      },
+      {
+        "receipt": {
+          "path": ".qa/rust-resource-state/resource-state-repository-bundled-postgres-v10.json",
+          "bytes": 27833276,
+          "sha256": "30b23067747678608f8d905d61c7875e528ed3e16011ca2a9428ebd5f01607c3"
+        },
+        "root": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-resource-state-7RTl5i",
+        "caseCount": 113,
+        "snapshotCount": 0,
+        "restartCount": 8
+      },
+      {
+        "receipt": {
+          "path": ".qa/rust-resource-state/resource-state-repository-postgres-v10.json",
+          "bytes": 27831802,
+          "sha256": "043060c8d5c0c69066cd14b7d8c144688ac8ba73ab909aea4f831b3701fb9b97"
+        },
+        "root": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-resource-state-NE7DHT",
+        "caseCount": 113,
+        "snapshotCount": 0,
+        "restartCount": 8
+      }
+    ],
+    "terminal": [
+      {
+        "receipt": {
+          "path": ".qa/rust-resource-state/terminal-repository-pglite-v1.json",
+          "bytes": 6718905,
+          "sha256": "9a9649faeebddb81088322b7e34c236aa6898749c8e81cf366fcf43f3e706f65"
+        },
+        "root": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-terminal-repository-KeGvBo",
+        "caseCount": 87,
+        "snapshotCount": 91,
+        "restartCount": 0
+      },
+      {
+        "receipt": {
+          "path": ".qa/rust-resource-state/terminal-repository-bundled-postgres-v1.json",
+          "bytes": 6722890,
+          "sha256": "ede72ca12904ea444d62b4e0cbd364aa438d2d1977492257b8a7450b5cff19f4"
+        },
+        "root": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-terminal-repository-jgXzNX",
+        "caseCount": 87,
+        "snapshotCount": 91,
+        "restartCount": 0
+      },
+      {
+        "receipt": {
+          "path": ".qa/rust-resource-state/terminal-repository-postgres-v1.json",
+          "bytes": 7019872,
+          "sha256": "dc70fb09b46308da7868e0bd03815bdbee09422c9445e6f402662393b5c2d121"
+        },
+        "root": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-terminal-repository-mHGUlw",
+        "caseCount": 87,
+        "snapshotCount": 91,
+        "restartCount": 0
+      }
+    ],
+    "surface": [
+      {
+        "receipt": {
+          "path": ".qa/rust-resource-state/remote-surface-repository-pglite-v1.json",
+          "bytes": 707191,
+          "sha256": "a6e4cad3c748f175eaf79c6f349db898214e7255b29ca9105f145060211705c4"
+        },
+        "root": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-surface-repository-Kgy4Qh",
+        "caseCount": 52,
+        "snapshotCount": 19,
+        "restartCount": 0
+      },
+      {
+        "receipt": {
+          "path": ".qa/rust-resource-state/remote-surface-repository-bundled-postgres-v1.json",
+          "bytes": 707132,
+          "sha256": "d8ff0659212ad1de4f1166e497d30a6a50e122034a9f9457a3f194fdba864809"
+        },
+        "root": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-surface-repository-iVEyEQ",
+        "caseCount": 52,
+        "snapshotCount": 19,
+        "restartCount": 0
+      },
+      {
+        "receipt": {
+          "path": ".qa/rust-resource-state/remote-surface-repository-postgres-v1.json",
+          "bytes": 707109,
+          "sha256": "8be2a8c578f05ee58ab5b01d22f410b471bd7bc8a662cf3b316bd280d076b359"
+        },
+        "root": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-surface-repository-iwvw6x",
+        "caseCount": 52,
+        "snapshotCount": 19,
+        "restartCount": 0
+      }
+    ],
+    "console": [
+      {
+        "receipt": {
+          "path": ".qa/rust-resource-state/managed-preparation-pglite-v1.json",
+          "bytes": 996331,
+          "sha256": "954bf5493d18efd8bb7c5ca5a258581e028c2f920ca2171c981d62f93c40365a"
+        },
+        "root": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-preparation-yW01Tp",
+        "caseCount": 59,
+        "snapshotCount": 16,
+        "restartCount": 1
+      },
+      {
+        "receipt": {
+          "path": ".qa/rust-resource-state/managed-preparation-bundled-postgres-v1.json",
+          "bytes": 996711,
+          "sha256": "de03ce11308ae3d9c986dd29c9e5c965b7cb197b18e35439adb2ee295eef7e73"
+        },
+        "root": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-preparation-C2oiM0",
+        "caseCount": 59,
+        "snapshotCount": 16,
+        "restartCount": 1
+      },
+      {
+        "receipt": {
+          "path": ".qa/rust-resource-state/managed-preparation-postgres-v1.json",
+          "bytes": 996789,
+          "sha256": "64e16ae61c84f8a6c17e26916d946b381b970555e79b813afae5ef27492190ed"
+        },
+        "root": "/var/folders/pv/03n81v656wn6x0m7v876mjjc0000gn/T/cantrip-preparation-YF4pyr",
+        "caseCount": 59,
+        "snapshotCount": 16,
+        "restartCount": 1
+      }
+    ]
+  },
+  "httpReports": [
+    {
+      "suite": "terminal-http",
+      "databaseMode": "pglite",
+      "receipt": {
+        "path": ".qa/rust-resource-state/terminal-http-pglite-v5.json",
+        "bytes": 5137851,
+        "sha256": "c0a2ab7cf27f5ac98ae1f2a1b02893bef200f751e36c46fc0cb2407a88eb1902"
+      },
+      "cells": [
+        {
+          "profile": "none",
+          "pairedHttpObservations": 198,
+          "pairedProofGroups": 0
+        },
+        {
+          "profile": "password",
+          "pairedHttpObservations": 197,
+          "pairedProofGroups": 0
+        },
+        {
+          "profile": "accounts",
+          "pairedHttpObservations": 211,
+          "pairedProofGroups": 0
+        }
+      ]
+    },
+    {
+      "suite": "terminal-http",
+      "databaseMode": "bundled-postgres",
+      "receipt": {
+        "path": ".qa/rust-resource-state/terminal-http-bundled-postgres-v5.json",
+        "bytes": 5122939,
+        "sha256": "d8933cf83b6ef865b4b7dedc68bae5fc1e554e98b263190c553dd6f2a18b137a"
+      },
+      "cells": [
+        {
+          "profile": "none",
+          "pairedHttpObservations": 196,
+          "pairedProofGroups": 0
+        },
+        {
+          "profile": "password",
+          "pairedHttpObservations": 197,
+          "pairedProofGroups": 0
+        },
+        {
+          "profile": "accounts",
+          "pairedHttpObservations": 211,
+          "pairedProofGroups": 0
+        }
+      ]
+    },
+    {
+      "suite": "terminal-http",
+      "databaseMode": "postgres",
+      "receipt": {
+        "path": ".qa/rust-resource-state/terminal-http-postgres-v5.json",
+        "bytes": 5825218,
+        "sha256": "78b8eed07312cdb0da6427084b20cd8dfffe8f89c2df66e25b0cc54bcbb1bae7"
+      },
+      "cells": [
+        {
+          "profile": "none",
+          "pairedHttpObservations": 212,
+          "pairedProofGroups": 0
+        },
+        {
+          "profile": "password",
+          "pairedHttpObservations": 213,
+          "pairedProofGroups": 0
+        },
+        {
+          "profile": "accounts",
+          "pairedHttpObservations": 227,
+          "pairedProofGroups": 0
+        }
+      ]
+    },
+    {
+      "suite": "remote-surface-http",
+      "databaseMode": "pglite",
+      "receipt": {
+        "path": ".qa/rust-resource-state/remote-surface-http-pglite-v1.json",
+        "bytes": 1473970,
+        "sha256": "842403e69be1246174c06bcd62b360edaed91b57469de41d9ff8299a1e2c8f21"
+      },
+      "cells": [
+        {
+          "profile": "none",
+          "pairedHttpObservations": 68,
+          "pairedProofGroups": 0
+        },
+        {
+          "profile": "password",
+          "pairedHttpObservations": 70,
+          "pairedProofGroups": 0
+        },
+        {
+          "profile": "accounts",
+          "pairedHttpObservations": 70,
+          "pairedProofGroups": 0
+        }
+      ]
+    },
+    {
+      "suite": "remote-surface-http",
+      "databaseMode": "bundled-postgres",
+      "receipt": {
+        "path": ".qa/rust-resource-state/remote-surface-http-bundled-postgres-v1.json",
+        "bytes": 1473947,
+        "sha256": "47889e8f5b0d5830c8923a614f5817252f3be97443abc9286a0339ce5cf79376"
+      },
+      "cells": [
+        {
+          "profile": "none",
+          "pairedHttpObservations": 68,
+          "pairedProofGroups": 0
+        },
+        {
+          "profile": "password",
+          "pairedHttpObservations": 70,
+          "pairedProofGroups": 0
+        },
+        {
+          "profile": "accounts",
+          "pairedHttpObservations": 70,
+          "pairedProofGroups": 0
+        }
+      ]
+    },
+    {
+      "suite": "remote-surface-http",
+      "databaseMode": "postgres",
+      "receipt": {
+        "path": ".qa/rust-resource-state/remote-surface-http-postgres-v1.json",
+        "bytes": 1473932,
+        "sha256": "36420a67f09522fa6ec50fef4a1484c42569f4049c0d52548c0579f20e7decbf"
+      },
+      "cells": [
+        {
+          "profile": "none",
+          "pairedHttpObservations": 68,
+          "pairedProofGroups": 0
+        },
+        {
+          "profile": "password",
+          "pairedHttpObservations": 70,
+          "pairedProofGroups": 0
+        },
+        {
+          "profile": "accounts",
+          "pairedHttpObservations": 70,
+          "pairedProofGroups": 0
+        }
+      ]
+    },
+    {
+      "suite": "chat-customization-http",
+      "databaseMode": "pglite",
+      "receipt": {
+        "path": ".qa/rust-resource-state/chat-customization-http-pglite-v5.json",
+        "bytes": 2748366,
+        "sha256": "82bdf65a035dea90889ca97b7a003ce9843a527ca80db5ecf4630edab95f6806"
+      },
+      "cells": [
+        {
+          "profile": "none",
+          "pairedHttpObservations": 181,
+          "pairedProofGroups": 0
+        },
+        {
+          "profile": "password",
+          "pairedHttpObservations": 188,
+          "pairedProofGroups": 0
+        },
+        {
+          "profile": "accounts",
+          "pairedHttpObservations": 196,
+          "pairedProofGroups": 0
+        }
+      ]
+    },
+    {
+      "suite": "chat-customization-http",
+      "databaseMode": "bundled-postgres",
+      "receipt": {
+        "path": ".qa/rust-resource-state/chat-customization-http-bundled-postgres-v5.json",
+        "bytes": 2748376,
+        "sha256": "8d04b25e680221ff6c49dd5604f781aa8ea7bfd147d811471864180b76d47318"
+      },
+      "cells": [
+        {
+          "profile": "none",
+          "pairedHttpObservations": 181,
+          "pairedProofGroups": 0
+        },
+        {
+          "profile": "password",
+          "pairedHttpObservations": 188,
+          "pairedProofGroups": 0
+        },
+        {
+          "profile": "accounts",
+          "pairedHttpObservations": 196,
+          "pairedProofGroups": 0
+        }
+      ]
+    },
+    {
+      "suite": "chat-customization-http",
+      "databaseMode": "postgres",
+      "receipt": {
+        "path": ".qa/rust-resource-state/chat-customization-http-postgres-v5.json",
+        "bytes": 2748368,
+        "sha256": "7108ca4ff1fca70cab4e930688158ea8d11f6c05f1a280586027689516b65ba6"
+      },
+      "cells": [
+        {
+          "profile": "none",
+          "pairedHttpObservations": 181,
+          "pairedProofGroups": 0
+        },
+        {
+          "profile": "password",
+          "pairedHttpObservations": 188,
+          "pairedProofGroups": 0
+        },
+        {
+          "profile": "accounts",
+          "pairedHttpObservations": 196,
+          "pairedProofGroups": 0
+        }
+      ]
+    },
+    {
+      "suite": "managed-preparation-http",
+      "databaseMode": "pglite",
+      "receipt": {
+        "path": ".qa/rust-resource-state/managed-preparation-http-pglite-v1.json",
+        "bytes": 21608,
+        "sha256": "23a7b9927aab8fb346896603e65b337eba6ceb97ffcf7ed44b14360e270ff80a"
+      },
+      "cells": [
+        {
+          "profile": "none",
+          "pairedHttpObservations": 0,
+          "pairedProofGroups": 5
+        },
+        {
+          "profile": "password",
+          "pairedHttpObservations": 0,
+          "pairedProofGroups": 5
+        },
+        {
+          "profile": "accounts",
+          "pairedHttpObservations": 0,
+          "pairedProofGroups": 6
+        }
+      ]
+    },
+    {
+      "suite": "managed-preparation-http",
+      "databaseMode": "bundled-postgres",
+      "receipt": {
+        "path": ".qa/rust-resource-state/managed-preparation-http-bundled-postgres-v1.json",
+        "bytes": 21618,
+        "sha256": "6b6b4d5414c0adf80fc6c2e892af58d6367e5ec410456ceeb932c615fd189fcd"
+      },
+      "cells": [
+        {
+          "profile": "none",
+          "pairedHttpObservations": 0,
+          "pairedProofGroups": 5
+        },
+        {
+          "profile": "password",
+          "pairedHttpObservations": 0,
+          "pairedProofGroups": 5
+        },
+        {
+          "profile": "accounts",
+          "pairedHttpObservations": 0,
+          "pairedProofGroups": 6
+        }
+      ]
+    },
+    {
+      "suite": "managed-preparation-http",
+      "databaseMode": "postgres",
+      "receipt": {
+        "path": ".qa/rust-resource-state/managed-preparation-http-postgres-v1.json",
+        "bytes": 21610,
+        "sha256": "8e6a3ec30989126c7e7277db63d2023d9ec5c5e491101382d94ade33e581dfaf"
+      },
+      "cells": [
+        {
+          "profile": "none",
+          "pairedHttpObservations": 0,
+          "pairedProofGroups": 5
+        },
+        {
+          "profile": "password",
+          "pairedHttpObservations": 0,
+          "pairedProofGroups": 5
+        },
+        {
+          "profile": "accounts",
+          "pairedHttpObservations": 0,
+          "pairedProofGroups": 6
+        }
+      ]
+    }
+  ],
+  "productionBinary": {
+    "path": "/Users/cyberpwn/.codex/worktrees/rust-resource-state-contracts/Cantrip/.qa/rust-resource-state/production-bin-v1/cantrip-server",
+    "bytes": 94223680,
+    "sha256": "d85e4dd9a461097161081e0c42d82f64e971d2dc9cb180e1219379c9ee7d4bcb"
+  },
+  "artifact": {
+    "path": ".qa/rust-resource-state/relocated-package-v1.json",
+    "bytes": 2750,
+    "sha256": "5aa860b38197b2c4a5644d4d83e1779f8a83f99b49fce3b58a95ba631d0e3bf6"
+  },
+  "localChecks": {
+    "rust": [
+      {
+        "name": "rustfmt-v2",
+        "exitCode": 0
+      },
+      {
+        "name": "clippy-v1",
+        "exitCode": 0
+      },
+      {
+        "name": "rust-lib-v1",
+        "exitCode": 0
+      }
+    ],
+    "libraryTests": 86,
+    "scriptTests": {
+      "passed": 74,
+      "failed": 0,
+      "windowsConditionalSkipped": 1,
+      "scope": {
+        "path": ".qa/rust-resource-state/script-test-scope-v1.json",
+        "bytes": 725,
+        "sha256": "5713ff25540ad3be035653b90f6e59f73e088408f3587b788752abe49fd12178"
+      },
+      "log": {
+        "path": ".qa/rust-resource-state/script-tests-v1.log",
+        "bytes": 6271,
+        "sha256": "f1f8df173525a88264d654e5b8925c7a327cf3fb654a49214025a7d7ad0d1a10"
+      }
+    },
+    "generatedContracts": {
+      "path": ".qa/rust-resource-state/generated-contracts-v1.json",
+      "bytes": 9616,
+      "sha256": "99289a5e7c83b2cf05e856e46b6e7534ffec24d4a73a54d27793934f71cb7cad"
+    },
+    "aggregate": {
+      "command": "pnpm check",
+      "exitCode": 1,
+      "failure": "Two unchanged worker app-server capacity/backoff tests. Both reproduce on clean Primary at the same base. The aggregate stopped in worker tests; no whole-repository green result is claimed.",
+      "log": {
+        "path": ".qa/rust-resource-state/pnpm-check-v1.log",
+        "bytes": 103770,
+        "sha256": "5b06d7f63749220e6082fd4f3ba6a420c89d022ad180c6cbeeee9cc8aa61479d"
+      },
+      "primaryReproduction": {
+        "path": ".qa/rust-resource-state/primary-worker-capacity-baseline-v1.log",
+        "bytes": 6062,
+        "sha256": "86ffbd94223a3c324e690bf5ace19a7ebccdae6a098469aaf863bffadc4f4495"
+      }
+    }
+  },
+  "sourceOccurrences": {
+    "log": {
+      "path": ".qa/rust-resource-state/legacy-model-helper-occurrences-v1.txt",
+      "bytes": 979,
+      "sha256": "ff0d440e18e9c7246f2632596579c8cdd1c22a8d4c3d79b3bc7166bbda4e3e06"
+    },
+    "sources": [
+      {
+        "path": "tests/reference-node-server/src/db/repository.ts",
+        "bytes": 54472,
+        "sha256": "b5d4202f93dde72b12543cdc0dfa3350f287965f91b8caa8ec0168f3be206c77"
+      },
+      {
+        "path": "tests/reference-node-server/src/db/repository/chat-configuration.ts",
+        "bytes": 12387,
+        "sha256": "088c30273cbea955da0c90afd3b6bdf322bc3f21e1d34eddff237093cb0aa3d9"
+      }
+    ]
+  },
+  "retainedEvidenceDirectory": "rust-server-resource-state-delivery-20261110-v1",
+  "remaining": [
+    "Final supported-platform/current artifact and original-goal requirement reconciliation.",
+    "Other inventory category gaps and historical partial category entries.",
+    "Current integrated upgrades/post-write rollback and representative deployment acceptance."
+  ],
+  "productionHttp": {
+    "receipt": {
+      "path": ".qa/rust-resource-state/chat-configuration-production-v1.json",
+      "bytes": 1318344,
+      "sha256": "a87370cba28ab51a5e4a45eb800b9664b5e0e1c55c7837ff7b552addaa682f09"
+    },
+    "databaseMode": "postgres",
+    "profiles": [
+      {
+        "profile": "none",
+        "pairedHttpObservations": 98,
+        "exits": [
+          {
+            "code": 0,
+            "signal": null
+          },
+          {
+            "code": 0,
+            "signal": null
+          }
+        ]
+      },
+      {
+        "profile": "password",
+        "pairedHttpObservations": 103,
+        "exits": [
+          {
+            "code": 0,
+            "signal": null
+          },
+          {
+            "code": 0,
+            "signal": null
+          }
+        ]
+      },
+      {
+        "profile": "accounts",
+        "pairedHttpObservations": 107,
+        "exits": [
+          {
+            "code": 0,
+            "signal": null
+          },
+          {
+            "code": 0,
+            "signal": null
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -83,6 +83,8 @@ mod replicas;
 mod repository_dispatch;
 #[path = "support/repository_operations.rs"]
 mod repository_operations;
+#[path = "support/resource_state.rs"]
+mod resource_state;
 #[path = "support/run_configurations.rs"]
 mod run_configurations;
 #[path = "support/runtime_quota.rs"]
