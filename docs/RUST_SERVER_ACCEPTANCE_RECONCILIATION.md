@@ -17,6 +17,16 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current provisioning-state qualification](RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md)
+passes both nine-cell folder and replica matrices against the production Rust
+HTTP server. It adds complete raw project/job reopen comparisons and 108
+independently verified admission fingerprints while retaining existing command,
+ordered Live, failure and restart assertions. Its 1,119 paired HTTP observations
+bind five commands, three tables and three Live resources. Ledger totals are
+253/323 commands, 129/135 tables and 40/47 Live types, including partial scopes.
+Controlled worker facts do not establish leaf Git/filesystem execution or
+complete supported-platform shipping acceptance.
+
 The [current worker/provider state qualification](RUST_SERVER_WORKER_PROVIDER_CONTRACTS.md)
 passes the existing twelve-cell worker-management matrix and a new nine-cell
 provider-state matrix. Actual catalog commands, SQL rollback, durable model
