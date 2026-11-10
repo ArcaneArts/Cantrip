@@ -10842,6 +10842,18 @@
         "remaining": [
           "Actual server WebSocket requests and controlled replies/errors qualify this producer; actual worker Plan execution and final supported-artifact reconciliation remain separate."
         ]
+      },
+      {
+        "command": "worktree.observation.configure",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/observations.rs",
+        "evidence": [
+          "docs/RUST_SERVER_WORKTREE_OBSERVATIONS.md",
+          "docs/security/rust-server-worktree-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Matching actual server WebSocket requests and controlled acknowledgements across all nine local storage/authentication cells. Full worker observation execution and active historical Git-operation reconciliation retain separate scope."
+        ]
       }
     ]
   },
@@ -12720,6 +12732,48 @@
         ],
         "remaining": [
           "Scope covers owner catalog/membership revisions, actual configuration write and reopen. No new concurrent MVCC-race or final platform claim."
+        ]
+      },
+      {
+        "tableName": "project_sources",
+        "exportName": "projectSources",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/targets/",
+        "evidence": [
+          "docs/RUST_SERVER_WORKTREE_OBSERVATIONS.md",
+          "docs/security/rust-server-worktree-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Owned source selection, context/path binding, removed-source behavior and fenced observation-path writes. Provisioning/removal and other consumers retain their separate acceptance.",
+          "Complete original-goal and final supported-artifact/platform reconciliation."
+        ]
+      },
+      {
+        "tableName": "project_worktrees",
+        "exportName": "projectWorktrees",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/targets/",
+        "evidence": [
+          "docs/RUST_SERVER_WORKTREE_OBSERVATIONS.md",
+          "docs/security/rust-server-worktree-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Owned contexts, inventory/lifecycle writes, rollback, worker status persistence/clocks and real notification/Live/restart behavior. Other product/removal consumers and final platforms retain separate acceptance.",
+          "Complete original-goal and final supported-artifact/platform reconciliation."
+        ]
+      },
+      {
+        "tableName": "git_operations",
+        "exportName": "gitOperations",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/projects/targets/",
+        "evidence": [
+          "docs/RUST_SERVER_WORKTREE_OBSERVATIONS.md",
+          "docs/security/rust-server-worktree-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Positive active-operation configuration projection only. Full historical durable mutation/reconciliation and worker notification processing remain required; legacy HTTP410 does not retire these consumers.",
+          "Complete original-goal and final supported-artifact/platform reconciliation."
         ]
       }
     ]
@@ -17125,6 +17179,124 @@
         "remaining": [
           "Current macOS arm64 scoped repository/runtime qualification; complete original-goal and final supported-artifact reconciliation remain separate."
         ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getProjectSource",
+        "implementation": "cantrip_server_rs/src/projects/targets/observations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_WORKTREE_OBSERVATIONS.md",
+          "docs/security/rust-server-worktree-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 backend/callback qualification; complete original-goal and final supported-artifact acceptance remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getProjectWorktreeContext",
+        "implementation": "cantrip_server_rs/src/projects/targets/worktree_context.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_WORKTREE_OBSERVATIONS.md",
+          "docs/security/rust-server-worktree-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 backend/callback qualification; complete original-goal and final supported-artifact acceptance remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getGithubProjectExecutionContext",
+        "implementation": "cantrip_server_rs/src/projects/targets/context.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_WORKTREE_OBSERVATIONS.md",
+          "docs/security/rust-server-worktree-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 backend/callback qualification; complete original-goal and final supported-artifact acceptance remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getProjectWorktreeObservationContext",
+        "implementation": "cantrip_server_rs/src/projects/targets/observations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_WORKTREE_OBSERVATIONS.md",
+          "docs/security/rust-server-worktree-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 backend/callback qualification; complete original-goal and final supported-artifact acceptance remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "listWorkerWorktreeObservationTargets",
+        "implementation": "cantrip_server_rs/src/projects/targets/observations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_WORKTREE_OBSERVATIONS.md",
+          "docs/security/rust-server-worktree-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 backend/callback qualification; complete original-goal and final supported-artifact acceptance remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "listWorkerExecutionRootContexts",
+        "implementation": "cantrip_server_rs/src/projects/targets/observations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_WORKTREE_OBSERVATIONS.md",
+          "docs/security/rust-server-worktree-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 backend/callback qualification; complete original-goal and final supported-artifact acceptance remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "reconcileWorkerProjectObservationPaths",
+        "implementation": "cantrip_server_rs/src/projects/targets/observations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_WORKTREE_OBSERVATIONS.md",
+          "docs/security/rust-server-worktree-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 backend/callback qualification; complete original-goal and final supported-artifact acceptance remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "recordProjectWorktreeStatus",
+        "implementation": "cantrip_server_rs/src/projects/targets/worktree_state.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_WORKTREE_OBSERVATIONS.md",
+          "docs/security/rust-server-worktree-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Scoped current macOS arm64 backend/callback qualification; complete original-goal and final supported-artifact acceptance remain separate."
+        ]
+      },
+      {
+        "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+        "method": "getActiveGitOperation",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/projects/targets/observations.rs",
+        "evidence": [
+          "docs/RUST_SERVER_WORKTREE_OBSERVATIONS.md",
+          "docs/security/rust-server-worktree-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Current active_observation_operation compares only the observation configuration projection: id, worker and managed context. It is not a full native GitManagedOperationRecord repository.",
+          "Source still consumes git.operation.observed through durable get/update and reconciliation despite retired plaintext HTTP routes. Port and qualify that historical-operation path; HTTP tombstones do not establish its retirement."
+        ]
       }
     ]
   },
@@ -17526,6 +17698,34 @@
         "observedScope": "Actual source mutations emit 54 matching paired current-user invalidations across nine storage/authentication cells; the other account receives none. This does not independently qualify every App Live producer, replay or Redis fault.",
         "remaining": [
           "Final supported-platform artifact and complete replacement acceptance remain separately scoped."
+        ]
+      },
+      {
+        "resource": "worktree-status",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/projects/observations/notifications.rs",
+        "evidence": [
+          "scripts/server-rust/worktree-status-http-compatibility.mjs",
+          "docs/RUST_SERVER_WORKTREE_OBSERVATIONS.md",
+          "docs/security/rust-server-worktree-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Current worker-status producer passes exact scoped publications, failed SQL/no success publication, committed state after payload rejection and restart retention on all nine local storage/authentication cells.",
+          "Other producers/consumers and full worker/UI, shared coordination and final supported-artifact reconciliation remain separate."
+        ]
+      },
+      {
+        "resource": "worktree",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/projects/observations/notifications.rs",
+        "evidence": [
+          "scripts/server-rust/worktree-status-http-compatibility.mjs",
+          "docs/RUST_SERVER_WORKTREE_OBSERVATIONS.md",
+          "docs/security/rust-server-worktree-observations-acceptance.json"
+        ],
+        "remaining": [
+          "Current worker-status producer passes exact scoped publications, failed SQL/no success publication, committed state after payload rejection and restart retention on all nine local storage/authentication cells.",
+          "Other producers/consumers and full worker/UI, shared coordination and final supported-artifact reconciliation remain separate."
         ]
       }
     ]

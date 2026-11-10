@@ -51,6 +51,7 @@ impl Service {
                         let kind = match notification["type"].as_str() {
                             Some("worktree.filesystem.changed") => "worktree.filesystem.changed",
                             Some("worktree.inventory.observed") => "worktree.inventory.observed",
+                            Some("worktree.status.observed") => "worktree.status.observed",
                             _ => return async { Ok(()) }.boxed(),
                         };
                         if notification["type"] == "worktree.inventory.observed"
@@ -74,6 +75,10 @@ impl Service {
                                     retained
                                         .inventory_observed(&owner, &worker, &notification)
                                         .await
+                                } else if kind == "worktree.status.observed" {
+                                    retained
+                                        .status_observed(&owner, &worker, &notification)
+                                        .await
                                 } else {
                                     retained
                                         .filesystem_changed(&owner, &worker, &notification)
@@ -84,6 +89,79 @@ impl Service {
                     }),
                 )
             });
+    }
+
+    async fn status_observed(
+        &self,
+        owner: &str,
+        worker: &str,
+        notification: &Value,
+    ) -> anyhow::Result<()> {
+        let Some(context) = self
+            .repository
+            .observation_context(
+                owner,
+                worker,
+                notification["sourcePath"]
+                    .as_str()
+                    .context("Status observation source")?,
+                notification["worktreePath"]
+                    .as_str()
+                    .context("Status observation worktree")?,
+            )
+            .await?
+        else {
+            return Ok(());
+        };
+        let status = &notification["result"];
+        if status["worktree"]["path"] != notification["worktreePath"] {
+            return Ok(());
+        }
+        let project = context["projectId"]
+            .as_str()
+            .context("Status observation project")?;
+        let worktree = context["worktreeId"]
+            .as_str()
+            .context("Status observation worktree identity")?;
+        let Some(recorded) = self
+            .repository
+            .record_worktree_status(owner, project, worktree, status)
+            .await?
+        else {
+            return Ok(());
+        };
+        let Some(live) = self.live.upgrade() else {
+            return Ok(());
+        };
+        if !live.publishing_enabled() {
+            return Ok(());
+        }
+        if recorded["snapshotChanged"] == true {
+            let publish = || -> anyhow::Result<()> {
+                let payload = crate::wire::parse_property(
+                    "worktreeStatusResultSchema",
+                    "status",
+                    &recorded["status"]["status"],
+                )
+                .map_err(crate::settings::response_error)?;
+                let payload =
+                    crate::settings::parse_response("appLiveEventPayloadSchema", Some(&payload))?;
+                live.publish_event(json!({"ownerId":owner,"scope":json!({"kind":"project","projectId":project}),"resource":"worktree-status","action":"updated","entityId":worktree,"revision":Value::Null,"payload":payload}))?;
+                Ok(())
+            };
+            if let Err(error) = publish() {
+                use crate::operations::logging::{self, LogCall};
+                (logging::server_logger())(LogCall::event(
+                    "error",
+                    "Could not publish worktree status",
+                    json!({"err":json!({"message":error.to_string()}),"projectId":project,"worktreeId":worktree}),
+                ));
+            }
+        }
+        if recorded["metadataChanged"] == true {
+            live.publish_event(json!({"ownerId":owner,"scope":json!({"kind":"project","projectId":project}),"resource":"worktree","action":"invalidated","entityId":worktree,"revision":Value::Null,"payload":Value::Null}))?;
+        }
+        Ok(())
     }
 
     async fn inventory_observed(
