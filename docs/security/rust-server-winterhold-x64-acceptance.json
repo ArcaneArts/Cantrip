@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceCommit": "4c42484d8b3575b5fd6ea8234e1b179885b8b0a4",
+  "candidateVersion": "1.1.2816",
+  "platform": {
+    "target": "linux-x64",
+    "elfMachine": 62,
+    "host": "Linux ARM64",
+    "x64Execution": "Rosetta"
+  },
+  "standalone": {
+    "version": "1.1.2816",
+    "target": "linux-x64",
+    "filesVerified": 2546,
+    "binary": {
+      "path": "bin/cantrip-server",
+      "bytes": 110397104,
+      "sha256": "980f47f2d50571b571f19d4e3a726516d37116a0e5b8f50b0dc754d1e588dba3"
+    },
+    "archive": {
+      "path": "rehearsal-current/native.tar.gz",
+      "bytes": 142395893,
+      "sha256": "083791bac2509daf687acaa141fe1862d8dadf8f881533975e441ae994fcadaa"
+    }
+  },
+  "container": {
+    "imageId": "sha256:f4689eeac5b4df11ae16af59db7bc8802b64ef31d375103f3501ae3459980e02",
+    "modes": ["pglite", "bundled-postgres", "postgres"],
+    "archive": {
+      "path": "linux-x64-container.tar.zst",
+      "bytes": 180177322,
+      "sha256": "6bdf377e2712ff384acaedfa7f8ce444165668fbed0d627247ae72af3e333829"
+    },
+    "verifiedArtifactFilesPerStore": 2546,
+    "localAndHosted": true,
+    "sigtermExitCodes": [0, 0, 0],
+    "nodeAbsent": true,
+    "readOnlyRoot": true,
+    "nonRoot": true,
+    "tmpfsNoexecMiB": 256
+  },
+  "service": {
+    "name": "rehearsal-current",
+    "version": "1.1.2816",
+    "previousVersion": "1.1.2783",
+    "installerCalls": 18,
+    "expectedFailures": 6,
+    "observedExecutableHashes": 10,
+    "artifactSha256": "980f47f2d50571b571f19d4e3a726516d37116a0e5b8f50b0dc754d1e588dba3",
+    "previousArtifactSha256": "30e9fbbca80b808aece113e4d68b09c6a075745188f62bf49f58d8ceb4f1c081",
+    "caddyCaSha256": "cd430c2affcceedccb25f96809c589ca4cd0961a1f806078dedb6e9681064b21",
+    "nodeBaselineVersion": "1.1.2739",
+    "nodeBaselineImageId": "sha256:e45a5bb676e4efec2ec75897dd24829fadfd23165a545de155fa1c5a7da5a9d8",
+    "previousNativeImageId": "sha256:76d045c61319023340d3091d220e6e4f4d9411f30b08782b2f7e8bdeeceff99a",
+    "systemdFixtureImageId": "sha256:1a4719cffced31ab606bf1b4ccd0625d218a2d885708708435f66a7da36c6b92",
+    "stores": ["pglite", "bundled-postgres", "postgres"],
+    "retainedSessionsAndWrites": true,
+    "caddyHttpsAndAppLiveCertificateVerified": true,
+    "externalPostgresTlsConnections": 6,
+    "outsideProfileWriteRejected": true,
+    "hostPathNodeAbsent": true,
+    "privatePostgresCgroupProcessesReaped": 17
+  },
+  "harnessPilot": {
+    "name": "rehearsal-pilot",
+    "version": "1.1.2783",
+    "previousVersion": "1.1.2778",
+    "installerCalls": 18,
+    "expectedFailures": 6,
+    "observedExecutableHashes": 10,
+    "artifactSha256": "30e9fbbca80b808aece113e4d68b09c6a075745188f62bf49f58d8ceb4f1c081",
+    "previousArtifactSha256": "51e162334c00c7e62ab6907d2f881883dba8ce4538cf34f25f3210c2c83c4a3e",
+    "caddyCaSha256": "5a02567f5596c6435151704cd700e560cc0c276fe7b5d6bbf9756d124cadb895"
+  },
+  "localChecks": {
+    "deployAndReleaseTestsPassed": 28,
+    "hostedDevelopmentRuns": 0
+  },
+  "retainedEvidenceDirectory": "rust-server-current-winterhold-20261110-v1",
+  "evidence": [
+    {
+      "path": "verified-results.json",
+      "bytes": 1468,
+      "sha256": "576116094f4d94fc53c65bdd50717ca2f88abe894df236871853f7a226338df9"
+    },
+    {
+      "path": "linux-x64-distribution-source.json",
+      "bytes": 473,
+      "sha256": "e7be3f75b83aaddce2a1965da2e9f3dc5a42ec8f68505c965908081b47c924bb"
+    },
+    {
+      "path": "linux-x64-distribution-build.log",
+      "bytes": 11464,
+      "sha256": "1c09c515de4dc402e8e842888a5b1c1c9c7b6495ca39bcc95bd49b91468882aa"
+    },
+    {
+      "path": "linux-x64-distribution-verification.json",
+      "bytes": 236,
+      "sha256": "224a78cfbdf37fe0cc28421b6d6bfb3d94dfaa32136e67059f19c0330c88792a"
+    },
+    {
+      "path": "linux-x64-container-build.log",
+      "bytes": 7301,
+      "sha256": "23afc897c3008ea6e5693214eb966cfaf34621e41aa530aae5f497a697d89915"
+    },
+    {
+      "path": "container-current-v2/report.json",
+      "bytes": 5438,
+      "sha256": "2bd9521b01d66fedcc93fd973506b60fa08958cb7df4d6b3a73b54ece14cf50e"
+    },
+    {
+      "path": "container-current/driver.log",
+      "bytes": 954,
+      "sha256": "1b7f390def1a87e037393783cf431ccb9d76acfddfa6fab263d97431edb4e16b"
+    },
+    {
+      "path": "rehearsal-current/report.json",
+      "bytes": 1092632,
+      "sha256": "66e75f95947e91a09983ede001b730441c681bc5f3e8186c5472aa626925b5ea"
+    },
+    {
+      "path": "rehearsal-current/runtime-observations.json",
+      "bytes": 274,
+      "sha256": "8267f6a1187640f166f09cb1b928229f8f2414af529fb4165805b188504bdba2"
+    },
+    {
+      "path": "rehearsal-current/caddy-root.crt",
+      "bytes": 627,
+      "sha256": "b9bc89be8fc837d540c1462423dc3960cb88e51a3220f214cfcc8e552c76cc72"
+    },
+    {
+      "path": "rehearsal-pilot/report.json",
+      "bytes": 1092393,
+      "sha256": "df0f9dac6f66c3f946702dd6e496b7f2e56885a74bc55e9285fee84730f5788e"
+    },
+    {
+      "path": "deploy-release-unit.log",
+      "bytes": 9593,
+      "sha256": "0124dc586ed9ed9f3ab3a7263cf77a79865e18d446d128394641542565906e26"
+    },
+    {
+      "path": "profile-archives.json",
+      "bytes": 3230,
+      "sha256": "8d9d57be409f6529b94139ae11838305ac49c4b77598ab33afa709e2f1a89f81"
+    }
+  ],
+  "scope": "Local Linux x64 artifact execution on ARM64; production Winterhold deployment, bare-metal x64 performance, desktop release/update and remaining coordination/product acceptance retain their separate scopes."
+}
