@@ -5392,7 +5392,7 @@
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "cantrip_server_rs/src/http/cantrip_os_power.rs",
-          "cantrip_server/src/app/routes/cantrip-os-power.ts",
+          "tests/reference-node-server/src/app/routes/cantrip-os-power.ts",
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
           "docs/RUST_SERVER_READ_METHODS.md",
@@ -5414,7 +5414,7 @@
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "cantrip_server_rs/src/http/cantrip_os_power.rs",
-          "cantrip_server/src/app/routes/cantrip-os-power.ts",
+          "tests/reference-node-server/src/app/routes/cantrip-os-power.ts",
           "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
           "scripts/server-rust/actual-cantrip-os-client.mjs",
           "scripts/server-rust/actual-cantrip-os-power-client.mjs",
@@ -5433,7 +5433,7 @@
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "cantrip_server_rs/src/http/cantrip_os_power.rs",
-          "cantrip_server/src/app/routes/cantrip-os-power.ts",
+          "tests/reference-node-server/src/app/routes/cantrip-os-power.ts",
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
           "docs/RUST_SERVER_READ_METHODS.md",
@@ -5455,7 +5455,7 @@
         "status": "partial",
         "evidence": [
           "cantrip_server_rs/src/http/cantrip_os_power.rs",
-          "cantrip_server/src/app/routes/cantrip-os-power.ts",
+          "tests/reference-node-server/src/app/routes/cantrip-os-power.ts",
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
           "docs/RUST_SERVER_READ_METHODS.md"
@@ -5471,7 +5471,7 @@
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "cantrip_server_rs/src/http/cantrip_os_power.rs",
-          "cantrip_server/src/app/routes/cantrip-os-power.ts",
+          "tests/reference-node-server/src/app/routes/cantrip-os-power.ts",
           "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
           "scripts/server-rust/actual-cantrip-os-client.mjs",
           "scripts/server-rust/actual-cantrip-os-power-client.mjs",
@@ -29170,13 +29170,34 @@
       "workerOwnerCrashControls": 1,
       "scope": "Local macOS ARM64 production server processes, full worker, browser SDK and native Codex. A real 45-second Redis process outage exceeds the worker claim TTL. All four remote native Tasks renew the original PostgreSQL lease and complete once before Redis restarts. Redis network and TLS faults, concurrent PostgreSQL interruption and final shipping platform acceptance remain open."
     },
+    "packagedNativeTaskAgentAndModelOperations": {
+      "status": "implemented-with-scoped-local-qualification",
+      "sourceCommit": "2e60d2042203f64c8105d5c52d12ae1db92d2d83",
+      "candidateVersion": "1.1.2845",
+      "platform": "darwin-arm64",
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+      "taskAndAgentSuites": 6,
+      "modelOperationCases": 72,
+      "evidence": [
+        "docs/security/rust-server-current-native-product.json",
+        "scripts/server-rust/native-product-compatibility.mjs",
+        "scripts/server-rust/actual-folder-client.mjs",
+        "docs/RUST_SERVER_MODEL_OPERATIONS.md"
+      ],
+      "scope": "Current browser SDK, full signed desktop worker and native Codex with the optimized Rust server and Node reference. Actual Task planning, Goal, retry, pause and Agent delegation pass with retained encrypted state. Protected model-operation cancellation and accounting pass across the same stores."
+    },
     "packagedActiveTaskDependencyRecovery": {
       "status": "implemented-with-scoped-local-qualification",
       "sourceCommit": "2e60d2042203f64c8105d5c52d12ae1db92d2d83",
       "candidateVersion": "1.1.2845",
       "platform": "darwin-arm64",
       "databaseMode": "postgres",
-      "redisServerPairings": ["node/node", "node/rust", "rust/node", "rust/rust"],
+      "redisServerPairings": [
+        "node/node",
+        "node/rust",
+        "rust/node",
+        "rust/rust"
+      ],
       "postgresServerPairings": ["rust/rust"],
       "evidence": [
         "docs/RUST_SERVER_INFLIGHT_RECOVERY.md",

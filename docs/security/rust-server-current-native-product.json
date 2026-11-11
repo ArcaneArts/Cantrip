@@ -1,0 +1,396 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.2845",
+  "artifactSourceCommit": "2e60d2042203f64c8105d5c52d12ae1db92d2d83",
+  "harnessSourceCommit": "4ab065a59abb2357471bc35f08d7f711cb679d9e",
+  "platform": "darwin-arm64",
+  "server": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/cantrip-server-darwin-arm64/bin/cantrip-server",
+    "bytes": 93566000,
+    "sha256": "f8a2d070020752305e2045a80d1a59d1192ad943cdfc9e0c466ed3d3d2213474"
+  },
+  "worker": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/current-inflight-recovery/runtime/worker/dist/index.js",
+    "bytes": 391696,
+    "sha256": "79bdbd422dcaa65f4294ec22fd090096091bcd074f4d64f472bd088f9717b0cd"
+  },
+  "node": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/current-inflight-recovery/runtime/node",
+    "bytes": 121833248,
+    "sha256": "1cb5ac15fcf30a715e4a220e08a17dd31f6c05855e9fe27c7714b608b3d00bf8"
+  },
+  "cli": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/current-inflight-recovery/runtime/worker/bin/cantrip",
+    "bytes": 5408944,
+    "sha256": "1d44083cb9edfd872f0aefab43851fb31dadbb31bd17c62abd6735589fbf604a"
+  },
+  "codex": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/current-inflight-recovery/runtime/worker/bin/codex",
+    "bytes": 279545328,
+    "sha256": "d2bc564513ece54a6c1df0132f8ebc8c494b088ebc9fd48fc34d64cea18b766c"
+  },
+  "summary": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/final-audit/native-product-6775zM/summary.json",
+    "bytes": 8689,
+    "sha256": "2908ba43403fa965897b273449f164623a3948c331f8799669356080fee0e619"
+  },
+  "driverLog": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/final-audit/current-native-product.log",
+    "bytes": 12193,
+    "sha256": "9d79b3b00111db2bb9ebcc17d7ce19793eca4890e5d0fa921b4c9b48c03a7690"
+  },
+  "cases": [
+    {
+      "database": "pglite",
+      "suite": "tasks",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/final-audit/native-product-6775zM/pglite-tasks.json",
+        "bytes": 1557929,
+        "sha256": "b9c08e92fe48469bbc97ca38185e1b44f7c46ad81ab102b95771823f871f1b15"
+      },
+      "runtimeObservations": [
+        {
+          "kind": "node",
+          "steps": 14,
+          "cleanServerExits": 4,
+          "cleanWorkerExits": 5,
+          "modelPosts": 8
+        },
+        {
+          "kind": "rust",
+          "steps": 14,
+          "cleanServerExits": 4,
+          "cleanWorkerExits": 5,
+          "modelPosts": 8
+        }
+      ]
+    },
+    {
+      "database": "pglite",
+      "suite": "agent-tasks",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/final-audit/native-product-6775zM/pglite-agent-tasks.json",
+        "bytes": 1744731,
+        "sha256": "ac5ee62b480c681372242bb682f06f72e8181e088d8d03de01a827eb0b67a845"
+      },
+      "runtimeObservations": [
+        {
+          "kind": "node",
+          "steps": 11,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4,
+          "modelPosts": 16
+        },
+        {
+          "kind": "rust",
+          "steps": 11,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4,
+          "modelPosts": 16
+        }
+      ]
+    },
+    {
+      "database": "postgres",
+      "suite": "tasks",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/final-audit/native-product-6775zM/postgres-tasks.json",
+        "bytes": 1592512,
+        "sha256": "94e81cdfd38523db197e767421c7dbcc476c4606aa5e2204bc4f7da146f39387"
+      },
+      "runtimeObservations": [
+        {
+          "kind": "node",
+          "steps": 14,
+          "cleanServerExits": 4,
+          "cleanWorkerExits": 5,
+          "modelPosts": 8
+        },
+        {
+          "kind": "rust",
+          "steps": 14,
+          "cleanServerExits": 4,
+          "cleanWorkerExits": 5,
+          "modelPosts": 8
+        }
+      ]
+    },
+    {
+      "database": "postgres",
+      "suite": "agent-tasks",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/final-audit/native-product-6775zM/postgres-agent-tasks.json",
+        "bytes": 1796277,
+        "sha256": "8d8d1c4aa02b84a91ac54069e5dd3b42ae33ff9d7799c79d08ecaf79ace9e374"
+      },
+      "runtimeObservations": [
+        {
+          "kind": "node",
+          "steps": 11,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4,
+          "modelPosts": 16
+        },
+        {
+          "kind": "rust",
+          "steps": 11,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4,
+          "modelPosts": 16
+        }
+      ]
+    },
+    {
+      "database": "bundled-postgres",
+      "suite": "tasks",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/final-audit/native-product-6775zM/bundled-postgres-tasks.json",
+        "bytes": 1583783,
+        "sha256": "8f12cd9d0eed6757a3b947813a35a9e996a4684801ea9fca019b82cd289af3b7"
+      },
+      "runtimeObservations": [
+        {
+          "kind": "node",
+          "steps": 14,
+          "cleanServerExits": 4,
+          "cleanWorkerExits": 5,
+          "modelPosts": 8
+        },
+        {
+          "kind": "rust",
+          "steps": 14,
+          "cleanServerExits": 4,
+          "cleanWorkerExits": 5,
+          "modelPosts": 8
+        }
+      ]
+    },
+    {
+      "database": "bundled-postgres",
+      "suite": "agent-tasks",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/final-audit/native-product-6775zM/bundled-postgres-agent-tasks.json",
+        "bytes": 1815944,
+        "sha256": "192e074f39958ca1d897bc0bd174ccadb34f02e70f4bd106ae5ad123eaccb4b3"
+      },
+      "runtimeObservations": [
+        {
+          "kind": "node",
+          "steps": 11,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4,
+          "modelPosts": 16
+        },
+        {
+          "kind": "rust",
+          "steps": 11,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4,
+          "modelPosts": 16
+        }
+      ]
+    }
+  ],
+  "modelOperations": [
+    {
+      "database": "pglite",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/final-audit/current-model-operations-pglite.json",
+        "bytes": 607105,
+        "sha256": "902394ce086e45bc9afc9ac8c9bd92e9620ce042427d03d0a417f5473d8c48ea"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/final-audit/current-model-operations-pglite.log",
+        "bytes": 2920,
+        "sha256": "ff36df951036f7d244be8e586b39b570572de46658373e749147be2fbd7d9d8b"
+      },
+      "runtimeObservations": [
+        {
+          "kind": "node",
+          "cases": 12,
+          "providerRequests": 13,
+          "aggregate": {
+            "totals": {
+              "inputTokens": 36,
+              "outputTokens": 9,
+              "totalTokens": 45,
+              "cachedInputTokens": 6,
+              "cacheWriteInputTokens": 3,
+              "reasoningOutputTokens": 3
+            },
+            "coverage": {
+              "attemptCount": 12,
+              "reportedAttemptCount": 11,
+              "observedRequestCount": 12,
+              "incompleteUsageCount": 7
+            }
+          },
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4,
+          "intentionalWorkerLoss": 1
+        },
+        {
+          "kind": "rust",
+          "cases": 12,
+          "providerRequests": 13,
+          "aggregate": {
+            "totals": {
+              "inputTokens": 36,
+              "outputTokens": 9,
+              "totalTokens": 45,
+              "cachedInputTokens": 6,
+              "cacheWriteInputTokens": 3,
+              "reasoningOutputTokens": 3
+            },
+            "coverage": {
+              "attemptCount": 12,
+              "reportedAttemptCount": 11,
+              "observedRequestCount": 12,
+              "incompleteUsageCount": 7
+            }
+          },
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4,
+          "intentionalWorkerLoss": 1
+        }
+      ]
+    },
+    {
+      "database": "bundled-postgres",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/final-audit/current-model-operations-bundled-postgres.json",
+        "bytes": 676785,
+        "sha256": "c096b14e8441c21627c253ceeefb6ded914bd1d2448e52b386e8db701fc6377b"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/final-audit/current-model-operations-bundled-postgres.log",
+        "bytes": 2990,
+        "sha256": "82ab310f45688826868071a753c156c2b2a34688bda328f9c07ca4cebe8d7765"
+      },
+      "runtimeObservations": [
+        {
+          "kind": "node",
+          "cases": 12,
+          "providerRequests": 13,
+          "aggregate": {
+            "totals": {
+              "inputTokens": 36,
+              "outputTokens": 9,
+              "totalTokens": 45,
+              "cachedInputTokens": 6,
+              "cacheWriteInputTokens": 3,
+              "reasoningOutputTokens": 3
+            },
+            "coverage": {
+              "attemptCount": 12,
+              "reportedAttemptCount": 11,
+              "observedRequestCount": 12,
+              "incompleteUsageCount": 7
+            }
+          },
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4,
+          "intentionalWorkerLoss": 1
+        },
+        {
+          "kind": "rust",
+          "cases": 12,
+          "providerRequests": 13,
+          "aggregate": {
+            "totals": {
+              "inputTokens": 36,
+              "outputTokens": 9,
+              "totalTokens": 45,
+              "cachedInputTokens": 6,
+              "cacheWriteInputTokens": 3,
+              "reasoningOutputTokens": 3
+            },
+            "coverage": {
+              "attemptCount": 12,
+              "reportedAttemptCount": 11,
+              "observedRequestCount": 12,
+              "incompleteUsageCount": 7
+            }
+          },
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4,
+          "intentionalWorkerLoss": 1
+        }
+      ]
+    },
+    {
+      "database": "postgres",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/final-audit/current-model-operations-postgres.json",
+        "bytes": 674704,
+        "sha256": "4787e686d7e6479cada72830ef9a2dfdaf97dff9365c882214d9974cd7fa18f7"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/final-audit/current-model-operations-postgres.log",
+        "bytes": 2982,
+        "sha256": "9e2389964d50e0328819d4fe8ce966a6c261b62ed08546e0c4c8cee8fde83e8d"
+      },
+      "runtimeObservations": [
+        {
+          "kind": "node",
+          "cases": 12,
+          "providerRequests": 13,
+          "aggregate": {
+            "totals": {
+              "inputTokens": 36,
+              "outputTokens": 9,
+              "totalTokens": 45,
+              "cachedInputTokens": 6,
+              "cacheWriteInputTokens": 3,
+              "reasoningOutputTokens": 3
+            },
+            "coverage": {
+              "attemptCount": 12,
+              "reportedAttemptCount": 11,
+              "observedRequestCount": 12,
+              "incompleteUsageCount": 7
+            }
+          },
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4,
+          "intentionalWorkerLoss": 1
+        },
+        {
+          "kind": "rust",
+          "cases": 12,
+          "providerRequests": 13,
+          "aggregate": {
+            "totals": {
+              "inputTokens": 36,
+              "outputTokens": 9,
+              "totalTokens": 45,
+              "cachedInputTokens": 6,
+              "cacheWriteInputTokens": 3,
+              "reasoningOutputTokens": 3
+            },
+            "coverage": {
+              "attemptCount": 12,
+              "reportedAttemptCount": 11,
+              "observedRequestCount": 12,
+              "incompleteUsageCount": 7
+            }
+          },
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4,
+          "intentionalWorkerLoss": 1
+        }
+      ]
+    }
+  ],
+  "sourceContractAudit": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/final-audit/current-source-drift.json",
+    "bytes": 89013,
+    "sha256": "4ff4d64d1ef9e50897e3716f9078c3b11d3eb212fc72903ab96e8ec45116f29d"
+  },
+  "nativeServerBoundaryAudit": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/final-audit/server-boundaries.log",
+    "bytes": 1771,
+    "sha256": "01d9f4f800f18b5a982e11bfdfd7463a274455567c28f40e484ac622c9a18013"
+  }
+}

@@ -10,6 +10,16 @@ This milestone does not change the Rust server or rewrite the worker. It fixes
 a Node PostgreSQL date-binding defect uncovered while qualifying aggregate
 usage. Node remains the default server and full replacement remains incomplete.
 
+## Packaged 1.1.2845 qualification
+
+The current browser SDK and signed desktop worker passed the same twelve
+protected operation cases for each server on each of the three stores. Each
+peer observed thirteen provider requests, one intentional worker crash and
+four normal worker exits. The persisted aggregate retained all six token
+totals and all four receipt coverage counts. The existing cancellation,
+encrypted transport and retained restart assertions also passed.
+[Current product evidence](security/rust-server-current-native-product.json)
+
 ## Product assertions
 
 `actual-folder-client.mjs --model-operations` uses production server executables

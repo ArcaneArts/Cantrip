@@ -21,6 +21,19 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The packaged macOS ARM64 `1.1.2845` server and signed desktop worker passed
+the current Task and Agent product matrix against the Node reference. All
+six suites cover real native execution across PGlite, bundled PostgreSQL
+and external PostgreSQL. The reports record 150 product steps, 42 clean
+server exits, 54 clean worker exits and 144 model requests. Protected model
+operations also pass 72 paired cases across the same stores, including
+cancellation, exact usage, worker loss and retained restart.
+[Current product evidence](security/rust-server-current-native-product.json)
+
+The local source and server boundary audits verify all 17 generated contract
+graphs and maps, the current route inventory, real Rust authentication after
+restart and current HTTP authority boundaries.
+
 The [packaged active Task recovery](RUST_SERVER_INFLIGHT_RECOVERY.md#packaged-112845-dependency-recovery)
 qualifies `1.1.2845` with the signed desktop worker on external PostgreSQL.
 All four Node and Rust pairings complete one original Task during Redis
