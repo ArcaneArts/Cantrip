@@ -61,6 +61,9 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Securit
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Diagnostics_ToolHelp"] }
+
 [build-dependencies]
 embed-resource = "3.0.11"
 serde_json = "1"

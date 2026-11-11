@@ -28818,6 +28818,24 @@
       "verifiedArtifactFiles": 1762,
       "scope": "Native ARM64 macOS standalone package on all three stores. PGlite signed desktop install and restart retained state after rejecting an altered package. Keychain authorization of the new ad-hoc app was denied; the encrypted update matrix remains incomplete."
     },
+    "currentWindowsQualification": {
+      "status": "implemented-with-scoped-local-qualification",
+      "evidence": [
+        "docs/RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md",
+        "docs/security/rust-server-win32-x64-acceptance.json",
+        "scripts/server-rust/packaged-server-acceptance.mjs",
+        "scripts/server-rust/desktop-runtime-acceptance.mjs",
+        "scripts/server-rust/desktop-profile-upgrade-compatibility.mjs",
+        "scripts/server-rust/packaged-node-fixture.test.mjs"
+      ],
+      "sourceCommit": "2ec06de47a6bdd58439c0ad04cfaea0e3922d995",
+      "candidateVersion": "1.1.2819",
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+      "verifiedArtifactFiles": 2278,
+      "profileUpgradeAndInterruptionCases": 8,
+      "publishedNodeVersion": "1.1.2397",
+      "scope": "Windows 11 ARM64 build 27754 running the x64 native package. All three stores pass standalone and server-only production desktop supervision. Published Node PGlite profiles pass upgrade, post-write rollback and native re-upgrade. An actual converter-owner kill retains the original and terminates both converter descendants. Full current-worker Windows desktop, installer/update and original replacement acceptance remain open."
+    },
     "currentLinuxArm64Qualification": {
       "status": "implemented-with-scoped-local-qualification",
       "evidence": [

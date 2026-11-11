@@ -17,6 +17,14 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current Windows qualification](RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md)
+passes `1.1.2819` standalone across all three stores and verifies 2,278 package
+files. The production desktop supervisor passes server-only restart and owner
+loss across those stores. The published Node profile upgrades and retains
+post-write rollback and native re-upgrade. Full-worker Windows desktop and
+installer acceptance remain open after a server-independent crypto import
+failure in the local guest's x64 Node runtime.
+
 The [current Linux ARM64 qualification](RUST_SERVER_WINTERHOLD.md#current-linux-arm64-qualification)
 passes all three stores in the `1.1.2817` container and local systemd
 rehearsal. All 18 installer cases pass, and ten direct process hashes confirm

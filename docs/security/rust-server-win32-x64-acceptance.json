@@ -1,0 +1,234 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceCommit": "2ec06de47a6bdd58439c0ad04cfaea0e3922d995",
+  "candidateVersion": "1.1.2819",
+  "guest": {
+    "os": "Windows 11",
+    "build": 27754,
+    "architecture": "arm64",
+    "executableArchitecture": "x64",
+    "execution": "Windows x64 emulation"
+  },
+  "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+  "standalone": {
+    "target": "win32-x64",
+    "filesVerified": 2278,
+    "binary": {
+      "path": "bin/cantrip-server.exe",
+      "bytes": 110538477,
+      "sha256": "a3ef1a84ef2dde31e1766f3e3bcb212d31bf7cffabc7519e8d3e8bb7621b6b96"
+    },
+    "archive": {
+      "path": "share/cantrip-server-1.1.2819-win32-x64.tar.gz",
+      "bytes": 97086832,
+      "sha256": "8e88b781e8731625659342586c6aecf23b5daaa687ae082ea5367fa790dd4abc"
+    },
+    "nodeAbsentFromRuntimePath": true,
+    "localAndHosted": true,
+    "configurationPrecedence": true,
+    "spacesAndEmojiPaths": true,
+    "utf8BatchLaunchers": true,
+    "embeddedRuntimeFallback": true
+  },
+  "desktopSupervisor": {
+    "serverOnly": true,
+    "actualWorker": false,
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "serverIdentityAndSettingsRetained": true,
+    "abruptSupervisorLossRecovered": true,
+    "childrenReaped": true
+  },
+  "legacyProfile": {
+    "publishedNodeRelease": "1.1.2397",
+    "publishedArchiveSha256": "15aed1c9c0ecc90819d6f058e606faf3b07567dd75a9d33e23d5a4ca8dfaedf1",
+    "databaseMode": "pglite",
+    "upgradeCasesPassed": 8,
+    "caseNames": [
+      "actual-converter-spawn-failure-retains-original",
+      "production-launcher-converts-and-restarts-without-converter",
+      "post-write-reverse-migration-observed-by-real-node",
+      "fresh-and-unmarked-native-profiles-upgrade-without-node",
+      "explicit-native-open-not-gated-by-irrelevant-invalid-metadata",
+      "actual-migration-failure-never-invokes-legacy-converter",
+      "missing-completed-profile-never-becomes-empty-installation",
+      "real-converter-stops-after-owner-sigkill-original-retained"
+    ],
+    "originalFileCount": 1660,
+    "originalBackupVerified": true,
+    "postWriteRollbackReadByPublishedNode": true,
+    "nodeWriteSurvivesNativeReupgrade": true,
+    "observedConverterDescendantPids": [1324, 5612],
+    "bothConverterDescendantsExitedAfterOwnerKill": true
+  },
+  "fullWorkerAttempt": {
+    "status": "failed-before-enrollment",
+    "publishedRelease": "1.1.2397",
+    "archiveSha256": "fa69104e63477d8bd4254d132924162e453d6043e1fda0f09268dee86f34ba71",
+    "isolatedModule": "@noble/curves/esm/nist.js",
+    "isolatedError": "Cannot find square root",
+    "sameModuleSha256InCurrentWorker": "0cf0fcc0532ce67de1a7f4abce92a30d3a7c651719d4cb45b686ffbdb7275b78",
+    "verifiedCryptoModuleCount": 125,
+    "officialAndPublishedX64NodeImportExit": 1,
+    "jitlessX64NodeImportExit": 1,
+    "nativeWindowsArm64NodeImportExit": 0,
+    "nativeMacosArm64NodeImportExit": 0
+  },
+  "hostedDevelopmentRuns": 0,
+  "retainedEvidenceDirectory": "rust-server-current-windows-20261110-v1",
+  "evidence": [
+    {
+      "path": "archive-verification.json",
+      "bytes": 413,
+      "sha256": "b0be9c7524428f8497b85a102e808059d824baf37235de6d52688f54ad9f51d3"
+    },
+    {
+      "path": "qualification-source-manifest.json",
+      "bytes": 1198,
+      "sha256": "bd76ac15d15618502ebc1f49b6a09d6e4429ec9c33c91d7d620962ee4b6b7613"
+    },
+    {
+      "path": "share/packaged-server-acceptance.json",
+      "bytes": 2713,
+      "sha256": "fbf2f7e3695e38b811efd37417c093f4ac386cbf654a6fc986017e4168b535d1"
+    },
+    {
+      "path": "share/package-receipt.json",
+      "bytes": 340,
+      "sha256": "2ba355e435dddedd3257f820d257cf4972e6082a0bde2cf9e46c82b1d74cb6bb"
+    },
+    {
+      "path": "share/desktop-supervisor-acceptance-v1.json",
+      "bytes": 861,
+      "sha256": "42a9e53df263306a93dc3adebebfcd0403ee7aa0c14d4d358d02b7d6cf0c172c"
+    },
+    {
+      "path": "share/desktop-supervisor-acceptance-v2.json",
+      "bytes": 1216,
+      "sha256": "70ae2ce1afc507dd5b37a4f5e2b9c44d3e841bba584a37e320f3518c3b964879"
+    },
+    {
+      "path": "share/legacy-upgrade-acceptance-v1.json",
+      "bytes": 2255,
+      "sha256": "579843d516bab0022a8a3e980856fd64f6820dca606435f2e5250c5a0ed3eb03"
+    },
+    {
+      "path": "share/legacy-upgrade-acceptance-v2.json",
+      "bytes": 1162,
+      "sha256": "c15d269e8372e36f2e150763dfd7532ffde65393e185d933ed74deef9cb42027"
+    },
+    {
+      "path": "share/full-profile-acceptance-v1.json",
+      "bytes": 629,
+      "sha256": "2010a36408374f80c3424e82f7080d50f59b63c7b231a585515e4a658a3d7de7"
+    },
+    {
+      "path": "share/full-profile-acceptance-v2.json",
+      "bytes": 1439,
+      "sha256": "7c24ac96ffb476369e40e381a504f2cf0a708eb72c5cea8c0065bbdf0cf6c009"
+    },
+    {
+      "path": "share/full-profile-acceptance-v3.json",
+      "bytes": 2044,
+      "sha256": "f3a803a68073aaaa873a96e40be993453299d4437ce344a340d82c6ebfbda1c2"
+    },
+    {
+      "path": "share/full-profile-acceptance-v4.json",
+      "bytes": 1229,
+      "sha256": "08130644ef8cf81cae3d4c546f754ed76023982b09c6e0154c9118cbd2da880d"
+    },
+    {
+      "path": "guest-full-profile-acceptance-v4.log",
+      "bytes": 1600,
+      "sha256": "50162c3ed3a2bd905a6a3a9f08bca4fd2e0c36c1871f2f234a33715add259424"
+    },
+    {
+      "path": "windows-profile-fixture-clippy.log",
+      "bytes": 7937,
+      "sha256": "4c50080bc5679a42c0d0dc0cd77d027f6f96301e961d8d6490519f31ba44f990"
+    },
+    {
+      "path": "share/worker-loader-observed.json",
+      "bytes": 66238,
+      "sha256": "62f1c3039176dc182c907189fbcc9351c7f6804386c130b3b9d3824c841c0764"
+    },
+    {
+      "path": "share/worker-crypto-verification.json",
+      "bytes": 168,
+      "sha256": "dc00dcefaeb381565d1254c4381c5fd85ab9f3b49b82ace370df00e3d5e72b10"
+    },
+    {
+      "path": "share/node-emulation-control.json",
+      "bytes": 88,
+      "sha256": "64a0aebb3ed5e7dd198e453c494890dcb93c1c7f8aa17e5224fcccc69274dbda"
+    },
+    {
+      "path": "share/node-native-control.json",
+      "bytes": 157,
+      "sha256": "161abde413941dddb109942797779676c88aebc92223810c6699f1f6ec93926f"
+    },
+    {
+      "path": "share/node-published-control.json",
+      "bytes": 152,
+      "sha256": "8ab2de1b4940dff26894683ba2640fe58cf219a3f96846c8c74bf7f0d2974b92"
+    },
+    {
+      "path": "macos-node-crypto-control.log",
+      "bytes": 50,
+      "sha256": "12e9b8884de62b3a160b48c7a83c5aec707df5465bb3aa3054d6380a1fd7a341"
+    },
+    {
+      "path": "profile-archive-verification.json",
+      "bytes": 360,
+      "sha256": "2ad092036dbc213285541c037c754a7e607e89a8f2e0eb1b72a228bce378e7cb"
+    },
+    {
+      "path": "share/guest-retained-evidence.json",
+      "bytes": 324,
+      "sha256": "95d2d83835f272f53875f014cbc32f1addc2f3db047817de912ebab2e67c4581"
+    },
+    {
+      "path": "host-final-focused-tests.log",
+      "bytes": 1131,
+      "sha256": "4d66803114729ff032aa087fff2423c510c96d835f695826b8c7ae331efb05af"
+    },
+    {
+      "path": "rust-format-v2.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "windows-cross-build.log",
+      "bytes": 7710,
+      "sha256": "dfd60d99d2af798ff2c40a717d27375d47953c96426ae4021beb42971af13ea7"
+    },
+    {
+      "path": "windows-desktop-probe-build.log",
+      "bytes": 1782,
+      "sha256": "13cc6de9494dc4175587ff59e299350db52a4f558b35325fc2a28b6a4aa808b9"
+    },
+    {
+      "path": "windows-profile-fixture-native-observer-build-v2.log",
+      "bytes": 1349,
+      "sha256": "1f79af4f893ef8057406fd9ab6bc3a7d703830881ac86ab5e5db69d5b3d582ad"
+    }
+  ],
+  "scope": "Windows-kernel x64 native-server execution in an ARM64 guest. The complete current-worker desktop, installer/update, broader platform/product/recovery matrix and original replacement acceptance remain open.",
+  "profileArchive": {
+    "path": "share/guest-profile-evidence.tar.gz",
+    "bytes": 872098649,
+    "sha256": "392ce59f354e5682d70b2646b40a05dab60a4ff9303fa622306a514286d89a40",
+    "originalProfileDigestVerified": true
+  },
+  "localValidation": {
+    "focusedNodeTests": {
+      "passed": 11,
+      "skipped": 1,
+      "skipScope": "Windows-only worker-tree execution on the macOS host"
+    },
+    "windowsReferenceShutdownTestsPassed": 2,
+    "strictWindowsProfileFixtureClippy": true,
+    "rustFormatting": true,
+    "scopedPrettier": true
+  }
+}

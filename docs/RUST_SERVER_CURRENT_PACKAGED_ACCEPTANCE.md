@@ -1,8 +1,13 @@
 # Current native package qualification
 
-The full server replacement remains incomplete. Node remains the default server
-and the worker remains Node. This milestone fixes Windows native packaging and
-refreshes scoped local artifact and desktop-supervisor qualification.
+This document records the earlier `1.1.2777` milestone. Normal server builds and
+launchers now select Rust through the [default cutover](RUST_SERVER_DEFAULT_CUTOVER.md).
+The [current Windows qualification](RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md)
+records the `1.1.2819` artifact, supervisor and profile rollback results.
+
+The full server replacement remained incomplete at that milestone. Node was the
+default server and the worker used Node. That milestone fixed Windows native
+packaging and refreshed scoped local artifact and desktop-supervisor qualification.
 
 The subsequent [integrated artifact qualification](RUST_SERVER_INTEGRATED_ARTIFACT_ACCEPTANCE.md)
 records candidate `1.1.2778` macOS/profile-upgrade, Debian/Ubuntu and systemd
