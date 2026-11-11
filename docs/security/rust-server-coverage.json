@@ -24575,15 +24575,17 @@
         "scripts/server-rust/desktop-bundle-acceptance.mjs",
         "scripts/server-rust/desktop-profile-upgrade-compatibility.mjs",
         "docs/RUST_SERVER_DESKTOP_ENCRYPTED_ACCEPTANCE.md",
+        "docs/RUST_SERVER_DESKTOP_SIGNED_UPDATE.md",
+        "scripts/server-rust/native-desktop-updater-acceptance.mjs",
         "scripts/server-rust/desktop-client-continuity.mjs"
       ],
       "delivery": [
         "https://github.com/ArcaneArts/Cantrip/pull/2749",
         "https://github.com/ArcaneArts/Cantrip/pull/2752"
       ],
-      "scope": "Native supervisor and Rust packaging are the normal path. Current1.1.2786 macOS arm64 application passes all three original encrypted-client profile upgrades, restarts, real worker version commands, retained worker identities, catalog/key-binding continuity and graceful ownership shutdown. Original opt-in evidence retains its historical scope.",
+      "scope": "The native supervisor and Rust packaging are the default. The macOS ARM64 1.1.2786 app passes all three original encrypted-client profile upgrades. The current signed 1.1.2845 macOS ARM64 candidate also passes all three installed updates from 1.1.2831, including encrypted WebView authentication, real worker replies, retained database selection and accepted writes, and graceful child shutdown. The PGlite updater rejects a tampered archive.",
       "remaining": [
-        "Qualify final supported shipping artifacts, existing-client encryption and installer/update supervision; preserve the separate scope of earlier product/failure/performance evidence."
+        "Qualify the final Windows shipping artifact and reconcile the separate existing-data and product recovery evidence with the full release requirements."
       ]
     },
     "winterholdDelivery": {

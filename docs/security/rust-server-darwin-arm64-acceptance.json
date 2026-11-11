@@ -194,6 +194,72 @@
     "encryptedRendererRestart": "macOS Keychain denied the new ad-hoc app access to the retained item",
     "remainingDatabaseModes": ["bundled-postgres", "postgres"]
   },
+  "currentSignedUpdate": {
+    "sourceCommit": "241e94256fa22a5ab753f900808d15060a1c653f",
+    "serverSourceCommit": "2e60d2042203f64c8105d5c52d12ae1db92d2d83",
+    "previousVersion": "1.1.2831",
+    "version": "1.1.2845",
+    "target": "darwin-arm64",
+    "evidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "sameDeveloperIdRequirement": true,
+    "runtimeMachOBinariesSignedPerBundle": 198,
+    "portableWorkerNodeVersion": "24.22.1",
+    "freshWorkerJavaScript": true,
+    "reusedVerifiedWorkerHelperFiles": 9,
+    "verifiedLoopbackHttps": true,
+    "alteredArchiveRejection": "update_signature_invalid",
+    "encryptedRendererReopens": 3,
+    "workerVersionRepliesAfterUpdate": 3,
+    "retainedDatabaseSelectionAndWrites": 3,
+    "cleanOwnedServiceShutdowns": 3,
+    "installedBundlesVerified": 3,
+    "candidateFilesVerifiedPerInstallation": 13567,
+    "baselineArchive": {
+      "path": "current-desktop-signed-update/run-v1/baseline/Cantrip Server Signed Update QA.app.tar.gz",
+      "bytes": 338485679,
+      "sha256": "a8c98775774d3f868cf717fb344170d487d2cfb930b750a15a8b1b464df9a2a0"
+    },
+    "baselineArchiveSignature": {
+      "path": "current-desktop-signed-update/run-v1/baseline/Cantrip Server Signed Update QA.app.tar.gz.sig",
+      "bytes": 436,
+      "sha256": "550e89536ec3c58fb799a90462de4ed5dfc0a02421a0b649f8a1c54302513ab5"
+    },
+    "candidateArchive": {
+      "path": "current-desktop-signed-update/run-v1/candidate/Cantrip Server Signed Update QA.app.tar.gz",
+      "bytes": 338480386,
+      "sha256": "50c2d9c35a572578d7b8c0aa3ca32a60f3e41b7f48c3a650764d720084835b47"
+    },
+    "candidateArchiveSignature": {
+      "path": "current-desktop-signed-update/run-v1/candidate/Cantrip Server Signed Update QA.app.tar.gz.sig",
+      "bytes": 436,
+      "sha256": "8bce18ecffea071fcf8439a3505e07a156db0ed424e72023620b754db2446071"
+    },
+    "candidateAppSha256": "71961b0fa45aa3911b7524eb12c75b1b4fa1655ac2c0dc77e376b7e489e9e4bc",
+    "candidateServerInputSha256": "f8a2d070020752305e2045a80d1a59d1192ad943cdfc9e0c466ed3d3d2213474",
+    "candidateSignedServerSha256": "7d87713a10df2d4fb1103e20462542a10d036bf57b90bda186a566415e6e782c",
+    "report": {
+      "path": "current-desktop-signed-update/run-v1/report.json",
+      "bytes": 11276,
+      "sha256": "a829534e14b02a8b42cc374b7770d830933ee8b8a13c13f1583d200d467ce597"
+    },
+    "provenance": {
+      "path": "current-desktop-signed-update/provenance.json",
+      "bytes": 4008,
+      "sha256": "ca6c7de87b4a2bad2bc6fa0058874a1ad4e28fcf5eb594dd7561bbedca3e327f"
+    },
+    "archiveVerification": {
+      "path": "current-desktop-signed-update/retained-verification.json",
+      "bytes": 3542,
+      "sha256": "0d657f89db1851df577adcb254a19ab09d07b37ab7878becd436a7c088c0aae8"
+    },
+    "localChecks": {
+      "desktopScriptTestsPassed": 40,
+      "rendererAuthTestsPassed": 13,
+      "productionFrontendBuild": "passed",
+      "hostedDevelopmentRuns": 0
+    }
+  },
   "currentStandalone": {
     "sourceCommit": "2e60d2042203f64c8105d5c52d12ae1db92d2d83",
     "version": "1.1.2845",

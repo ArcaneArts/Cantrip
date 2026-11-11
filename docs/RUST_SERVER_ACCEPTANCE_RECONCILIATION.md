@@ -9,6 +9,10 @@ Historical ledger entries describe their original milestones; their remaining-wo
 text is not a current implementation inventory. The
 [current macOS encrypted desktop qualification](RUST_SERVER_DESKTOP_ENCRYPTED_ACCEPTANCE.md)
 passes all three original-profile upgrades and restarts with retained client keys.
+The [current signed macOS desktop qualification](RUST_SERVER_DESKTOP_SIGNED_UPDATE.md#current-installed-app-and-signed-update)
+updates the installed app to `1.1.2845` on all three stores, retains the
+authenticated client, server, worker and written setting, and verifies the
+installed bundles against the signed archive.
 The [native desktop workspace qualification](RUST_SERVER_DESKTOP_WORKSPACE_ACCEPTANCE.md)
 also exercises actual macOS popouts, dirty documents, server restart, WebView
 reload, application SIGKILL/restart, native close/return and explicit worker-file
