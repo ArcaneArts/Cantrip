@@ -37,7 +37,7 @@ export function MobileSignInScanner({ className }: MobileSignInScannerProps) {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [cameraAttempt, setCameraAttempt] = useState(0);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const [video, setVideo] = useState<HTMLVideoElement | null>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
   const cameraRequestRef = useRef<Promise<MediaStream> | null>(null);
   const acceptingRef = useRef(false);
@@ -128,7 +128,7 @@ export function MobileSignInScanner({ className }: MobileSignInScannerProps) {
       setStatus(null);
       return;
     }
-    const video = videoRef.current;
+    // The dialog mounts the preview in a portal after opening.
     const cameraRequest = cameraRequestRef.current;
     if (!video || !cameraRequest) return;
     const reader = new BrowserQRCodeReader();
@@ -174,7 +174,7 @@ export function MobileSignInScanner({ className }: MobileSignInScannerProps) {
       if (!controls && stream) stopCameraStream(stream);
       if (controlsRef.current === controls) controlsRef.current = null;
     };
-  }, [acceptPayload, cameraAttempt, open]);
+  }, [acceptPayload, cameraAttempt, open, video]);
 
   return (
     <>
@@ -212,7 +212,7 @@ export function MobileSignInScanner({ className }: MobileSignInScannerProps) {
                 autoPlay
                 muted
                 playsInline
-                ref={videoRef}
+                ref={setVideo}
               />
               <div className="pointer-events-none absolute inset-[14%] rounded-2xl border-2 border-white/80 shadow-[0_0_0_999px_rgba(0,0,0,0.35)]" />
               {status ? (
