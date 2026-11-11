@@ -3,7 +3,7 @@
 The Rust port includes counterparts for the recent server changes, but source
 pairing and matching schemas do not establish complete behavioral compatibility.
 This audit uses integrated source `8bc4c5d8100124136b4d77df387b69164f5e40da`.
-Node remains the default server and full replacement remains incomplete.
+At that revision, Node was the default server.
 
 Since the previous coverage baseline `951b108cc`, 39 first-parent commits change
 the Node server; 37 also change Rust core. Recent paired changes include
@@ -104,6 +104,22 @@ delivered milestone's local evidence. Successful protected inference, cancellati
 of a running operation, direct usage accounting, all current catalog behaviors,
 CantripOS lifecycle recovery, and the remaining native Task/Goal cases are
 separate acceptance requirements. This boundary harness does not claim them.
+
+## Current cutover source audit
+
+At `40a9f1d9084c1736f97914359e90c2f901b42c49`, all 16 generated
+schema graphs and the endpoint-provider map match the rebuilt TypeScript
+protocol. Ten of the 13 Node-source changes since the previous audit also
+changed Rust core. One of the other three relocates the Node server into the
+development reference. The other two repair timestamp binding in the reference
+for [model deletion](RUST_SERVER_FOUNDATION_RECONCILIATION.md) and
+[protected model-operation analytics](RUST_SERVER_MODEL_OPERATIONS.md), whose
+separate comparisons already exercise the Rust behavior.
+
+The local report `current-source-drift-40a9f1d90.json` in
+`rust-server-windows-installer-20261111-v1` has SHA-256
+`4b0ee3a4a93fe0e8bc5b46b9be2f4202b0fdc6674a78457b243552930e50d75c`. The [acceptance ledger](security/rust-server-coverage.json)
+tracks the scoped behavior and artifact evidence.
 
 ## Repeat locally
 

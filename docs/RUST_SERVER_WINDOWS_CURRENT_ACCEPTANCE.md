@@ -1,5 +1,27 @@
 # Current Windows native server qualification
 
+## Installed Windows x64 update and historical PGlite profile
+
+The installed `1.1.2839` app cold-started the native server with PGlite in a
+Windows 11 x64 QEMU guest. The bundled worker enrolled, loaded its packaged
+computer-use addon and answered the real worker version command.
+
+The production desktop updater rejected a changed installer with
+`update_signature_invalid`, then installed and relaunched the signed
+`1.1.2841` app. The relaunched app kept the server identity, the PGlite
+selection and the preference written before the update. The worker answered
+the same command before and after the update. All 14,090 installed files
+matched the signed NSIS package. The updater used a local signing key and
+TLS fixture. Both app builds contained the `1.1.2834` server and worker.
+
+The installed `1.1.2841` app also converted an archived Node PGlite profile.
+The first observer timed out while the app was converting. The same process
+subsequently opened the native profile, kept its identity and preference,
+and received a real response from the bundled worker. An independent
+read-only disk inspection matched all 1,660 original backup files to the
+archived profile. The [acceptance record](security/rust-server-win32-x64-acceptance.json)
+contains artifact and report checksums.
+
 ## Windows x64 PostgreSQL packaging
 
 On a clean Windows 11 x64 guest, the portable PostgreSQL 18.6 `pg_config.exe`
@@ -35,8 +57,8 @@ historical-profile test verified all 1,660 source files from the published Node
 server before launch. The installed app reached legacy conversion and reported
 failure before server readiness. The fresh-profile launch then failed while
 `initdb` attempted to start the bundled PGlite `postgres.exe` through a
-Windows extended-length path. Installed startup, migration and signed updater
-acceptance remain open.
+Windows extended-length path. The later installed-app checks above exercise
+the repaired packaging and launcher.
 
 ### Worker helper packaging
 
@@ -51,7 +73,7 @@ shared packager passed both executable version checks, repaired an incomplete
 worker bundle, reused a complete bundle with the build toolset absent, and
 populated an incomplete PostgreSQL cache before its actual `pg_config` call.
 
-## Current `1.1.2833` package
+## Earlier `1.1.2833` package
 
 The Windows x64 distribution from `81d9282a94833ba218fb4f2cb23b543c17a5530a`
 passed PGlite, bundled PostgreSQL and external PostgreSQL on the local Windows
@@ -94,8 +116,8 @@ worker JavaScript and portable x64 Node `22.23.4`. Each case runs a real
 worker version command, retains the server and worker identities and an
 accepted preference, reaps the children on shutdown, and reopens the same
 profile after supervisor loss. The fixture uses published Windows native
-worker tools from `1.1.2397`. The full desktop installer and updater with
-the release runtime remain open.
+worker tools from `1.1.2397`. The separate installed-app checks above use the
+packaged Node 24 runtime.
 
 The packaging tests also execute the relocated Windows Node binary and check
 its recorded version. All five focused Windows tests pass, including
@@ -192,8 +214,8 @@ The principal drivers are `packaged-server-acceptance.mjs`,
 The exported native distribution and guest profile/log archive accompany the
 reports. Development validation ran locally.
 
-The original replacement goal remains open for the Windows installer and
-updater with the release runtime, remaining product and coordination interruption
-cases, broader historical profiles and representative
-performance. The [acceptance reconciliation](RUST_SERVER_ACCEPTANCE_RECONCILIATION.md)
+The installed Windows PostgreSQL modes, remaining product and coordination
+interruption cases, broader historical profiles and representative performance
+are still part of the replacement qualification. The
+[acceptance reconciliation](RUST_SERVER_ACCEPTANCE_RECONCILIATION.md)
 tracks the current scope.

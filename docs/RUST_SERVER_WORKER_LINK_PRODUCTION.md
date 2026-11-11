@@ -139,6 +139,36 @@ endpoints share the driver process, and driver CPU totals can include V8 helper
 threads. These measurements describe this complete path, not the server's
 maximum forwarding capacity.
 
+## Current HTTP and session revocation comparison
+
+At `40a9f1d9084c1736f97914359e90c2f901b42c49`, the local Node reference and
+Rust peers matched 798 HTTP observations, 147 socket observations and 441
+worker commands across PGlite, bundled PostgreSQL and external PostgreSQL.
+The test used real HTTP and WebSocket connections, the production worker
+connection and controlled worker acknowledgments. Account logout returned
+HTTP 204 and closed the WorkerLink relay with code 1008 and the reason
+`Account session ended`. Renewing the revoked capability returned HTTP 404.
+Closing the HTTP request during revocation still produced the same relay
+closure after the worker acknowledgment.
+[Comparison driver](../scripts/server-rust/worker-link-http-compatibility.mjs)
+
+The account authentication comparison matched 53 observations on each store,
+including account-wide logout and a subsequent unauthenticated session read.
+The external PostgreSQL replay kept the Node-created identity and session
+through Rust and returned to Node after Rust revoked two retained sessions.
+Node observed the revocation. The native service also calls the owner-scoped
+WorkerLink and direct-attachment revocation handlers for account-wide logout.
+The combined owner-wide teardown still needs current packaged and shared-server
+acceptance. [Authentication comparison](../scripts/server-rust/auth-compatibility.mjs)
+
+The current shared PostgreSQL and Redis comparison also passed all 12
+Node/Node, Node/Rust, Rust/Node and Rust/Rust authentication combinations.
+Its 168 case groups include actual two-peer relay closure after cross-peer
+revocation, committed App Live fanout and replay, and fresh remote requests
+after Redis process interruption. All 24 server processes shut down cleanly.
+The suite uses the shared HTTP fixture and controlled worker acknowledgments.
+[Shared runtime driver](../scripts/server-rust/shared-runtime-http-compatibility.mjs)
+
 ## Scope and remaining replacement work
 
 These checks cover macOS arm64 and the `events`/`stream` lanes with controlled
@@ -148,9 +178,7 @@ failures or complete product acceptance. Existing component/product evidence
 retains its separate scope. All development validation is local; no GitHub
 Actions run or Winterhold production deployment is used.
 
-The root `pnpm check` still stops at the existing Node decomposition budgets:
-`build-app.ts` 1,539/1,500 and `chat-turn-runtime.ts` 2,329/1,999. Later aggregate
-checks are not claimed as passing. Full supported-artifact/product/background/
-coordination acceptance, existing-client encryption and updates, broader
-historical upgrade and product-state rollback, remaining performance, Rust
-default selection and production Node-server removal remain required.
+The benchmark revision's root `pnpm check` stopped at the Node decomposition
+budgets for `build-app.ts` and `chat-turn-runtime.ts`. The replacement's
+current development and shipping status is tracked in the
+[acceptance ledger](security/rust-server-coverage.json).

@@ -20,8 +20,9 @@ Dockerfile, packager, installer and matching server code.
 
 `deploy/production/deploy.json` accepts `"serverRuntime": "rust"`; omitting the
 field also selects Rust. The explicit `--server-runtime rust` spelling remains
-accepted. The full replacement still requires source retirement and final
-shipping acceptance; see [default cutover](RUST_SERVER_DEFAULT_CUTOVER.md).
+accepted. The normal build uses the Rust executable, and the legacy Node
+implementation is retained as a development comparison reference.
+[Production server retirement](RUST_SERVER_NODE_RETIREMENT.md)
 
 The distribution retains the existing entry points, `start.sh` and
 `migrate.sh`. The installer executes those entry points rather than requiring a
