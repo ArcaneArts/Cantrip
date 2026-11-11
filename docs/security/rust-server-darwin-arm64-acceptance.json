@@ -193,5 +193,112 @@
     },
     "encryptedRendererRestart": "macOS Keychain denied the new ad-hoc app access to the retained item",
     "remainingDatabaseModes": ["bundled-postgres", "postgres"]
+  },
+  "currentStandalone": {
+    "sourceCommit": "2e60d2042203f64c8105d5c52d12ae1db92d2d83",
+    "version": "1.1.2845",
+    "target": "darwin-arm64",
+    "evidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "verifiedFiles": 1762,
+    "serverRuntimePathHasNoNode": true,
+    "homebrewAccessDenied": true,
+    "artifactWritesDenied": true,
+    "embeddedRuntimeFallback": true,
+    "migrationAndExport": true,
+    "localAndHostedReopenWithRetainedIdentityAndWrite": true,
+    "sigterm": true,
+    "binary": {
+      "path": "cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 93566000,
+      "sha256": "f8a2d070020752305e2045a80d1a59d1192ad943cdfc9e0c466ed3d3d2213474"
+    },
+    "manifest": {
+      "path": "cantrip-server-darwin-arm64/native-server.json",
+      "bytes": 325804,
+      "sha256": "890ebdc6771518d715ec1c3c3db16dfb24af242ad82d9be680ab124c0f9111d7"
+    },
+    "report": {
+      "path": "macos-standalone-acceptance.json",
+      "bytes": 2765,
+      "sha256": "b453f5d6e44230b85e55700a03f54570806fd8affbe177942bfef93c59383d3d"
+    },
+    "performance": {
+      "databaseMode": "pglite",
+      "nodeRuntime": "24.22.2",
+      "host": "Apple M4 Max, macOS 27.0.1",
+      "warmupsPerRuntime": 5,
+      "measuredRunsPerRuntime": 20,
+      "allRunsPassed": true,
+      "retainedIdentityAndWrites": true,
+      "guardVerdict": "pass",
+      "completeWorkloadMs": {
+        "node": {
+          "median": 3770.0269165,
+          "p95": 3980.227416
+        },
+        "rust": {
+          "median": 1514.6554375,
+          "p95": 1561.380041
+        }
+      },
+      "reports": {
+        "environment": {
+          "path": "runtime-performance/environment.txt",
+          "bytes": 207,
+          "sha256": "4972a2d7e84eab66f8198fd4c56b269774562db69f015a1b07296299c6876f86"
+        },
+        "nodeCapture": {
+          "path": "runtime-performance/node-capture.json",
+          "bytes": 1150,
+          "sha256": "66764386f411f05c6b6350c88e6325543c2e5d865a916428480e0d7432665a50"
+        },
+        "rustCapture": {
+          "path": "runtime-performance/rust-capture.json",
+          "bytes": 1138,
+          "sha256": "7c2c97ff804bb29a286afe0290f63cdfa084f0c0bdd3c1e10d001222b5b8b78b"
+        },
+        "comparison": {
+          "path": "runtime-performance/guard-comparison.md",
+          "bytes": 530,
+          "sha256": "a870a4a85b54f1d1d994ef6a059fe1713f460c01e95ac684e7c9570fa2169b12"
+        },
+        "runtimeSummary": {
+          "path": "runtime-performance/summary.json",
+          "bytes": 6142,
+          "sha256": "c57ec5462ee63fd33a86dcd8d69c4eb43542a672355102009a5adf8af67007ee"
+        }
+      }
+    },
+    "workerLink": {
+      "productionRuntimePairsPassed": 6,
+      "payloadMiBPerLane": 64,
+      "report": {
+        "path": "worker-link-acceptance/matrix.json",
+        "bytes": 11818,
+        "sha256": "f97b232a14208e306de744061b436c6528e1b8562d00a67d350026bfed9c0dce"
+      }
+    },
+    "historicalProductRoundTrip": {
+      "legacyVersion": "1.1.2733",
+      "nativeVersion": "1.1.2845",
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+      "tables": 137,
+      "nonemptyTables": 35,
+      "sequences": 4,
+      "rustNodeAndReturnWrites": 36,
+      "allPassed": true,
+      "originalFilesUnchanged": true,
+      "report": {
+        "path": "historical-product-roundtrip/report.json",
+        "bytes": 72781,
+        "sha256": "4dbd37bb43749d0dcdbb0f9e7de638fc9e3e66b98effc4c99309663e9abea420"
+      },
+      "actualSourceWriteDenial": {
+        "path": "historical-source-write-denial.json",
+        "bytes": 43,
+        "sha256": "2204d5d416c6f896c3d04d87029a65efbd02e2baac7e3216e08794821bbbf318"
+      }
+    }
   }
 }
