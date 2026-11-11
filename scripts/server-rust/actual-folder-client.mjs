@@ -274,6 +274,9 @@ async function flow(
         ),
       }
     : undefined;
+  const goalLaneOwnerLoss = process.argv.includes("--task-goal-lane-owner-loss")
+    ? path.join(root, fixture.kind, "goal-lane-owner-loss.json")
+    : undefined;
   const errors = [],
     requests = [];
   result.requests = requests;
@@ -390,6 +393,26 @@ async function flow(
                   .join(" "),
               }
             : {}),
+          ...(goalLaneOwnerLoss
+            ? {
+                CANTRIP_TEST_GOAL_LANE_OWNER_LOSS: goalLaneOwnerLoss,
+                CANTRIP_TEST_GOAL_LANE_WORKER_ENTRY: path.resolve(
+                  process.env.CANTRIP_TEST_WORKER_PACKAGE ??
+                    path.join(repositoryRoot, "cantrip_worker"),
+                  "dist/index.js",
+                ),
+                NODE_OPTIONS: [
+                  process.env.NODE_OPTIONS,
+                  "--import=" +
+                    new URL(
+                      "./worker-goal-lane-owner-loss.mjs",
+                      import.meta.url,
+                    ).href,
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              }
+            : {}),
           ...(taskOutcomeOrder
             ? {
                 CANTRIP_TEST_TASK_ROUND_ORDER_FILE: taskOutcomeOrder.file,
@@ -426,6 +449,7 @@ async function flow(
     );
     await worker.ready();
     if (sharedPair) await fixture.assertRemoteWorker(workerId);
+    return worker;
   };
   const stopWorker = async () => {
     if (!worker) return;
@@ -1379,6 +1403,11 @@ async function flow(
         result,
         requests,
         taskOutcomeOrder,
+        goalLaneScenario:
+          goalLaneOwnerLoss ||
+          process.argv.includes("--task-goal-recovered-lane")
+            ? { faultFile: goalLaneOwnerLoss }
+            : undefined,
       });
     if (
       process.argv.includes("--project-chats") ||

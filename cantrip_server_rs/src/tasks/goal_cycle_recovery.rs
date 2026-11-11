@@ -132,7 +132,103 @@ fn stale<T>() -> Result<T> {
             .into(),
     )
 }
+pub(crate) fn committed_source(marker: &Value) -> Option<&Value> {
+    let state = &marker["suspension"];
+    let terminal = &state["terminal"];
+    state.get("source").filter(|source| {
+        !source.is_null()
+            && state["restoration"].is_null()
+            && !terminal.is_null()
+            && terminal["projectedAt"].is_null()
+    })
+}
+
 impl Repository {
+    pub(crate) async fn project_goal_cycle_outcome(
+        &self,
+        owner: &str,
+        source: &Value,
+        observation: &Value,
+        observed: &Value,
+    ) -> Result<Option<Value>> {
+        let (owner, source, observation, observed) = (
+            owner.to_owned(),
+            source.clone(),
+            observation.clone(),
+            observed.clone(),
+        );
+        self.database.transaction(|tx| Box::pin(async move {
+            let chat = text(&source["parent"]["chatId"])?;
+            let Some(row) = locked(tx, &owner, &chat).await? else { return Ok(None); };
+            let cycle = &row["cycle"];
+            let mut marker = cycle["goal_cycle_recovery"].clone();
+            if committed_source(&marker) != Some(&source)
+                || cycle["goal_input"]["receipt"] != source["parent"]
+                || !same_binding(&row,&source["parent"]["workerId"],&source["parent"]["providerId"],&source["threadId"],&source["cycle"]) {
+                return Ok(None);
+            }
+            anyhow::ensure!(row["handoff"] != true, "The committed Task Goal observation is waiting for its runtime handoff.");
+            goal_observations::assert_in(tx, &owner, &chat, &observation).await?;
+            let execution = &observed["execution"];
+            let status = execution["status"].as_str()
+                .filter(|status| matches!(*status, "idle" | "failed") && execution["threadId"] == source["threadId"] && !observed["goal"].is_null())
+                .context("The committed Task Goal cycle is awaiting a terminal execution observation.")?;
+            let lane = &observation["snapshot"]["lane"];
+            if !lane.is_null()
+                && (lane["id"] != source["parent"]["executionLaneId"]
+                    || lane["workerId"] != source["parent"]["workerId"]
+                    || lane["worktreeId"] != source["parent"]["worktreeId"]
+                    || lane["threadId"] != source["threadId"]
+                    || (lane["activatedAt"].as_js_string().and_then(crate::wire::date_milliseconds)
+                        != source["parent"]["executionLaneActivatedAt"].as_js_string().and_then(crate::wire::date_milliseconds)
+                        && lane["purpose"] != crate::chats::task_recovery::RECOVERED_GOAL_LANE))
+            {
+                return Ok(None);
+            }
+            let next = parse("taskOpaqueContentSchema", &observed["task"])?;
+            let version = &observation["snapshot"]["taskRowVersion"];
+            let Some(task) = super::finish::sync_implementation_state_in(tx,&chat,version,&next).await? else {
+                return Ok(None);
+            };
+            if !lane.is_null() {
+                let closed = crate::chats::execution_lanes::finish_in_transaction(
+                    tx,&chat,&text(&lane["id"])?,status,
+                    &json!({"expectedActivatedAt":lane["activatedAt"]}),
+                ).await?;
+                if !closed { return stale(); }
+            }
+            marker["suspension"]["terminal"]["projectedAt"] = now();
+            write(tx,cycle,&marker,false).await?;
+            if matches!(task["state"].as_str(),Some("complete" | "blocked" | "failed"))
+                && !matches!(cycle["state"].as_str(),Some("succeeded" | "failed" | "cancelled" | "paused"))
+            {
+                let now = crate::auth::now();
+                tx.query("UPDATE task_dispatch_cycles SET state=$2,completed_at=$3,eligibility_code=NULL,updated_at=$3 WHERE id=$1",
+                    &[&text(&cycle["id"])?,&if task["state"]=="failed"{"failed"}else{"succeeded"},&now]).await?;
+            }
+            Ok(Some(task))
+        })).await
+    }
+
+    /// Recover terminal markers committed by builds before the outbox carried
+    /// this observation, and wake pending ones when a worker reconnects.
+    pub(crate) async fn wake_committed_goal_cycles(&self, owner: &str) -> Result<()> {
+        self.database.query(
+            "WITH latest AS (SELECT DISTINCT ON (d.chat_id) d.chat_id,d.goal_cycle_recovery,d.goal_order_epoch,d.physical_worker_id,d.worktree_id FROM task_dispatch_cycles d WHERE d.owner_id=$1 ORDER BY d.chat_id,d.created_at DESC,d.id DESC)
+             INSERT INTO managed_queue_states(chat_id,revision)
+             SELECT c.id,1 FROM latest d JOIN chats c ON c.id=d.chat_id AND c.owner_id=$1
+             WHERE c.archived_at IS NULL AND c.active_worker_id=d.physical_worker_id AND c.active_worktree_id=d.worktree_id
+               AND d.goal_cycle_recovery #>> '{suspension,source,cycle,orderEpoch}' = d.goal_order_epoch::text
+               AND d.goal_cycle_recovery #>> '{suspension,terminal,observedAt}' IS NOT NULL
+               AND d.goal_cycle_recovery #>> '{suspension,terminal,projectedAt}' IS NULL
+               AND d.goal_cycle_recovery #>> '{suspension,restoration,receipt,operationId}' IS NULL
+             ON CONFLICT(chat_id) DO UPDATE SET revision=managed_queue_states.revision+1,notification_due_at=now()
+             WHERE managed_queue_states.notified_revision>=managed_queue_states.revision",
+            &[&owner],
+        ).await?;
+        Ok(())
+    }
+
     pub async fn commit_goal_cycle_outcome(
         &self,
         owner: &str,
@@ -175,8 +271,8 @@ impl Repository {
             if marker["suspension"]["terminal"].is_null() {
                 marker["suspension"]["terminal"] = json!({"ok":ok,"failureKind":if ok {Value::Null} else {json!("runtime")},"observedAt":now(),"projectedAt":Value::Null,
                     "outcomeDigest":digest,"threadId":source["threadId"],"turnId":source["turnId"]});
+                write(tx,&cycle,&marker,true).await?;
             }
-            tx.query("UPDATE task_dispatch_cycles SET goal_cycle_recovery=$2::text::jsonb WHERE id=$1", &[&text(&cycle["id"])?,&marker.stringify()]).await?;
             crate::native_commands::task_suspension::retire_goal_cycle_locked(tx,&owner,&source,if ok {"completed"} else {"failed"}).await?;
             Ok(json!({"committed":true,"message":saved,"chat":super::rows::goal_chat(&row)?}))
         })).await

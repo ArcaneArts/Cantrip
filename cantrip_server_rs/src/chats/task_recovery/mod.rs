@@ -79,6 +79,7 @@ fn unpaused(a: &Value, b: &Value, project: bool) -> bool {
         && same_placement(a, b)
         && !truthy(a.get("automationPaused"))
 }
+pub(crate) const RECOVERED_GOAL_LANE: &str = "Recovered native Task Goal";
 const CHANGED: &str = "The Task changed during recovery. Please retry.";
 impl Service {
     pub fn new(dependencies: Dependencies) -> Arc<Self> {
@@ -100,6 +101,7 @@ impl Service {
     pub fn reconcile(&self, owner: &str) -> BoxFuture<'static, Result<()>> {
         let (this, owner) = (self.clone(), owner.to_owned());
         self.operations.run(async move {
+            this.tasks.wake_committed_goal_cycles(&owner).await?;
             for cycle in this
                 .dispatch
                 .list(&owner)

@@ -100,6 +100,30 @@ impl Service {
         {
             anyhow::bail!("Task Goal execution observation was not returned.");
         }
+        if let Some(source) = options.cycle_outcome {
+            let fence = observation
+                .as_ref()
+                .context("The Goal cycle observation has no fence.")?;
+            let chat = text(&context["chatId"])?;
+            if let Some(next) = self
+                .tasks
+                .project_goal_cycle_outcome(owner, &source, fence, &result)
+                .await?
+            {
+                if matches!(
+                    next["state"].as_str(),
+                    Some("complete" | "blocked" | "failed")
+                ) && let Some(lease) = goal_dispatch_lease(task)?
+                {
+                    self.release_lease(&lease);
+                }
+                self.publish(owner, &chat, "task", Some(context));
+                self.publish(owner, &chat, "chat", Some(context));
+                (self.dependencies.queue_tick)();
+                result["task"] = next;
+            }
+            return Ok(result);
+        }
         if (!truthy(result.get("goal")) && options.runtime_failure.is_none())
             || options.observation_only
         {

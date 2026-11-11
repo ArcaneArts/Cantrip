@@ -360,7 +360,7 @@ export async function nativeRecoveryHttpGoal(
       (commands) =>
         commands
           .slice(readsBeforeDelivery)
-          .some((command) => command.observeExecution === false),
+          .some((command) => command.observeExecution === true),
     );
   }
   const accepted = await state();

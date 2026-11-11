@@ -47,6 +47,13 @@ impl Backend for Native {
     }
     fn request(&self, entry: Value) -> BoxFuture<'_, Result<()>> {
         async move {
+            // A terminal observation does not need the worker to process a
+            // queue wake first. A lost observation keeps this revision due.
+            let deferred_outcome = entry["taskGoalOutcomeDeferred"] == true;
+            if !deferred_outcome && let Some(source) = entry.get("taskGoalOutcome") {
+                let recover = self.recover_goal.as_ref().context("Task Goal outcome projection is unavailable.")?;
+                recover(text(&entry["ownerId"])?, text(&entry["chatId"])?, source.clone()).await?;
+            }
             let command=json!({"type":"chat.queue.changed","chatId":entry["chatId"],"revision":entry["revision"]});
             let task_pause = self.chats.task_pause_intent(&text(&entry["ownerId"])?, &text(&entry["chatId"])?).await?;
             let primary = text(&entry["workerId"])?;
@@ -77,6 +84,7 @@ impl Backend for Native {
                 let recover = self.recover_goal.as_ref().context("Managed Goal recovery delivery is unavailable.")?;
                 recover(text(&entry["ownerId"])?, text(&entry["chatId"])?, recovery.clone()).await?;
             }
+            anyhow::ensure!(!deferred_outcome, "The committed Task Goal observation is waiting for its runtime transition.");
             Ok(())
         }
         .boxed()

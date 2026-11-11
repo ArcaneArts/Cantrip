@@ -199,7 +199,9 @@ impl Service {
             Some({
                 let goals = turns.goals.clone();
                 Arc::new(move |owner, chat, recovery| {
-                    if recovery.get("cycle").is_some_and(|v| !v.is_null()) {
+                    if recovery["kind"] == "goal-cycle" {
+                        goals.project_committed_goal_cycle(&owner, &recovery)
+                    } else if recovery.get("cycle").is_some_and(|v| !v.is_null()) {
                         goals.recover_task_goal_cycle(&owner, &chat, &recovery)
                     } else if recovery.get("claimId").is_some_and(|v| !v.is_null()) {
                         goals.recover_managed_goal_claim(&owner, &chat, &recovery)
