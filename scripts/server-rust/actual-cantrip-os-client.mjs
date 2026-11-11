@@ -7,7 +7,10 @@ import { actualCantripOsPowerClient } from "./actual-cantrip-os-power-client.mjs
 import { actualCantripOsPackageClient } from "./actual-cantrip-os-package-client.mjs";
 import { actualCantripOsSystemClient } from "./actual-cantrip-os-system-client.mjs";
 
+import { actualCantripOsRunClient } from "./actual-cantrip-os-run-client.mjs";
+
 export async function actualCantripOsClient({
+  runProjectId,
   page,
   fixture,
   root,
@@ -88,11 +91,13 @@ export async function actualCantripOsClient({
   try {
     // Populate the ordinary Worker-owned public artifact catalog. The full
     // worker reads and snapshots these files through its production catalog.
-    await cp(
-      process.env.CANTRIP_TEST_OS_PACKAGE_DIRECTORY,
-      path.join(dataDirectory, "cantrip-os-packages"),
-      { recursive: true },
-    );
+    if (!runProjectId) {
+      await cp(
+        process.env.CANTRIP_TEST_OS_PACKAGE_DIRECTORY,
+        path.join(dataDirectory, "cantrip-os-packages"),
+        { recursive: true },
+      );
+    }
     await guest.start();
     report.containerId = guest.id;
     report.containerName = guest.name;
@@ -208,6 +213,30 @@ export async function actualCantripOsClient({
     result.steps.push(
       "actual Docker guest attachment and retained workspace-create admission use the existing browser SDK and full worker without duplicate creation",
     );
+
+    if (runProjectId) {
+      await actualCantripOsRunClient({
+        page,
+        call,
+        os,
+        guest,
+        record,
+        instance,
+        selected,
+        fixture,
+        workerId,
+        projectId: runProjectId,
+        crashWorker,
+        startWorker,
+        report,
+      });
+      result.steps.push(
+        "real guest Run start, output, server and worker recovery, restart and stop",
+      );
+      report.summary = report.snapshots;
+      succeeded = true;
+      return;
+    }
 
     if (process.argv.includes("--cantrip-os-system")) {
       await actualCantripOsSystemClient({

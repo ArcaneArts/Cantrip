@@ -14738,6 +14738,147 @@
         ]
       },
       {
+        "command": "cantrip-os.run-runtime.start",
+        "implementation": "cantrip_server_rs/src/run_configurations/lifecycle.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_OS_RUN_LIFECYCLE.md",
+          "docs/security/rust-server-os-run-lifecycle-acceptance.json",
+          "scripts/server-rust/actual-cantrip-os-run-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "The actual guest test qualifies the public browser and full worker path on all three stores with account authentication. The large retained-output worker test and final current platform/artifact acceptance remain open."
+        ]
+      },
+      {
+        "command": "cantrip-os.run-runtime.restart",
+        "implementation": "cantrip_server_rs/src/run_configurations/lifecycle.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_OS_RUN_LIFECYCLE.md",
+          "docs/security/rust-server-os-run-lifecycle-acceptance.json",
+          "scripts/server-rust/actual-cantrip-os-run-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "The actual guest test qualifies the public browser and full worker path on all three stores with account authentication. The large retained-output worker test and final current platform/artifact acceptance remain open."
+        ]
+      },
+      {
+        "command": "cantrip-os.run-runtime.stop",
+        "implementation": [
+          "cantrip_server_rs/src/run_configurations/lifecycle.rs",
+          "cantrip_server_rs/src/run_configurations/retirement.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_OS_RUN_LIFECYCLE.md",
+          "docs/security/rust-server-os-run-lifecycle-acceptance.json",
+          "scripts/server-rust/actual-cantrip-os-run-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "The actual guest test qualifies the public browser and full worker path on all three stores with account authentication. The large retained-output worker test and final current platform/artifact acceptance remain open."
+        ]
+      },
+      {
+        "command": "cantrip-os.run-runtime.output",
+        "implementation": "cantrip_server_rs/src/run_configurations/output.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_OS_RUN_LIFECYCLE.md",
+          "docs/security/rust-server-os-run-lifecycle-acceptance.json",
+          "scripts/server-rust/actual-cantrip-os-run-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "The actual guest test qualifies the public browser and full worker path on all three stores with account authentication. The large retained-output worker test and final current platform/artifact acceptance remain open."
+        ]
+      },
+      {
+        "command": "cantrip-os.run-runtime.reconcile",
+        "implementation": "cantrip_server_rs/src/run_configurations/observations.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_OS_RUN_LIFECYCLE.md",
+          "docs/security/rust-server-os-run-lifecycle-acceptance.json",
+          "scripts/server-rust/actual-cantrip-os-run-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "The actual guest test qualifies the public browser and full worker path on all three stores with account authentication. The large retained-output worker test and final current platform/artifact acceptance remain open."
+        ]
+      },
+      {
+        "command": "cantrip-os.workspaces.create",
+        "implementation": "cantrip_server_rs/src/cantrip_os/workspace_operations.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_OS_RUN_LIFECYCLE.md",
+          "docs/security/rust-server-os-run-lifecycle-acceptance.json",
+          "scripts/server-rust/actual-cantrip-os-run-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "The actual guest test qualifies the public browser and full worker path on all three stores with account authentication. The large retained-output worker test and final current platform/artifact acceptance remain open."
+        ]
+      },
+      {
+        "command": "cantrip-os.run-runtime.status",
+        "implementation": "cantrip_worker/src/os-executor/run-commands.ts",
+        "status": "no-current-server-producer",
+        "evidence": [
+          "docs/RUST_SERVER_OS_RUN_LIFECYCLE.md",
+          "docs/security/rust-server-os-run-lifecycle-acceptance.json"
+        ],
+        "remaining": [
+          "Public Run status uses persisted state. The active worker process is confirmed through the OS reconcile command. The existing worker handler remains part of the protocol contract."
+        ]
+      },
+      {
+        "command": "project.run-configuration-runtime.status",
+        "implementation": "cantrip_worker/src/commands/project.ts",
+        "status": "no-current-server-producer",
+        "evidence": [
+          "docs/RUST_SERVER_OS_RUN_LIFECYCLE.md",
+          "docs/security/rust-server-os-run-lifecycle-acceptance.json"
+        ],
+        "remaining": [
+          "Public Run status uses persisted state. The active worker process is confirmed through the project reconcile command. The existing worker handler remains part of the protocol contract."
+        ]
+      },
+      {
+        "command": "cantrip-os.workspaces.list",
+        "implementation": "cantrip_worker/src/os-executor/controller.ts",
+        "status": "no-current-server-producer",
+        "evidence": [
+          "docs/RUST_SERVER_OS_RUN_LIFECYCLE.md",
+          "docs/security/rust-server-os-run-lifecycle-acceptance.json"
+        ],
+        "remaining": [
+          "The public workspace listing reads persisted workspaces. Attachment inspection and workspace creation update that catalog. The existing worker handler remains part of the protocol contract."
+        ]
+      },
+      {
+        "command": "chat.turn.protect",
+        "implementation": "cantrip_worker/src/index.ts",
+        "status": "no-current-server-producer",
+        "evidence": [
+          "docs/RUST_SERVER_OS_RUN_LIFECYCLE.md",
+          "docs/security/rust-server-os-run-lifecycle-acceptance.json"
+        ],
+        "remaining": [
+          "The prior scheduled-automation producer was removed in 561b7214f. Current producers use automation.dispatch.protect, verified in the current account HTTP comparison. The existing worker handler remains part of the protocol contract."
+        ]
+      },
+      {
         "command": "chat.steer",
         "implementation": "cantrip_server_rs/src/http/chat_execution/steer.rs",
         "status": "partial",

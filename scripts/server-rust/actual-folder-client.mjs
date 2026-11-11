@@ -125,7 +125,9 @@ const option = (name) => {
 };
 const databaseMode = option("--database") ?? "pglite";
 const sharedPair = option("--server-pair");
+const cantripOsRun = process.argv.includes("--cantrip-os-run");
 const singleProduct =
+  cantripOsRun ||
   process.argv.includes("--production-server") ||
   process.argv.includes("--native-task-goal-worker-recovery") ||
   process.argv.includes("--native-worker-recovery") ||
@@ -215,6 +217,7 @@ async function flow(
     if (
       pathname.startsWith("/api/projects") ||
       pathname.startsWith("/api/cantrip-os") ||
+      pathname.startsWith("/api/run-configuration-runtimes/") ||
       pathname.startsWith("/api/model-operations/") ||
       pathname.startsWith("/api/chats/") ||
       pathname.startsWith("/api/skills") ||
@@ -1206,11 +1209,13 @@ async function flow(
       });
     }
     if (
+      cantripOsRun ||
       process.argv.includes("--cantrip-os") ||
       process.argv.includes("--cantrip-os-system")
     ) {
       if (!worker) await startWorker();
       await actualCantripOsClient({
+        runProjectId: cantripOsRun ? first.id : undefined,
         page,
         fixture,
         root,
@@ -1553,6 +1558,7 @@ try {
     assert.deepEqual(runtime.steps, report.runtimes[0].steps);
     assert.deepEqual(runtime.projects, report.runtimes[0].projects);
     if (
+      cantripOsRun ||
       process.argv.includes("--cantrip-os") ||
       process.argv.includes("--cantrip-os-system")
     )

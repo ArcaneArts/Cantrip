@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "baseCommit": "b98ebd44c3ec3276467c926acfe023afb01648d5",
+  "candidateVersion": "1.1.2811",
+  "completeReplacement": false,
+  "platform": "darwin-arm64 host, Linux arm64 Docker guest",
+  "guestImage": {
+    "tag": "cantrip-os:dev",
+    "id": "sha256:26071bfa6815bfaf81ac27be4eeef50dbf82d81cd1801605c4edc6a682f0ba6e"
+  },
+  "scope": "Production server peers, actual account/browser SDK, full worker, physical Linux Run with protected secrets and output, process and receipt replay, server and worker SIGKILL and guest PID witnesses.",
+  "productionRustChanges": [],
+  "counts": {
+    "databasePairs": 3,
+    "guestCells": 6,
+    "snapshots": 60,
+    "runSnapshots": 36,
+    "encryptedOutputReads": 24,
+    "runServerCrashes": 6,
+    "workspaceServerCrashes": 6,
+    "runWorkerCrashes": 6,
+    "browserRunRequests": 495,
+    "automationCommands": 16,
+    "mappedWorkerCommands": 300,
+    "unmappedWorkerCommands": 23
+  },
+  "matrix": [
+    {
+      "databaseMode": "pglite",
+      "report": {
+        "path": ".qa/os-run/matrix-pglite-v2.json",
+        "sha256": "984c653d36c1d6a674aa39651b74bba0816e2195d510eea8e3a5c36060823567"
+      },
+      "trace": {
+        "path": ".qa/os-run/matrix-pglite-v2.requests.json",
+        "sha256": "9aa8e090d297ebe1ba6473ac612ccf4c75f9c4e02a76775bfb9edf342bbd4bbe"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "report": {
+        "path": ".qa/os-run/matrix-bundled-postgres-v2.json",
+        "sha256": "22e847f59ff8b110734673901013c9689b270976c327917b16fe201821aa0029"
+      },
+      "trace": {
+        "path": ".qa/os-run/matrix-bundled-postgres-v2.requests.json",
+        "sha256": "ebfb5d41d17bc4ec4d6fbb3d188207274d6153220862f28b2b30bc5616cc9100"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "report": {
+        "path": ".qa/os-run/matrix-postgres-v2.json",
+        "sha256": "f69b86e627a71897a29a4e47099ac94be7e8f9824240723556f6e3d4eb4ab419"
+      },
+      "trace": {
+        "path": ".qa/os-run/matrix-postgres-v2.requests.json",
+        "sha256": "c8fb7b103e198881d8f7e22dc8d7b9b1d743ef3dc560438ee4ccd887eb613e59"
+      }
+    }
+  ],
+  "automationProducer": {
+    "path": ".qa/os-run/automation-producer-pilot.json",
+    "sha256": "fde2061f49cbfbb8f61b181972d7c01cb83ac11fd4bfb850db5286a3d6a92fdc"
+  },
+  "verified": {
+    "path": ".qa/os-run/verified-matrix.json",
+    "sha256": "dabe225b69b80bb068ccce3b1f6cc5d6cf2208917b2b48f95ac2733790a96ea9"
+  },
+  "verifier": {
+    "path": ".qa/os-run/verify-matrix.py",
+    "sha256": "204901e611ea926f27a80acfcc5404ec3726b016a6cefe848bd05328c0364992"
+  },
+  "producerAudit": {
+    "path": ".qa/os-run/producer-audit.json",
+    "sha256": "bef299d8565ddf79197a61a96831dcba60b824d19e2697f6202c6f8a58293246"
+  },
+  "automationPilotSource": {
+    "path": ".qa/os-run/automation-producer-pilot.mjs",
+    "sha256": "6228fa5028562a8be9bac9527110d378ca48f90b52309cad5e04032ae7c04cc3"
+  },
+  "restoredArtifacts": {
+    "path": ".qa/os-run/restore.json",
+    "sha256": "ddee5eb37fea2c9e8a556d1498cf636094dea3013cb6915b49b9b723e05de839"
+  },
+  "nativeServer": {
+    "path": ".qa/os-run/helpers-v3/cantrip-server",
+    "sha256": "3000b20af18135f8d8e0d1bc42e6d48bfc38575629239d14d5464929c713d827"
+  },
+  "validation": [
+    {
+      "path": ".qa/os-run/worker-build.log",
+      "sha256": "29c5ee0f6b0b20dbb259b99d01276198c3d28190090706394608d4deda6d2c0b"
+    },
+    {
+      "path": ".qa/os-run/app-workspace-build.log",
+      "sha256": "22a644d71fc68ca4aa8f02e175eb60fe34c8aa3ff0099d0c67689b3c2a6b8d79"
+    },
+    {
+      "path": ".qa/os-run/worker-linux-run-tests.log",
+      "sha256": "b730449063879c38ff4fde5395ae0f84c14dae0168726901e0de7287f4100492"
+    },
+    {
+      "path": ".qa/os-run/native-worker-test.log",
+      "sha256": "f6dcd315dadce52e56973fdd563438bbdd0872e49527664a3e270fb8a75ff7e2"
+    }
+  ],
+  "sources": [
+    {
+      "path": "scripts/server-rust/actual-cantrip-os-run-client.mjs",
+      "sha256": "0c07a5b8c7d4e9a9b0854fae5dbc7d5c7bb5b2d413ac07c3733e820f400a4f48"
+    },
+    {
+      "path": "scripts/server-rust/actual-cantrip-os-client.mjs",
+      "sha256": "ce0f7238e8da55c80a4ef1d75d15bfb0bf3221f21b234988e6676c6cf7587857"
+    },
+    {
+      "path": "scripts/server-rust/actual-folder-client.mjs",
+      "sha256": "67cddebc957d2ddb66b025b52dbf7e22a0ff1f60bb014091845308d6cad3b275"
+    },
+    {
+      "path": "cantrip_server_rs/src/run_configurations/lifecycle.rs",
+      "sha256": "586ea8cc8a22d3ac90701632731fbbc978b768d421b5c7d84785a3a6bb2e32ea"
+    },
+    {
+      "path": "cantrip_server_rs/src/run_configurations/output.rs",
+      "sha256": "e7085ae7e6646796e825bd478c378575057e82f9d22ad64557304469e0b76fdc"
+    },
+    {
+      "path": "cantrip_server_rs/src/run_configurations/observations.rs",
+      "sha256": "c2b6f80638dd9101acd7e30028e5ab382924c16105daba786febf4951c50bd36"
+    },
+    {
+      "path": "cantrip_server_rs/src/run_configurations/retirement.rs",
+      "sha256": "589519e252030cb6e144a9f6ab1d544b0d28c76c16eccc67d2e9c3bb1da4af5c"
+    },
+    {
+      "path": "cantrip_server_rs/src/http/run_configurations.rs",
+      "sha256": "4f1ecd5d9a9cddd0e0337b3b30e45b5dc294264dbf6ee9f60c9132ef5ab19d4e"
+    },
+    {
+      "path": "cantrip_server_rs/src/cantrip_os/workspace_operations.rs",
+      "sha256": "7db571f5cb4c56fccf6eb853509b76cb5e277b30f3e9a6b9874b9b8635db278a"
+    },
+    {
+      "path": "tests/reference-node-server/src/app/runtime/run-configuration-runtime.ts",
+      "sha256": "d422571c6b96c3e4788a0a281c285f529c396af70136918c5bcef6a4815ef1e3"
+    },
+    {
+      "path": "tests/reference-node-server/src/app/runtime/worker-notification-runtime.ts",
+      "sha256": "cb85a072003284cde1744fad6ab51387d471f61182cec9a143f5401ef172a843"
+    },
+    {
+      "path": "cantrip_worker/src/os-executor/run-commands.ts",
+      "sha256": "3dae944edfb19bd9b58120fe2cb594f97730ccd49c384813ca730fbf7f2f50cb"
+    },
+    {
+      "path": "cantrip_worker/src/os-executor/run-execution.ts",
+      "sha256": "e33b72b9e9aedbcad650478958907e880e117075bf3816a9353ed77528268e51"
+    }
+  ],
+  "limits": [
+    "Current macOS host and existing local Linux ARM64 image, single server and account authentication.",
+    "The retained output truncation check in the unchanged standalone worker integration test failed on this guest image.",
+    "Final supported-platform packaging, deployment, rollback and performance acceptance remain open."
+  ]
+}
