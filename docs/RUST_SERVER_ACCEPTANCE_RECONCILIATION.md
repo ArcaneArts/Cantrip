@@ -26,6 +26,12 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [packaged replica qualification](RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md#packaged-replica-lifecycle-and-shared-peers)
+compares the current local Git attach and detach flow on all three stores.
+With shared PostgreSQL and Redis, all four Node and Rust pairings preserve two
+remote worker connections, the settled job and its exact replay through the
+loss of the browser-facing peer.
+
 The packaged macOS ARM64 `1.1.2845` server and signed desktop worker passed
 the current Task and Agent product matrix against the Node reference. All
 six suites cover real native execution across PGlite, bundled PostgreSQL

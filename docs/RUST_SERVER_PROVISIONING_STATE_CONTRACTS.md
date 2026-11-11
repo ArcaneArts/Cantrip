@@ -138,3 +138,66 @@ partial scopes, broader fault/coordination behavior and final supported-platform
 shipping acceptance remain required by the original replacement goal. No
 GitHub Actions or production Winterhold deployment is performed. The worker
 remains Node.
+
+## Packaged replica lifecycle and shared peers
+
+The optimized macOS ARM64 server distribution `1.1.2858` ran with the browser
+SDK and the existing packaged worker on PGlite, bundled PostgreSQL and
+external PostgreSQL. Each run attached a real Git checkout through a second
+worker, retained the same completed job and repository revision across
+restart, refused deletion of the user-owned checkout, and detached it while
+preserving its files, HEAD and original project source. Browser requests kept
+private names and paths opaque.
+
+With shared PostgreSQL and Redis, both workers connected to the second server
+and the browser connected to the first. All four Node and Rust pairings passed.
+After the attachment committed, the fixture killed the browser-facing server
+and replaced it on the same port. Both remote worker connection claims stayed
+unchanged. The browser resubscribed to App Live, recovered the same completed
+job and replayed the same admission at attempt one, revision six. The replay
+published one invalidation at that revision. Normalized job events matched in
+order across each comparison. The six single-server and four shared runs
+recorded 124 product steps, 42 clean server exits, four intentional peer kills
+and 60 clean worker exits.
+
+The controlled-worker comparison on the same package passed all nine store
+and authentication combinations with 654 paired HTTP observations. It checked
+successful synchronization and managed-link repair, retry and cancellation,
+shutdown and reconnect, capacity, and all ten cross-account route denials on
+each store. Every reopened store retained all 16 replica jobs and matched its
+first raw read. The suites recomputed 108 stored admission fingerprints across
+both runtimes.
+
+The external PostgreSQL lifetime comparison passed ten paired lock races and
+four paired caller disconnects. The production lease comparison preserved a
+renewed job's first attempt and recovered the expired job on its second
+attempt after the stale completion.
+
+The [packaged replica acceptance record](security/rust-server-current-replica-acceptance.json)
+binds the executable, worker, harness and reports to all ten routes, the
+`project_replica_jobs` table and the `project-replica-job` Live resource. The
+current managed-link repair and synchronization cases use controlled worker
+responses. Full managed Git execution on this candidate, dependency loss
+during shared replica dispatch and final shipping artifacts remain open.
+
+Set the existing fixture variables to the packaged server, database assets,
+worker, CLI and Redis executables. With the workspace packages and Node
+reference built, run the browser comparison on each store and the shared
+comparison on external PostgreSQL:
+
+```sh
+node --import tsx scripts/server-rust/actual-folder-client.mjs \
+  --replicas --production-server --database pglite \
+  --report /absolute/path/replicas-pglite.json
+
+node --import tsx scripts/server-rust/actual-folder-client.mjs \
+  --replicas --database postgres --server-pair all \
+  --report /absolute/path/shared-replicas.json
+
+node --import tsx scripts/server-rust/replica-http-lifetimes.mjs \
+  --report /absolute/path/replica-lifetimes.json
+
+node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs \
+  --database postgres --profile accounts --connected --faults --reconnect \
+  --lease-recovery --report /absolute/path/replica-leases.json
+```
