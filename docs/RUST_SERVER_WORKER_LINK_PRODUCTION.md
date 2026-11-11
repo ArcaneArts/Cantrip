@@ -158,15 +158,22 @@ The external PostgreSQL replay kept the Node-created identity and session
 through Rust and returned to Node after Rust revoked two retained sessions.
 Node observed the revocation. The native service also calls the owner-scoped
 WorkerLink and direct-attachment revocation handlers for account-wide logout.
-The combined owner-wide teardown still needs current packaged and shared-server
-acceptance. [Authentication comparison](../scripts/server-rust/auth-compatibility.mjs)
+[Authentication comparison](../scripts/server-rust/auth-compatibility.mjs)
 
 The current shared PostgreSQL and Redis comparison also passed all 12
 Node/Node, Node/Rust, Rust/Node and Rust/Rust authentication combinations.
-Its 168 case groups include actual two-peer relay closure after cross-peer
+Its 172 case groups include actual two-peer relay closure after cross-peer
 revocation, committed App Live fanout and replay, and fresh remote requests
 after Redis process interruption. All 24 server processes shut down cleanly.
-The suite uses the shared HTTP fixture and controlled worker acknowledgments.
+
+In each of the four account-mode pairings, account-wide logout revoked two
+authenticated sessions and closed four relay sockets across the two peers
+with code 1008 and reason `Account sessions ended`. Both active direct
+capabilities were issued by the peer receiving logout. The local and remote
+workers each received one revocation with reason
+`Account sessions were revoked`. Both old sessions lost access on both peers,
+and the other account stayed signed in. The suite uses the shared HTTP fixture
+and controlled worker acknowledgments.
 [Shared runtime driver](../scripts/server-rust/shared-runtime-http-compatibility.mjs)
 
 ## Current packaged relay and recovery run
