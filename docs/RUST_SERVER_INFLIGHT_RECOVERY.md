@@ -76,6 +76,48 @@ token advances from 1 to 2 while the Task retains its original operation and
 attempt count. Releasing the original model response then completes the Task
 once through its exact saved worker receipt. No replacement inference occurs.
 
+## Active Task during a Redis process outage
+
+The current Rust and Node production peers pass this scenario in all four
+pairings on local macOS ARM64 with external PostgreSQL and Redis 8.10.3.
+The browser-facing server owns the actual PostgreSQL dispatch lease. The full
+Node worker and its native Codex process run through the other server. Both
+schedulers run normally. An independent Task assigned to the other scheduler
+finishes as a warmup and does not count as an outage case.
+
+The test holds an actual native model response open, saves Redis's RDB, then
+kills Redis. Both servers stay up and report HTTP 503 for coordination while
+PostgreSQL stays ready. During the 45-second outage, the original PostgreSQL
+dispatch lease advances by about 40 seconds with the same owner and fencing
+token. The model response is released while Redis is still down. The Task
+finishes with one model POST, one canonical round, one dispatch attempt and one
+decrypted answer. Read-only SQL snapshots verify completion before Redis
+restarts.
+
+The restarted Redis process reports three expired keys in each saved RDB.
+The same worker process and enrollment return under a fresh Redis connection
+ID. Both servers become ready, and the browser-facing server dispatches and
+releases a fresh WorkerLink session through the other server. The initial test
+incorrectly expected the Redis connection ID to survive a claim expiry. Both
+implementations rotated it, and the final comparison requires a new connection
+ID with the same worker continuity identity.
+
+A separate Rust/Node run kills the Node server that owns the worker while
+the Rust server owns the dispatch lease. It confirms the existing recovery
+scenario still completes the Task once using the same worker.
+
+```sh
+node --import tsx scripts/server-rust/actual-folder-client.mjs \
+  --database postgres --server-pair all --native-inflight-recovery \
+  --inflight-peer redis --keep-fixture --report /absolute/path/to/redis-outage.json
+```
+
+The [current acceptance record](security/rust-server-active-redis-outage.json)
+identifies the executables, reports and retained fixture archive. This local
+comparison covers a Redis process restart and expired claims. Redis network
+partition and TLS behavior, PostgreSQL interruption during the same operation,
+and the final shipping artifacts remain separate.
+
 ## Local validation and artifacts
 
 - Optimized macOS ARM64 Rust server build: passed in 4m09s.
@@ -100,9 +142,7 @@ or production Winterhold deployment was used.
 
 ## Scope still requiring qualification
 
-This matrix uses external PostgreSQL for shared-server coordination. Remaining
-server-replacement acceptance includes in-flight single-server/worker recovery
-across all three storage modes, further Agent/Goal interruption boundaries,
-Redis network and TLS failures, final platform/artifact and performance
-qualification, default Rust cutover, and production Node server removal.
-The full server replacement goal remains active.
+These shared-server cases use external PostgreSQL. The current
+[replacement reconciliation](RUST_SERVER_ACCEPTANCE_RECONCILIATION.md)
+tracks other interruption boundaries, store and platform qualification,
+performance, and final shipping artifacts.
