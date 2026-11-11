@@ -17,6 +17,13 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [encrypted Chat import comparison](RUST_SERVER_ENCRYPTED_CHAT_IMPORT.md)
+runs the worker's message, metadata, and relay encryption across all nine
+storage and authentication combinations. The tests compare 330 scenarios and
+621 HTTP observations, retain ciphertext through 18 server restarts, and reject
+all 18 altered relay chunks with partial upload cleanup. The scoped worker
+command ledger covers 289 of 323 identities.
+
 The [managed automation resume qualification](RUST_SERVER_AUTOMATION_RESUME_CONTRACTS.md)
 restores current-user Live invalidations after successful public Chat execution
 mutations. All nine storage and authentication combinations match 108 product

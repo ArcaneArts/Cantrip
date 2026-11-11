@@ -157,9 +157,10 @@ matching Main blob evidence are retained; no assertion or audit was disabled.
 
 ## Remaining acceptance
 
-Controlled-worker comparisons do not prove actual endpoint-key encryption,
-physical worker file transfer, Codex replay, or an existing client's full import
-flow. Those product checks remain required. Additional service/caller
+The [encrypted Chat import comparison](RUST_SERVER_ENCRYPTED_CHAT_IMPORT.md)
+adds actual endpoint-key encryption, relay authentication, and retained history
+reads to the current HTTP harness. Physical worker file transfer, Codex replay,
+and an existing client's full import flow remain open. Additional service/caller
 interruption, shared Redis and mixed-server coordination, representative old-data
 upgrades, post-write rollback, supported desktop/server platforms, packaged
 artifacts and performance acceptance remain part of the full replacement goal.
