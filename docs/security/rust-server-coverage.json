@@ -14521,6 +14521,22 @@
         ]
       },
       {
+        "command": "agent.interaction.cancel",
+        "implementation": "cantrip_server_rs/src/chats/turn_runtime/events/interactions.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_AGENT_APPROVAL_CANCELLATION.md",
+          "docs/security/rust-server-agent-approval-cancellation.json",
+          "scripts/server-rust/actual-agent-interaction-cancel.mjs",
+          "scripts/server-rust/actual-agent-interactions-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Both peers interrupt the first follow-up on the same worker after a protected command approval write failure. Restarting the worker restores the same Agent.",
+          "Other interaction kinds, standalone Chat, multi-server coordination and supported desktop shipping require their own acceptance."
+        ]
+      },
+      {
         "command": "agent.interaction.respond",
         "implementation": "cantrip_server_rs/src/http/agent_interactions.rs",
         "status": "partial",

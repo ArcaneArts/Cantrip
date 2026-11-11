@@ -17,6 +17,13 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [native Agent approval cancellation comparison](RUST_SERVER_AGENT_APPROVAL_CANCELLATION.md)
+passes the full-worker cancellation and normal approval control on all three
+stores. Both peers interrupt the next prompt in the canceled Agent before it
+reaches the model. Restarting the worker recovers the same Agent, and both
+approval outcomes and the recovered reply survive server restart. Scoped worker
+command coverage accounts for 313 of 323 identities.
+
 The [first-turn Chat and Agent title comparison](RUST_SERVER_INLINE_CHAT_LABEL_ACCEPTANCE.md)
 qualifies private title grants, first-turn inference and byte-for-byte title
 retention after restart on all three stores. An unusable label preserves the

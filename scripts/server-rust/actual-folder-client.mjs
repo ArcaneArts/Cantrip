@@ -24,6 +24,7 @@ import {
 import { actualTaskClient } from "./actual-task-client.mjs";
 import { actualTaskLabelClient } from "./actual-task-label-client.mjs";
 import { actualInlineChatLabels } from "./actual-inline-chat-labels.mjs";
+import { actualAgentInteractionCancel } from "./actual-agent-interaction-cancel.mjs";
 import { actualProviderAuthClient } from "./actual-provider-auth-client.mjs";
 import { actualProjectChatClient } from "./actual-project-chat-client.mjs";
 import { providerTestBoundary } from "./provider-test-boundary.mjs";
@@ -138,6 +139,7 @@ const workerLinkRenewal = process.argv.includes("--worker-link-renewal");
 const providerAuth = process.argv.includes("--provider-auth");
 const taskLabel = process.argv.includes("--task-label");
 const inlineChatLabels = process.argv.includes("--inline-chat-labels");
+const approvalCancellation = process.argv.includes("--approval-cancellation");
 assert.ok(!workerLinkRenewal || !sharedPair);
 const singleProduct =
   cantripOsRun ||
@@ -146,6 +148,7 @@ const singleProduct =
   providerAuth ||
   taskLabel ||
   inlineChatLabels ||
+  approvalCancellation ||
   process.argv.includes("--production-server") ||
   process.argv.includes("--native-task-goal-worker-recovery") ||
   process.argv.includes("--native-worker-recovery") ||
@@ -226,6 +229,9 @@ const report = {
   inlineChatLabelScope: inlineChatLabels
     ? "Existing browser Chat and Agent APIs, production server, full worker and native initial labeling through disposable model HTTP endpoints."
     : null,
+  approvalCancellationScope: approvalCancellation
+    ? "Production serving paths, browser SDK, full worker, and actual native Codex approval with an isolated database write failure and a normal approval control."
+    : null,
   taskDiagnostics: liveTaskDiagnostics
     ? "Development SQL fixture executable; unchanged production startup, routes, worker and native runtime. Failed Task runs retain scoped read-only database snapshots before teardown."
     : null,
@@ -302,6 +308,7 @@ async function flow(
       providerAuth ||
       taskLabel ||
       inlineChatLabels ||
+      approvalCancellation ||
       [
         "--mcp-settings",
         "--terminals",
@@ -327,7 +334,11 @@ async function flow(
         workerId,
         homeDirectory,
         environment: {
-          ...(workerLinkRenewal || providerAuth || taskLabel || inlineChatLabels
+          ...(workerLinkRenewal ||
+          providerAuth ||
+          taskLabel ||
+          inlineChatLabels ||
+          approvalCancellation
             ? { CANTRIP_LOG_LEVEL: "debug" }
             : {}),
           ...(providerTest ? providerBoundary?.environment : {}),
@@ -660,6 +671,23 @@ async function flow(
         stopWorker,
         diagnostics: () => worker.diagnostics(),
         result,
+      });
+      assert.deepEqual(errors, []);
+      return;
+    }
+    if (approvalCancellation) {
+      await actualAgentInteractionCancel({
+        fixture,
+        page,
+        projectId: first.id,
+        projectRoot: first.source.path,
+        workerId,
+        startWorker,
+        stopWorker,
+        diagnostics: () => worker.diagnostics(),
+        result,
+        requests,
+        repositoryBinary: surfaceRepositoryBinary,
       });
       assert.deepEqual(errors, []);
       return;
@@ -1447,6 +1475,7 @@ try {
       ? await buildRustExample("http-sql-fixture")
       : (process.env.CANTRIP_TEST_SERVER_BINARY ?? (await buildRustServer()));
   if (
+    approvalCancellation ||
     process.argv.includes("--tunnels") ||
     process.argv.includes("--project-shares") ||
     process.argv.includes("--worktrees") ||
@@ -1699,6 +1728,11 @@ try {
       assert.deepEqual(
         runtime.inlineChatLabels.summary,
         report.runtimes[0].inlineChatLabels.summary,
+      );
+    if (approvalCancellation)
+      assert.deepEqual(
+        runtime.approvalCancellation.summary,
+        report.runtimes[0].approvalCancellation.summary,
       );
     if (
       cantripOsRun ||
