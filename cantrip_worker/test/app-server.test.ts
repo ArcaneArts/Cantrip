@@ -71,6 +71,7 @@ import {
   workspaceSnapshotFromPorcelainRecords,
   workspaceHasGitMetadata,
 } from "../src/codex/app-server.js";
+import { recordInferenceFailure } from "../src/inference-failure.js";
 
 describe("banked resets with account credits", () => {
   it.each([100, 100.01])(
@@ -2464,6 +2465,29 @@ describe("Codex goals", () => {
 });
 
 describe("Codex runtime compatibility enforcement", () => {
+  function settledCapacityFailure(
+    options: Parameters<CodexAppServer["runTurn"]>[0],
+  ): Error {
+    const failure = new CodexTurnFailureError(
+      "Selected model is at capacity.",
+      "serverOverloaded",
+      "thread-capacity",
+      "turn-capacity",
+    );
+    options.onThreadLoaded?.(failure.threadId);
+    return recordInferenceFailure(failure, {
+      operationId: "capacity-attempt",
+      runtimeGeneration: "3aaad6e6-0b67-421e-8df5-2863c19ad0bd",
+      chatId: options.chatId,
+      messageId: options.clientMessageId,
+      providerId: options.provider.id,
+      disposition: "model-failed-before-output",
+      threadId: failure.threadId,
+      turnId: failure.turnId,
+      nativeScopeId: "c12c2713-00a1-4a48-b715-4b6c4e85332a",
+    });
+  }
+
   it("retries terminal model-capacity failures on the same Codex thread", async () => {
     vi.useFakeTimers();
     try {
@@ -2481,13 +2505,7 @@ describe("Codex runtime compatibility enforcement", () => {
         async (options: Parameters<CodexAppServer["runTurn"]>[0]) => {
           attempts.push(options);
           if (attempts.length === 1) {
-            options.onThreadLoaded?.("thread-capacity");
-            throw new CodexTurnFailureError(
-              "Selected model is at capacity.",
-              "serverOverloaded",
-              "thread-capacity",
-              "turn-capacity",
-            );
+            throw settledCapacityFailure(options);
           }
           return {
             threadId: "thread-capacity",
@@ -2581,13 +2599,7 @@ describe("Codex runtime compatibility enforcement", () => {
       Object.defineProperty(runtime, "runTurnAttempt", {
         value: vi.fn(
           async (options: Parameters<CodexAppServer["runTurn"]>[0]) => {
-            options.onThreadLoaded?.("thread-capacity");
-            throw new CodexTurnFailureError(
-              "Selected model is at capacity.",
-              "serverOverloaded",
-              "thread-capacity",
-              "turn-capacity",
-            );
+            throw settledCapacityFailure(options);
           },
         ),
       });
