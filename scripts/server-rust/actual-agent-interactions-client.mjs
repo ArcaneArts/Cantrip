@@ -52,7 +52,7 @@ export async function actualAgentInteractionsClient({
       ),
     { chatId, configuration, prompt },
   );
-  assert.equal(admitted.status, "started");
+  assert.equal(admitted.status, "queued");
   const approval = await eventually(
     () =>
       page.evaluate(
