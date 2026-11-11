@@ -694,6 +694,7 @@ describe("application live query bridge", () => {
       ["messages", "chat-one"],
       ["chat-runtime-selection", "chat-one"],
       ["native-settings", "chat-one"],
+      ["native-runtime-handoffs", "chat-one"],
       ["task-dashboard", "chat-one"],
     ]);
     expect(
@@ -735,6 +736,7 @@ describe("application live query bridge", () => {
       ["task", "chat-one"],
       ["task-dashboard", "chat-one"],
       ["project-task-workload"],
+      ["native-runtime-handoffs", "chat-one"],
     ]);
     expect(
       appLiveEventQueryKeys(
@@ -768,6 +770,9 @@ describe("application live query bridge", () => {
     expect(
       appLiveScopeQueryKeys({ kind: "chat", chatId: "chat-one" }),
     ).toContainEqual(["native-settings", "chat-one"]);
+    expect(
+      appLiveScopeQueryKeys({ kind: "chat", chatId: "chat-one" }),
+    ).toContainEqual(["native-runtime-handoffs", "chat-one"]);
     expect(
       appLiveScopeQueryKeys({ kind: "chat", chatId: "chat-one" }),
     ).toContainEqual(["chat-runtime-selection", "chat-one"]);
@@ -959,7 +964,8 @@ describe("application live query bridge", () => {
     bridge.handleEvent({ ...workerEvent, cursor: 2 });
     await Promise.resolve();
     await Promise.resolve();
-    expect(invalidate).toHaveBeenCalledTimes(5);
+    expect(invalidate).toHaveBeenCalledTimes(6);
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["worker-inference"] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["workers"] });
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: ["worker-management"],
@@ -972,8 +978,8 @@ describe("application live query bridge", () => {
     });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["chat-sync"] });
     expect(bridge.stats()).toMatchObject({
-      coalescedInvalidationCount: 5,
-      invalidatedQueryCount: 5,
+      coalescedInvalidationCount: 6,
+      invalidatedQueryCount: 6,
       invalidationFlushCount: 1,
       receivedEventCount: 2,
     });
@@ -989,6 +995,7 @@ describe("application live query bridge", () => {
         }),
       ),
     ).toEqual([
+      ["worker-inference"],
       ["workers"],
       ["worker-management"],
       ["worker-enrollment-status"],
