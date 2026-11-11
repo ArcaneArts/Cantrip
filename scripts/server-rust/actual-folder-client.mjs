@@ -270,7 +270,13 @@ async function flow(
     enrollmentCode,
     { providerTest = false, environment = {} } = {},
   ) => {
-    const homeDirectory = process.argv.includes("--mcp-settings")
+    const isolateHome = [
+      "--mcp-settings",
+      "--terminals",
+      "--terminal-direct",
+      "--project-administration",
+    ].some((flag) => process.argv.includes(flag));
+    const homeDirectory = isolateHome
       ? path.join(dataDirectory, "mcp-test-home")
       : undefined;
     if (homeDirectory) await mkdir(homeDirectory, { recursive: true });
@@ -686,6 +692,8 @@ async function flow(
         projectId: created.id,
         directory: await filesystem(created.id),
         workerId,
+        cliBinary,
+        workerDataDirectory: dataDirectory,
         startWorker,
         stopWorker,
         result,
@@ -1313,6 +1321,7 @@ async function flow(
         root,
         executable: surfaceRepositoryBinary,
         workerId,
+        workerDataDirectory: dataDirectory,
         attached: opened,
         existingPath,
         create,

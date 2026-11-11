@@ -9845,6 +9845,64 @@
     "defaultStatus": "unported",
     "overrides": [
       {
+        "command": "terminal.snapshot",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/agent_surfaces.rs",
+          "cantrip_server_rs/src/http/cli_commands.rs"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_TERMINAL_REPLICA_ACCEPTANCE.md",
+          "docs/security/rust-server-terminal-replica-acceptance.json",
+          "scripts/server-rust/actual-terminal-services.mjs",
+          "scripts/server-rust/cli-http-cases.mjs"
+        ],
+        "remaining": [
+          "Local full-worker CLI and actual protected wire cases pass on all three stores. Supported shipping artifacts and broader multi-instance recovery remain open."
+        ]
+      },
+      {
+        "command": "project.files.delete",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/removal.rs",
+        "evidence": [
+          "docs/RUST_SERVER_TERMINAL_REPLICA_ACCEPTANCE.md",
+          "docs/security/rust-server-terminal-replica-acceptance.json",
+          "scripts/server-rust/actual-project-administration.mjs",
+          "scripts/server-rust/project-administration-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "The legacy Cantrip-owned replica cleanup and retry path passes with the real worker and a disposable Git checkout. Broader historical profiles and supported artifacts remain open."
+        ]
+      },
+      {
+        "command": "project.clone",
+        "status": "no-current-server-producer",
+        "implementation": "cantrip_worker/src/commands/project.ts",
+        "evidence": [
+          "docs/RUST_SERVER_TERMINAL_REPLICA_ACCEPTANCE.md",
+          "docs/security/rust-server-terminal-replica-acceptance.json",
+          "scripts/server-rust/replica-connected-cases.mjs"
+        ],
+        "remaining": [
+          "The direct server producer retired in 4d28b8d53. Current imports use durable project.replica.provision jobs. The legacy worker command is still defined by the protocol."
+        ]
+      },
+      {
+        "command": "worktree.list",
+        "status": "no-current-server-producer",
+        "implementation": "cantrip_worker/src/commands/worktree.ts",
+        "evidence": [
+          "docs/RUST_SERVER_TERMINAL_REPLICA_ACCEPTANCE.md",
+          "docs/security/rust-server-terminal-replica-acceptance.json",
+          "cantrip_server_rs/src/http/agent_worktrees.rs",
+          "scripts/server-rust/cli-http-cases.mjs"
+        ],
+        "remaining": [
+          "The current CLI operation reads the catalog and execution leases with zero worker dispatches. The legacy worker command is still defined by the protocol."
+        ]
+      },
+      {
         "command": "worker.credential.rotate",
         "status": "implemented-pending-platform-acceptance",
         "implementation": "cantrip_server_rs/src/http/workers.rs",
@@ -28817,6 +28875,23 @@
       "standaloneDatabaseModes": ["pglite", "bundled-postgres", "postgres"],
       "verifiedArtifactFiles": 1762,
       "scope": "Native ARM64 macOS standalone package on all three stores. PGlite signed desktop install and restart retained state after rejecting an altered package. Keychain authorization of the new ad-hoc app was denied; the encrypted update matrix remains incomplete."
+    },
+    "terminalAndReplicaCommands": {
+      "status": "implemented-with-scoped-local-qualification",
+      "evidence": [
+        "docs/RUST_SERVER_TERMINAL_REPLICA_ACCEPTANCE.md",
+        "docs/security/rust-server-terminal-replica-acceptance.json",
+        "scripts/server-rust/actual-folder-client.mjs",
+        "scripts/server-rust/cli-http-compatibility.mjs",
+        "scripts/server-rust/replica-import-http-compatibility.mjs"
+      ],
+      "serverSourceCommit": "020254f3c3aabb5e2e1e712c2c597a5cc73a5950",
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+      "fullWorkerProductPeers": 6,
+      "actualCliTerminalSnapshots": 18,
+      "actualLegacyReplicaFileDecisions": 12,
+      "workerCommandIdentitiesMapped": 306,
+      "scope": "Current production server processes and the full Node worker on macOS ARM64. Separate HTTP comparisons use controlled worker replies for exact CLI, removal and provisioning wire observations. Supported shipping artifacts and full replacement acceptance remain open."
     },
     "currentWindowsQualification": {
       "status": "implemented-with-scoped-local-qualification",

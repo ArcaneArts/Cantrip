@@ -1,19 +1,25 @@
 // Existing browser crypto/API modules and the full worker. The terminal uses
 // the managed folder created by the preceding actual product flow.
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import { eventually } from "./full-worker.mjs";
 import { actualWorkerObservations } from "./actual-worker-observations.mjs";
 import { actualWorkerTerminalLink } from "./actual-worker-terminal-link.mjs";
 import { actualWorkerTerminalRelay } from "./actual-worker-terminal-relay.mjs";
 import { actualWorkerTerminalDirect } from "./actual-worker-terminal-direct.mjs";
 
+const execute = promisify(execFile);
+
 export async function actualTerminalServices({
   page,
   projectId,
   directory,
   workerId,
+  cliBinary,
+  workerDataDirectory,
   startWorker,
   stopWorker,
   result,
@@ -28,10 +34,11 @@ export async function actualTerminalServices({
   // of the probe while requiring it to recover the secret from encrypted argv.
   await writeFile(
     path.join(directory, program),
-    "require('node:fs').appendFileSync('terminal-proof.jsonl',JSON.stringify({token:process.argv[2],pid:process.pid})+'\\n');setInterval(()=>{},1000);\n",
+    "require('node:fs').appendFileSync('terminal-proof.jsonl',JSON.stringify({token:process.argv[2],pid:process.pid})+'\\n');console.log(process.argv[2]);setInterval(()=>{},1000);\n",
   );
   const command = `node ${program} ${secret}`;
   const requests = [];
+  const snapshots = (result.terminalSnapshots = []);
   const observe = (request) => {
     const pathname = new URL(request.url()).pathname;
     if (
@@ -70,6 +77,43 @@ export async function actualTerminalServices({
     assert.equal(created.title, title);
     assert.equal(created.worktreeId, worktreeId);
     assert.equal(created.service.enabled, false);
+    const snapshot = async (phase) => {
+      const value = await eventually(
+        async () => {
+          const { stdout } = await execute(
+            cliBinary,
+            ["--json", "terminal", "read", "--target", created.id],
+            {
+              cwd: directory,
+              timeout: 30_000,
+              env: {
+                ...process.env,
+                CANTRIP_TERMINAL_ID: created.id,
+                CANTRIP_CLI_CONNECTION: path.join(
+                  workerDataDirectory,
+                  "cli-connection.json",
+                ),
+              },
+            },
+          );
+          return JSON.parse(stdout);
+        },
+        (value) => {
+          assert.equal(value.mutated, false);
+          assert.equal(value.data.terminalId, created.id);
+          assert.equal(value.data.status, "running");
+          assert.equal(value.data.truncated, false);
+          assert.equal(value.data.exitCode, null);
+          assert.ok(value.data.data.includes(secret));
+        },
+      );
+      snapshots.push({
+        phase,
+        terminalId: value.data.terminalId,
+        status: value.data.status,
+        characters: value.data.data.length,
+      });
+    };
     const renamed = await page.evaluate(
       async ({ id, title }) => window.terminalApi.renameTerminal(id, title),
       { id: created.id, title: title + " renamed" },
@@ -119,6 +163,7 @@ export async function actualTerminalServices({
     });
     const initialPid = rows[0].pid;
     process.kill(initialPid, 0);
+    await snapshot("initial-process");
     result.steps.push(
       "full worker decrypts the service state and runs a real persistent PTY process in the newly created managed folder",
     );
@@ -149,6 +194,7 @@ export async function actualTerminalServices({
         ),
     );
     const restartedPid = rows[1].pid;
+    await snapshot("restarted-service");
     await stopWorker();
     await eventually(
       () => {
@@ -193,6 +239,10 @@ export async function actualTerminalServices({
       assert.equal(rows[2].token, secret);
     });
     const reconnectedPid = rows[2].pid;
+    await snapshot("reconnected-worker");
+    result.steps.push(
+      "the native CLI reads real terminal scrollback through the worker broker, production server and encrypted terminal.snapshot command after startup, service restart and worker reconnect",
+    );
     await eventually(
       () =>
         page.evaluate(
