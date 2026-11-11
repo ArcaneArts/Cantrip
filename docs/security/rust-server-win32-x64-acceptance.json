@@ -408,5 +408,53 @@
       "sha256": "8cc32830b4a756935f0589909ccf0f8c85557dd86630e678c5dc23f141ee1082"
     },
     "focusedWindowsTestsPassed": 5
+  },
+  "cleanX64PostgresPackaging": {
+    "candidateVersion": "1.1.2834",
+    "sourceCommit": "275cf854fa1b0051b5b3a313f2a3b71448b0cb62",
+    "guest": "Windows 11 Enterprise Evaluation x64, build 26300.9457, QEMU TCG",
+    "retainedEvidenceDirectory": "rust-server-windows-installer-20261111-v1",
+    "postgresqlVersion": "18.6",
+    "baselineLoaderStatus": "0xC0000135",
+    "systemCrtInstalledForTest": false,
+    "packagedCrtDlls": [
+      "vcruntime140.dll",
+      "vcruntime140_1.dll",
+      "msvcp140.dll"
+    ],
+    "archive": {
+      "path": "exported-native/cantrip-server-1.1.2834-win32-x64.tar.gz",
+      "bytes": 97237531,
+      "sha256": "7a1462a344e8f190a15ecc315fe45ceeefb969f5a532bd3d617bea7905a51e57",
+      "manifestFilesVerified": 2281
+    },
+    "nativePackagerExit": 0,
+    "freshPostgresFixtureStarted": true,
+    "node24ArithmeticAndWorkerCryptoImportPassed": true,
+    "directFreshPglite": {
+      "listenMs": 96759,
+      "readyStatus": 200,
+      "exitCode": 0
+    },
+    "standaloneFullMatrixPassed": false,
+    "desktopInstallerAndUpdaterPassed": false,
+    "reports": {
+      "archiveVerification": {
+        "path": "exported-native/archive-verification.json",
+        "sha256": "1a554acf63bd2f3273533cc6aa039546b846696e2f4109044d5dd1611c5efe91"
+      },
+      "node24": {
+        "path": "node-runtime-after-first-logon.json",
+        "sha256": "b901401329e6f6cdd57bdcc769d4eb11f5fd139b196c7b11daed1397947fa186"
+      },
+      "standaloneStartupTimeout": {
+        "path": "current-windows-x64-standalone-after-dotenv-fix.json",
+        "sha256": "c8dca9096ec6298563ea1e38031405c6b5367227d7e44de8c788cee87ab72230"
+      },
+      "directFreshPglite": {
+        "path": "pglite-direct-observation-v1.json",
+        "sha256": "8956e222c4562fd6041bd73a71679cbe4d0f8b14d59b06910722bc487babb802"
+      }
+    }
   }
 }

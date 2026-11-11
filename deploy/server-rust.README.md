@@ -52,6 +52,14 @@ an already built executable, and `--output` selects a new artifact directory.
 Build tooling may use Node and Cargo; neither is required at runtime. Preserve
 the artifact's directory layout when copying it to another machine.
 
+The Windows packager copies the x64 Visual C++ runtime DLLs from the build
+machine's Visual Studio redistributable directory into the portable PostgreSQL
+cache. It locates the directory through Visual Studio or `VCToolsRedistDir`.
+Set `CANTRIP_WINDOWS_VC_REDIST_DIR` to point directly to a licensed toolset's x64
+CRT DLL directory. An explicit `--postgres-bin` source should include any DLLs
+required by those binaries. The default Windows distribution puts the CRT DLLs
+alongside the PostgreSQL executables.
+
 The Linux container source is `deploy/docker/server.Dockerfile`; its
 `distribution` target exports the same tree for native systemd deployment.
 The canonical hosted Compose and deployment commands use this native server.

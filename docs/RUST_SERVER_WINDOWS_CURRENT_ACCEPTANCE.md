@@ -1,5 +1,26 @@
 # Current Windows native server qualification
 
+## Windows x64 PostgreSQL packaging
+
+On a clean Windows 11 x64 guest, the portable PostgreSQL 18.6 `pg_config.exe`
+failed with `0xC0000135` and identified `VCRUNTIME140.dll` as missing. With the
+x64 Visual C++ runtime DLLs alongside the PostgreSQL executables, the native
+packager completed without a machine-wide runtime install. It also repaired
+an existing build cache with missing DLLs. The exported `1.1.2834` archive
+matched all 2,281 manifest entries, including the three runtime DLLs. The
+standalone test initialized and started a fresh PostgreSQL cluster from those
+packaged tools.
+
+The same guest passed the Node `24.22.2` arithmetic and worker crypto import
+controls. This run used a full x64 Windows guest under QEMU software
+emulation. The standalone fixture now writes Windows paths with forward
+slashes in its quoted dotenv values. With the corrected paths, the run reached
+embedded PGlite initialization and timed out at the fixture's 60-second
+deadline. A direct fresh-profile run with the same executable completed
+migrations, returned HTTP 200 from `/readyz` after reaching the listen event
+at 96.8 seconds, and shut down with exit code zero on stdin EOF. The full
+standalone rerun and desktop installer and updater remain open.
+
 ## Current `1.1.2833` package
 
 The Windows x64 distribution from `81d9282a94833ba218fb4f2cb23b543c17a5530a`
