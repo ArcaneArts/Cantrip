@@ -131,6 +131,58 @@ node --import tsx scripts/server-rust/actual-folder-client.mjs \
 
 Repeat with `bundled-postgres` and `postgres` using the production artifacts.
 
+## Current host inventory and CantripOS guest surfaces
+
+A single eligible desktop worker previously received a target limit of 4,096
+from both servers. The worker command schema allows at most 2,064. The browser
+reported a failed inventory before any worker command could run. Both producers
+now cap each request at 2,064 while preserving the fleet budget across workers.
+The focused single-worker regression validates the command against the existing
+protocol schema.
+
+The browser uses the existing APIs to authorize the worker for private surface
+state and creates a host desktop through the actual probe. It opens the
+worker's encrypted inventory and compares its counts with the opaque HTTP
+response. The shared-server fixture uses the native helper's explicit fake
+backend for deterministic host inventory. The Linux desktop and TCP service
+in the guest still use the production guest packages.
+
+The browser creates and provisions a Linux-owned project source through the
+full worker. It starts the workspace desktop and rejects a stale runtime
+generation with HTTP 409. The accepted view binds to the worker's observed
+desktop generation and opens authenticated JPEG frames over WorkerLink without
+acquiring human control. A server and worker restart retains the exact encrypted
+view and resumes guest frames. A public tunnel attachment reaches a fixture TCP
+service listening only inside that guest, preserves half-close and returns the
+authenticated reply. Closing the channel releases the grant.
+
+All six native-host cells and four shared PostgreSQL and Redis cells passed.
+The runs retain 40 correlated worker command completions, 20 authenticated
+guest desktop connections, ten verified guest replies and ten recovered
+workspace admissions after intentional server kills. There were 42 clean
+server exits and 40 clean worker exits.
+
+The first rebuilt PGlite run used a pre-existing default runtime cache
+that lacked `postgres.bki`. The same executable passed migration with a fresh
+default temporary root and passed the full product run with an owned
+`PGLITE_RUNTIME_DIR`. The incomplete default cache recovery remains open.
+
+The first pilot used an older workspace package that lacks `desktop-target`.
+The acceptance image has workspace 0.4.0, executor 0.12.0 and remote 0.11.0.
+The [acceptance record](security/rust-server-guest-surfaces.json) links the
+fixture reports and exact artifacts.
+
+```sh
+CANTRIP_TEST_OS_IMAGE=cantrip-os-acceptance:arm64 \
+  node --import tsx scripts/server-rust/actual-folder-client.mjs \
+  --cantrip-os-surfaces --database pglite --report /absolute/path/to/guest-surfaces.json
+```
+
+Repeat for `bundled-postgres` and `postgres`. Add
+`--fake-host-desktop-inventory` to exercise the deterministic host inventory
+through the production worker. Use `--server-pair all --database postgres`
+for the PostgreSQL and Redis pairings.
+
 ## Repeatable commands
 
 Build current workspace packages, the Node reference and worker first. Supply

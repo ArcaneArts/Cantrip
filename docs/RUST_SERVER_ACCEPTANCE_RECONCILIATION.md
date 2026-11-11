@@ -17,6 +17,12 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [host inventory and CantripOS guest comparison](RUST_SERVER_REMOTE_SURFACES.md#current-host-inventory-and-cantripos-guest-surfaces)
+fixes the single-worker desktop inventory request. It qualifies encrypted
+host inventory, a real guest desktop before and after restart, stale
+placement rejection and an encrypted guest TCP tunnel. All 323 worker
+command identities now have scoped ledger evidence.
+
 The [current computer-use lifecycle comparison](RUST_SERVER_COMPUTER_USE.md#current-browser-and-full-worker-lifecycle)
 qualifies effects sync, operations and preview open/Stop through the browser
 and full worker on all three stores and all four PostgreSQL and Redis

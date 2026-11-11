@@ -88,8 +88,11 @@ export function installRemoteDesktopReadRoutes(
         REMOTE_DESKTOP_FLEET_WORKER_LIMIT,
       );
       const targetLimitPerWorker = inspectedWorkers.length
-        ? Math.floor(
-            REMOTE_DESKTOP_FLEET_TARGET_LIMIT / inspectedWorkers.length,
+        ? Math.min(
+            2_064,
+            Math.floor(
+              REMOTE_DESKTOP_FLEET_TARGET_LIMIT / inspectedWorkers.length,
+            ),
           )
         : 0;
       const results = await Promise.all(

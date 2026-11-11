@@ -9,10 +9,13 @@ import { actualCantripOsSystemClient } from "./actual-cantrip-os-system-client.m
 
 import { actualCantripOsRunClient } from "./actual-cantrip-os-run-client.mjs";
 import { actualCantripOsBackupClient } from "./actual-cantrip-os-backup-client.mjs";
+import { actualCantripOsSurfaces } from "./actual-cantrip-os-surfaces.mjs";
 
 export async function actualCantripOsClient({
   runProjectId,
   backupProjectId,
+  surfaceProjectId,
+  fakeHostDesktopInventory,
   page,
   fixture,
   root,
@@ -93,7 +96,7 @@ export async function actualCantripOsClient({
   try {
     // Populate the ordinary Worker-owned public artifact catalog. The full
     // worker reads and snapshots these files through its production catalog.
-    if (!runProjectId && !backupProjectId) {
+    if (!runProjectId && !backupProjectId && !surfaceProjectId) {
       await cp(
         process.env.CANTRIP_TEST_OS_PACKAGE_DIRECTORY,
         path.join(dataDirectory, "cantrip-os-packages"),
@@ -215,6 +218,29 @@ export async function actualCantripOsClient({
     result.steps.push(
       "actual Docker guest attachment and retained workspace-create admission use the existing browser SDK and full worker without duplicate creation",
     );
+
+    if (surfaceProjectId) {
+      await actualCantripOsSurfaces({
+        page,
+        call,
+        os,
+        desktop,
+        guest,
+        fixture,
+        instance,
+        selected,
+        projectId: surfaceProjectId,
+        fakeHostDesktopInventory,
+        workerId,
+        stopWorker,
+        startWorker,
+        result,
+        report,
+      });
+      report.summary = report.surfaces.summary;
+      succeeded = true;
+      return;
+    }
 
     if (backupProjectId) {
       await actualCantripOsBackupClient({

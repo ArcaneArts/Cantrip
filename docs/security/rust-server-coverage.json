@@ -12079,6 +12079,62 @@
         ]
       },
       {
+        "command": "surface.desktop.probe",
+        "implementation": "cantrip_server_rs/src/http/remote_desktops.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_REMOTE_SURFACES.md",
+          "docs/security/rust-server-guest-surfaces.json",
+          "scripts/server-rust/actual-cantrip-os-surfaces.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "The existing host probe is qualified through successful creation. Full host desktop capture, input and supported platform shipping require their own acceptance."
+        ]
+      },
+      {
+        "command": "surface.desktop.targets",
+        "implementation": "cantrip_server_rs/src/http/remote_desktop_fleet.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_REMOTE_SURFACES.md",
+          "docs/security/rust-server-guest-surfaces.json",
+          "scripts/server-rust/actual-cantrip-os-surfaces.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Single-worker dispatch, the opaque HTTP record and actual browser decryption are qualified. Broad fleet saturation and other platforms retain separate acceptance."
+        ]
+      },
+      {
+        "command": "surface.desktop.os-prepare",
+        "implementation": "cantrip_server_rs/src/http/remote_desktops.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_REMOTE_SURFACES.md",
+          "docs/security/rust-server-guest-surfaces.json",
+          "scripts/server-rust/actual-cantrip-os-surfaces.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "The captured Linux guest generation, authenticated view and restart are qualified. Active attachment failover, input and supported shipping require their own acceptance."
+        ]
+      },
+      {
+        "command": "surface.tunnel.os-prepare",
+        "implementation": "cantrip_server_rs/src/http/worker_link_tunnels.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_REMOTE_SURFACES.md",
+          "docs/security/rust-server-guest-surfaces.json",
+          "scripts/server-rust/actual-cantrip-os-surfaces.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Forward TCP to a real guest service is qualified, including encrypted half-close and grant release. Reverse listen, SSH, VNC and interrupted preparation retain separate acceptance."
+        ]
+      },
+      {
         "command": "surface.close",
         "implementation": "cantrip_server_rs/src/http/remote_surfaces.rs",
         "status": "implemented-pending-platform-acceptance",
