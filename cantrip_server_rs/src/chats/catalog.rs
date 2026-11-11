@@ -63,9 +63,8 @@ pub(super) fn iso(value: &Value) -> Result<Value> {
         .as_js_string()
         .and_then(crate::wire::date_milliseconds)
         .context("Invalid time value")?;
-    Ok(json!(
-        crate::wire::date_iso_milliseconds(millis).context("Invalid time value")?
-    ))
+    let iso = crate::wire::date_iso_milliseconds(millis).context("Invalid time value")?;
+    Ok(Value::String(iso.into()))
 }
 impl Repository {
     pub async fn list_project(&self, owner: &str, project: &str) -> Result<Vec<Value>> {

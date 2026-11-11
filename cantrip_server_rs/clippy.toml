@@ -1,0 +1,3 @@
+# UTF-16 units and alphabet membership are derived from immutable UTF-8 text.
+# The caches do not participate in key hashing or equality.
+ignore-interior-mutability = ["cantrip_server::wire::value::Utf8String", ".."]

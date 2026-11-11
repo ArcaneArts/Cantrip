@@ -616,15 +616,19 @@ pub(super) fn apply(
         }
         "canonical-base64url" => {
             let value = value.as_js_string().ok_or(ValidationError::Operation)?;
-            let len = value.len();
-            let remainder = len % 4;
-            let last = value
-                .units()
-                .last()
-                .and_then(|ch| char::from_u32(u32::from(*ch)))
-                .and_then(|ch| {
-                    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".find(ch)
-                });
+            let remainder = value.len() % 4;
+            let last_byte = match value.as_str() {
+                Some(text) => text.as_bytes().last().copied(),
+                None => value
+                    .units()
+                    .last()
+                    .and_then(|&unit| u8::try_from(unit).ok()),
+            };
+            let last = last_byte.and_then(|byte| {
+                b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+                    .iter()
+                    .position(|&digit| digit == byte)
+            });
             let valid = remainder == 0
                 || last.is_some_and(|last| {
                     if remainder == 2 {

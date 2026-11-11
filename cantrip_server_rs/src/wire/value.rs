@@ -9,7 +9,7 @@ use std::{
     fmt,
     hash::{Hash, Hasher},
     ops::{Index, IndexMut},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 
 mod operations;
@@ -17,58 +17,112 @@ mod parser;
 
 pub type Object = indexmap::IndexMap<JsString, Value>;
 
-#[derive(Clone, Eq, PartialEq)]
-pub struct JsString {
-    units: Arc<[u16]>,
-    utf8: Option<Arc<str>>,
+#[derive(Clone)]
+pub struct JsString(StringStorage);
+
+#[derive(Clone)]
+enum StringStorage {
+    Utf8(Arc<Utf8String>),
+    Unpaired(Arc<[u16]>),
 }
+
+struct Utf8String {
+    text: Box<str>,
+    utf16_len: usize,
+    units: OnceLock<Box<[u16]>>,
+    base64url: OnceLock<bool>,
+}
+
 impl JsString {
     pub fn new(units: Vec<u16>) -> Self {
-        let utf8 = String::from_utf16(&units).ok().map(Arc::from);
-        Self {
-            units: units.into(),
-            utf8,
+        match String::from_utf16(&units) {
+            Ok(text) => Self(StringStorage::Utf8(Arc::new(Utf8String {
+                text: text.into_boxed_str(),
+                utf16_len: units.len(),
+                units: OnceLock::from(units.into_boxed_slice()),
+                base64url: OnceLock::new(),
+            }))),
+            Err(_) => Self(StringStorage::Unpaired(units.into())),
         }
     }
+
     pub fn units(&self) -> &[u16] {
-        &self.units
+        match &self.0 {
+            StringStorage::Utf8(value) => value
+                .units
+                .get_or_init(|| value.text.encode_utf16().collect()),
+            StringStorage::Unpaired(units) => units,
+        }
     }
+
     pub fn as_str(&self) -> Option<&str> {
-        self.utf8.as_deref()
+        match &self.0 {
+            StringStorage::Utf8(value) => Some(&value.text),
+            StringStorage::Unpaired(_) => None,
+        }
     }
+
+    pub(in crate::wire) fn is_base64url(&self) -> bool {
+        let StringStorage::Utf8(value) = &self.0 else {
+            return false;
+        };
+        *value.base64url.get_or_init(|| {
+            let (blocks, tail) = value.text.as_bytes().as_chunks::<32>();
+            let allowed = |byte: u8| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_');
+            // Evaluate each fixed-size block as a reduction so the compiler can
+            // vectorize the checks. Stop scanning after the first failing block.
+            blocks.iter().all(|block| {
+                block
+                    .iter()
+                    .copied()
+                    .fold(true, |valid, byte| valid & allowed(byte))
+            }) && tail.iter().copied().all(allowed)
+        })
+    }
+
     pub fn lossy(&self) -> std::borrow::Cow<'_, str> {
         match self.as_str() {
             Some(value) => value.into(),
-            None => String::from_utf16_lossy(&self.units).into(),
+            None => String::from_utf16_lossy(self.units()).into(),
         }
     }
     pub fn len(&self) -> usize {
-        self.units.len()
+        match &self.0 {
+            StringStorage::Utf8(value) => value.utf16_len,
+            StringStorage::Unpaired(units) => units.len(),
+        }
     }
     pub fn is_empty(&self) -> bool {
-        self.units.is_empty()
+        self.len() == 0
     }
     pub fn trim(&self) -> Self {
+        if let Some(text) = self.as_str() {
+            let trimmed = text.trim_matches(crate::text::whitespace);
+            return if trimmed.len() == text.len() {
+                self.clone()
+            } else {
+                Self::from(trimmed)
+            };
+        }
+        let units = self.units();
         let whitespace =
             |unit: u16| char::from_u32(u32::from(unit)).is_some_and(crate::text::whitespace);
-        let start = self
-            .units
+        let start = units
             .iter()
             .position(|u| !whitespace(*u))
-            .unwrap_or(self.units.len());
-        let end = self
-            .units
+            .unwrap_or(units.len());
+        let end = units
             .iter()
             .rposition(|u| !whitespace(*u))
             .map_or(start, |end| end + 1);
-        Self::new(self.units[start..end].to_vec())
+        Self::new(units[start..end].to_vec())
     }
     pub fn lowercase(&self) -> Self {
         // Unicode casing operates on scalar runs. Unpaired UTF-16 units are
         // unchanged in JavaScript and form boundaries for contextual casing.
         let mut output = Vec::new();
         let mut scalars = String::new();
-        for decoded in char::decode_utf16(self.units.iter().copied()) {
+        for decoded in char::decode_utf16(self.units().iter().copied()) {
             match decoded {
                 Ok(ch) => scalars.push(ch),
                 Err(error) => {
@@ -88,16 +142,18 @@ impl JsString {
                 units.extend(", ".encode_utf16());
             }
             units.push(34);
-            units.extend(key.units.iter().copied());
+            units.extend(key.units().iter().copied());
             units.push(34);
         }
         Self::new(units)
     }
     fn write_json(&self, output: &mut String) {
-        if let Some(text) = self.as_str() {
-            if text
-                .bytes()
-                .all(|byte| byte >= b' ' && !matches!(byte, b'"' | b'\\'))
+        if let StringStorage::Utf8(value) = &self.0 {
+            let text = &value.text;
+            if value.base64url.get() == Some(&true)
+                || text
+                    .bytes()
+                    .all(|byte| byte >= b' ' && !matches!(byte, b'"' | b'\\'))
             {
                 output.push('"');
                 output.push_str(text);
@@ -109,9 +165,10 @@ impl JsString {
         }
         // The UTF-16 path retains lone surrogates that UTF-8 cannot represent.
         output.push('"');
+        let units = self.units();
         let mut at = 0;
-        while at < self.units.len() {
-            let unit = self.units[at];
+        while at < units.len() {
+            let unit = units[at];
             at += 1;
             match unit {
                 34 => output.push_str("\\\""),
@@ -122,13 +179,8 @@ impl JsString {
                 12 => output.push_str("\\f"),
                 13 => output.push_str("\\r"),
                 0..=31 => output.push_str(&format!("\\u{unit:04x}")),
-                0xd800..=0xdbff
-                    if self
-                        .units
-                        .get(at)
-                        .is_some_and(|u| (0xdc00..=0xdfff).contains(u)) =>
-                {
-                    let low = self.units[at];
+                0xd800..=0xdbff if units.get(at).is_some_and(|u| (0xdc00..=0xdfff).contains(u)) => {
+                    let low = units[at];
                     at += 1;
                     let scalar =
                         0x10000 + ((u32::from(unit) - 0xd800) << 10) + (u32::from(low) - 0xdc00);
@@ -143,27 +195,41 @@ impl JsString {
 }
 impl From<&str> for JsString {
     fn from(value: &str) -> Self {
-        let units = if value.is_ascii() {
-            value.bytes().map(u16::from).collect()
-        } else {
-            value.encode_utf16().collect()
-        };
-        Self {
-            units,
-            utf8: Some(Arc::from(value)),
-        }
+        Self::from(value.to_owned())
     }
 }
 impl From<String> for JsString {
     fn from(value: String) -> Self {
-        Self::from(value.as_str())
+        let utf16_len = if value.is_ascii() {
+            value.len()
+        } else {
+            value.encode_utf16().count()
+        };
+        Self(StringStorage::Utf8(Arc::new(Utf8String {
+            text: value.into_boxed_str(),
+            utf16_len,
+            units: OnceLock::new(),
+            base64url: OnceLock::new(),
+        })))
     }
 }
+impl PartialEq for JsString {
+    fn eq(&self, other: &Self) -> bool {
+        match (&self.0, &other.0) {
+            (StringStorage::Utf8(a), StringStorage::Utf8(b)) => {
+                Arc::ptr_eq(a, b) || a.text == b.text
+            }
+            (StringStorage::Unpaired(a), StringStorage::Unpaired(b)) => Arc::ptr_eq(a, b) || a == b,
+            _ => false,
+        }
+    }
+}
+impl Eq for JsString {}
 impl Hash for JsString {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self.as_str() {
             Some(s) => s.hash(state),
-            None => self.units.hash(state),
+            None => self.units().hash(state),
         }
     }
 }

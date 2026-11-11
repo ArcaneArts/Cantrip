@@ -127,10 +127,7 @@ impl StringPattern {
 
     fn matches(&self, value: &JsString) -> bool {
         match self {
-            Self::Base64Url => value.as_str().is_some_and(|text| {
-                text.bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-            }),
+            Self::Base64Url => value.is_base64url(),
             Self::Regex(regex) => regex.find_from_utf16(value.units(), 0).next().is_some(),
         }
     }
@@ -458,10 +455,11 @@ impl Contracts {
             "object" => {
                 if let Some(object) = input.and_then(Value::as_object) {
                     let mut output = Object::with_capacity(node.shape.len());
+                    let mut child_path = path.to_vec();
                     for (key, &schema_id) in &node.shape {
                         let property = object.get(key);
                         let present = property.is_some();
-                        let child_path = path_with(path, Value::String(key.clone()));
+                        child_path.push(Value::String(key.clone()));
                         let mut child = self.run(schema_id, property, &child_path)?;
                         let schema = &self.nodes[schema_id];
                         if !present && schema.optional_in && schema.optional_out {
@@ -485,6 +483,7 @@ impl Contracts {
                             output.insert(key.clone(), value);
                         }
                         result.merge(child);
+                        child_path.pop();
                     }
                     if let Some(catchall) = node.catchall {
                         let extra: Vec<_> = coercion::keys(object)
@@ -510,15 +509,13 @@ impl Contracts {
                             }
                         } else {
                             for key in extra {
-                                let mut child = self.run(
-                                    catchall,
-                                    object.get(key),
-                                    &path_with(path, Value::String(key.clone())),
-                                )?;
+                                child_path.push(Value::String(key.clone()));
+                                let mut child = self.run(catchall, object.get(key), &child_path)?;
                                 if let Some(value) = child.value.take() {
                                     output.insert(key.clone(), value);
                                 }
                                 result.merge(child);
+                                child_path.pop();
                             }
                         }
                     }
@@ -530,14 +527,17 @@ impl Contracts {
             "array" => {
                 if let Some(array) = input.and_then(Value::as_array) {
                     let mut output = Vec::with_capacity(array.len());
+                    let mut child_path = path.to_vec();
                     for (index, value) in array.iter().enumerate() {
+                        child_path.push(Value::Number(index as f64));
                         let mut child = self.run(
                             node.element.expect("array element"),
                             Some(value),
-                            &path_with(path, Value::Number(index as f64)),
+                            &child_path,
                         )?;
                         output.push(child.value.take().unwrap_or(Value::Null));
                         result.merge(child);
+                        child_path.pop();
                     }
                     result.value = Some(Value::Array(output).into_json_round_trip());
                 } else {

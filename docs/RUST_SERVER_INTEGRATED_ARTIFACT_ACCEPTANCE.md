@@ -249,7 +249,8 @@ PGlite project reads, message pages, and mixed-read throughput improved.
 Full history still takes 42 ms versus 35 ms on PGlite and 43 ms versus 24 ms
 on external PostgreSQL. External PostgreSQL project and paged reads also
 remain slower than the earlier Node measurements. These are open performance
-items. The comparison covers macOS ARM64 standalone packages.
+items for this candidate. The typed history comparison below measures the
+follow-up. Both comparisons cover macOS ARM64 standalone packages.
 
 The retained A/B report is
 `populated-profile-performance/verified-populated-performance-ab-measured-v2.json`.
@@ -268,6 +269,76 @@ write expectation in the Node reference run. The updated comparison requires
 an exact retry to return the same stored message and a retry with different
 protected content under the same key to fail. External PostgreSQL also tests
 the conflict between concurrent writers under actual row locks.
+
+### Typed history reads and wire string reuse
+
+The next candidate reads the message columns used by the existing mappers.
+PostgreSQL still supplies its JSON timestamp spelling. The mappers still
+check the stored message shape, and the generated schemas still check the
+encrypted summaries, page boundaries, and response envelope. The query
+keeps the same owner joins and sequence ordering.
+
+On the populated external PostgreSQL fixture, the 1,024-row query took
+7.19 ms when converting the entire row to JSONB, 4.99 ms with
+`row_to_json`, and 2.63 ms with separate columns. These are medians of
+20 `EXPLAIN ANALYZE` executions with text serialization after five warmups.
+The packaged HTTP comparisons use the production binary protocol.
+
+Valid UTF-8 strings share one backing value. UTF-16 is built when a caller
+needs the code units, and ciphertext alphabet checks reuse their result on
+the same immutable string. Hashing and equality use the immutable contents.
+The wire parser also reuses sibling paths, and JSON output iterates the
+ordered key-value entries directly.
+
+| Median measurement       | PGlite before → after | External PostgreSQL before → after | Bundled PostgreSQL before → after |
+| ------------------------ | --------------------: | ---------------------------------: | --------------------------------: |
+| Complete workload        |   2,597 ms → 2,415 ms |                2,076 ms → 1,936 ms |               2,212 ms → 2,084 ms |
+| Project list             |     6.13 ms → 5.37 ms |                  6.08 ms → 5.27 ms |                 6.17 ms → 5.45 ms |
+| 50-message page          |     2.97 ms → 2.29 ms |                  3.12 ms → 2.37 ms |                 3.10 ms → 2.41 ms |
+| 1,024-message history    |   40.66 ms → 27.28 ms |                41.55 ms → 26.52 ms |               40.63 ms → 26.58 ms |
+| Eight-client mixed reads |       467 → 545 req/s |                1,539 → 1,950 req/s |               1,547 → 1,886 req/s |
+
+The optimized macOS ARM64 `1.1.2858` package and the prior `1.1.2857`
+package each completed one pilot, five warmups, and 20 measurements per
+store. All 156 Rust invocations passed. The compared Rust response bytes
+matched for the project list, chat catalog, message page, and full history.
+The complete-workload median dropped 5.8–7.0% across the three stores.
+
+The same session ran 52 additional invocations of the compiled Node reference
+on matching PGlite and external PostgreSQL profiles. The decoded payloads
+matched the Rust responses.
+
+| Median measurement       | Node PGlite | Rust PGlite | Node external PostgreSQL | Rust external PostgreSQL |
+| ------------------------ | ----------: | ----------: | -----------------------: | -----------------------: |
+| Complete workload        |    4,685 ms |    2,415 ms |                 3,313 ms |                 1,936 ms |
+| Readiness                |    1,314 ms |      134 ms |                   950 ms |                    62 ms |
+| Idle process-tree RSS    |   1,310 MiB |     100 MiB |                  453 MiB |                   65 MiB |
+| Project list             |     7.55 ms |     5.37 ms |                  4.30 ms |                  5.27 ms |
+| 50-message page          |     4.10 ms |     2.29 ms |                  2.71 ms |                  2.37 ms |
+| 1,024-message history    |    35.21 ms |    27.28 ms |                 23.82 ms |                 26.52 ms |
+| Eight-client mixed reads |   328 req/s |   545 req/s |                684 req/s |              1,950 req/s |
+
+The external PostgreSQL median is 2.7 ms higher for the 3.1 MB full-history
+response and 1.0 ms higher for the project list. The p95 across full-history
+run medians fell from 31.96 ms to 27.48 ms. The lower paged latency, higher
+mixed-read throughput, and 42% shorter complete workload justify those
+remaining median differences for this local workload. Final shipping
+performance and recovery checks retain their separate scope.
+
+The retained report is
+`populated-profile-performance/wire-string-performance/verified-populated-performance-measured-v3.json`.
+It records all 208 production-entry runs, the executable hashes, the
+response digests, and per-store measurements.
+
+The repository, encrypted Chat HTTP, and project-export comparisons pass
+on all three stores. The MCP comparison initially found stale captured SQL
+in the Node failure assertion. Regenerating the SQL from the current
+reference fixed the diagnostic mismatch. The updated comparison passes 756
+MCP calls, including 108 checks of exact diagnostics from induced query
+failures. The block-boundary ciphertext test checks invalid alphabet bytes,
+noncanonical trailing bits, and stable map lookup after the caches fill.
+The exact `1.1.2858` standalone distribution passes the 1,762-file verification,
+all three backend restart and export cases, and Node-free shutdown.
 
 ## Earlier local repository checks
 

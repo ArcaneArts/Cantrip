@@ -92,12 +92,12 @@ impl Value {
                     Self::Object(object) => {
                         output.push('{');
                         stack.push(Part::Text("}"));
-                        for (i, key) in crate::wire::coercion::keys(object)
+                        for (i, (key, value)) in crate::wire::coercion::entries(object)
                             .into_iter()
                             .enumerate()
                             .rev()
                         {
-                            stack.push(Part::Value(&object[key]));
+                            stack.push(Part::Value(value));
                             stack.push(Part::Text(":"));
                             stack.push(Part::Key(key));
                             if i > 0 {
@@ -132,10 +132,7 @@ impl Value {
                 }
                 Self::Array(values) => pending.extend(values),
                 Self::Object(values) => {
-                    if !crate::wire::coercion::keys(values)
-                        .into_iter()
-                        .eq(values.keys())
-                    {
+                    if !crate::wire::coercion::keys_in_order(values) {
                         return false;
                     }
                     pending.extend(values.values());
