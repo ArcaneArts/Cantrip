@@ -9845,6 +9845,34 @@
     "defaultStatus": "unported",
     "overrides": [
       {
+        "command": "worker-link.peer.renew",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/worker_links/sessions.rs",
+        "evidence": [
+          "docs/RUST_SERVER_WORKER_LINK_LEASE_RECOVERY.md",
+          "docs/security/rust-server-worker-link-lease-recovery.json",
+          "scripts/server-rust/actual-worker-link-renewal.mjs",
+          "scripts/server-rust/worker-link-coordinator-compatibility.mjs"
+        ],
+        "remaining": [
+          "The real LAN peer lease extends in the full worker on all three stores before and after actual server and worker process kills. Delayed acknowledgment, shared-server and shipping platform acceptance remain open."
+        ]
+      },
+      {
+        "command": "direct.capability.renew",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/direct_attachments/renewal.rs",
+        "evidence": [
+          "docs/RUST_SERVER_WORKER_LINK_LEASE_RECOVERY.md",
+          "docs/security/rust-server-worker-link-lease-recovery.json",
+          "scripts/server-rust/actual-worker-link-renewal.mjs",
+          "scripts/server-rust/direct-attachment-compatibility.mjs"
+        ],
+        "remaining": [
+          "Real native LOCAL broker authority renews via browser telemetry on all three stores, with temporary failure during worker interruption and retirement across generation change. Other direct resource and supported shipping artifact acceptance remain open."
+        ]
+      },
+      {
         "command": "terminal.snapshot",
         "status": "implemented-pending-platform-acceptance",
         "implementation": [
@@ -28875,6 +28903,21 @@
       "standaloneDatabaseModes": ["pglite", "bundled-postgres", "postgres"],
       "verifiedArtifactFiles": 1762,
       "scope": "Native ARM64 macOS standalone package on all three stores. PGlite signed desktop install and restart retained state after rejecting an altered package. Keychain authorization of the new ad-hoc app was denied; the encrypted update matrix remains incomplete."
+    },
+    "currentWorkerLinkLeaseRecovery": {
+      "status": "implemented-with-scoped-local-qualification",
+      "evidence": [
+        "docs/RUST_SERVER_WORKER_LINK_LEASE_RECOVERY.md",
+        "docs/security/rust-server-worker-link-lease-recovery.json",
+        "scripts/server-rust/actual-worker-link-renewal.mjs"
+      ],
+      "serverSourceCommit": "020254f3c3aabb5e2e1e712c2c597a5cc73a5950",
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+      "fullWorkerProductPeers": 6,
+      "realPeerRenewals": 18,
+      "realDirectRenewals": 18,
+      "workerCommandIdentitiesMapped": 308,
+      "scope": "Local macOS ARM64 production server processes, full worker, browser SDK and native LOCAL broker identity verification. One actual worker and one actual server process crash per peer. Shared-server and shipping platform acceptance remain open."
     },
     "terminalAndReplicaCommands": {
       "status": "implemented-with-scoped-local-qualification",

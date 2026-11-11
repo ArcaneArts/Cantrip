@@ -91,6 +91,7 @@ import { nativeAgentInterruption } from "./native-agent-interruption.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { password } from "./security-fixtures.mjs";
 import { actualTerminalServices } from "./actual-terminal-services.mjs";
+import { actualWorkerLinkRenewal } from "./actual-worker-link-renewal.mjs";
 import {
   actualWorkerFileDocuments,
   retainedWorkerFileDocument,
@@ -129,9 +130,12 @@ const cantripOsRun = process.argv.includes("--cantrip-os-run");
 const cantripOsSourceBackup = process.argv.includes(
   "--cantrip-os-source-backup",
 );
+const workerLinkRenewal = process.argv.includes("--worker-link-renewal");
+assert.ok(!workerLinkRenewal || !sharedPair);
 const singleProduct =
   cantripOsRun ||
   cantripOsSourceBackup ||
+  workerLinkRenewal ||
   process.argv.includes("--production-server") ||
   process.argv.includes("--native-task-goal-worker-recovery") ||
   process.argv.includes("--native-worker-recovery") ||
@@ -173,6 +177,7 @@ const liveTaskDiagnostics =
   process.argv.includes("--postgres-errors");
 const fullServerLogs =
   cantripOsSourceBackup ||
+  workerLinkRenewal ||
   liveTaskDiagnostics ||
   process.argv.includes("--project-insights") ||
   process.argv.includes("--operational-status") ||
@@ -198,6 +203,9 @@ const report = {
   runtimes: [],
   operationalStatusScope: process.argv.includes("--operational-status")
     ? "Existing browser getSystemHealth, authenticated Prometheus and full worker/Live before and after retained server restart. Shared peers additionally exercise actual Redis stop/restart, readiness and cached coordination collectors without replacing the worker. Active-job failover, TLS deployment and supported-platform/package acceptance remain separate."
+    : null,
+  workerLinkRenewalScope: workerLinkRenewal
+    ? "Browser SDK, production servers, full Node worker and native LOCAL broker verifier. Real lease extensions, worker and server process kills, old authority rejection and explicit release."
     : null,
   taskDiagnostics: liveTaskDiagnostics
     ? "Development SQL fixture executable; unchanged production startup, routes, worker and native runtime. Failed Task runs retain scoped read-only database snapshots before teardown."
@@ -270,12 +278,14 @@ async function flow(
     enrollmentCode,
     { providerTest = false, environment = {} } = {},
   ) => {
-    const isolateHome = [
-      "--mcp-settings",
-      "--terminals",
-      "--terminal-direct",
-      "--project-administration",
-    ].some((flag) => process.argv.includes(flag));
+    const isolateHome =
+      workerLinkRenewal ||
+      [
+        "--mcp-settings",
+        "--terminals",
+        "--terminal-direct",
+        "--project-administration",
+      ].some((flag) => process.argv.includes(flag));
     const homeDirectory = isolateHome
       ? path.join(dataDirectory, "mcp-test-home")
       : undefined;
@@ -295,6 +305,7 @@ async function flow(
         workerId,
         homeDirectory,
         environment: {
+          ...(workerLinkRenewal ? { CANTRIP_LOG_LEVEL: "debug" } : {}),
           ...(providerTest ? providerBoundary?.environment : {}),
           ...(cantripOsSourceBackup
             ? {
@@ -683,6 +694,17 @@ async function flow(
     result.steps.push(
       "offline folder job resumes on actual worker reconnect and existing AppLiveClient receives completion",
     );
+    if (workerLinkRenewal)
+      await actualWorkerLinkRenewal({
+        page,
+        workerId,
+        getWorker: () => worker,
+        startWorker,
+        crashWorker,
+        restartServer: () => fixture.restart({ crash: true }),
+        binary: directBrokerBinary,
+        result,
+      });
     if (
       process.argv.includes("--terminals") ||
       process.argv.includes("--terminal-direct")
@@ -1377,9 +1399,11 @@ try {
   const nativeProbeBinary = process.argv.includes("--native-probe")
     ? await buildDesktopDirectProbe()
     : undefined;
-  const directBrokerBinary = process.argv.includes("--terminal-direct")
-    ? await buildRustExample("desktop-direct-broker")
-    : undefined;
+  const directBrokerBinary =
+    process.argv.includes("--terminal-direct") || workerLinkRenewal
+      ? (process.env.CANTRIP_TEST_DESKTOP_BROKER_BINARY ??
+        (await buildRustExample("desktop-direct-broker")))
+      : undefined;
   vite = await createServer({
     root: appRoot,
     configFile: path.join(appRoot, "vite.config.ts"),
@@ -1450,16 +1474,23 @@ try {
         ...(process.argv.includes("--operational-status")
           ? { CANTRIP_METRICS_TOKEN: operationalProductToken }
           : {}),
-        ...(process.argv.includes("--worker-links")
-          ? workerLinkRoute === "relay"
-            ? { CANTRIP_WORKER_LINK_RELAY_ONLY: "true" }
-            : {
-                CANTRIP_WORKER_LINK_RELAY_ONLY: "false",
-                CANTRIP_WORKER_LINK_LOCAL_ENABLED: "false",
-                CANTRIP_WORKER_LINK_LAN_ENABLED: "true",
-                CANTRIP_WORKER_LINK_WAN_ENABLED: "false",
-              }
-          : {}),
+        ...(workerLinkRenewal
+          ? {
+              CANTRIP_WORKER_LINK_RELAY_ONLY: "false",
+              CANTRIP_WORKER_LINK_LOCAL_ENABLED: "true",
+              CANTRIP_WORKER_LINK_LAN_ENABLED: "true",
+              CANTRIP_WORKER_LINK_WAN_ENABLED: "false",
+            }
+          : process.argv.includes("--worker-links")
+            ? workerLinkRoute === "relay"
+              ? { CANTRIP_WORKER_LINK_RELAY_ONLY: "true" }
+              : {
+                  CANTRIP_WORKER_LINK_RELAY_ONLY: "false",
+                  CANTRIP_WORKER_LINK_LOCAL_ENABLED: "false",
+                  CANTRIP_WORKER_LINK_LAN_ENABLED: "true",
+                  CANTRIP_WORKER_LINK_WAN_ENABLED: "false",
+                }
+            : {}),
         CANTRIP_APP_ORIGINS: `http://127.0.0.1:5173,${new URL(vite.resolvedUrls.local[0]).origin}`,
       },
     };

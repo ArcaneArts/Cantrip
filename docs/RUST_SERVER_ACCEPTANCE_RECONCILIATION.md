@@ -17,6 +17,13 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [WorkerLink lease recovery comparison](RUST_SERVER_WORKER_LINK_LEASE_RECOVERY.md)
+passes real LAN peer and native LOCAL broker renewals through the full worker
+on all three stores. It verifies the reconnect grace response, old authority
+retirement after worker or server replacement, and fresh lease renewal after
+both process kills. Scoped worker command coverage accounts for 308 of 323
+identities.
+
 The [terminal and replica qualification](RUST_SERVER_TERMINAL_REPLICA_ACCEPTANCE.md)
 passes real CLI scrollback and legacy replica deletion through the existing full
 worker on all three Rust storage modes. Current import and worktree-list controls
