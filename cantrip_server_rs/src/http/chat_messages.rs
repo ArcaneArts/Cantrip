@@ -33,13 +33,17 @@ async fn read(service: &AuthService, owner: &str, id: &str, query: Value) -> Res
         // Source uses parse(), so invalid page queries pass through the global
         // error handler after ownership lookup instead of returning body400.
         let query = crate::settings::parse_response("chatMessagePageQuerySchema", Some(&query))?;
-        let result = repository
+        let mut result = repository
             .opaque_message_page(owner, id, task, &query)
             .await?;
         output(
             200,
             "chatMessageWirePageSchema",
-            &json!({"kind":kind,"messages":result["messages"],"page":result["page"]}),
+            &Value::object([
+                ("kind", Value::String(kind.into())),
+                ("messages", std::mem::take(&mut result["messages"])),
+                ("page", std::mem::take(&mut result["page"])),
+            ]),
         )
     } else {
         let messages = repository
@@ -56,7 +60,10 @@ async fn read(service: &AuthService, owner: &str, id: &str, query: Value) -> Res
         output(
             200,
             "chatMessageWireListSchema",
-            &json!({"kind":kind,"messages":messages}),
+            &Value::object([
+                ("kind", Value::String(kind.into())),
+                ("messages", Value::Array(messages).into_json_round_trip()),
+            ]),
         )
     }
 }

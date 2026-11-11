@@ -1,6 +1,7 @@
 use super::{
     body, json_response,
     middleware::{self, Context},
+    wire_json_response,
 };
 use crate::{
     auth::service::AuthService,
@@ -30,7 +31,10 @@ pub(super) fn output(status: u16, schema: &str, value: &Value) -> Result<Respons
 }
 fn output_optional(status: u16, schema: &str, value: Option<&Value>) -> Result<Response> {
     let value = crate::settings::parse_response(schema, value)?;
-    Ok(json_response(StatusCode::from_u16(status).unwrap(), value))
+    Ok(wire_json_response(
+        StatusCode::from_u16(status).unwrap(),
+        &value,
+    ))
 }
 pub(super) fn parse(schema: &str, value: Option<&Value>) -> Result<Result<Value, Response>> {
     match wire::parse(schema, value) {

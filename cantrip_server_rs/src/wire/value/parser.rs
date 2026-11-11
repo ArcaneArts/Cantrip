@@ -10,12 +10,20 @@ enum Container {
 fn string(raw: &str, at: &mut usize) -> Result<JsString, serde_json::Error> {
     let start = *at;
     *at += 1;
+    let mut escaped = false;
     loop {
         match raw.as_bytes()[*at] {
-            b'\\' => *at += 2,
+            b'\\' => {
+                escaped = true;
+                *at += 2;
+            }
             b'"' => {
                 *at += 1;
-                return serde_json::from_str(&raw[start..*at]);
+                return if escaped {
+                    serde_json::from_str(&raw[start..*at])
+                } else {
+                    Ok(JsString::from(&raw[start + 1..*at - 1]))
+                };
             }
             _ => *at += 1,
         }

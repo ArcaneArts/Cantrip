@@ -1,5 +1,5 @@
 //! Compose independent generated graphs without coupling their node indices.
-use super::Contracts;
+use super::{Contracts, StringPattern};
 
 const BASE: &str = include_str!("../../contracts/security.json");
 const RUN: &str = include_str!("../../contracts/mcp-run.json");
@@ -63,9 +63,7 @@ impl Contracts {
         let offset = self.nodes.len();
         for node in &mut block.nodes {
             for reference in node.shape.values_mut() {
-                *reference = (reference.as_u64().expect("generated property reference")
-                    + offset as u64)
-                    .into();
+                *reference += offset;
             }
             for reference in [
                 &mut node.inner_type,
@@ -101,10 +99,7 @@ impl Contracts {
         for node in &mut self.nodes {
             for check in &mut node.checks {
                 if let Some(pattern) = &check.pattern {
-                    check.compiled = Some(
-                        regress::Regex::with_flags(pattern, check.flags.as_str())
-                            .expect("compiled protocol regex"),
-                    );
+                    check.compiled = Some(StringPattern::new(pattern, &check.flags));
                 }
             }
         }

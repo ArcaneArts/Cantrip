@@ -218,8 +218,20 @@ impl Repository {
         };
         let oldest = sequences.last().copied();
         let has_more = headers.len() > selected;
-        Ok(
-            json!({"messages":mapped(rows,if task{MessageKind::Task}else{MessageKind::Encrypted})?,"page":json!({"hasMore":has_more,"nextBeforeSequence":if has_more{oldest}else{None},"oldestSequence":oldest,"newestSequence":headers[0].1,"startsAtUserTurn":starts})}),
-        )
+        let kind = if task {
+            MessageKind::Task
+        } else {
+            MessageKind::Encrypted
+        };
+        Ok(Value::object([
+            (
+                "messages",
+                Value::Array(mapped(rows, kind)?).into_json_round_trip(),
+            ),
+            (
+                "page",
+                json!({"hasMore":has_more,"nextBeforeSequence":if has_more{oldest}else{None},"oldestSequence":oldest,"newestSequence":headers[0].1,"startsAtUserTurn":starts}),
+            ),
+        ]))
     }
 }

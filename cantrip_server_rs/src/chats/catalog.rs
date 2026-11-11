@@ -42,7 +42,7 @@ pub(super) fn statement_failure(cause: anyhow::Error, parameters: &[&str]) -> an
     .into()
 }
 pub(super) fn raw(row: &crate::database::Row) -> Result<Value> {
-    Ok(serde_json::from_str(&row.get::<String>(0)?)?)
+    Ok(serde_json::from_str(row.get::<&str>(0)?)?)
 }
 fn text(value: &Value) -> Result<String> {
     Ok(value
