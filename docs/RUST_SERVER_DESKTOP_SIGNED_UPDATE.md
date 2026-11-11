@@ -43,6 +43,18 @@ local updater, packaging and catalog tests and 41 first-run encryption tests
 passed. This rehearsal used local Developer ID signing. Release notarization
 and Windows installer acceptance remain separate.
 
+## Current standalone package
+
+The optimized macOS ARM64 server `1.1.2845` from
+`2e60d2042203f64c8105d5c52d12ae1db92d2d83` passes the relocated distribution
+suite on PGlite, bundled PostgreSQL and external PostgreSQL. Each backend
+passes migrations, SQL export, retained settings and identity after restart,
+hosted reopening and SIGTERM shutdown. The driver verifies all 1,762 files
+and the embedded PGlite fallback with Node absent from the server PATH and
+Homebrew reads and artifact writes denied. The
+[acceptance record](security/rust-server-darwin-arm64-acceptance.json) contains
+the new artifact and report checksums.
+
 ## Earlier results
 
 The `1.1.2817` standalone distribution passed all three stores, migrations,

@@ -108,10 +108,11 @@ guest and verifies 2,281 package files. The installed `1.1.2839` to
 `1.1.2841` signed update retains the PGlite profile, server identity and
 accepted write and exercises the full worker before and after installation.
 The installed app converts an archived Node profile and preserves all
-1,660 original files. The separate Windows ARM64 guest qualifies Node
+1,660 original files. The installed bundled and external PostgreSQL profiles
+also verify their selected database process, an accepted settings write and
+the real worker reply. The separate Windows ARM64 guest qualifies Node
 `22.23.4` worker restart and owner loss across all three stores, plus
 post-write rollback and native re-upgrade of the published Node profile.
-Installed PostgreSQL modes and broader release acceptance remain open.
 
 The [current Linux ARM64 qualification](RUST_SERVER_WINTERHOLD.md#current-linux-arm64-qualification)
 passes all three stores in the `1.1.2817` container and local systemd

@@ -169,6 +169,26 @@ after Redis process interruption. All 24 server processes shut down cleanly.
 The suite uses the shared HTTP fixture and controlled worker acknowledgments.
 [Shared runtime driver](../scripts/server-rust/shared-runtime-http-compatibility.mjs)
 
+## Current packaged relay and recovery run
+
+The optimized macOS ARM64 `1.1.2845` distribution and compiled Node reference
+from `2e60d2042203f64c8105d5c52d12ae1db92d2d83` both passed on all three
+stores. Each run downloaded and echoed 64 MiB with exact endpoint and wire
+bytes, preserved a sibling session during selective revocation, and cleared
+worker authority after the slow-consumer test. The suite replaced the worker
+endpoint and killed and reopened the server process. The replacement server
+kept the same identity, accepted setting and protected tunnel record. The
+replacement endpoint retained its enrollment. All six servers exited cleanly
+after the final checks.
+
+The single-sample Rust download results ranged from 205.49 to 211.13 MiB/s
+and echo results from 115.90 to 117.79 MiB/s. Node download ranged from
+202.26 to 212.46 MiB/s and echo from 114.63 to 118.64 MiB/s. Each pair uses
+the same controlled payload and credit window. The repeated benchmark above
+has a separate sample size and artifact. The
+[macOS acceptance record](security/rust-server-darwin-arm64-acceptance.json)
+contains the current matrix checksum.
+
 ## Scope and remaining replacement work
 
 These checks cover macOS arm64 and the `events`/`stream` lanes with controlled

@@ -574,6 +574,56 @@
         "sha256": "610fa750ad1225cd8cdeb5c08db055616cf5682bf78008e92d3ac2fb29629565"
       }
     },
-    "scope": "Exact installed x64 PGlite app with a local updater signing key and TLS fixture. Emulated startup times are diagnostic. Installed bundled and external PostgreSQL and the broader product, recovery, and release qualification remain separate."
+    "scope": "Exact installed x64 PGlite app with a local updater signing key and TLS fixture. Emulated startup times are diagnostic. The separately recorded PostgreSQL runs exercise the same installed app."
+  },
+  "installedX64PostgresModes": {
+    "sourceCommit": "fd3f4840683cdef4a5a71ba642c602d27c04d8e9",
+    "appVersion": "1.1.2841",
+    "installedAppSha256": "581500a8497c88ed31d3808a999976cc899609a6e1807ff3ddef3da7bf522369",
+    "serverVersion": "1.1.2834",
+    "workerVersion": "1.1.2834",
+    "guest": {
+      "os": "Windows 11",
+      "build": 26100,
+      "architecture": "x64",
+      "execution": "QEMU software emulation (Westmere-v1)"
+    },
+    "evidenceDirectory": "rust-server-windows-installer-20261111-v1",
+    "bundledPostgres": {
+      "initialObserver": {
+        "path": "current-windows-x64-installed-2841-bundled-postgres-initial.json",
+        "bytes": 539,
+        "sha256": "51e42cc1b14b7a206f93186f63d652f788a2b3ca8721f1e063c550a61a6b30d1"
+      },
+      "independentObservations": {
+        "path": "current-windows-x64-installed-2841-bundled-postgres-composite.json",
+        "bytes": 2242,
+        "sha256": "ca5b66255ed298d5229abb22774a5271af8ec5baa5bf667440ac957bcadce541"
+      },
+      "sameAppProcess": true,
+      "packagedPostmasterOpenedProfile": true,
+      "settingsWriteAndReadback": true,
+      "workerCommandPassed": true,
+      "trayQuitAndNativeServerShutdown": true,
+      "combinedObserverCompleted": false
+    },
+    "externalPostgres": {
+      "report": {
+        "path": "current-windows-x64-installed-2841-postgres-final.json",
+        "bytes": 615,
+        "sha256": "c9c615d4d21151ae9f435834f8390a8f7817404c69dcd584a08437478cfe8c37"
+      },
+      "result": "passed",
+      "independentDatabaseConnectionObserved": true,
+      "settingsWriteAndReadback": true,
+      "workerCommandPassed": true,
+      "serialAndDiskReportMatch": true
+    },
+    "retainedSelections": {
+      "path": "westmere-v5-postgres-modes-after-guest-exit.json",
+      "bytes": 29657,
+      "sha256": "025bdb263a339513c36d0f7b2000dcfd577dfe9cfceea2114a97701379c7d374"
+    },
+    "scope": "Existing signed x64 installation on Windows 11 under local emulation. Fresh bundled and external PostgreSQL profiles, with persisted backend selections observed on the stopped disk. PGlite-only signed update and historical migration retain their separate scope."
   }
 }

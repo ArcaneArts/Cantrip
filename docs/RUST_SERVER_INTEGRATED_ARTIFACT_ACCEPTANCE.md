@@ -78,7 +78,31 @@ Reports are `native-package-acceptance-v1.json`,
 `actual-app-update-v1.json`. Owned fixture data, earlier failures and exact
 artifacts are retained for archival before cleanup.
 
-## Production-entry performance sample
+## Current macOS ARM64 production-entry performance
+
+The Node production reference built at `2e60d2042203f64c8105d5c52d12ae1db92d2d83`
+and the optimized `1.1.2845` Rust package ran the same small PGlite workload.
+On an M4 Max with macOS 27.0.1, all five warmups and 20 measured runs per
+runtime passed. The test reopened each profile across runs, checked retained
+settings and identity, and observed clean SIGTERM exits.
+
+| Measurement                             |   Node median | Rust median |      Node p95 |    Rust p95 |
+| --------------------------------------- | ------------: | ----------: | ------------: | ----------: |
+| Complete workload                       |   3,770.03 ms | 1,514.66 ms |   3,980.23 ms | 1,561.38 ms |
+| Warm readiness                          |   1,291.93 ms |    73.36 ms |   1,363.83 ms |    77.62 ms |
+| Idle process-tree RSS                   | 1,349,096 KiB | 102,048 KiB | 1,361,520 KiB | 102,176 KiB |
+| Median durable settings request per run |      4.034 ms |    1.255 ms |      4.734 ms |    1.336 ms |
+| Paused-client catch-up                  |      0.736 ms |    0.615 ms |      0.803 ms |    0.650 ms |
+
+The complete-workload guard passed with stable stdout and a 59.82% lower
+median. RSS sums resident pages across the process tree, including shared
+mappings. The sample covers a small local PGlite profile. Bulk relay tests
+have their own [production comparison](RUST_SERVER_WORKER_LINK_PRODUCTION.md).
+The
+[macOS acceptance record](security/rust-server-darwin-arm64-acceptance.json)
+contains the artifact and report checksums.
+
+## Earlier production-entry performance sample
 
 The benchmark launches the current compiled Node production entry point and the
 optimized native distribution, without test-only HTTP routes. Both use isolated

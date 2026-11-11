@@ -22,6 +22,25 @@ read-only disk inspection matched all 1,660 original backup files to the
 archived profile. The [acceptance record](security/rust-server-win32-x64-acceptance.json)
 contains artifact and report checksums.
 
+## Installed Windows x64 PostgreSQL profiles
+
+The same signed `1.1.2841` app opened a fresh bundled PostgreSQL profile. The
+first observer reached HTTP readiness and failed to match the database
+process's command-line path. The same running app then verified the installed
+postmaster executable and its profile data directory, wrote a preference and
+read it back. The combined observer stalled at its final check. An independent
+HTTP request returned version `1.1.2834` from the real bundled worker. Quitting
+from the tray produced a completed server shutdown and removed the postmaster
+PID file.
+
+For external PostgreSQL, the installed app connected to a separate loopback
+cluster, which observed the live connection. The app read back its accepted
+preference write and received the worker version. The observer passed before
+the guest shut down. Its disk receipt matches the serial report, and the
+stopped disk retains both native backend selections. The
+[Windows acceptance record](security/rust-server-win32-x64-acceptance.json)
+records these observations and the initial bundled observer failure.
+
 ## Windows x64 PostgreSQL packaging
 
 On a clean Windows 11 x64 guest, the portable PostgreSQL 18.6 `pg_config.exe`
@@ -214,8 +233,7 @@ The principal drivers are `packaged-server-acceptance.mjs`,
 The exported native distribution and guest profile/log archive accompany the
 reports. Development validation ran locally.
 
-The installed Windows PostgreSQL modes, remaining product and coordination
-interruption cases, broader historical profiles and representative performance
-are still part of the replacement qualification. The
+The replacement qualification still covers remaining product and coordination
+interruption cases, broader historical profiles and representative performance. The
 [acceptance reconciliation](RUST_SERVER_ACCEPTANCE_RECONCILIATION.md)
 tracks the current scope.

@@ -4,7 +4,7 @@ This qualification uses the real packaged Node `1.1.2733` distribution and an
 original stopped historical PGlite profile. The optimized native candidate is
 macOS arm64 `1.1.2779`, executable SHA256
 `bc5cb46a18b2315fb6f4845f3c983a9f1ae6f7d8b7b21544b536eb76d360dcba`.
-Node remains the normal default server and the worker remains Node.
+Node was the default server at that revision.
 
 ## Populated fixture and real serving processes
 
@@ -83,6 +83,20 @@ the end. Local execution additionally denied writes to both preserved original
 profile directories with the inherited macOS sandbox. A separate non-mutating
 descriptor-open witness observed actual `EPERM`; requesting a deny policy alone
 was not treated as proof of enforcement.
+
+## Current packaged round trip
+
+The complete driver passed again with the optimized macOS ARM64 `1.1.2845`
+package at `2e60d2042203f64c8105d5c52d12ae1db92d2d83`. It ran the actual
+`1.1.2733` Node distribution and original profile across PGlite, bundled
+PostgreSQL and external PostgreSQL. The 137-table and four-sequence
+comparisons passed in each mode. The original session, server identity and
+decryptable content survived each conversion. Rust, Node and the returned
+Rust server each accepted four product writes per mode, and the suite
+verified retained state after restart. The original source files remained
+unchanged under a sandbox that denied an actual open for writing. The
+[macOS acceptance record](security/rust-server-darwin-arm64-acceptance.json)
+contains the exact candidate and report checksums.
 
 ## Running the acceptance
 
