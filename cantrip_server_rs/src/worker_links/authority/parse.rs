@@ -52,7 +52,7 @@ pub(super) fn revoke_scope(value: &Value) -> Option<Value> {
         _ => None,
     }
 }
-pub(super) fn relay_scope(value: &Value) -> Option<Value> {
+pub(crate) fn relay_scope(value: &Value) -> Option<Value> {
     if !value.is_object() || !text(&value["kind"], 64) {
         return None;
     }

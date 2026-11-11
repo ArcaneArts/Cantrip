@@ -46,6 +46,149 @@ async function relay(peer, session, client = "main") {
   return { socket, closed };
 }
 
+async function addOwnerSession(authority, remote, login, client) {
+  await authority.observe(
+    "owner-session-" + client,
+    "POST",
+    "/api/auth/login",
+    {
+      client,
+      json: login,
+      status: 200,
+    },
+  );
+  const session = authority.client(client);
+  remote.clients.set(client, {
+    cookies: new Map(session.cookies),
+    csrf: session.csrf,
+  });
+}
+
+async function activateDirect(issuer, control, client, clientInstanceId) {
+  const options = { client };
+  const session = workerLinkSessionSchema.parse(
+    (
+      await request(
+        issuer,
+        "POST",
+        `/api/workers/${control.workerId}/worker-link/sessions`,
+        { clientInstanceId },
+        201,
+        options,
+      )
+    ).body,
+  );
+  const route = `/api/worker-links/${session.sessionId}`;
+  const ticket = directAttachmentTicketSchema.parse(
+    (await request(issuer, "POST", route + "/direct", undefined, 201, options))
+      .body,
+  );
+  assert.equal(ticket.binding.attachmentId, session.sessionId);
+  const capabilityId = ticket.binding.capabilityId;
+  await request(
+    issuer,
+    "POST",
+    route + "/direct-activate",
+    { capabilityId },
+    204,
+    options,
+  );
+  return { session, route, capabilityId, control };
+}
+
+function directRevocations({ capabilityId, control }) {
+  return control.commands
+    .filter(
+      (command) =>
+        command.type === "direct.capability.revoke" &&
+        command.capabilityId === capabilityId,
+    )
+    .map((command) => command.reason);
+}
+
+async function verifyDirectRevocation(ticket, reason) {
+  const reasons = await eventually(
+    () => directRevocations(ticket),
+    (reasons) => reasons.length > 0,
+    "direct attachment teardown after sign-out",
+  );
+  assert.deepEqual(reasons, [reason]);
+}
+
+async function verifySinglePeerLogout(
+  authority,
+  issuer,
+  peers,
+  control,
+  sockets,
+  login,
+  result,
+) {
+  await addOwnerSession(authority, issuer, login, "retiring");
+  const retiring = await activateDirect(
+    issuer,
+    control,
+    "retiring",
+    "single-session-logout",
+  );
+  const sibling = await activateDirect(
+    issuer,
+    control,
+    "main",
+    "single-session-sibling",
+  );
+  const retiringRelays = [];
+  const siblingRelays = [];
+  for (const peer of peers) {
+    const retiringRelay = await relay(peer, retiring.session, "retiring");
+    retiringRelays.push(retiringRelay);
+    sockets.push(retiringRelay);
+    const siblingRelay = await relay(peer, sibling.session);
+    siblingRelays.push(siblingRelay);
+    sockets.push(siblingRelay);
+  }
+  assert.notEqual(
+    retiring.session.identity.accountSessionId,
+    sibling.session.identity.accountSessionId,
+  );
+  await request(authority, "POST", "/api/auth/logout", undefined, 204, {
+    client: "retiring",
+  });
+  const relayClosures = await Promise.all(
+    retiringRelays.map((socket) =>
+      deadline(socket.closed, "single-session relay teardown"),
+    ),
+  );
+  for (const closure of relayClosures) {
+    assert.deepEqual(closure, { code: 1008, reason: "Account session ended" });
+  }
+  await verifyDirectRevocation(retiring, "Authorization session was revoked");
+  assert.deepEqual(directRevocations(sibling), []);
+  for (const socket of siblingRelays)
+    assert.equal(socket.socket.readyState, WebSocket.OPEN);
+  const renewed = workerLinkSessionSchema.parse(
+    await operation(issuer, "POST", sibling.route + "/renew", 200),
+  );
+  assert.deepEqual(renewed.identity, sibling.session.identity);
+  await operation(issuer, "DELETE", sibling.route, 204);
+  await Promise.all(
+    siblingRelays.map((socket) =>
+      deadline(socket.closed, "sibling relay released"),
+    ),
+  );
+  sockets.length = 0;
+  result.singlePeerRevocation = {
+    issuer: peers.indexOf(issuer),
+    logoutPeer: peers.indexOf(authority),
+    relayClosures,
+    directRevocations: 1,
+    siblingRetained: true,
+  };
+  result.cases.push(
+    "single-session sign-out closes relays and revokes a direct attachment issued by the Rust peer while the sibling session stays usable",
+  );
+}
+
 async function verifyAccountWideLogout(
   peers,
   controls,
@@ -53,61 +196,37 @@ async function verifyAccountWideLogout(
   login,
   result,
 ) {
-  const [authority, remote] = peers;
-  await authority.observe("owner-second-session", "POST", "/api/auth/login", {
-    client: "secondary",
-    json: login,
-    status: 200,
-  });
-  const secondary = authority.client("secondary");
-  remote.clients.set("secondary", {
-    cookies: new Map(secondary.cookies),
-    csrf: secondary.csrf,
-  });
+  const issuerIndex = peers[1].kind === "rust" ? 1 : 0;
+  const issuer = peers[issuerIndex];
+  const authority = issuer.kind === "rust" ? peers[1 - issuerIndex] : peers[0];
+  const remote = peers.find((peer) => peer !== authority);
+  if (issuer.kind === "rust") {
+    await verifySinglePeerLogout(
+      authority,
+      issuer,
+      peers,
+      controls[peers.indexOf(authority)],
+      sockets,
+      login,
+      result,
+    );
+  }
+  await addOwnerSession(authority, remote, login, "secondary");
 
-  // The logout peer issues both tickets, including one to the remote worker.
   const tickets = [];
   const sessions = [];
   for (const [i, client] of ["main", "secondary"].entries()) {
-    const control = controls[1 - i];
-    const options = { client };
-    const session = workerLinkSessionSchema.parse(
-      (
-        await request(
-          authority,
-          "POST",
-          `/api/workers/${control.workerId}/worker-link/sessions`,
-          { clientInstanceId: "account-logout-" + client },
-          201,
-          options,
-        )
-      ).body,
+    const ticketIssuer = i === 1 && issuer.kind === "rust" ? issuer : authority;
+    const ticket = await activateDirect(
+      ticketIssuer,
+      controls[1 - i],
+      client,
+      "account-logout-" + client,
     );
-    sessions.push(session);
-    const route = `/api/worker-links/${session.sessionId}`;
-    const ticket = directAttachmentTicketSchema.parse(
-      (
-        await request(
-          authority,
-          "POST",
-          route + "/direct",
-          undefined,
-          201,
-          options,
-        )
-      ).body,
-    );
-    assert.equal(ticket.binding.attachmentId, session.sessionId);
-    await request(
-      authority,
-      "POST",
-      route + "/direct-activate",
-      { capabilityId: ticket.binding.capabilityId },
-      204,
-      options,
-    );
-    tickets.push({ capabilityId: ticket.binding.capabilityId, control });
-    for (const peer of peers) sockets.push(await relay(peer, session, client));
+    tickets.push(ticket);
+    sessions.push(ticket.session);
+    for (const peer of peers)
+      sockets.push(await relay(peer, ticket.session, client));
   }
   assert.notEqual(
     sessions[0].identity.accountSessionId,
@@ -129,15 +248,8 @@ async function verifyAccountWideLogout(
     assert.deepEqual(closed, { code: 1008, reason: "Account sessions ended" });
   sockets.length = 0;
 
-  for (const { capabilityId, control } of tickets) {
-    const reasons = control.commands
-      .filter(
-        (c) =>
-          c.type === "direct.capability.revoke" &&
-          c.capabilityId === capabilityId,
-      )
-      .map((c) => c.reason);
-    assert.deepEqual(reasons, ["Account sessions were revoked"]);
+  for (const ticket of tickets) {
+    await verifyDirectRevocation(ticket, "Account sessions were revoked");
   }
   for (const peer of peers) {
     for (const client of ["main", "secondary"])
@@ -155,6 +267,7 @@ async function verifyAccountWideLogout(
     revokedSessions: logout.body.revokedSessions,
     relayClosures,
     directRevocations: tickets.length,
+    directAttachmentsIssuedOnBothPeers: issuer.kind === "rust",
   };
   result.cases.push(
     "account-wide logout revokes two database sessions, closes relays on both peers and removes two active direct capabilities while the foreign account stays signed in",

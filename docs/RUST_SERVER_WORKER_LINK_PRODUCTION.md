@@ -195,21 +195,34 @@ Node observed the revocation. The native service also calls the owner-scoped
 WorkerLink and direct-attachment revocation handlers for account-wide logout.
 [Authentication comparison](../scripts/server-rust/auth-compatibility.mjs)
 
-The current shared PostgreSQL and Redis comparison also passed all 12
-Node/Node, Node/Rust, Rust/Node and Rust/Rust authentication combinations.
-Its 172 case groups include actual two-peer relay closure after cross-peer
-revocation, committed App Live fanout and replay, and fresh remote requests
+The shared PostgreSQL and Redis comparison passed all 12 authentication and
+runtime combinations on macOS ARM64. Its 175 case groups include real two-peer
+relay closure, committed App Live fanout and replay, and fresh remote requests
 after Redis process interruption. All 24 server processes shut down cleanly.
 
-In each of the four account-mode pairings, account-wide logout revoked two
-authenticated sessions and closed four relay sockets across the two peers
-with code 1008 and reason `Account sessions ended`. Both active direct
-capabilities were issued by the peer receiving logout. The local and remote
-workers each received one revocation with reason
-`Account sessions were revoked`. Both old sessions lost access on both peers,
-and the other account stayed signed in. The suite uses the shared HTTP fixture
-and controlled worker acknowledgments.
+The Rust peer now closes the direct attachments it issued when another peer
+broadcasts a session or owner sign-out. In each of the three Rust-containing
+account-mode pairings, signing out a single session on one peer closed two
+relays with code 1008 and reason `Account session ended` and revoked its
+direct capability on the other peer. The sibling session kept both relays
+open and renewed its own WorkerLink session.
+
+In those same three pairings, account-wide sign-out closed four relays with
+code 1008 and reason `Account sessions ended` and sent one worker revocation
+for each of two capabilities issued on different peers. The Node/Node
+reference control issued both capabilities on the sign-out peer. In all four
+pairings, two account sessions lost access across both peers and the other
+account stayed signed in. The shared HTTP fixture runs the production server
+composition with controlled worker acknowledgments.
 [Shared runtime driver](../scripts/server-rust/shared-runtime-http-compatibility.mjs)
+
+Two optimized macOS ARM64 `1.1.2854` standalone servers also passed the
+single-session and account-wide cases on shared external PostgreSQL and
+Redis. The servers ran with Node absent from their PATH, and both shut down
+cleanly. The worker transport used the same controlled acknowledgments.
+The relocated distribution also passed migrations, retained settings after
+restart, SQL export, hosted reopen and SIGTERM on all three database modes.
+The package check verified all 1,762 manifest files.
 
 ## Current packaged relay and recovery run
 

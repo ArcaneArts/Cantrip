@@ -59,11 +59,12 @@
           "scripts/server-rust/auth-compatibility.mjs",
           "scripts/server-rust/live-compatibility.mjs",
           "scripts/server-rust/worker-link-http-compatibility.mjs",
+          "scripts/server-rust/shared-runtime-http-compatibility.mjs",
           "docs/RUST_SERVER_WORKER_LINK_PRODUCTION.md"
         ],
-        "scope": "The native account handler revokes App Live, direct attachments, WorkerLink and session sockets. The macOS ARM64 1.1.2845 standalone package closes the WorkerLink relay, sends one direct capability revoke, rejects the old cookie and preserves a second session of the same account on all three stores. The relay cleanup also completes after the HTTP caller disconnects.",
+        "scope": "The native account handler revokes App Live, direct attachments, WorkerLink and session sockets. The macOS ARM64 1.1.2845 standalone package closes the WorkerLink relay, sends one direct capability revoke, rejects the old cookie and preserves a second session of the same account on all three stores. Relay cleanup also completes after the HTTP caller disconnects. In all three Rust-containing shared HTTP account pairings, sign-out on one peer closes both relays and revokes a direct attachment issued by the other peer while a sibling session keeps its relays and renews.",
         "remaining": [
-          "Verify combined direct-attachment and session revocation across shared server instances and the remaining shipping platforms."
+          "Extend the cross-peer macOS ARM64 standalone result to the final supported shared-server shipping artifacts."
         ]
       },
       {
@@ -78,9 +79,9 @@
           "scripts/server-rust/shared-runtime-http-compatibility.mjs",
           "docs/RUST_SERVER_WORKER_LINK_PRODUCTION.md"
         ],
-        "scope": "The macOS ARM64 1.1.2845 standalone package matches the Node reference on all three stores. Account-wide sign-out revokes two authenticated sessions, closes both relays and sends one direct revoke per capability. All four shared-runtime pairings also close four relays across two peers and send two direct capability revocations, including one to a remote worker. Both tickets are issued by the peer that receives logout. Both comparisons preserve the other account’s authenticated access.",
+        "scope": "The macOS ARM64 1.1.2845 standalone package matches the Node reference on all three stores. Account-wide sign-out revokes two authenticated sessions, closes both relays and sends one direct revoke per capability. All four shared HTTP account pairings close four relays across two peers and send two direct capability revocations. In the three Rust-containing pairings, each peer issues one capability. In the Node/Node control, the sign-out peer issues both. All pairings preserve the other account’s authenticated access.",
         "remaining": [
-          "Verify owner-wide teardown for direct attachments issued on different server peers and on the remaining shipping platforms."
+          "Extend the cross-peer macOS ARM64 standalone result to the final supported shared-server shipping artifacts."
         ]
       },
       {
@@ -12027,7 +12028,9 @@
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "docs/security/rust-server-transport-inference-acceptance.json",
-          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md",
+          "docs/RUST_SERVER_WORKER_LINK_PRODUCTION.md",
+          "scripts/server-rust/shared-runtime-worker.mjs"
         ],
         "remaining": [
           "These comparisons qualify current server producers, transport correlation and server side effects using the unchanged WorkerConnection with controlled worker replies. Full worker resource execution and the final integrated artifact matrix remain separate acceptance."
@@ -24052,6 +24055,41 @@
         },
         "command": "node --import tsx scripts/server-rust/shared-runtime-http-compatibility.mjs --redis-bin /path/to/redis-server --report .qa/rust-shared-runtime/http.json",
         "scope": "Complete production shared startup/HTTP/SQL/Live/WorkerTransport/WorkerLink graph. Actual enrollment/committed invalidations, replay, 256-publication bursts and eight concurrent64-event producers per peer; six seeded unexpired leases across five job services; unchanged WorkerConnection with controlled WorkerLink ACKs, actual two-peer relay revocation; cross-peer account cookies, tenant isolation and owner-wide logout with actual relay closure and controlled direct capability acknowledgments; real short Redis SAVE/kill/restart with fail-fast readiness/publication, no offline event replay, original worker claims and new remote operations. All server exits clean. Not full worker resource/native job execution, lease renewal/expiry, long-outage shutdown, TLS, platforms, packaging or mixed rolling product readiness."
+      },
+      "peerSessionTeardown": {
+        "platform": "darwin-arm64",
+        "database": "shared external PostgreSQL",
+        "coordination": "Redis",
+        "pairings": ["node/node", "node/rust", "rust/node", "rust/rust"],
+        "authModes": ["none", "password", "accounts"],
+        "scenarioGroups": 175,
+        "cleanServerShutdowns": 24,
+        "singleSessionRustContainingPairings": 3,
+        "accountWidePairingsWithBothPeersIssuing": 3,
+        "implementation": "cantrip_server_rs/src/direct_attachments/peer_revocations.rs",
+        "evidence": "docs/RUST_SERVER_WORKER_LINK_PRODUCTION.md#current-http-and-session-revocation-comparison",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/peer-session-teardown/full-matrix.json",
+          "sha256": "1ea13bd3300ff93bdaafc9a97f05c8742407c247565c924cbaa76c804fa0e424"
+        },
+        "packagedRustPair": {
+          "version": "1.1.2854",
+          "platform": "darwin-arm64",
+          "executableSha256": "b73c5371bd8e60ae85a0bca6468ce22b05ab7af79cfed84f4510bcc2b68cee97",
+          "cleanServerShutdowns": 2,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/peer-session-teardown/packaged-peer.json",
+            "sha256": "f15e10772681e7b39eccda4796388efc56b5bbf3d3888a9579b9772e2e9589bd"
+          },
+          "relocatedStandalone": {
+            "stores": ["pglite", "bundled-postgres", "postgres"],
+            "verifiedFiles": 1762,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/peer-session-teardown/packaged-standalone.json",
+              "sha256": "0efd071bcf949bf6131dc7322a985f12f549cb03b1123a4b727b62e6cb8d19de"
+            }
+          }
+        }
       }
     },
     "postgresConcurrencyAndTls": {
