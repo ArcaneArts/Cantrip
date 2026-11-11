@@ -49,6 +49,7 @@ export async function prepareActualRemoteSurface({
       return {
         created: await e.openRemoteSurface(created),
         updated: await e.openRemoteSurface(updated),
+        saved: updated,
       };
     },
     { projectId, workerId, url, token, protocolUrl },
@@ -59,9 +60,56 @@ export async function prepareActualRemoteSurface({
   result.steps.push(
     "existing encryption and API modules create and rename an opaque generic browser surface",
   );
-  return { id: value.created.id, projectId, workerId, url, token, protocolUrl };
+  return {
+    id: value.created.id,
+    projectId,
+    workerId,
+    url,
+    token,
+    protocolUrl,
+    saved: value.saved,
+  };
 }
-export async function actualRemoteSurface({ page, surface, result }) {
+
+export async function assertOfflineRemoteSurface(page, surface) {
+  const observed = await page.evaluate(
+    async ({ id, projectId, protocolUrl }) => {
+      const { CantripApiError, post, request } =
+        await import("/src/lib/api-client.ts");
+      const { remoteSurfaceWireListSchema } = await import(protocolUrl);
+      try {
+        await post(`/api/remote-surfaces/${id}/resume`);
+      } catch (error) {
+        if (!(error instanceof CantripApiError)) throw error;
+        const row = remoteSurfaceWireListSchema
+          .parse(await request(`/api/projects/${projectId}/remote-surfaces`))
+          .find((entry) => entry.id === id);
+        return {
+          httpStatus: error.status,
+          message: error.message,
+          savedStatus: row?.status,
+          lastError: row?.lastError,
+        };
+      }
+      throw new Error("Remote surface unexpectedly resumed without its worker");
+    },
+    surface,
+  );
+  assert.deepEqual(observed, {
+    httpStatus: 503,
+    message: "Worker is offline.",
+    savedStatus: "offline",
+    lastError: "Worker is offline.",
+  });
+  return observed;
+}
+
+export async function actualRemoteSurface({
+  page,
+  surface,
+  result,
+  diagnostics,
+}) {
   const requests = [];
   const capture = (request) => {
     if (request.url().includes("/remote-surfaces"))
@@ -81,13 +129,23 @@ export async function actualRemoteSurface({ page, surface, result }) {
         const found = p.remoteSurfaceWireListSchema
           .parse(await request(`/api/projects/${projectId}/remote-surfaces`))
           .find((v) => v.id === id);
-        return e.openRemoteSurface(found);
+        return { wire: found, opened: await e.openRemoteSurface(found) };
       },
       surface,
     );
-    assert.equal(retained.url, surface.url);
-    assert.equal(retained.title, surface.token + " renamed");
-    assert.equal(retained.stateRevision, 1);
+    assert.equal(retained.opened.url, surface.url);
+    assert.equal(retained.opened.title, surface.token + " renamed");
+    assert.equal(retained.wire.stateRevision, 1);
+    assert.deepEqual(
+      retained.wire.titleProtection,
+      surface.saved.titleProtection,
+    );
+    assert.deepEqual(
+      retained.wire.stateProtection,
+      surface.saved.stateProtection,
+    );
+    assert.equal(retained.wire.status, "idle");
+    assert.equal(retained.wire.lastError, null);
     const fleet = await page.evaluate(async (project) => {
       const api = await import("/src/lib/api/surfaces.ts");
       return api.getRemoteDesktopFleet(project);
@@ -241,16 +299,55 @@ export async function actualRemoteSurface({ page, surface, result }) {
       assert.ok(state.titles.includes(surface.token + ":" + (load + 1)));
       assert.ok(state.frames > initial.frames);
     });
-    for (const action of ["suspend", "resume"]) {
-      const status = await page.evaluate(
-        async ({ id, action }) => {
-          const { post } = await import("/src/lib/api-client.ts");
-          return (await post(`/api/remote-surfaces/${id}/${action}`)).status;
+    const lifecycle = [];
+    let paused;
+    for (const [action, status, event] of [
+      ["suspend", "suspended", "surface.lifecycle.suspended"],
+      ["resume", "active", "surface.lifecycle.resumed"],
+    ]) {
+      const { response, saved } = await page.evaluate(
+        async ({ id, projectId, action, protocolUrl }) => {
+          const { post, request } = await import("/src/lib/api-client.ts");
+          const {
+            remoteSurfaceWireListSchema,
+            remoteSurfaceWireSummarySchema,
+          } = await import(protocolUrl);
+          const route = `/api/remote-surfaces/${id}`;
+          const response = remoteSurfaceWireSummarySchema.parse(
+            await post(`${route}/${action}`),
+          );
+          const saved = remoteSurfaceWireListSchema
+            .parse(await request(`/api/projects/${projectId}/remote-surfaces`))
+            .find((entry) => entry.id === id);
+          return { response, saved };
         },
-        { id: surface.id, action },
+        { ...surface, action },
       );
-      assert.equal(status, action === "suspend" ? "suspended" : "active");
+      assert.equal(response.status, status);
+      assert.equal(response.lastError, null);
+      assert.deepEqual(saved, response);
+      assert.deepEqual(saved.titleProtection, retained.wire.titleProtection);
+      assert.deepEqual(saved.stateProtection, retained.wire.stateProtection);
+      assert.equal(saved.stateRevision, retained.wire.stateRevision);
+      const workerEvents = await eventually(
+        () =>
+          diagnostics()
+            .split("\n")
+            .filter(
+              (line) =>
+                line.includes(`event=${event} `) &&
+                line.includes(`surfaceId=${surface.id} `),
+            ),
+        (events) => assert.equal(events.length, 1),
+      );
+      lifecycle.push({ action, status, workerEvent: workerEvents[0] });
+      if (action === "suspend") paused = await snapshot();
     }
+    const resumed = await eventually(snapshot, (state) => {
+      assert.equal(state.error, null);
+      assert.equal(state.ready.attachmentId, paused.ready.attachmentId);
+      assert.ok(state.frames > paused.frames);
+    });
     await page.evaluate(
       () =>
         new Promise((resolve) => {
@@ -312,11 +409,16 @@ export async function actualRemoteSurface({ page, surface, result }) {
       completed: true,
       initialFrames: initial.frames,
       reloadFrames: reload.frames,
+      pausedFrames: paused.frames,
+      resumedFrames: resumed.frames,
       restoredFrames: restored.frames,
       authenticatedBytes: restored.frameBytes,
       aadRejected: restored.aadRejected,
       savedRevision: 2,
       retained: true,
+      reopenedStatus: retained.wire.status,
+      retainedExactEnvelopes: true,
+      lifecycle,
       deleted: absent,
       requests,
     };

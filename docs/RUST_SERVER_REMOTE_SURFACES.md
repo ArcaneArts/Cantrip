@@ -1,9 +1,10 @@
 # Native remote desktops and surfaces
 
 Rust implements the twelve existing remote-desktop/surface HTTP endpoints,
-including the legacy binary WebSocket connection. Node remains the default
-server and the worker remains Node. Complete replacement, default cutover and
-supported-platform/package acceptance remain unfinished.
+including the legacy binary WebSocket connection. The original milestone ran
+before [the Rust default cutover](RUST_SERVER_DEFAULT_CUTOVER.md). The worker
+continues to use Node. Complete replacement and supported-platform acceptance
+remain open.
 
 ## Behavior
 
@@ -89,6 +90,46 @@ stops at unchanged Node line limits: `build-app.ts` 1,532/1,500 and
 Current builds, generated-contract comparisons, boundary/workflow audits and
 formatting/syntax checks are recorded with the milestone evidence. No hosted
 development Actions were used.
+
+## Current browser suspend and resume
+
+The production Rust server and compiled Node reference passed the existing
+browser SDK and full worker on macOS ARM64 using PGlite, bundled PostgreSQL and
+external PostgreSQL. All six peers ran the same sequence over real HTTP and
+the legacy encrypted WebSocket:
+
+- Resuming with the worker stopped returns HTTP 503 and persists the offline
+  status and error. A server restart clears that transient status to idle.
+  The browser reopens the exact encrypted title and URL envelopes.
+- The reconnected worker opens real Chromium and streams authenticated JPEGs.
+  Suspend and resume each execute the corresponding worker adapter once.
+  The public response and catalog agree on the committed status and preserve
+  the encrypted envelopes and revision. Fresh frames arrive on the same
+  attachment after resume.
+- An encrypted state update advances the revision. A new attachment opens
+  the updated URL and receives frames. Deletion removes the surface from
+  the catalog.
+
+The same sequence passed all four PostgreSQL and Redis pairings with the
+browser on one server and the worker on the other. The single-server and
+shared runs recorded 20 correlated worker command completions, 28 clean
+server exits and 30 clean worker exits.
+
+The parallel external PostgreSQL attempt stopped in the Node reference before
+suspend when Chromium reported `CDP -32000: Not attached to an active page`.
+The individual external PostgreSQL rerun passed on both servers. The
+[acceptance record](security/rust-server-remote-surface-lifecycle.json) retains
+the original failure and passing report hashes. This comparison uses browser
+surfaces. Positive desktop capture, failover during an active attachment, and
+supported shipping acceptance retain separate scope.
+
+```sh
+node --import tsx scripts/server-rust/actual-folder-client.mjs \
+  --production-server --remote-surfaces --database pglite \
+  --report /absolute/path/to/surface-lifecycle.json
+```
+
+Repeat with `bundled-postgres` and `postgres` using the production artifacts.
 
 ## Repeatable commands
 
