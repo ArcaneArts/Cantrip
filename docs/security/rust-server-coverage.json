@@ -23,15 +23,19 @@
         "method": "POST",
         "path": "/api/internal/native-commands/task-input-dispatch",
         "implementation": "cantrip_server_rs/src/http/native_admission.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "cantrip_server_rs/tests/task_input_contracts.rs",
           "scripts/server-rust/task-input-worker-oracle.mjs",
-          "scripts/server-rust/task-input-dispatch-http-compatibility.mjs"
+          "scripts/server-rust/task-input-dispatch-http-compatibility.mjs",
+          "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
+          "docs/security/rust-server-current-native-admission.json",
+          "scripts/server-rust/actual-task-client.mjs",
+          "scripts/server-rust/native-recovery-http-goal.mjs"
         ],
         "remaining": [
-          "Wire comparison and HTTP rejection boundaries do not establish successful canonical Task input dispatch, renewal, recovery or full native worker restart acceptance.",
-          "Supported-platform packaging, shared coordination, existing-data upgrades and post-write rollback remain required."
+          "Exercise remaining input recovery and worker-generation changes during shared dependency loss.",
+          "Repeat qualification on the final supported shipping artifacts."
         ]
       },
       {
@@ -3710,15 +3714,18 @@
         "method": "POST",
         "path": "/api/internal/native-commands/receipt",
         "implementation": "cantrip_server_rs/src/http/native_admission.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/native-execution-http-compatibility.mjs",
           "scripts/server-rust/managed-preparation-native-compatibility.mjs",
-          "scripts/server-rust/receipt-handler-cases.mjs"
+          "scripts/server-rust/receipt-handler-cases.mjs",
+          "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
+          "docs/security/rust-server-current-native-admission.json",
+          "scripts/server-rust/native-recovery-http-goal.mjs"
         ],
         "remaining": [
-          "Complete full queued-input consumption through actual unchanged worker/client and all production execution failure/restart/shutdown boundaries.",
-          "Supported-platform and packaged-product acceptance."
+          "Exercise remaining native terminal, lost acknowledgment, and mixed-instance receipt recovery cases.",
+          "Repeat qualification on the final supported shipping artifacts."
         ]
       },
       {
@@ -9405,7 +9412,11 @@
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "docs/security/rust-server-transport-inference-acceptance.json",
-          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md",
+          "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
+          "docs/security/rust-server-current-native-admission.json",
+          "scripts/server-rust/actual-task-client.mjs",
+          "scripts/server-rust/actual-task-goal-worker-inflight-client.mjs"
         ],
         "remaining": [
           "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
@@ -9863,7 +9874,7 @@
         "method": "POST",
         "path": "/api/internal/native-commands/task-goal-cycle-dispatch",
         "implementation": "cantrip_server_rs/src/http/native_admission.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/native-recovery-http-compatibility.mjs",
           "scripts/server-rust/native-recovery-http-content.mjs",
@@ -9872,10 +9883,13 @@
           "scripts/server-rust/native-recovery-http-round.mjs",
           "scripts/server-rust/native-recovery-http-suspension.mjs",
           "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
-          "docs/security/rust-server-native-recovery-acceptance.json"
+          "docs/security/rust-server-native-recovery-acceptance.json",
+          "docs/security/rust-server-current-native-admission.json",
+          "scripts/server-rust/actual-task-client.mjs"
         ],
         "remaining": [
-          "Actual native Core/TUI execution, complete product/fault/coordination and final supported-platform/package acceptance remain separate. This controlled worker provides checkpoint and outcome facts over the unchanged production connection protocol."
+          "Exercise loss of the worker-owning peer while an autonomous Goal cycle is in flight.",
+          "Repeat qualification on the final supported shipping artifacts."
         ]
       },
       {
@@ -9891,10 +9905,14 @@
           "scripts/server-rust/native-recovery-http-round.mjs",
           "scripts/server-rust/native-recovery-http-suspension.mjs",
           "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
-          "docs/security/rust-server-native-recovery-acceptance.json"
+          "docs/security/rust-server-native-recovery-acceptance.json",
+          "docs/security/rust-server-current-native-admission.json",
+          "scripts/server-rust/actual-task-client.mjs"
         ],
         "remaining": [
-          "Actual native Core/TUI execution, complete product/fault/coordination and final supported-platform/package acceptance remain separate. This controlled worker provides checkpoint and outcome facts over the unchanged production connection protocol."
+          "Diagnose the intermittent HTTP 500 responses observed during Task retry and restart in two patched PGlite comparisons. The retained rerun returned 200 for every Task outcome.",
+          "Exercise autonomous outcome observation through worker-owner or dependency loss after commit.",
+          "Repeat qualification on the final supported shipping artifacts."
         ]
       }
     ]
@@ -14497,12 +14515,17 @@
           "scripts/server-rust/native-settings-http-fixture.mjs",
           "docs/RUST_SERVER_GOAL_RECOVERY_CONTRACTS.md",
           "docs/security/rust-server-goal-recovery-acceptance.json",
-          "scripts/server-rust/native-goal-recovery-http-compatibility.mjs"
+          "scripts/server-rust/native-goal-recovery-http-compatibility.mjs",
+          "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
+          "docs/security/rust-server-current-native-admission.json",
+          "scripts/server-rust/actual-task-client.mjs",
+          "scripts/server-rust/native-recovery-http-goal.mjs"
         ],
         "remaining": [
           "The existing worker transport and actual endpoint cryptography execute, while worktree/native/model completion replies are controlled. This batch does not execute leaf Git/Codex model compaction or full native Task inference.",
           "These command and Live mappings qualify the executed consumers, not every queue/Goal recovery path or all supported shipping platforms. Existing native admission, recovery, rollback and product evidence retain their separate scopes.",
-          "Remaining inventory identities, historical partial scopes, broader interruption/coordination and final current supported-platform/product/artifact acceptance remain required by the complete server-replacement goal."
+          "Remaining inventory identities, historical partial scopes, broader interruption/coordination and final current supported-platform/product/artifact acceptance remain required by the complete server-replacement goal.",
+          "The packaged autonomous Task uses the passive Goal observation after commit. Other Goal command consumers and shipping scope remain open."
         ]
       },
       {
@@ -15711,12 +15734,15 @@
           "scripts/server-rust/execution-lane-repository-compatibility.mjs",
           "scripts/server-rust/native-event-context-cases.mjs",
           "scripts/server-rust/native-event-races.mjs",
-          "scripts/server-rust/managed-queue-races.mjs"
+          "scripts/server-rust/managed-queue-races.mjs",
+          "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
+          "docs/security/rust-server-current-native-admission.json",
+          "scripts/server-rust/native-execution-http-compatibility.mjs",
+          "scripts/server-rust/actual-chat-controls.mjs"
         ],
         "remaining": [
-          "Core repository behavior is ported and compared with actual Node repositories on all three local storage backends, including restart and same/mixed-runtime PostgreSQL races. Full command/queue HTTP orchestration, event HTTP integration, canonical history ingestion and recovery services remain unfinished.",
-          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
-          "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+          "Extend the packaged Agent queue and receipt coverage to remaining command origins, canonical history and other queue consumers.",
+          "Exercise lost acknowledgments and recovery across shared peers and final supported shipping artifacts."
         ]
       },
       {
@@ -17355,11 +17381,13 @@
           "scripts/server-rust/native-recovery-http-round.mjs",
           "scripts/server-rust/native-recovery-http-suspension.mjs",
           "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
-          "docs/security/rust-server-native-recovery-acceptance.json"
+          "docs/security/rust-server-native-recovery-acceptance.json",
+          "docs/security/rust-server-current-native-admission.json",
+          "scripts/server-rust/actual-task-client.mjs"
         ],
         "remaining": [
-          "Actual native Core/TUI execution, complete product/fault/coordination and final supported-platform/package acceptance remain separate. This controlled worker provides checkpoint and outcome facts over the unchanged production connection protocol.",
-          "Active-round scheduling/projection and all other Task writers retain their existing separate qualification; historical-round preservation does not establish all Task behavior."
+          "Extend the current packaged Task, native autonomous Goal, retry and retained restart coverage to remaining scheduling and projection consumers, including in-flight dependency loss.",
+          "Qualify remaining Task writers, native terminal behavior and the final supported artifacts."
         ]
       },
       {
@@ -17397,11 +17425,13 @@
           "scripts/server-rust/native-recovery-http-round.mjs",
           "scripts/server-rust/native-recovery-http-suspension.mjs",
           "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
-          "docs/security/rust-server-native-recovery-acceptance.json"
+          "docs/security/rust-server-native-recovery-acceptance.json",
+          "docs/security/rust-server-current-native-admission.json",
+          "scripts/server-rust/actual-task-client.mjs"
         ],
         "remaining": [
-          "Actual native Core/TUI execution, complete product/fault/coordination and final supported-platform/package acceptance remain separate. This controlled worker provides checkpoint and outcome facts over the unchanged production connection protocol.",
-          "Active-round scheduling/projection and all other Task writers retain their existing separate qualification; historical-round preservation does not establish all Task behavior."
+          "Extend the current packaged Task, native autonomous Goal, retry and retained restart coverage to remaining scheduling and projection consumers, including in-flight dependency loss.",
+          "Qualify remaining Task writers, native terminal behavior and the final supported artifacts."
         ]
       },
       {
@@ -29760,6 +29790,33 @@
         "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
         "Qualify replica behavior on the final supported shipping artifacts."
       ]
+    },
+    "currentPackagedNativeAdmission": {
+      "status": "partial",
+      "qualification": "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
+      "acceptance": "docs/security/rust-server-current-native-admission.json",
+      "coveredRoutes": [
+        "/api/internal/native-commands/task-input-dispatch",
+        "/api/internal/native-commands/task-goal-cycle-dispatch",
+        "/api/internal/native-commands/receipt",
+        "/api/internal/native-commands/task-goal-outcome",
+        "/api/internal/native-commands/inference-recovery"
+      ],
+      "remaining": [
+        "Finish autonomous outcome and receipt recovery during shared dependency loss.",
+        "Reconcile the remaining native command, durable table and App Live scopes.",
+        "Repeat qualification on the final supported shipping artifacts."
+      ],
+      "counts": {
+        "autonomousBrowserRuns": 7,
+        "successfulAutonomousDispatches": 7,
+        "agentQueueBrowserRuns": 6,
+        "successfulAgentReceiptRequests": 111,
+        "pairedReceiptHttpObservations": 258,
+        "pairedRecoveryHttpObservations": 888,
+        "passiveGoalObservationsAfterCommit": 18,
+        "intermittentPgliteOutcomeHttpErrors": 3
+      }
     }
   },
   "remainingAcceptance": [

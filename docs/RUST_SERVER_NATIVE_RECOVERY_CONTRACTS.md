@@ -87,3 +87,64 @@ and `--report`. Optional `--profile`, `--case` and `--keep-fixture` select a sco
 run and retain its original database. Frozen HTTP and repository executables are
 supported through the existing fixture environment variables. Evidence is
 retained in `rust-server-native-recovery-delivery-20261110-v1`.
+
+## Packaged autonomous Task completion
+
+The browser and packaged worker reproduced a Task that remained
+`implementing` on Rust `1.1.2858` with both PGlite and external PostgreSQL.
+The initial implementation turn returned a private answer and left the Goal
+active. A separate turn started by native Codex called `update_goal` and
+completed the Goal. Both worker HTTP calls for autonomous dispatch and outcome
+returned 200. The retained PGlite rows show that the initial turn had already
+projected its outcome while the later turn's terminal receipt committed
+without advancing the Task. The Node reference completed the same browser
+flow on both stores.
+
+After the autonomous outcome commits, the Rust server now observes the Goal
+on the bound worker in a background operation. The read uses the existing
+Task and native session observation fence. It checks the current dispatch
+cycle, thread, placement, worker and model binding before requesting state.
+The outcome response uses the already-committed receipt. The controlled-worker
+comparison declines the new observation and verifies that the captured result
+and its replay still succeed with the original stored answer and receipt.
+
+The browser regression leaves the first turn active and requires the native
+continuation to complete the Task before the browser reads the Goal. It
+checks that both answers appear exactly once and that the decrypted history
+survives restart. The retry scenario waits for its native turn summary to
+finish before taking the pre-restart transcript snapshot. Its exact
+post-restart comparison still includes every message and activity.
+
+The optimized macOS ARM64 package `1.1.2860` passed seven autonomous Task
+product runs across all three stores and two Rust peers with shared PostgreSQL
+and Redis. The worker traces record seven successful autonomous dispatches.
+The retained PGlite store has one successful Task dispatch and both terminal
+receipts on the same native thread, with a distinct turn ID for each receipt.
+
+The packaged Agent queue and control comparison passed six product runs with
+111 successful receipt requests. The packaged receipt suite passed 258 paired
+HTTP observations across the nine store and authentication combinations.
+The recovery suite with test SQL access passed 888 paired HTTP observations
+across 36 scenario cells and verified 18 passive Goal reads after commit.
+All 87 Rust library tests and strict library Clippy passed locally.
+
+The [acceptance record](security/rust-server-current-native-admission.json)
+binds the exact package, worker and reports. Two patched PGlite comparisons
+recorded three intermittent HTTP 500 responses during the later Task retry
+and restart steps. The retained PGlite rerun returned 200 for every outcome,
+and all browser scenarios completed. The outcome route remains partial
+pending diagnosis of those responses. Loss of the worker-owning peer during
+autonomous completion and final shipping artifacts retain separate scope.
+
+With the browser dependencies built and the packaged server, worker and
+native CLI supplied through the existing fixture variables, run:
+
+```sh
+node --import tsx scripts/server-rust/actual-folder-client.mjs \
+  --tasks --task-goal-autonomous --production-server --database pglite \
+  --report /absolute/path/autonomous-task-pglite.json
+
+node --import tsx scripts/server-rust/actual-folder-client.mjs \
+  --tasks --task-goal-autonomous --database postgres --server-pair rust/rust \
+  --report /absolute/path/shared-autonomous-task.json
+```
