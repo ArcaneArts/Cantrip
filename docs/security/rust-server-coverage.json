@@ -60,11 +60,12 @@
           "scripts/server-rust/live-compatibility.mjs",
           "scripts/server-rust/worker-link-http-compatibility.mjs",
           "scripts/server-rust/shared-runtime-http-compatibility.mjs",
-          "docs/RUST_SERVER_WORKER_LINK_PRODUCTION.md"
+          "docs/RUST_SERVER_WORKER_LINK_PRODUCTION.md",
+          "docs/RUST_SERVER_REDIS.md#packaged-linux-redis-tls"
         ],
         "scope": "The native account handler revokes App Live, direct attachments, WorkerLink and session sockets. The macOS ARM64 1.1.2845 standalone package closes the WorkerLink relay, sends one direct capability revoke, rejects the old cookie and preserves a second session of the same account on all three stores. Relay cleanup also completes after the HTTP caller disconnects. In all three Rust-containing shared HTTP account pairings, sign-out on one peer closes both relays and revokes a direct attachment issued by the other peer while a sibling session keeps its relays and renews.",
         "remaining": [
-          "Extend the cross-peer macOS ARM64 standalone result to the final supported shared-server shipping artifacts."
+          "Reconcile the cross-peer macOS ARM64 and Linux container results with the final shipping artifacts."
         ]
       },
       {
@@ -77,11 +78,12 @@
           "scripts/server-rust/live-compatibility.mjs",
           "scripts/server-rust/worker-link-http-compatibility.mjs",
           "scripts/server-rust/shared-runtime-http-compatibility.mjs",
-          "docs/RUST_SERVER_WORKER_LINK_PRODUCTION.md"
+          "docs/RUST_SERVER_WORKER_LINK_PRODUCTION.md",
+          "docs/RUST_SERVER_REDIS.md#packaged-linux-redis-tls"
         ],
         "scope": "The macOS ARM64 1.1.2845 standalone package matches the Node reference on all three stores. Account-wide sign-out revokes two authenticated sessions, closes both relays and sends one direct revoke per capability. All four shared HTTP account pairings close four relays across two peers and send two direct capability revocations. In the three Rust-containing pairings, each peer issues one capability. In the Node/Node control, the sign-out peer issues both. All pairings preserve the other account’s authenticated access.",
         "remaining": [
-          "Extend the cross-peer macOS ARM64 standalone result to the final supported shared-server shipping artifacts."
+          "Reconcile the cross-peer macOS ARM64 and Linux container results with the final shipping artifacts."
         ]
       },
       {
@@ -23717,7 +23719,7 @@
         "strengthenedFixtureRoots": 5,
         "scope": "The five strengthened fixture sets were rechecked after the broad pass. These comparisons overlap that corpus. Per-root hashes verify all other fixture sets are unchanged. No production parser or graph change was required."
       },
-      "remaining": "Full product/fault recovery, supported platforms and current shipping artifacts, historical upgrades, post-write rollback, performance, Rust default cutover and production Node-server removal remain. Node is still the default; the worker remains Node."
+      "remaining": "Reconcile the current product, fault, upgrade, rollback and performance evidence against the final shipping artifacts and remaining behaviors. Default cutover and production Node-server removal have their own qualification records."
     },
     "currentTaskGoalWorkerProcessRecovery": {
       "status": "implemented-pending-platform-acceptance",
@@ -23816,20 +23818,20 @@
     "sharedRelayCoordination": {
       "status": "partial",
       "referenceImplementation": [
-        "cantrip_server/src/coordination/relay-coordinator.ts",
-        "cantrip_server/src/workers/coordinated-bridge.ts",
-        "cantrip_server/src/worker-links/service.ts",
-        "cantrip_server/src/app/runtime/live-infrastructure-runtime.ts",
-        "cantrip_server/src/server-entry-runtime.ts"
+        "tests/reference-node-server/src/coordination/relay-coordinator.ts",
+        "tests/reference-node-server/src/workers/coordinated-bridge.ts",
+        "tests/reference-node-server/src/worker-links/service.ts",
+        "tests/reference-node-server/src/app/runtime/live-infrastructure-runtime.ts",
+        "tests/reference-node-server/src/server-entry-runtime.ts"
       ],
       "referenceTests": [
-        "cantrip_server/test/shared-relay-coordination.test.ts"
+        "tests/reference-node-server/test/shared-relay-coordination.test.ts"
       ],
-      "runtimeFinding": "REDIS_URL now starts one native coordinator shared by production WorkerTransport, WorkerLink and App Live; readiness checks the actual command connection and shutdown closes it after service drains. Global transient recovery uses observed instance count, while configured shared job recovery preserves unexpired peer leases. Source and native bridge request admission rechecks shutdown after directory/owner awaits, with native pending insertion atomic with the close drain. Node remains the default packaged server; full product/platform/deployment replacement acceptance is incomplete.",
+      "runtimeFinding": "REDIS_URL starts one native coordinator shared by production WorkerTransport, WorkerLink and App Live. Readiness checks the actual command connection and shutdown closes it after service drains. Global transient recovery uses observed instance count, while configured shared job recovery preserves unexpired peer leases. The Node reference and native bridge recheck shutdown after directory and owner awaits, with native pending insertion sharing the close drain's lock. Rust is the default packaged server.",
       "remaining": [
-        "Qualify in-flight native execution across mixed peers under server/worker/database crashes, lease renewal/expiry, delayed acknowledgments and consumer replay/backpressure. Full-worker resource/native execution and orderly peer replacement now pass the scoped local shared-product suite; those results do not establish active-job failover.",
+        "Extend the full-worker Task dependency-outage and orderly peer-replacement results to the remaining server and worker crash, lease expiry and re-election, delayed acknowledgment and sustained replay/backpressure combinations.",
         "Qualify malformed legacy relay payloads, arbitrary malformed RPC error envelopes and complete listener lifecycle/error fidelity. Preserve consumer-level replay/deduplication.",
-        "Qualify Redis TLS, long-outage recovery/expiry and claim re-election, network partitions/blackholes, supported platforms and packaged/deployment artifacts. Production/full-worker shutdown with Redis left offline beyond three presence TTLs now passes the scoped local suite."
+        "Extend the packaged Linux Redis TLS comparison to remaining shared deployment environments. Qualify long network partitions and claim re-election outside the existing process-outage and shutdown comparisons."
       ],
       "rustImplementation": [
         "cantrip_server_rs/src/coordination/mod.rs",
@@ -23949,7 +23951,7 @@
         "version": "1.8.1",
         "originalArchiveSha256": "db7f3d75b5a3301746bff39a767bf4c5c42506b08513527308b3875bfb64a031",
         "note": "cantrip_server_rs/third-party/redis/README.cantrip.md",
-        "scope": "134 upstream files retained; multiplexed_connection.rs and connection_manager.rs gain three connection-observation methods. Inherited trailing whitespace is removed from those Rust files, README and CHANGELOG; all other upstream bytes match. Native ordered command queue preserves directory offline lifetime while publish/readiness observe actual command readiness. TLS/parser/auth/reconnect remain upstream; TLS operation still requires qualification."
+        "scope": "The original import retained 134 upstream files. multiplexed_connection.rs and connection_manager.rs gained three connection-observation methods. Inherited trailing whitespace was removed from those Rust files, README and CHANGELOG. The native ordered command queue preserves directory request lifetime while publish and readiness observe the actual command connection. Packaged Linux TLS acceptance is recorded separately."
       },
       "redisOfflineShutdownLocalAcceptance": {
         "platform": "darwin-arm64",
@@ -24090,6 +24092,34 @@
             }
           }
         }
+      },
+      "linuxTlsRuntimeAcceptance": {
+        "version": "1.1.2855",
+        "runtimeSourceCommit": "67ed809d086e5b6bc112fe77bb35baccf8b9dae1",
+        "redisVersion": "8.10.3",
+        "database": "shared external PostgreSQL",
+        "authMode": "accounts",
+        "scenarioGroups": 48,
+        "cleanPeerShutdowns": 14,
+        "exactReplayedPublications": 28,
+        "scope": "TLS-only Redis with authentication and a private CA, real process restart, two retained worker claims per pairing, actual remote requests, App Live fanout and replay and cross-peer sign-out with controlled worker acknowledgments. Both native images reject the untrusted CA control and separately pass the standalone three-store suite. Linux x64 runs through Rosetta.",
+        "images": {
+          "linux-arm64": {
+            "imageId": "sha256:b2efaffdac1fb3e6c2ad6aa5d00f9d546544ed2da3ccbf1ce5c3ac66b79e8a96",
+            "executableSha256": "46422099c8059394e30bca69cb1251480d05ce366747ff3cdebcfb279de24dad",
+            "archiveSha256": "f0ec54fd95494ac86ab2fba6f02902fe76897c176ba82b1149943384f39aed07"
+          },
+          "linux-x64": {
+            "imageId": "sha256:ab7d4fbf3d294c76c02ba777ab4acbb89218dfc7be3df4d47e83279076f09fa9",
+            "executableSha256": "182361569a4cd0dbad8a17a3f1e95045e392f27f2fbce606c0fad3a4b7b91f01",
+            "archiveSha256": "cc6c54c04c13a8edfe06766a33ef568a04c8d6bcba714ece54a146d5842cc638"
+          }
+        },
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/linux-redis-tls/verified-linux-redis-tls.json",
+          "sha256": "880127e194df316aefab22e12c996030701767c9a999448601c84fa5e18292e0"
+        },
+        "evidence": "docs/RUST_SERVER_REDIS.md#packaged-linux-redis-tls"
       }
     },
     "postgresConcurrencyAndTls": {
