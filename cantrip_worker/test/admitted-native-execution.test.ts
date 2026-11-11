@@ -7,6 +7,7 @@ import {
   type PrepareAdmittedNativeExecutionOptions,
   type RunAgentTurnOptions,
 } from "../src/codex/app-server.js";
+import { recordInferenceFailure } from "../src/inference-failure.js";
 
 const options: PrepareAdmittedNativeExecutionOptions = {
   operationGeneration: "generation-a",
@@ -1266,6 +1267,33 @@ describe("GUI admitted native dispatch hooks", () => {
     expect(attempt).not.toHaveBeenCalled();
   });
 
+  function settledAttemptFailure(error: Error, input: RunAgentTurnOptions) {
+    const operation = {
+      operationId: input.operationGeneration!,
+      chatId: input.chatId,
+      messageId: input.clientMessageId,
+      providerId: input.provider.id,
+    };
+    if (error instanceof CodexTurnFailureError) {
+      return recordInferenceFailure(error, {
+        ...operation,
+        runtimeGeneration: "3aaad6e6-0b67-421e-8df5-2863c19ad0bd",
+        disposition: "model-failed-before-output",
+        threadId: error.threadId,
+        turnId: error.turnId,
+        nativeScopeId: "c12c2713-00a1-4a48-b715-4b6c4e85332a",
+      });
+    }
+    return recordInferenceFailure(error, {
+      ...operation,
+      runtimeGeneration: null,
+      disposition: "input-not-dispatched",
+      threadId: input.threadId ?? null,
+      turnId: null,
+      nativeScopeId: null,
+    });
+  }
+
   it("lets fresh admission replace a corrupt native thread instead of silently changing the managed identity", async () => {
     const f = setup();
     const error = new Error("Could not decode the compaction blob");
@@ -1276,7 +1304,9 @@ describe("GUI admitted native dispatch hooks", () => {
         },
         "runTurnAttempt",
       )
-      .mockRejectedValueOnce(error)
+      .mockImplementationOnce(async (input) => {
+        throw settledAttemptFailure(error, input);
+      })
       .mockResolvedValue({ turnId: "new-turn" });
     const renew = vi.fn(async () => ({
       operationGeneration: "replacement-generation",
@@ -1309,6 +1339,7 @@ describe("GUI admitted native dispatch hooks", () => {
       "actual-root",
       "actual-turn",
     );
+    const failure = settledAttemptFailure(error, guiOptions());
     const attempt = vi
       .spyOn(
         f.runtime as unknown as {
@@ -1316,8 +1347,8 @@ describe("GUI admitted native dispatch hooks", () => {
         },
         "runTurnAttempt",
       )
-      .mockRejectedValue(error);
-    await expect(f.runtime.runTurn(guiOptions())).rejects.toBe(error);
+      .mockRejectedValue(failure);
+    await expect(f.runtime.runTurn(guiOptions())).rejects.toBe(failure);
     expect(attempt).toHaveBeenCalledTimes(1);
   });
 
@@ -1338,7 +1369,9 @@ describe("GUI admitted native dispatch hooks", () => {
           },
           "runTurnAttempt",
         )
-        .mockRejectedValueOnce(error)
+        .mockImplementationOnce(async (input) => {
+          throw settledAttemptFailure(error, input);
+        })
         .mockResolvedValue({ turnId: "next-turn" });
       const freshDispatch = vi.fn(async () => {});
       const renew = vi.fn(async () => ({
@@ -1392,7 +1425,9 @@ describe("GUI admitted native dispatch hooks", () => {
           },
           "runTurnAttempt",
         )
-        .mockRejectedValue(error);
+        .mockImplementation(async (input) => {
+          throw settledAttemptFailure(error, input);
+        });
       let finish!: () => void;
       let retrySignal!: AbortSignal;
       const renewal = new Promise<void>((resolve) => {
@@ -1429,6 +1464,10 @@ describe("GUI admitted native dispatch hooks", () => {
         "root",
         "turn-a",
       );
+      const failure = settledAttemptFailure(error, guiOptions());
+      const renew = vi.fn(async () => ({
+        operationGeneration: "generation-a",
+      }));
       const attempt = vi
         .spyOn(
           f.runtime as unknown as {
@@ -1436,14 +1475,15 @@ describe("GUI admitted native dispatch hooks", () => {
           },
           "runTurnAttempt",
         )
-        .mockRejectedValue(error);
+        .mockRejectedValue(failure);
       const result = f.runtime.runTurn({
         ...guiOptions(),
-        onBeforeRetry: async () => ({ operationGeneration: "generation-a" }),
+        onBeforeRetry: renew,
       });
-      const rejected = expect(result).rejects.toBe(error);
+      const rejected = expect(result).rejects.toBe(failure);
       await vi.advanceTimersByTimeAsync(10000);
       await rejected;
+      expect(renew).toHaveBeenCalledOnce();
       expect(attempt).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();

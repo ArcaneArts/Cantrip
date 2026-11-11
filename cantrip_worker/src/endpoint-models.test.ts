@@ -35,13 +35,17 @@ describe("endpoint model discovery", () => {
         path: string | undefined;
         key: string | undefined;
       }> = [];
+      const modelPath =
+        kind === "unsloth"
+          ? "/proxy/v1/models?output_modalities=all"
+          : "/proxy/v1/models";
       const fixture = await endpoint((request, response) => {
         requests.push({
           path: request.url,
           key: request.headers.authorization,
         });
         response.setHeader("content-type", "application/json");
-        if (request.url !== "/proxy/v1/models") {
+        if (request.url !== modelPath) {
           response.writeHead(404).end();
           return;
         }
@@ -65,7 +69,7 @@ describe("endpoint model discovery", () => {
           }),
         ]);
         expect(requests[0]).toEqual({
-          path: "/proxy/v1/models",
+          path: modelPath,
           key: "Bearer fixture-key",
         });
       } finally {
@@ -108,14 +112,28 @@ describe("endpoint model discovery", () => {
         baseUrl: fixture.baseUrl,
         apiKey: null,
       });
-      expect(result.models).toHaveLength(1);
-      expect(result.models[0]).toMatchObject({
-        displayName: "Local Model",
-        contextWindow: 8192,
-        loaded: true,
-        supportsTools: true,
-        quantization: "Q4_K_M",
-      });
+      expect(result.models).toEqual([
+        expect.objectContaining({
+          nativeModelId: "same-model",
+          displayName: "Local Model",
+          contextWindow: 8192,
+          loaded: true,
+          supportsTools: true,
+          quantization: "Q4_K_M",
+        }),
+        expect.objectContaining({
+          nativeModelId: "embed",
+          outputModalities: ["embeddings"],
+          operationCapabilities: {
+            language: expect.objectContaining({ status: "unsupported" }),
+            embedding: expect.objectContaining({
+              status: "supported",
+              adapter: "openai-embeddings",
+            }),
+            decision: expect.objectContaining({ status: "unsupported" }),
+          },
+        }),
+      ]);
       expect(JSON.stringify(result)).not.toContain("private");
     } finally {
       await fixture.close();
@@ -257,8 +275,20 @@ describe("endpoint model discovery", () => {
       loaded: false,
       supportsTools: null,
     });
+  });
+
+  it("keeps embedding-only models out of language and decision routes", () => {
     expect(
       normalizeEndpointModel({ type: "embedding", id: "embed" }),
-    ).toBeNull();
+    ).toMatchObject({
+      nativeModelId: "embed",
+      outputModalities: ["embeddings"],
+      supportsTools: null,
+      operationCapabilities: {
+        language: { status: "unsupported" },
+        embedding: { status: "supported", adapter: "openai-embeddings" },
+        decision: { status: "unsupported" },
+      },
+    });
   });
 });

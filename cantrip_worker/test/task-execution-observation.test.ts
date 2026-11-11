@@ -3,13 +3,13 @@ import { CodexAppServer } from "../src/codex/app-server.js";
 
 describe("native Task execution observation", () => {
   it.each([
-    ["active", "running"],
-    ["idle", "idle"],
-    ["notLoaded", "idle"],
-    ["systemError", "failed"],
+    ["active", "running", false],
+    ["idle", "idle", true],
+    ["notLoaded", "idle", false],
+    ["systemError", "failed", false],
   ])(
     "reads %s directly without resuming a thread or exporting its transcript",
-    async (native, status) => {
+    async (native, status, nativeIdle) => {
       const runtime = Object.create(CodexAppServer.prototype) as CodexAppServer;
       const request = vi.fn(async () => ({
         thread: { id: "thread", status: { type: native } },
@@ -18,6 +18,7 @@ describe("native Task execution observation", () => {
       expect(await runtime.readThreadExecution("thread")).toEqual({
         threadId: "thread",
         status,
+        nativeIdle,
       });
       expect(request).toHaveBeenCalledExactlyOnceWith("thread/read", {
         threadId: "thread",
