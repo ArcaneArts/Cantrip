@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "baseCommit": "65579c252b49e81bb666b8f43ee078029b760f7f",
+  "candidateVersion": "1.1.2811",
+  "completeReplacement": false,
+  "platform": "darwin-arm64",
+  "scope": "Public steer through production HTTP routers, existing worker transport and endpoint codecs, actual worker attachment paths and CodexAppServer steering logic, controlled native turn and RPC.",
+  "productionRustChanges": [],
+  "counts": {
+    "cells": 9,
+    "pairedHttp": 282,
+    "pairedCommands": 36,
+    "pairedNativeCalls": 36,
+    "tracedHttp": 816,
+    "retainedRestarts": 18,
+    "exactContextReopens": 36,
+    "mappedWorkerCommands": 290,
+    "unmappedWorkerCommands": 33
+  },
+  "matrixReports": [
+    {
+      "databaseMode": "pglite",
+      "report": {
+        "path": ".qa/steer/matrix-pglite-v3.json",
+        "sha256": "10f37cdb92cc76d773768d0012ca1b5be16610a9f492ad9e495998d9274e1931"
+      },
+      "trace": {
+        "path": ".qa/steer/matrix-pglite-v3.requests.json",
+        "sha256": "14e0b669f5c00e297d9b271385044ee1a7a05afaef5410f5a7aaff1d16611230"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "report": {
+        "path": ".qa/steer/matrix-bundled-postgres-v3.json",
+        "sha256": "5c718f77341fa00bcd9ed21a8498ed5517b372d41fee42a189b2e60f27406f82"
+      },
+      "trace": {
+        "path": ".qa/steer/matrix-bundled-postgres-v3.requests.json",
+        "sha256": "214eb628280a89c737a441be0235745f08ca41491de3882654077add0ed79e2c"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "report": {
+        "path": ".qa/steer/matrix-postgres-v3.json",
+        "sha256": "351913803ac93463f5cae64597a01a88c9c23e333a9d75c815c19643de22c74d"
+      },
+      "trace": {
+        "path": ".qa/steer/matrix-postgres-v3.requests.json",
+        "sha256": "2d95fc6e1fb008a2f69727b8535fe23a1752901fac9e705132969525d994e74f"
+      }
+    }
+  ],
+  "verified": {
+    "path": ".qa/steer/verified-matrix.json",
+    "sha256": "4c4f4d777b4419b22247cc5f7a68d2e7df3425587d8fdcd9e230bf44dc5937f3"
+  },
+  "verifier": {
+    "path": ".qa/steer/verify-matrix.py",
+    "sha256": "62c859e7f0393c3f87ba6491f01a6a4bf3140311190b4084e0ae51cd2f93300d"
+  },
+  "build": {
+    "path": ".qa/steer/restore.json",
+    "sha256": "c3675f37092a729476919c3a6a02d6d90a6f6f65afe53a6898e6c1fa8220e779"
+  },
+  "fixtureExecutable": {
+    "path": ".qa/steer/helpers-v3/http-sql-fixture",
+    "sha256": "613bbbbeb7ba10d0d981b0d00f986f23644ddc063adef0a05362ccf33c48b432"
+  },
+  "validation": [
+    {
+      "path": ".qa/steer/worker-steer-only.log",
+      "sha256": "3b7a0cfedb8a2acb5456e71b8362a38f4b583391936cda7fd97ceea2b2fe7152"
+    },
+    {
+      "path": ".qa/steer/worker-focused.log",
+      "sha256": "2f3276ec7e11b03b515030858a8e5e65ff847d552d27c938159d0d27d024d72a"
+    }
+  ],
+  "unpausedReopenPilot": {
+    "path": ".qa/steer/unpaused-pilot.json",
+    "sha256": "65bf6ecb084460e6ef5e4f942c99b9a025266f76e179f655f2c7fbfd733cc352"
+  },
+  "sources": [
+    {
+      "path": "scripts/server-rust/legacy-chat-steer-http-compatibility.mjs",
+      "sha256": "6dca74b886d9220448d6188e993137e74a2aaca2ab83d37942548a497ce2d6d6"
+    },
+    {
+      "path": "scripts/server-rust/legacy-chat-steer-http-cases.mjs",
+      "sha256": "56c97be3b629f031de6bad46bbc14f6e9798b983b8b301e461518da403f20e98"
+    },
+    {
+      "path": "cantrip_server_rs/src/http/chat_execution/steer.rs",
+      "sha256": "e62929ecbee68186f25b543e4b7796313338024504b77532c49dd5e899143cc1"
+    },
+    {
+      "path": "cantrip_worker/src/codex/app-server.ts",
+      "sha256": "916f73c8a9abd3d93b3caaadbc710dc4f00d7b0967f8cebb544832fe4d93ea8b"
+    },
+    {
+      "path": "cantrip_worker/src/chat-message-encryption.ts",
+      "sha256": "69dbaac3e963636da8c8b081359257df78a12b779593942e34ed84514d0db1a4"
+    },
+    {
+      "path": "cantrip_worker/src/attachment-encryption.ts",
+      "sha256": "46ea310bee19b2caf873f5e4a0bb6965ffc3de92b7b83d78aff9ae0b38bb06ed"
+    },
+    {
+      "path": "tests/reference-node-server/src/app/routes/chat-queue.ts",
+      "sha256": "09337793e4534d4c91d7adc2ef75942db3c3f0b9f0219dda6c128f9609f9a6a3"
+    }
+  ],
+  "limits": [
+    "Retained restarts with automation paused qualify persistence. The anonymous PGlite exploratory restart with automation enabled observed both peers recover pending unadmitted claims with the worker disconnected.",
+    "Native runtime reconnect, actual receipt settlement for the legacy steer, and current supported shipping artifacts remain open."
+  ]
+}

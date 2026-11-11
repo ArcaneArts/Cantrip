@@ -14738,6 +14738,20 @@
         ]
       },
       {
+        "command": "chat.steer",
+        "implementation": "cantrip_server_rs/src/http/chat_execution/steer.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_LEGACY_CHAT_STEER.md",
+          "docs/security/rust-server-legacy-chat-steer-acceptance.json",
+          "scripts/server-rust/legacy-chat-steer-http-compatibility.mjs",
+          "scripts/server-rust/legacy-chat-steer-http-cases.mjs"
+        ],
+        "remaining": [
+          "The public fallback qualifies active project and standalone lanes without native activation, exact worker steering RPC, attachment and message ciphertext, rejection and paused reopen. Native process execution, reconnect and unpaused durable settlement remain open."
+        ]
+      },
+      {
         "command": "chat.messages.protect",
         "implementation": "cantrip_server_rs/src/chats/imports/execute.rs",
         "status": "partial",
