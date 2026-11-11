@@ -1,8 +1,7 @@
 # Native database initialization and health diagnostics
 
-The Rust serving entrypoint now owns the existing database initialization
-lifetime and its operational records. Node remains the default server and the
-worker remains Node. Full replacement acceptance is incomplete.
+The Rust serving entrypoint owns database initialization and its operational
+records. The worker remains Node. Full replacement acceptance is incomplete.
 
 ## Initialization
 
@@ -39,6 +38,46 @@ bytes are preserved and Unix permissions become 0600. Invalid JSON, metadata or
 base64 propagates its error without replacing the file. This preserves the
 legacy configuration/file contract; it does not grant plaintext access to
 worker-owned encrypted content.
+
+## Embedded PGlite cache recovery
+
+The default native runtime cache can be incomplete. A retained cache missing
+`share/postgresql/postgres.bki` previously caused actual `initdb` failure on
+new profiles. The embedded engine now compares the automatically extracted
+cache with the files and sizes in its runtime archive. It publishes fresh
+assets atomically to a sibling directory when files are missing or truncated.
+Concurrent starts reuse the same complete cache. Older cache directories stay
+in place so running processes can continue using them.
+
+Existing configured and distribution assets go directly to native startup,
+including read-only directories without an extraction marker. An incomplete
+configured directory still reports the actual PostgreSQL error. Recovery
+changes runtime assets only. The server opens the original database profile.
+
+The optimized macOS ARM64 executable passed actual concurrent HTTP startup on
+a retained profile and a fresh one. The retained server kept its identity and
+the preference written before the cache was damaged. The same driver passed
+recovery from a truncated asset and reused markerless assets on later starts.
+With the previous executable, the fresh concurrent start exited at
+`initdb` with the missing-file error. The candidate SHA-256 is
+`7adfcc3fd45a7a304441d50c53a9893ec575eb02fa963a8c3c6a7cfb85717aea`.
+
+The relocated macOS ARM64 distribution passed all three database modes,
+migration, SQL export, retained restart, and graceful shutdown with writes to
+the distribution and reads from Homebrew denied. All 1,762 packaged file hashes
+matched. Its signed server executable also passed the cache regression. The
+packaged executable SHA-256 is
+`dd965841f58189a9dd9d5f82a0a0e3f2c47c04e89111da691b8d77176731c347`.
+
+Ten alternating warm starts per binary on the same PGlite profile measured a
+median 43.5 ms before the change and 46.1 ms with cache validation. Both
+binaries returned the same server identity in every trial.
+
+```sh
+node scripts/server-rust/pglite-runtime-cache-acceptance.mjs \
+  --binary /absolute/path/to/cantrip-server \
+  --data-root /absolute/path/to/existing-evidence-directory
+```
 
 ## Health probes
 

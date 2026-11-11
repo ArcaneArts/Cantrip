@@ -47,6 +47,7 @@ mod multiple_process;
 #[cfg(feature = "replica")]
 mod replica;
 mod row;
+mod runtime;
 #[cfg(all(unix, feature = "socket"))]
 mod socket;
 mod transaction;
