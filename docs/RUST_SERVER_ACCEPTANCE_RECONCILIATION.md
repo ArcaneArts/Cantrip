@@ -103,12 +103,14 @@ also account for two retained legacy worker handlers. Scoped worker command
 coverage accounts for 306 of 323 identities.
 
 The [current Windows qualification](RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md)
-passes `1.1.2819` standalone across all three stores and verifies 2,278 package
-files. The production desktop supervisor passes server-only restart and owner
-loss across those stores. The published Node profile upgrades and retains
-post-write rollback and native re-upgrade. Full-worker Windows desktop and
-installer acceptance remain open after a server-independent crypto import
-failure in the local guest's x64 Node runtime.
+passes `1.1.2833` standalone across all three stores, verifies 2,278 package
+files and passes the embedded PGlite cache regression. Official x64 Node 24
+fails the isolated crypto and arithmetic controls on the Windows ARM64 guest.
+Detaching the Windows worker's stdin repairs startup in the desktop
+supervisor. The full x64 worker on Node `22.23.4` passes restart and owner
+loss across all three stores. The published Node profile retains its writes
+through rollback and native re-upgrade. Windows installer and updater
+acceptance with the release runtime remain open.
 
 The [current Linux ARM64 qualification](RUST_SERVER_WINTERHOLD.md#current-linux-arm64-qualification)
 passes all three stores in the `1.1.2817` container and local systemd

@@ -1,5 +1,59 @@
 # Current Windows native server qualification
 
+## Current `1.1.2833` package
+
+The Windows x64 distribution from `81d9282a94833ba218fb4f2cb23b543c17a5530a`
+passed PGlite, bundled PostgreSQL and external PostgreSQL on the local Windows
+11 ARM64 guest running build 27754. All three modes retained identity and
+accepted settings through restart, SQL export, hosted reopening and graceful
+shutdown. The server ran with Node absent from its runtime PATH. The exported
+archive independently matched all 2,278 file hashes.
+
+The same packaged executable passed the embedded PGlite cache regression.
+Concurrent fresh and retained profiles recovered missing assets, preserved an
+accepted write and reused a complete cache. A truncated cache recovered, and
+an explicitly configured incomplete directory reported the original
+`initdb` error. The test also reopened markerless assets.
+
+### Worker runtime controls
+
+The published worker's 125 crypto modules matched their archived SHA-256
+hashes. On this guest, official x64 Node `24.22.1` and `24.22.2` both
+reported `Cannot find square root` during the NIST module import, with the
+same result under `--jitless`. A standalone BigInt arithmetic program with
+no imports exited with `0xC0000095` under x64 Node `24.22.2`. The same
+arithmetic matched an independent Python calculation under native ARM64
+Node `24.22.2`. [Microsoft NTSTATUS values](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-erref/596a1078-e883-4972-9bbc-49e60bebca55)
+
+Both ARM64 Node 24 builds and x64 Node `22.23.4` imported the verified
+modules. The x64 Node 22 arithmetic result also matched the Python control.
+The current worker built from source enrolled when launched directly with
+x64 Node 22 and answered its version command through the desktop-launched
+Rust PGlite server.
+
+### Desktop launcher recovery with the full worker
+
+The console-free Windows launcher initially started the worker process, then
+stalled before enrollment with the supervisor's stdin pipe inherited. A
+matched control opened the worker's stdin as null and passed every store.
+The shared Windows desktop worker launcher now opens stdin as null.
+
+The production launcher source passes all three stores twice with the current
+worker JavaScript and portable x64 Node `22.23.4`. Each case runs a real
+worker version command, retains the server and worker identities and an
+accepted preference, reaps the children on shutdown, and reopens the same
+profile after supervisor loss. The fixture uses published Windows native
+worker tools from `1.1.2397`. The full desktop installer and updater with
+the release runtime remain open.
+
+The packaging tests also execute the relocated Windows Node binary and check
+its recorded version. All five focused Windows tests pass, including
+termination of an actual three-generation process tree. The
+[acceptance record](security/rust-server-win32-x64-acceptance.json) lists
+the artifacts and reports for this refresh.
+
+## Earlier `1.1.2819` package
+
 The `1.1.2819` Windows x64 native server was built from
 `2ec06de47a6bdd58439c0ad04cfaea0e3922d995`. The local Windows 11 ARM64 guest
 runs build 27754 and executes x64 binaries through Windows emulation. Its owned
@@ -34,7 +88,7 @@ crypto modules have matching hashes on both hosts. The module imports under
 native ARM64 Windows Node `v24.22.1` and native ARM64 macOS Node `v24.22.1`.
 The current worker's NIST module has the same SHA256 as that published module.
 Full current-worker desktop execution and Windows installer/update acceptance
-remain open.
+remained open in this earlier run.
 
 ## Historical profile and post-write rollback
 
@@ -79,6 +133,7 @@ separate from the passing server-only run.
 ## Retained evidence and remaining work
 
 Reports and source scripts are retained under
+`rust-server-windows-worker-20261111-v1` and
 `rust-server-current-windows-20261110-v1` in the local QA evidence directory.
 The principal drivers are `packaged-server-acceptance.mjs`,
 `desktop-runtime-acceptance.mjs` and
@@ -86,8 +141,8 @@ The principal drivers are `packaged-server-acceptance.mjs`,
 The exported native distribution and guest profile/log archive accompany the
 reports. Development validation ran locally.
 
-The original replacement goal remains open for the full Windows desktop and
-installer/update matrix, remaining product and coordination interruption
+The original replacement goal remains open for the Windows installer and
+updater with the release runtime, remaining product and coordination interruption
 cases, broader historical profiles and representative
 performance. The [acceptance reconciliation](RUST_SERVER_ACCEPTANCE_RECONCILIATION.md)
 tracks the current scope.

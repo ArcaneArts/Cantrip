@@ -27,6 +27,10 @@ enum ServerRuntime {
 pub fn node_service_command(node: &Path, directory: &Path) -> Command {
     let mut command = Command::new(node);
     command.arg("dist/index.js").current_dir(directory);
+    // A Windows worker does not read stdin. An inherited supervisor pipe can
+    // stall Node before worker startup when the process has no console.
+    #[cfg(windows)]
+    command.stdin(Stdio::null());
     command
 }
 
