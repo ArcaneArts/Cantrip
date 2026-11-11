@@ -1,4 +1,7 @@
-param([Parameter(Mandatory = $true)][string]$BinDirectory)
+param(
+    [Parameter(Mandatory = $true)][string]$BinDirectory,
+    [string]$ComputerUseAddonDirectory
+)
 $ErrorActionPreference = "Stop"
 $runtimeDlls = @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll")
 
@@ -29,10 +32,16 @@ function Get-VisualCppRuntimeDirectory {
 $missing = @($runtimeDlls | Where-Object {
     -not (Test-Path -LiteralPath (Join-Path $BinDirectory $_) -PathType Leaf)
 })
-if ($missing.Count -eq 0) { return }
+if ($missing.Count -gt 0) {
+    $source = Get-VisualCppRuntimeDirectory
+    # Refresh the full set when upgrading an older or incomplete bundle.
+    foreach ($dll in $runtimeDlls) {
+        Copy-Item -LiteralPath (Join-Path $source $dll) -Destination (Join-Path $BinDirectory $dll) -Force
+    }
+}
 
-$source = Get-VisualCppRuntimeDirectory
-# Refresh the full set when upgrading an older or incomplete bundle.
-foreach ($dll in $runtimeDlls) {
-    Copy-Item -LiteralPath (Join-Path $source $dll) -Destination (Join-Path $BinDirectory $dll) -Force
+if ($ComputerUseAddonDirectory) {
+    # Node loads the addon from node_modules, outside the worker helper directory.
+    $dll = "vcruntime140.dll"
+    Copy-Item -LiteralPath (Join-Path $BinDirectory $dll) -Destination (Join-Path $ComputerUseAddonDirectory $dll) -Force
 }
