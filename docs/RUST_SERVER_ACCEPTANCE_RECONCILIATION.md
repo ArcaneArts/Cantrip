@@ -13,6 +13,11 @@ The [current signed macOS desktop qualification](RUST_SERVER_DESKTOP_SIGNED_UPDA
 updates the installed app to `1.1.2845` on all three stores, retains the
 authenticated client, server, worker and written setting, and verifies the
 installed bundles against the signed archive.
+The [current installed Windows x64 qualification](RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md#windows-x64-installed-112845)
+updated the installed app to `1.1.2845` through its signed updater and verified
+14,090 files. The retained profile and all three database modes passed
+reopening, real worker replies and tray shutdown. The Windows standalone
+distribution passed on all three stores as well.
 The [native desktop workspace qualification](RUST_SERVER_DESKTOP_WORKSPACE_ACCEPTANCE.md)
 also exercises actual macOS popouts, dirty documents, server restart, WebView
 reload, application SIGKILL/restart, native close/return and explicit worker-file
