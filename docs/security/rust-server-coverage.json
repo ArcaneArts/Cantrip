@@ -91,7 +91,10 @@
         "path": "/api/auth/mobile-sign-in/exchange",
         "implementation": "cantrip_server_rs/src/http/sessions.rs",
         "status": "implemented",
-        "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
+        "evidence": [
+          "scripts/server-rust/auth-compatibility.mjs",
+          "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md#browser-server-switching-and-mobile-qr-sign-in"
+        ],
         "remaining": []
       },
       {
@@ -99,7 +102,10 @@
         "path": "/api/auth/mobile-sign-in/grants",
         "implementation": "cantrip_server_rs/src/http/sessions.rs",
         "status": "implemented",
-        "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
+        "evidence": [
+          "scripts/server-rust/auth-compatibility.mjs",
+          "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md#browser-server-switching-and-mobile-qr-sign-in"
+        ],
         "remaining": []
       },
       {
@@ -24150,8 +24156,25 @@
     },
     "httpAuth": {
       "status": "implemented",
-      "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
-      "verifiedLocally": "The session milestone PR 2277 passed all three storage suites on Linux/macOS/Windows in observed run 40254773601. Changes in later milestones require fresh regression results."
+      "evidence": [
+        "scripts/server-rust/auth-compatibility.mjs",
+        "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md#browser-server-switching-and-mobile-qr-sign-in"
+      ],
+      "verifiedLocally": "The session milestone PR 2277 passed all three storage suites on Linux/macOS/Windows in observed run 40254773601. Changes in later milestones require fresh regression results.",
+      "browserMobileSignIn": {
+        "clientVersion": "1.1.2856",
+        "serverVersion": "1.1.2854",
+        "serverTarget": "darwin-arm64",
+        "rustStores": ["pglite", "bundled-postgres", "postgres"],
+        "referenceStore": "postgres",
+        "mobileQrSessions": 6,
+        "cleanServerShutdowns": 9,
+        "scope": "Built Chromium desktop and iPhone-viewport browser clients with real rendered QR through a virtual camera. Actual HTTP over TLS, server identity verification, independent secure HttpOnly cookies, encrypted browser recovery, App Live subscription across reload, server switching and Rust restart. Native mobile camera integration has separate acceptance.",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/mobile-sign-in/verified-browser-mobile-sign-in.json",
+          "sha256": "b81b99cd27ea380b21ddf960af9375bb6f17ad73193052a4eed53ddc0a658885"
+        }
+      }
     },
     "workerEnrollment": {
       "status": "partial",

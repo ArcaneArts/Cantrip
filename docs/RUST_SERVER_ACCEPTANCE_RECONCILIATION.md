@@ -416,6 +416,32 @@ delivery outcomes and redaction. Separate logger cases preserve console-only
 undefined properties without introducing them into archived JSON. Complete
 current artifact/platform and replacement acceptance remain required.
 
+## Browser server switching and mobile QR sign-in
+
+The built `1.1.2856` browser client ran against the optimized macOS ARM64
+`1.1.2854` Rust package and the compiled Node reference. The Rust package
+ran in hosted account mode on PGlite, bundled PostgreSQL and external
+PostgreSQL. The Node reference used external PostgreSQL in each pairing.
+
+The browser scanner initially obtained a camera stream and left the preview
+unattached. The dialog portal mounted the video after the scanner effect
+had run. The scanner now starts decoding when the video mounts. A component
+regression test reproduces the previous failure and verifies that scanner
+teardown stops the decoder.
+
+Each pairing signed in through the desktop browser layout, added the second
+server and switched between the two accounts. The mobile browser read the
+actual QR rendered by the signed-in app from a virtual camera feed. It verified
+the responding server identity, opened an independent secure HttpOnly
+session, and recovered encrypted access through the existing password
+prompt. App Live resubscribed after reload. Mobile sign-out left the issuing
+browser signed in. The desktop browser retained each account through
+switching, and Rust restart preserved its original identity and session.
+
+The three runs completed six QR transfers and nine clean server exits.
+The mobile runs used Chromium's iPhone viewport and virtual camera. Installed
+iOS and Android camera integration retains its separate acceptance scope.
+
 ## Current implementation and evidence
 
 | Area                          | Current evidence                                                                                                                                                                                                           | Remaining acceptance                                                                                                                        |
