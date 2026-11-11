@@ -4,7 +4,9 @@ import {
   CodexAppServer,
   type GoalRuntimeOptions,
 } from "../src/codex/app-server.js";
+import { WorkerInferenceAdmission } from "../src/inference-admission.js";
 import { connectFixtureNativeObservation } from "./fixtures/connected-native-observation.js";
+import { nativeThreadSettings } from "./fixtures/native-thread-settings.js";
 
 const options: GoalRuntimeOptions = {
   cwd: "/unused/task-permission-handoff",
@@ -31,6 +33,24 @@ function fixture() {
     "/unused/data",
     "/unused/home",
     unprobedCodexRuntimeReport,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    [],
+    null,
+    null,
+    new WorkerInferenceAdmission(
+      {
+        serverId: "server",
+        ownerId: "owner",
+        workerId: "worker",
+        workerGeneration: "b64163b5-e606-417b-b202-3d3c4773f352",
+      },
+      (error) => {
+        throw error;
+      },
+    ),
   );
   connectFixtureNativeObservation(runtime);
   const native = runtime as unknown as {
@@ -76,6 +96,38 @@ function fixture() {
         ),
       );
       return {};
+    }
+    if (method === "thread/managedConfig/update")
+      return { threadId: options.threadId, applied: true };
+    if (method === "collaborationMode/list") {
+      return {
+        data: [{ mode: "default", model: null, reasoning_effort: null }],
+      };
+    }
+    if (method === "thread/settings/update") {
+      const input = params as {
+        operationId: string;
+        collaborationMode: ReturnType<
+          typeof nativeThreadSettings
+        >["collaborationMode"];
+      };
+      const submissionId = `submission:${input.operationId}`;
+      native.handleMessage(
+        Buffer.from(
+          JSON.stringify({
+            method: "thread/settings/updated",
+            params: {
+              threadId: options.threadId,
+              operationId: input.operationId,
+              submissionId,
+              threadSettings: nativeThreadSettings({
+                collaborationMode: input.collaborationMode,
+              }),
+            },
+          }),
+        ),
+      );
+      return { operationId: input.operationId, submissionId };
     }
     if (method === "thread/goal/get") return { goal };
     if (method === "thread/goal/set")
