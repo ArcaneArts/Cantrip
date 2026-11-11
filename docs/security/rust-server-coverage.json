@@ -28804,6 +28804,20 @@
       "runningExecutableHashesCompared": 10,
       "scope": "Linux x64 container and Winterhold service rehearsal under Rosetta on a local ARM64 Linux host. Verified Caddy TLS, retained writes through distinct native and Node rollback, and graceful shutdown. Current desktop release and update, representative performance and remaining product and multi-instance acceptance are open."
     },
+    "currentDarwinArm64PackageQualification": {
+      "status": "implemented-with-scoped-local-qualification",
+      "evidence": [
+        "docs/RUST_SERVER_DESKTOP_SIGNED_UPDATE.md",
+        "docs/security/rust-server-darwin-arm64-acceptance.json",
+        "scripts/server-rust/packaged-server-acceptance.mjs",
+        "scripts/server-rust/native-desktop-updater-acceptance.mjs"
+      ],
+      "sourceCommit": "f902c5328e99c410c6869f0ad8695d483ce5c6a2",
+      "candidateVersion": "1.1.2817",
+      "standaloneDatabaseModes": ["pglite", "bundled-postgres", "postgres"],
+      "verifiedArtifactFiles": 1762,
+      "scope": "Native ARM64 macOS standalone package on all three stores. PGlite signed desktop install and restart retained state after rejecting an altered package. Keychain authorization of the new ad-hoc app was denied; the encrypted update matrix remains incomplete."
+    },
     "defaultRuntimeCutover": {
       "status": "implemented-with-scoped-local-qualification",
       "implementation": [
