@@ -486,5 +486,94 @@
         "sha256": "de6e65ac4567a9f407511afce96c6179aa35597091124d7078d854b70fc8dc5a"
       }
     }
+  },
+  "installedX64SignedUpdate": {
+    "sourceCommit": "fd3f4840683cdef4a5a71ba642c602d27c04d8e9",
+    "appVersion": "1.1.2841",
+    "baselineAppVersion": "1.1.2839",
+    "serverVersion": "1.1.2834",
+    "workerVersion": "1.1.2834",
+    "guest": {
+      "os": "Windows 11",
+      "build": 26100,
+      "architecture": "x64",
+      "execution": "QEMU software emulation (Westmere-v1)"
+    },
+    "evidenceDirectory": "rust-server-windows-installer-20261111-v1",
+    "databaseMode": "pglite",
+    "installedFilesVerified": 14090,
+    "coldStartWorkerCommandPassed": true,
+    "updaterTamperCode": "update_signature_invalid",
+    "signedUpdateRelaunchPassed": true,
+    "sameIdentityAfterUpdate": true,
+    "retainedSettingAfterUpdate": "dark",
+    "historicalProfile": {
+      "result": "passed",
+      "databaseSelection": {
+        "version": 1,
+        "runtime": "rust",
+        "databaseMode": "pglite"
+      },
+      "sameProcessAfterInitialObservationTimeout": true,
+      "originalFilesVerified": 1660,
+      "originalFilesSha256": "69804e2f30030adbc6763c18a64ea0ba903dc8f3019f9d36c791eedefcbc3f40",
+      "workerCommandPassed": true,
+      "retainedSetting": "dark"
+    },
+    "artifacts": {
+      "installer": {
+        "path": "installers/1.1.2841/Cantrip_1.1.2841_x64-setup.exe",
+        "bytes": 256512153,
+        "sha256": "f791f246238346331360884a99596ddf32fbcb4ace185664fc634be70ed08b78"
+      },
+      "updaterSignature": {
+        "path": "installers/1.1.2841/Cantrip_1.1.2841_x64-setup.exe.sig",
+        "bytes": 420,
+        "sha256": "b6f93e26809b774d4ca3204c2221b9fb9cfbe7fe10d8af207d2f1926eb67045a"
+      },
+      "installedApp": {
+        "path": "installers/1.1.2841/cantrip-app.exe",
+        "bytes": 25049600,
+        "sha256": "581500a8497c88ed31d3808a999976cc899609a6e1807ff3ddef3da7bf522369"
+      },
+      "historicalNodeProfile": {
+        "path": "windows-installed-2841-historical-media/archived-node-profile-win32-x64.tar.gz",
+        "bytes": 7174407,
+        "sha256": "df83e6f77fe3741ec956503e143d59c9c4acdea2827e563c7dad17f025e5dcb5"
+      }
+    },
+    "reports": {
+      "baselineColdStart": {
+        "path": "current-windows-x64-installed-cold-worker-2839-final.json",
+        "bytes": 2617,
+        "sha256": "533fa1b0fa2e5c6c93177412912f591b42bdd39ede1a4e239be79ee8c1f02148"
+      },
+      "signedUpdate": {
+        "path": "current-windows-x64-signed-update-1.1.2841-observation-final.json",
+        "bytes": 1724,
+        "sha256": "df65d3b4938cc679e135f33fee00db93cdb962ac91924e7701b1d08d43d64bd1"
+      },
+      "installedFileVerification": {
+        "path": "installers/1.1.2841/installed-runtime-verification-final.json",
+        "bytes": 199,
+        "sha256": "9c2afc5aba2aaef36e5ffd89022472b6ee4a39560a8080fa17171d36e532abe9"
+      },
+      "historicalProfileInitialObserver": {
+        "path": "current-windows-x64-installed-historical-profile-2841-initial-timeout.json",
+        "bytes": 535,
+        "sha256": "63a4af0a9d6b2fcb5eab71d7262b4122e6cba7a9e7e8fbd78d7ae006d1f018e5"
+      },
+      "historicalProfileContinuedObserver": {
+        "path": "current-windows-x64-installed-historical-profile-2841-final.json",
+        "bytes": 1011,
+        "sha256": "f25897773d3824c874da8104cf96b9d4681c19401439d472272f356342231a05"
+      },
+      "historicalProfileOriginalByteComparison": {
+        "path": "westmere-v5-historical-original-byte-comparison.json",
+        "bytes": 289,
+        "sha256": "610fa750ad1225cd8cdeb5c08db055616cf5682bf78008e92d3ac2fb29629565"
+      }
+    },
+    "scope": "Exact installed x64 PGlite app with a local updater signing key and TLS fixture. Emulated startup times are diagnostic. Installed bundled and external PostgreSQL and the broader product, recovery, and release qualification remain separate."
   }
 }
