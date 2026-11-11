@@ -347,7 +347,7 @@ describe.skipIf(!binary)("pinned native thread observation", () => {
       const runtimeProvider = {
         id: "provider",
         name: "Local observation fixture",
-        kind: "openai" as const,
+        kind: "openai-compatible" as const,
         baseUrl: `http://127.0.0.1:${address.port}/v1`,
         apiKey: "fixture-not-a-real-key",
       };
