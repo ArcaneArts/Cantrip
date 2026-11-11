@@ -23,6 +23,7 @@ import {
 } from "./actual-worker-logs-client.mjs";
 import { actualTaskClient } from "./actual-task-client.mjs";
 import { actualTaskLabelClient } from "./actual-task-label-client.mjs";
+import { actualInlineChatLabels } from "./actual-inline-chat-labels.mjs";
 import { actualProviderAuthClient } from "./actual-provider-auth-client.mjs";
 import { actualProjectChatClient } from "./actual-project-chat-client.mjs";
 import { providerTestBoundary } from "./provider-test-boundary.mjs";
@@ -136,6 +137,7 @@ const cantripOsSourceBackup = process.argv.includes(
 const workerLinkRenewal = process.argv.includes("--worker-link-renewal");
 const providerAuth = process.argv.includes("--provider-auth");
 const taskLabel = process.argv.includes("--task-label");
+const inlineChatLabels = process.argv.includes("--inline-chat-labels");
 assert.ok(!workerLinkRenewal || !sharedPair);
 const singleProduct =
   cantripOsRun ||
@@ -143,6 +145,7 @@ const singleProduct =
   workerLinkRenewal ||
   providerAuth ||
   taskLabel ||
+  inlineChatLabels ||
   process.argv.includes("--production-server") ||
   process.argv.includes("--native-task-goal-worker-recovery") ||
   process.argv.includes("--native-worker-recovery") ||
@@ -220,6 +223,9 @@ const report = {
   taskLabelScope: taskLabel
     ? "Existing browser Task APIs, production server, full worker, and native Codex stateless labeling through a disposable model HTTP endpoint."
     : null,
+  inlineChatLabelScope: inlineChatLabels
+    ? "Existing browser Chat and Agent APIs, production server, full worker and native initial labeling through disposable model HTTP endpoints."
+    : null,
   taskDiagnostics: liveTaskDiagnostics
     ? "Development SQL fixture executable; unchanged production startup, routes, worker and native runtime. Failed Task runs retain scoped read-only database snapshots before teardown."
     : null,
@@ -295,6 +301,7 @@ async function flow(
       workerLinkRenewal ||
       providerAuth ||
       taskLabel ||
+      inlineChatLabels ||
       [
         "--mcp-settings",
         "--terminals",
@@ -320,7 +327,7 @@ async function flow(
         workerId,
         homeDirectory,
         environment: {
-          ...(workerLinkRenewal || providerAuth || taskLabel
+          ...(workerLinkRenewal || providerAuth || taskLabel || inlineChatLabels
             ? { CANTRIP_LOG_LEVEL: "debug" }
             : {}),
           ...(providerTest ? providerBoundary?.environment : {}),
@@ -637,6 +644,19 @@ async function flow(
         projectId: first.id,
         workerId,
         startWorker,
+        stopWorker,
+        diagnostics: () => worker.diagnostics(),
+        result,
+      });
+      assert.deepEqual(errors, []);
+      return;
+    }
+    if (inlineChatLabels) {
+      await actualInlineChatLabels({
+        fixture,
+        page,
+        projectId: first.id,
+        workerId,
         stopWorker,
         diagnostics: () => worker.diagnostics(),
         result,
@@ -1674,6 +1694,11 @@ try {
       assert.deepEqual(
         runtime.taskLabel.summary,
         report.runtimes[0].taskLabel.summary,
+      );
+    if (inlineChatLabels)
+      assert.deepEqual(
+        runtime.inlineChatLabels.summary,
+        report.runtimes[0].inlineChatLabels.summary,
       );
     if (
       cantripOsRun ||

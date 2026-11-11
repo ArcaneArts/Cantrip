@@ -46,6 +46,10 @@ import {
 } from "@cantrip/protocol";
 import { request, post, withQuery } from "@/lib/api-client";
 import { chatTitleEncryption } from "@/lib/chat-title-encryption";
+import {
+  ensurePrivateLabelWorkerEncryption,
+  type PrivateLabelWorkerEncryptionDescriptor,
+} from "@/lib/private-label-worker-encryption";
 import type {
   ExecutionTarget,
   GithubAgentWorkflowContext,
@@ -728,9 +732,16 @@ export async function startTurn(
   configuration: ModelConfiguration,
   attachments: ChatAttachmentSummary[] = [],
   mode: ChatTurnMode = "default",
+  automaticTitleWorker?: PrivateLabelWorkerEncryptionDescriptor,
 ) {
   if (!configuration.modelId) throw new Error("Choose a model first.");
   await getPolicies();
+  if (automaticTitleWorker) {
+    // The response can proceed if the worker cannot accept the optional title key.
+    await ensurePrivateLabelWorkerEncryption({
+      worker: automaticTitleWorker,
+    }).catch(() => undefined);
+  }
   const idempotencyKey = crypto.randomUUID();
   const input = await createEncryptedChatTurn({
     attachments,
