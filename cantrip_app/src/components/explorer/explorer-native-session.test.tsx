@@ -98,6 +98,11 @@ const summary = {
 } as ExplorerSummary;
 const header = () => state.header as ExplorerHeaderState;
 const input = () => state.input as InputProps;
+const refreshAlert = () =>
+  renderer!.root
+    .findByProps({ role: "alert" })
+    .findByType("span")
+    .props.children.join("");
 const settle = () =>
   act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 15));
@@ -355,8 +360,11 @@ describe("native Explorer document integration", () => {
       client.setQueryDefaults(["explorer-file"], { retryDelay: 0 });
       api.getExplorerFile.mockRejectedValue(new Error("worker unavailable"));
       await act(async () => {
-        await expect(header().refresh()).rejects.toThrow("worker unavailable");
+        await header().refresh();
       });
+      expect(refreshAlert()).toBe(
+        "Could not refresh Explorer: worker unavailable",
+      );
       expect(document.text).toBe("retain me if reading fails");
       expect(document.dirty).toBe(true);
       const snapshot = await (state.lifecycle as ExplorerLifecycleActions)
@@ -440,10 +448,11 @@ describe("native Explorer document integration", () => {
           version: "fresh",
           markdown: false,
         });
-        await expect(pending).rejects.toThrow(
-          "document changed while reloading",
-        );
+        await pending;
       });
+      expect(refreshAlert()).toBe(
+        "Could not refresh Explorer: The document changed while reloading. Review the latest edits before discarding them.",
+      );
       expect(input().session.text).toBe("new edit during read");
       expect(input().session.dirty).toBe(true);
     } finally {
