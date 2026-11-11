@@ -15053,6 +15053,20 @@
         "remaining": [
           "The canonical import path qualifies actual worker encryption, attachment metadata and relay, exact durable ciphertext, failures, and restart through current HTTP. Source file capture, physical destination storage, native Codex hydration and full existing-client/platform acceptance remain open."
         ]
+      },
+      {
+        "command": "label.generate",
+        "implementation": "cantrip_server_rs/src/chats/automatic_title.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_TASK_LABEL_ACCEPTANCE.md",
+          "docs/security/rust-server-task-label-acceptance.json",
+          "scripts/server-rust/actual-task-label-client.mjs",
+          "scripts/server-rust/automatic-title-cases.mjs"
+        ],
+        "remaining": [
+          "The direct Task producer qualifies real worker decryption, native model execution, private title persistence, Live invalidation, restart and separate Task completion on all three stores. Initial Chat/Agent title handoff and shared-server and final platform qualification retain their own evidence scope."
+        ]
       }
     ]
   },

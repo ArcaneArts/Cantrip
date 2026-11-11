@@ -1,4 +1,7 @@
-import { EMPTY_MODEL_CONFIGURATION } from "@cantrip/protocol";
+import {
+  EMPTY_MODEL_CONFIGURATION,
+  settingsBundleSchema,
+} from "@cantrip/protocol";
 import type { ChatSummary, TaskDetail } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement, createRef, type ComponentProps } from "react";
@@ -109,7 +112,11 @@ const retryButton = () =>
         .some((span) => span.children.includes("Retry Task")),
     )!;
 const editor = () => renderer!.root.findByType("textarea");
-async function mount(status: ChatSummary["status"] = "idle", visible = true) {
+async function mount(
+  status: ChatSummary["status"] = "idle",
+  visible = true,
+  options?: Pick<ComponentProps<typeof TaskSurface>, "settings" | "worker">,
+) {
   client = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Infinity },
@@ -128,6 +135,7 @@ async function mount(status: ChatSummary["status"] = "idle", visible = true) {
           onRename: vi.fn(),
           settings: undefined,
           surfaceRef,
+          ...options,
         }),
       ),
     );
@@ -289,10 +297,40 @@ describe("failed Task recovery", () => {
       retryButton().props.onClick();
     });
     await settle();
-    expect(api.startTaskDirectly).toHaveBeenCalledWith("task", {
-      operationId: expect.any(String),
-      rowVersion: 10,
+    expect(api.startTaskDirectly).toHaveBeenCalledWith(
+      "task",
+      { operationId: expect.any(String), rowVersion: 10 },
+      undefined,
+    );
+  });
+
+  it("passes the online Task worker to admission when automatic titles are enabled", async () => {
+    const worker = { workerId: "task-worker", online: true } as NonNullable<
+      ComponentProps<typeof TaskSurface>["worker"]
+    >;
+    const settings = settingsBundleSchema.parse({
+      preferences: {
+        autoNameTasks: true,
+        theme: "system",
+        highContrast: false,
+        proMode: false,
+        proModeOpacity: 80,
+        sidebarWidth: 288,
+        desktopFrameRate: 30,
+        desktopStreamQuality: "adaptive",
+        defaultModelId: null,
+      },
+      models: [],
+      providers: [],
     });
+    await mount("idle", true, { settings, worker });
+    await act(async () => retryButton().props.onClick());
+    await settle();
+    expect(api.startTaskDirectly).toHaveBeenCalledWith(
+      "task",
+      { operationId: expect.any(String), rowVersion: 10 },
+      worker,
+    );
   });
 
   it("copies the current failed-task brief, including unsaved edits", async () => {
@@ -332,10 +370,11 @@ describe("failed Task recovery", () => {
         rowVersion: 10,
       }),
     );
-    expect(api.startTaskDirectly).toHaveBeenCalledWith("task", {
-      operationId: expect.any(String),
-      rowVersion: 11,
-    });
+    expect(api.startTaskDirectly).toHaveBeenCalledWith(
+      "task",
+      { operationId: expect.any(String), rowVersion: 11 },
+      undefined,
+    );
   });
 
   it("autosaves edits to failed drafts", async () => {

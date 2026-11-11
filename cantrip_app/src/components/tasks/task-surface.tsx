@@ -516,8 +516,12 @@ export function TaskSurface({
   const starting = useMutation({
     mutationFn: async () => {
       const saved = await saveCurrentDraft();
+      const automaticTitleWorker =
+        settings?.preferences.autoNameTasks && worker?.online
+          ? worker
+          : undefined;
       if (taskWorkerEncryptionCanAttempt(workerEncryptionReadiness)) {
-        void ensureTaskWorkerEncryption({ worker })
+        const preparation = ensureTaskWorkerEncryption({ worker })
           .then((encryption) => {
             queryClient.setQueryData<WorkerSummary[]>(["workers"], (current) =>
               current?.map((candidate) =>
@@ -528,14 +532,17 @@ export function TaskSurface({
             );
           })
           .catch(() => undefined);
+        // The title request can read the brief as soon as admission commits.
+        if (automaticTitleWorker) await preparation;
       }
       const start = saved.planGoalEnabled
         ? startTaskPlanning
         : startTaskDirectly;
-      return start(chat.id, {
-        operationId: crypto.randomUUID(),
-        rowVersion: saved.rowVersion,
-      });
+      return start(
+        chat.id,
+        { operationId: crypto.randomUUID(), rowVersion: saved.rowVersion },
+        automaticTitleWorker,
+      );
     },
     onSuccess: async (updated) => {
       queryClient.setQueryData(["task", chat.id], updated);
