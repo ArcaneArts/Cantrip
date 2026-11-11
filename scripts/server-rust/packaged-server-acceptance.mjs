@@ -71,6 +71,9 @@ const report = {
 };
 const launcher = (name) =>
   path.join(artifact, name + (windows ? ".cmd" : ".sh"));
+// Double-quoted dotenv values interpret backslash-n and backslash-r. Use
+// Windows' other path separator for quoted fixture paths.
+const dotenvPath = (value) => (windows ? value.replaceAll("\\", "/") : value);
 const batch = (command) => windows && command.endsWith(".cmd");
 const runtimeCommand = (command, arguments_) => {
   if (batch(command)) {
@@ -227,7 +230,7 @@ try {
     await mkdir(data);
     const dotenv =
       [
-        `CANTRIP_DATA_DIR="${data}"`,
+        `CANTRIP_DATA_DIR="${dotenvPath(data)}"`,
         "CANTRIP_BOOTSTRAP_MODE=standalone",
         // Process environment and CLI flags must take precedence over the file.
         "CANTRIP_AUTH_MODE=invalid-overridden-by-process",
@@ -362,7 +365,7 @@ try {
       await mkdir(emptyRuntime);
       await writeFile(
         envFile,
-        dotenv + `PGLITE_RUNTIME_DIR="${emptyRuntime}"\n`,
+        dotenv + `PGLITE_RUNTIME_DIR="${dotenvPath(emptyRuntime)}"\n`,
       );
       await assert.rejects(
         launch({}, ["--data-dir", path.join(root, "invalid-runtime-profile")]),
