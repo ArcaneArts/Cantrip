@@ -39,6 +39,12 @@ The local source and server boundary audits verify all 17 generated contract
 graphs and maps, the current route inventory, real Rust authentication after
 restart and current HTTP authority boundaries.
 
+The [Linux Redis TLS comparison](RUST_SERVER_REDIS.md#packaged-linux-redis-tls)
+qualifies authenticated TLS, certificate trust, Redis process restart, worker
+routing, App Live replay and cross-peer sign-out through the optimized
+`1.1.2855` Linux ARM64 and x64 images and the compiled Node reference. Both
+images also pass the standalone suite on all three stores.
+
 The [packaged active Task recovery](RUST_SERVER_INFLIGHT_RECOVERY.md#packaged-112845-dependency-recovery)
 qualifies `1.1.2845` with the signed desktop worker on external PostgreSQL.
 All four Node and Rust pairings complete one original Task during Redis
@@ -533,10 +539,9 @@ all nine storage/authentication production pairs and real PostgreSQL timer
 failure/recovery and held-final-flush shutdown. Other production consumers and
 the original full replacement acceptance remain required.
 
-Continue those comparisons before final product/fault/performance and supported
-artifact acceptance. Rust default selection and production Node-server removal
-remain required. Schema equality, source pairing and zero route fallbacks do not
-substitute for those requirements.
+Continue those comparisons for the remaining product faults, performance and
+supported artifacts. Final acceptance requires executable coverage of those
+behaviors alongside the source inventory and schema comparisons.
 
 The [worker bridge comparison](RUST_SERVER_WORKER_BRIDGE.md) qualifies native
 diagnostics, packet sequence/callback repairs and connected shutdown handshakes.

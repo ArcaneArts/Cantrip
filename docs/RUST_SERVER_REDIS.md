@@ -345,3 +345,35 @@ the observed Rust/Rust shutdown took 5.4 ms and pairings containing Node took
 0.95–1.35 seconds. Ordinary offline/reconnect and healthy resource/native
 Agent/Goal/history/rolling checks also passed. Long-outage recovery, active job
 failover and network blackholes remain separate requirements.
+
+## Packaged Linux Redis TLS
+
+The optimized Linux ARM64 and x64 `1.1.2855` images from `67ed809d0` passed the
+account-mode shared-server comparison on PostgreSQL and Redis 8.10.3.
+Redis accepted authenticated connections on its TLS port with the plaintext
+port disabled. The Rust containers trusted the fixture CA through
+`SSL_CERT_FILE`. The compiled Node reference used `NODE_EXTRA_CA_CERTS`.
+On both architectures, a native container exited with a certificate
+verification error when the fixture CA was absent.
+
+The ARM64 matrix passed all four pairings, including the Node/Node control.
+The x64 image passed all three Rust-containing pairings. The compiled Node
+reference ran on the macOS ARM64 host. All 14 peers returned HTTP 503 while
+Redis was stopped and later shut down cleanly. After Redis restarted on the
+same address, each pairing kept
+both worker connection claims and completed two new remote WorkerLink
+requests. Two committed enrollments reached both App Live sockets and
+replayed with their original cursors and payloads. Some first enrollments
+arrived while a subscriber was still reconnecting. The report retains those
+attempts and confirms delivery and exact replay with fresh enrollments.
+All six Rust-containing pairings also passed the single-session and account-wide
+cross-peer teardown cases. The unchanged WorkerConnection used controlled
+acknowledgments. The comparison passed 48 scenario groups.
+
+Both images passed the standalone container suite on PGlite, bundled
+PostgreSQL and external PostgreSQL. Each mode verified the running executable,
+all 2,546 manifest files, retained settings, SQL export, hosted reopen and
+SIGTERM. The root filesystems stayed read-only, and Node was absent from the
+images. The x64 checks ran through Rosetta and verified the mapped x64 binary.
+The ledger records the exact image, archive and report checksums.
+[Coverage ledger](security/rust-server-coverage.json)
