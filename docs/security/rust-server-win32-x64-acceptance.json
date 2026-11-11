@@ -230,5 +230,183 @@
     "strictWindowsProfileFixtureClippy": true,
     "rustFormatting": true,
     "scopedPrettier": true
+  },
+  "currentRefresh": {
+    "sourceCommit": "81d9282a94833ba218fb4f2cb23b543c17a5530a",
+    "candidateVersion": "1.1.2833",
+    "retainedEvidenceDirectory": "rust-server-windows-worker-20261111-v1",
+    "guest": {
+      "os": "Windows 11 ARM64",
+      "build": 27754,
+      "serverExecutableArchitecture": "x64"
+    },
+    "standalone": {
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+      "manifestFilesVerified": 2278,
+      "server": {
+        "path": "bin/cantrip-server.exe",
+        "bytes": 110554465,
+        "sha256": "c4f48fc97246f617dbe7e433cbdc38a317cb6c8213b6bedd4c6b76785b1ecb92"
+      },
+      "archive": {
+        "path": "share/cantrip-server-1.1.2833-win32-x64.tar.gz",
+        "bytes": 97089058,
+        "sha256": "cc75b6d22c9f442c0e82c1650c76d7a3521a56a538b86a1d090413dd3ca86c1f"
+      },
+      "report": {
+        "path": "share/current-standalone-acceptance.json",
+        "bytes": 2705,
+        "sha256": "c0f3f435e247dc310c86a4e1b7cee4125360cf5c289af6fe6a16a288964aed7b"
+      },
+      "nodeAbsentFromRuntimePath": true
+    },
+    "pgliteCache": {
+      "passed": true,
+      "report": {
+        "path": "share/current-pglite-cache-acceptance.json",
+        "bytes": 586,
+        "sha256": "0a9676528e97ba800464087a764d6d62861ee4f72b35eeac414a3f3ac60fa329"
+      }
+    },
+    "workerControls": {
+      "verifiedCryptoModuleHashes": 125,
+      "node24X64ImportsFailed": [
+        "v24.22.1-win-x64 normal",
+        "v24.22.1-win-x64 jitless",
+        "v24.22.2-win-x64 normal",
+        "v24.22.2-win-x64 jitless"
+      ],
+      "node24Arm64ImportsPassed": ["v24.22.1-win-arm64", "v24.22.2-win-arm64"],
+      "x64Node24222BigIntExit": "0xc0000095",
+      "x64Node22234CryptoAndArithmeticPassed": true,
+      "directCurrentX64WorkerPaired": true,
+      "directCurrentX64WorkerVersion": "1.1.2833",
+      "reports": [
+        {
+          "path": "share/node-worker-crypto-matrix.json",
+          "bytes": 14030,
+          "sha256": "d57c9e9222d5a45d417fa13572ace5869066374a051ab529757f272da3ad83ae"
+        },
+        {
+          "path": "share/modular-squares-only.json",
+          "bytes": 835,
+          "sha256": "479ec5d3b04d02e902f9acc707c2887b664bc40ba3a965e06391c19062f09672"
+        },
+        {
+          "path": "share/node22-x64-control.json",
+          "bytes": 937,
+          "sha256": "d8f2c1365d1614275b46fc9c0c9e617a6a007f05b91ab8aaae0147094582fcda"
+        },
+        {
+          "path": "share/current-direct-pair.json",
+          "bytes": 7945,
+          "sha256": "27cc56c8ea16e2a474b2abdbb06d86fc285b0b9231c35e70c4ce54506306ac3d"
+        }
+      ]
+    },
+    "installerAndUpdaterAccepted": false,
+    "hostedDevelopmentRuns": 0,
+    "desktopSupervisorAttempts": [
+      {
+        "report": {
+          "path": "share/current-desktop-worker-x64-acceptance.json",
+          "bytes": 873,
+          "sha256": "28c5b84d6fcdb38a73824500218a1355dd141aa8aabd7c9f904bf0d5da76bdc3"
+        },
+        "modesPassed": [],
+        "failure": "[]"
+      },
+      {
+        "report": {
+          "path": "share/current-desktop-worker-arm64-acceptance.json",
+          "bytes": 927,
+          "sha256": "f2781c97eafe479fc09774627a082623af528f59c3b6d52928ab64aac17f9404"
+        },
+        "modesPassed": [],
+        "failure": "[]"
+      },
+      {
+        "report": {
+          "path": "share/current-desktop-worker-interactive-acceptance.json",
+          "bytes": 881,
+          "sha256": "8d85747d1d27146bf07f6bfe350016621338b1371c258f7c3cd07aba0c0f656d"
+        },
+        "modesPassed": [],
+        "failure": "[]"
+      },
+      {
+        "report": {
+          "path": "share/current-desktop-worker-native-home-acceptance.json",
+          "bytes": 885,
+          "sha256": "b4b2b5ab1ef41338763647c72b3844e5fca41305a06cbee19e4dd121358305b3"
+        },
+        "modesPassed": [],
+        "failure": "[]"
+      },
+      {
+        "report": {
+          "path": "share/current-desktop-worker-current-probe-acceptance.json",
+          "bytes": 903,
+          "sha256": "7c4cf777095af6d70b74db84bbf935cca1a461c55fc5858b63210b7e0cfe465c"
+        },
+        "modesPassed": [],
+        "failure": "[]"
+      },
+      {
+        "report": {
+          "path": "share/current-desktop-worker-stdin-fix-arm64.json",
+          "bytes": 919,
+          "sha256": "01542571920d2dc61948057948b894d2aaaadac973c4d6de93fe60ccffb745df"
+        },
+        "modesPassed": [],
+        "failure": "[]"
+      },
+      {
+        "report": {
+          "path": "share/current-desktop-worker-production-fix-arm64.json",
+          "bytes": 941,
+          "sha256": "c1f2d45fa4555c2a5cbb71ae804fdf3ac42f9a5a7cd3f9ef250457f52c788355"
+        },
+        "modesPassed": [],
+        "failure": "[]"
+      }
+    ],
+    "productionDesktopLauncher": {
+      "runtime": "win32-x64 Node 22.23.4",
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+      "currentWorkerJavaScript": true,
+      "reusedNativeWorkerToolsVersion": "1.1.2397",
+      "fullWorkerRunsPassed": 2,
+      "standardHarnessPassed": true,
+      "matchedStdinControl": {
+        "path": "share/current-desktop-worker-null-stdin-acceptance.json",
+        "bytes": 1344,
+        "sha256": "753230a08ba3adb2773fbbb6daaa9820c702b3259de758308905cebf30db23d8"
+      },
+      "reports": [
+        {
+          "path": "share/current-desktop-worker-stdin-fix-x64.json",
+          "bytes": 1354,
+          "sha256": "c46b276aaf3bc8e605d76fc759fef3ec85b7a30f2ba021c90639a44b1398fa9c"
+        },
+        {
+          "path": "share/current-desktop-worker-production-fix-x64.json",
+          "bytes": 1360,
+          "sha256": "6c9adf1ffcaf67f883c98bb9af495f1c49df30f9c44a41fc10458e0767c3ea79"
+        }
+      ],
+      "launcherSourceSha256": "1093ab897c213809de5f3b8afe7c232420d0dc72f1267071b5c5e6def7be6e26",
+      "nativeProbe": {
+        "path": "share/desktop_runtime_probe_windows_stdin_fix.exe",
+        "bytes": 821808,
+        "sha256": "d345af996114f1167b91f7e478bae0b1134edc71ebf6acc5526baf274684fe64"
+      }
+    },
+    "serverOnlyControl": {
+      "path": "share/current-desktop-server-control.json",
+      "bytes": 1243,
+      "sha256": "8cc32830b4a756935f0589909ccf0f8c85557dd86630e678c5dc23f141ee1082"
+    },
+    "focusedWindowsTestsPassed": 5
   }
 }
