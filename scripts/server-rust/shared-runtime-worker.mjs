@@ -5,7 +5,10 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
 import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
-import { workerLinkSessionSchema } from "../../packages/protocol/dist/index.js";
+import {
+  directAttachmentTicketSchema,
+  workerLinkSessionSchema,
+} from "../../packages/protocol/dist/index.js";
 import { eventually } from "./coordinated-fixture-tools.mjs";
 import { deadline } from "./live-sockets.mjs";
 import { request, requestHeaders } from "./shared-runtime-fixture-tools.mjs";
@@ -19,7 +22,7 @@ async function operation(peer, method, route, status) {
   return (await request(peer, method, route, undefined, status)).body;
 }
 
-async function relay(peer, session) {
+async function relay(peer, session, client = "main") {
   const url = new URL(
     `/api/worker-links/${session.sessionId}/connect`,
     peer.server.origin,
@@ -28,7 +31,7 @@ async function relay(peer, session) {
   url.searchParams.set("clientInstanceId", session.identity.clientInstanceId);
   url.searchParams.set("routeGeneration", String(session.routeGeneration));
   const socket = new WebSocket(url, {
-    headers: requestHeaders(peer, { csrf: false }),
+    headers: requestHeaders(peer, { client, csrf: false }),
   });
   const closed = new Promise((resolve) =>
     socket.once("close", (code, reason) =>
@@ -43,11 +46,126 @@ async function relay(peer, session) {
   return { socket, closed };
 }
 
+async function verifyAccountWideLogout(
+  peers,
+  controls,
+  sockets,
+  login,
+  result,
+) {
+  const [authority, remote] = peers;
+  await authority.observe("owner-second-session", "POST", "/api/auth/login", {
+    client: "secondary",
+    json: login,
+    status: 200,
+  });
+  const secondary = authority.client("secondary");
+  remote.clients.set("secondary", {
+    cookies: new Map(secondary.cookies),
+    csrf: secondary.csrf,
+  });
+
+  // The logout peer issues both tickets, including one to the remote worker.
+  const tickets = [];
+  const sessions = [];
+  for (const [i, client] of ["main", "secondary"].entries()) {
+    const control = controls[1 - i];
+    const options = { client };
+    const session = workerLinkSessionSchema.parse(
+      (
+        await request(
+          authority,
+          "POST",
+          `/api/workers/${control.workerId}/worker-link/sessions`,
+          { clientInstanceId: "account-logout-" + client },
+          201,
+          options,
+        )
+      ).body,
+    );
+    sessions.push(session);
+    const route = `/api/worker-links/${session.sessionId}`;
+    const ticket = directAttachmentTicketSchema.parse(
+      (
+        await request(
+          authority,
+          "POST",
+          route + "/direct",
+          undefined,
+          201,
+          options,
+        )
+      ).body,
+    );
+    assert.equal(ticket.binding.attachmentId, session.sessionId);
+    await request(
+      authority,
+      "POST",
+      route + "/direct-activate",
+      { capabilityId: ticket.binding.capabilityId },
+      204,
+      options,
+    );
+    tickets.push({ capabilityId: ticket.binding.capabilityId, control });
+    for (const peer of peers) sockets.push(await relay(peer, session, client));
+  }
+  assert.notEqual(
+    sessions[0].identity.accountSessionId,
+    sessions[1].identity.accountSessionId,
+  );
+
+  const logout = await request(
+    authority,
+    "POST",
+    "/api/auth/logout-all",
+    undefined,
+    200,
+  );
+  assert.deepEqual(logout.body, { revokedSessions: 2 });
+  const relayClosures = await Promise.all(
+    sockets.map((s) => deadline(s.closed, "account-wide relay revocation")),
+  );
+  for (const closed of relayClosures)
+    assert.deepEqual(closed, { code: 1008, reason: "Account sessions ended" });
+  sockets.length = 0;
+
+  for (const { capabilityId, control } of tickets) {
+    const reasons = control.commands
+      .filter(
+        (c) =>
+          c.type === "direct.capability.revoke" &&
+          c.capabilityId === capabilityId,
+      )
+      .map((c) => c.reason);
+    assert.deepEqual(reasons, ["Account sessions were revoked"]);
+  }
+  for (const peer of peers) {
+    for (const client of ["main", "secondary"])
+      await request(peer, "GET", "/api/workers", undefined, 401, { client });
+    assert.deepEqual(
+      (
+        await request(peer, "GET", "/api/workers", undefined, 200, {
+          client: "foreign",
+        })
+      ).body,
+      [],
+    );
+  }
+  result.accountWideRevocation = {
+    revokedSessions: logout.body.revokedSessions,
+    relayClosures,
+    directRevocations: tickets.length,
+  };
+  result.cases.push(
+    "account-wide logout revokes two database sessions, closes relays on both peers and removes two active direct capabilities while the foreign account stays signed in",
+  );
+}
+
 export async function verifySharedWorkers(
   peers,
   directory,
   result,
-  whileConnected,
+  { whileConnected, ownerLogin },
 ) {
   const workers = [],
     sockets = [],
@@ -78,8 +196,18 @@ export async function verifySharedWorkers(
       const worker = new WorkerConnection(
         config,
         async (command) => {
-          if (!command.type.startsWith("worker-link.")) return null;
+          if (
+            !command.type.startsWith("worker-link.") &&
+            !command.type.startsWith("direct.capability.")
+          )
+            return null;
           commands.push(command);
+          if (command.type === "direct.capability.prepare")
+            return {
+              accepted: true,
+              capabilityId: command.binding.capabilityId,
+            };
+          if (command.type === "direct.capability.revoke") return null;
           if (command.type === "worker-link.identity.resolve")
             return {
               serverId: bootstrap.server.id,
@@ -188,6 +316,7 @@ export async function verifySharedWorkers(
       });
       controls.push({
         workerId,
+        commands,
         async verifyRecovered() {
           const response = await request(
             remote,
@@ -213,6 +342,14 @@ export async function verifySharedWorkers(
       });
     }
     if (whileConnected) await whileConnected(controls);
+    if (ownerLogin)
+      await verifyAccountWideLogout(
+        peers,
+        controls,
+        sockets,
+        ownerLogin,
+        result,
+      );
   } finally {
     for (const socket of sockets) socket.socket.terminate();
     for (const worker of workers) worker.close();

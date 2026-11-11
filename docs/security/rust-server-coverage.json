@@ -74,11 +74,12 @@
         "evidence": [
           "scripts/server-rust/auth-compatibility.mjs",
           "scripts/server-rust/live-compatibility.mjs",
+          "scripts/server-rust/shared-runtime-http-compatibility.mjs",
           "docs/RUST_SERVER_WORKER_LINK_PRODUCTION.md"
         ],
-        "scope": "The native account handler revokes owner-scoped App Live, direct attachments, WorkerLink and session sockets. Account-wide logout matches the Node reference on all three stores. In the external PostgreSQL replay the Node reference observes the Rust revocation of two retained sessions.",
+        "scope": "The native account handler revokes owner-scoped App Live, direct attachments, WorkerLink and session sockets. Account-wide logout matches the Node reference on all three stores. All four shared-runtime pairings revoke two authenticated sessions, close four relays across two peers and deliver both direct capability revocations, one to a remote worker. Both tickets are issued by the peer that receives logout. The other account stays signed in.",
         "remaining": [
-          "Verify owner-wide WorkerLink and direct-attachment teardown together on current packaged artifacts and across shared server instances."
+          "Verify the combined owner-wide teardown on current packaged servers, including direct attachments issued on each server."
         ]
       },
       {
@@ -24035,15 +24036,21 @@
         "database": "shared external PostgreSQL (private fixture process)",
         "pairs": ["node/node", "node/rust", "rust/node", "rust/rust"],
         "authModes": ["none", "password", "accounts"],
-        "scenarioGroups": 168,
+        "scenarioGroups": 172,
         "cleanServerShutdowns": 24,
-        "revalidatedAtCommit": "40a9f1d9084c1736f97914359e90c2f901b42c49",
+        "runtimeSourceCommit": "3616e75b24ceba0da175921576c7847f0a32f10c",
+        "accountWideLogout": {
+          "pairingsPassed": 4,
+          "revokedSessionsPerPair": 2,
+          "closedRelaySocketsPerPair": 4,
+          "directRevocationCommandsPerPair": 2
+        },
         "currentReport": {
-          "path": "rust-server-windows-installer-20261111-v1/current-shared-runtime-http-40a9f1d90.json",
-          "sha256": "2b0d456e93f79e4713c99a0da383f0872060e80fb5c1c472ad1a0c72be650953"
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shared-account-revocation/full-matrix.json",
+          "sha256": "d413db4b6217ec32f0006a15b65b21be7d0b36396ef1b96e49712638abbec113"
         },
         "command": "node --import tsx scripts/server-rust/shared-runtime-http-compatibility.mjs --redis-bin /path/to/redis-server --report .qa/rust-shared-runtime/http.json",
-        "scope": "Complete production shared startup/HTTP/SQL/Live/WorkerTransport/WorkerLink graph. Actual enrollment/committed invalidations, replay, 256-publication bursts and eight concurrent64-event producers per peer; six seeded unexpired leases across five job services; unchanged WorkerConnection with controlled WorkerLink ACKs, actual two-peer relay revocation; cross-peer account cookies and tenant isolation; real short Redis SAVE/kill/restart with fail-fast readiness/publication, no offline event replay, original worker claims and new remote operations. All server exits clean. Not full worker resource/native job execution, lease renewal/expiry, long-outage shutdown, TLS, platforms, packaging or mixed rolling product readiness."
+        "scope": "Complete production shared startup/HTTP/SQL/Live/WorkerTransport/WorkerLink graph. Actual enrollment/committed invalidations, replay, 256-publication bursts and eight concurrent64-event producers per peer; six seeded unexpired leases across five job services; unchanged WorkerConnection with controlled WorkerLink ACKs, actual two-peer relay revocation; cross-peer account cookies, tenant isolation and owner-wide logout with actual relay closure and controlled direct capability acknowledgments; real short Redis SAVE/kill/restart with fail-fast readiness/publication, no offline event replay, original worker claims and new remote operations. All server exits clean. Not full worker resource/native job execution, lease renewal/expiry, long-outage shutdown, TLS, platforms, packaging or mixed rolling product readiness."
       }
     },
     "postgresConcurrencyAndTls": {

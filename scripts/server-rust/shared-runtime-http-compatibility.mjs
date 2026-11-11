@@ -13,6 +13,7 @@ import { postgresFixture } from "./postgres-fixture.mjs";
 import { redisFixture } from "./coordinated-fixture-tools.mjs";
 import { LiveProbe, currentUser } from "./live-sockets.mjs";
 import { heartbeat, projectLabel, password } from "./security-fixtures.mjs";
+import { directAttachmentWireFixtures } from "./direct-attachment-wire-fixtures.mjs";
 import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { verifySharedWorkers } from "./shared-runtime-worker.mjs";
 import { verifyLiveOrder } from "./shared-runtime-live.mjs";
@@ -35,12 +36,13 @@ const { values } = parseArgs({
   },
 });
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-shared-runtime-http-"));
+const ownerLogin = { email: "shared-owner@example.invalid", password };
 const report = {
   suite: "shared-runtime-http",
   root,
   completeReplacement: false,
   scope:
-    "Production runtime graph on actual shared PostgreSQL and private Redis. Committed HTTP enrollment, App Live fanout/replay/order, readiness, transient surface and six seeded active job-lease preservation, unchanged WorkerConnection with controlled WorkerLink ACKs and actual relay sockets. No resource execution, actual worker job renewal/expiry, platform or packaging claim.",
+    "Production runtime graph on actual shared PostgreSQL and private Redis. Committed HTTP enrollment, App Live fanout/replay/order, readiness, transient surface and six seeded active job-lease preservation, unchanged WorkerConnection with controlled WorkerLink and direct-attachment acknowledgments, actual relay sockets and account-wide revocation. No resource execution, actual worker job renewal/expiry, platform or packaging claim.",
   pairs: [],
 };
 async function save() {
@@ -124,9 +126,8 @@ async function run(pair, executable, profile, passwordHash) {
             json:
               profile === "accounts"
                 ? {
-                    email: "shared-owner@example.invalid",
+                    ...ownerLogin,
                     displayName: "Shared owner",
-                    password,
                   }
                 : { password },
           },
@@ -197,7 +198,13 @@ async function run(pair, executable, profile, passwordHash) {
         client: "worker",
         json: {
           code: peer.records.get("code").code,
-          heartbeat: { ...heartbeat, workerId },
+          heartbeat: {
+            ...heartbeat,
+            workerId,
+            directBroker:
+              directAttachmentWireFixtures.directAttachmentTicketSchema[0]
+                .broker,
+          },
         },
         status: 201,
       });
@@ -265,10 +272,13 @@ async function run(pair, executable, profile, passwordHash) {
     result.cases.push(
       "both peers replay original local and externally received committed publications",
     );
-    await verifySharedWorkers(peers, directory, result, async (controls) => {
-      await verifyLiveOrder(peers, live, result);
-      if (profile === "accounts") await verifyTenantLive(peers, live, result);
-      await verifyRedisInterruption(peers, live, redis, controls, result);
+    await verifySharedWorkers(peers, directory, result, {
+      ownerLogin: profile === "accounts" ? ownerLogin : undefined,
+      async whileConnected(controls) {
+        await verifyLiveOrder(peers, live, result);
+        if (profile === "accounts") await verifyTenantLive(peers, live, result);
+        await verifyRedisInterruption(peers, live, redis, controls, result);
+      },
     });
     result.passed = true;
   } catch (error) {
