@@ -279,6 +279,21 @@
         "sha256": "f97b232a14208e306de744061b436c6528e1b8562d00a67d350026bfed9c0dce"
       }
     },
+    "accountSignOut": {
+      "runtimePairsPassed": 9,
+      "cleanServerExits": 18,
+      "pairedHttpObservations": 843,
+      "pairedSocketObservations": 159,
+      "pairedWorkerCommands": 477,
+      "singleSessionPreservedSibling": true,
+      "accountWidePreservedOtherAccount": true,
+      "controlledWorkerAcknowledgments": true,
+      "report": {
+        "path": "packaged-session-revocation/matrix.json",
+        "bytes": 2245,
+        "sha256": "8ff8241fe802b915029c70b1743f97e8919d822722fa427f50f0eb24002005c2"
+      }
+    },
     "historicalProductRoundTrip": {
       "legacyVersion": "1.1.2733",
       "nativeVersion": "1.1.2845",
