@@ -17,6 +17,14 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [first-turn Chat and Agent title comparison](RUST_SERVER_INLINE_CHAT_LABEL_ACCEPTANCE.md)
+qualifies private title grants, first-turn inference and byte-for-byte title
+retention after restart on all three stores. An unusable label preserves the
+existing title and the response completes. A newly provisioned standalone
+Chat executes through its opaque scratch routing handle. The direct scratch
+resolve handler stays in the worker contract. Scoped worker command coverage
+accounts for 312 of 323 identities.
+
 The [automatic Task title comparison](RUST_SERVER_TASK_LABEL_ACCEPTANCE.md)
 fixes browser authorization for the worker's private label key. With that key,
 the current Rust server and Node reference complete standalone label generation

@@ -15061,11 +15061,27 @@
         "evidence": [
           "docs/RUST_SERVER_TASK_LABEL_ACCEPTANCE.md",
           "docs/security/rust-server-task-label-acceptance.json",
+          "docs/RUST_SERVER_INLINE_CHAT_LABEL_ACCEPTANCE.md",
+          "docs/security/rust-server-inline-chat-label-acceptance.json",
           "scripts/server-rust/actual-task-label-client.mjs",
+          "scripts/server-rust/actual-inline-chat-labels.mjs",
           "scripts/server-rust/automatic-title-cases.mjs"
         ],
         "remaining": [
-          "The direct Task producer qualifies real worker decryption, native model execution, private title persistence, Live invalidation, restart and separate Task completion on all three stores. Initial Chat/Agent title handoff and shared-server and final platform qualification retain their own evidence scope."
+          "The direct Task producer and inline first Chat/Agent handoff qualify full-worker inference, private title persistence, Live invalidation and restart on all three stores. Shared-server interruption and final platform qualification retain their own evidence scope."
+        ]
+      },
+      {
+        "command": "chat.scratch.resolve",
+        "implementation": "cantrip_worker/src/index.ts",
+        "status": "no-current-server-producer",
+        "evidence": [
+          "docs/RUST_SERVER_INLINE_CHAT_LABEL_ACCEPTANCE.md",
+          "docs/security/rust-server-inline-chat-label-acceptance.json",
+          "scripts/server-rust/actual-inline-chat-labels.mjs"
+        ],
+        "remaining": [
+          "The worker retains its original command decoder and handler. Both current servers provision the root and pass its stored opaque routing handle to the full worker for ordinary standalone Chat execution."
         ]
       }
     ]
