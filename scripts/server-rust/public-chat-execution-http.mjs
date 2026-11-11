@@ -860,17 +860,47 @@ try {
         await repository.close();
       }
       result.observations = normalized(result.observations);
+      const logicalIdentity = (chatId, operationId, generation) =>
+        JSON.stringify([chatId, operationId, generation]);
+      const expectedCompletions = modelWorker.turns.flatMap(({ command }) => {
+        const receipt = command.nativeCommandReceipt;
+        return receipt
+          ? [
+              logicalIdentity(
+                command.chatId,
+                receipt.operationId,
+                receipt.operationGeneration,
+              ),
+            ]
+          : [];
+      });
+      const actualCompletions = new Set(
+        result.rawCommands
+          .filter((command) => command.type === "chat.native-logical.complete")
+          .map((command) =>
+            logicalIdentity(
+              command.chatId,
+              command.rootOperationId,
+              command.rootOperationGeneration,
+            ),
+          ),
+      );
+      // The durable outbox can retry before its acknowledgement commits.
+      // Prove every distinct delivery belongs to an actual admitted turn.
+      assert.deepEqual(actualCompletions, new Set(expectedCompletions));
       result.executionCommandTypes = result.rawCommands
         .filter((command) =>
           [
             "chat.turn.rollback",
             "chat.queue.prepare",
-            "chat.native-logical.complete",
             "chat.native-control",
             "chat.steer",
           ].includes(command.type),
         )
         .map((command) => command.type)
+        .concat(
+          Array.from(actualCompletions, () => "chat.native-logical.complete"),
+        )
         .sort();
       result.diagnostics = processHandle.diagnostics();
       assert.equal(result.diagnostics.includes("private-public-chat-"), false);

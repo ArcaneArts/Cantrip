@@ -3726,11 +3726,13 @@
           "scripts/server-rust/public-chat-execution-http.mjs",
           "scripts/server-rust/public-chat-additional-cases.mjs",
           "scripts/server-rust/public-chat-execution-worker.mjs",
-          "cantrip_server_rs/tests/public_chat_contracts.rs"
+          "cantrip_server_rs/tests/public_chat_contracts.rs",
+          "docs/RUST_SERVER_AUTOMATION_RESUME_CONTRACTS.md",
+          "docs/security/rust-server-automation-resume-acceptance.json"
         ],
         "remaining": [
           "Local macOS full Source/native matrix passes268pairedHTTP observations per database across all9database/authentication profiles. Exact route regression, encrypted chat/queue and consumed-claim identity proofs, typed pause errors, committed partial failures, caller disconnect, actual worker disconnect and post-shutdown encrypted Task preservation pass. Model execution/rollback and pause acknowledgments are controlled boundaries.",
-          "Full public Task/Goal controls, actual native pause and unchanged-worker/client flows, failure/restart and supported-platform acceptance remain; this milestone is unmerged."
+          "Full public Task/Goal controls, actual native pause and unchanged-worker/client flows, failure/restart and supported-platform acceptance remain."
         ]
       },
       {
@@ -3823,11 +3825,13 @@
           "scripts/server-rust/public-chat-execution-http.mjs",
           "scripts/server-rust/public-chat-execution-worker.mjs",
           "cantrip_server_rs/src/chats/automation_pause.rs",
-          "cantrip_server_rs/src/task_scheduling/project_pause.rs"
+          "cantrip_server_rs/src/task_scheduling/project_pause.rs",
+          "docs/RUST_SERVER_AUTOMATION_RESUME_CONTRACTS.md",
+          "docs/security/rust-server-automation-resume-acceptance.json"
         ],
         "remaining": [
           "Local macOS full Source/native matrix passes268pairedHTTP observations per database across all9database/authentication profiles. Exact route regression, encrypted chat/queue and consumed-claim identity proofs, typed pause errors, committed partial failures, caller disconnect, actual worker disconnect and post-shutdown encrypted Task preservation pass. Model execution/rollback and pause acknowledgments are controlled boundaries.",
-          "Full public Task/Goal controls, actual native pause and unchanged-worker/client flows, failure/restart and supported-platform acceptance remain; this milestone is unmerged."
+          "Full public Task/Goal controls, actual native pause and unchanged-worker/client flows, failure/restart and supported-platform acceptance remain."
         ]
       },
       {
@@ -14704,6 +14708,34 @@
           "The public Task conversation path qualifies authenticated conversion, a rejected ciphertext and exact idempotent history. Goal continuation, attachment cases and other consumers retain separate scopes.",
           "Complete supported-platform, product, fault, coordination, migration, post-write rollback and performance acceptance remains open."
         ]
+      },
+      {
+        "command": "chat.automation.resume",
+        "implementation": "cantrip_server_rs/src/chats/goals/automation.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_AUTOMATION_RESUME_CONTRACTS.md",
+          "docs/security/rust-server-automation-resume-acceptance.json",
+          "scripts/server-rust/automation-resume-http-compatibility.mjs",
+          "scripts/server-rust/automation-resume-http-cases.mjs"
+        ],
+        "remaining": [
+          "The public project Chat pause route qualifies the true, false and malformed resume receipt branches, durable compensation and owner-scoped response completion. The native runtime reply is controlled. Complete worker/client, recovery and shipping acceptance remain open."
+        ]
+      },
+      {
+        "command": "chat.queue.execute",
+        "implementation": "cantrip_server_rs/src/chats/recovery/queue.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_AUTOMATION_RESUME_CONTRACTS.md",
+          "docs/security/rust-server-automation-resume-acceptance.json",
+          "scripts/server-rust/automation-resume-http-compatibility.mjs",
+          "scripts/server-rust/automation-resume-http-cases.mjs"
+        ],
+        "remaining": [
+          "The encrypted public queued Goal path qualifies the actual claim, worker codecs and managed SDK settlement with a controlled native result. Other native methods, autonomous Goal activation and complete worker/client shipping acceptance remain open."
+        ]
       }
     ]
   },
@@ -22561,7 +22593,8 @@
           "cantrip_server_rs/src/chats/roots/service.rs",
           "cantrip_server_rs/src/http/chat_lifecycle.rs",
           "cantrip_server_rs/src/http/chat_forks.rs",
-          "cantrip_server_rs/src/chats/relocations/service.rs"
+          "cantrip_server_rs/src/chats/relocations/service.rs",
+          "cantrip_server_rs/src/http/chat_execution/mod.rs"
         ],
         "status": "partial",
         "evidence": [
@@ -22580,7 +22613,9 @@
           "scripts/server-rust/chat-relocation-http-lifetimes.mjs",
           "scripts/server-rust/chat-relocation-postcommit-cases.mjs",
           "scripts/server-rust/chat-relocation-recovery-fence.mjs",
-          "docs/RUST_SERVER_CHAT_RELOCATIONS.md"
+          "docs/RUST_SERVER_CHAT_RELOCATIONS.md",
+          "docs/RUST_SERVER_AUTOMATION_RESUME_CONTRACTS.md",
+          "docs/security/rust-server-automation-resume-acceptance.json"
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",

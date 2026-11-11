@@ -1,0 +1,187 @@
+{
+  "schemaVersion": 1,
+  "baseCommit": "9d7475c485838c0ad472399d4524d6925afdc1b8",
+  "completeReplacement": false,
+  "candidateVersion": "1.1.2811",
+  "platform": "darwin-arm64",
+  "scope": "Production HTTP and App Live with unchanged WorkerConnection, worker queue codecs, managed native command session and HTTP SDK. Native resume replies and the Goal mutation result are controlled.",
+  "productionRustChanges": ["cantrip_server_rs/src/http/chat_execution/mod.rs"],
+  "beforeFix": {
+    "report": {
+      "path": ".qa/automation/pilot-v3.json",
+      "sha256": "598e04940128848c115e405dbff56ef52ccbd53aa16f0bcb6bcb6936821e386e"
+    },
+    "trace": {
+      "path": ".qa/automation/pilot-v3.requests.json",
+      "sha256": "6083864496346d41b70375712d85a1e8ffe6ca05eeb7e9363ff0fe97e349f4c7"
+    },
+    "ownerInvalidations": {
+      "node": 5,
+      "rust": 0
+    }
+  },
+  "counts": {
+    "tracedHttp": 612,
+    "cells": 9,
+    "pairedProductHttp": 108,
+    "pairedSdkHttp": 27,
+    "pairedCommands": 99,
+    "pairedLive": 117,
+    "pairedCurrentUserInvalidations": 45,
+    "retainedServerRestarts": 18,
+    "rawSqlSnapshots": 162,
+    "cryptographicChecks": 108,
+    "foreignLiveWitnesses": 6,
+    "broaderPairedHttp": 867,
+    "broaderCells": 9,
+    "rustUnitTests": 86,
+    "focusedWorkerTests": 157,
+    "mappedWorkerCommands": 288,
+    "unmappedWorkerCommands": 35
+  },
+  "matrixReports": [
+    {
+      "databaseMode": "pglite",
+      "report": {
+        "path": ".qa/automation/matrix-pglite-v4.json",
+        "sha256": "78d5fa1803a8bddce366fb2e395106af14d5a8d627a9757b07157c8e21a58493"
+      },
+      "trace": {
+        "path": ".qa/automation/matrix-pglite-v4.requests.json",
+        "sha256": "329b1c110e0e12453d128de90cc937747b66be593dfcd77d4924b348ecbac129"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "report": {
+        "path": ".qa/automation/matrix-bundled-postgres-v4.json",
+        "sha256": "f7ba85bd09942d367d2ba9979a0c656f426e48799b12eb2d9c1263a98f8a54cc"
+      },
+      "trace": {
+        "path": ".qa/automation/matrix-bundled-postgres-v4.requests.json",
+        "sha256": "2e9c9670badcc161ebacbc1a03afcac093f9366e3f85a701c750d98b8f19aa33"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "report": {
+        "path": ".qa/automation/matrix-postgres-v4.json",
+        "sha256": "7a8c378d653774fd833e602fbb5979a992beb4be0f04d9068c02ab8df20b861b"
+      },
+      "trace": {
+        "path": ".qa/automation/matrix-postgres-v4.requests.json",
+        "sha256": "f5b4650c537392aa5520fa60170c67a56806b0a20298ac786bdc49336f676fc8"
+      }
+    }
+  ],
+  "broaderReports": [
+    {
+      "databaseMode": "pglite",
+      "pairedHttp": 289,
+      "tracedHttp": 824,
+      "report": {
+        "path": ".qa/automation/public-pglite-v2.json",
+        "sha256": "b6bb739b7f312340856e4533ccdec8af59f29fdafc6521a2bf9d7208ec64606c"
+      },
+      "trace": {
+        "path": ".qa/automation/public-pglite-v2.requests.json",
+        "sha256": "1dd425bc5eab9d8d8d67338d3e8a2e4e64366b71c2910a2e5ac5b151df22ae7a"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "pairedHttp": 289,
+      "tracedHttp": 839,
+      "report": {
+        "path": ".qa/automation/public-bundled-postgres-v2.json",
+        "sha256": "7ec9d3bbcf7cac1f9bf8bdaa4394672b3ef6fdf8116bc10212db5b8b6c965fdd"
+      },
+      "trace": {
+        "path": ".qa/automation/public-bundled-postgres-v2.requests.json",
+        "sha256": "db8370e0e97ca41370de867797c177d93700deebf27e8baabab92123929bcc04"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "pairedHttp": 289,
+      "tracedHttp": 840,
+      "report": {
+        "path": ".qa/automation/public-postgres-v2.json",
+        "sha256": "f132ffadccbc07973fe59684ced9df143084ba94b1abf357d062c2c011c6d9f5"
+      },
+      "trace": {
+        "path": ".qa/automation/public-postgres-v2.requests.json",
+        "sha256": "c0c35f1085fbde723d1170f6aa7b5be39a9373ce1add5dce0083d35a8d55685c"
+      }
+    }
+  ],
+  "verified": {
+    "path": ".qa/automation/verified-matrix.json",
+    "sha256": "1a85b7feda08180c0b73b6d6e5d88e18917096053a323c3b42843dc6ea250d3e"
+  },
+  "verifier": {
+    "path": ".qa/automation/verify.py",
+    "sha256": "38fd985151a8af4627b28af7d15d13f6af73f4b28c11cc0aac6717e241d66733"
+  },
+  "validation": [
+    {
+      "path": ".qa/automation/clippy.log",
+      "sha256": "5325d7da12789dfb0a55f15abf85b63b846139571fd2717243f08999ce7c2286"
+    },
+    {
+      "path": ".qa/automation/server-test.log",
+      "sha256": "a40ad46781b6d328ba1527259dd7c271edac1901599c574ac3abdf637fe89341"
+    },
+    {
+      "path": ".qa/automation/worker-focused.log",
+      "sha256": "e5528a3fbc4ef72ff5a3aa73cebbb4d47aac5a402b90afe05ce90342372e5fb6"
+    },
+    {
+      "path": ".qa/automation/build-v3.log",
+      "sha256": "a6c78a02f4283f0cc154af44e23dab3bc6ea12d336f1e18a19ba920af786a327"
+    }
+  ],
+  "binaries": [
+    {
+      "path": ".qa/automation/helpers-v3/cantrip-server",
+      "sha256": "3000b20af18135f8d8e0d1bc42e6d48bfc38575629239d14d5464929c713d827"
+    },
+    {
+      "path": ".qa/automation/helpers-v3/http-sql-fixture",
+      "sha256": "613bbbbeb7ba10d0d981b0d00f986f23644ddc063adef0a05362ccf33c48b432"
+    }
+  ],
+  "sources": [
+    {
+      "path": "cantrip_server_rs/src/http/chat_execution/mod.rs",
+      "sha256": "4ed93cb055cf9d18de57429a172570bd21947d43e826ad29a82a01e059b42405"
+    },
+    {
+      "path": "scripts/server-rust/automation-resume-http-cases.mjs",
+      "sha256": "94e10ff880317c3defe1e3cf53b44631b141364e54a2b8105f5078bf265eea51"
+    },
+    {
+      "path": "scripts/server-rust/automation-resume-http-compatibility.mjs",
+      "sha256": "a6671b72ae61596ccf2ee42aed122822ae19e1d5a226b4f14908771afddc255b"
+    },
+    {
+      "path": "scripts/server-rust/public-chat-execution-http.mjs",
+      "sha256": "60d58b15ac1e0ca7329d3e2df001be362221d67d3078f3720b353ce3d96c9038"
+    }
+  ],
+  "newCommandMappings": ["chat.automation.resume", "chat.queue.execute"],
+  "aggregate": {
+    "exit": 1,
+    "workerPasses": 744,
+    "workerFailures": 2,
+    "unhandledRejections": 2,
+    "log": {
+      "path": ".qa/automation/pnpm-check.log",
+      "sha256": "6ca024aa363467d3254d1fca5402e4272111ea9fcd28d50ea11d2b9842ad007c"
+    },
+    "baselineVerification": {
+      "path": ".qa/automation/aggregate-verification.json",
+      "sha256": "f017c37d29d4d354ad46d2fa51263e413d5a70a8b404cd44fa7052f1b1ecbf4d"
+    }
+  }
+}
