@@ -126,8 +126,12 @@ const option = (name) => {
 const databaseMode = option("--database") ?? "pglite";
 const sharedPair = option("--server-pair");
 const cantripOsRun = process.argv.includes("--cantrip-os-run");
+const cantripOsSourceBackup = process.argv.includes(
+  "--cantrip-os-source-backup",
+);
 const singleProduct =
   cantripOsRun ||
+  cantripOsSourceBackup ||
   process.argv.includes("--production-server") ||
   process.argv.includes("--native-task-goal-worker-recovery") ||
   process.argv.includes("--native-worker-recovery") ||
@@ -168,6 +172,7 @@ const liveTaskDiagnostics =
   process.argv.includes("--task-diagnostics") ||
   process.argv.includes("--postgres-errors");
 const fullServerLogs =
+  cantripOsSourceBackup ||
   liveTaskDiagnostics ||
   process.argv.includes("--project-insights") ||
   process.argv.includes("--operational-status") ||
@@ -269,6 +274,12 @@ async function flow(
       ? path.join(dataDirectory, "mcp-test-home")
       : undefined;
     if (homeDirectory) await mkdir(homeDirectory, { recursive: true });
+    const backupResponseDirectory = path.join(
+      dataDirectory,
+      "test-backup-responses",
+    );
+    if (cantripOsSourceBackup)
+      await mkdir(backupResponseDirectory, { recursive: true });
     worker = launchActualWorker(
       fixture.workerFixture ?? fixture,
       dataDirectory,
@@ -279,6 +290,19 @@ async function flow(
         homeDirectory,
         environment: {
           ...(providerTest ? providerBoundary?.environment : {}),
+          ...(cantripOsSourceBackup
+            ? {
+                CANTRIP_TEST_BACKUP_RESPONSE_DIRECTORY: backupResponseDirectory,
+                NODE_OPTIONS: [
+                  process.env.NODE_OPTIONS,
+                  "--import=" +
+                    new URL("./os-backup-response-fault.mjs", import.meta.url)
+                      .href,
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              }
+            : {}),
           ...environment,
         },
         traceShutdown:
@@ -1210,12 +1234,14 @@ async function flow(
     }
     if (
       cantripOsRun ||
+      cantripOsSourceBackup ||
       process.argv.includes("--cantrip-os") ||
       process.argv.includes("--cantrip-os-system")
     ) {
       if (!worker) await startWorker();
       await actualCantripOsClient({
         runProjectId: cantripOsRun ? first.id : undefined,
+        backupProjectId: cantripOsSourceBackup ? first.id : undefined,
         page,
         fixture,
         root,
@@ -1559,6 +1585,7 @@ try {
     assert.deepEqual(runtime.projects, report.runtimes[0].projects);
     if (
       cantripOsRun ||
+      cantripOsSourceBackup ||
       process.argv.includes("--cantrip-os") ||
       process.argv.includes("--cantrip-os-system")
     )
