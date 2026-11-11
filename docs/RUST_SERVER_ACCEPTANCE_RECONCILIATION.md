@@ -107,8 +107,8 @@ also account for two retained legacy worker handlers. Scoped worker command
 coverage accounts for 306 of 323 identities.
 
 The [current Windows qualification](RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md)
-passes `1.1.2834` standalone across all three stores on the Windows x64
-guest and verifies 2,281 package files. The installed `1.1.2839` to
+passes `1.1.2845` standalone across all three stores on the Windows x64
+guest and verifies 2,281 package files and three SQL export checksums. The installed `1.1.2839` to
 `1.1.2841` signed update retains the PGlite profile, server identity and
 accepted write and exercises the full worker before and after installation.
 The installed app converts an archived Node profile and preserves all
