@@ -2,8 +2,8 @@
 
 Rust implements operation dispatch, preview open/Stop and internal worker agent
 authority. The worker remains Node and owns native execution and decryption.
-Node remains the default server. Complete replacement and supported-platform,
-package and full product acceptance remain unfinished.
+The original comparison ran before [the Rust default cutover](RUST_SERVER_DEFAULT_CUTOVER.md).
+Supported-platform shipping and the full replacement acceptance remain open.
 
 ## Behavior
 
@@ -93,6 +93,57 @@ All 76 Rust library tests and strict all-target Clippy pass locally. The standar
 `pnpm check` stops at unchanged Node source line limits: `build-app.ts`
 1,532/1,500 and `chat-turn-runtime.ts` 2,336/1,999; downstream aggregate stages
 did not run. No hosted development Actions were used.
+
+## Current browser and full-worker lifecycle
+
+The production Rust server and compiled Node reference run the existing
+account-authenticated browser SDK and full worker on macOS ARM64. The matrix
+covers PGlite, bundled PostgreSQL and external PostgreSQL. The native run
+reads the ScreenCaptureKit capability and exercises protected approval denial,
+feature disable, retained Stop and a fresh preview lease after re-enable.
+
+A separate run uses the native helper's explicit fake backend for positive
+capture. The browser requests inventory, opens a session and takes a
+snapshot. Each action requires a protected permission response and an
+explicit retry. The browser authenticates and decodes a 640 × 360 PNG. The
+server receives the image metadata and pixels in sealed envelopes. All three
+accepted approval IDs and their session scopes remain readable after a
+server and worker restart.
+
+The browser effects status carries `Cache-Control: no-store` and the
+worker reports the committed preference revision. A saved non-Off effect
+produces the fake backend's unsupported failure. Saving Off advances the
+revision and restores the native Off status. That revision survives restart.
+The first fake pilot expected the raw helper message. Its report preserves
+the worker's actual generic unsupported projection, which both servers return.
+
+The fake capture sequence also passes all four PostgreSQL and Redis pairings
+with the browser and worker on opposite servers. The 16 accepted runs record
+340 correlated worker command completions, 10 sealed snapshots, 30 retained
+session approvals, 40 clean server exits and 48 clean worker exits. All 83
+focused worker tests pass locally.
+
+These tests qualify the current `computer-use.effects.sync`,
+`computer-use.operation`, `computer-use.preview.open` and
+`computer-use.preview.stop` commands. The
+[acceptance record](security/rust-server-computer-use-lifecycle.json) links the
+local reports, native artifact identities and scoped outcomes. Positive physical
+capture, native input, Metal effect rendering and native-agent MCP acceptance
+remain open.
+
+```sh
+node --import tsx scripts/server-rust/actual-folder-client.mjs \
+  --production-server --computer-use --database pglite \
+  --report /absolute/path/to/cua-native.json
+
+node --import tsx scripts/server-rust/actual-folder-client.mjs \
+  --production-server --computer-use --computer-use-fake-capture \
+  --database pglite --report /absolute/path/to/cua-fake.json
+```
+
+Repeat for the two PostgreSQL modes. The fake-capture fixture uses a POSIX
+launcher and the bundled helper, or the executable selected by
+`CANTRIP_TEST_CUA_BIN`.
 
 ## Repeatable commands
 

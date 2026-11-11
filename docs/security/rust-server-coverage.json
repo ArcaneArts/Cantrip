@@ -14607,6 +14607,62 @@
         ]
       },
       {
+        "command": "computer-use.effects.sync",
+        "implementation": "cantrip_server_rs/src/http/settings.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_COMPUTER_USE.md",
+          "docs/security/rust-server-computer-use-lifecycle.json",
+          "scripts/server-rust/actual-computer-use-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Positive Metal rendering and supported desktop shipping require their own acceptance."
+        ]
+      },
+      {
+        "command": "computer-use.operation",
+        "implementation": "cantrip_server_rs/src/http/computer_use/operation.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_COMPUTER_USE.md",
+          "docs/security/rust-server-computer-use-lifecycle.json",
+          "scripts/server-rust/actual-computer-use-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Physical capture, native input, native-agent MCP and supported desktop shipping require their own acceptance."
+        ]
+      },
+      {
+        "command": "computer-use.preview.open",
+        "implementation": "cantrip_server_rs/src/http/computer_use/preview.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_COMPUTER_USE.md",
+          "docs/security/rust-server-computer-use-lifecycle.json",
+          "scripts/server-rust/actual-computer-use-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Physical desktop and native-agent execution placement and supported desktop shipping require their own acceptance."
+        ]
+      },
+      {
+        "command": "computer-use.preview.stop",
+        "implementation": "cantrip_server_rs/src/http/computer_use/preview.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_COMPUTER_USE.md",
+          "docs/security/rust-server-computer-use-lifecycle.json",
+          "scripts/server-rust/actual-computer-use-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Native-agent and physical desktop attachment loss and supported desktop shipping require their own acceptance."
+        ]
+      },
+      {
         "command": "computer-use.approval.respond",
         "implementation": "cantrip_server_rs/src/http/agent_interactions.rs",
         "status": "partial",
