@@ -226,7 +226,9 @@ try {
   );
   const activeRealPath = await realpath(active);
   const activation = journal.find(
-    (value) => value.destination === activeRealPath,
+    (value) =>
+      path.toNamespacedPath(value.destination) ===
+      path.toNamespacedPath(activeRealPath),
   );
   assert.ok(activation);
   assert.deepEqual(await files(activation.backup), sourceDigest);
@@ -393,23 +395,35 @@ try {
   let converterPid, nodePid;
   while (!nodePid) {
     assert.equal(child.exitCode, null, output);
-    const processes = (
-      await execute("ps", ["-axo", "pid=,ppid=,command="])
-    ).stdout
-      .split("\n")
-      .map((line) => line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/))
-      .filter(Boolean);
+    let processes;
+    if (process.platform === "win32") {
+      const { stdout } = await execute(
+        path.resolve(values["failure-fixture"]),
+        ["--processes"],
+      );
+      processes = JSON.parse(stdout).map((entry) => [null, ...entry]);
+    } else {
+      processes = (await execute("ps", ["-axo", "pid=,ppid=,command="])).stdout
+        .split("\n")
+        .map((line) => line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/))
+        .filter(Boolean);
+    }
     const owner = processes.find(
       (match) =>
         Number(match[2]) === child.pid &&
-        match[3].includes("--internal-profile-converter-owner"),
+        (process.platform === "win32"
+          ? match[3].toLowerCase() === path.basename(executable).toLowerCase()
+          : match[3].includes("--internal-profile-converter-owner")),
     );
     const node =
       owner &&
       processes.find(
         (match) =>
           Number(match[2]) === Number(owner[1]) &&
-          match[3].includes("dist/index.mjs"),
+          (process.platform === "win32"
+            ? match[3].toLowerCase() ===
+              path.basename(process.execPath).toLowerCase()
+            : match[3].includes("dist/index.mjs")),
       );
     if (node) {
       converterPid = Number(owner[1]);
@@ -422,7 +436,9 @@ try {
     if (!nodePid) await delay(10);
   }
   child.kill("SIGKILL");
-  assert.equal((await closed).signal, "SIGKILL");
+  const killed = await closed;
+  if (process.platform === "win32") assert.notEqual(killed.code, 0);
+  else assert.equal(killed.signal, "SIGKILL");
   for (;;) {
     const alive = (pid) => {
       try {

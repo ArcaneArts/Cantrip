@@ -9,7 +9,7 @@ import { setTimeout as delay } from "node:timers/promises";
 export async function startPackagedNodeServer(
   directory,
   environment,
-  { nodeExecutable, port = 0 } = {},
+  { nodeExecutable, port = 0, platform = process.platform } = {},
 ) {
   if (!port) {
     const listener = net.createServer();
@@ -29,11 +29,19 @@ export async function startPackagedNodeServer(
         "runtime",
         process.platform === "win32" ? "node.exe" : "node",
       ),
-    [path.join(directory, "dist/index.js")],
+    [
+      ...(platform === "win32"
+        ? [
+            "--import",
+            new URL("./legacy-node-shutdown.mjs", import.meta.url).href,
+          ]
+        : []),
+      path.join(directory, "dist/index.js"),
+    ],
     {
       cwd: directory,
       env: { ...environment, CANTRIP_SERVER_PORT: String(port) },
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [platform === "win32" ? "pipe" : "ignore", "pipe", "pipe"],
     },
   );
   let diagnostics = "",
@@ -84,8 +92,10 @@ export async function startPackagedNodeServer(
     diagnostics: () => diagnostics,
     events: [],
     async close({ shutdownTimeoutMs = 30_000 } = {}) {
-      if (child.exitCode === null && child.signalCode === null)
-        child.kill("SIGTERM");
+      if (child.exitCode === null && child.signalCode === null) {
+        if (platform === "win32") child.stdin.end();
+        else child.kill("SIGTERM");
+      }
       const timer = setTimeout(() => child.kill("SIGKILL"), shutdownTimeoutMs);
       try {
         const result = await completion;
