@@ -17,6 +17,12 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [terminal and replica qualification](RUST_SERVER_TERMINAL_REPLICA_ACCEPTANCE.md)
+passes real CLI scrollback and legacy replica deletion through the existing full
+worker on all three Rust storage modes. Current import and worktree-list controls
+also account for two retained legacy worker handlers. Scoped worker command
+coverage accounts for 306 of 323 identities.
+
 The [current Windows qualification](RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md)
 passes `1.1.2819` standalone across all three stores and verifies 2,278 package
 files. The production desktop supervisor passes server-only restart and owner

@@ -1,0 +1,290 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "serverSourceCommit": "020254f3c3aabb5e2e1e712c2c597a5cc73a5950",
+  "platform": "darwin-arm64",
+  "workerRuntime": "Node v24.22.1",
+  "codexVersion": "0.166.0",
+  "postgresVersion": "18.6",
+  "authentication": "accounts",
+  "servingExecutable": {
+    "path": "current-binaries/cantrip-server",
+    "bytes": 94116304,
+    "sha256": "129dfce547025b0bdfaaaf57d7fb4b86dc5cdd075b20012348d96b0ab4a97bf4"
+  },
+  "nativeCli": {
+    "path": "current-binaries/cantrip",
+    "bytes": 1332160,
+    "sha256": "7825db54c7c8cfbcac6c5c45fc0c3b19b860d137813764cfa946a17050458236"
+  },
+  "currentWorkerCommandCoverage": {
+    "mapped": 306,
+    "total": 323
+  },
+  "product": [
+    {
+      "mode": "pglite",
+      "report": {
+        "path": "pglite-v5.json",
+        "bytes": 695608,
+        "sha256": "48dca0bee907072561d41ad6eda99d1b10a67b066687e729ae668463d21f05ae"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "steps": 28,
+          "serverGenerations": 6,
+          "workerStops": 8,
+          "terminalSnapshots": 3,
+          "legacyReplicaDecisions": 2
+        },
+        {
+          "kind": "rust",
+          "steps": 28,
+          "serverGenerations": 6,
+          "workerStops": 8,
+          "terminalSnapshots": 3,
+          "legacyReplicaDecisions": 2
+        }
+      ]
+    },
+    {
+      "mode": "bundled-postgres",
+      "report": {
+        "path": "bundled-postgres-v5.json",
+        "bytes": 757356,
+        "sha256": "c9c3d4a249aed4dde56aa2dcae742cf02fda30f606f213e7cf7e47b410d03d6d"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "steps": 28,
+          "serverGenerations": 6,
+          "workerStops": 8,
+          "terminalSnapshots": 3,
+          "legacyReplicaDecisions": 2
+        },
+        {
+          "kind": "rust",
+          "steps": 28,
+          "serverGenerations": 6,
+          "workerStops": 8,
+          "terminalSnapshots": 3,
+          "legacyReplicaDecisions": 2
+        }
+      ]
+    },
+    {
+      "mode": "postgres",
+      "report": {
+        "path": "postgres-v5.json",
+        "bytes": 752899,
+        "sha256": "9bb7f993df5262689efc413a777f57a741b110c04a7eb4b2f1b17bc93634917c"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "steps": 28,
+          "serverGenerations": 6,
+          "workerStops": 8,
+          "terminalSnapshots": 3,
+          "legacyReplicaDecisions": 2
+        },
+        {
+          "kind": "rust",
+          "steps": 28,
+          "serverGenerations": 6,
+          "workerStops": 8,
+          "terminalSnapshots": 3,
+          "legacyReplicaDecisions": 2
+        }
+      ]
+    }
+  ],
+  "controls": [
+    {
+      "mode": "pglite",
+      "cli": {
+        "report": {
+          "path": "cli-worktree-list-pglite-v1.json",
+          "bytes": 2549315,
+          "sha256": "ce045278a96f52c481b1fd767078f63f28d84756f59d7b79a73300d93e4fc5cf"
+        },
+        "callsPerPeer": 108
+      },
+      "projectRemoval": {
+        "report": {
+          "path": "file-delete-wire-pglite-v1.json",
+          "bytes": 25366226,
+          "sha256": "c95eb87e890f34f9265dcbc08a956d3986f313c029223df9bc930f06691c59cd"
+        },
+        "callsPerPeer": 69
+      },
+      "replicaImport": {
+        "report": {
+          "path": "replica-producer-pglite-v1.json",
+          "bytes": 206841,
+          "sha256": "0ef721bd86992e9f75d5e16c559394c1474cdd3ad1f614a0b5f93a7e57192091"
+        },
+        "callsPerPeer": 47
+      }
+    },
+    {
+      "mode": "bundled-postgres",
+      "cli": {
+        "report": {
+          "path": "cli-worktree-list-bundled-postgres-v1.json",
+          "bytes": 2549234,
+          "sha256": "e982313b053f21f28fa707cfca5ddad93ceba31be9f06569e3c8b5f17b426bd3"
+        },
+        "callsPerPeer": 108
+      },
+      "projectRemoval": {
+        "report": {
+          "path": "file-delete-wire-bundled-postgres-v1.json",
+          "bytes": 25366236,
+          "sha256": "003e70d8442fff4cd4cea5b7683268de83072db4e7b62b24a5eedf3f89bbd3ea"
+        },
+        "callsPerPeer": 69
+      },
+      "replicaImport": {
+        "report": {
+          "path": "replica-producer-bundled-postgres-v1.json",
+          "bytes": 206851,
+          "sha256": "575e49f6fab5ccfe9666e51142e37dc43b0d089f0299cf583f28927be34cb2ad"
+        },
+        "callsPerPeer": 47
+      }
+    },
+    {
+      "mode": "postgres",
+      "cli": {
+        "report": {
+          "path": "cli-worktree-list-postgres-v1.json",
+          "bytes": 2549225,
+          "sha256": "d1bb9877035030d70e0ecf95ca0453544ce02fcf165bd36b53a0c4e41da48b36"
+        },
+        "callsPerPeer": 108
+      },
+      "projectRemoval": {
+        "report": {
+          "path": "file-delete-wire-postgres-v1.json",
+          "bytes": 25366228,
+          "sha256": "02bc9db7c7e2cab268928adcbc35cb56909ffedad95960513e19e522147dc454"
+        },
+        "callsPerPeer": 69
+      },
+      "replicaImport": {
+        "report": {
+          "path": "replica-producer-postgres-v1.json",
+          "bytes": 206843,
+          "sha256": "9ccd40d0a8744f27bffea6f3ae727dbb2af95b063fd620c15d3d30b5ece2186b"
+        },
+        "callsPerPeer": 47
+      }
+    }
+  ],
+  "hostedDevelopmentRuns": 0,
+  "retainedEvidenceDirectory": "rust-server-worker-remaining-contracts-20261110-v1",
+  "evidence": [
+    {
+      "path": "workspace-install.log",
+      "bytes": 844,
+      "sha256": "3ee3ed8066191a782c0c9b4e279e6702e89957e4ffeba1c3f63b4b47cd5fdc1c"
+    },
+    {
+      "path": "worker-build.log",
+      "bytes": 480,
+      "sha256": "f88181a35970f038f0b7f4406a6f6529c5308c3919f4049fd781d7700e51dae4"
+    },
+    {
+      "path": "reference-build.log",
+      "bytes": 269,
+      "sha256": "b1245caa96681ccfe949b13b5980c8d259a6544a488ee8b3d230f86d0670c00c"
+    },
+    {
+      "path": "app-dependencies-build.log",
+      "bytes": 548,
+      "sha256": "4fad3a7937fecfaa97b4ba0fe5f4cdf3b7414131d60ea149f97ecc4322a5abf9"
+    },
+    {
+      "path": "native-build.log",
+      "bytes": 1188,
+      "sha256": "c25bdd5c27f276ab5c26a911412c150790cd2f09933b0b52f3f1436b25d08e00"
+    },
+    {
+      "path": "cli-build.log",
+      "bytes": 1848,
+      "sha256": "9f08b0ea0659d8d7d802a4476452503f3ecc034cc0713805b0d4255e9104b480"
+    },
+    {
+      "path": "cua-build.log",
+      "bytes": 2014,
+      "sha256": "8f35d0ab26ec3336ede75a7a7e7313bfa49a8d3c0b19b83a5c3d5d55db05dea8"
+    },
+    {
+      "path": "database-fixture-build.log",
+      "bytes": 191,
+      "sha256": "a82bb7e36d5e5d0f663452063c94fb5fc4e0b95768f6dfeee39bb43601bf24c7"
+    },
+    {
+      "path": "codex-runtime-verification.log",
+      "bytes": 112,
+      "sha256": "3f47a6ffeaa6ae8b12f1e53a5c704d926c142f0c89352bb5cb26ae436f26311c"
+    },
+    {
+      "path": "current-binaries.sha256",
+      "bytes": 594,
+      "sha256": "f6f86e6b1d38e30e121de538b52492c6d2bf162d9bea6cc9b188594ed7ec96d0"
+    },
+    {
+      "path": "current-raw-baseline.log",
+      "bytes": 206,
+      "sha256": "934ac046f40a756d4a2a95ac5c305255c2ed58c96face93c78839a1a2847b1b4"
+    },
+    {
+      "path": "pglite-v1.json",
+      "bytes": 12016,
+      "sha256": "41628947a665d9cb3b2acd0f8cb4d3a92c14d9a513bb2a5a68aba6ec5213d9c5"
+    },
+    {
+      "path": "pglite-v2.json",
+      "bytes": 287291,
+      "sha256": "5e93be43f2379f88b762beeb237dc66decbb991c4d5daa51f10b40f50bf723ed"
+    },
+    {
+      "path": "pglite-v3.json",
+      "bytes": 25527,
+      "sha256": "bb292f8111a9a63391e58eb052e61eddee5769e0aa62dfdfd90960cf519f63a1"
+    },
+    {
+      "path": "worker-and-reference-dist.tar.gz",
+      "bytes": 4984193,
+      "sha256": "24918cad2a858a5ef3087ab2f8f113a8f7680403828aaf43e00dc818d49c740f"
+    },
+    {
+      "path": "codex-runtime.json",
+      "bytes": 1434,
+      "sha256": "4f337b848fd1bbdc8ad23d98f0dbe31989230d09e49c07d6b673440d7d24d69e"
+    },
+    {
+      "path": "fixture-evidence-verification.json",
+      "bytes": 1415,
+      "sha256": "f89c3455ddf2a9bac8117d58c3fa1938eb65c837a81b78621d12c74f062e44dd"
+    },
+    {
+      "path": "fixture-cleanup.json",
+      "bytes": 1176,
+      "sha256": "7d7968b7f3832284e4c6fc76f60f50a62efe8e5df5cbb62ce82b3f3c341bd0c6"
+    }
+  ],
+  "scope": "Local macOS ARM64 full-worker product comparison and controlled HTTP command evidence. Supported shipping artifacts, broader historical data and shared-instance recovery remain open.",
+  "fixtureArchive": {
+    "path": "fixture-evidence.tar.zst",
+    "bytes": 194448826,
+    "sha256": "01e262c317900e941fa70cfacd3961eb729da049cf66c8731b150c69a8afa6e7",
+    "verifiedRegularFiles": 40233,
+    "preservedReplicaFilesVerified": 6,
+    "deletedReplicaPathsAbsent": 6
+  }
+}

@@ -248,7 +248,13 @@ export async function cliHttpCases({
     configurationId,
     revision: runs.definitions.entry.revision,
   });
-  await call("worktree list", "worktree.list");
+  const worktreeList = await call("worktree list", "worktree.list");
+  assert.equal(
+    worktreeList.data.worktrees.find((worktree) => worktree.id === tree)
+      ?.isPrimary,
+    true,
+  );
+  assert.deepEqual(result.calls.at(-1).commands, []);
   await call("worktree status", "worktree.status");
   await call("worktree create invalid", "worktree.create", {}, 400);
   await call("worktree switch invalid", "worktree.switch", {}, 400);

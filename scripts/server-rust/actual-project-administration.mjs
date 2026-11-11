@@ -2,7 +2,7 @@
 // local Git checkout's catalog classification is seeded for GitHub-only policy.
 import assert from "node:assert/strict";
 import path from "node:path";
-import { readFile, writeFile, stat } from "node:fs/promises";
+import { cp, mkdir, readFile, writeFile, stat } from "node:fs/promises";
 import { repositoryFixture } from "./repository-fixture.mjs";
 import { literal } from "./project-target-state.mjs";
 import { startRetirementProbe } from "./actual-run-retirement.mjs";
@@ -13,6 +13,7 @@ export async function actualProjectAdministration({
   root,
   executable,
   workerId,
+  workerDataDirectory,
   attached,
   existingPath,
   create,
@@ -179,6 +180,73 @@ export async function actualProjectAdministration({
     "Existing user file remains intact.\n",
   );
   removed.push(local.id, attached.id);
+  const legacyReplicas = (resultState.legacyReplicas = []);
+  for (const deleteFiles of [false, true]) {
+    const directory = path.join(
+      workerDataDirectory,
+      "repositories",
+      "legacy-replica-" + crypto.randomUUID(),
+    );
+    await mkdir(path.dirname(directory), { recursive: true });
+    await cp(existingPath, directory, { recursive: true });
+    const project = await create(
+      "Legacy managed replica " + deleteFiles,
+      directory,
+    );
+    await waitJob(project.id, "succeeded");
+    await stopWorker();
+    await fixture.close();
+    const legacy = await repositoryFixture({
+      kind: fixture.kind,
+      root: path.join(root, fixture.name),
+      executable,
+      databaseMode: fixture.databaseMode,
+      databaseUrl: fixture.environment.DATABASE_URL,
+    });
+    try {
+      await legacy.seed(
+        `UPDATE projects SET origin_kind='github',folder_management=NULL,git_capability=true,github_capability=true,worktree_policy='agent-managed',github_repository_blind_index='legacy-replica-fixture' WHERE id=${literal(project.id)}`,
+      );
+      await legacy.seed(
+        `UPDATE project_sources SET source_kind='git',absolute_path=${literal(directory)},display_path=${literal(directory)},ownership_kind='cantrip',placement_mode='managed',requested_path=NULL,link_path=NULL WHERE project_id=${literal(project.id)}`,
+      );
+      await legacy.seed(
+        `UPDATE project_worktrees SET absolute_path=${literal(directory)},display_path=${literal(directory)} WHERE project_source_id IN (SELECT id FROM project_sources WHERE project_id=${literal(project.id)})`,
+      );
+    } finally {
+      await legacy.close();
+    }
+    await fixture.start({ port });
+    if (deleteFiles) {
+      await failure(
+        {
+          module: "/src/lib/api/projects.ts",
+          name: "removeProject",
+          args: [project.id, true],
+        },
+        503,
+      );
+      assert.equal(
+        await readFile(path.join(directory, "retained.txt"), "utf8"),
+        "Existing user file remains intact.\n",
+      );
+    }
+    await startWorker();
+    await remove(project.id, deleteFiles);
+    if (deleteFiles) await assert.rejects(stat(directory), { code: "ENOENT" });
+    else
+      assert.equal(
+        await readFile(path.join(directory, "retained.txt"), "utf8"),
+        "Existing user file remains intact.\n",
+      );
+    legacyReplicas.push({
+      projectId: project.id,
+      deleteFiles,
+      directory,
+      offlineDeletionRejected: deleteFiles,
+    });
+    removed.push(project.id);
+  }
   await stopWorker();
   await fixture.close();
   await fixture.start({ port });
@@ -194,6 +262,18 @@ export async function actualProjectAdministration({
         "Owned deletion acceptance\n",
       );
   }
+  for (const item of legacyReplicas) {
+    if (item.deleteFiles)
+      await assert.rejects(stat(item.directory), { code: "ENOENT" });
+    else
+      assert.equal(
+        await readFile(path.join(item.directory, "retained.txt"), "utf8"),
+        "Existing user file remains intact.\n",
+      );
+  }
+  result.steps.push(
+    "legacy Cantrip-owned replicas use actual worker file deletion, reject offline cleanup, preserve files when requested and retain both outcomes after server and worker restart",
+  );
   result.steps.push(
     "actual project deletion preserves or removes managed files as requested, retains user files and survives production server/worker restart with no deleted project returning",
   );

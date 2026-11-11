@@ -440,6 +440,13 @@ export async function replicaConnectedCases({
         "admission, ordered valid progress and completion; stale events must not publish",
       );
     assert.equal(commands.length, 5);
+    assert.deepEqual(
+      commands
+        .map(({ command }) => command)
+        .filter((command) => command.type === "project.replica.provision")
+        .map((command) => command.jobId),
+      [first.id, second.id],
+    );
     for (const { command } of commands) {
       assert.equal(command.projectId, id);
       assert.deepEqual(command.repository, { nameWithOwner: repository });
