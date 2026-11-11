@@ -17,6 +17,13 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [managed automation resume qualification](RUST_SERVER_AUTOMATION_RESUME_CONTRACTS.md)
+restores current-user Live invalidations after successful public Chat execution
+mutations. All nine storage and authentication combinations match 108 product
+HTTP observations, 27 paired worker SDK requests and 117 Live events, with 18
+retained server restarts. Scoped worker command coverage is 288 of 323. Native
+resume and Goal mutation results are controlled.
+
 The [current Task execution qualification](RUST_SERVER_TASK_EXECUTION_CONTRACTS.md)
 compares scheduled direct and initial planning operations and protected
 follow-ups across all nine storage and authentication combinations. The

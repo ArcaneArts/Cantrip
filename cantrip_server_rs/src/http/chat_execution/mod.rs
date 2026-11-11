@@ -11,6 +11,7 @@ mod submit;
 use super::{
     body, json_response,
     middleware::{self, Context},
+    on_response,
     settings::{error, output, parse},
 };
 use crate::{
@@ -307,13 +308,25 @@ async fn handle(
         .expect("Authenticated execution owner")
         .id
         .clone();
-    let execution = Execution::new(service.clone(), owner);
+    let event_chat =
+        if matches!(method, Method::POST | Method::PATCH) && path.starts_with("/api/chats/") {
+            params.get("chatId").cloned()
+        } else {
+            None
+        };
+    let execution = Execution::new(service.clone(), owner.clone());
     match service
         .scratch_roots
         .owned(execute(execution, params, method, input, query, path))
         .await
     {
-        Ok(response) => response,
+        Ok(response) => {
+            let Some(chat) = event_chat.filter(|_| response.status().as_u16() < 400) else {
+                return response;
+            };
+            let live = service.live.clone();
+            on_response::completed(response, move || live.invalidate(&owner, "chat", &chat))
+        }
         Err(cause) => middleware::failure(&service, &ctx.id, &cause),
     }
 }
