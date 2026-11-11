@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "completeReplacement": false,
-  "candidateVersion": "1.1.2817",
-  "sourceCommit": "f902c5328e99c410c6869f0ad8695d483ce5c6a2",
+  "candidateVersion": "1.1.2831",
+  "sourceCommit": "dd4579f79b47fa1edca2924ad58bd31b0db3a0e6",
   "platform": "macOS ARM64",
   "standalone": {
     "version": "1.1.2817",
@@ -24,67 +24,6 @@
     "homebrewAccessDenied": true,
     "artifactWritesDenied": true,
     "embeddedRuntimeFallback": true
-  },
-  "signedUpdate": {
-    "complete": false,
-    "mode": "pglite",
-    "previousVersion": "1.1.2786",
-    "candidate": {
-      "previousVersion": "1.1.2786",
-      "version": "1.1.2817",
-      "baselineAppSha256": "cd726a8964a4bb17a73ef4936d6ae518b5fa8ed1540f0ec0d740146a97416e20",
-      "candidateAppSha256": "895ccd482630b3057df23a40b5754e597b7962b154a097854fc12821c510b296",
-      "candidateServerSha256": "a8ce66619a4ee7da0cae516640887690677c5266765bb86b5662ae74e0c1f804",
-      "signedPackageSha256": "03bd020985591c41e77925c05ccc6e57dd877f3d627b4eb8721caca5eda6577e"
-    },
-    "archive": {
-      "path": "run-v2/candidate/Cantrip Server Update QA.app.tar.gz",
-      "bytes": 340716983,
-      "sha256": "03bd020985591c41e77925c05ccc6e57dd877f3d627b4eb8721caca5eda6577e"
-    },
-    "archiveSignature": {
-      "path": "run-v2/candidate/Cantrip Server Update QA.app.tar.gz.sig",
-      "bytes": 428,
-      "sha256": "9a030311276e8a77ac8522d39916559c95a322fe058b004ac6c78d3f344a6650"
-    },
-    "alteredArchiveRejection": "update_signature_invalid",
-    "validArchiveInstalledAndRestarted": true,
-    "verifiedHttps": true,
-    "profileAndCatalogReopen": {
-      "mode": "pglite",
-      "version": "1.1.2817",
-      "identity": "b02eba80-d335-40e6-a5a5-128c8bc9653f",
-      "workerId": "desktop-local",
-      "retainedTheme": "dark",
-      "actualApp": "895ccd482630b3057df23a40b5754e597b7962b154a097854fc12821c510b296",
-      "actualServer": "a8ce66619a4ee7da0cae516640887690677c5266765bb86b5662ae74e0c1f804",
-      "continuity": {
-        "passed": true,
-        "installationRetained": true,
-        "deviceKeysRetained": 1,
-        "accountBindingsRetained": 4,
-        "deviceRecordsSha256": "99307936649390a5bd879ad0067d307891415b2ff471e9c4263ed2034e831aae",
-        "bindingRecordsSha256": "3fcb9f056cf87b2ae2bb7ca980e5cd9d43b6affd072f7c94995b37afd340ccbd",
-        "comparedBindingFields": [
-          "server_id",
-          "owner_id",
-          "principal_id",
-          "key_alias",
-          "grant_revision",
-          "master_key_revision"
-        ],
-        "operationalMetadataAllowed": [
-          "account_binding.updated_at",
-          "catalog_meta.revision"
-        ],
-        "privateKeysRetrieved": false,
-        "catalogOrKeychainModified": false
-      },
-      "updaterEncryptionReady": false,
-      "cleanSupervisionShutdown": true
-    },
-    "encryptedRendererRestart": "macOS Keychain denied the new ad-hoc app access to the retained item",
-    "remainingDatabaseModes": ["bundled-postgres", "postgres"]
   },
   "localChecks": {
     "updaterPackagingAndInstallationTestsPassed": 25,
@@ -147,5 +86,112 @@
       "bytes": 3524,
       "sha256": "1d11d3d9198c1e360645d2a0e43b66974b08f7aba7e48777d1d37fa137907fa9"
     }
-  ]
+  ],
+  "signedUpdate": {
+    "complete": true,
+    "sourceCommit": "dd4579f79b47fa1edca2924ad58bd31b0db3a0e6",
+    "platform": "macOS ARM64 27.0.1 (26A434)",
+    "sameDeveloperIdRequirement": true,
+    "runtimeMachOBinariesSignedPerBundle": 198,
+    "portableWorkerNodeVersion": "24.22.1",
+    "candidate": {
+      "previousVersion": "1.1.2786",
+      "version": "1.1.2831",
+      "baselineAppSha256": "7426ce52efac767878e02879c72fdaa6f9c8896c88a868ac7277aaa97f038356",
+      "candidateAppSha256": "43728c07117d891acec901f4397420c5a5b5ca5bdac1f81781a7e8dcbfc85036",
+      "candidateRuntimeInputSha256": "dd965841f58189a9dd9d5f82a0a0e3f2c47c04e89111da691b8d77176731c347",
+      "candidateServerSha256": "e587d5eaf09a173775ff453122f83881aeb41b09e6f0b9d4ec90d832119ed172",
+      "signedPackageSha256": "720357910055af28b4bc6b44ac6337e9cfb52bf67bb015eac5761bc5e0b62a68",
+      "codeSigningRequirement": "designated => identifier \"art.cantrip.rust-qa-updater-ac65eb04-d640-4bb0-91b8-9ad4c5b0e095\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = RK2CYG6XRV"
+    },
+    "archive": {
+      "path": "run-v5/candidate/Cantrip Server Signed Update QA.app.tar.gz",
+      "bytes": 338486513,
+      "sha256": "720357910055af28b4bc6b44ac6337e9cfb52bf67bb015eac5761bc5e0b62a68"
+    },
+    "archiveSignature": {
+      "path": "run-v5/candidate/Cantrip Server Signed Update QA.app.tar.gz.sig",
+      "bytes": 436,
+      "sha256": "6c410b5fd7e9ad90e0cf096479e69d8229bee5a3670d42880704b8f017516b54"
+    },
+    "report": {
+      "path": "run-v5/report.json",
+      "bytes": 10928,
+      "sha256": "432d39477491de967aa81c0055581775153a345593c7bd1c5065962ecee91489"
+    },
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "verifiedHttps": true,
+    "alteredArchiveRejection": "update_signature_invalid",
+    "encryptedRendererReopens": 3,
+    "workerReconnections": 3,
+    "retainedAcceptedWrites": 3,
+    "catalogContinuity": 3,
+    "localChecks": {
+      "updaterPackagingAndCatalogTestsPassed": 34,
+      "firstRunEncryptionTestsPassed": 41,
+      "hostedDevelopmentRuns": 0
+    },
+    "retainedEvidenceDirectory": "rust-server-desktop-signed-keychain-20261111-v1"
+  },
+  "earlierAdHocSignedUpdate": {
+    "complete": false,
+    "mode": "pglite",
+    "previousVersion": "1.1.2786",
+    "candidate": {
+      "previousVersion": "1.1.2786",
+      "version": "1.1.2817",
+      "baselineAppSha256": "cd726a8964a4bb17a73ef4936d6ae518b5fa8ed1540f0ec0d740146a97416e20",
+      "candidateAppSha256": "895ccd482630b3057df23a40b5754e597b7962b154a097854fc12821c510b296",
+      "candidateServerSha256": "a8ce66619a4ee7da0cae516640887690677c5266765bb86b5662ae74e0c1f804",
+      "signedPackageSha256": "03bd020985591c41e77925c05ccc6e57dd877f3d627b4eb8721caca5eda6577e"
+    },
+    "archive": {
+      "path": "run-v2/candidate/Cantrip Server Update QA.app.tar.gz",
+      "bytes": 340716983,
+      "sha256": "03bd020985591c41e77925c05ccc6e57dd877f3d627b4eb8721caca5eda6577e"
+    },
+    "archiveSignature": {
+      "path": "run-v2/candidate/Cantrip Server Update QA.app.tar.gz.sig",
+      "bytes": 428,
+      "sha256": "9a030311276e8a77ac8522d39916559c95a322fe058b004ac6c78d3f344a6650"
+    },
+    "alteredArchiveRejection": "update_signature_invalid",
+    "validArchiveInstalledAndRestarted": true,
+    "verifiedHttps": true,
+    "profileAndCatalogReopen": {
+      "mode": "pglite",
+      "version": "1.1.2817",
+      "identity": "b02eba80-d335-40e6-a5a5-128c8bc9653f",
+      "workerId": "desktop-local",
+      "retainedTheme": "dark",
+      "actualApp": "895ccd482630b3057df23a40b5754e597b7962b154a097854fc12821c510b296",
+      "actualServer": "a8ce66619a4ee7da0cae516640887690677c5266765bb86b5662ae74e0c1f804",
+      "continuity": {
+        "passed": true,
+        "installationRetained": true,
+        "deviceKeysRetained": 1,
+        "accountBindingsRetained": 4,
+        "deviceRecordsSha256": "99307936649390a5bd879ad0067d307891415b2ff471e9c4263ed2034e831aae",
+        "bindingRecordsSha256": "3fcb9f056cf87b2ae2bb7ca980e5cd9d43b6affd072f7c94995b37afd340ccbd",
+        "comparedBindingFields": [
+          "server_id",
+          "owner_id",
+          "principal_id",
+          "key_alias",
+          "grant_revision",
+          "master_key_revision"
+        ],
+        "operationalMetadataAllowed": [
+          "account_binding.updated_at",
+          "catalog_meta.revision"
+        ],
+        "privateKeysRetrieved": false,
+        "catalogOrKeychainModified": false
+      },
+      "updaterEncryptionReady": false,
+      "cleanSupervisionShutdown": true
+    },
+    "encryptedRendererRestart": "macOS Keychain denied the new ad-hoc app access to the retained item",
+    "remainingDatabaseModes": ["bundled-postgres", "postgres"]
+  }
 }

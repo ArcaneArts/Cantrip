@@ -87,7 +87,7 @@ The exported native distribution and guest profile/log archive accompany the
 reports. Development validation ran locally.
 
 The original replacement goal remains open for the full Windows desktop and
-installer/update matrix, encrypted macOS signed updates, remaining product and
-coordination interruption cases, broader historical profiles and representative
+installer/update matrix, remaining product and coordination interruption
+cases, broader historical profiles and representative
 performance. The [acceptance reconciliation](RUST_SERVER_ACCEPTANCE_RECONCILIATION.md)
 tracks the current scope.

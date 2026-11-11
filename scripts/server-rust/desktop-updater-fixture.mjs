@@ -15,7 +15,6 @@ const appRequire = createRequire(
   path.join(repository, "cantrip_app/package.json"),
 );
 const tauri = appRequire.resolve("@tauri-apps/cli/tauri.js");
-const productName = "Cantrip Server Update QA";
 export const updaterIdentifier = "art.cantrip.rust-qa-recovery";
 
 export async function runLogged(command, args, { cwd, env, log }) {
@@ -43,7 +42,17 @@ export async function runLogged(command, args, { cwd, env, log }) {
   }
 }
 
-export async function prepareUpdaterFixture({ directory, bridge, endpoint }) {
+export async function prepareUpdaterFixture({
+  directory,
+  bridge,
+  endpoint,
+  identifier,
+  signingIdentity,
+}) {
+  const productName =
+    identifier === updaterIdentifier
+      ? "Cantrip Server Update QA"
+      : "Cantrip Server Signed Update QA";
   const trust = path.join(directory, "trust");
   await mkdir(trust);
   await execute("openssl", [
@@ -194,7 +203,7 @@ globalThis.__qaUpdaterVersion = qaGetVersion;
     CARGO_INCREMENTAL: "0",
     CARGO_BUILD_JOBS: "2",
     CARGO_PROFILE_RELEASE_DEBUG: "0",
-    APPLE_SIGNING_IDENTITY: "-",
+    APPLE_SIGNING_IDENTITY: signingIdentity,
     TAURI_SIGNING_PRIVATE_KEY: key,
     TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "",
   };
@@ -209,11 +218,11 @@ globalThis.__qaUpdaterVersion = qaGetVersion;
     delete environment[name];
   const config = {
     productName,
-    identifier: updaterIdentifier,
+    identifier,
     build: { beforeBuildCommand: "", frontendDist: frontend },
     bundle: {
       createUpdaterArtifacts: true,
-      macOS: { signingIdentity: "-" },
+      macOS: { signingIdentity },
     },
     plugins: { updater: { endpoints: [endpoint], pubkey } },
   };
@@ -228,12 +237,32 @@ export async function buildUpdaterBundle(
   await rm(resources, { recursive: true, force: true });
   await mkdir(path.dirname(resources), { recursive: true });
   await execute("cp", ["-cR", runtime, resources]);
+  const signingIdentity = prepared.config.bundle.macOS.signingIdentity;
+  if (signingIdentity !== "-")
+    await runLogged(
+      process.execPath,
+      [
+        path.join(repository, "scripts/sign-macos-runtime.mjs"),
+        "--directory",
+        resources,
+        "--identity",
+        signingIdentity,
+      ],
+      {
+        cwd: repository,
+        env: prepared.environment,
+        log: path.join(directory, label + "-runtime-signing.log"),
+      },
+    );
   const config = {
     ...prepared.config,
     version,
     bundle: {
       ...prepared.config.bundle,
-      macOS: { signingIdentity: "-", bundleVersion: version.split(".").at(-1) },
+      macOS: {
+        ...prepared.config.bundle.macOS,
+        bundleVersion: version.split(".").at(-1),
+      },
     },
   };
   await runLogged(
