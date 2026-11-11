@@ -29097,7 +29097,7 @@
     },
     "currentPopulatedProfilePerformance": {
       "status": "partial",
-      "scope": "Standalone macOS ARM64, 64 projects, 256 chats and 31,624 encrypted messages. The five-cell Node/Rust baseline passed 130 runs. The optimized 1.1.2857 package and Rust 1.1.2854 baseline passed 156 invocations across all three stores with exact Rust response bytes and equivalent decoded Node project, chat catalog, page and full-history payloads.",
+      "scope": "Standalone macOS ARM64, 64 projects, 256 chats and 31,624 encrypted messages. The latest optimized 1.1.2858 package, 1.1.2857 native baseline and compiled Node reference completed 208 invocations with exact Rust response bytes and equivalent decoded Node project, chat catalog, page and full-history payloads.",
       "evidence": [
         "docs/RUST_SERVER_INTEGRATED_ARTIFACT_ACCEPTANCE.md#populated-profile-performance"
       ],
@@ -29115,8 +29115,20 @@
         "postgres": 30.73,
         "bundled-postgres": 30.6
       },
+      "typedHistoryReport": {
+        "path": "wire-string-performance/verified-populated-performance-measured-v3.json",
+        "sha256": "b0183bb5a8e2c0a2958171f00a101995f20baba4ed7581f13fc65c094c54553d",
+        "rustBaselineVersion": "1.1.2857",
+        "candidateVersion": "1.1.2858",
+        "invocationsPassed": 208,
+        "completeWorkloadMedianImprovementPct": {
+          "pglite": 7.04,
+          "postgres": 6.75,
+          "bundled-postgres": 5.78
+        },
+        "externalPostgresTradeoff": "Full history median 26.52 ms versus 23.82 ms for the compiled Node reference. The p95 across run medians is 27.48 ms versus 31.96 ms. The 50-message page and complete workload are faster, and eight-client throughput reaches 1,950 versus 684 requests per second."
+      },
       "remaining": [
-        "Full encrypted history remains slower than the earlier Node reference in both comparable stores. External PostgreSQL project and paged reads also remain slower.",
         "Finish representative performance and recovery acceptance on the final shipping artifacts."
       ]
     },

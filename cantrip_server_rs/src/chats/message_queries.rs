@@ -2,9 +2,98 @@
 use super::{Repository, catalog, messages};
 use crate::{
     database::Row,
-    wire::{Value, coercion::truthy, value::json},
+    wire::{
+        JsString, Value,
+        coercion::truthy,
+        value::{Object, json},
+    },
 };
 use anyhow::{Context, Result};
+use postgres_types::Json;
+use std::sync::OnceLock;
+
+#[derive(Clone, Copy)]
+enum MessageColumn {
+    Text,
+    Json,
+    Sequence,
+    Boolean,
+    Timestamp,
+}
+
+struct MessageProjection {
+    select: String,
+    columns: Vec<(JsString, MessageColumn)>,
+}
+
+impl MessageProjection {
+    fn stored() -> &'static Self {
+        use MessageColumn::*;
+        const COLUMNS: &[(&str, MessageColumn)] = &[
+            ("id", Text),
+            ("chat_id", Text),
+            ("worktree_id", Text),
+            ("scratch_root_id", Text),
+            ("execution_lane_id", Text),
+            ("sequence", Sequence),
+            ("role", Text),
+            ("mode", Text),
+            ("content", Json),
+            ("protected_content", Json),
+            ("task_protected_content", Json),
+            ("attachment_ids", Json),
+            ("task_attachment_ids", Json),
+            ("model_id", Text),
+            ("model_route_id", Text),
+            ("provider_id", Text),
+            ("provider_name", Text),
+            ("provider_model_name", Text),
+            ("reasoning_effort", Text),
+            ("applied_reasoning_effort", Text),
+            ("reasoning_adjusted", Boolean),
+            ("idempotency_key", Text),
+            ("created_at", Timestamp),
+        ];
+        static PROJECTION: OnceLock<MessageProjection> = OnceLock::new();
+        PROJECTION.get_or_init(|| Self {
+            select: COLUMNS
+                .iter()
+                .map(|(name, kind)| match kind {
+                    // Keep PostgreSQL's JSON spelling of historical timestamps.
+                    Timestamp => format!("to_jsonb(m.{name}) #>> '{{}}'"),
+                    _ => format!("m.{name}"),
+                })
+                .collect::<Vec<_>>()
+                .join(","),
+            columns: COLUMNS
+                .iter()
+                .map(|&(name, kind)| (name.into(), kind))
+                .collect(),
+        })
+    }
+
+    fn decode(&self, row: &Row) -> Result<Value> {
+        let mut message = Object::with_capacity(self.columns.len());
+        for (index, (name, column)) in self.columns.iter().enumerate() {
+            let value = match column {
+                MessageColumn::Text | MessageColumn::Timestamp => row
+                    .get::<Option<&str>>(index)?
+                    .map_or(Value::Null, |text| Value::String(text.into())),
+                MessageColumn::Json => row
+                    .get::<Option<Json<Value>>>(index)?
+                    .map_or(Value::Null, |json| json.0),
+                MessageColumn::Sequence => row
+                    .get::<Option<i64>>(index)?
+                    .map_or(Value::Null, |sequence| Value::Number(sequence as f64)),
+                MessageColumn::Boolean => row
+                    .get::<Option<bool>>(index)?
+                    .map_or(Value::Null, Value::Bool),
+            };
+            message.insert(name.clone(), value);
+        }
+        Ok(Value::Object(message))
+    }
+}
 
 #[derive(Clone, Copy)]
 pub enum MessageKind {
@@ -28,8 +117,9 @@ fn checked(result: Result<Vec<Row>>, params: &[&str]) -> Result<Vec<Row>> {
     result.map_err(|cause| catalog::statement_failure(cause, params))
 }
 fn mapped(rows: Vec<Row>, kind: MessageKind) -> Result<Vec<Value>> {
+    let projection = MessageProjection::stored();
     rows.iter()
-        .map(|row| kind.map(&catalog::raw(row)?))
+        .map(|row| kind.map(&projection.decode(row)?))
         .collect()
 }
 impl Repository {
@@ -65,8 +155,9 @@ impl Repository {
                 "p.owner_id=$1 AND c.experience='agent'",
             ),
         };
+        let columns = &MessageProjection::stored().select;
         let sql = format!(
-            "SELECT to_jsonb(m)::text FROM chat_messages m INNER JOIN chats c ON c.id=m.chat_id {joins} WHERE {filter} AND m.chat_id=$2 ORDER BY m.sequence ASC"
+            "SELECT {columns} FROM chat_messages m INNER JOIN chats c ON c.id=m.chat_id {joins} WHERE {filter} AND m.chat_id=$2 ORDER BY m.sequence ASC"
         );
         let result = self.database.query(&sql, &[&owner, &chat]).await;
         let rows = match context {
@@ -202,12 +293,11 @@ impl Repository {
             .take(selected)
             .map(|(_, sequence)| *sequence)
             .collect::<Vec<_>>();
+        let columns = &MessageProjection::stored().select;
         let result = self
             .database
             .query(
-                &format!(
-                    "SELECT to_jsonb(m)::text {base} AND m.sequence=ANY($4) ORDER BY m.sequence ASC"
-                ),
+                &format!("SELECT {columns} {base} AND m.sequence=ANY($4) ORDER BY m.sequence ASC"),
                 &[&owner, &chat, &experience, &sequences],
             )
             .await;

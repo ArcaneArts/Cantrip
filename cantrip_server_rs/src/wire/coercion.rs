@@ -80,17 +80,32 @@ pub(crate) fn truthy(value: Option<&Value>) -> bool {
 pub(super) fn json_number(value: f64) -> Value {
     Value::Number(value)
 }
+fn key_order(key: &JsString) -> (bool, u32) {
+    let index = key.as_str().and_then(|text| {
+        let (&first, rest) = text.as_bytes().split_first()?;
+        if first.is_ascii_digit() && (first != b'0' || rest.is_empty()) {
+            text.parse::<u32>().ok().filter(|&index| index != u32::MAX)
+        } else {
+            None
+        }
+    });
+    index.map_or((true, 0), |index| (false, index))
+}
+pub(super) fn keys_in_order(object: &Object) -> bool {
+    object.keys().map(key_order).is_sorted()
+}
+pub(super) fn entries(object: &Object) -> Vec<(&JsString, &Value)> {
+    let mut entries: Vec<_> = object.iter().collect();
+    if !keys_in_order(object) {
+        entries.sort_by_key(|(key, _)| key_order(key));
+    }
+    entries
+}
 pub(crate) fn keys(object: &Object) -> Vec<&JsString> {
     let mut keys: Vec<_> = object.keys().collect();
-    keys.sort_by_key(|key| {
-        key.as_str()
-            .and_then(|s| {
-                s.parse::<u32>()
-                    .ok()
-                    .filter(|n| *n < u32::MAX && n.to_string() == s)
-            })
-            .map_or((1, 0), |n| (0, n))
-    });
+    if !keys_in_order(object) {
+        keys.sort_by_key(|key| key_order(key));
+    }
     keys
 }
 pub(super) struct Length {
