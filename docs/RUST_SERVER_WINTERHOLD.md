@@ -120,6 +120,30 @@ interrupted product flows, multi-instance coordination and performance.
 
 ## Current Linux x64 qualification
 
+The production build from `2e60d2042203f64c8105d5c52d12ae1db92d2d83` exported
+`1.1.2845` as a Linux x64 distribution and a Debian runtime image. Each
+running container matched the exported executable hash and all 2,546
+packaged files. PGlite, bundled PostgreSQL and external PostgreSQL passed
+migrations, SQL export, retained settings and identity, local and hosted
+reopening, and graceful shutdown. The server ran as a non-root user with
+a read-only root, a 256 MiB noexec temporary mount and no Node runtime.
+
+The systemd and Caddy rehearsal passed 18 installer calls, including six
+intentional migration and startup failures with restoration of the service
+and configuration. Ten process observations matched the expected executable
+hashes. Both local stores kept their accepted writes through rollback to
+`1.1.2783` and return to `1.1.2845`. External PostgreSQL kept its accepted
+writes through rollback to Node `1.1.2739` and return to Rust. The live
+database reported six TLS connections, and a write outside the allowed
+profile failed inside the service mount namespace.
+
+The test used a local Linux ARM64 host with Rosetta for x64 execution.
+The [acceptance record](security/rust-server-winterhold-x64-acceptance.json)
+includes the executable, distribution archive, saved image and report
+checksums.
+
+### Prior Linux x64 candidate
+
 The production build from `4c42484d8b3575b5fd6ea8234e1b179885b8b0a4` exported
 version `1.1.2816` as a Linux x64 distribution and a Debian container. Each
 running container matched all 2,546 packaged file hashes and the separately
@@ -147,6 +171,22 @@ Winterhold deployment remain outside this rehearsal. All 28 local deployment and
 release tests passed.
 
 ## Current Linux ARM64 qualification
+
+The same `2e60d2042203f64c8105d5c52d12ae1db92d2d83` source built
+`1.1.2845` as a native Linux ARM64 distribution and Debian runtime image.
+All three stores passed the container workload, and each running server
+matched the exported executable hash and all 2,546 packaged files.
+
+The ARM64 systemd and Caddy rehearsal passed all 18 installer calls,
+including restoration after six deliberate failures. It checked ten native
+executables directly and preserved settings and sessions through rollback
+to `1.1.2783` for the two local stores and to Node `1.1.2739` for external
+PostgreSQL. Six live external database connections used TLS, and the
+service mount namespace rejected a write outside the profile. The
+[acceptance record](security/rust-server-linux-arm64-acceptance.json)
+includes the distribution, saved image and report checksums.
+
+### Prior Linux ARM64 candidate
 
 The production build from `f902c5328e99c410c6869f0ad8695d483ce5c6a2` exported
 `1.1.2817` as a Linux ARM64 distribution and a Debian container. In all three

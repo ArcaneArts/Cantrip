@@ -145,5 +145,70 @@
       "sha256": "8d9d57be409f6529b94139ae11838305ac49c4b77598ab33afa709e2f1a89f81"
     }
   ],
-  "scope": "Local Linux x64 artifact execution on ARM64; production Winterhold deployment, bare-metal x64 performance, desktop release/update and remaining coordination/product acceptance retain their separate scopes."
+  "scope": "Local Linux x64 artifact execution on ARM64; production Winterhold deployment, bare-metal x64 performance, desktop release/update and remaining coordination/product acceptance retain their separate scopes.",
+  "currentCandidate": {
+    "sourceCommit": "2e60d2042203f64c8105d5c52d12ae1db92d2d83",
+    "version": "1.1.2845",
+    "target": "linux-x64",
+    "architecture": "amd64",
+    "hostArchitecture": "arm64",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "artifactFiles": 2546,
+    "binary": {
+      "path": "linux-x64-distribution-1.1.2845/bin/cantrip-server",
+      "bytes": 110408280,
+      "sha256": "61b6445e78e8ddfa436028e5e32f3d9b3579b52c4b34d3d4fede734f715d36e5"
+    },
+    "manifest": {
+      "path": "linux-x64-distribution-1.1.2845/native-server.json",
+      "bytes": 488934,
+      "sha256": "91dced215ae50cd125ffdd4064778653290f416c082f61f8d66c179577380e94"
+    },
+    "standaloneArchive": {
+      "path": "winterhold-linux-x64/native.tar.gz",
+      "bytes": 142398786,
+      "sha256": "94ad6ab94ca571b21be363648b7265d2874e482b97dbe7c59274955103563c7f"
+    },
+    "containerImage": "cantrip-server-rust:current-2845-linux-x64-qa",
+    "containerImageId": "sha256:a94744bbe953327c6e59d4d813b3997172803fe7b38f102b05562b1246c94f87",
+    "containerArchive": {
+      "path": "linux-x64-container-1.1.2845.tar.zst",
+      "bytes": 180292642,
+      "sha256": "51f9e9b54bd901ff9ce2b89bf4c7f545e368a18cd2b13d7606e2b9624cb97caa"
+    },
+    "installerCalls": 18,
+    "recoveredInstallerFailures": 6,
+    "runningExecutableHashes": 10,
+    "externalPostgresTlsConnections": 6,
+    "readOnlyServiceNamespace": true,
+    "reports": {
+      "container": {
+        "path": "linux-x64-container-acceptance.json",
+        "bytes": 5412,
+        "sha256": "5a1028e84641e49ea88db74fca575eaa7a0118a76cdc9bbd4d79213ac871e02b"
+      },
+      "systemd": {
+        "path": "winterhold-linux-x64/report.json",
+        "bytes": 1092658,
+        "sha256": "ba6739f019efe043b4ea41f065087ad7463b1f4d3195bd661b5b7d23fa976713"
+      },
+      "runtime": {
+        "path": "winterhold-linux-x64/runtime-observations.json",
+        "bytes": 456,
+        "sha256": "981c9db10a08d12415cc3131aee137b145b7361b5130a7d27a382c71060c0d99"
+      },
+      "build": {
+        "path": "linux-x64-build-result.json",
+        "bytes": 1095,
+        "sha256": "0e18d4a4539e06173a809e87b8a38bc185506f56852a12984591389f4b8326e4"
+      }
+    },
+    "retainedEvidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1",
+    "independentVerification": {
+      "path": "linux-x64-qualification.json",
+      "bytes": 2157,
+      "sha256": "20098efe23f82b128672c5e6a08df24f1a059b26069c54f3c1e477aa08ffceb0"
+    },
+    "execution": "x64 ELF on local Linux ARM64 through Rosetta"
+  }
 }

@@ -29114,14 +29114,14 @@
         "scripts/server-rust/winterhold-systemd-acceptance.mjs",
         "scripts/server-rust/container-server-acceptance.mjs"
       ],
-      "candidateVersion": "1.1.2816",
-      "sourceCommit": "4c42484d8b3575b5fd6ea8234e1b179885b8b0a4",
+      "candidateVersion": "1.1.2845",
+      "sourceCommit": "2e60d2042203f64c8105d5c52d12ae1db92d2d83",
       "databaseModes": ["pglite", "bundled-postgres", "postgres"],
       "containerArtifactFilesVerifiedPerMode": 2546,
       "installerCalls": 18,
       "recoveredInstallerFailures": 6,
       "runningExecutableHashesCompared": 10,
-      "scope": "Linux x64 container and Winterhold service rehearsal under Rosetta on a local ARM64 Linux host. Verified Caddy TLS, retained writes through distinct native and Node rollback, and graceful shutdown. Current desktop release and update, representative performance and remaining product and multi-instance acceptance are open."
+      "scope": "Linux x64 1.1.2845 container and Winterhold service rehearsal under Rosetta on a local ARM64 Linux host. Verified Caddy TLS, external PostgreSQL TLS, retained writes through distinct native and Node rollback, read-only service namespace and graceful shutdown."
     },
     "currentDarwinArm64PackageQualification": {
       "status": "implemented-with-scoped-local-qualification",
@@ -29227,14 +29227,14 @@
         "scripts/server-rust/winterhold-systemd-acceptance.mjs",
         "scripts/server-rust/container-server-acceptance.mjs"
       ],
-      "sourceCommit": "f902c5328e99c410c6869f0ad8695d483ce5c6a2",
-      "candidateVersion": "1.1.2817",
+      "sourceCommit": "2e60d2042203f64c8105d5c52d12ae1db92d2d83",
+      "candidateVersion": "1.1.2845",
       "databaseModes": ["pglite", "bundled-postgres", "postgres"],
       "containerArtifactFilesVerifiedPerMode": 2546,
       "installerCalls": 18,
       "recoveredInstallerFailures": 6,
       "directNativeExecutableHashes": 10,
-      "scope": "Native ARM64 Debian container and Ubuntu systemd/Caddy on a local ARM64 host. The external PostgreSQL rollback uses the retained x64 Node reference. Desktop and remaining product, recovery and coordination acceptance are open."
+      "scope": "Native ARM64 1.1.2845 Debian container and Ubuntu systemd/Caddy on a local ARM64 host. Verified Caddy and external PostgreSQL TLS, read-only service namespace, graceful shutdown and retained writes through native and x64 Node rollback."
     },
     "defaultRuntimeCutover": {
       "status": "implemented-with-scoped-local-qualification",
