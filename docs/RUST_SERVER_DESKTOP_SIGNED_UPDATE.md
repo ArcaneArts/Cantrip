@@ -1,67 +1,83 @@
 # Signed macOS desktop update rehearsal
 
-The rehearsal builds two release-mode Tauri apps using the current client
-source. The baseline app bundles the retained server and worker runtime from
-the encrypted desktop qualification. The candidate bundles the current Rust
-server and the existing packaged worker. Both use the dedicated
-`art.cantrip.rust-qa-recovery` installation and its existing device keys.
-Each case copies a stopped QA profile before launching.
+The local Developer ID rehearsal updates release-mode Tauri apps from
+`1.1.2786` to `1.1.2831` on macOS ARM64. Both apps use the current client
+source. The baseline bundles the retained runtime from the encrypted desktop
+qualification. The candidate bundles the current Rust server and the existing
+worker, with the portable Node `24.22.1` executable used by the baseline.
 
-The fixture builds and signs the standard Tauri updater archive. It supplies
-a disposable signing key, a loopback HTTPS manifest and a trusted local
-certificate authority in the copied app source. An authenticated loopback
-controller invokes the existing updater commands from the release WebView.
-The updater performs its normal download, signature verification, renderer
-checkpoint, service shutdown, app installation and restart.
+Both apps and all 198 embedded Mach-O files in each app are signed with the
+same Developer ID using the production runtime signer. The fixture uses a
+disposable Tauri updater key, a loopback HTTPS manifest and a test certificate
+authority. The release WebView invokes the existing updater commands through
+the authenticated local test controller.
 
-## Observed local results
+## Developer ID update results
 
-The standalone macOS ARM64 distribution `1.1.2817` passes all three stores,
-including local and hosted reopening, migrations, SQL export, retained
-identity, shutdown and embedded runtime fallback. All 1,762 files were
-verified. The server ran with Node absent from its PATH and with access to
-Homebrew and writes to the installed distribution denied.
+All three database modes passed. For each mode, the previous app created a
+disposable profile and completed the normal anonymous recovery screen. The
+driver saved the generated recovery file under the case directory and verified
+an authenticated encrypted session after reloading the WebView. It accepted a
+preference write and ran a version command through the real worker before
+installing the update.
 
-The actual signed update from `1.1.2786` to `1.1.2817` on PGlite rejected the
-altered app archive with `update_signature_invalid`. The old app and its children
-remained running. The valid archive passed HTTPS and signature verification,
-stopped the owned server and worker, replaced the app and launched the
-candidate. An independent reopen verified the installed hashes, original
-server and worker identities, and the preference written before the update.
-The public client catalog retained the installation, device and account records.
+The PGlite case rejected an altered archive with `update_signature_invalid`
+while the old app and its services remained running. Each valid archive
+passed HTTPS and signature verification, shut down the old server and worker,
+and restarted the installed app. The updated WebView authenticated with the
+same device key. The server retained its identity and accepted preference,
+the worker reconnected and executed its version command, and the app accepted
+another write. The public catalog retained the installation, device key,
+account bindings and migration records in each case.
 
-The updated ad-hoc app received a separate macOS Keychain prompt, and access
-was denied. Its renderer reported `key-store-unavailable`. The PGlite encrypted
-restart and signed updates for bundled and external PostgreSQL remain pending.
-The harness retains the encrypted-session assertion. The earlier full desktop
-upgrade and restart across all three stores has separate evidence.
+The driver verified PGlite 17 and private PostgreSQL 18 through readiness and
+the actual profile database files before and after the update. A direct
+`pg_stat_activity` query witnessed a live Cantrip connection to the external
+cluster before and after that update. All three installed apps matched the
+candidate executable hashes and retained the same macOS designated signing
+requirement. All test services exited cleanly.
 
 The [acceptance record](security/rust-server-darwin-arm64-acceptance.json)
-identifies the current distribution, signed package, source and reports.
-Twenty-five local updater, packaging and installation tests passed.
+records the exact signed archive, executables, source and reports. Thirty-four
+local updater, packaging and catalog tests and 41 first-run encryption tests
+passed. This rehearsal used local Developer ID signing. Release notarization
+and Windows installer acceptance remain separate.
+
+## Earlier results
+
+The `1.1.2817` standalone distribution passed all three stores, migrations,
+SQL export, retained restart and graceful shutdown. All 1,762 packaged files
+were verified with Homebrew reads and distribution writes denied. The
+[database lifecycle qualification](RUST_SERVER_DATABASE_LIFECYCLE.md#embedded-pglite-cache-recovery)
+also passed the newer `1.1.2831` standalone package.
+
+An earlier ad-hoc PGlite update installed successfully, then macOS denied the
+new binary access to its retained Keychain item. The same-Developer-ID test
+above reopened the encrypted session in all three modes. The
+[existing-client upgrade and restart qualification](RUST_SERVER_DESKTOP_ENCRYPTED_ACCEPTANCE.md)
+retains the independent results for older populated profiles.
 
 ## Reproduce locally
 
 Build the application dependencies and current server. Assemble the desktop
-runtime with the existing verified worker artifact.
+runtime with the existing verified worker artifact and a portable macOS
+Node executable. The packager copies the Node executable that runs it. A
+local Homebrew build tried to load an unbundled `libnode.137.dylib` when the
+updated app launched its worker.
 
 ```sh
 pnpm --filter '@cantrip/app^...' -r build
 pnpm package:server
-pnpm package:desktop-runtime --from-artifacts
+/absolute/path/to/portable-node scripts/package-distributions.mjs desktop-runtime --from-artifacts
 node scripts/server-rust/native-desktop-updater-acceptance.mjs \
   --previous-bundle '/absolute/path/to/Cantrip Server Shipping QA.app' \
   --current-runtime cantrip_app/src-tauri/resources/runtime \
-  --profiles /absolute/path/to/stopped-qa-profile-copies \
-  --external-profile /absolute/path/to/stopped-external-postgres-data \
-  --previous-report /absolute/path/to/previous-desktop-restart.json \
+  --signing-identity 'Developer ID Application: Your signing identity' \
   --data-root /absolute/path/to/new-evidence-directory \
   --report /absolute/path/to/new-evidence-directory/report.json
 ```
 
-Use the profiles, worker artifact and installation catalog identified by the
-[existing-client encrypted desktop qualification](RUST_SERVER_DESKTOP_ENCRYPTED_ACCEPTANCE.md).
-The driver compares the recovered client catalog with its initial copy,
-retains app and server hashes, and captures the actual worker command, log
-records and process shutdowns. Keep the evidence locally with the QA profile
-copies and archive signatures.
+By default the driver creates an isolated app installation and fresh baseline
+profiles. The optional `--profiles`, `--external-profile` and
+`--previous-report` arguments together select the historical fixtures from
+the [existing-client encrypted desktop qualification](RUST_SERVER_DESKTOP_ENCRYPTED_ACCEPTANCE.md).

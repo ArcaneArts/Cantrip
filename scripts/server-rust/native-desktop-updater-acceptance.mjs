@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import https from "node:https";
@@ -32,24 +32,37 @@ const { values } = parseArgs({
     profiles: { type: "string" },
     "external-profile": { type: "string" },
     "previous-report": { type: "string" },
+    "signing-identity": { type: "string", default: "-" },
     "data-root": { type: "string" },
     report: { type: "string" },
   },
 });
 assert.equal(process.platform, "darwin");
+const historicalInputs = [
+  values.profiles,
+  values["external-profile"],
+  values["previous-report"],
+];
+const historical = historicalInputs.some(Boolean);
+if (historical)
+  assert.ok(
+    historicalInputs.every(Boolean),
+    "Supply all three historical inputs",
+  );
+const identifier = historical
+  ? updaterIdentifier
+  : "art.cantrip.rust-qa-updater-" + randomUUID();
 const directory = path.resolve(values["data-root"]);
 await mkdir(directory, { recursive: true });
-const appData = path.join(
-  homedir(),
-  "Library/Application Support",
-  updaterIdentifier,
-);
+const appData = path.join(homedir(), "Library/Application Support", identifier);
 const report = {
   suite: "native-desktop-signed-updater",
   sourceCommit: (
     await execute("git", ["rev-parse", "HEAD"], { cwd: repository })
   ).stdout.trim(),
-  identifier: updaterIdentifier,
+  identifier,
+  historical,
+  signingIdentity: values["signing-identity"],
   appData,
   cases: [],
 };
@@ -58,6 +71,24 @@ const hash = async (file) => {
   for await (const bytes of createReadStream(file)) digest.update(bytes);
   return digest.digest("hex");
 };
+async function codeRequirement(bundle) {
+  await execute("/usr/bin/codesign", [
+    "--verify",
+    "--deep",
+    "--strict",
+    bundle,
+  ]);
+  const { stdout, stderr } = await execute("/usr/bin/codesign", [
+    "-d",
+    "-r-",
+    bundle,
+  ]);
+  const requirement = (stdout + "\n" + stderr)
+    .split("\n")
+    .find((line) => line.startsWith("designated => "));
+  assert.ok(requirement, "macOS bundle has a designated signing requirement");
+  return requirement;
+}
 async function availablePort() {
   const socket = net.createServer();
   await new Promise((resolve) => socket.listen(0, "127.0.0.1", resolve));
@@ -85,10 +116,15 @@ async function until(read, description, timeout = 120_000) {
 }
 async function logs(source, since) {
   const root = path.join(appData, "logs", source);
+  let files;
+  try {
+    files = await readdir(root);
+  } catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  }
   const records = [];
-  for (const file of (await readdir(root)).filter((name) =>
-    name.endsWith(".jsonl"),
-  )) {
+  for (const file of files.filter((name) => name.endsWith(".jsonl"))) {
     for (const line of (await readFile(path.join(root, file), "utf8")).split(
       "\n",
     )) {
@@ -101,6 +137,71 @@ async function logs(source, since) {
     }
   }
   return records;
+}
+async function saveRecoveryArtifact(bridge, data, serverId) {
+  const artifact = await bridge.until("main", async () => {
+    const save = [...document.querySelectorAll("button")].find(
+      (button) => button.textContent.trim() === "Save recovery file",
+    );
+    if (!save || save.disabled) return false;
+    const create = URL.createObjectURL;
+    const click = HTMLAnchorElement.prototype.click;
+    const urls = new Map();
+    let saved;
+    URL.createObjectURL = function (blob) {
+      const url = create.call(this, blob);
+      urls.set(url, blob);
+      return url;
+    };
+    // Route the real WebView download to the owned test directory.
+    HTMLAnchorElement.prototype.click = function () {
+      if (this.download.endsWith(".cantrip-recovery.json")) {
+        saved = urls.get(this.href);
+        return;
+      }
+      return click.call(this);
+    };
+    try {
+      save.click();
+      if (!saved) throw new Error("Recovery download did not produce a file");
+      return await saved.text();
+    } finally {
+      URL.createObjectURL = create;
+      HTMLAnchorElement.prototype.click = click;
+    }
+  });
+  const metadata = JSON.parse(artifact);
+  assert.equal(metadata.purpose, "anonymous-account-recovery");
+  assert.equal(metadata.serverId, serverId);
+  await writeFile(
+    path.join(data, "anonymous.cantrip-recovery.json"),
+    artifact,
+    {
+      flag: "wx",
+      mode: 0o600,
+    },
+  );
+  await bridge.until("main", () => {
+    const input = document.querySelector('input[type="checkbox"]');
+    if (!input || input.disabled) return false;
+    input.click();
+    return true;
+  });
+  await bridge.until("main", () => {
+    const confirm = [...document.querySelectorAll("button")].find(
+      (button) => button.textContent.trim() === "Continue to Cantrip",
+    );
+    if (!confirm || confirm.disabled) return false;
+    confirm.click();
+    return true;
+  });
+  await bridge.until(
+    "main",
+    () =>
+      ![...document.querySelectorAll("h1")].some(
+        (heading) => heading.textContent.trim() === "Save anonymous recovery",
+      ),
+  );
 }
 async function children(pid) {
   return (await execute("ps", ["-axo", "pid=,ppid=,comm="])).stdout
@@ -139,11 +240,16 @@ const launches = [];
 const requests = [];
 const tlsErrors = [];
 try {
-  await execute("cp", ["-cR", appData, path.join(directory, "client-before")]);
+  if (historical)
+    await execute("cp", [
+      "-cR",
+      appData,
+      path.join(directory, "client-before"),
+    ]);
   const previousBundle = path.resolve(values["previous-bundle"]);
-  const previous = JSON.parse(
-    await readFile(values["previous-report"], "utf8"),
-  );
+  const previous = historical
+    ? JSON.parse(await readFile(values["previous-report"], "utf8"))
+    : null;
   const previousVersion = (
     await execute("/usr/libexec/PlistBuddy", [
       "-c",
@@ -162,6 +268,8 @@ try {
     directory,
     bridge,
     endpoint: origin + "/latest.json",
+    identifier,
+    signingIdentity: values["signing-identity"],
   });
   server = https.createServer(
     {
@@ -242,8 +350,14 @@ try {
     candidateAppSha256: await hash(
       path.join(activePackage.bundle, "Contents/MacOS/cantrip-app"),
     ),
-    candidateServerSha256: await hash(
+    candidateRuntimeInputSha256: await hash(
       path.join(currentRuntime, "server/bin/cantrip-server"),
+    ),
+    candidateServerSha256: await hash(
+      path.join(
+        activePackage.bundle,
+        "Contents/Resources/runtime/server/bin/cantrip-server",
+      ),
     ),
     signedPackageSha256: await hash(activePackage.archive),
   };
@@ -255,11 +369,21 @@ try {
   };
   const pg = path.join(currentRuntime, "server", manifest.postgres.bin);
   const externalData = path.join(directory, "external-postgres");
-  await execute("cp", [
-    "-cR",
-    path.resolve(values["external-profile"]),
-    externalData,
-  ]);
+  if (historical)
+    await execute("cp", [
+      "-cR",
+      path.resolve(values["external-profile"]),
+      externalData,
+    ]);
+  else
+    await execute(path.join(pg, "initdb"), [
+      "-D",
+      externalData,
+      "--username=cantrip",
+      "--auth=trust",
+      "--locale=C",
+      "--encoding=UTF8",
+    ]);
   const pgPort = await availablePort();
   await execute(path.join(pg, "pg_ctl"), [
     "-D",
@@ -272,17 +396,21 @@ try {
     "start",
   ]);
   cluster = { pg, data: externalData };
+  const liveCatalog = () =>
+    readCatalogSnapshot(path.join(appData, "installation/v1/catalog.sqlite3"));
   for (const mode of ["pglite", "bundled-postgres", "postgres"]) {
     const entry = { mode, passed: false };
-    const retained = previous.modes.find((item) => item.mode === mode);
-    assert.ok(retained, "Historical profile report includes " + mode);
+    const retained = previous?.modes.find((item) => item.mode === mode);
+    if (historical)
+      assert.ok(retained, "Historical profile report includes " + mode);
     report.cases.push(entry);
     const data = path.join(directory, mode);
-    await execute("cp", [
-      "-cR",
-      path.join(path.resolve(values.profiles), mode),
-      data,
-    ]);
+    if (historical)
+      await execute("cp", [
+        "-cR",
+        path.join(path.resolve(values.profiles), mode),
+        data,
+      ]);
     const installation = path.join(directory, mode + "-installed");
     await mkdir(installation);
     await execute("cp", ["-cR", baseline.bundle, installation]);
@@ -324,9 +452,10 @@ try {
         return record && new URL(record.context.origin).origin;
       }, mode + " packaged server startup");
     let apiOrigin = await originOfServer(since);
-    const request = async (route, body) => {
+    const request = async (route, body, waitForWorker = false) => {
       const response = await fetch(apiOrigin + route, {
         method: body ? "PATCH" : "GET",
+        signal: AbortSignal.timeout(10_000),
         headers: {
           origin: "http://127.0.0.1:5173",
           ...(body ? { "content-type": "application/json" } : {}),
@@ -334,8 +463,48 @@ try {
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
       const result = await response.json();
+      if (
+        waitForWorker &&
+        response.status === 502 &&
+        result.error ===
+          "Worker encryption has not verified the logical server identity."
+      ) {
+        entry.workerReadinessRetries = (entry.workerReadinessRetries ?? 0) + 1;
+        return null;
+      }
       assert.equal(response.status, 200, JSON.stringify(result));
       return result;
+    };
+    const checkDatabase = async () => {
+      const { database } = await request("/readyz");
+      assert.equal(database.engine, mode === "pglite" ? "pglite" : "postgres");
+      if (mode === "postgres") {
+        const { stdout } = await execute(path.join(pg, "psql"), [
+          "-XAtw",
+          "-h",
+          "127.0.0.1",
+          "-p",
+          String(pgPort),
+          "-U",
+          "cantrip",
+          "-d",
+          "postgres",
+          "-c",
+          "SELECT count(*) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND usename = 'cantrip' AND backend_type = 'client backend'",
+        ]);
+        assert.ok(
+          Number(stdout.trim()) > 0,
+          "Server connected to the external PostgreSQL cluster",
+        );
+        return { engine: database.engine, externalConnection: true };
+      }
+      const versionFile =
+        mode === "pglite" ? "server-db/PG_VERSION" : "postgres/data/PG_VERSION";
+      const major = (
+        await readFile(path.join(data, "server", versionFile), "utf8")
+      ).trim();
+      assert.match(major, /^\d+$/);
+      return { engine: database.engine, versionFile, major };
     };
     const ready = async (timestamp) => {
       await until(
@@ -352,22 +521,40 @@ try {
           (item) => item.online,
         );
         if (!worker) return false;
-        await request(
+        const version = await request(
           `/api/workers/${encodeURIComponent(worker.workerId)}/version`,
+          undefined,
+          true,
         );
+        if (!version) {
+          await delay(500);
+          return false;
+        }
         return worker;
       }, mode + " real worker command");
     };
-    const worker = await ready(since);
+    let readySince = since;
+    if (!historical) {
+      const { server: seed } = await request("/api/bootstrap");
+      await saveRecoveryArtifact(bridge, data, seed.id);
+      entry.anonymousRecoverySaved = true;
+      readySince = Date.now();
+      await bridge.evaluate("main", () => {
+        setTimeout(() => location.reload(), 200);
+        return true;
+      });
+    }
+    const worker = await ready(readySince);
+    entry.baselineDatabase = await checkDatabase();
     const bootstrap = await request("/api/bootstrap");
-    assert.equal(bootstrap.server.id, retained.identity);
     assert.equal(bootstrap.server.version.version, previousVersion);
-    assert.equal(worker.workerId, retained.workerId);
-    assert.equal(
-      (await request("/api/settings")).preferences.theme,
-      retained.settingsTheme,
-    );
-    const theme = retained.settingsTheme === "dark" ? "light" : "dark";
+    const baselineTheme = (await request("/api/settings")).preferences.theme;
+    if (retained) {
+      assert.equal(bootstrap.server.id, retained.identity);
+      assert.equal(worker.workerId, retained.workerId);
+      assert.equal(baselineTheme, retained.settingsTheme);
+    }
+    const theme = baselineTheme === "dark" ? "light" : "dark";
     const context = await bridge.evaluate(
       "main",
       () => window.__qaNativeContext,
@@ -377,6 +564,7 @@ try {
       previousVersion,
     );
     await request("/api/settings", { theme });
+    const catalogBeforeUpdate = liveCatalog();
     const before = await children(app.pid);
     assert.ok(
       before.some((child) => child.executable.endsWith("/bin/cantrip-server")),
@@ -464,6 +652,8 @@ try {
     );
     apiOrigin = await originOfServer(updateSince);
     const currentWorker = await ready(updateSince);
+    entry.candidateDatabase = await checkDatabase();
+    assert.deepEqual(entry.candidateDatabase, entry.baselineDatabase);
     assert.equal(currentWorker.workerId, worker.workerId);
     const current = await request("/api/bootstrap");
     assert.equal(current.server.id, bootstrap.server.id);
@@ -471,6 +661,8 @@ try {
     assert.equal((await request("/api/settings")).preferences.theme, theme);
     assert.ok(before.every((child) => !alive(child.pid)));
     assert.equal(await hash(executable), report.artifacts.candidateAppSha256);
+    if (values["signing-identity"] !== "-")
+      entry.codeSigningRequirement = await codeRequirement(bundle);
     assert.equal(
       await hash(
         path.join(
@@ -480,10 +672,14 @@ try {
       ),
       report.artifacts.candidateServerSha256,
     );
-    await request("/api/settings", { theme: retained.settingsTheme });
+    await request("/api/settings", { theme: baselineTheme });
     assert.equal(
       (await request("/api/settings")).preferences.theme,
-      retained.settingsTheme,
+      baselineTheme,
+    );
+    entry.clientContinuity = verifyCatalogContinuity(
+      catalogBeforeUpdate,
+      liveCatalog(),
     );
     const currentApps = await applicationPids(executable);
     assert.equal(
@@ -511,15 +707,31 @@ try {
         }),
     );
   }
-  await execute("cp", ["-cR", appData, path.join(directory, "client-after")]);
-  const catalog = (label) =>
-    readCatalogSnapshot(
-      path.join(directory, label, "installation/v1/catalog.sqlite3"),
+  if (values["signing-identity"] !== "-") {
+    const [before, after] = await Promise.all([
+      codeRequirement(baseline.bundle),
+      codeRequirement(activePackage.bundle),
+    ]);
+    assert.equal(
+      after,
+      before,
+      "Both app versions satisfy the same code requirement",
     );
-  report.clientContinuity = verifyCatalogContinuity(
-    catalog("client-before"),
-    catalog("client-after"),
-  );
+    for (const entry of report.cases)
+      assert.equal(entry.codeSigningRequirement, after);
+    report.artifacts.codeSigningRequirement = before;
+  }
+  await execute("cp", ["-cR", appData, path.join(directory, "client-after")]);
+  if (historical) {
+    const catalog = (label) =>
+      readCatalogSnapshot(
+        path.join(directory, label, "installation/v1/catalog.sqlite3"),
+      );
+    report.clientContinuity = verifyCatalogContinuity(
+      catalog("client-before"),
+      catalog("client-after"),
+    );
+  }
   report.passed = true;
 } catch (error) {
   report.passed = false;

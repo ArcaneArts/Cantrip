@@ -115,12 +115,12 @@ passes all three stores in the `1.1.2817` container and local systemd
 rehearsal. All 18 installer cases pass, and ten direct process hashes confirm
 the current and previous native releases through post-write rollback.
 
-The [current macOS ARM64 package and signed-update rehearsal](RUST_SERVER_DESKTOP_SIGNED_UPDATE.md)
-qualifies `1.1.2817` standalone on all three stores. Its actual PGlite signed
-update rejects a changed archive and installs and restarts the valid release
-with retained server state and client catalog. macOS denied the new ad-hoc
-binary's Keychain request. Encrypted restart and the two PostgreSQL signed
-update cells remain pending.
+The [current macOS ARM64 signed-update rehearsal](RUST_SERVER_DESKTOP_SIGNED_UPDATE.md)
+passes `1.1.2786` to `1.1.2831` on all three stores with the same Developer
+ID. The real updater rejects a changed archive, installs the valid release,
+and retains the encrypted WebView session, worker connection, server identity
+and accepted write. The two private stores and the external PostgreSQL
+connection are verified before and after installation.
 
 The [current Winterhold and Linux x64 qualification](RUST_SERVER_WINTERHOLD.md#current-linux-x64-qualification)
 uses the exact `1.1.2816` distribution and container across all three stores.
