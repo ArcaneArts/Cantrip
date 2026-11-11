@@ -148,7 +148,7 @@ describe("canonical queue HTTP client", () => {
         sourceDigest: f.admission.payloadDigest,
         receipt: { deleted: true, conflict: false },
       }),
-    ).toEqual({ ...snapshot, pendingImports: [] });
+    ).toEqual({ ...snapshot, pendingImports: [], goalRecovery: null });
   });
 
   it("leaves a lost mutation response uncertain and never retries or mints another identity", async () => {

@@ -18,6 +18,8 @@ import {
 } from "../src/codex/app-server.js";
 import { ProviderAccessTokenClient } from "../src/provider-access-tokens.js";
 import { ProviderAccountReauthenticationRequiredError } from "../src/codex/provider-errors.js";
+import { WorkerInferenceAdmission } from "../src/inference-admission.js";
+import { ClaimedInferenceSource } from "../src/inference-source.js";
 import { createServerManagedGrokClient } from "../src/server-managed-grok.js";
 
 const temporaryDirectories: string[] = [];
@@ -468,6 +470,16 @@ describe("portable provider accounts on a brand-new worker", () => {
       accessTokens,
       launchFakeCodex,
     );
+    const inferenceErrors: unknown[] = [];
+    const admission = new WorkerInferenceAdmission(
+      {
+        serverId: "portable-server",
+        ownerId: "portable-owner",
+        workerId: "portable-worker",
+        workerGeneration: "b64163b5-e606-417b-b202-3d3c4773f352",
+      },
+      (error) => inferenceErrors.push(error),
+    );
     const grokRuntime = new CodexAppServer(
       binary,
       path.join(root, "grok-turn-runtime"),
@@ -480,7 +492,34 @@ describe("portable provider accounts on a brand-new worker", () => {
       }),
       accessTokens,
       launchFakeCodex,
+      [],
+      null,
+      null,
+      admission,
     );
+    const renew = vi.fn();
+    let nextAdmission = 0;
+    async function runGrokTurn(options: RunAgentTurnOptions) {
+      const claims: ClaimedInferenceSource[] = [];
+      const claim = () => {
+        const operationGeneration = `portable-grok:${++nextAdmission}`;
+        const owner = new ClaimedInferenceSource(operationGeneration);
+        claims.push(owner);
+        return { operationGeneration, inferenceSource: owner.source };
+      };
+      try {
+        return await grokRuntime.runTurn({
+          ...options,
+          ...claim(),
+          onBeforeRetry: (retry) => {
+            renew(retry.reason, retry.operationGeneration, retry.threadId);
+            return Promise.resolve(claim());
+          },
+        });
+      } finally {
+        for (const owner of claims) owner.close();
+      }
+    }
 
     try {
       const [chatGptCatalogResult, chatGptQuotaSnapshot] = await Promise.all([
@@ -530,16 +569,14 @@ describe("portable provider accounts on a brand-new worker", () => {
         text: "Portable ChatGPT turn completed.",
       });
       await expect(
-        grokRuntime.runTurn(
-          turnOptions(root, grokProvider, "grok-code-fast-1"),
-        ),
+        runGrokTurn(turnOptions(root, grokProvider, "grok-code-fast-1")),
       ).resolves.toMatchObject({
         status: "completed",
         text: "Portable Grok turn completed.",
       });
       const recoveredThreadIds: string[] = [];
       await expect(
-        grokRuntime.runTurn({
+        runGrokTurn({
           ...turnOptions(root, grokProvider, "grok-code-fast-1"),
           threadId: "stale-thread",
           onThreadLoaded: (threadId) => recoveredThreadIds.push(threadId),
@@ -553,7 +590,7 @@ describe("portable provider accounts on a brand-new worker", () => {
 
       const freshThreadIds: string[] = [];
       await expect(
-        grokRuntime.runTurn({
+        runGrokTurn({
           ...turnOptions(root, grokProvider, "grok-code-fast-1"),
           chatId: "grok-fresh-compaction-chat",
           clientMessageId: "grok-fresh-compaction-message",
@@ -569,6 +606,11 @@ describe("portable provider accounts on a brand-new worker", () => {
         "portable-thread-4",
       ]);
 
+      expect(renew.mock.calls).toEqual([
+        ["invalid-compaction", "portable-grok:2", "stale-thread"],
+        ["invalid-compaction", "portable-grok:4", "portable-thread-3"],
+      ]);
+      expect(inferenceErrors).toEqual([]);
       expect(await readdir(chatGptHome)).toEqual([]);
       expect(await readdir(grokHome)).toEqual([]);
       expect(grokUpstreamTokens).toEqual([
@@ -597,6 +639,7 @@ describe("portable provider accounts on a brand-new worker", () => {
       chatGptRuntime.close();
       grokRuntime.close();
       grok.close();
+      await admission.close();
     }
   }, 30_000);
 });

@@ -77,7 +77,12 @@ describe("restored native observer preparation", () => {
     ]);
     expect(second).toBe(first);
     expect(f.start).toHaveBeenCalledOnce();
-    expect(f.start).toHaveBeenCalledWith(saved.model, options.provider);
+    expect(f.start).toHaveBeenCalledExactlyOnceWith(
+      saved.model,
+      options.provider,
+      null,
+      undefined,
+    );
     const observed = f.runtime.captureWorkerTurnContinuation("thread", "turn");
     expect(observed.baseline).toEqual(saved.baseline);
     expect(observed.latestUsage).toEqual(saved.latestUsage);
