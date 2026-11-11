@@ -22,6 +22,7 @@ import {
   actualWorkerLogsDisconnected,
 } from "./actual-worker-logs-client.mjs";
 import { actualTaskClient } from "./actual-task-client.mjs";
+import { actualProviderAuthClient } from "./actual-provider-auth-client.mjs";
 import { actualProjectChatClient } from "./actual-project-chat-client.mjs";
 import { providerTestBoundary } from "./provider-test-boundary.mjs";
 import { observePostgresErrors } from "./postgres-error-observation.mjs";
@@ -132,11 +133,13 @@ const cantripOsSourceBackup = process.argv.includes(
   "--cantrip-os-source-backup",
 );
 const workerLinkRenewal = process.argv.includes("--worker-link-renewal");
+const providerAuth = process.argv.includes("--provider-auth");
 assert.ok(!workerLinkRenewal || !sharedPair);
 const singleProduct =
   cantripOsRun ||
   cantripOsSourceBackup ||
   workerLinkRenewal ||
+  providerAuth ||
   process.argv.includes("--production-server") ||
   process.argv.includes("--native-task-goal-worker-recovery") ||
   process.argv.includes("--native-worker-recovery") ||
@@ -207,6 +210,9 @@ const report = {
     : null,
   workerLinkRenewalScope: workerLinkRenewal
     ? "Browser SDK, production servers, full Node worker and native LOCAL broker verifier. Real lease extensions, worker and server process kills, old authority rejection and explicit release."
+    : null,
+  providerAuthScope: providerAuth
+    ? "Browser provider-account SDK, production server, and full worker with isolated legacy credential files. Includes native Codex logout and worker-local Grok logout."
     : null,
   taskDiagnostics: liveTaskDiagnostics
     ? "Development SQL fixture executable; unchanged production startup, routes, worker and native runtime. Failed Task runs retain scoped read-only database snapshots before teardown."
@@ -281,6 +287,7 @@ async function flow(
   ) => {
     const isolateHome =
       workerLinkRenewal ||
+      providerAuth ||
       [
         "--mcp-settings",
         "--terminals",
@@ -306,7 +313,9 @@ async function flow(
         workerId,
         homeDirectory,
         environment: {
-          ...(workerLinkRenewal ? { CANTRIP_LOG_LEVEL: "debug" } : {}),
+          ...(workerLinkRenewal || providerAuth
+            ? { CANTRIP_LOG_LEVEL: "debug" }
+            : {}),
           ...(providerTest ? providerBoundary?.environment : {}),
           ...(cantripOsSourceBackup
             ? {
@@ -554,6 +563,17 @@ async function flow(
       (fixture.workerFixture ?? fixture).server.origin,
     );
     assert.ok(credential);
+    if (providerAuth) {
+      await actualProviderAuthClient({
+        page,
+        workerId,
+        workerDirectory: dataDirectory,
+        diagnostics: () => worker.diagnostics(),
+        result,
+      });
+      assert.deepEqual(errors, []);
+      return;
+    }
     if (nativeProbeBinary)
       await actualNativeDirectProbe({
         page,
@@ -1627,6 +1647,8 @@ try {
   for (const runtime of report.runtimes.slice(1)) {
     assert.deepEqual(runtime.steps, report.runtimes[0].steps);
     assert.deepEqual(runtime.projects, report.runtimes[0].projects);
+    if (providerAuth)
+      assert.deepEqual(runtime.providerAuth, report.runtimes[0].providerAuth);
     if (
       cantripOsRun ||
       cantripOsSourceBackup ||

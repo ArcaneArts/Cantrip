@@ -17,6 +17,14 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [provider sign-out comparison](RUST_SERVER_PROVIDER_AUTH_WORKER_ACCEPTANCE.md)
+passes the existing browser SDK and full worker for legacy ChatGPT and Grok
+accounts on all three stores. The selected credential file is removed while a
+neighboring account's file remains byte-for-byte intact. The current status route
+uses stored account state and legacy capture, and the original direct status
+command remains worker-only. Scoped worker command coverage accounts for 310 of
+323 identities.
+
 The [active Task PostgreSQL comparison](RUST_SERVER_INFLIGHT_RECOVERY.md#active-task-during-a-postgresql-process-outage)
 passes two 45-second outages with two current Rust production servers and
 the full worker. The original outcome stays in the worker's durable outbox
