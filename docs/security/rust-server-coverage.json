@@ -2659,54 +2659,66 @@
         "method": "GET",
         "path": "/api/projects/:projectId/replicas",
         "implementation": "cantrip_server_rs/src/http/replicas.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/replica-admission-repository-compatibility.mjs",
           "scripts/server-rust/replica-completion-repository-compatibility.mjs",
           "scripts/server-rust/replica-http-validation-compatibility.mjs",
           "scripts/server-rust/replica-import-http-compatibility.mjs",
-          "scripts/server-rust/replica-connected-cases.mjs"
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-current-replica-acceptance.json",
+          "scripts/server-rust/actual-project-replicas.mjs",
+          "scripts/server-rust/replica-http-lifetimes.mjs"
         ],
         "remaining": [
-          "Remaining placement/failure product flows and supported-platform CI.",
-          "Packaged operation and multi-instance coordination remain unverified."
+          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
+          "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
       {
         "method": "POST",
         "path": "/api/projects/:projectId/replicas",
         "implementation": "cantrip_server_rs/src/http/replicas.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/replica-admission-repository-compatibility.mjs",
           "scripts/server-rust/replica-completion-repository-compatibility.mjs",
           "scripts/server-rust/replica-http-validation-compatibility.mjs",
           "scripts/server-rust/replica-import-http-compatibility.mjs",
-          "scripts/server-rust/replica-connected-cases.mjs"
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-current-replica-acceptance.json",
+          "scripts/server-rust/actual-project-replicas.mjs",
+          "scripts/server-rust/replica-http-lifetimes.mjs"
         ],
         "remaining": [
-          "Remaining placement/failure product flows and supported-platform CI.",
-          "Packaged operation and multi-instance coordination remain unverified."
+          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
+          "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
       {
         "method": "GET",
         "path": "/api/projects/:projectId/replicas/:replicaId",
         "implementation": "cantrip_server_rs/src/http/replicas.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/replica-admission-repository-compatibility.mjs",
           "scripts/server-rust/replica-completion-repository-compatibility.mjs",
           "scripts/server-rust/replica-http-validation-compatibility.mjs",
           "scripts/server-rust/replica-import-http-compatibility.mjs",
-          "scripts/server-rust/replica-connected-cases.mjs"
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-current-replica-acceptance.json",
+          "scripts/server-rust/actual-project-replicas.mjs",
+          "scripts/server-rust/replica-http-lifetimes.mjs"
         ],
         "remaining": [
-          "Remaining placement/failure product flows and supported-platform CI.",
-          "Packaged operation and multi-instance coordination remain unverified."
+          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
+          "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
       {
@@ -2720,29 +2732,38 @@
           "scripts/server-rust/replica-completion-repository-compatibility.mjs",
           "scripts/server-rust/replica-http-validation-compatibility.mjs",
           "scripts/server-rust/replica-import-http-compatibility.mjs",
-          "scripts/server-rust/replica-connected-cases.mjs"
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-current-replica-acceptance.json",
+          "scripts/server-rust/actual-project-replicas.mjs",
+          "scripts/server-rust/replica-http-lifetimes.mjs"
         ],
         "remaining": [
-          "Remaining placement/failure product flows and supported-platform CI.",
-          "Packaged operation and multi-instance coordination remain unverified."
+          "Run the managed synchronization lifecycle through the full worker on the current candidate.",
+          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
+          "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
       {
         "method": "POST",
         "path": "/api/projects/:projectId/replicas/:replicaId/remove",
         "implementation": "cantrip_server_rs/src/http/replicas.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/replica-admission-repository-compatibility.mjs",
           "scripts/server-rust/replica-completion-repository-compatibility.mjs",
           "scripts/server-rust/replica-http-validation-compatibility.mjs",
           "scripts/server-rust/replica-import-http-compatibility.mjs",
-          "scripts/server-rust/replica-connected-cases.mjs"
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-current-replica-acceptance.json",
+          "scripts/server-rust/actual-project-replicas.mjs",
+          "scripts/server-rust/replica-http-lifetimes.mjs"
         ],
         "remaining": [
-          "Remaining placement/failure product flows and supported-platform CI.",
-          "Packaged operation and multi-instance coordination remain unverified."
+          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
+          "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
       {
@@ -2756,83 +2777,104 @@
           "scripts/server-rust/replica-completion-repository-compatibility.mjs",
           "scripts/server-rust/replica-http-validation-compatibility.mjs",
           "scripts/server-rust/replica-import-http-compatibility.mjs",
-          "scripts/server-rust/replica-connected-cases.mjs"
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-current-replica-acceptance.json",
+          "scripts/server-rust/actual-project-replicas.mjs",
+          "scripts/server-rust/replica-http-lifetimes.mjs"
         ],
         "remaining": [
-          "Remaining placement/failure product flows and supported-platform CI.",
-          "Packaged operation and multi-instance coordination remain unverified."
+          "Run managed-link repair through the full worker on the current candidate.",
+          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
+          "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
       {
         "method": "GET",
         "path": "/api/projects/:projectId/replica-jobs",
         "implementation": "cantrip_server_rs/src/http/replicas.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/replica-admission-repository-compatibility.mjs",
           "scripts/server-rust/replica-completion-repository-compatibility.mjs",
           "scripts/server-rust/replica-http-validation-compatibility.mjs",
           "scripts/server-rust/replica-import-http-compatibility.mjs",
-          "scripts/server-rust/replica-connected-cases.mjs"
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-current-replica-acceptance.json",
+          "scripts/server-rust/actual-project-replicas.mjs",
+          "scripts/server-rust/replica-http-lifetimes.mjs"
         ],
         "remaining": [
-          "Remaining placement/failure product flows and supported-platform CI.",
-          "Packaged operation and multi-instance coordination remain unverified."
+          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
+          "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
       {
         "method": "GET",
         "path": "/api/project-replica-jobs/:jobId",
         "implementation": "cantrip_server_rs/src/http/replicas.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/replica-admission-repository-compatibility.mjs",
           "scripts/server-rust/replica-completion-repository-compatibility.mjs",
           "scripts/server-rust/replica-http-validation-compatibility.mjs",
           "scripts/server-rust/replica-import-http-compatibility.mjs",
-          "scripts/server-rust/replica-connected-cases.mjs"
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-current-replica-acceptance.json",
+          "scripts/server-rust/actual-project-replicas.mjs",
+          "scripts/server-rust/replica-http-lifetimes.mjs"
         ],
         "remaining": [
-          "Remaining placement/failure product flows and supported-platform CI.",
-          "Packaged operation and multi-instance coordination remain unverified."
+          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
+          "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
       {
         "method": "POST",
         "path": "/api/project-replica-jobs/:jobId/retry",
         "implementation": "cantrip_server_rs/src/http/replicas.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/replica-admission-repository-compatibility.mjs",
           "scripts/server-rust/replica-completion-repository-compatibility.mjs",
           "scripts/server-rust/replica-http-validation-compatibility.mjs",
           "scripts/server-rust/replica-import-http-compatibility.mjs",
-          "scripts/server-rust/replica-connected-cases.mjs"
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-current-replica-acceptance.json",
+          "scripts/server-rust/actual-project-replicas.mjs",
+          "scripts/server-rust/replica-http-lifetimes.mjs"
         ],
         "remaining": [
-          "Remaining placement/failure product flows and supported-platform CI.",
-          "Packaged operation and multi-instance coordination remain unverified."
+          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
+          "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
       {
         "method": "POST",
         "path": "/api/project-replica-jobs/:jobId/cancel",
         "implementation": "cantrip_server_rs/src/http/replicas.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/replica-admission-repository-compatibility.mjs",
           "scripts/server-rust/replica-completion-repository-compatibility.mjs",
           "scripts/server-rust/replica-http-validation-compatibility.mjs",
           "scripts/server-rust/replica-import-http-compatibility.mjs",
-          "scripts/server-rust/replica-connected-cases.mjs"
+          "scripts/server-rust/replica-connected-cases.mjs",
+          "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+          "docs/security/rust-server-current-replica-acceptance.json",
+          "scripts/server-rust/actual-project-replicas.mjs",
+          "scripts/server-rust/replica-http-lifetimes.mjs"
         ],
         "remaining": [
-          "Remaining placement/failure product flows and supported-platform CI.",
-          "Packaged operation and multi-instance coordination remain unverified."
+          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
+          "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
       {
@@ -14139,10 +14181,14 @@
           "scripts/server-rust/replica-connected-cases.mjs",
           "scripts/server-rust/replica-converted-cases.mjs",
           "scripts/server-rust/replica-shutdown-cases.mjs",
-          "scripts/server-rust/replica-concurrency-cases.mjs"
+          "scripts/server-rust/replica-concurrency-cases.mjs",
+          "docs/security/rust-server-current-replica-acceptance.json",
+          "scripts/server-rust/actual-project-replicas.mjs"
         ],
         "remaining": [
-          "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
+          "Run managed Git provisioning through the full worker on the current candidate. The full worker passes local Git attachment on all three stores and all four shared pairings.",
+          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
+          "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
       {
@@ -14159,10 +14205,14 @@
           "scripts/server-rust/replica-connected-cases.mjs",
           "scripts/server-rust/replica-converted-cases.mjs",
           "scripts/server-rust/replica-shutdown-cases.mjs",
-          "scripts/server-rust/replica-concurrency-cases.mjs"
+          "scripts/server-rust/replica-concurrency-cases.mjs",
+          "docs/security/rust-server-current-replica-acceptance.json",
+          "scripts/server-rust/actual-project-replicas.mjs"
         ],
         "remaining": [
-          "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
+          "Run the managed synchronization lifecycle through the full worker on the current candidate.",
+          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
+          "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
       {
@@ -14179,10 +14229,14 @@
           "scripts/server-rust/replica-connected-cases.mjs",
           "scripts/server-rust/replica-converted-cases.mjs",
           "scripts/server-rust/replica-shutdown-cases.mjs",
-          "scripts/server-rust/replica-concurrency-cases.mjs"
+          "scripts/server-rust/replica-concurrency-cases.mjs",
+          "docs/security/rust-server-current-replica-acceptance.json",
+          "scripts/server-rust/actual-project-replicas.mjs"
         ],
         "remaining": [
-          "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
+          "Run managed Git deletion through the full worker on the current candidate. The full worker passes encrypted detachment with retained files on all three stores and all four shared pairings.",
+          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
+          "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
       {
@@ -14199,10 +14253,14 @@
           "scripts/server-rust/replica-connected-cases.mjs",
           "scripts/server-rust/replica-converted-cases.mjs",
           "scripts/server-rust/replica-shutdown-cases.mjs",
-          "scripts/server-rust/replica-concurrency-cases.mjs"
+          "scripts/server-rust/replica-concurrency-cases.mjs",
+          "docs/security/rust-server-current-replica-acceptance.json",
+          "scripts/server-rust/actual-project-replicas.mjs"
         ],
         "remaining": [
-          "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
+          "Run managed-link repair through the full worker on the current candidate.",
+          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
+          "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
       {
@@ -17497,7 +17555,7 @@
         "tableName": "project_replica_jobs",
         "exportName": "projectReplicaJobs",
         "implementation": "cantrip_server_rs/src/projects/replicas/admission.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
           "docs/security/rust-server-provisioning-state-acceptance.json",
@@ -17508,10 +17566,14 @@
           "scripts/server-rust/replica-connected-cases.mjs",
           "scripts/server-rust/replica-converted-cases.mjs",
           "scripts/server-rust/replica-shutdown-cases.mjs",
-          "scripts/server-rust/replica-concurrency-cases.mjs"
+          "scripts/server-rust/replica-concurrency-cases.mjs",
+          "docs/security/rust-server-current-replica-acceptance.json",
+          "scripts/server-rust/actual-project-replicas.mjs",
+          "scripts/server-rust/replica-http-lifetimes.mjs"
         ],
         "remaining": [
-          "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
+          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
+          "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
       {
@@ -23520,7 +23582,7 @@
       {
         "resource": "project-replica-job",
         "implementation": "cantrip_server_rs/src/projects/replicas/service.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
           "docs/security/rust-server-provisioning-state-acceptance.json",
@@ -23531,10 +23593,14 @@
           "scripts/server-rust/replica-connected-cases.mjs",
           "scripts/server-rust/replica-converted-cases.mjs",
           "scripts/server-rust/replica-shutdown-cases.mjs",
-          "scripts/server-rust/replica-concurrency-cases.mjs"
+          "scripts/server-rust/replica-concurrency-cases.mjs",
+          "docs/security/rust-server-current-replica-acceptance.json",
+          "scripts/server-rust/actual-project-replicas.mjs",
+          "scripts/server-rust/replica-http-lifetimes.mjs"
         ],
         "remaining": [
-          "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation."
+          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
+          "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
       {
@@ -29672,6 +29738,27 @@
         "The existing worker transport and actual endpoint cryptography execute, while worktree/native/model completion replies are controlled. This batch does not execute leaf Git/Codex model compaction or full native Task inference.",
         "These command and Live mappings qualify the executed consumers, not every queue/Goal recovery path or all supported shipping platforms. Existing native admission, recovery, rollback and product evidence retain their separate scopes.",
         "Remaining inventory identities, historical partial scopes, broader interruption/coordination and final current supported-platform/product/artifact acceptance remain required by the complete server-replacement goal."
+      ]
+    },
+    "currentPackagedReplicaAcceptance": {
+      "status": "partial",
+      "qualification": "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
+      "acceptance": "docs/security/rust-server-current-replica-acceptance.json",
+      "counts": {
+        "packagedBrowserRuntimeRuns": 10,
+        "sharedServerPairings": 4,
+        "pairedStoreAuthenticationCells": 9,
+        "pairedHttpObservations": 654,
+        "verifiedAdmissionFingerprints": 108,
+        "pairedLockRaces": 10,
+        "pairedCallerDisconnects": 4,
+        "coveredRoutes": 10
+      },
+      "remaining": [
+        "Run the managed synchronization lifecycle through the full worker on the current candidate.",
+        "Run managed-link repair through the full worker on the current candidate.",
+        "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
+        "Qualify replica behavior on the final supported shipping artifacts."
       ]
     }
   },

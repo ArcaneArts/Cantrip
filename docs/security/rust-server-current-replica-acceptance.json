@@ -1,0 +1,340 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "platform": "darwin-arm64",
+  "candidateVersion": "1.1.2858",
+  "artifactSourceCommit": "bf7f5abb491240e3f11dc285538eed995a78e1ad",
+  "artifactProvenance": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/populated-profile-performance/wire-string-performance/delivery.json",
+    "bytes": 13808,
+    "sha256": "5fa52937b68d32492600bcadd56ea3586deceecc5e030e93e42d79c03bc2ef90"
+  },
+  "server": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/populated-profile-performance/wire-string-performance/cantrip-server-v3-darwin-arm64/bin/cantrip-server",
+    "bytes": 94098720,
+    "sha256": "e344fe994c7ab42e767a285ee06e4951ee9ca838e009238ed0456a1466753ddf"
+  },
+  "distributionManifest": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/populated-profile-performance/wire-string-performance/cantrip-server-v3-darwin-arm64/native-server.json",
+    "bytes": 325804,
+    "sha256": "206e47a7581ab09fdb761766df3d82cfe14e7d9398584a8472541316f6890c7b"
+  },
+  "workerEntry": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/current-inflight-recovery/runtime/worker/dist/index.js",
+    "bytes": 391696,
+    "sha256": "79bdbd422dcaa65f4294ec22fd090096091bcd074f4d64f472bd088f9717b0cd"
+  },
+  "workerCli": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/current-inflight-recovery/runtime/worker/bin/cantrip",
+    "bytes": 5408944,
+    "sha256": "1d44083cb9edfd872f0aefab43851fb31dadbb31bd17c62abd6735589fbf604a"
+  },
+  "referenceVersion": "1.1.2859",
+  "nodeVersion": "v24.22.2",
+  "sharedRedisVersion": "8.10.3",
+  "harness": {
+    "baseCommit": "bf7f5abb491240e3f11dc285538eed995a78e1ad",
+    "path": "scripts/server-rust/actual-project-replicas.mjs",
+    "sha256": "bc9e7e971ae5bcdbde1fd93184344eec163eb893077dd9ea24a6e047d7a3fe43"
+  },
+  "singleServerBrowser": [
+    {
+      "databaseMode": "pglite",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/replica-shared-acceptance/product-replicas-pglite.json",
+        "bytes": 403204,
+        "sha256": "acfcc5ebaef999da5471e6c3945daa9e936c75594a6c254c3ceeafc82525b911"
+      },
+      "observations": [
+        {
+          "runtime": "node",
+          "productSteps": 12,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 6,
+          "orderedJobEvents": 9
+        },
+        {
+          "runtime": "rust",
+          "productSteps": 12,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 6,
+          "orderedJobEvents": 9
+        }
+      ]
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/replica-shared-acceptance/product-replicas-bundled-postgres.json",
+        "bytes": 455705,
+        "sha256": "2e6d8300d22f1107ad8977aa1f0746c54d113f02f229fbee367b778701cadc12"
+      },
+      "observations": [
+        {
+          "runtime": "node",
+          "productSteps": 12,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 6,
+          "orderedJobEvents": 9
+        },
+        {
+          "runtime": "rust",
+          "productSteps": 12,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 6,
+          "orderedJobEvents": 9
+        }
+      ]
+    },
+    {
+      "databaseMode": "postgres",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/replica-shared-acceptance/product-replicas-postgres.json",
+        "bytes": 431081,
+        "sha256": "82167d26832865a0c7726cf1a6b081d61f52605f6c254713592d2b43a9bd5079"
+      },
+      "observations": [
+        {
+          "runtime": "node",
+          "productSteps": 12,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 6,
+          "orderedJobEvents": 9
+        },
+        {
+          "runtime": "rust",
+          "productSteps": 12,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 6,
+          "orderedJobEvents": 9
+        }
+      ]
+    }
+  ],
+  "sharedBrowser": {
+    "databaseMode": "postgres",
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/replica-shared-acceptance/packaged-shared-replicas.json",
+      "bytes": 1213508,
+      "sha256": "77b44e6da89cd35209833272ca460a1abf36636efca9102937d950de5854b9fd"
+    },
+    "observations": [
+      {
+        "runtime": "node/node",
+        "productSteps": 13,
+        "cleanServerExits": 6,
+        "cleanWorkerExits": 6,
+        "orderedJobEvents": 10,
+        "browserPeerKills": 1,
+        "retainedRemoteWorkerConnections": 2,
+        "replayedJobAttempt": 1,
+        "replayedJobRevision": 6
+      },
+      {
+        "runtime": "node/rust",
+        "productSteps": 13,
+        "cleanServerExits": 6,
+        "cleanWorkerExits": 6,
+        "orderedJobEvents": 10,
+        "browserPeerKills": 1,
+        "retainedRemoteWorkerConnections": 2,
+        "replayedJobAttempt": 1,
+        "replayedJobRevision": 6
+      },
+      {
+        "runtime": "rust/node",
+        "productSteps": 13,
+        "cleanServerExits": 6,
+        "cleanWorkerExits": 6,
+        "orderedJobEvents": 10,
+        "browserPeerKills": 1,
+        "retainedRemoteWorkerConnections": 2,
+        "replayedJobAttempt": 1,
+        "replayedJobRevision": 6
+      },
+      {
+        "runtime": "rust/rust",
+        "productSteps": 13,
+        "cleanServerExits": 6,
+        "cleanWorkerExits": 6,
+        "orderedJobEvents": 10,
+        "browserPeerKills": 1,
+        "retainedRemoteWorkerConnections": 2,
+        "replayedJobAttempt": 1,
+        "replayedJobRevision": 6
+      }
+    ]
+  },
+  "controlledWorker": [
+    {
+      "databaseMode": "pglite",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/replica-shared-acceptance/packaged-replica-pglite.json",
+        "bytes": 2009935,
+        "sha256": "8f74a9d18f378a0894d84805c053ca08ebe10a8a891e7a2d05afc1429718bb91"
+      },
+      "observations": [
+        {
+          "authentication": "none",
+          "pairedHttpObservations": 69,
+          "retainedReplicaJobsPerRuntime": 16,
+          "independentFingerprintsAcrossBothRuntimes": 12,
+          "foreignAccountDenialsPerRuntime": 0
+        },
+        {
+          "authentication": "password",
+          "pairedHttpObservations": 69,
+          "retainedReplicaJobsPerRuntime": 16,
+          "independentFingerprintsAcrossBothRuntimes": 12,
+          "foreignAccountDenialsPerRuntime": 0
+        },
+        {
+          "authentication": "accounts",
+          "pairedHttpObservations": 80,
+          "retainedReplicaJobsPerRuntime": 16,
+          "independentFingerprintsAcrossBothRuntimes": 12,
+          "foreignAccountDenialsPerRuntime": 10
+        }
+      ]
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/replica-shared-acceptance/packaged-replica-bundled-postgres.json",
+        "bytes": 2011272,
+        "sha256": "a7198d87bd724420fe4d8bbb08ceb19dbee51f7c90b8e139d205756564e12bd1"
+      },
+      "observations": [
+        {
+          "authentication": "none",
+          "pairedHttpObservations": 69,
+          "retainedReplicaJobsPerRuntime": 16,
+          "independentFingerprintsAcrossBothRuntimes": 12,
+          "foreignAccountDenialsPerRuntime": 0
+        },
+        {
+          "authentication": "password",
+          "pairedHttpObservations": 69,
+          "retainedReplicaJobsPerRuntime": 16,
+          "independentFingerprintsAcrossBothRuntimes": 12,
+          "foreignAccountDenialsPerRuntime": 0
+        },
+        {
+          "authentication": "accounts",
+          "pairedHttpObservations": 80,
+          "retainedReplicaJobsPerRuntime": 16,
+          "independentFingerprintsAcrossBothRuntimes": 12,
+          "foreignAccountDenialsPerRuntime": 10
+        }
+      ]
+    },
+    {
+      "databaseMode": "postgres",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/replica-shared-acceptance/packaged-replica-postgres.json",
+        "bytes": 2010054,
+        "sha256": "77616208e458f7fdd0dca8fe53b87bab40edfc82044437cf8b3a2f2dd6b85a03"
+      },
+      "observations": [
+        {
+          "authentication": "none",
+          "pairedHttpObservations": 69,
+          "retainedReplicaJobsPerRuntime": 16,
+          "independentFingerprintsAcrossBothRuntimes": 12,
+          "foreignAccountDenialsPerRuntime": 0
+        },
+        {
+          "authentication": "password",
+          "pairedHttpObservations": 69,
+          "retainedReplicaJobsPerRuntime": 16,
+          "independentFingerprintsAcrossBothRuntimes": 12,
+          "foreignAccountDenialsPerRuntime": 0
+        },
+        {
+          "authentication": "accounts",
+          "pairedHttpObservations": 80,
+          "retainedReplicaJobsPerRuntime": 16,
+          "independentFingerprintsAcrossBothRuntimes": 12,
+          "foreignAccountDenialsPerRuntime": 10
+        }
+      ]
+    }
+  ],
+  "httpLifetimes": {
+    "databaseMode": "postgres",
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/replica-shared-acceptance/packaged-replica-lifetimes.json",
+      "bytes": 285644,
+      "sha256": "83ea408af86dbd860fe90e33250b9435da6faa56855825a4f38a9dd7ea6c164c"
+    },
+    "authentication": ["none", "accounts"],
+    "pairedLockRaces": 10,
+    "pairedCallerDisconnects": 4
+  },
+  "leaseRecovery": {
+    "databaseMode": "postgres",
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/replica-shared-acceptance/packaged-replica-leases.json",
+      "bytes": 314413,
+      "sha256": "b871815fee36ec780b49b81257d23f7bcbbd60d3a166772296affae991c685d6"
+    },
+    "authentication": "accounts",
+    "renewedJobAttempt": 1,
+    "expiredJobRecoveredAttempt": 2
+  },
+  "coveredRoutes": [
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/replicas"
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/replicas"
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/replicas/:replicaId"
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/replicas/:replicaId/synchronize"
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/replicas/:replicaId/remove"
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/replicas/:replicaId/repair-link"
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/replica-jobs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/project-replica-jobs/:jobId"
+    },
+    {
+      "method": "POST",
+      "path": "/api/project-replica-jobs/:jobId/retry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/project-replica-jobs/:jobId/cancel"
+    }
+  ],
+  "durableTable": "project_replica_jobs",
+  "liveResource": "project-replica-job",
+  "controlledWorkerCommands": [
+    "project.replica.provision",
+    "project.replica.synchronize",
+    "project.replica.remove",
+    "project.replica.link.repair"
+  ],
+  "scope": [
+    "The browser and both packaged workers exercised encrypted local Git attachment and detachment. In shared mode, the browser-facing peer was replaced after durable completion while both workers remained on the other peer.",
+    "The controlled matrix exercised successful synchronization and managed-link repair, job retries and cancellation, ownership checks, shutdown recovery and canonical stored rows.",
+    "Replica work in flight during shared peer or dependency loss, the full managed Git lifecycle on this candidate and final shipping artifacts retain separate acceptance scope."
+  ]
+}
