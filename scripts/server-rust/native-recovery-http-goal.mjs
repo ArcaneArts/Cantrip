@@ -25,7 +25,11 @@ import { nativeHistoryPayloadDigest } from "../../tests/reference-node-server/sr
 
 const id = (n) => `77777777-7777-4777-8777-${String(n).padStart(12, "0")}`;
 
-export async function nativeRecoveryHttpGoal(h, result) {
+export async function nativeRecoveryHttpGoal(
+  h,
+  result,
+  { streamed = false } = {},
+) {
   const content = nativeRecoveryGoalContent(h, result, chat);
   const cycleId = id(401),
     operation = id(402),
@@ -237,12 +241,30 @@ export async function nativeRecoveryHttpGoal(h, result) {
     await call("replay original Goal scope dispatch", phase, dispatch),
     admitted,
   );
+  const messageId = streamed ? id(450) : source.publication.id;
+  const messageKey = streamed
+    ? `agent-message:${turnId}:${threadId}:${turnId}:root-answer`
+    : source.publication.idempotencyKey;
   const message = await content.message(
-    source.publication.id,
+    messageId,
     "assistant",
-    source.publication.idempotencyKey,
+    messageKey,
     "original autonomous Goal answer",
   );
+  const provisional = streamed
+    ? await content.message(
+        messageId,
+        "assistant",
+        messageKey,
+        "provisional autonomous Goal answer",
+        "provisional",
+      )
+    : undefined;
+  if (provisional)
+    await h.fixture.sql([
+      `INSERT INTO chat_messages(id,chat_id,worktree_id,execution_lane_id,role,mode,task_protected_content,task_attachment_ids,idempotency_key,created_at)
+        VALUES(${literal(messageId)},${literal(chat)},${literal(tree)},${literal(lane)},'assistant','goal',${json(provisional.protectedContent)},'[]'::jsonb,${literal(messageKey)},${literal(stamp)})`,
+    ]);
   const delivery = taskGoalOutcomeDeliverySchema.parse({
     version: 1,
     inputKind: "goal-cycle",
@@ -343,6 +365,21 @@ export async function nativeRecoveryHttpGoal(h, result) {
   }
   const accepted = await state();
   assert.equal(accepted.messages.length, 3);
+  if (provisional) {
+    const sealed = accepted.messages.find((row) => row.id === messageId);
+    assert.equal(sealed.task_output_finalized, true);
+    assert.deepEqual(sealed.task_protected_content, message.protectedContent);
+    const changed = structuredClone(delivery);
+    changed.notification.outcome.result.structuredResult.message.protectedContent =
+      provisional.protectedContent;
+    await call(
+      "changed autonomous Goal receipt cannot replace the final answer",
+      outcome,
+      changed,
+      500,
+    );
+    assert.deepEqual(await state(), accepted);
+  }
   assert.equal(
     accepted.cycles[0].goal_cycle_recovery.suspension.terminal.outcomeDigest,
     content.noteDigest(delivery.notification),

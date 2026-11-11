@@ -9,6 +9,9 @@ if (
   process.argv[1] === process.env.CANTRIP_TEST_TASK_ROUND_ORDER_WORKER_ENTRY &&
   !existsSync(report)
 ) {
+  const kind = process.env.CANTRIP_TEST_TASK_OUTCOME_ORDER_KIND ?? "round";
+  const mode = kind === "round" ? "default" : "goal";
+  const field = kind === "round" ? "assistantMessage" : "message";
   const { WebSocket } = createRequire(process.argv[1])("ws");
   const send = WebSocket.prototype.send;
   const fetch = globalThis.fetch;
@@ -21,7 +24,7 @@ if (
       if (
         frame.kind === "event" &&
         event?.type === "agent.protected-task-message" &&
-        event.message.classification.mode === "default" &&
+        event.message.classification.mode === mode &&
         event.telemetry?.kind === "message"
       ) {
         if (!first && event.telemetry.streaming === true) {
@@ -42,8 +45,8 @@ if (
           frame.requestId === first.frame.requestId) ||
           (frame.kind === "notification" &&
             frame.notification?.type === "chat.turn.outcome" &&
-            frame.notification.outcome?.result?.structuredResult
-              ?.assistantMessage?.id === first.frame.event.message.id))
+            frame.notification.outcome?.result?.structuredResult?.[field]
+              ?.id === first.frame.event.message.id))
       ) {
         pending.push(data);
         return;
@@ -61,9 +64,9 @@ if (
     ) {
       const body = JSON.parse(options.body);
       const assistant =
-        body.notification.outcome.result?.structuredResult?.assistantMessage;
+        body.notification.outcome.result?.structuredResult?.[field];
       if (
-        body.inputKind === "round" &&
+        body.inputKind === kind &&
         assistant?.id === first.frame.event.message.id
       ) {
         const response = await fetch(input, options);
@@ -82,8 +85,9 @@ if (
             replay.status === response.status &&
             JSON.stringify(replayReceipt) === JSON.stringify(receipt);
           const changed = structuredClone(body);
-          changed.notification.outcome.result.structuredResult.assistantMessage.protectedContent =
-            first.frame.event.message.protectedContent;
+          changed.notification.outcome.result.structuredResult[
+            field
+          ].protectedContent = first.frame.event.message.protectedContent;
           const conflict = await fetch(input, {
             ...options,
             body: JSON.stringify(changed),

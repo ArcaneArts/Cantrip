@@ -368,8 +368,9 @@ impl Repository {
                 "turnId":if n["outcome"]["ok"]==true{n["outcome"]["result"]["turnId"].clone()}else{n["outcome"]["inference"]["turnId"].clone()}})};
             if s["terminal"].is_null() && !response_digest.is_null() {terminal["outcomeDigest"]=response_digest;}
             let saved=if let Some(message)=message {
-                Some(crate::chats::message_writes::append_task_with(Executor::Transaction(tx),&owner,&chat,&message,
-                    Some(&json!({"executionLaneId":r["executionLaneId"],"worktreeId":r["worktreeId"]}))).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?)
+                Some(crate::chats::message_writes::append_task_outcome_with(Executor::Transaction(tx),&owner,&chat,&message,
+                    &json!({"executionLaneId":r["executionLaneId"],"worktreeId":r["worktreeId"]}),
+                    publication_kind==Some(super::response_publication::Kind::NativeRoot)).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?)
             }else{None};
             if s["terminal"].is_null() {let mut state=s.clone();state["terminal"]=terminal.clone();super::resumption::save_goal_execution(tx,&c,r,&state).await?;}
             if n["outcome"]["ok"] == true && !physical["nativeExecution"].is_null() &&

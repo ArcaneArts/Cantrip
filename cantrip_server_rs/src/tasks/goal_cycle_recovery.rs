@@ -159,16 +159,17 @@ impl Repository {
             let message = if note["outcome"]["ok"] == true {
                 let result = parse("taskMessageRelayResultSchema", &note["outcome"]["result"]["structuredResult"])?;
                 let message = result["message"].clone();
-                if super::response_publication::kind(&message,&source["publication"],&note["outcome"]["result"],&source).is_none() { return stale(); }
-                Some(message)
+                let Some(kind)=super::response_publication::kind(&message,&source["publication"],&note["outcome"]["result"],&source) else { return stale(); };
+                Some((message,kind))
             } else { None };
             let digest = format!("{:x}", Sha256::digest(note.stringify().as_bytes()));
             if !marker["suspension"]["terminal"]["outcomeDigest"].is_null() && marker["suspension"]["terminal"]["outcomeDigest"] != digest.as_str() { return stale(); }
             let row = crate::native_commands::suspension::chat(tx, &owner, &chat).await?;
             if row["experience"] != "task" { return stale(); }
-            let saved = if let Some(message) = message {
-                crate::chats::message_writes::append_task_with(Executor::Transaction(tx), &owner, &chat, &message,
-                    Some(&json!({"executionLaneId":source["parent"]["executionLaneId"],"worktreeId":source["parent"]["worktreeId"]}))).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?
+            let saved = if let Some((message,kind)) = message {
+                crate::chats::message_writes::append_task_outcome_with(Executor::Transaction(tx), &owner, &chat, &message,
+                    &json!({"executionLaneId":source["parent"]["executionLaneId"],"worktreeId":source["parent"]["worktreeId"]}),
+                    kind==super::response_publication::Kind::NativeRoot).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?
             } else { Value::Null };
             let ok = note["outcome"]["ok"] == true;
             if marker["suspension"]["terminal"].is_null() {

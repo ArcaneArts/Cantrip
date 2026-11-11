@@ -9909,10 +9909,11 @@
           "docs/security/rust-server-current-native-admission.json",
           "scripts/server-rust/actual-task-client.mjs",
           "scripts/server-rust/worker-task-round-order.mjs",
-          "docs/security/rust-server-streamed-task-receipt-acceptance.json"
+          "docs/security/rust-server-streamed-task-receipt-acceptance.json",
+          "docs/security/rust-server-streamed-goal-receipt-acceptance.json"
         ],
         "remaining": [
-          "Diagnose the separate PGlite Goal input HTTP 500 and bundled PostgreSQL autonomous completion failure retained in the streamed Task receipt comparison.",
+          "Diagnose the bundled PostgreSQL autonomous Goal that remained implementing, including the missing terminal outcome.",
           "Complete autonomous outcome observation and lane release after worker-owner or dependency loss, including the retained shared Goal lane that remained active after Task completion.",
           "Repeat qualification on the final supported shipping artifacts."
         ]
@@ -29809,6 +29810,25 @@
       "remaining": [
         "Resolve the separately retained Goal input receipt and autonomous completion/lane observations, including worker-owning peer loss.",
         "Repeat qualification on the final supported shipping artifacts."
+      ]
+    },
+    "currentStreamedGoalReceiptAcceptance": {
+      "status": "partial",
+      "qualification": "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
+      "acceptance": "docs/security/rust-server-streamed-goal-receipt-acceptance.json",
+      "counts": {
+        "packagedOrderingRuns": 5,
+        "completedProductSteps": 80,
+        "successfulOutcomeResponses": 45,
+        "rejectedChangedReplays": 5,
+        "pairedControlledGoalObservations": 249,
+        "pairedControlledRoundObservations": 150,
+        "controlledAutonomousRootObservations": 87,
+        "sameProfileUpgradeRollbackPhases": 12
+      },
+      "remaining": [
+        "Reproduce and repair the retained autonomous Task completion and recovered execution lane failures after the durable outcome.",
+        "Qualify worker-owner peer loss and the final supported shipping artifacts."
       ]
     },
     "currentPackagedNativeAdmission": {

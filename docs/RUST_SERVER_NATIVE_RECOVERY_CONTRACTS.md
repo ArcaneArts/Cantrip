@@ -199,3 +199,56 @@ node --import tsx scripts/server-rust/actual-folder-client.mjs \
   --tasks --task-round-outcome-order --production-server --runtime rust \
   --database pglite --report /absolute/path/direct-task-receipt.json
 ```
+
+## Goal receipt arriving before the final stream event
+
+The controlled ordering in the real browser and packaged worker reproduced
+a separate HTTP 500 on the explicit Goal input receipt. The prior Rust
+package and the Node reference both received the matching final envelope
+while the same bound assistant row held its provisional ciphertext.
+
+A bound native root outcome now finalizes the exact assistant row in the
+transaction that saves the receipt. The server uses the same identity,
+classification, lane, worktree and key revision checks as the direct
+Task repair. The new migration gives each message row a private
+finalization flag. It defaults to false for existing rows. The server
+also recognizes the completed direct-round receipts that predate this
+migration. The public envelope, receipt and WebSocket schemas are
+unchanged.
+
+The optimized macOS ARM64 package `1.1.2863` passes the forced Goal input
+order on all three stores and two shared Rust peers. It also passes the
+direct Task order on external PostgreSQL. All five product runs preserve
+the exact history after restart and record 45 successful outcome
+responses and five expected HTTP 409 conflicts. The first shared run
+passed the receipt assertions and was interrupted during restart by
+a Vite reload while the local workspace dependencies were rebuilt.
+
+The controlled autonomous Goal cycle fixture holds a real provisional
+envelope in the database and delivers the authorized root receipt over
+HTTP. It verifies commit, SQL failure rollback, restart, exact replay
+and the existing rejection status for a changed receipt. The three
+store runs passed 87 observations. The unmodified Node/Rust controlled
+comparisons passed 249 paired Goal and 150 paired round observations.
+All 87 Rust library tests and strict library Clippy passed.
+
+The same-profile rehearsal uses the actual `1.1.2862` and `1.1.2863`
+executables. On all three stores it upgrades after a settings write,
+returns to `1.1.2862` after accepting another write, and re-upgrades
+after another accepted write. Server identity and all three settings
+values are retained. The SQL exports include the new field.
+
+The [acceptance record](security/rust-server-streamed-goal-receipt-acceptance.json)
+retains the exact packages, results and failed attempts. The autonomous
+Goal observation and recovered lane cases remain open, including loss
+of the worker-owning server after the receipt commits.
+
+```sh
+node --import tsx scripts/server-rust/actual-folder-client.mjs \
+  --tasks --task-goal-outcome-order --production-server --runtime rust \
+  --database pglite --report /absolute/path/goal-input-receipt.json
+
+node --import tsx scripts/server-rust/native-recovery-http-compatibility.mjs \
+  --streamed-goal-cycle-root --database pglite --profile accounts \
+  --report /absolute/path/autonomous-goal-root-receipt.json
+```
