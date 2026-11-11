@@ -18,6 +18,8 @@ import {
 
 const execFileAsync = promisify(execFile);
 const PROBE_TIMEOUT_MS = 10_000;
+const VERSION_TIMEOUT_MS = 5_000;
+const WINDOWS_BUNDLED_VERSION_TIMEOUT_MS = 120_000;
 
 export const TESTED_CODEX_RANGE = ">=0.166.0 <0.167.0";
 
@@ -324,10 +326,11 @@ export function assessCodexRuntime(
 
 export async function discoverCodexVersion(
   binary: string,
+  timeoutMs = VERSION_TIMEOUT_MS,
 ): Promise<string | null> {
   try {
     const { stdout, stderr } = await execFileAsync(binary, ["--version"], {
-      timeout: 5_000,
+      timeout: timeoutMs,
     });
     // Startup warnings are diagnostics, not part of the version identifier.
     // Some wrappers report the version only on stderr, so retain that fallback.
@@ -461,8 +464,14 @@ async function runCapabilityProbe(
 export async function discoverCodexRuntime(
   binary: string,
   codexHome: string,
+  { bundled = false }: { bundled?: boolean } = {},
 ): Promise<CodexRuntimeReport> {
-  const versionRaw = await discoverCodexVersion(binary);
+  // Windows can take longer to load the bundled executable on a cold start.
+  const versionTimeoutMs =
+    bundled && process.platform === "win32"
+      ? WINDOWS_BUNDLED_VERSION_TIMEOUT_MS
+      : VERSION_TIMEOUT_MS;
+  const versionRaw = await discoverCodexVersion(binary, versionTimeoutMs);
   if (!versionRaw) {
     return assessCodexRuntime({ versionRaw: null, initialize: null });
   }
