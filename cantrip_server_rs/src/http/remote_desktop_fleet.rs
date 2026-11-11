@@ -125,7 +125,8 @@ async fn fleet(service: Arc<AuthService>, owner: String, project: String) -> Res
     let limit = if workers.is_empty() {
         0
     } else {
-        4096 / workers.len()
+        // The worker command accepts at most 64 monitors and 2,000 windows.
+        (4096 / workers.len()).min(2064)
     };
     let results = futures::future::join_all(
         workers

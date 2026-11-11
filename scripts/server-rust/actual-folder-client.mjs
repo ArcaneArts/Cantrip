@@ -133,6 +133,11 @@ const databaseMode = option("--database") ?? "pglite";
 const sharedPair = option("--server-pair");
 const postgresOutage = option("--inflight-peer") === "postgres";
 const cantripOsRun = process.argv.includes("--cantrip-os-run");
+const cantripOsSurfaces = process.argv.includes("--cantrip-os-surfaces");
+const fakeHostDesktopInventory = process.argv.includes(
+  "--fake-host-desktop-inventory",
+);
+assert.ok(!fakeHostDesktopInventory || cantripOsSurfaces);
 const cantripOsSourceBackup = process.argv.includes(
   "--cantrip-os-source-backup",
 );
@@ -148,6 +153,7 @@ assert.ok(!fakeComputerUse || computerUseProduct);
 assert.ok(!workerLinkRenewal || !sharedPair);
 const singleProduct =
   cantripOsRun ||
+  cantripOsSurfaces ||
   cantripOsSourceBackup ||
   workerLinkRenewal ||
   providerAuth ||
@@ -193,6 +199,7 @@ const liveTaskDiagnostics =
   process.argv.includes("--task-diagnostics") ||
   process.argv.includes("--postgres-errors");
 const fullServerLogs =
+  cantripOsSurfaces ||
   cantripOsSourceBackup ||
   workerLinkRenewal ||
   liveTaskDiagnostics ||
@@ -205,7 +212,10 @@ const fullServerLogs =
   process.argv.includes("--chat-controls");
 const surfaceFixtureRequests = [];
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-actual-folder-"));
-const fakeCuaLauncher = fakeComputerUse ? path.join(root, "fake-cua") : null;
+const fakeCuaLauncher =
+  fakeComputerUse || fakeHostDesktopInventory
+    ? path.join(root, "fake-cua")
+    : null;
 const appRoot = path.join(repositoryRoot, "cantrip_app");
 const appRequire = createRequire(path.join(appRoot, "package.json"));
 const { createServer } = await import(
@@ -315,6 +325,7 @@ async function flow(
       inlineChatLabels ||
       approvalCancellation ||
       remoteSurfaces ||
+      cantripOsSurfaces ||
       computerUseProduct ||
       [
         "--mcp-settings",
@@ -347,7 +358,8 @@ async function flow(
           inlineChatLabels ||
           approvalCancellation ||
           remoteSurfaces ||
-          computerUseProduct
+          computerUseProduct ||
+          cantripOsSurfaces
             ? { CANTRIP_LOG_LEVEL: "debug" }
             : {}),
           ...(fakeCuaLauncher ? { CANTRIP_CUA_BIN: fakeCuaLauncher } : {}),
@@ -1383,6 +1395,7 @@ async function flow(
     }
     if (
       cantripOsRun ||
+      cantripOsSurfaces ||
       cantripOsSourceBackup ||
       process.argv.includes("--cantrip-os") ||
       process.argv.includes("--cantrip-os-system")
@@ -1390,6 +1403,8 @@ async function flow(
       if (!worker) await startWorker();
       await actualCantripOsClient({
         runProjectId: cantripOsRun ? first.id : undefined,
+        surfaceProjectId: cantripOsSurfaces ? first.id : undefined,
+        fakeHostDesktopInventory,
         backupProjectId: cantripOsSourceBackup ? first.id : undefined,
         page,
         fixture,
@@ -1610,23 +1625,25 @@ try {
         ...(process.argv.includes("--operational-status")
           ? { CANTRIP_METRICS_TOKEN: operationalProductToken }
           : {}),
-        ...(workerLinkRenewal
-          ? {
-              CANTRIP_WORKER_LINK_RELAY_ONLY: "false",
-              CANTRIP_WORKER_LINK_LOCAL_ENABLED: "true",
-              CANTRIP_WORKER_LINK_LAN_ENABLED: "true",
-              CANTRIP_WORKER_LINK_WAN_ENABLED: "false",
-            }
-          : process.argv.includes("--worker-links")
-            ? workerLinkRoute === "relay"
-              ? { CANTRIP_WORKER_LINK_RELAY_ONLY: "true" }
-              : {
-                  CANTRIP_WORKER_LINK_RELAY_ONLY: "false",
-                  CANTRIP_WORKER_LINK_LOCAL_ENABLED: "false",
-                  CANTRIP_WORKER_LINK_LAN_ENABLED: "true",
-                  CANTRIP_WORKER_LINK_WAN_ENABLED: "false",
-                }
-            : {}),
+        ...(cantripOsSurfaces
+          ? { CANTRIP_WORKER_LINK_RELAY_ONLY: "true" }
+          : workerLinkRenewal
+            ? {
+                CANTRIP_WORKER_LINK_RELAY_ONLY: "false",
+                CANTRIP_WORKER_LINK_LOCAL_ENABLED: "true",
+                CANTRIP_WORKER_LINK_LAN_ENABLED: "true",
+                CANTRIP_WORKER_LINK_WAN_ENABLED: "false",
+              }
+            : process.argv.includes("--worker-links")
+              ? workerLinkRoute === "relay"
+                ? { CANTRIP_WORKER_LINK_RELAY_ONLY: "true" }
+                : {
+                    CANTRIP_WORKER_LINK_RELAY_ONLY: "false",
+                    CANTRIP_WORKER_LINK_LOCAL_ENABLED: "false",
+                    CANTRIP_WORKER_LINK_LAN_ENABLED: "true",
+                    CANTRIP_WORKER_LINK_WAN_ENABLED: "false",
+                  }
+              : {}),
         CANTRIP_APP_ORIGINS: `http://127.0.0.1:5173,${new URL(vite.resolvedUrls.local[0]).origin}`,
       },
     };
@@ -1778,6 +1795,7 @@ try {
       );
     if (
       cantripOsRun ||
+      cantripOsSurfaces ||
       cantripOsSourceBackup ||
       process.argv.includes("--cantrip-os") ||
       process.argv.includes("--cantrip-os-system")

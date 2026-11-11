@@ -1,0 +1,638 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "productBaseCommit": "8f0fc2b7440cce69da41756b714bbf2b1d73ce84",
+  "platform": "darwin-arm64",
+  "authentication": "accounts",
+  "workerRuntime": "Node v24.22.2",
+  "postgresVersion": "18.6",
+  "servingExecutable": {
+    "path": "cantrip-server",
+    "bytes": 94093552,
+    "sha256": "63066dec9221dfb1a4420457dafccb1b2c9044f2738c73acb7ce7e467fad9071"
+  },
+  "patchedRustSource": {
+    "path": "cantrip_server_rs/src/http/remote_desktop_fleet.rs",
+    "bytes": 6705,
+    "sha256": "77edff1294ee6d56fefef8d65af915df0bb6e6d792c6a836dd9d5e82998aeb73"
+  },
+  "patchedReferenceSource": {
+    "path": "tests/reference-node-server/src/app/routes/remote-desktop-read.ts",
+    "bytes": 7691,
+    "sha256": "269a56d636b4d1ecec16877b59cf3804897a8fa866f5f7383fba7613de64fcc1"
+  },
+  "referenceEntrypoint": {
+    "path": "tests/reference-node-server/dist/index.js",
+    "bytes": 106,
+    "sha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310"
+  },
+  "workerEntrypoint": {
+    "path": "cantrip_worker/dist/index.js",
+    "bytes": 391660,
+    "sha256": "ed0cd85f4756c5960b20b1283b680fb0c5701d54dc13e187a92c86923093beab"
+  },
+  "hostCua": {
+    "path": "cantrip_worker/bin/cantrip-cua",
+    "bytes": 4575744,
+    "sha256": "d925a0adab52e3bfa8ac13ce6265f2723fbca06d148834980ecb3ecce70a67e9"
+  },
+  "guest": {
+    "imageId": "sha256:0f167ee073c93b20e56a10742776b6487a9f66190124f98fb169fffd834692a4",
+    "architecture": "arm64",
+    "sourceArchiveSha256": "3feeb365240d146d97f25d9a424443e277840f2f300e653f0e5e81d3f8854143",
+    "packages": {
+      "cantrip-os-executor": "0.12.0",
+      "cantrip-os-remote": "0.11.0",
+      "cantrip-os-workspaces": "0.4.0"
+    },
+    "nativeCuaSha256": "e827a33587b8d4238553878f5361bf5046911654f29c81467e13bf9c68b26b31"
+  },
+  "currentWorkerCommandCoverage": {
+    "mapped": 323,
+    "total": 323
+  },
+  "fleetBeforeFix": {
+    "path": "pglite-pilot-v2.json",
+    "bytes": 538827,
+    "sha256": "6ea5992378f6691a713a8e2f1e45e1fe8484ca7e88cee03625929f45af7be0ed"
+  },
+  "obsoleteGuestPilot": {
+    "path": "pglite-pilot-v1.json",
+    "bytes": 158287,
+    "sha256": "14bd52a17ec45297410bdc954844d146e613b43a5dae8b66145b96615259de87"
+  },
+  "pgliteDefaultCacheFailure": {
+    "path": "pglite-matrix-v1.json",
+    "bytes": 233403,
+    "sha256": "15d485023573b74b37a84ff355a94192986c2d6f5c2273c92a2fd9ba170e648a"
+  },
+  "freshDefaultPgliteMigration": {
+    "path": "pglite-fresh-default-migrate.log",
+    "bytes": 206,
+    "sha256": "7e36db6c474d3293a5c9f4ceba30872c9d99f4c1d2f55a8293af820881faf399"
+  },
+  "summary": {
+    "peers": 10,
+    "workerCommandCompletions": 40,
+    "cleanServerExits": 42,
+    "intentionalServerKills": 10,
+    "cleanWorkerExits": 40
+  },
+  "product": [
+    {
+      "mode": "pglite",
+      "report": {
+        "path": "pglite-matrix-v2.json",
+        "bytes": 545550,
+        "sha256": "5405bda0cc5ac18ceba62728f6be0c02e7422f10936db241f893f1fabe0f6337"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "hostInventory": {
+            "status": "ok",
+            "monitorCount": 3,
+            "windowCount": 427,
+            "error": null
+          },
+          "hostProbeStatus": 201,
+          "staleDesktopStatus": 409,
+          "workerCommands": [
+            {
+              "command": "surface.desktop.os-prepare",
+              "requestId": "46dd149d-f35a-47da-81a6-17b211a8ebe8"
+            },
+            {
+              "command": "surface.desktop.probe",
+              "requestId": "5b6a18d0-88d0-4814-8266-48eebfe6cae2"
+            },
+            {
+              "command": "surface.desktop.targets",
+              "requestId": "b0f1d9fe-7458-411f-96fd-8dc33b5ea11a"
+            },
+            {
+              "command": "surface.tunnel.os-prepare",
+              "requestId": "e631cff0-01a4-4221-b64c-238d35c93a58"
+            }
+          ],
+          "guestDesktop": {
+            "jpegBytes": [9825, 9780],
+            "desktopSizes": [
+              [1440, 900],
+              [1440, 900]
+            ],
+            "workerRestartAndExactState": true,
+            "noHumanControl": true
+          },
+          "guestTunnel": {
+            "bytesToWorker": 40063,
+            "bytesFromWorker": 40089,
+            "requestSha256": "247e55459dd238d416d725fd73732d2e3e0c4fbcb6f740469b21a354b530600a",
+            "replySha256": "7e374bb87d7ebfbc08eeca4d40c8bf27975eaffac650d727ee6bd9010d2487ac",
+            "encryptedFrames": 1,
+            "halfClose": true,
+            "grantReleased": true
+          },
+          "intentionalServerKills": 1,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4
+        },
+        {
+          "kind": "rust",
+          "hostInventory": {
+            "status": "ok",
+            "monitorCount": 3,
+            "windowCount": 427,
+            "error": null
+          },
+          "hostProbeStatus": 201,
+          "staleDesktopStatus": 409,
+          "workerCommands": [
+            {
+              "command": "surface.desktop.os-prepare",
+              "requestId": "88bcb810-00d9-435e-9b32-ce2b4a3995e2"
+            },
+            {
+              "command": "surface.desktop.probe",
+              "requestId": "a0301280-5a9f-48a2-b4f6-ae7e63bfdaf9"
+            },
+            {
+              "command": "surface.desktop.targets",
+              "requestId": "1d3f5c8a-57ba-4dfa-9194-0a8644501208"
+            },
+            {
+              "command": "surface.tunnel.os-prepare",
+              "requestId": "e40ae55c-945e-4d93-a544-1cf311a092bc"
+            }
+          ],
+          "guestDesktop": {
+            "jpegBytes": [9780, 9830],
+            "desktopSizes": [
+              [1440, 900],
+              [1440, 900]
+            ],
+            "workerRestartAndExactState": true,
+            "noHumanControl": true
+          },
+          "guestTunnel": {
+            "bytesToWorker": 40063,
+            "bytesFromWorker": 40089,
+            "requestSha256": "900c55f25dfbee68eeec3f5979d6ba4a05b05e55ae22a4b15156690044c58b4a",
+            "replySha256": "085be997d2cd798f00aac4b97aa5076f44b788eb6b29203bd2c39f659b361184",
+            "encryptedFrames": 2,
+            "halfClose": true,
+            "grantReleased": true
+          },
+          "intentionalServerKills": 1,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4
+        }
+      ]
+    },
+    {
+      "mode": "bundled-postgres",
+      "report": {
+        "path": "bundled-postgres-matrix-v1.json",
+        "bytes": 605077,
+        "sha256": "8b41e2ea53b27170daccf13019a57ad0444059e378c4f97f24e6c90e20fdb31f"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "hostInventory": {
+            "status": "ok",
+            "monitorCount": 3,
+            "windowCount": 427,
+            "error": null
+          },
+          "hostProbeStatus": 201,
+          "staleDesktopStatus": 409,
+          "workerCommands": [
+            {
+              "command": "surface.desktop.os-prepare",
+              "requestId": "c1d61e05-1770-4d2f-9c1e-e77cd53ab8cd"
+            },
+            {
+              "command": "surface.desktop.probe",
+              "requestId": "a4bc8ab1-e700-47c4-bd07-3fde02b73b00"
+            },
+            {
+              "command": "surface.desktop.targets",
+              "requestId": "9763f0a2-2a44-4322-8080-29b7c6c28a28"
+            },
+            {
+              "command": "surface.tunnel.os-prepare",
+              "requestId": "d1570daa-6ec1-4a73-8d78-f1dc76eaadf3"
+            }
+          ],
+          "guestDesktop": {
+            "jpegBytes": [9835, 9787],
+            "desktopSizes": [
+              [1440, 900],
+              [1440, 900]
+            ],
+            "workerRestartAndExactState": true,
+            "noHumanControl": true
+          },
+          "guestTunnel": {
+            "bytesToWorker": 40063,
+            "bytesFromWorker": 40089,
+            "requestSha256": "0fd1be7207159668712db43ff9aebb614dbf9f592e9e896804f28351f9e960cc",
+            "replySha256": "6ab185163993e3d22921883b382e0b0efde477b18f0ac5d7b28cece9d8d29040",
+            "encryptedFrames": 2,
+            "halfClose": true,
+            "grantReleased": true
+          },
+          "intentionalServerKills": 1,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4
+        },
+        {
+          "kind": "rust",
+          "hostInventory": {
+            "status": "ok",
+            "monitorCount": 3,
+            "windowCount": 427,
+            "error": null
+          },
+          "hostProbeStatus": 201,
+          "staleDesktopStatus": 409,
+          "workerCommands": [
+            {
+              "command": "surface.desktop.os-prepare",
+              "requestId": "d32e28de-e394-4acd-ae37-45ba994292b8"
+            },
+            {
+              "command": "surface.desktop.probe",
+              "requestId": "00623a17-d39e-493b-bae6-222fbe3bd8a8"
+            },
+            {
+              "command": "surface.desktop.targets",
+              "requestId": "b56e7f58-bf73-4ec8-92e4-a091e655838c"
+            },
+            {
+              "command": "surface.tunnel.os-prepare",
+              "requestId": "3e5f63e8-1969-43c5-89d7-3a304ac05c7b"
+            }
+          ],
+          "guestDesktop": {
+            "jpegBytes": [9831, 9831],
+            "desktopSizes": [
+              [1440, 900],
+              [1440, 900]
+            ],
+            "workerRestartAndExactState": true,
+            "noHumanControl": true
+          },
+          "guestTunnel": {
+            "bytesToWorker": 40063,
+            "bytesFromWorker": 40089,
+            "requestSha256": "7e15e2be2650f333ce367d9dcfa982f8900f74489743d9f16c0625fb064b6e24",
+            "replySha256": "123713c2fdf6ba31c78b003109dbcca81a60ade7dbb846de80fdd85c247dc5b7",
+            "encryptedFrames": 1,
+            "halfClose": true,
+            "grantReleased": true
+          },
+          "intentionalServerKills": 1,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4
+        }
+      ]
+    },
+    {
+      "mode": "postgres",
+      "report": {
+        "path": "postgres-matrix-v1.json",
+        "bytes": 601580,
+        "sha256": "ad7b374c3a28e0b5e8c284995fc167eb5211caa194e111a7d80d605f34561c79"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "hostInventory": {
+            "status": "ok",
+            "monitorCount": 3,
+            "windowCount": 427,
+            "error": null
+          },
+          "hostProbeStatus": 201,
+          "staleDesktopStatus": 409,
+          "workerCommands": [
+            {
+              "command": "surface.desktop.os-prepare",
+              "requestId": "2faa63d7-ea2f-4e1e-b11f-d66fff2417be"
+            },
+            {
+              "command": "surface.desktop.probe",
+              "requestId": "b4700455-fe66-4e1d-a0f9-ad08a9156b55"
+            },
+            {
+              "command": "surface.desktop.targets",
+              "requestId": "0d83adf1-44f9-47e9-bec4-d57ca4f3a76e"
+            },
+            {
+              "command": "surface.tunnel.os-prepare",
+              "requestId": "68a11389-b300-4602-8fdc-5aba29b15161"
+            }
+          ],
+          "guestDesktop": {
+            "jpegBytes": [9791, 9831],
+            "desktopSizes": [
+              [1440, 900],
+              [1440, 900]
+            ],
+            "workerRestartAndExactState": true,
+            "noHumanControl": true
+          },
+          "guestTunnel": {
+            "bytesToWorker": 40063,
+            "bytesFromWorker": 40089,
+            "requestSha256": "ff4816620ce02b33d7e6dc5566dbe672b927791043f0391da7e7a8b20985cf37",
+            "replySha256": "f994df848b065fc6d09fe72310dd32aafdadedcb4ef4bd650ab1cfcb02d1cd81",
+            "encryptedFrames": 1,
+            "halfClose": true,
+            "grantReleased": true
+          },
+          "intentionalServerKills": 1,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4
+        },
+        {
+          "kind": "rust",
+          "hostInventory": {
+            "status": "ok",
+            "monitorCount": 3,
+            "windowCount": 427,
+            "error": null
+          },
+          "hostProbeStatus": 201,
+          "staleDesktopStatus": 409,
+          "workerCommands": [
+            {
+              "command": "surface.desktop.os-prepare",
+              "requestId": "e367b715-33a7-4337-a936-0bfc76235a07"
+            },
+            {
+              "command": "surface.desktop.probe",
+              "requestId": "9457361f-fdd9-471a-87f5-76955023ebb7"
+            },
+            {
+              "command": "surface.desktop.targets",
+              "requestId": "a29a8cde-6986-42a6-8cf2-7d63cf772a3e"
+            },
+            {
+              "command": "surface.tunnel.os-prepare",
+              "requestId": "708bbb5e-595d-4d04-9a32-9194dfc31493"
+            }
+          ],
+          "guestDesktop": {
+            "jpegBytes": [9831, 9831],
+            "desktopSizes": [
+              [1440, 900],
+              [1440, 900]
+            ],
+            "workerRestartAndExactState": true,
+            "noHumanControl": true
+          },
+          "guestTunnel": {
+            "bytesToWorker": 40063,
+            "bytesFromWorker": 40089,
+            "requestSha256": "bb362d45d3d4f79290beaba5e2be4e193b42f9e0a3827cd5f2b92b07b9dd9cf5",
+            "replySha256": "9708d2e743979ab3dd4b5412f5362ebe9e3bd35470052b15d0e586ca3db3b8d4",
+            "encryptedFrames": 1,
+            "halfClose": true,
+            "grantReleased": true
+          },
+          "intentionalServerKills": 1,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4
+        }
+      ]
+    }
+  ],
+  "sharedPostgresRedis": {
+    "report": {
+      "path": "postgres-shared-v1.json",
+      "bytes": 1463744,
+      "sha256": "41283d5b66e30dffac218e0fd114b9a45f03a992be7cb4690b0c046d78047e1c"
+    },
+    "peers": [
+      {
+        "kind": "node/node",
+        "hostInventory": {
+          "status": "ok",
+          "monitorCount": 1,
+          "windowCount": 1,
+          "error": null
+        },
+        "hostProbeStatus": 201,
+        "staleDesktopStatus": 409,
+        "workerCommands": [
+          {
+            "command": "surface.desktop.os-prepare",
+            "requestId": "be394921-cc76-4544-b808-3902f33a473d"
+          },
+          {
+            "command": "surface.desktop.probe",
+            "requestId": "279a48cd-68d1-4856-8d8f-3df9e340a9c4"
+          },
+          {
+            "command": "surface.desktop.targets",
+            "requestId": "3e35b617-2ed9-4e79-afe9-cc29f63a3060"
+          },
+          {
+            "command": "surface.tunnel.os-prepare",
+            "requestId": "7d8e14ee-ed95-4e10-a105-08a612ebfc22"
+          }
+        ],
+        "guestDesktop": {
+          "jpegBytes": [9787, 9787],
+          "desktopSizes": [
+            [1440, 900],
+            [1440, 900]
+          ],
+          "workerRestartAndExactState": true,
+          "noHumanControl": true
+        },
+        "guestTunnel": {
+          "bytesToWorker": 40063,
+          "bytesFromWorker": 40089,
+          "requestSha256": "66c89238d42d6f9150d02ad43e28f3a28f932ba2863f65f56184c5a8340f9635",
+          "replySha256": "6a83190bef84cf7b205faf7fc6c22f6827957b2f9469f9e85ffbd9e4114b3f5c",
+          "encryptedFrames": 2,
+          "halfClose": true,
+          "grantReleased": true
+        },
+        "intentionalServerKills": 1,
+        "cleanServerExits": 6,
+        "cleanWorkerExits": 4
+      },
+      {
+        "kind": "node/rust",
+        "hostInventory": {
+          "status": "ok",
+          "monitorCount": 1,
+          "windowCount": 1,
+          "error": null
+        },
+        "hostProbeStatus": 201,
+        "staleDesktopStatus": 409,
+        "workerCommands": [
+          {
+            "command": "surface.desktop.os-prepare",
+            "requestId": "ab023b2d-22c3-4197-abc1-f07b38bd681b"
+          },
+          {
+            "command": "surface.desktop.probe",
+            "requestId": "3ca0ab6e-302b-4c8e-9ddf-2e5b67a6a7a4"
+          },
+          {
+            "command": "surface.desktop.targets",
+            "requestId": "8c502cc1-e074-470f-bcbd-0d94d422b47e"
+          },
+          {
+            "command": "surface.tunnel.os-prepare",
+            "requestId": "85ae532a-70be-42c0-b2d0-f3eed5eeb3a9"
+          }
+        ],
+        "guestDesktop": {
+          "jpegBytes": [9787, 9831],
+          "desktopSizes": [
+            [1440, 900],
+            [1440, 900]
+          ],
+          "workerRestartAndExactState": true,
+          "noHumanControl": true
+        },
+        "guestTunnel": {
+          "bytesToWorker": 40063,
+          "bytesFromWorker": 40089,
+          "requestSha256": "1dd1ea5294c3b62db232dcd3025232b30d2a56e1f674f6f2ad812f490f4e9230",
+          "replySha256": "0a5436415b7f20cf214ab06fdbbf7637a4d51665c0d1c41a3d8ee8f796ece0cb",
+          "encryptedFrames": 1,
+          "halfClose": true,
+          "grantReleased": true
+        },
+        "intentionalServerKills": 1,
+        "cleanServerExits": 6,
+        "cleanWorkerExits": 4
+      },
+      {
+        "kind": "rust/node",
+        "hostInventory": {
+          "status": "ok",
+          "monitorCount": 1,
+          "windowCount": 1,
+          "error": null
+        },
+        "hostProbeStatus": 201,
+        "staleDesktopStatus": 409,
+        "workerCommands": [
+          {
+            "command": "surface.desktop.os-prepare",
+            "requestId": "e13fbfbc-7209-4dba-a082-8cc8c13c5611"
+          },
+          {
+            "command": "surface.desktop.probe",
+            "requestId": "daca46bb-a72e-4806-948e-be11bc041c82"
+          },
+          {
+            "command": "surface.desktop.targets",
+            "requestId": "70f154ce-6b39-4f38-91cd-7de9a3b51361"
+          },
+          {
+            "command": "surface.tunnel.os-prepare",
+            "requestId": "b9203f6b-e263-4fb9-964d-72ca5a119b16"
+          }
+        ],
+        "guestDesktop": {
+          "jpegBytes": [9792, 9792],
+          "desktopSizes": [
+            [1440, 900],
+            [1440, 900]
+          ],
+          "workerRestartAndExactState": true,
+          "noHumanControl": true
+        },
+        "guestTunnel": {
+          "bytesToWorker": 40063,
+          "bytesFromWorker": 40089,
+          "requestSha256": "2f66a4e3c0822dfe6cfb1c82e3d97b29b178ac97cdee2e98304bae20f3f60072",
+          "replySha256": "fff6f1644679314b9efe580bf8fefd0568dc86c1d452e0d27ee37ba67bf9d750",
+          "encryptedFrames": 1,
+          "halfClose": true,
+          "grantReleased": true
+        },
+        "intentionalServerKills": 1,
+        "cleanServerExits": 6,
+        "cleanWorkerExits": 4
+      },
+      {
+        "kind": "rust/rust",
+        "hostInventory": {
+          "status": "ok",
+          "monitorCount": 1,
+          "windowCount": 1,
+          "error": null
+        },
+        "hostProbeStatus": 201,
+        "staleDesktopStatus": 409,
+        "workerCommands": [
+          {
+            "command": "surface.desktop.os-prepare",
+            "requestId": "73c2a49b-8d64-47a1-a855-6c4535db92b4"
+          },
+          {
+            "command": "surface.desktop.probe",
+            "requestId": "69eb728c-d4a0-4bd0-8949-bdd7d0039c6d"
+          },
+          {
+            "command": "surface.desktop.targets",
+            "requestId": "64118a89-f5ed-4e2d-b506-2bfc42076731"
+          },
+          {
+            "command": "surface.tunnel.os-prepare",
+            "requestId": "79e40527-2f56-429e-872d-901b2b17255d"
+          }
+        ],
+        "guestDesktop": {
+          "jpegBytes": [9780, 9825],
+          "desktopSizes": [
+            [1440, 900],
+            [1440, 900]
+          ],
+          "workerRestartAndExactState": true,
+          "noHumanControl": true
+        },
+        "guestTunnel": {
+          "bytesToWorker": 40063,
+          "bytesFromWorker": 40089,
+          "requestSha256": "96df19201f36e486906bf679e648a842fd9f26fbabef5ba005e0f41898052f74",
+          "replySha256": "f897d3631bbfa30b430f5967b4866b34d4ab00cdb5172e10f49eb184856d7677",
+          "encryptedFrames": 1,
+          "halfClose": true,
+          "grantReleased": true
+        },
+        "intentionalServerKills": 1,
+        "cleanServerExits": 6,
+        "cleanWorkerExits": 4
+      }
+    ]
+  },
+  "fixtureArchive": {
+    "path": "fixture-evidence.tar.zst",
+    "bytes": 124401102,
+    "sha256": "490514ab8f001dbf2031ae5cb78e5a1097650703d3bee370a935903d6e7ce246",
+    "verifiedRegularFiles": 32244,
+    "redactedServerProcessLogs": 104,
+    "excludedRebuildablePaths": [
+      "*/worker/managed-runtimes",
+      "*/worker/tools/codegraph/versions"
+    ]
+  },
+  "localEvidenceDirectory": "rust-server-guest-surfaces-20261111-v1",
+  "scope": "Production servers, authenticated browser SDK and full worker with physical host inventory in single-server runs and explicit fake host inventory in shared runs. All accepted guest desktop and TCP paths use the real Linux runtime.",
+  "remaining": [
+    "Full host desktop frame/input acceptance, active attachment failover, reverse guest TCP, SSH and VNC, and final supported shipping."
+  ]
+}

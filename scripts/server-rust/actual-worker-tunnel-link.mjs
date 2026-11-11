@@ -293,7 +293,7 @@ export async function actualWorkerTunnelLink({
         );
       },
     );
-    assert.deepEqual(tunnel.received, [
+    assert.deepEqual(await (tunnel.readReceived?.() ?? tunnel.received), [
       { bytes: tunnel.plaintext.length, sha256: hash(tunnel.plaintext) },
     ]);
     for (const frame of frames.filter((f) => f.header.kind === "data")) {

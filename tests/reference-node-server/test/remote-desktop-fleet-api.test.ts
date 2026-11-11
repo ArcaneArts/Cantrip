@@ -6,6 +6,7 @@ import {
   remoteDesktopFleetWireSchema,
   remoteDesktopWireSummarySchema,
   unprobedCodexRuntimeReport,
+  workerCommandSchema,
   type WorkerCommand,
 } from "@cantrip/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -87,6 +88,7 @@ const workerBridge: WorkerCommandBus = {
 let app: Awaited<ReturnType<typeof buildApp>>;
 let database: DatabaseConnection;
 let projectId: string;
+let folderProjectId: string;
 let createdDesktopId: string;
 
 beforeAll(async () => {
@@ -143,6 +145,26 @@ beforeAll(async () => {
     "healthy-worker",
     protectedRemoteDesktopState(),
   );
+  const { project: folder } =
+    await database.repository.createManagedFolderProject(LOCAL_USER_ID, {
+      workerId: "primary-worker",
+      ...protectedProjectFields(),
+    });
+  folderProjectId = folder.id;
+  const setup = await database.repository.projectFolderSetupJobs.claimNext();
+  if (!setup) throw new Error("Expected the fixture folder setup job.");
+  await database.repository.projectFolderSetupJobs.complete(
+    setup.job.id,
+    setup.commandId,
+    {
+      status: "ready",
+      jobId: setup.job.id,
+      attempt: setup.job.attempt,
+      path: path.join(dataDirectory, "folder"),
+      displayPath: "folder",
+      reused: false,
+    },
+  );
   app = await buildApp({ config, database, logger: false, workerBridge });
 }, 30_000);
 
@@ -152,6 +174,25 @@ afterAll(async () => {
 });
 
 describe.sequential("Remote Desktop fleet API", () => {
+  it("dispatches a schema-valid target budget to a single eligible worker", async () => {
+    const start = requested.length;
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/projects/${folderProjectId}/remote-desktop-fleet`,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(remoteDesktopFleetWireSchema.parse(response.json()).workers).toEqual(
+      [expect.objectContaining({ workerId: "primary-worker", status: "ok" })],
+    );
+    const commands = requested.slice(start);
+    expect(commands).toHaveLength(1);
+    expect(workerCommandSchema.parse(commands[0].command)).toMatchObject({
+      type: "surface.desktop.targets",
+      resourceId: "primary-worker",
+      limit: 2_064,
+    });
+  });
+
   it("returns healthy inventories beside independent offline and timeout states", async () => {
     const response = await app.inject({
       method: "GET",
