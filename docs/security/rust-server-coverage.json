@@ -14207,6 +14207,33 @@
         ]
       },
       {
+        "command": "codex.auth.logout",
+        "implementation": "cantrip_server_rs/src/settings/authentication.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_PROVIDER_AUTH_WORKER_ACCEPTANCE.md",
+          "docs/security/rust-server-provider-auth-worker-acceptance.json",
+          "scripts/server-rust/actual-provider-auth-client.mjs",
+          "scripts/server-rust/settings-auth-cases.mjs"
+        ],
+        "remaining": [
+          "The browser SDK and full worker qualify legacy ChatGPT and Grok sign-out on all three stores with account authentication. The controlled repository comparison covers portable-record and failure branches. Actual provider OAuth, multi-worker interruption and full desktop acceptance retain separate scope."
+        ]
+      },
+      {
+        "command": "codex.auth.status",
+        "implementation": "cantrip_worker/src/index.ts",
+        "status": "no-current-server-producer",
+        "evidence": [
+          "docs/RUST_SERVER_PROVIDER_AUTH_WORKER_ACCEPTANCE.md",
+          "docs/security/rust-server-provider-auth-worker-acceptance.json",
+          "scripts/server-rust/actual-provider-auth-client.mjs"
+        ],
+        "remaining": [
+          "The retained handler stays in the worker wire contract. The public status route reads stored account state and can dispatch legacy credential capture or refresh an authenticated catalog. Both current serving implementations removed the direct status request."
+        ]
+      },
+      {
         "command": "codex.auth.login.start",
         "implementation": "cantrip_server_rs/src/settings/account_service/auth_flow.rs",
         "status": "partial",
