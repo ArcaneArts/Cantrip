@@ -487,6 +487,121 @@
       }
     }
   },
+  "currentInstalledDesktop": {
+    "sourceCommit": "5f4d4691d1b83b8216e9d0f194c7f9d3217aa298",
+    "integratedVerificationCommit": "68e3133edfa6ddb39f146b760a07fc1518704a86",
+    "version": "1.1.2845",
+    "target": "win32-x64",
+    "guest": {
+      "os": "Windows 11",
+      "architecture": "x64",
+      "execution": "QEMU x64 software emulation on macOS ARM64"
+    },
+    "installer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-windows-desktop/installers/1.1.2845/Cantrip_1.1.2845_x64-setup.exe",
+      "bytes": 256553335,
+      "sha256": "b5fe9148c290367a0fcf0240fdcd0480ce7f7c00ec6c46d9e988d2403b709241"
+    },
+    "updaterSignature": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-windows-desktop/installers/1.1.2845/Cantrip_1.1.2845_x64-setup.exe.sig",
+      "bytes": 420,
+      "sha256": "9a301d7cc47763fcb1891abe9338130e211baf5bef9691702db70fdb61858990"
+    },
+    "updaterSignatureVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-windows-desktop/installers/1.1.2845/minisign-verification.log",
+      "bytes": 115,
+      "sha256": "ce04eafc6c58d282165834fff9d41aa8bcf5f9818ceeff1dc17ca689f931b22e"
+    },
+    "signedPayloadManifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-windows-desktop/installers/1.1.2845/nsis-embedded-runtime-manifest.json",
+      "bytes": 2505850,
+      "sha256": "ca9d9008c41fe96b466dba5f0201ed26ce3a81fc4858b378d2902b5e1fdef75a"
+    },
+    "installedApp": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-windows-desktop/installers/1.1.2845/cantrip-app-from-signed-nsis.exe",
+      "bytes": 25049600,
+      "sha256": "7fe9c6deda4f5b2d4a8af3cb944fa780b4677b95167238c8bfe43dafffc0c85a"
+    },
+    "installedServer": {
+      "bytes": 109879261,
+      "sha256": "bf5616e9d515205cc2be240d0ccc122eae164cb56da9bdf06dafa4636e8eda88"
+    },
+    "installedWorkerEntry": {
+      "bytes": 391696,
+      "sha256": "79bdbd422dcaa65f4294ec22fd090096091bcd074f4d64f472bd088f9717b0cd"
+    },
+    "installedFilesVerified": 14090,
+    "signedUpdate": {
+      "baselineVersion": "1.1.2841",
+      "candidateVersion": "1.1.2845",
+      "signatureRejection": "update_signature_invalid",
+      "signingKey": "disposable loopback updater fixture",
+      "databaseMode": "pglite",
+      "identitySettingAndWorkerRetained": true,
+      "retainedProfileReopenedAfterGuestRestart": true,
+      "retainedProfileAppExit": 0,
+      "retainedProfileServicesReaped": true,
+      "originalObservation": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/current-windows-desktop/signed-update-stopped-checkpoint.json",
+        "bytes": 4543,
+        "sha256": "c134e162e749b813f26ad8e9100ca832ae01c441891d3716a7c55aa89c66b205"
+      },
+      "initialObserverIssue": "The expected app digest came from before Tauri patched the NSIS payload. The installed bytes match the signed payload."
+    },
+    "desktopMatrix": [
+      {
+        "mode": "pglite",
+        "engine": "pglite",
+        "freshAppExit": 0,
+        "reopenedAppExit": 0,
+        "workerVersion": "1.1.2845",
+        "retainedIdentityAndSetting": true,
+        "servicesReapedOnBothRuns": true,
+        "rustShutdownLoggedOnBothRuns": true
+      },
+      {
+        "mode": "bundled-postgres",
+        "engine": "postgres",
+        "freshAppExit": 0,
+        "reopenedAppExit": 0,
+        "workerVersion": "1.1.2845",
+        "retainedIdentityAndSetting": true,
+        "servicesReapedOnBothRuns": true,
+        "rustShutdownLoggedOnBothRuns": true,
+        "reopenConfiguration": "persisted-profile",
+        "ownedPostmasterStoppedOnBothRuns": true
+      },
+      {
+        "mode": "postgres",
+        "engine": "postgres",
+        "freshAppExit": 0,
+        "reopenedAppExit": 0,
+        "workerVersion": "1.1.2845",
+        "retainedIdentityAndSetting": true,
+        "servicesReapedOnBothRuns": true,
+        "rustShutdownLoggedOnBothRuns": true,
+        "reopenConfiguration": "persisted-profile",
+        "externalPostmasterSurvivedBothAppExits": true
+      }
+    ],
+    "verifiedTrayQuitRuns": 7,
+    "diskVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-windows-desktop/verified-current-installed-desktop.json",
+      "bytes": 13425,
+      "sha256": "c2fc8ab31c60349f9cc1376c660880d7964a8ab84aef05b31853b02f144a4120"
+    },
+    "desktopSerialReceipt": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-windows-desktop/guest-serial.jsonl",
+      "bytes": 21111,
+      "sha256": "fe4411ce23b20056aa1f2912dec5edb037ac7b55527c18d99b831c39c40bb3d7"
+    },
+    "fixtureObserverDiagnostics": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-windows-desktop/bundled-scalar-receipt-next.json",
+      "bytes": 1620,
+      "sha256": "fffb1c48ee98c2f1c3d00ecda78682cad68c83193d894fffe2cb397b71e29a95"
+    },
+    "hostedDevelopmentRuns": 0
+  },
   "currentNativeStandalone": {
     "sourceCommit": "5f4d4691d1b83b8216e9d0f194c7f9d3217aa298",
     "version": "1.1.2845",

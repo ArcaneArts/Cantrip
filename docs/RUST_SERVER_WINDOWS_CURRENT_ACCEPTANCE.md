@@ -29,6 +29,42 @@ are retained. Installed-app qualification for this version is tracked
 separately from the standalone run.
 [Windows acceptance record](security/rust-server-win32-x64-acceptance.json#currentNativeStandalone)
 
+## Windows x64 installed `1.1.2845`
+
+The installed `1.1.2841` app updated through the real Cantrip updater over
+loopback HTTPS. The updater rejected a modified installer with
+`update_signature_invalid`, then accepted the NSIS installer signed with the
+disposable QA updater key. The relaunched app, native server and packaged
+worker each reported `1.1.2845`. The original PGlite profile kept its server
+identity, worker identity and written theme.
+
+An independent Windows disk read matched all 14,090 installed files to the
+signed installer payload, including the Rust executable from the standalone
+qualification. Tauri patches the desktop executable while assembling NSIS.
+The first observer compared it with the pre-packaging hash. The retained
+record includes that assertion and the matching installed payload hash.
+
+The signed-update profile reopened after the guest restarted, retained the
+same identity and setting, and received a worker reply. The installed app
+also passed first start, a settings write, restart and readback on all three
+database modes. Each of those six runs and the signed profile reopen used the
+app's tray confirmation, exited zero, reaped both service processes and logged
+a graceful Rust server shutdown.
+
+The bundled PostgreSQL postmaster ran from the packaged executable and
+exited with the app. External PostgreSQL stayed up after app shutdown until
+the fixture stopped it. Both PostgreSQL modes reopened using their stored
+profile settings with database environment overrides removed. The worker
+answered an actual version command on every run.
+
+The Windows 11 x64 guest ran with QEMU software emulation. The independent
+receipt observer verifies the live Rust child listener through Windows.
+PowerShell attached filesystem-provider metadata to a line read from the
+postmaster PID file. The corrected receipt records the independently
+verified data directory as a plain string, allowing the same running app
+to finish its observation and subsequent reopen.
+[Current installed acceptance record](security/rust-server-win32-x64-acceptance.json#currentInstalledDesktop)
+
 ## Installed Windows x64 update and historical PGlite profile
 
 The installed `1.1.2839` app cold-started the native server with PGlite in a

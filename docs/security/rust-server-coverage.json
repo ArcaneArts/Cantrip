@@ -29255,9 +29255,10 @@
       "profileUpgradeAndInterruptionCases": 8,
       "publishedNodeVersion": "1.1.2397",
       "currentNativeStandalone": "docs/security/rust-server-win32-x64-acceptance.json#currentNativeStandalone",
+      "currentInstalledDesktop": "docs/security/rust-server-win32-x64-acceptance.json#currentInstalledDesktop",
       "installedX64SignedUpdate": "docs/security/rust-server-win32-x64-acceptance.json#installedX64SignedUpdate",
       "installedX64PostgresModes": "docs/security/rust-server-win32-x64-acceptance.json#installedX64PostgresModes",
-      "scope": "The earlier Windows ARM64 guest passes all three stores with x64 standalone and server-only desktop supervision, plus Node PGlite upgrade, post-write rollback and re-upgrade. The Windows x64 guest qualifies the 1.1.2845 GNU standalone artifact across all three stores with 2281 package files and three verified SQL exports. It also passes the installed signed 1.1.2839 to 1.1.2841 PGlite update with full worker and retained identity/write. The installed 1.1.2841 historical PGlite profile passes conversion and preserves all 1660 original files. Fresh installed bundled and external PostgreSQL profiles verify their database process, accepted settings write and real worker reply. The broader release and product acceptance remains open."
+      "scope": "The earlier Windows ARM64 guest passes all three stores with x64 standalone and server-only desktop supervision, plus Node PGlite upgrade, post-write rollback and re-upgrade. The Windows x64 guest qualifies the 1.1.2845 GNU standalone artifact across all three stores with 2281 package files and three verified SQL exports. It also passes the installed signed 1.1.2839 to 1.1.2841 PGlite update with full worker and retained identity/write. The installed 1.1.2841 historical PGlite profile passes conversion and preserves all 1660 original files. Current installed Windows x64 1.1.2845 updates a retained PGlite profile and verifies all 14090 signed payload files. The retained profile and each first-start/reopen database pair pass real worker replies and seven tray shutdowns. Bundled and external PostgreSQL reopen from the persisted selection."
     },
     "currentLinuxArm64Qualification": {
       "status": "implemented-with-scoped-local-qualification",
