@@ -9,24 +9,30 @@ const require = createRequire(
 );
 const postgres = require("postgres");
 
-export async function postgresFixture(directory, { url } = {}) {
+export async function postgresFixture(
+  directory,
+  { url, restartable = false } = {},
+) {
+  const bin = process.env.CANTRIP_TEST_POSTGRES_BIN_DIR ?? "";
+  const cluster = restartable
+    ? await (
+        await import("./restartable-postgres.mjs")
+      ).restartablePostgres(directory, bin)
+    : undefined;
   const executable =
     !url &&
+    !cluster &&
     (process.env.CANTRIP_RUST_DATABASE_FIXTURE_BINARY ??
       (await buildRustExample("database-fixture")));
   const owner =
     !url &&
+    !cluster &&
     (await startServer(
       executable,
-      [
-        "--data-dir",
-        directory,
-        "--postgres-bin-dir",
-        process.env.CANTRIP_TEST_POSTGRES_BIN_DIR ?? "",
-      ],
+      ["--data-dir", directory, "--postgres-bin-dir", bin],
       { cwd: repositoryRoot, env: fixtureEnvironment(directory) },
     ));
-  const connection = url || owner.origin;
+  const connection = url || cluster?.url || owner.origin;
   const sql = postgres(connection, { max: 1 });
   const names = [];
   const prefix = url
@@ -34,6 +40,7 @@ export async function postgresFixture(directory, { url } = {}) {
     : "cantrip_auth_fixture";
   let sequence = 0;
   return {
+    cluster,
     async database() {
       const name = `${prefix}_${sequence++}`;
       await sql`CREATE DATABASE ${sql(name)}`;
@@ -52,6 +59,7 @@ export async function postgresFixture(directory, { url } = {}) {
       } finally {
         await sql.end({ timeout: 5 });
         if (owner) await owner.close();
+        if (cluster) await cluster.stop();
       }
     },
   };

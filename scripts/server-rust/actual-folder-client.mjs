@@ -126,6 +126,7 @@ const option = (name) => {
 };
 const databaseMode = option("--database") ?? "pglite";
 const sharedPair = option("--server-pair");
+const postgresOutage = option("--inflight-peer") === "postgres";
 const cantripOsRun = process.argv.includes("--cantrip-os-run");
 const cantripOsSourceBackup = process.argv.includes(
   "--cantrip-os-source-backup",
@@ -1201,6 +1202,7 @@ async function flow(
         workerId,
         worker,
         dataDirectory,
+        postgresCluster: postgres?.cluster,
         requests,
         result,
       });
@@ -1458,7 +1460,9 @@ try {
   await vite.listen();
   browser = await chromium.launch({ headless: true });
   if (databaseMode !== "pglite")
-    postgres = await postgresFixture(path.join(root, "postgres"));
+    postgres = await postgresFixture(path.join(root, "postgres"), {
+      restartable: postgresOutage,
+    });
   for (const kinds of runtimeCases) {
     const kind = kinds[0];
     const fixtureOptions = {

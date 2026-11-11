@@ -126,14 +126,17 @@ export async function nativeTaskRedisOutage({
   );
 }
 
-export async function verifyRedisRecoveredWorker(page, workerId) {
-  return page.evaluate(async (id) => {
-    const api = await import("/src/lib/api/worker-link.ts");
-    const session = await api.createWorkerLinkSession(
-      id,
-      "after-native-task-redis-recovery",
-    );
-    await api.deleteWorkerLinkSession(session.sessionId);
-    return session.identity.workerId;
-  }, workerId);
+export async function verifyRecoveredWorker(page, workerId, fault) {
+  return page.evaluate(
+    async ({ workerId, fault }) => {
+      const api = await import("/src/lib/api/worker-link.ts");
+      const session = await api.createWorkerLinkSession(
+        workerId,
+        "after-native-task-" + fault + "-recovery",
+      );
+      await api.deleteWorkerLinkSession(session.sessionId);
+      return session.identity.workerId;
+    },
+    { workerId, fault },
+  );
 }
