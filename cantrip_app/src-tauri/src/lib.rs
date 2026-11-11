@@ -749,6 +749,10 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
         .resource_dir()
         .map_err(|error| format!("Could not resolve bundled resources: {error}"))?
         .join("runtime");
+    // On Windows, initdb launches postgres through the command shell, which
+    // cannot use the verbatim path returned for ordinary installed directories.
+    #[cfg(windows)]
+    let resources = dunce::simplified(&resources);
     service_logs.runtime_event(
         "info",
         "Bundled desktop runtime startup began",
