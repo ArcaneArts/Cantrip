@@ -17,6 +17,13 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current macOS ARM64 package and signed-update rehearsal](RUST_SERVER_DESKTOP_SIGNED_UPDATE.md)
+qualifies `1.1.2817` standalone on all three stores. Its actual PGlite signed
+update rejects a changed archive and installs and restarts the valid release
+with retained server state and client catalog. macOS denied the new ad-hoc
+binary's Keychain request. Encrypted restart and the two PostgreSQL signed
+update cells remain pending.
+
 The [current Winterhold and Linux x64 qualification](RUST_SERVER_WINTERHOLD.md#current-linux-x64-qualification)
 uses the exact `1.1.2816` distribution and container across all three stores.
 The container passes 2,546 package hashes per store. All 18 installer cases
