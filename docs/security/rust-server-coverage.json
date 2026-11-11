@@ -28818,6 +28818,23 @@
       "verifiedArtifactFiles": 1762,
       "scope": "Native ARM64 macOS standalone package on all three stores. PGlite signed desktop install and restart retained state after rejecting an altered package. Keychain authorization of the new ad-hoc app was denied; the encrypted update matrix remains incomplete."
     },
+    "currentLinuxArm64Qualification": {
+      "status": "implemented-with-scoped-local-qualification",
+      "evidence": [
+        "docs/RUST_SERVER_WINTERHOLD.md",
+        "docs/security/rust-server-linux-arm64-acceptance.json",
+        "scripts/server-rust/winterhold-systemd-acceptance.mjs",
+        "scripts/server-rust/container-server-acceptance.mjs"
+      ],
+      "sourceCommit": "f902c5328e99c410c6869f0ad8695d483ce5c6a2",
+      "candidateVersion": "1.1.2817",
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+      "containerArtifactFilesVerifiedPerMode": 2546,
+      "installerCalls": 18,
+      "recoveredInstallerFailures": 6,
+      "directNativeExecutableHashes": 10,
+      "scope": "Native ARM64 Debian container and Ubuntu systemd/Caddy on a local ARM64 host. The external PostgreSQL rollback uses the retained x64 Node reference. Desktop and remaining product, recovery and coordination acceptance are open."
+    },
     "defaultRuntimeCutover": {
       "status": "implemented-with-scoped-local-qualification",
       "implementation": [

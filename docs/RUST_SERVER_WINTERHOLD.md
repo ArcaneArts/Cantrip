@@ -145,6 +145,27 @@ and container behavior on that host. Bare-metal x64 performance and a production
 Winterhold deployment remain outside this rehearsal. All 28 local deployment and
 release tests passed.
 
+## Current Linux ARM64 qualification
+
+The production build from `f902c5328e99c410c6869f0ad8695d483ce5c6a2` exported
+`1.1.2817` as a Linux ARM64 distribution and a Debian container. In all three
+stores the container executed the exact ARM64 binary and matched all 2,546
+packaged files. It passed migrations, SQL export, retained identity and
+settings, local and hosted reopen, and graceful shutdown with the same
+non-root, read-only and noexec configuration as the x64 container.
+
+The native ARM64 systemd and Caddy rehearsal passed all 18 installer cases.
+Both local stores retained writes and sessions through rollback to native
+Rust `1.1.2783`. External PostgreSQL retained them through rollback to the
+x64 Node `1.1.2739` reference and return to Rust. All ten native process
+hashes came directly from `/proc/PID/exe`. HTTPS and App Live verified the
+fixture CA and hostname, all six observed external database connections used
+TLS, and a write outside the profile was rejected in the service namespace.
+
+The [acceptance record](security/rust-server-linux-arm64-acceptance.json)
+records the artifact and report hashes. This rehearsal used a local ARM64
+Linux host and the production installer and service configuration.
+
 ## Earlier local results
 
 The [integrated artifact qualification](RUST_SERVER_INTEGRATED_ARTIFACT_ACCEPTANCE.md)
