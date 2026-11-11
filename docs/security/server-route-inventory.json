@@ -6901,7 +6901,7 @@
     {
       "boundary": "application-principal",
       "file": "tests/reference-node-server/src/app/routes/remote-desktop-read.ts",
-      "line": 213,
+      "line": 216,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/remote-desktops/:desktopId",
