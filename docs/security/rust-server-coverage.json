@@ -28904,6 +28904,21 @@
       "verifiedArtifactFiles": 1762,
       "scope": "Native ARM64 macOS standalone package on all three stores. PGlite signed desktop install and restart retained state after rejecting an altered package. Keychain authorization of the new ad-hoc app was denied; the encrypted update matrix remains incomplete."
     },
+    "currentActiveTaskRedisOutage": {
+      "status": "implemented-with-scoped-local-qualification",
+      "evidence": [
+        "docs/RUST_SERVER_INFLIGHT_RECOVERY.md",
+        "docs/security/rust-server-active-redis-outage.json",
+        "scripts/server-rust/native-task-redis-outage.mjs",
+        "scripts/server-rust/actual-native-inflight-client.mjs"
+      ],
+      "serverSourceCommit": "020254f3c3aabb5e2e1e712c2c597a5cc73a5950",
+      "databaseMode": "postgres",
+      "serverPairings": ["node/node", "node/rust", "rust/node", "rust/rust"],
+      "qualifiedRedisProcessOutages": 4,
+      "workerOwnerCrashControls": 1,
+      "scope": "Local macOS ARM64 production server processes, full worker, browser SDK and native Codex. A real 45-second Redis process outage exceeds the worker claim TTL. All four remote native Tasks renew the original PostgreSQL lease and complete once before Redis restarts. Redis network and TLS faults, concurrent PostgreSQL interruption and final shipping platform acceptance remain open."
+    },
     "currentWorkerLinkLeaseRecovery": {
       "status": "implemented-with-scoped-local-qualification",
       "evidence": [

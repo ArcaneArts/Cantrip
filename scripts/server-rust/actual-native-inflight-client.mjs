@@ -1,5 +1,5 @@
 // Browser Task APIs, the complete worker and actual Codex remain in use. Only
-// the public model stream is held while one owned production peer is killed.
+// the public model stream is held while an owned server or Redis is interrupted.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
@@ -7,6 +7,10 @@ import { loadStoredWorkerCredential } from "../../cantrip_worker/src/credential-
 import { taskModelProvider } from "./task-model-provider.mjs";
 import { captureTaskRuntimeState } from "./task-runtime-snapshot.mjs";
 import { eventually } from "./full-worker.mjs";
+import {
+  nativeTaskRedisOutage,
+  verifyRedisRecoveredWorker,
+} from "./native-task-redis-outage.mjs";
 
 const postgres = createRequire(
   new URL("../../tests/reference-node-server/package.json", import.meta.url),
@@ -98,7 +102,7 @@ export async function actualNativeInflightClient({
     let placementWarmups = 0;
     while (pendingRoles.length) {
       const role = pendingRoles[0];
-      assert.ok(["client", "worker", "admission"].includes(role));
+      assert.ok(["client", "worker", "admission", "redis"].includes(role));
       const index = role === "worker" ? 1 : 0;
       const brief = "Private in-flight Task brief " + randomUUID() + " 🍄";
       const answer = "Private in-flight Task answer " + randomUUID() + " 🌲";
@@ -233,9 +237,16 @@ export async function actualNativeInflightClient({
         assert.equal(running.activeOperationId, operationId);
         assert.equal(running.dispatch.state, "running");
       });
-      assert.equal(reply.request.completed, false);
-      assert.equal(reply.request.closed, false);
-      assert.equal(posts().length, beforePosts + 1);
+      const assertOriginalStream = () => {
+        assert.equal(reply.request.completed, false);
+        assert.equal(
+          reply.request.closed,
+          false,
+          "original model stream remains open",
+        );
+        assert.equal(posts().length, beforePosts + 1);
+      };
+      assertOriginalStream();
       const runningSnapshot = await snapshot();
       if (role === "admission") active.afterAdmissionRestart = runningSnapshot;
       else active.beforeCrash = runningSnapshot;
@@ -254,13 +265,25 @@ export async function actualNativeInflightClient({
       // matching lease is counted as the requested interruption scenario.
       active.placementWarmup =
         role !== "admission" &&
-        executorRole === "client" &&
+        (executorRole === "client" || role === "redis") &&
         active.executorPeer !== 0;
       if (active.placementWarmup) {
         assert.ok(
           ++placementWarmups <= 12,
           "front executor placement was not observed",
         );
+      } else if (role === "redis") {
+        await nativeTaskRedisOutage({
+          fixture,
+          workerId,
+          claim: before,
+          operationId,
+          active,
+          read,
+          snapshot,
+          reply,
+          assertOriginalStream,
+        });
       } else {
         active.transition ??= await fixture.replacePeer(
           index,
@@ -289,13 +312,7 @@ export async function actualNativeInflightClient({
       assert.equal(worker.child.pid, report.workerPid);
       assert.equal(worker.child.exitCode, null);
       assert.equal(worker.child.signalCode, null);
-      assert.equal(reply.request.completed, false);
-      assert.equal(
-        reply.request.closed,
-        false,
-        "the original native model stream remains open across server interruption",
-      );
-      assert.equal(posts().length, beforePosts + 1);
+      if (!active.redisOutage) assertOriginalStream();
       active.afterReconnect = await snapshot();
       if (
         process.argv.includes("--inflight-expire-lease") &&
@@ -324,9 +341,11 @@ export async function actualNativeInflightClient({
         assert.equal(posts().length, beforePosts + 1);
         active.afterLeaseExpiry = await snapshot();
       }
-      const retained = await read();
-      assert.equal(retained.state, "implementing");
-      assert.equal(retained.activeOperationId, operationId);
+      if (!active.redisOutage) {
+        const retained = await read();
+        assert.equal(retained.state, "implementing");
+        assert.equal(retained.activeOperationId, operationId);
+      }
       const replayAdmission = async () => {
         const replay = await page.evaluate(
           async ({ chatId, body }) => {
@@ -354,7 +373,7 @@ export async function actualNativeInflightClient({
         });
       };
       if (role === "admission") await replayAdmission();
-      reply.release();
+      if (!active.redisOutage) reply.release();
       const completed = await eventually(
         read,
         (task) => assert.equal(task.state, "complete"),
@@ -391,6 +410,13 @@ export async function actualNativeInflightClient({
         ),
         credential,
       );
+      if (active.redisOutage) {
+        active.redisOutage.recoveredWorker = await verifyRedisRecoveredWorker(
+          page,
+          workerId,
+        );
+        assert.equal(active.redisOutage.recoveredWorker, workerId);
+      }
       for (const marker of [brief, answer]) {
         assert.equal(JSON.stringify(requests).includes(marker), false);
         assert.equal(
@@ -449,7 +475,9 @@ export async function actualNativeInflightClient({
         result.steps.push(
           role === "admission"
             ? "native Task survives admission commit before lost client response and exact receipt replay, with one inference and unchanged earlier Task history"
-            : `native Task survives ${role} peer SIGKILL during a real held model stream with the same full worker and no duplicate inference`,
+            : role === "redis"
+              ? "native Task completes once during a sustained Redis outage and the same full worker serves a fresh remote request after recovery"
+              : `native Task survives ${role} peer SIGKILL during a real held model stream with the same full worker and no duplicate inference`,
         );
       }
     }

@@ -17,6 +17,14 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [active Task Redis comparison](RUST_SERVER_INFLIGHT_RECOVERY.md#active-task-during-a-redis-process-outage)
+passes all four Node/Rust pairings on shared PostgreSQL. Across a real
+45-second Redis outage, the remote Task retains and extends its original
+PostgreSQL lease and completes once before Redis restarts. The unchanged worker
+reclaims coordination with a fresh connection ID and receives a new remote
+request. A separate mixed-pair control passes an actual worker-owner server
+crash with the surviving Rust server holding the Task lease.
+
 The [WorkerLink lease recovery comparison](RUST_SERVER_WORKER_LINK_LEASE_RECOVERY.md)
 passes real LAN peer and native LOCAL broker renewals through the full worker
 on all three stores. It verifies the reconnect grace response, old authority

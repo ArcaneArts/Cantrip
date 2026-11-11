@@ -82,9 +82,12 @@ export async function redisFixture(binary, root) {
       if (client?.isOpen) client.destroy();
       client = null;
       if (child && child.exitCode === null && child.signalCode === null) {
-        const closed = new Promise((r) => child.once("close", r));
+        const pid = child.pid;
+        const closed = new Promise((resolve) =>
+          child.once("close", (code, signal) => resolve({ pid, code, signal })),
+        );
         child.kill("SIGKILL");
-        await closed;
+        return closed;
       }
     },
   };

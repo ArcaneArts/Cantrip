@@ -1,0 +1,207 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "rustServerSourceCommit": "020254f3c3aabb5e2e1e712c2c597a5cc73a5950",
+  "productSourceCommit": "12c3ccad3ee46ee446d1f74304d92dd6b665a73f",
+  "productionSourcesIdenticalAcrossCommits": true,
+  "platform": "darwin-arm64",
+  "databaseMode": "postgres",
+  "postgresVersion": "18.6",
+  "redisVersion": "8.10.3",
+  "workerRuntime": "Node v24.22.2",
+  "codexVersion": "0.166.0",
+  "authentication": "accounts",
+  "rustExecutable": {
+    "path": "rust-server-worker-remaining-contracts-20261110-v1/current-binaries/cantrip-server",
+    "bytes": 94116304,
+    "sha256": "129dfce547025b0bdfaaaf57d7fb4b86dc5cdd075b20012348d96b0ab4a97bf4"
+  },
+  "redisExecutable": {
+    "path": "rust-redis-coordination-local-11b8ad27a-20261106-v1/.qa/rust-redis/redis-source/src/redis-server",
+    "bytes": 3482208,
+    "sha256": "a18144d2e5d0f1792b4af8cff9524a376c1ebd7271d1981ffcf1c4a330ad51ee"
+  },
+  "codexExecutable": {
+    "path": "rust-server-link-lease-recovery-20261111-v1/codex-bundle/codex",
+    "bytes": 281161744,
+    "sha256": "159efa081468910fbe00493d12d3cb18fbb9e3a091e2ea63745432d35fccbecc"
+  },
+  "redisOutages": [
+    {
+      "pair": "node/node",
+      "report": {
+        "path": "node-node-v2.json",
+        "bytes": 1668342,
+        "sha256": "a3c7cdb609df76a6775dad980d722cdb72160dbe9d818f6ea16a77eb5966e881"
+      },
+      "log": {
+        "path": "node-node-v2.log",
+        "bytes": 534,
+        "sha256": "68a153a0756e8413e3552e86009490c41e077fb506a9b4f6274b1c3fc866903a"
+      },
+      "offlineMs": 45130,
+      "claimTtlMs": 3334,
+      "databaseLeaseExtensionMs": 40044,
+      "redisRdbExpiredKeys": 3,
+      "placementWarmups": 1,
+      "workerExits": 3,
+      "serverExits": 4
+    },
+    {
+      "pair": "node/rust",
+      "report": {
+        "path": "node-rust-v2.json",
+        "bytes": 1683258,
+        "sha256": "edc6ad2f091cc0c6e9ee4c18b365b6a6c3abd634ddad1e40ac037abdab5b2b8c"
+      },
+      "log": {
+        "path": "node-rust-v2.log",
+        "bytes": 620,
+        "sha256": "9387a327e9a6057efabb6d5acf2a3c4299d31b8a91a36f21ff18facb2adc8e9c"
+      },
+      "offlineMs": 45076,
+      "claimTtlMs": 4800,
+      "databaseLeaseExtensionMs": 40055,
+      "redisRdbExpiredKeys": 3,
+      "placementWarmups": 1,
+      "workerExits": 3,
+      "serverExits": 4
+    },
+    {
+      "pair": "rust/node",
+      "report": {
+        "path": "rust-node-v2.json",
+        "bytes": 799345,
+        "sha256": "136ad256d0b9953049e176d342232a168dbf7c89f20e4b52b4f597a3ccc635fa"
+      },
+      "log": {
+        "path": "rust-node-v2.log",
+        "bytes": 706,
+        "sha256": "128bcb2d122bc0b5b78e8bedab0c286913f3a7a8bc1c50c120941ba4f83f348e"
+      },
+      "offlineMs": 45185,
+      "claimTtlMs": 4823,
+      "databaseLeaseExtensionMs": 40111,
+      "redisRdbExpiredKeys": 3,
+      "placementWarmups": 0,
+      "workerExits": 3,
+      "serverExits": 4
+    },
+    {
+      "pair": "rust/rust",
+      "report": {
+        "path": "rust-rust-v2.json",
+        "bytes": 1633651,
+        "sha256": "4dd31f3b9adad3660563d77bf9687a36c89edcb9f11c164a4270e6a6f6955b25"
+      },
+      "log": {
+        "path": "rust-rust-v2.log",
+        "bytes": 577,
+        "sha256": "817990bec0de7fbcbb0f4410d799d3baccef834edd1d97cb8f161c46721ca33d"
+      },
+      "offlineMs": 45129,
+      "claimTtlMs": 3718,
+      "databaseLeaseExtensionMs": 40032,
+      "redisRdbExpiredKeys": 3,
+      "placementWarmups": 1,
+      "workerExits": 3,
+      "serverExits": 4
+    }
+  ],
+  "workerOwnerCrashControl": {
+    "report": {
+      "path": "worker-crash-control-v1.json",
+      "bytes": 700819,
+      "sha256": "957e86eed860a646f84284c02604a40fa1d184c4763efa22b341421256eae4e5"
+    },
+    "log": {
+      "path": "worker-crash-control-v1.log",
+      "bytes": 663,
+      "sha256": "bbfdf48546b042fa509b981d0cc850725bbb5fc59a6780e8f323d71e29e38734"
+    },
+    "placementWarmups": 0
+  },
+  "hostedDevelopmentRuns": 0,
+  "retainedEvidenceDirectory": "rust-server-active-redis-outage-20261111-v1",
+  "fixtureArchive": {
+    "path": "fixture-evidence.tar.zst",
+    "bytes": 330946368,
+    "sha256": "e569a79474cbf1af3112de3d4952873dd42f03ab3d2c103823aa1959f7ab4b89",
+    "verifiedRegularFiles": 69301,
+    "verifiedProcessLogsAndRdbHashes": 99,
+    "excludedRebuildablePaths": ["*/worker/managed-runtimes"]
+  },
+  "evidence": [
+    {
+      "path": "workspace-install.log",
+      "bytes": 1472,
+      "sha256": "e64f9b21b56c738f3b2a77ee77363ca2ebe6e6c2b52bbf0bf129b5121c31dccf"
+    },
+    {
+      "path": "dependencies-build.log",
+      "bytes": 618,
+      "sha256": "dba0e31403cfa2797d5729727b10e8b37375a2cdedbe64db4c4105629a582ef4"
+    },
+    {
+      "path": "reference-build.log",
+      "bytes": 327,
+      "sha256": "6a5c89065151e6f9be4d50ea1d6f5d165b6e8b7de020d4d79406a66dacb82476"
+    },
+    {
+      "path": "codex-runtime-verification.log",
+      "bytes": 112,
+      "sha256": "3f47a6ffeaa6ae8b12f1e53a5c704d926c142f0c89352bb5cb26ae436f26311c"
+    },
+    {
+      "path": "compiled-entries.sha256",
+      "bytes": 203,
+      "sha256": "d3ff8b01474f74d1084244f38b987eea8bddc6f0a5ba34797d2cc979e14b236a"
+    },
+    {
+      "path": "worker-and-reference-dist.tar.gz",
+      "bytes": 4984754,
+      "sha256": "f0bf05b6309ac23c565cb1c9edc8fa92eabf2b510bc3b2548b46cf6e1d712c7e"
+    },
+    {
+      "path": "verified-product.json",
+      "bytes": 3303,
+      "sha256": "b68a3a4bfe4c0e62f36b67a68a01e91a94766250267790d72a73f7a0ec0aa15a"
+    },
+    {
+      "path": "live-process-observation-2.txt",
+      "bytes": 2192,
+      "sha256": "346bb8368fc206e1a85b3bdbfd40c6d818f7a6dcf156e15290233166d420cf96"
+    },
+    {
+      "path": "live-v2-driver-processes.txt",
+      "bytes": 1652,
+      "sha256": "7f9dc7f9bbeaedfaa949b5150c9adf80292e4e9e1b527e542d9359e1c87f03bb"
+    },
+    {
+      "path": "live-v2-process-observation.txt",
+      "bytes": 709,
+      "sha256": "75a2776816b3d3d58a7ff531fd29f4a91dae64d24e384eacee23523107a67b4d"
+    },
+    {
+      "path": "node-node-v1.json",
+      "bytes": 1455191,
+      "sha256": "0afde4ffc5266dd37431cf7d694d1f773d3dba315943bf005c05602751fd3fd6"
+    },
+    {
+      "path": "node-rust-v1.json",
+      "bytes": 1454774,
+      "sha256": "de51e6a09adad2d15ccb9dc3acdf1684ebb7ecfd94b09c68774441d019a366d4"
+    },
+    {
+      "path": "rust-node-v1.json",
+      "bytes": 1415660,
+      "sha256": "6a534359e504b7f80af7b8365da39f11437cfa3aac150c5eb2828bce614190f2"
+    },
+    {
+      "path": "rust-rust-v1.json",
+      "bytes": 724233,
+      "sha256": "04074783afbb09ff0caaaaa73b7bd321cfcca0b3208778c11ef2d21df4c573cb"
+    }
+  ],
+  "scope": "Local Redis process loss with an expired saved claim, external PostgreSQL, mixed production peers, existing browser SDK and full native worker execution. Redis network partition, TLS, concurrent PostgreSQL interruption and final shipping artifacts remain separate."
+}
