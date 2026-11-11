@@ -436,7 +436,13 @@
       "readyStatus": 200,
       "exitCode": 0
     },
-    "standaloneFullMatrixPassed": false,
+    "standaloneFullMatrixPassed": true,
+    "standaloneGuestCpuModel": "Westmere-v1",
+    "standaloneStartupObservationMs": 240000,
+    "desktopInstallerPassed": true,
+    "freshDesktopReadinessPassed": false,
+    "historicalDesktopConversionPassed": false,
+    "workerVisualCppRuntimePackagerPassed": true,
     "desktopInstallerAndUpdaterPassed": false,
     "reports": {
       "archiveVerification": {
@@ -454,6 +460,30 @@
       "directFreshPglite": {
         "path": "pglite-direct-observation-v1.json",
         "sha256": "8956e222c4562fd6041bd73a71679cbe4d0f8b14d59b06910722bc487babb802"
+      },
+      "standaloneFullMatrix": {
+        "path": "current-windows-x64-standalone-tcg-v2-westmere.json",
+        "sha256": "40c5f6e7ec600c3bab86df55b3095289bcab7b1258608712f49c35709fc82bd8"
+      },
+      "desktopInstaller": {
+        "path": "current-windows-x64-native-nsis-install-westmere.json",
+        "sha256": "8d426f7f7bb2db22614b78e2222433076a1b2e6666144bd8457fef877baca9ce"
+      },
+      "installedFileVerification": {
+        "path": "westmere-native-installed-files.json",
+        "sha256": "52bd218c9b1ad170ac75bfb2462b6f6076f96b5db478fedf610aa7fabaad51d4"
+      },
+      "historicalDesktopConversion": {
+        "path": "current-windows-x64-desktop-historical-profile-westmere.json",
+        "sha256": "7d963a2943a787a7d16a693c4774c63fdd213b37ac28ea572dc55280c1e51006"
+      },
+      "freshDesktopReadiness": {
+        "path": "current-windows-x64-desktop-readiness-westmere.json",
+        "sha256": "7cc7db04ac1d172a19b96d8d03b0c788352e1a3512b54e4be6328d4b2fa22fb7"
+      },
+      "workerVisualCppRuntimePackager": {
+        "path": "current-windows-x64-worker-crt-packager-proof-westmere.json",
+        "sha256": "de6e65ac4567a9f407511afce96c6179aa35597091124d7078d854b70fc8dc5a"
       }
     }
   }

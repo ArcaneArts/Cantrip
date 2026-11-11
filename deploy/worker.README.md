@@ -37,3 +37,8 @@ and deterministic capture smoke. Native capture and worker CUA service activatio
 are not available yet; this build-chain milestone does not start the helper
 during ordinary worker startup. The desktop distribution signs its nested macOS
 helper separately from the standalone worker artifact.
+
+Windows x64 packages place the Visual C++ runtime DLLs alongside the native
+helpers. When building a package on Windows, the packager finds the DLLs
+through Visual Studio or `VCToolsRedistDir`. Set
+`CANTRIP_WINDOWS_VC_REDIST_DIR` to specify the x64 redistributable directory.
