@@ -159,6 +159,32 @@ Use `CANTRIP_TEST_POSTGRES_BIN_DIR` to select the PostgreSQL binaries. The
 [acceptance record](security/rust-server-active-postgres-outage.json) identifies
 the current artifacts and reports.
 
+## Packaged 1.1.2845 dependency recovery
+
+The optimized macOS ARM64 server distribution and the worker, Node, CLI and
+Codex extracted from the verified signed desktop archive passed five active
+Task outages using the current browser SDK and external PostgreSQL.
+
+In each of the four Node and Rust Redis pairings, the fixture interrupted the
+actual Redis process for 45 seconds. The browser-facing server retained the
+original dispatch lease and the worker completed the Task before Redis
+restarted. Each result retained one dispatch attempt and one model request.
+The same worker returned on a fresh Redis connection with its original
+continuity identity. Two scheduler warmups completed before their separate
+outage cases. Each pairing recorded two server exits and three worker exits,
+all zero.
+
+With two Rust servers, PostgreSQL was interrupted for 45 seconds while Redis
+remained reachable. The worker saved the original protected outcome after
+delivery failed. PostgreSQL restarted on the same cluster and port. The
+worker drained its outbox and the Task committed once with the same
+dispatch operation and fencing token. Both observed server exits and all
+three worker exits were zero.
+
+The tests ran locally with the packaged release executables. The raw reports,
+artifact hashes and retained fixture archives identify the exact build and
+the observed shutdowns. [Packaged recovery record](security/rust-server-current-inflight-acceptance.json)
+
 ## Local validation and artifacts
 
 - Optimized macOS ARM64 Rust server build: passed in 4m09s.
