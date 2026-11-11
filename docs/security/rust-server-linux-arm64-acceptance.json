@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceCommit": "f902c5328e99c410c6869f0ad8695d483ce5c6a2",
+  "candidateVersion": "1.1.2817",
+  "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+  "standalone": {
+    "version": "1.1.2817",
+    "target": "linux-arm64",
+    "filesVerified": 2546,
+    "elfMachine": 183,
+    "binary": {
+      "path": "bin/cantrip-server",
+      "bytes": 105613352,
+      "sha256": "0a6d75b0e6d9e31d4f2cfce2cb8b8e4ee9b5a9b4788f2aa50de659b78872dfc6"
+    },
+    "archive": {
+      "path": "winterhold/native.tar.gz",
+      "bytes": 138187464,
+      "sha256": "d1e6e9f7acc5808f615a7f9b5cadfa5010e0c9a99d24f70eea96a01eda1dadc3"
+    }
+  },
+  "container": {
+    "imageId": "sha256:b8297bc3bb5df83049d4d85eb453aab845524c75bc7cb7bd607cb6626c48805e",
+    "archive": {
+      "path": "container-image.tar.zst",
+      "bytes": 177019486,
+      "sha256": "0a86333920d8d21e6e7ef69c1554af38582797340cf8e7daebdafeef5d8ed2c5"
+    },
+    "arm64ExecutableObservedDirectly": true,
+    "verifiedArtifactFilesPerMode": 2546,
+    "localAndHosted": true,
+    "sigtermExitCodes": [0, 0, 0]
+  },
+  "service": {
+    "installerCalls": 18,
+    "recoveredInstallerFailures": 6,
+    "directNativeExecutableHashes": 10,
+    "previousNativeVersion": "1.1.2783",
+    "previousNativeImageId": "sha256:534903c92908bb639fd68beabe138531f0f7927c9acef50f67a42b5814033982",
+    "nodeVersion": "1.1.2739",
+    "nodeImageId": "sha256:e45a5bb676e4efec2ec75897dd24829fadfd23165a545de155fa1c5a7da5a9d8",
+    "nodeArchitecture": "amd64",
+    "systemdFixtureImageId": "sha256:1a4719cffced31ab606bf1b4ccd0625d218a2d885708708435f66a7da36c6b92",
+    "systemdArchitecture": "arm64",
+    "verifiedCaddyHttpsAndAppLive": true,
+    "caddyCaSha256": "9d8f7e7f31081b616a888abd3570a13b2e56da7a1af3800d2ef67689a9021f7e",
+    "externalPostgresTlsConnections": 6,
+    "outsideProfileWriteRejected": true,
+    "privatePostgresCgroupProcessesReaped": 17
+  },
+  "hostedDevelopmentRuns": 0,
+  "retainedEvidenceDirectory": "rust-server-current-linux-arm64-20261110-v1",
+  "evidence": [
+    {
+      "path": "distribution-source.json",
+      "bytes": 464,
+      "sha256": "c8924915b9e1a9b486fdbb7d0bdfc9ed074f7bbbb7ce79168b8a1455062140f8"
+    },
+    {
+      "path": "distribution-build.log",
+      "bytes": 11005,
+      "sha256": "275955d700d5465a8db8097121d9f4347495f1e43466b041e72ba10898f56e38"
+    },
+    {
+      "path": "distribution-verification.json",
+      "bytes": 259,
+      "sha256": "fe0cdaba63c7503942a135df55f9e70fab348730ec50225ef7728e1db9740458"
+    },
+    {
+      "path": "container-build.log",
+      "bytes": 7201,
+      "sha256": "d2b2869908e8a39e9f7dac4846225b1a75208a4e0ef5775ac56d68615fbcfda9"
+    },
+    {
+      "path": "container/report.json",
+      "bytes": 5375,
+      "sha256": "50e1c0583e164a94ad846370bcd24787fd71d74ada89eaede0265f099e0dfe81"
+    },
+    {
+      "path": "winterhold/report.json",
+      "bytes": 1093113,
+      "sha256": "94f22de4ee1dfb428be6859c1a651a6fd985d6707ead13bd2298c2d8e3548161"
+    },
+    {
+      "path": "winterhold/runtime-observations.json",
+      "bytes": 274,
+      "sha256": "5cc75962a1dc64ca6f1c05177881a215e5ed33855cbfc3b45aee78877179c4c6"
+    },
+    {
+      "path": "winterhold/caddy-root.crt",
+      "bytes": 627,
+      "sha256": "0653ba9657b1f6677003efa1a508dda01c0e2fd621c33fffed96975f2bd4dff8"
+    },
+    {
+      "path": "profile-archives.json",
+      "bytes": 2007,
+      "sha256": "4a5fe0efc3d97c31cd17d9de3a7fe115401681c15ad3360177b6f25a115f2027"
+    }
+  ],
+  "scope": "Native ARM64 Debian container and Ubuntu systemd/Caddy service on a local ARM64 Linux host. The external PostgreSQL rollback uses the retained x64 Node reference. Desktop, broader product and coordination acceptance remain open."
+}

@@ -17,6 +17,11 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current Linux ARM64 qualification](RUST_SERVER_WINTERHOLD.md#current-linux-arm64-qualification)
+passes all three stores in the `1.1.2817` container and local systemd
+rehearsal. All 18 installer cases pass, and ten direct process hashes confirm
+the current and previous native releases through post-write rollback.
+
 The [current macOS ARM64 package and signed-update rehearsal](RUST_SERVER_DESKTOP_SIGNED_UPDATE.md)
 qualifies `1.1.2817` standalone on all three stores. Its actual PGlite signed
 update rejects a changed archive and installs and restarts the valid release
