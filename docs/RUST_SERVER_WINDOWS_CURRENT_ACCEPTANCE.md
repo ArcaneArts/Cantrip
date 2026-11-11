@@ -1,5 +1,34 @@
 # Current Windows native server qualification
 
+## Windows x64 standalone `1.1.2845`
+
+The `1.1.2845` Rust server from `5f4d4691d1b83b8216e9d0f194c7f9d3217aa298`
+was built with Rust 1.95 and the release workflow's `x86_64-pc-windows-gnu`
+target. The production packager ran in a Windows 11 x64 QEMU guest using
+the verified PostgreSQL 18.6 assets and their bundled runtime DLLs. The
+packaged executable matches the build output byte for byte.
+
+The relocated distribution passed PGlite, bundled PostgreSQL and external
+PostgreSQL. Each mode ran migrations, exported SQL, retained its identity and
+accepted setting across restart and hosted reopening, and shut down cleanly
+on supervision EOF. The suite verified the Windows batch launchers, embedded
+PGlite fallback, configuration precedence and all 2,281 package files. The
+server ran with Node absent from its runtime PATH. The Windows test driver
+used a 240-second readiness observation window for software emulation.
+
+The initial macOS transfer tarball contained AppleDouble metadata that the
+Windows manifest tool interpreted as executables. The corrected transfer
+matched 1,586 PostgreSQL payload files and contained zero sidecars. The
+packager then exited zero. The transfer volume filled while copying the
+completed archive, which was recovered from a read-only guest disk snapshot.
+An independent comparison matched all archived files to the guest manifest
+and matched the three SQL exports to their runtime receipts.
+
+The exact archive, executable, manifest and matching disk and serial reports
+are retained. Installed-app qualification for this version is tracked
+separately from the standalone run.
+[Windows acceptance record](security/rust-server-win32-x64-acceptance.json#currentNativeStandalone)
+
 ## Installed Windows x64 update and historical PGlite profile
 
 The installed `1.1.2839` app cold-started the native server with PGlite in a

@@ -487,6 +487,94 @@
       }
     }
   },
+  "currentNativeStandalone": {
+    "sourceCommit": "5f4d4691d1b83b8216e9d0f194c7f9d3217aa298",
+    "version": "1.1.2845",
+    "target": "win32-x64",
+    "rustBuildTarget": "x86_64-pc-windows-gnu",
+    "rustVersion": "1.95.0",
+    "guest": "Windows 11 x64 QEMU with Westmere-v1 software emulation",
+    "evidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "verifiedFiles": 2281,
+    "serverRuntimePathHasNoNode": true,
+    "windowsLauncherEncodingVerified": true,
+    "embeddedRuntimeFallback": true,
+    "migrationExportRestartAndHostedReopen": true,
+    "configurationPrecedence": true,
+    "shutdownMethod": "supervision-stdin-close",
+    "readinessObservationMs": 240000,
+    "packagerExit": 0,
+    "archive": {
+      "path": "current-windows-desktop/native-package/cantrip-server-1.1.2845-win32-x64.tar.gz",
+      "bytes": 97238326,
+      "sha256": "9788eff0158fe3f94002a161d7cad0289e25639b9fa5e65afbafb5d162f75af1"
+    },
+    "binary": {
+      "path": "current-windows-desktop/cantrip-server-1.1.2845.exe",
+      "bytes": 109879261,
+      "sha256": "bf5616e9d515205cc2be240d0ccc122eae164cb56da9bdf06dafa4636e8eda88"
+    },
+    "manifest": {
+      "path": "current-windows-desktop/native-package/guest-manifest.json",
+      "bytes": 407860,
+      "sha256": "746e6f3c3701f4f5519c4e9c4ef41b47d502f93ed395845b674d8094ce847ff4"
+    },
+    "archiveVerification": {
+      "path": "current-windows-desktop/native-package/archive-verification.json",
+      "bytes": 78,
+      "sha256": "7fbbe91c86bcd7b2268a7db389ac8a5cab630ed3b8b7e64b21781e9e974760f0"
+    },
+    "guestReceipt": {
+      "path": "current-windows-desktop/native-package/standalone-2845-receipt.json",
+      "bytes": 2330,
+      "sha256": "64ea063c33a5f77579cdc2febff461f7e58d248e4c2ca24ac8136f3956a82dc0"
+    },
+    "serialReceipt": {
+      "path": "current-windows-desktop/standalone-serial-terminal.json",
+      "bytes": 3175,
+      "sha256": "d0e4bd1cf7d7b87355e6583930f123f5ba3d400aaa8eb06abecd4cbe0a0056b3"
+    },
+    "report": {
+      "path": "current-windows-desktop/native-package/standalone-2845.json",
+      "bytes": 2721,
+      "sha256": "85f01b2e6d4a9c1b2a26fd2479c4319c5a60235537b89b9634294c0cbc1b0147"
+    },
+    "diskVerification": {
+      "path": "current-windows-desktop/native-package/standalone-disk-verification.json",
+      "bytes": 1473,
+      "sha256": "326e846e5baf9a57363412c94f512e5046ee31c500724f6efcaff97f7e8cbe43"
+    },
+    "sqlExports": {
+      "pglite": {
+        "path": "current-windows-desktop/native-package/pglite-export.sql",
+        "bytes": 492951,
+        "sha256": "89b4383654c5cf079fa0fa218abbb9f727b43e205c86e86a0792c28dc23dd7b7"
+      },
+      "bundled-postgres": {
+        "path": "current-windows-desktop/native-package/bundled-postgres-export.sql",
+        "bytes": 493177,
+        "sha256": "e0d4167a9284864ab8d4b4b7a70f6b518acc4528d1dbd91c2213410200d38379"
+      },
+      "postgres": {
+        "path": "current-windows-desktop/native-package/postgres-export.sql",
+        "bytes": 493177,
+        "sha256": "05b0a31231c13cdc7f6e5968ac28b90cb6bb18c36d62c4b3a3e506916f53927b"
+      }
+    },
+    "initialPackagerError": {
+      "path": "current-windows-desktop/guest-checkpoint-native-packager.stderr",
+      "bytes": 2271,
+      "sha256": "4e5c3c8a681203d8823280942d3159264b65baffc5ed4f361777c0b9de25ef8e"
+    },
+    "guestArchiveExport": {
+      "path": "current-windows-desktop/native-package/snapshot-export.json",
+      "bytes": 746,
+      "sha256": "dd9aa8c9bfc5faa51c6070bcad5be34e5fced97f582166ab42d038d764314121"
+    },
+    "localFocusedChecksPassed": 32,
+    "hostedDevelopmentRuns": 0
+  },
   "installedX64SignedUpdate": {
     "sourceCommit": "fd3f4840683cdef4a5a71ba642c602d27c04d8e9",
     "appVersion": "1.1.2841",
