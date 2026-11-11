@@ -18,8 +18,38 @@ slashes in its quoted dotenv values. With the corrected paths, the run reached
 embedded PGlite initialization and timed out at the fixture's 60-second
 deadline. A direct fresh-profile run with the same executable completed
 migrations, returned HTTP 200 from `/readyz` after reaching the listen event
-at 96.8 seconds, and shut down with exit code zero on stdin EOF. The full
-standalone rerun and desktop installer and updater remain open.
+at 96.8 seconds, and shut down with exit code zero on stdin EOF.
+
+After repeated Windows kernel crashes under QEMU's `max` CPU model, the same
+guest completed the standalone suite under `Westmere-v1`. The fixture used a
+240-second startup observation window. PGlite, bundled PostgreSQL and external
+PostgreSQL all passed migration, SQL export, settings retention, hosted reopen
+and supervision EOF. The test also verified the embedded runtime fallback,
+Windows batch launchers, a server runtime PATH without Node and all 2,281
+distribution file hashes.
+
+The `1.1.2834` NSIS fixture installed successfully. The installed server matched
+the standalone executable and its 2,281 manifest entries. The packaged worker
+entrypoint and Node `24.22.2` also matched their expected artifacts. The
+historical-profile test verified all 1,660 source files from the published Node
+server before launch. The installed app reached legacy conversion and reported
+failure before server readiness. The fresh-profile launch then failed while
+`initdb` attempted to start the bundled PGlite `postgres.exe` through a
+Windows extended-length path. Installed startup, migration and signed updater
+acceptance remain open.
+
+### Worker helper packaging
+
+The installed `cantrip.exe` and `cantrip-cua.exe` import
+`VCRUNTIME140.dll`. The guest's Windows system directory and the installed
+worker's `bin` directory lacked that DLL. Both installed version checks
+failed. Byte-identical copies of the helpers printed their versions with
+the Visual C++ runtime DLLs alongside them.
+
+Windows x64 worker packaging now copies those DLLs beside the helpers. The
+shared packager passed both executable version checks, repaired an incomplete
+worker bundle, reused a complete bundle with the build toolset absent, and
+populated an incomplete PostgreSQL cache before its actual `pg_config` call.
 
 ## Current `1.1.2833` package
 

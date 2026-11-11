@@ -113,6 +113,20 @@ async function requireDirectory(directory, description) {
   }
 }
 
+function bundleWindowsWorkerRuntime(bin) {
+  if (process.platform !== "win32" || platform !== "win32-x64") return;
+  run("powershell.exe", [
+    "-NoProfile",
+    "-NonInteractive",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    path.join(root, "scripts", "windows-visual-cpp-runtime.ps1"),
+    "-BinDirectory",
+    bin,
+  ]);
+}
+
 async function packageWorker(destination, { standalone = true } = {}) {
   const name = "worker";
   const packageName = "@cantrip/worker";
@@ -140,6 +154,7 @@ async function packageWorker(destination, { standalone = true } = {}) {
   await cp(path.join(codexBuild, "bundle"), bin, { recursive: true });
   await bundleCantripCli(root, bin);
   await bundleCantripCua(cuaBinary, bin);
+  bundleWindowsWorkerRuntime(bin);
   await verifyPackagedWorkerCua(destination);
   await verifyPackagedWorkerMcp(destination, { smoke: standalone });
   await cp(
@@ -223,6 +238,7 @@ async function packageDesktopRuntime() {
     });
     await rm(path.join(workerRoot, "start.sh"), { force: true });
     await rm(path.join(workerRoot, "start.cmd"), { force: true });
+    bundleWindowsWorkerRuntime(path.join(workerRoot, "bin"));
     await assertPackagedWorkspaceRuntime(workerRoot);
   } else {
     buildCodex();
