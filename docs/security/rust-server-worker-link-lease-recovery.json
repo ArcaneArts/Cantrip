@@ -1,0 +1,247 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "productSourceCommit": "f69bb9993a1bd0506475d841db956e7b11432464",
+  "rustServerSourceCommit": "020254f3c3aabb5e2e1e712c2c597a5cc73a5950",
+  "productionSourcesIdenticalAcrossCommits": true,
+  "platform": "darwin-arm64",
+  "authentication": "accounts",
+  "workerRuntime": "Node v24.22.2",
+  "codexVersion": "0.166.0",
+  "postgresVersion": "18.6",
+  "servingExecutable": {
+    "path": "rust-server-worker-remaining-contracts-20261110-v1/current-binaries/cantrip-server",
+    "bytes": 94116304,
+    "sha256": "129dfce547025b0bdfaaaf57d7fb4b86dc5cdd075b20012348d96b0ab4a97bf4"
+  },
+  "nativeBrokerVerifier": {
+    "path": "bin/desktop-direct-broker",
+    "bytes": 1838112,
+    "sha256": "0ae3fb7ef180272de50280963fb03d12d78108144669d04efd019ce1e7c52326"
+  },
+  "currentWorkerCommandCoverage": {
+    "mapped": 308,
+    "total": 323
+  },
+  "product": [
+    {
+      "mode": "pglite",
+      "peers": [
+        {
+          "runtime": "node",
+          "report": {
+            "path": "pglite-node-v2.json",
+            "bytes": 198298,
+            "sha256": "3b321cede3c249683777fe11dfc7666c73f262db6ba4678f58f08aca42be673d"
+          },
+          "log": {
+            "path": "pglite-node-v2.log",
+            "bytes": 3861,
+            "sha256": "cdda18d5a3d405de6700ec62fa63249697481253d8f47e9a1837921b464f18e5"
+          },
+          "steps": 10,
+          "realPeerRenewals": 3,
+          "realDirectRenewals": 3,
+          "serverGenerations": 3,
+          "serverProcessCrashes": 1,
+          "workerProcessCrashes": 1
+        },
+        {
+          "runtime": "rust",
+          "report": {
+            "path": "pglite-rust-v2.json",
+            "bytes": 242728,
+            "sha256": "362618e69b4f584c29ce67a784454f559481299cb2ad21a3e4d7ee6a14c79eb7"
+          },
+          "log": {
+            "path": "pglite-rust-v2.log",
+            "bytes": 3675,
+            "sha256": "b404112eb097276f69b7d53abc3c0f7900e186eb349e1f936c4db58b70fee106"
+          },
+          "steps": 10,
+          "realPeerRenewals": 3,
+          "realDirectRenewals": 3,
+          "serverGenerations": 3,
+          "serverProcessCrashes": 1,
+          "workerProcessCrashes": 1
+        }
+      ]
+    },
+    {
+      "mode": "bundled-postgres",
+      "peers": [
+        {
+          "runtime": "node",
+          "report": {
+            "path": "bundled-postgres-node-v2.json",
+            "bytes": 235365,
+            "sha256": "686ab6454870cd9a73a1b9c81ba153f62c5d87f468f19be8f40fedd5a896d0f3"
+          },
+          "log": {
+            "path": "bundled-postgres-node-v2.log",
+            "bytes": 3957,
+            "sha256": "18aea76419103875e32832c2d6d53c86c9ae395afeaddd3f31c38a56b0de7b7d"
+          },
+          "steps": 10,
+          "realPeerRenewals": 3,
+          "realDirectRenewals": 3,
+          "serverGenerations": 3,
+          "serverProcessCrashes": 1,
+          "workerProcessCrashes": 1
+        },
+        {
+          "runtime": "rust",
+          "report": {
+            "path": "bundled-postgres-rust-v2.json",
+            "bytes": 245130,
+            "sha256": "0b4850eaa35c3c76a02520a33c2392627866254bda877bc9fab7bfea927275c4"
+          },
+          "log": {
+            "path": "bundled-postgres-rust-v2.log",
+            "bytes": 3771,
+            "sha256": "be4d81411acd35ec76cc11412177d8a0eed94e0014d2409af2f7da78be6bda47"
+          },
+          "steps": 10,
+          "realPeerRenewals": 3,
+          "realDirectRenewals": 3,
+          "serverGenerations": 3,
+          "serverProcessCrashes": 1,
+          "workerProcessCrashes": 1
+        }
+      ]
+    },
+    {
+      "mode": "postgres",
+      "peers": [
+        {
+          "runtime": "node",
+          "report": {
+            "path": "postgres-node-v2.json",
+            "bytes": 235355,
+            "sha256": "a7fd168fa06b138df9cae3f1cac7955e7b8403838e68cb7af43ef0a74d1fc713"
+          },
+          "log": {
+            "path": "postgres-node-v2.log",
+            "bytes": 4035,
+            "sha256": "138576749babdcc3c8910c57213fb54aa8870df9fbd2db572ece88604616e941"
+          },
+          "steps": 10,
+          "realPeerRenewals": 3,
+          "realDirectRenewals": 3,
+          "serverGenerations": 3,
+          "serverProcessCrashes": 1,
+          "workerProcessCrashes": 1
+        },
+        {
+          "runtime": "rust",
+          "report": {
+            "path": "postgres-rust-v2.json",
+            "bytes": 242856,
+            "sha256": "12fef5491588a1181a2cd53b3aea476121f5adbef6f3f36412a4051dd334781c"
+          },
+          "log": {
+            "path": "postgres-rust-v2.log",
+            "bytes": 3849,
+            "sha256": "5df4566b3a9bbdc3db40297108a7fdf59e9ae4a34419d8cc625c865d03a03c0f"
+          },
+          "steps": 10,
+          "realPeerRenewals": 3,
+          "realDirectRenewals": 3,
+          "serverGenerations": 3,
+          "serverProcessCrashes": 1,
+          "workerProcessCrashes": 1
+        }
+      ]
+    }
+  ],
+  "workerReconnectGrace": {
+    "sessionRenewalStatus": 503,
+    "peerMailboxStatus": 200,
+    "directTelemetryStatus": 503
+  },
+  "retiredAuthorityStatus": 404,
+  "releasedBrokerCode": 1008,
+  "fixtureArchive": {
+    "path": "fixture-evidence.tar.zst",
+    "bytes": 318426471,
+    "sha256": "ce665bbf5018047926139045bff917f63082cf24fea30c6cb13d23d1f8f75bc4",
+    "verifiedRegularFiles": 34208,
+    "verifiedProcessLogHashes": 72,
+    "excludedRebuildablePaths": ["*/worker/managed-runtimes"]
+  },
+  "hostedDevelopmentRuns": 0,
+  "retainedEvidenceDirectory": "rust-server-link-lease-recovery-20261111-v1",
+  "evidence": [
+    {
+      "path": "dependencies-build.log",
+      "bytes": 618,
+      "sha256": "0eae83507b2ceeb58987d3eefc98f47af694d924d311bdf9bdf3c93256ec368f"
+    },
+    {
+      "path": "reference-build.log",
+      "bytes": 327,
+      "sha256": "f3f6f415c241544472b70003d95f6121e261b90ab63534a42da31402d61b9c04"
+    },
+    {
+      "path": "desktop-broker-build.log",
+      "bytes": 1139,
+      "sha256": "ede0cebca078f6e395a7455148c1b18001482755061c47d45057321eb8532c3c"
+    },
+    {
+      "path": "codex-runtime-verification.log",
+      "bytes": 112,
+      "sha256": "3f47a6ffeaa6ae8b12f1e53a5c704d926c142f0c89352bb5cb26ae436f26311c"
+    },
+    {
+      "path": "codex-runtime.json",
+      "bytes": 1434,
+      "sha256": "4f337b848fd1bbdc8ad23d98f0dbe31989230d09e49c07d6b673440d7d24d69e"
+    },
+    {
+      "path": "compiled-entries.sha256",
+      "bytes": 203,
+      "sha256": "d3ff8b01474f74d1084244f38b987eea8bddc6f0a5ba34797d2cc979e14b236a"
+    },
+    {
+      "path": "worker-and-reference-dist.tar.gz",
+      "bytes": 4982873,
+      "sha256": "6e693ae60940adcf4f592426bed3c7e21f270792feb82bd01ec344e0a45967ba"
+    },
+    {
+      "path": "verified-product.json",
+      "bytes": 7029,
+      "sha256": "fe8f79249140ee1656d51b510396aa44b82eb41a09da9f262000bd44ae591e3c"
+    },
+    {
+      "path": "bundled-postgres-node-v1.json",
+      "bytes": 190881,
+      "sha256": "5ae1a68d983857db2bab49dc97df5b58f2a7b7d72a40f8e491de0a6b12dbefc5"
+    },
+    {
+      "path": "bundled-postgres-rust-v1.json",
+      "bytes": 153240,
+      "sha256": "9b790fee0dd5554e04cfc1c7f3f5744e1ef883b2f3bf5a92b0b328bb4119c0e0"
+    },
+    {
+      "path": "pglite-node-v1.json",
+      "bytes": 125957,
+      "sha256": "9d8ae9e28af55f3a72b6f37d0c8466d857f508b38b04f8a46634fdcc994d2f1a"
+    },
+    {
+      "path": "pglite-rust-v1.json",
+      "bytes": 153100,
+      "sha256": "0a1ff58fd0ee9cec3f9305927fe11f4d8dc601c7c1dc280cfe2b698784317390"
+    },
+    {
+      "path": "postgres-node-v1.json",
+      "bytes": 190548,
+      "sha256": "c3fb097b4091242e48891456f377d3658008aceca59215f987a0b1de4802bfae"
+    },
+    {
+      "path": "postgres-rust-v1.json",
+      "bytes": 152289,
+      "sha256": "0f13885b051dc9c73f18711352b7459fd2386b1bd3497555142c601568396c13"
+    }
+  ],
+  "scope": "Local macOS ARM64 production server and worker processes with existing browser APIs, a LAN peer authority and the native LOCAL broker verifier. Shipping platform, multi-instance and unacknowledged renewal interruption acceptance remain open."
+}
