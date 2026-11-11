@@ -9907,11 +9907,13 @@
           "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
           "docs/security/rust-server-native-recovery-acceptance.json",
           "docs/security/rust-server-current-native-admission.json",
-          "scripts/server-rust/actual-task-client.mjs"
+          "scripts/server-rust/actual-task-client.mjs",
+          "scripts/server-rust/worker-task-round-order.mjs",
+          "docs/security/rust-server-streamed-task-receipt-acceptance.json"
         ],
         "remaining": [
-          "Diagnose the intermittent HTTP 500 responses observed during Task retry and restart in two patched PGlite comparisons. The retained rerun returned 200 for every Task outcome.",
-          "Exercise autonomous outcome observation through worker-owner or dependency loss after commit.",
+          "Diagnose the separate PGlite Goal input HTTP 500 and bundled PostgreSQL autonomous completion failure retained in the streamed Task receipt comparison.",
+          "Complete autonomous outcome observation and lane release after worker-owner or dependency loss, including the retained shared Goal lane that remained active after Task completion.",
           "Repeat qualification on the final supported shipping artifacts."
         ]
       }
@@ -17395,7 +17397,7 @@
         "exportName": "taskPlanningRounds",
         "implementation": "cantrip_server_rs/src/tasks/round_input_history.rs",
         "status": "partial",
-        "scope": "Historical round receipt validation, atomic protected answer/terminal commit, history-only outcome digest, exact replay and canonical input replacement/deletion retirement; the current newer Task and released lane are preserved.",
+        "scope": "Historical round receipt validation, atomic protected answer/terminal commit, history-only outcome digest, exact replay and canonical input replacement/deletion retirement; the current newer Task and released lane are preserved. The packaged direct-round outcome can settle a provisional streamed answer in the same transaction as its terminal receipt.",
         "evidence": [
           "scripts/server-rust/native-recovery-http-compatibility.mjs",
           "scripts/server-rust/native-recovery-http-content.mjs",
@@ -17404,7 +17406,8 @@
           "scripts/server-rust/native-recovery-http-round.mjs",
           "scripts/server-rust/native-recovery-http-suspension.mjs",
           "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
-          "docs/security/rust-server-native-recovery-acceptance.json"
+          "docs/security/rust-server-native-recovery-acceptance.json",
+          "docs/security/rust-server-streamed-task-receipt-acceptance.json"
         ],
         "remaining": [
           "Actual native Core/TUI execution, complete product/fault/coordination and final supported-platform/package acceptance remain separate. This controlled worker provides checkpoint and outcome facts over the unchanged production connection protocol.",
@@ -29789,6 +29792,23 @@
         "Run managed-link repair through the full worker on the current candidate.",
         "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
         "Qualify replica behavior on the final supported shipping artifacts."
+      ]
+    },
+    "currentStreamedTaskReceiptAcceptance": {
+      "status": "partial",
+      "qualification": "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
+      "acceptance": "docs/security/rust-server-streamed-task-receipt-acceptance.json",
+      "counts": {
+        "packagedDirectOrderingRuns": 4,
+        "completedProductSteps": 64,
+        "successfulOutcomeResponses": 36,
+        "rejectedChangedReplays": 4,
+        "pairedControlledRoundObservations": 150,
+        "pairedControlledGoalObservations": 28
+      },
+      "remaining": [
+        "Resolve the separately retained Goal input receipt and autonomous completion/lane observations, including worker-owning peer loss.",
+        "Repeat qualification on the final supported shipping artifacts."
       ]
     },
     "currentPackagedNativeAdmission": {

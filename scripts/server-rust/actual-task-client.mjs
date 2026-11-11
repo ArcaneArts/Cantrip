@@ -1,6 +1,7 @@
 // Browser SDK -> server -> full worker -> bundled Codex -> local model HTTP.
 // No worker handler, native RPC, encrypted operation or repository is replaced.
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { eventually } from "./full-worker.mjs";
 import { taskModelProvider } from "./task-model-provider.mjs";
 import { actualTaskRecovery } from "./actual-task-recovery.mjs";
@@ -16,6 +17,7 @@ export async function actualTaskClient({
   stopWorker,
   result,
   requests,
+  taskRoundOrderFile,
 }) {
   const model = await taskModelProvider();
   const brief = "Private full-worker direct Task brief 🍄";
@@ -75,7 +77,16 @@ export async function actualTaskClient({
     );
     assert.equal(created.task.briefMarkdown, brief);
     assert.equal(created.task.state, "draft");
-    const reply = model.reply({ text: answer });
+    const readMessages = () =>
+      page.evaluate(
+        async (chat) =>
+          (await import("/src/lib/api/chats.ts")).getMessages(chat),
+        created.chat.id,
+      );
+    const reply = model.reply({
+      text: answer,
+      hold: Boolean(taskRoundOrderFile),
+    });
     const admitted = await page.evaluate(
       async ({ chatId, rowVersion }) => {
         return (await import("/src/lib/api/tasks.ts")).startTaskDirectly(
@@ -89,6 +100,42 @@ export async function actualTaskClient({
     assert.equal(admitted.dispatch.operationKind, "direct");
     assert.equal(admitted.state, created.task.state);
     assert.equal(admitted.rowVersion, created.task.rowVersion);
+    if (taskRoundOrderFile) {
+      try {
+        await eventually(readMessages, (messages) =>
+          assert.ok(
+            messages.some((message) =>
+              message.content.some(
+                (item) =>
+                  item.type === "text" &&
+                  item.text === answer &&
+                  item.streaming === true,
+              ),
+            ),
+          ),
+        );
+      } finally {
+        reply.release();
+      }
+      const order = await eventually(
+        () =>
+          readFile(taskRoundOrderFile, "utf8").then(JSON.parse, (error) => {
+            if (error.code === "ENOENT") return undefined;
+            throw error;
+          }),
+        (observation) =>
+          assert.ok(observation, "the worker observed the HTTP outcome"),
+      );
+      result.taskRoundOutcomeOrder = order;
+      assert.equal(order.status, 200);
+      assert.equal(order.committed, true);
+      assert.equal(order.finalEventHeld, true);
+      assert.equal(order.receiptMatchesFinalEvent, true);
+      assert.equal(order.differsFromProvisionalEvent, true);
+      assert.equal(order.replayedProvisionalEvent, true);
+      assert.equal(order.exactReplay, true);
+      assert.equal(order.changedReplayStatus, 409);
+    }
     const readTask = () =>
       page.evaluate(
         async (chat) => (await import("/src/lib/api/tasks.ts")).getTask(chat),
@@ -102,17 +149,28 @@ export async function actualTaskClient({
     assert.equal(reply.entered, true);
     assert.equal(reply.request.completed, true);
     assert.deepEqual(model.failures, []);
-    const readMessages = () =>
-      page.evaluate(
-        async (chat) =>
-          (await import("/src/lib/api/chats.ts")).getMessages(chat),
-        created.chat.id,
-      );
     const messages = await readMessages();
     assert.ok(
       JSON.stringify(messages).includes(answer),
       "the existing browser decrypts the actual native Task response",
     );
+    if (taskRoundOrderFile) {
+      const stored = messages.filter(
+        (message) => message.id === result.taskRoundOutcomeOrder.messageId,
+      );
+      assert.equal(stored.length, 1);
+      assert.ok(
+        stored[0].content.some(
+          (item) =>
+            item.type === "text" &&
+            item.text === answer &&
+            item.streaming !== true,
+        ),
+      );
+      result.steps.push(
+        "the durable round outcome commits ahead of the final stream event and preserves the finished response after the provisional event is replayed",
+      );
+    }
     const dashboard = await page.evaluate(
       async (chat) =>
         (await import("/src/lib/api/tasks.ts")).getTaskImplementationDashboard(

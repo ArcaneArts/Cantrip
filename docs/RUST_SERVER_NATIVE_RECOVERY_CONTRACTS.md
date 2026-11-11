@@ -132,9 +132,9 @@ The [acceptance record](security/rust-server-current-native-admission.json)
 binds the exact package, worker and reports. Two patched PGlite comparisons
 recorded three intermittent HTTP 500 responses during the later Task retry
 and restart steps. The retained PGlite rerun returned 200 for every outcome,
-and all browser scenarios completed. The outcome route remains partial
-pending diagnosis of those responses. Loss of the worker-owning peer during
-autonomous completion and final shipping artifacts retain separate scope.
+and all browser scenarios completed. The direct Task ordering defect is
+resolved below. Autonomous Goal recovery and final shipping artifacts
+retain separate acceptance scope.
 
 With the browser dependencies built and the packaged server, worker and
 native CLI supplied through the existing fixture variables, run:
@@ -147,4 +147,55 @@ node --import tsx scripts/server-rust/actual-folder-client.mjs \
 node --import tsx scripts/server-rust/actual-folder-client.mjs \
   --tasks --task-goal-autonomous --database postgres --server-pair rust/rust \
   --report /absolute/path/shared-autonomous-task.json
+```
+
+## Direct Task receipt arriving before the final stream event
+
+The PGlite HTTP 500s came from successful direct Task rounds. The worker
+sent the durable HTTP outcome while a provisional encrypted assistant
+message already occupied the same row. The final envelope had a different
+nonce and ciphertext. The message identity, role, mode, reasoning effort,
+attachments and key revision matched. A later WebSocket completion could
+finish the Task, and the worker could then replay the original outbox entry.
+
+The round transaction now accepts the final envelope for the bound native
+root message. It preserves the original message identity, position and
+attribution. The existing Task dispatch fence, native thread and turn
+binding, and stored message metadata must match. The final envelope, Task
+state and terminal receipt commit together. The stream writer serializes
+with that transaction and retains the finished row when an earlier update
+arrives afterward.
+
+The browser and packaged worker regression holds the final WebSocket event
+after the browser reads a provisional answer. It delivers the same final
+envelope through the real HTTP outcome route, replays the receipt exactly,
+submits the provisional envelope as a conflicting receipt, and then
+replays the earlier WebSocket event. It verifies the finished answer and
+its retained history through restart. The forced ordering returned HTTP
+500 on both the prior packaged Rust server and the Node reference.
+
+The optimized macOS ARM64 package `1.1.2862` passes the forced ordering on
+PGlite, bundled PostgreSQL, external PostgreSQL and a pair of Rust servers
+with shared PostgreSQL and Redis. These four complete product runs verify
+64 steps, including exact post-restart history, and record 36 successful
+outcome responses and four expected HTTP 409 conflicts. The controlled
+HTTP comparison passed 150 paired round observations across the nine
+store and authentication combinations and 28 paired PGlite Goal
+observations with account authentication. All 87 Rust library tests and
+strict library Clippy passed.
+
+The [acceptance record](security/rust-server-streamed-task-receipt-acceptance.json)
+retains the prior failures, actual package hashes, successful runs and
+separate Goal findings. One PGlite Goal input receipt returned HTTP 500
+before succeeding on replay. One ordinary bundled PostgreSQL run left
+the Goal Task implementing. In the first shared run, the direct Task
+ordering assertions passed and the completed Goal's Chat remained
+running. The retained database has an active recovered Goal lane and
+the original successful terminal receipts. The shared rerun completed
+all assertions. Goal recovery and final shipping qualification remain open.
+
+```sh
+node --import tsx scripts/server-rust/actual-folder-client.mjs \
+  --tasks --task-round-outcome-order --production-server --runtime rust \
+  --database pglite --report /absolute/path/direct-task-receipt.json
 ```

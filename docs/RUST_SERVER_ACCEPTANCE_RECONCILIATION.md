@@ -39,6 +39,12 @@ retain both encrypted answers across restart on all three stores and two Rust
 peers. The Agent queue comparison also exercises actual native receipts on all
 three stores.
 
+The [streamed direct Task receipt comparison](RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md#direct-task-receipt-arriving-before-the-final-stream-event)
+forces the durable outcome to overtake its final stream event. The current
+package preserves the finished encrypted answer, exact replay and restart
+on all three stores and two shared Rust peers. The retained Goal failures
+and their reruns have separate acceptance evidence.
+
 The packaged macOS ARM64 `1.1.2845` server and signed desktop worker passed
 the current Task and Agent product matrix against the Node reference. All
 six suites cover real native execution across PGlite, bundled PostgreSQL

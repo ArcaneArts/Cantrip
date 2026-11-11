@@ -88,7 +88,15 @@ pub(crate) async fn append_task_with(
     input: &Value,
     attribution: Option<&Value>,
 ) -> Result<Option<Value>> {
-    append_task_impl(executor, owner, chat, input, attribution, false).await
+    append_task_impl(
+        executor,
+        owner,
+        chat,
+        input,
+        attribution,
+        TaskAppend::Ordinary,
+    )
+    .await
 }
 pub(crate) async fn append_task_history_with(
     executor: Executor<'_, '_>,
@@ -97,7 +105,36 @@ pub(crate) async fn append_task_history_with(
     input: &Value,
     attribution: &Value,
 ) -> Result<Option<Value>> {
-    append_task_impl(executor, owner, chat, input, Some(attribution), true).await
+    append_task_impl(
+        executor,
+        owner,
+        chat,
+        input,
+        Some(attribution),
+        TaskAppend::Historical,
+    )
+    .await
+}
+pub(crate) async fn append_task_round_outcome_with(
+    executor: Executor<'_, '_>,
+    owner: &str,
+    chat: &str,
+    input: &Value,
+    attribution: &Value,
+    streamed_root: bool,
+) -> Result<Option<Value>> {
+    let mode = if streamed_root {
+        TaskAppend::StreamedRoundOutcome
+    } else {
+        TaskAppend::Ordinary
+    };
+    append_task_impl(executor, owner, chat, input, Some(attribution), mode).await
+}
+#[derive(PartialEq)]
+enum TaskAppend {
+    Ordinary,
+    Historical,
+    StreamedRoundOutcome,
 }
 async fn append_task_impl(
     executor: Executor<'_, '_>,
@@ -105,12 +142,13 @@ async fn append_task_impl(
     chat: &str,
     input: &Value,
     attribution: Option<&Value>,
-    historical: bool,
+    mode: TaskAppend,
 ) -> Result<Option<Value>> {
     if attribution.is_some_and(|a| a["contextKind"] == "standalone") {
         anyhow::bail!("Standalone Chats do not support Task messages.")
     }
     let input = crate::settings::parse_response("taskMessageOpaqueContentSchema", Some(input))?;
+    let historical = mode == TaskAppend::Historical;
     if historical && (attribution.is_none() || input["classification"]["role"] != "assistant") {
         anyhow::bail!("Historical Task messages require an attributed assistant response.");
     }
@@ -134,12 +172,32 @@ async fn append_task_impl(
             || saved["reasoning_effort"] != input["reasoningEffort"]
             || saved["task_attachment_ids"].stringify()
                 != input["classification"]["attachmentIds"].stringify()
-            || messages::task(&saved)?["protectedContent"].stringify()
-                != input["protectedContent"].stringify()
         {
             anyhow::bail!("Encrypted Task message idempotency metadata is inconsistent.")
         }
-        return messages::task(&saved).map(Some);
+        let message = messages::task(&saved)?;
+        if message["protectedContent"] == input["protectedContent"] {
+            return Ok(Some(message));
+        }
+        if mode != TaskAppend::StreamedRoundOutcome
+            || saved["role"] != "assistant"
+            || saved["execution_lane_id"] != json!(active)
+            || !attribution.is_some_and(|a| saved["worktree_id"] == a["worktreeId"])
+            || message["protectedContent"]["keyRevision"]
+                != input["protectedContent"]["keyRevision"]
+        {
+            anyhow::bail!("Encrypted Task message idempotency metadata is inconsistent.")
+        }
+        // The HTTP outcome can overtake the final worker event for this
+        // message. Settle the exact envelope while the round still owns it.
+        let rows = update(
+            executor,
+            &text(&input["id"])?,
+            vec![("task_protected_content", input["protectedContent"].clone())],
+        )
+        .await?;
+        touch(executor, chat).await?;
+        return messages::task(&required(&rows, "settling a streamed Task message")?).map(Some);
     }
     let worktree = attribution
         .map(|a| nullish(a.get("worktreeId"), &current["active_worktree_id"]))
@@ -159,6 +217,12 @@ async fn append_task_impl(
     }
     messages::task(&required(&rows, "appending a Task message")?).map(Some)
 }
+fn is_task_streamed_answer(input: &Value) -> bool {
+    input["classification"]["role"] == "assistant"
+        && input["idempotencyKey"]
+            .as_str()
+            .is_some_and(|key| key.starts_with("agent-message:"))
+}
 pub(crate) async fn upsert_task_with(
     executor: Executor<'_, '_>,
     owner: &str,
@@ -167,6 +231,14 @@ pub(crate) async fn upsert_task_with(
     attribution: Option<&Value>,
 ) -> Result<Option<Value>> {
     let input = crate::settings::parse_response("taskMessageOpaqueContentSchema", Some(input))?;
+    let streamed = is_task_streamed_answer(&input);
+    if streamed {
+        // The outcome transaction already locks the chat before changing its
+        // message and terminal. Serialize the stream writer with that commit.
+        executor
+            .query("SELECT id FROM chats WHERE id=$1 FOR UPDATE", &[&chat])
+            .await?;
+    }
     let Some(saved) = owned_key(
         executor,
         owner,
@@ -180,6 +252,12 @@ pub(crate) async fn upsert_task_with(
     };
     if saved["id"] != input["id"] {
         anyhow::bail!("Encrypted Task message update targets another row.")
+    }
+    if streamed && !executor.query(
+        "SELECT 1 FROM task_planning_rounds WHERE chat_id=$1 AND assistant_message_id=$2 AND kind='direct' AND status='completed' AND inference_input #>> '{terminal,projectedAt}' IS NOT NULL LIMIT 1",
+        &[&chat,&text(&input["id"])?],
+    ).await?.is_empty() {
+        return Ok(Some(saved));
     }
     let rows = update(
         executor,
@@ -214,6 +292,29 @@ impl Repository {
         input: &Value,
         attribution: Option<&Value>,
     ) -> Result<Option<Value>> {
+        if is_task_streamed_answer(input) {
+            let (owner, chat, input, attribution) = (
+                owner.to_owned(),
+                chat.to_owned(),
+                input.clone(),
+                attribution.cloned(),
+            );
+            return self
+                .database
+                .transaction(|tx| {
+                    Box::pin(async move {
+                        upsert_task_with(
+                            Executor::Transaction(tx),
+                            &owner,
+                            &chat,
+                            &input,
+                            attribution.as_ref(),
+                        )
+                        .await
+                    })
+                })
+                .await;
+        }
         upsert_task_with(
             Executor::Database(&self.database),
             owner,
