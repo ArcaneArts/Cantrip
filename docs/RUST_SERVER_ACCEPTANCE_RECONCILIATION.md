@@ -17,6 +17,14 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [automatic Task title comparison](RUST_SERVER_TASK_LABEL_ACCEPTANCE.md)
+fixes browser authorization for the worker's private label key. With that key,
+the current Rust server and Node reference complete standalone label generation
+through the full worker and native Codex on all three stores. The browser opens
+the same encrypted title after restart, and an unavailable title key still
+allows Task planning admission. Scoped worker command coverage accounts for
+311 of 323 identities.
+
 The [provider sign-out comparison](RUST_SERVER_PROVIDER_AUTH_WORKER_ACCEPTANCE.md)
 passes the existing browser SDK and full worker for legacy ChatGPT and Grok
 accounts on all three stores. The selected credential file is removed while a

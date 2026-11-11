@@ -39,6 +39,10 @@ import type {
   TaskContinuationStart,
 } from "@cantrip/protocol";
 import { chatTitleEncryption } from "@/lib/chat-title-encryption";
+import {
+  ensurePrivateLabelWorkerEncryption,
+  type PrivateLabelWorkerEncryptionDescriptor,
+} from "@/lib/private-label-worker-encryption";
 import { openAttachmentOpaqueList } from "@/lib/attachment-encryption";
 import { chatAttachmentOpaqueListSchema } from "@cantrip/protocol/attachment-content";
 
@@ -232,9 +236,16 @@ async function queueTaskOperation(
   chatId: string,
   path: "start" | "plan" | "continue" | "begin-implementation" | "retry",
   input: TaskOperationStart,
+  automaticTitleWorker?: PrivateLabelWorkerEncryptionDescriptor,
 ) {
   const current = await getTask(chatId);
   assertCurrentTaskVersion(current.rowVersion, input.rowVersion);
+  if (automaticTitleWorker) {
+    // The Task can queue if its worker cannot accept the optional label key.
+    await ensurePrivateLabelWorkerEncryption({
+      worker: automaticTitleWorker,
+    }).catch(() => undefined);
+  }
   return openTaskOpaqueSummary(
     await post(`/api/tasks/${encodeURIComponent(chatId)}/${path}`, {
       operationId: input.operationId,
@@ -246,15 +257,17 @@ async function queueTaskOperation(
 export async function startTaskPlanning(
   chatId: string,
   input: TaskOperationStart,
+  automaticTitleWorker?: PrivateLabelWorkerEncryptionDescriptor,
 ) {
-  return queueTaskOperation(chatId, "plan", input);
+  return queueTaskOperation(chatId, "plan", input, automaticTitleWorker);
 }
 
 export async function startTaskDirectly(
   chatId: string,
   input: TaskOperationStart,
+  automaticTitleWorker?: PrivateLabelWorkerEncryptionDescriptor,
 ) {
-  return queueTaskOperation(chatId, "start", input);
+  return queueTaskOperation(chatId, "start", input, automaticTitleWorker);
 }
 
 export async function updateTaskPlan(chatId: string, input: TaskPlanUpdate) {

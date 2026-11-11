@@ -22,6 +22,7 @@ import {
   actualWorkerLogsDisconnected,
 } from "./actual-worker-logs-client.mjs";
 import { actualTaskClient } from "./actual-task-client.mjs";
+import { actualTaskLabelClient } from "./actual-task-label-client.mjs";
 import { actualProviderAuthClient } from "./actual-provider-auth-client.mjs";
 import { actualProjectChatClient } from "./actual-project-chat-client.mjs";
 import { providerTestBoundary } from "./provider-test-boundary.mjs";
@@ -134,12 +135,14 @@ const cantripOsSourceBackup = process.argv.includes(
 );
 const workerLinkRenewal = process.argv.includes("--worker-link-renewal");
 const providerAuth = process.argv.includes("--provider-auth");
+const taskLabel = process.argv.includes("--task-label");
 assert.ok(!workerLinkRenewal || !sharedPair);
 const singleProduct =
   cantripOsRun ||
   cantripOsSourceBackup ||
   workerLinkRenewal ||
   providerAuth ||
+  taskLabel ||
   process.argv.includes("--production-server") ||
   process.argv.includes("--native-task-goal-worker-recovery") ||
   process.argv.includes("--native-worker-recovery") ||
@@ -213,6 +216,9 @@ const report = {
     : null,
   providerAuthScope: providerAuth
     ? "Browser provider-account SDK, production server, and full worker with isolated legacy credential files. Includes native Codex logout and worker-local Grok logout."
+    : null,
+  taskLabelScope: taskLabel
+    ? "Existing browser Task APIs, production server, full worker, and native Codex stateless labeling through a disposable model HTTP endpoint."
     : null,
   taskDiagnostics: liveTaskDiagnostics
     ? "Development SQL fixture executable; unchanged production startup, routes, worker and native runtime. Failed Task runs retain scoped read-only database snapshots before teardown."
@@ -288,6 +294,7 @@ async function flow(
     const isolateHome =
       workerLinkRenewal ||
       providerAuth ||
+      taskLabel ||
       [
         "--mcp-settings",
         "--terminals",
@@ -313,7 +320,7 @@ async function flow(
         workerId,
         homeDirectory,
         environment: {
-          ...(workerLinkRenewal || providerAuth
+          ...(workerLinkRenewal || providerAuth || taskLabel
             ? { CANTRIP_LOG_LEVEL: "debug" }
             : {}),
           ...(providerTest ? providerBoundary?.environment : {}),
@@ -623,6 +630,20 @@ async function flow(
     result.steps.push(
       "existing project client encrypts label and full worker creates a real managed directory",
     );
+    if (taskLabel) {
+      await actualTaskLabelClient({
+        fixture,
+        page,
+        projectId: first.id,
+        workerId,
+        startWorker,
+        stopWorker,
+        diagnostics: () => worker.diagnostics(),
+        result,
+      });
+      assert.deepEqual(errors, []);
+      return;
+    }
     const attached = await create(names[1], existingPath);
     await waitJob(attached.id, "succeeded");
     const opened = await openedProject(
@@ -1649,6 +1670,11 @@ try {
     assert.deepEqual(runtime.projects, report.runtimes[0].projects);
     if (providerAuth)
       assert.deepEqual(runtime.providerAuth, report.runtimes[0].providerAuth);
+    if (taskLabel)
+      assert.deepEqual(
+        runtime.taskLabel.summary,
+        report.runtimes[0].taskLabel.summary,
+      );
     if (
       cantripOsRun ||
       cantripOsSourceBackup ||
