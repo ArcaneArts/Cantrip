@@ -115,7 +115,7 @@ pub(crate) async fn append_task_history_with(
     )
     .await
 }
-pub(crate) async fn append_task_round_outcome_with(
+pub(crate) async fn append_task_outcome_with(
     executor: Executor<'_, '_>,
     owner: &str,
     chat: &str,
@@ -124,7 +124,7 @@ pub(crate) async fn append_task_round_outcome_with(
     streamed_root: bool,
 ) -> Result<Option<Value>> {
     let mode = if streamed_root {
-        TaskAppend::StreamedRoundOutcome
+        TaskAppend::StreamedOutcome
     } else {
         TaskAppend::Ordinary
     };
@@ -134,7 +134,7 @@ pub(crate) async fn append_task_round_outcome_with(
 enum TaskAppend {
     Ordinary,
     Historical,
-    StreamedRoundOutcome,
+    StreamedOutcome,
 }
 async fn append_task_impl(
     executor: Executor<'_, '_>,
@@ -149,6 +149,8 @@ async fn append_task_impl(
     }
     let input = crate::settings::parse_response("taskMessageOpaqueContentSchema", Some(input))?;
     let historical = mode == TaskAppend::Historical;
+    let finalize =
+        mode == TaskAppend::StreamedOutcome && input["classification"]["role"] == "assistant";
     if historical && (attribution.is_none() || input["classification"]["role"] != "assistant") {
         anyhow::bail!("Historical Task messages require an attributed assistant response.");
     }
@@ -176,27 +178,33 @@ async fn append_task_impl(
             anyhow::bail!("Encrypted Task message idempotency metadata is inconsistent.")
         }
         let message = messages::task(&saved)?;
-        if message["protectedContent"] == input["protectedContent"] {
+        let same_content = message["protectedContent"] == input["protectedContent"];
+        let already_finalized = saved["task_output_finalized"] == true;
+        let owns_message = finalize
+            && saved["execution_lane_id"] == json!(active)
+            && attribution.is_some_and(|a| saved["worktree_id"] == a["worktreeId"])
+            && message["protectedContent"]["keyRevision"]
+                == input["protectedContent"]["keyRevision"];
+        if same_content && (!owns_message || already_finalized) {
             return Ok(Some(message));
         }
-        if mode != TaskAppend::StreamedRoundOutcome
-            || saved["role"] != "assistant"
-            || saved["execution_lane_id"] != json!(active)
-            || !attribution.is_some_and(|a| saved["worktree_id"] == a["worktreeId"])
-            || message["protectedContent"]["keyRevision"]
-                != input["protectedContent"]["keyRevision"]
-        {
+        if !owns_message || already_finalized {
             anyhow::bail!("Encrypted Task message idempotency metadata is inconsistent.")
         }
-        // The HTTP outcome can overtake the final worker event for this
-        // message. Settle the exact envelope while the round still owns it.
+        // The HTTP outcome can overtake the final worker event. Seal its
+        // envelope while this native execution still owns the message.
         let rows = update(
             executor,
             &text(&input["id"])?,
-            vec![("task_protected_content", input["protectedContent"].clone())],
+            vec![
+                ("task_protected_content", input["protectedContent"].clone()),
+                ("task_output_finalized", json!(true)),
+            ],
         )
         .await?;
-        touch(executor, chat).await?;
+        if !same_content {
+            touch(executor, chat).await?;
+        }
         return messages::task(&required(&rows, "settling a streamed Task message")?).map(Some);
     }
     let worktree = attribution
@@ -211,6 +219,9 @@ async fn append_task_impl(
         ("content", Value::Null),
         ("idempotency_key", input["idempotencyKey"].clone()),
     ]);
+    if finalize {
+        fields.push(("task_output_finalized", json!(true)));
+    }
     let rows = insert(executor, fields).await?;
     if !historical {
         touch(executor, chat).await?;
@@ -254,7 +265,7 @@ pub(crate) async fn upsert_task_with(
         anyhow::bail!("Encrypted Task message update targets another row.")
     }
     if streamed && !executor.query(
-        "SELECT 1 FROM task_planning_rounds WHERE chat_id=$1 AND assistant_message_id=$2 AND kind='direct' AND status='completed' AND inference_input #>> '{terminal,projectedAt}' IS NOT NULL LIMIT 1",
+        "SELECT 1 FROM chat_messages WHERE chat_id=$1 AND id=$2 AND task_output_finalized UNION ALL SELECT 1 FROM task_planning_rounds WHERE chat_id=$1 AND assistant_message_id=$2 AND kind='direct' AND status='completed' AND inference_input #>> '{terminal,projectedAt}' IS NOT NULL LIMIT 1",
         &[&chat,&text(&input["id"])?],
     ).await?.is_empty() {
         return Ok(Some(saved));

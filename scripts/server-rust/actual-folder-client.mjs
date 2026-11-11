@@ -261,8 +261,18 @@ async function flow(
 ) {
   const context = await browser.newContext();
   const page = await context.newPage();
-  const taskRoundOrderFile = process.argv.includes("--task-round-outcome-order")
-    ? path.join(root, fixture.kind, "task-round-outcome-order.json")
+  const taskOutcomeOrderKind = ["goal", "round"].find((kind) =>
+    process.argv.includes(`--task-${kind}-outcome-order`),
+  );
+  const taskOutcomeOrder = taskOutcomeOrderKind
+    ? {
+        kind: taskOutcomeOrderKind,
+        file: path.join(
+          root,
+          fixture.kind,
+          `task-${taskOutcomeOrderKind}-outcome-order.json`,
+        ),
+      }
     : undefined;
   const errors = [],
     requests = [];
@@ -380,9 +390,10 @@ async function flow(
                   .join(" "),
               }
             : {}),
-          ...(taskRoundOrderFile
+          ...(taskOutcomeOrder
             ? {
-                CANTRIP_TEST_TASK_ROUND_ORDER_FILE: taskRoundOrderFile,
+                CANTRIP_TEST_TASK_ROUND_ORDER_FILE: taskOutcomeOrder.file,
+                CANTRIP_TEST_TASK_OUTCOME_ORDER_KIND: taskOutcomeOrder.kind,
                 CANTRIP_TEST_TASK_ROUND_ORDER_WORKER_ENTRY: path.resolve(
                   process.env.CANTRIP_TEST_WORKER_PACKAGE ??
                     path.join(repositoryRoot, "cantrip_worker"),
@@ -1367,7 +1378,7 @@ async function flow(
         stopWorker,
         result,
         requests,
-        taskRoundOrderFile,
+        taskOutcomeOrder,
       });
     if (
       process.argv.includes("--project-chats") ||

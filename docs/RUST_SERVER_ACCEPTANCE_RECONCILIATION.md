@@ -45,6 +45,13 @@ package preserves the finished encrypted answer, exact replay and restart
 on all three stores and two shared Rust peers. The retained Goal failures
 and their reruns have separate acceptance evidence.
 
+The [streamed Goal receipt comparison](RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md#goal-receipt-arriving-before-the-final-stream-event)
+forces the explicit Goal input to deliver its durable result before the
+final stream event. The packaged worker and browser preserve the final
+answer and exact replay on all three stores and two shared Rust peers.
+The controlled autonomous Goal receipt and the same-profile post-write
+rollback also pass on all three stores.
+
 The packaged macOS ARM64 `1.1.2845` server and signed desktop worker passed
 the current Task and Agent product matrix against the Node reference. All
 six suites cover real native execution across PGlite, bundled PostgreSQL

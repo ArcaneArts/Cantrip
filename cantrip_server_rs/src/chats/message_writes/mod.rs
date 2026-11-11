@@ -11,9 +11,7 @@ use anyhow::{Context, Result};
 pub use canonical::HistoryError;
 pub(crate) use canonical::event_id;
 pub(crate) use encrypted::{append_for_mcp, write_in_transaction};
-pub(crate) use legacy::{
-    append_task_history_with, append_task_round_outcome_with, append_task_with, upsert_task_with,
-};
+pub(crate) use legacy::{append_task_history_with, append_task_outcome_with, upsert_task_with};
 
 fn text(value: &Value) -> Result<String> {
     Ok(value
@@ -149,8 +147,12 @@ fn parameters(fields: &Fields) -> Result<(Parameters, Vec<String>)> {
                 Some(value.stringify())
             }));
             "::text::jsonb"
-        } else if *column == "reasoning_adjusted" {
-            parameters.push(Box::new(value.as_bool().context("Reasoning adjustment")?));
+        } else if matches!(*column, "reasoning_adjusted" | "task_output_finalized") {
+            parameters.push(Box::new(
+                value
+                    .as_bool()
+                    .with_context(|| format!("Message flag {column}"))?,
+            ));
             ""
         } else {
             parameters.push(Box::new(optional(value)?));

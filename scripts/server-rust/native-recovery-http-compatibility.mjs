@@ -20,6 +20,13 @@ const option = (key) => {
   return at < 0 ? undefined : process.argv[at + 1];
 };
 const databaseMode = option("--database") ?? "pglite";
+const streamedGoalCycleRoot = process.argv.includes(
+  "--streamed-goal-cycle-root",
+);
+const selectedCase =
+  option("--case") ??
+  option("--origin") ??
+  (streamedGoalCycleRoot ? "goal" : undefined);
 const root = await mkdtemp(
   path.join(tmpdir(), "cantrip-native-recovery-http-"),
 );
@@ -48,14 +55,13 @@ try {
     const cases = [];
     report.profiles.push({ profile, cases });
     for (const scenario of ["gui", "terminal", "goal", "round"].filter(
-      (p) =>
-        !(option("--case") ?? option("--origin")) ||
-        (option("--case") ?? option("--origin")) === p,
+      (value) => !selectedCase || selectedCase === value,
     )) {
+      const streamed = streamedGoalCycleRoot && scenario === "goal";
       const outputs = [];
       cases.push({ scenario, outputs });
       const caseRoot = path.join(root, scenario);
-      for (const kind of ["node", "rust"]) {
+      for (const kind of streamed ? ["rust"] : ["node", "rust"]) {
         const result = {
           kind,
           observations: [],
@@ -95,7 +101,7 @@ try {
         let proof;
         try {
           proof = await (scenario === "goal"
-            ? nativeRecoveryHttpGoal(h, result)
+            ? nativeRecoveryHttpGoal(h, result, { streamed })
             : scenario === "round"
               ? nativeRecoveryHttpRound(h, result)
               : nativeRecoveryHttpSuspension(h, result, scenario));
@@ -133,6 +139,7 @@ try {
         proof.content.finish();
         result.observations = proof.content.canonical(result.observations);
       }
+      if (streamed) continue;
       for (const key of [
         "observations",
         "cryptoProofs",

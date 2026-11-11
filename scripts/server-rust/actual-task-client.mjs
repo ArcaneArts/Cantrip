@@ -8,6 +8,62 @@ import { actualTaskRecovery } from "./actual-task-recovery.mjs";
 import { captureTaskRuntimeState } from "./task-runtime-snapshot.mjs";
 import { browserFixtureSql } from "./browser-fixture-sql.mjs";
 
+async function verifyOutcomeOrdering(
+  readMessages,
+  reply,
+  answer,
+  file,
+  result,
+  field,
+) {
+  try {
+    await eventually(readMessages, (messages) =>
+      assert.ok(
+        messages.some((message) =>
+          message.content.some(
+            (item) =>
+              item.type === "text" &&
+              item.text === answer &&
+              item.streaming === true,
+          ),
+        ),
+      ),
+    );
+  } finally {
+    reply.release();
+  }
+  const order = await eventually(
+    () =>
+      readFile(file, "utf8").then(JSON.parse, (error) => {
+        if (error.code === "ENOENT") return undefined;
+        throw error;
+      }),
+    (observation) =>
+      assert.ok(observation, "the worker observed the HTTP outcome"),
+  );
+  result[field] = order;
+  assert.equal(order.status, 200);
+  assert.equal(order.committed, true);
+  assert.equal(order.finalEventHeld, true);
+  assert.equal(order.receiptMatchesFinalEvent, true);
+  assert.equal(order.differsFromProvisionalEvent, true);
+  assert.equal(order.replayedProvisionalEvent, true);
+  assert.equal(order.exactReplay, true);
+  assert.equal(order.changedReplayStatus, 409);
+  assertFinalAnswer(await readMessages(), order, answer);
+}
+
+function assertFinalAnswer(messages, order, answer) {
+  const saved = messages.filter((message) => message.id === order.messageId);
+  assert.equal(saved.length, 1);
+  assert.ok(
+    saved[0].content.some(
+      (item) =>
+        item.type === "text" && item.text === answer && item.streaming !== true,
+    ),
+  );
+}
+
 export async function actualTaskClient({
   page,
   fixture,
@@ -17,7 +73,7 @@ export async function actualTaskClient({
   stopWorker,
   result,
   requests,
-  taskRoundOrderFile,
+  taskOutcomeOrder,
 }) {
   const model = await taskModelProvider();
   const brief = "Private full-worker direct Task brief 🍄";
@@ -77,16 +133,16 @@ export async function actualTaskClient({
     );
     assert.equal(created.task.briefMarkdown, brief);
     assert.equal(created.task.state, "draft");
-    const readMessages = () =>
+    const readChatMessages = (chatId) =>
       page.evaluate(
         async (chat) =>
           (await import("/src/lib/api/chats.ts")).getMessages(chat),
-        created.chat.id,
+        chatId,
       );
-    const reply = model.reply({
-      text: answer,
-      hold: Boolean(taskRoundOrderFile),
-    });
+    const readMessages = () => readChatMessages(created.chat.id);
+    const forceRoundOrder = taskOutcomeOrder?.kind === "round";
+    const forceGoalOrder = taskOutcomeOrder?.kind === "goal";
+    const reply = model.reply({ text: answer, hold: forceRoundOrder });
     const admitted = await page.evaluate(
       async ({ chatId, rowVersion }) => {
         return (await import("/src/lib/api/tasks.ts")).startTaskDirectly(
@@ -100,42 +156,15 @@ export async function actualTaskClient({
     assert.equal(admitted.dispatch.operationKind, "direct");
     assert.equal(admitted.state, created.task.state);
     assert.equal(admitted.rowVersion, created.task.rowVersion);
-    if (taskRoundOrderFile) {
-      try {
-        await eventually(readMessages, (messages) =>
-          assert.ok(
-            messages.some((message) =>
-              message.content.some(
-                (item) =>
-                  item.type === "text" &&
-                  item.text === answer &&
-                  item.streaming === true,
-              ),
-            ),
-          ),
-        );
-      } finally {
-        reply.release();
-      }
-      const order = await eventually(
-        () =>
-          readFile(taskRoundOrderFile, "utf8").then(JSON.parse, (error) => {
-            if (error.code === "ENOENT") return undefined;
-            throw error;
-          }),
-        (observation) =>
-          assert.ok(observation, "the worker observed the HTTP outcome"),
+    if (forceRoundOrder)
+      await verifyOutcomeOrdering(
+        () => readMessages(),
+        reply,
+        answer,
+        taskOutcomeOrder.file,
+        result,
+        "taskRoundOutcomeOrder",
       );
-      result.taskRoundOutcomeOrder = order;
-      assert.equal(order.status, 200);
-      assert.equal(order.committed, true);
-      assert.equal(order.finalEventHeld, true);
-      assert.equal(order.receiptMatchesFinalEvent, true);
-      assert.equal(order.differsFromProvisionalEvent, true);
-      assert.equal(order.replayedProvisionalEvent, true);
-      assert.equal(order.exactReplay, true);
-      assert.equal(order.changedReplayStatus, 409);
-    }
     const readTask = () =>
       page.evaluate(
         async (chat) => (await import("/src/lib/api/tasks.ts")).getTask(chat),
@@ -154,19 +183,8 @@ export async function actualTaskClient({
       JSON.stringify(messages).includes(answer),
       "the existing browser decrypts the actual native Task response",
     );
-    if (taskRoundOrderFile) {
-      const stored = messages.filter(
-        (message) => message.id === result.taskRoundOutcomeOrder.messageId,
-      );
-      assert.equal(stored.length, 1);
-      assert.ok(
-        stored[0].content.some(
-          (item) =>
-            item.type === "text" &&
-            item.text === answer &&
-            item.streaming !== true,
-        ),
-      );
+    if (forceRoundOrder) {
+      assertFinalAnswer(messages, result.taskRoundOutcomeOrder, answer);
       result.steps.push(
         "the durable round outcome commits ahead of the final stream event and preserves the finished response after the provisional event is replayed",
       );
@@ -232,9 +250,10 @@ export async function actualTaskClient({
     });
     const initialGoalAnswer = "Private initial Task Goal turn 🍄";
     const implementationAnswer = "Private full-worker implementation result 🌤";
-    const firstTurn = process.argv.includes("--task-goal-autonomous")
-      ? model.reply({ text: initialGoalAnswer })
-      : null;
+    const firstTurn =
+      forceGoalOrder || process.argv.includes("--task-goal-autonomous")
+        ? model.reply({ text: initialGoalAnswer, hold: forceGoalOrder })
+        : null;
     model.reply({
       calls: [{ name: "update_goal", arguments: { status: "complete" } }],
     });
@@ -255,6 +274,15 @@ export async function actualTaskClient({
         ),
       { chatId: planned.chat.id, rowVersion: review.rowVersion },
     );
+    if (forceGoalOrder)
+      await verifyOutcomeOrdering(
+        () => readChatMessages(planned.chat.id),
+        firstTurn,
+        initialGoalAnswer,
+        taskOutcomeOrder.file,
+        result,
+        "taskGoalOutcomeOrder",
+      );
     const goalTask = await eventually(
       () =>
         page.evaluate(
@@ -293,10 +321,30 @@ export async function actualTaskClient({
       nativeGoal,
       "the actual Codex Goal tool completes the implementation Goal",
     );
-    const openedGoal = await page.evaluate(
-      async (chat) => (await import("/src/lib/api/chats.ts")).getChatGoal(chat),
-      planned.chat.id,
+    const { openedGoal, lookupConflicts } = await page.evaluate(
+      async ({ chat, ordered }) => {
+        const { getChatGoal } = await import("/src/lib/api/chats.ts");
+        if (!ordered)
+          return { openedGoal: await getChatGoal(chat), lookupConflicts: 0 };
+        // The normal browser Goal query retries twice. The forced receipt
+        // replay can overlap its passive native observation.
+        const { chatGoalQueryOptions } =
+          await import("/src/lib/chat-goal-query.ts");
+        const { retry } = chatGoalQueryOptions(chat, "idle");
+        let lookupConflicts = 0;
+        for (;;) {
+          try {
+            return { openedGoal: await getChatGoal(chat), lookupConflicts };
+          } catch (error) {
+            if (error.status !== 409 || lookupConflicts >= retry) throw error;
+            const delay = 1000 * 2 ** lookupConflicts++;
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          }
+        }
+      },
+      { chat: planned.chat.id, ordered: forceGoalOrder },
     );
+    if (forceGoalOrder) result.taskGoalLookupConflicts = lookupConflicts;
     assert.equal(openedGoal.goal.status, "complete");
     assert.ok(nativeGoal.goal.objective.startsWith(goalTask.goalPrompt));
     assert.equal(openedGoal.goal.objective, nativeGoal.goal.objective);
@@ -318,6 +366,16 @@ export async function actualTaskClient({
       planned.chat.id,
     );
     assert.ok(JSON.stringify(goalMessages).includes(implementationAnswer));
+    if (forceGoalOrder) {
+      assertFinalAnswer(
+        goalMessages,
+        result.taskGoalOutcomeOrder,
+        initialGoalAnswer,
+      );
+      result.steps.push(
+        "the durable Goal input outcome commits ahead of the final stream event and retains the finished answer",
+      );
+    }
     if (firstTurn) {
       for (const text of [initialGoalAnswer, implementationAnswer])
         assert.equal(
