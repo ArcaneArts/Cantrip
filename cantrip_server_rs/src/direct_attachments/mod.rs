@@ -3,6 +3,7 @@ use crate::workers::transport::WorkerTransport;
 mod events;
 mod lifecycle;
 mod native;
+mod peer_revocations;
 pub use lifecycle::Scope;
 mod prepare;
 mod renewal;
@@ -182,6 +183,7 @@ pub struct Coordinator {
     bridge: Option<Arc<dyn WorkerTransport>>,
     state: Mutex<State>,
     changed: Notify,
+    peer_revocations: Mutex<Option<peer_revocations::Subscription>>,
 }
 impl Coordinator {
     pub fn new(workers: WorkerRequest, options: Options) -> Arc<Self> {
@@ -198,6 +200,7 @@ impl Coordinator {
             bridge,
             state: Mutex::new(State::default()),
             changed: Notify::new(),
+            peer_revocations: Mutex::new(None),
         })
     }
     fn now(&self) -> i64 {

@@ -333,6 +333,9 @@ impl AuthService {
                 ..Default::default()
             },
         );
+        if let Some(coordination) = &coordination {
+            direct_attachments.subscribe_peer_revocations(coordination.clone());
+        }
         let model_routing = crate::chats::routing::ModelRouting::new(
             repository.database.clone(),
             provider_catalogs.clone(),

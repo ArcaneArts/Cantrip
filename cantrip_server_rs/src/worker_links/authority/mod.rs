@@ -3,6 +3,7 @@
 mod api;
 mod operations;
 mod parse;
+pub(crate) use parse::relay_scope as parse_relay_revocation;
 #[cfg(test)]
 mod tests;
 use super::{Coordinator, Error, ResourceScope, Result, RevocationScope, checked, unavailable};

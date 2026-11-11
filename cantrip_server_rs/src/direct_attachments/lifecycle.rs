@@ -315,6 +315,7 @@ impl Coordinator {
             }
         };
         if start {
+            self.peer_revocations.lock().unwrap().take();
             let service = self.clone();
             tokio::spawn(async move {
                 let (leases, pending) = {
