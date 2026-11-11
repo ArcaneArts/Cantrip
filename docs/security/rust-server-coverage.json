@@ -29170,6 +29170,21 @@
       "workerOwnerCrashControls": 1,
       "scope": "Local macOS ARM64 production server processes, full worker, browser SDK and native Codex. A real 45-second Redis process outage exceeds the worker claim TTL. All four remote native Tasks renew the original PostgreSQL lease and complete once before Redis restarts. Redis network and TLS faults, concurrent PostgreSQL interruption and final shipping platform acceptance remain open."
     },
+    "packagedActiveTaskDependencyRecovery": {
+      "status": "implemented-with-scoped-local-qualification",
+      "sourceCommit": "2e60d2042203f64c8105d5c52d12ae1db92d2d83",
+      "candidateVersion": "1.1.2845",
+      "platform": "darwin-arm64",
+      "databaseMode": "postgres",
+      "redisServerPairings": ["node/node", "node/rust", "rust/node", "rust/rust"],
+      "postgresServerPairings": ["rust/rust"],
+      "evidence": [
+        "docs/RUST_SERVER_INFLIGHT_RECOVERY.md",
+        "docs/security/rust-server-current-inflight-acceptance.json",
+        "scripts/server-rust/actual-native-inflight-client.mjs"
+      ],
+      "scope": "Current optimized server and signed desktop worker. Five actual dependency process interruptions keep one dispatch attempt, one model request and the original worker continuity per Task."
+    },
     "currentWorkerLinkLeaseRecovery": {
       "status": "implemented-with-scoped-local-qualification",
       "evidence": [

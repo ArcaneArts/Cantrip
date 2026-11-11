@@ -21,6 +21,12 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [packaged active Task recovery](RUST_SERVER_INFLIGHT_RECOVERY.md#packaged-112845-dependency-recovery)
+qualifies `1.1.2845` with the signed desktop worker on external PostgreSQL.
+All four Node and Rust pairings complete one original Task during Redis
+process loss and recover worker routing afterward. Two Rust servers preserve
+and deliver the original worker outcome through PostgreSQL process loss.
+
 The [embedded PGlite cache recovery](RUST_SERVER_DATABASE_LIFECYCLE.md#embedded-pglite-cache-recovery)
 repairs actual startup failure from incomplete automatically extracted assets.
 Concurrent fresh and retained profile starts pass with the original identity
