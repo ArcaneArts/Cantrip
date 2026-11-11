@@ -1,4 +1,4 @@
-// Production HTTP/job/Live services and unchanged WorkerConnection. Operations are controlled.
+// Production HTTP/job/Live services, unchanged WorkerConnection and endpoint crypto.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, writeFile, copyFile } from "node:fs/promises";
@@ -12,6 +12,7 @@ import { postgresFixture } from "./postgres-fixture.mjs";
 import { LiveProbe } from "./live-sockets.mjs";
 import { eventually } from "./full-worker.mjs";
 import { password } from "./security-fixtures.mjs";
+import { importEndpointCrypto } from "./chat-import-http-crypto.mjs";
 import { importLeases } from "./chat-import-http-leases.mjs";
 import { importRestarts } from "./chat-import-http-restart.mjs";
 import { importDiscoveryEdges } from "./chat-import-http-discovery.mjs";
@@ -45,10 +46,11 @@ process.stderr.write(
   JSON.stringify({ event: "chat-import.http.created", root }) + "\n",
 );
 const report = {
+  suite: "chat-import-http",
   root,
   database: values.database,
   scope:
-    "Real production HTTP/job/Live services and unchanged WorkerConnection; controlled external files, protection and native operation replies. Not full worker/crypto/files/platform or complete replacement acceptance.",
+    "Production HTTP/job/Live services, unchanged WorkerConnection and actual message, attachment metadata and relay encryption. External source files and native runtime replies are controlled.",
   profiles: [],
   completeReplacement: false,
 };
@@ -56,12 +58,16 @@ const projectId = "99999999-9999-4999-8999-999999999991";
 const stateQuery =
   "SELECT jsonb_build_object('jobs',(SELECT jsonb_agg(to_jsonb(j) ORDER BY created_at,id) FROM chat_import_jobs j),'chats',(SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM chats c),'messages',(SELECT jsonb_agg(to_jsonb(m) ORDER BY sequence) FROM chat_messages m),'attachments',(SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM chat_attachments a),'replicas',(SELECT jsonb_agg(to_jsonb(r) ORDER BY attachment_id,worker_id) FROM chat_attachment_replicas r),'sessions',(SELECT jsonb_agg(to_jsonb(s) ORDER BY chat_id) FROM chat_runtime_sessions s),'lanes',(SELECT jsonb_agg(to_jsonb(l) ORDER BY chat_id) FROM chat_execution_lanes l),'projects',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM projects p),'groups',(SELECT jsonb_agg(to_jsonb(g) ORDER BY project_id,position) FROM tab_groups g),'members',(SELECT jsonb_agg(to_jsonb(m) ORDER BY project_id,tab_id) FROM tab_group_members m),'leases',(SELECT jsonb_agg(to_jsonb(l) ORDER BY id) FROM project_branch_leases l),'terminals',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM terminals t))::text AS result";
 let pg;
+const endpointCrypto = new WeakMap();
 function normal(f, value, key = "", started = 0) {
   if (Array.isArray(value)) return value.map((v) => normal(f, v, "", started));
-  if (value && typeof value === "object")
+  if (value && typeof value === "object") {
+    const envelope = endpointCrypto.get(f)?.envelopeLabel(value);
+    if (envelope) return envelope;
     return Object.fromEntries(
       Object.entries(value).map(([k, v]) => [k, normal(f, v, k, started)]),
     );
+  }
   if (typeof value !== "string") return value;
   if (/(?:At|_at)$/.test(key) && /^\d{4}-/.test(value)) {
     const ms = Date.parse(value);
@@ -147,12 +153,24 @@ function bindState(f, state) {
   for (const row of state.messages ?? []) {
     assert.equal(row.content, null);
     assert.equal(row.task_protected_content, null);
-    assert.ok(row.protected_content);
+    endpointCrypto.get(f).verifyMessage({
+      id: row.id,
+      classification: {
+        role: row.role,
+        mode: row.mode,
+        attachmentIds: row.attachment_ids,
+      },
+      protectedContent: row.protected_content,
+    });
     bind(
       row.id,
       "<message:" + name(row.chat_id) + ":" + row.idempotency_key + ">",
     );
   }
+  for (const row of state.attachments ?? [])
+    endpointCrypto
+      .get(f)
+      .verify(row.protected_metadata.envelope, "attachment metadata", row.id);
   for (const row of state.groups ?? []) {
     const member = state.members.find(
       (m) => m.group_id === row.id && m.tab_key === row.anchor_tab_key,
@@ -210,6 +228,58 @@ async function flow(f, result, profile) {
   const sqlState = async () => {
     const [query] = await f.sql([], [stateQuery]);
     return query;
+  };
+  const readProtectedImport = async (name, chatId) => {
+    const history = await visit(name, "GET", `/api/chats/${chatId}/messages`);
+    assert.equal(history.kind, "chat-encrypted");
+    result.http.at(-1).body = normal(f, history, "", started);
+    const raw = await sqlState();
+    const messages = raw.messages.filter((row) => row.chat_id === chatId);
+    const attachments = raw.attachments.filter((row) => row.chat_id === chatId);
+    const ids = new Set(attachments.map((row) => row.id));
+    const replicas = raw.replicas.filter((row) => ids.has(row.attachment_id));
+    assert.equal(messages.length, 2);
+    assert.equal(history.messages.length, messages.length);
+    assert.equal(attachments.length, 3);
+    assert.deepEqual(attachments.map(({ status }) => status).sort(), [
+      "failed",
+      "failed",
+      "ready",
+    ]);
+    assert.equal(replicas.length, 1);
+    assert.equal(replicas[0].status, "ready");
+    assert.equal(replicas[0].worker_id, "beta");
+    for (const [index, row] of messages.entries()) {
+      const message = history.messages[index];
+      assert.equal(message.id, row.id);
+      assert.equal(message.sequence, row.sequence);
+      assert.equal(message.content, undefined);
+      assert.equal(row.content, null);
+      assert.deepEqual(message.protectedContent, row.protected_content);
+      const opened = await state.crypto.reopenMessage(message);
+      assert.equal(
+        opened[0].text,
+        "Imported message 😀 \ud800 \u2028 " + index,
+      );
+      assert.deepEqual(
+        opened
+          .filter((item) => item.type === "attachment")
+          .map((item) => item.attachment.id),
+        message.attachmentIds,
+      );
+    }
+    for (const row of attachments) {
+      const opened = await state.crypto.reopenAttachment({
+        id: row.id,
+        chatId,
+        sizeBytes: row.size_bytes,
+        status: row.status,
+        protectedMetadata: row.protected_metadata,
+        createdAt: new Date(row.created_at).toISOString(),
+      });
+      assert.match(opened.fileName, /^imported-private-[012]\.bin$/);
+    }
+    return { history, messages, attachments, replicas };
   };
   const settleEvents = async (job) => {
     await eventually(
@@ -491,6 +561,8 @@ async function flow(f, result, profile) {
             ? "login"
             : "session",
       ).currentUser?.id ?? localOwner;
+    state.crypto = importEndpointCrypto(owner);
+    endpointCrypto.set(f, state.crypto);
     for (const id of ["alpha", "beta"])
       workers.push(
         await importWorker({
@@ -682,7 +754,24 @@ async function flow(f, result, profile) {
         },
       );
     }
-    await runCase("attachment-success", { attachments: true });
+    const attached = await runCase("attachment-success", {
+      attachments: true,
+      subscribeChat: true,
+    });
+    const attachedBefore = await readProtectedImport(
+      "encrypted import history",
+      attached.job.chatId,
+    );
+    if (profile === "accounts")
+      await visit(
+        "foreign encrypted import history",
+        "GET",
+        `/api/chats/${attached.job.chatId}/messages`,
+        {
+          client: "other",
+          status: 404,
+        },
+      );
     await runCase("changed-source", {
       mode: "changed-identity",
       expected: "failed",
@@ -898,6 +987,7 @@ async function flow(f, result, profile) {
       "attachment-wrong-sequence",
       "attachment-early-eof",
       "attachment-unterminated",
+      "attachment-authentication-failure",
       "attachment-unverified",
       "attachment-size-unverified",
     ]) {
@@ -1023,6 +1113,20 @@ async function flow(f, result, profile) {
       "GET",
       "/api/projects/" + projectId + "/external-chat-history",
     );
+    const beforeRestart = f.server;
+    const port = Number(new URL(beforeRestart.origin).port);
+    await Promise.all(workers.map((worker) => worker.close()));
+    await live.close();
+    result.beforeRestartDiagnostics = beforeRestart.diagnostics();
+    await f.close();
+    await f.start({ port });
+    assert.equal(f.server.origin, beforeRestart.origin);
+    const attachedAfter = await readProtectedImport(
+      "reopened encrypted import history",
+      attached.job.chatId,
+    );
+    assert.deepEqual(attachedAfter, attachedBefore);
+    result.endpointReopen = { before: attachedBefore, after: attachedAfter };
     result.finalRaw = await sqlState();
     assert.deepEqual(
       state.heartbeatFailures ?? [],
@@ -1030,6 +1134,15 @@ async function flow(f, result, profile) {
       "Controlled workers retain healthy HTTP heartbeats",
     );
     result.background = state.background;
+    result.endpointCrypto = state.crypto.counts;
+    assert.equal(result.endpointCrypto.rejectedChunks, 1);
+    for (const diagnostic of [
+      result.beforeRestartDiagnostics,
+      f.server.diagnostics(),
+    ]) {
+      assert.equal(diagnostic.includes("Imported message 😀"), false);
+      assert.equal(diagnostic.includes("imported-private-"), false);
+    }
   } catch (error) {
     result.failure = error.stack;
     result.pendingCommands = state.commands;

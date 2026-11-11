@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "baseCommit": "ddbe5fad7e31f870a89e2b137f893b8ee8e4cf23",
+  "completeReplacement": false,
+  "candidateVersion": "1.1.2811",
+  "platform": "darwin-arm64",
+  "scope": "Production HTTP, job and Live services with the unchanged WorkerConnection and actual worker Chat message, attachment metadata and relay chunk codecs. Source transcript and bytes, attachment backing storage and native hydration replies are controlled.",
+  "productionRustChanges": [],
+  "counts": {
+    "cells": 9,
+    "pairedHttp": 621,
+    "pairedCases": 330,
+    "tracedHttp": 17355,
+    "workerMessagesEncrypted": 2454,
+    "workerMetadataEncrypted": 594,
+    "relayChunksOpened": 198,
+    "bindingRejections": 36,
+    "tamperedRelayRejections": 18,
+    "independentBindingRejections": 36,
+    "independentMessageOpens": 36,
+    "independentMetadataOpens": 54,
+    "independentRelayOpens": 36,
+    "retainedServerRestarts": 18,
+    "crashReopens": 12,
+    "leaseRenewalPeers": 6,
+    "mappedWorkerCommands": 289,
+    "unmappedWorkerCommands": 34
+  },
+  "matrixReports": [
+    {
+      "databaseMode": "pglite",
+      "report": {
+        "path": ".qa/import/matrix-pglite-v1.json",
+        "sha256": "0763553ae2604421529bf90114a28a3ffc2fb23b2bd8513b9ec0b6487dc5454c"
+      },
+      "trace": {
+        "path": ".qa/import/matrix-pglite-v1.requests.json",
+        "sha256": "9e532496d178d5d2b497bbb7f746e16843678afe6f0d4a3e287706f885f9c625"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "report": {
+        "path": ".qa/import/matrix-bundled-postgres-v1.json",
+        "sha256": "45f521541d660aaf7a166ebf39412211f862344447e45b6ab166cb83f7044866"
+      },
+      "trace": {
+        "path": ".qa/import/matrix-bundled-postgres-v1.requests.json",
+        "sha256": "8000e9b8bf85975d52de56da1d892bd8ee119bcff91381b62502dc1e61344241"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "report": {
+        "path": ".qa/import/matrix-postgres-v1.json",
+        "sha256": "f6926557f433b33ea4f2cb72e33a933e1c667aaaafa1cf3bd63d69be17a2e653"
+      },
+      "trace": {
+        "path": ".qa/import/matrix-postgres-v1.requests.json",
+        "sha256": "8aa667a441fea015deac1c66528d77707ab2ab02aace99b1532f2d1b1ee40fb5"
+      }
+    }
+  ],
+  "verified": {
+    "path": ".qa/import/verified-matrix.json",
+    "sha256": "f670ac5262f9651359f1776ad675c4c2635b5200d42ac1d43ef94c8391677fe7"
+  },
+  "verifier": {
+    "path": ".qa/import/verify.mjs",
+    "sha256": "d4af344ba8c9016c685e213484214d7d3d689067fc0d9a33c835b142df5aa2ae"
+  },
+  "validation": [
+    {
+      "path": ".qa/import/worker-focused.log",
+      "sha256": "49b77ee3381caef9fe470303ef9430e0f88fbb390f8f56a6190e9fcc75478d5a"
+    },
+    {
+      "path": ".qa/import/crypto-tests.log",
+      "sha256": "e76b52da4b29bf84d4148454e4cf3f2457537de8b1cca11496f91a77945b19c8"
+    },
+    {
+      "path": ".qa/import/reference-focused.log",
+      "sha256": "5da2beddc175ef81a325650ccd8640e75a37ed7bb6592f37ed9f3b9c55620a16"
+    },
+    {
+      "path": ".qa/import/rust-import-contracts.log",
+      "sha256": "6320a399d2c7c770f76dfd3c8d668212d8631628ec637d5713565f821b8a4358"
+    }
+  ],
+  "build": {
+    "path": ".qa/import/restore.json",
+    "sha256": "c58c0384a1985859cf842e1e50ce4d094ad629072d6b5b3abe5cee3dcce1022e"
+  },
+  "fixtureExecutable": {
+    "path": ".qa/import/helpers-v3/http-sql-fixture",
+    "sha256": "613bbbbeb7ba10d0d981b0d00f986f23644ddc063adef0a05362ccf33c48b432"
+  },
+  "sources": [
+    {
+      "path": "scripts/server-rust/chat-import-http-compatibility.mjs",
+      "sha256": "733bf3689de9d5c7f1e2f3fe9c3c909a385b4873d75b17796dc48c8e561071d3"
+    },
+    {
+      "path": "scripts/server-rust/chat-import-http-worker.mjs",
+      "sha256": "5f371cdd598679e0ee331316d3946ae1e367cbb896858dd39574929feffcd08c"
+    },
+    {
+      "path": "scripts/server-rust/chat-import-http-crypto.mjs",
+      "sha256": "786f1533b93fb4002aa10ed3d4e67476623653ff260ad2f3bfb85de6452e3d8d"
+    },
+    {
+      "path": "cantrip_server_rs/src/chats/imports/execute.rs",
+      "sha256": "3c47723c486c19a03eb164a57d333859089460399898be42d281d3fad8957732"
+    }
+  ],
+  "newCommandMappings": ["chat.messages.protect"]
+}

@@ -14736,6 +14736,21 @@
         "remaining": [
           "The encrypted public queued Goal path qualifies the actual claim, worker codecs and managed SDK settlement with a controlled native result. Other native methods, autonomous Goal activation and complete worker/client shipping acceptance remain open."
         ]
+      },
+      {
+        "command": "chat.messages.protect",
+        "implementation": "cantrip_server_rs/src/chats/imports/execute.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_ENCRYPTED_CHAT_IMPORT.md",
+          "docs/security/rust-server-encrypted-chat-import-acceptance.json",
+          "scripts/server-rust/chat-import-http-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-worker.mjs",
+          "scripts/server-rust/chat-import-http-crypto.mjs"
+        ],
+        "remaining": [
+          "The canonical import path qualifies actual worker encryption, attachment metadata and relay, exact durable ciphertext, failures, and restart through current HTTP. Source file capture, physical destination storage, native Codex hydration and full existing-client/platform acceptance remain open."
+        ]
       }
     ]
   },

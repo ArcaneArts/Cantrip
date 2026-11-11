@@ -1,4 +1,4 @@
-// Real production WorkerConnection; external files, protection and runtimes are controlled.
+// Real WorkerConnection and endpoint crypto with controlled external file and runtime inputs.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import path from "node:path";
@@ -7,7 +7,6 @@ import { sendHeartbeat } from "../../cantrip_worker/src/heartbeat.ts";
 import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
 import { chatImportAttachmentId } from "../../tests/reference-node-server/src/db/chat-import-jobs.ts";
 import { externalChatTranscriptSchema } from "../../packages/protocol/dist/external-chat-imports.js";
-import { protectedAttachmentMetadataFixture } from "../../tests/reference-node-server/test/protected-attachment-fixture.ts";
 import { heartbeat } from "./security-fixtures.mjs";
 import { label, stamp } from "./project-target-state.mjs";
 import { eventually } from "./full-worker.mjs";
@@ -186,26 +185,33 @@ export async function importWorker({ fixture, visit, root, id, state, owner }) {
               );
             if (state.mode === "invalid-transcript") return { transcript: {} };
             const descriptors = state.withAttachments
-              ? [0, 1, 2].map((n) => {
-                  const sourceAttachmentId = createHash("sha256")
-                    .update("external-attachment-" + n)
-                    .digest("hex");
-                  const descriptor = {
-                    id: chatImportAttachmentId(
+              ? await Promise.all(
+                  [0, 1, 2].map(async (n) => {
+                    const sourceAttachmentId = createHash("sha256")
+                      .update("external-attachment-" + n)
+                      .digest("hex");
+                    const attachmentId = chatImportAttachmentId(
                       command.chatId,
                       sourceAttachmentId,
-                    ),
-                    sourceAttachmentId,
-                    itemId: "user-0",
-                    sizeBytes: n === 0 ? 300001 : 128,
-                    status: ["available", "missing", "unsupported"][n],
-                    protectedMetadata: protectedAttachmentMetadataFixture(
-                      "external-" + n,
-                    ),
-                  };
-                  state.descriptors.set(sourceAttachmentId, descriptor);
-                  return descriptor;
-                })
+                    );
+                    const status = ["available", "missing", "unsupported"][n];
+                    const descriptor = {
+                      id: attachmentId,
+                      sourceAttachmentId,
+                      itemId: "user-0",
+                      sizeBytes: n === 0 ? 300001 : 128,
+                      status,
+                      protectedMetadata: await state.crypto.protectMetadata(
+                        command.chatId,
+                        attachmentId,
+                        n,
+                        status,
+                      ),
+                    };
+                    state.descriptors.set(sourceAttachmentId, descriptor);
+                    return descriptor;
+                  }),
+                )
               : [];
             const count = state.messageCount ?? 2;
             const transcript = externalChatTranscriptSchema.parse({
@@ -243,19 +249,7 @@ export async function importWorker({ fixture, visit, root, id, state, owner }) {
           }
           case "chat.messages.protect": {
             if (state.protectBarrier) await state.protectBarrier;
-            const replies = command.messages.map((m) => ({
-              id: m.id,
-              classification: {
-                role: m.role,
-                mode: m.mode ?? "default",
-                attachmentIds: m.content.flatMap((c) =>
-                  c.type === "attachment" ? [c.attachment.id] : [],
-                ),
-              },
-              protectedContent: label("chat").protectedLabel,
-              reasoningEffort: m.reasoningEffort ?? null,
-              idempotencyKey: m.idempotencyKey,
-            }));
+            const replies = await state.crypto.protectMessages(command);
             if (state.mode === "protect-truncated") replies.pop();
             if (state.mode === "protect-wrong-key" && replies[0])
               replies[0].idempotencyKey = "wrong";
@@ -271,24 +265,20 @@ export async function importWorker({ fixture, visit, root, id, state, owner }) {
               command.limit,
               descriptor.sizeBytes - command.offset,
             );
-            const chunk = {
-              sequence: command.sequence,
-              plaintextBytes: count,
-              eof: command.offset + count === descriptor.sizeBytes,
-              envelope: {
-                version: 1,
-                algorithm: "AES-256-GCM",
-                keyRevision: 1,
-                nonce: Buffer.alloc(12, command.sequence).toString("base64url"),
-                ciphertext: Buffer.alloc(
-                  count + 16,
-                  command.sequence + 1,
-                ).toString("base64url"),
-              },
-            };
-            if (state.mode === "attachment-wrong-sequence") chunk.sequence++;
-            if (state.mode === "attachment-early-eof") chunk.eof = true;
-            if (state.mode === "attachment-unterminated") chunk.eof = false;
+            const sequence =
+              command.sequence +
+              (state.mode === "attachment-wrong-sequence" ? 1 : 0);
+            const eof =
+              state.mode === "attachment-early-eof" ||
+              (state.mode !== "attachment-unterminated" &&
+                command.offset + count === descriptor.sizeBytes);
+            let chunk = await state.crypto.protectChunk(
+              { ...command, sequence },
+              count,
+              eof,
+            );
+            if (state.mode === "attachment-authentication-failure")
+              chunk = state.crypto.tamperChunk(chunk);
             state.chunks.set(
               command.operationId + ":" + command.sequence,
               structuredClone(chunk),
@@ -305,13 +295,18 @@ export async function importWorker({ fixture, visit, root, id, state, owner }) {
             if (state.mode === "release-error")
               throw new Error("Controlled external release failure");
             return null;
-          case "attachment.upload.begin":
+          case "attachment.upload.begin": {
+            const metadata = await state.crypto.openMetadata(command);
+            assert.equal(metadata.error, null);
+            assert.equal(metadata.sha256, state.crypto.fileDigest);
             state.attachmentUploads.set(command.operationId, {
               attachmentId: command.attachmentId,
               sizeBytes: command.sizeBytes,
               chunks: [],
+              hash: createHash("sha256"),
             });
             return null;
+          }
           case "attachment.upload.chunk": {
             const upload = state.attachmentUploads.get(command.operationId);
             upload.chunks.push(command.chunk);
@@ -322,6 +317,7 @@ export async function importWorker({ fixture, visit, root, id, state, owner }) {
               ),
               "Ciphertext and authenticated chunk fields remain identical",
             );
+            upload.hash.update(await state.crypto.openChunk(command));
             return null;
           }
           case "attachment.upload.complete": {
@@ -331,6 +327,8 @@ export async function importWorker({ fixture, visit, root, id, state, owner }) {
               upload.sizeBytes,
             );
             assert.equal(upload.chunks.at(-1).eof, true);
+            upload.digest ??= upload.hash.digest("hex");
+            assert.equal(upload.digest, state.crypto.fileDigest);
             return {
               sizeBytes:
                 upload.sizeBytes +
@@ -374,9 +372,11 @@ export async function importWorker({ fixture, visit, root, id, state, owner }) {
             const payload = JSON.parse(bytes.toString());
             assert.equal(payload.kind, "chat-encrypted");
             for (const m of payload.messages) {
-              assert.ok(m.protectedContent);
+              await state.crypto.reopenMessage(m);
               assert.equal(m.content, undefined);
             }
+            for (const { attachment } of payload.attachments)
+              await state.crypto.reopenAttachment(attachment);
             state.uploads.push({
               snapshotId: command.snapshotId,
               bytes: bytes.toString("base64"),
