@@ -17,6 +17,13 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current computer-use lifecycle comparison](RUST_SERVER_COMPUTER_USE.md#current-browser-and-full-worker-lifecycle)
+qualifies effects sync, operations and preview open/Stop through the browser
+and full worker on all three stores and all four PostgreSQL and Redis
+pairings. It verifies encrypted approval denial, fresh leases after feature
+re-enable and a decoded PNG through the explicit fake capture backend. The
+scoped command ledger accounts for 319 of 323 identities.
+
 The [current browser surface lifecycle comparison](RUST_SERVER_REMOTE_SURFACES.md#current-browser-suspend-and-resume)
 qualifies suspend and resume through the full worker and actual Chromium on all
 three stores and all four PostgreSQL and Redis pairings. An offline resume

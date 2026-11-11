@@ -142,6 +142,9 @@ const taskLabel = process.argv.includes("--task-label");
 const inlineChatLabels = process.argv.includes("--inline-chat-labels");
 const approvalCancellation = process.argv.includes("--approval-cancellation");
 const remoteSurfaces = process.argv.includes("--remote-surfaces");
+const computerUseProduct = process.argv.includes("--computer-use");
+const fakeComputerUse = process.argv.includes("--computer-use-fake-capture");
+assert.ok(!fakeComputerUse || computerUseProduct);
 assert.ok(!workerLinkRenewal || !sharedPair);
 const singleProduct =
   cantripOsRun ||
@@ -197,11 +200,12 @@ const fullServerLogs =
   process.argv.includes("--operational-status") ||
   process.argv.includes("--worker-logs") ||
   remoteSurfaces ||
-  process.argv.includes("--computer-use") ||
+  computerUseProduct ||
   process.argv.includes("--project-administration") ||
   process.argv.includes("--chat-controls");
 const surfaceFixtureRequests = [];
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-actual-folder-"));
+const fakeCuaLauncher = fakeComputerUse ? path.join(root, "fake-cua") : null;
 const appRoot = path.join(repositoryRoot, "cantrip_app");
 const appRequire = createRequire(path.join(appRoot, "package.json"));
 const { createServer } = await import(
@@ -311,6 +315,7 @@ async function flow(
       inlineChatLabels ||
       approvalCancellation ||
       remoteSurfaces ||
+      computerUseProduct ||
       [
         "--mcp-settings",
         "--terminals",
@@ -341,9 +346,11 @@ async function flow(
           taskLabel ||
           inlineChatLabels ||
           approvalCancellation ||
-          remoteSurfaces
+          remoteSurfaces ||
+          computerUseProduct
             ? { CANTRIP_LOG_LEVEL: "debug" }
             : {}),
+          ...(fakeCuaLauncher ? { CANTRIP_CUA_BIN: fakeCuaLauncher } : {}),
           ...(providerTest ? providerBoundary?.environment : {}),
           ...(cantripOsSourceBackup
             ? {
@@ -820,7 +827,7 @@ async function flow(
     // Subsequent document/browser flows use the worker through the public API.
     if (
       (needsRemoteSurface ||
-        process.argv.includes("--computer-use") ||
+        computerUseProduct ||
         process.argv.includes("--project-shares") ||
         process.argv.includes("--file-documents") ||
         process.argv.includes("--workspaces") ||
@@ -891,12 +898,13 @@ async function flow(
         phase: "connected",
       });
     // Capture after optional resource creation commits its project updates.
-    const computerUse = process.argv.includes("--computer-use")
+    const computerUse = computerUseProduct
       ? await prepareActualComputerUse({
           page,
           projectId: created.id,
           workerId,
           result,
+          fakeCapture: fakeComputerUse,
         })
       : undefined;
     const legacySurface = remoteSurfaces
@@ -1488,6 +1496,20 @@ async function flow(
   }
 }
 try {
+  if (fakeCuaLauncher) {
+    const binary = path.resolve(
+      process.env.CANTRIP_TEST_CUA_BIN ??
+        path.join(repositoryRoot, "cantrip_worker/bin/cantrip-cua"),
+    );
+    const quotedBinary = "'" + binary.replaceAll("'", "'\\''") + "'";
+    await writeFile(
+      fakeCuaLauncher,
+      `#!/bin/sh\nexec ${quotedBinary} --backend fake\n`,
+      {
+        mode: 0o700,
+      },
+    );
+  }
   const usesNative = runtimeCases.some((kinds) => kinds.includes("rust"));
   const executable = !usesNative
     ? undefined
