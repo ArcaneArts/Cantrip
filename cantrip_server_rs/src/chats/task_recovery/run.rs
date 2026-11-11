@@ -307,7 +307,7 @@ impl Service {
             && context["status"] != "running"
         {
             self.lanes
-                .start(owner, chat, "agent", "Recovered native Task Goal")
+                .start(owner, chat, "agent", RECOVERED_GOAL_LANE)
                 .await?;
         } else if context["status"] != "running" {
             let status = if should_resume {

@@ -52,6 +52,13 @@ answer and exact replay on all three stores and two shared Rust peers.
 The controlled autonomous Goal receipt and the same-profile post-write
 rollback also pass on all three stores.
 
+The [autonomous Goal lane comparison](RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md#autonomous-goal-projection-after-recovered-lane-or-peer-loss)
+holds the native turn while the actual browser Recovery action reactivates
+its lane. The packaged Rust peer releases that exact lane after the
+outcome commits. If the worker-owning server is killed before receiving
+the observation, a replacement resumes the durable work with the same
+worker process and preserves the two encrypted answers across restart.
+
 The packaged macOS ARM64 `1.1.2845` server and signed desktop worker passed
 the current Task and Agent product matrix against the Node reference. All
 six suites cover real native execution across PGlite, bundled PostgreSQL

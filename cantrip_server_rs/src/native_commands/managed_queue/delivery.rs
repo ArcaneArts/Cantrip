@@ -59,6 +59,13 @@ impl QueueRepository {
                 {
                     entry["goalRecovery"] = serde_json::from_str(&recovery)?;
                 }
+                if let Some(source) = task_recovery
+                    .as_ref()
+                    .and_then(crate::tasks::committed_goal_cycle_source)
+                {
+                    entry["taskGoalOutcome"] = source.clone();
+                    entry["taskGoalOutcomeDeferred"] = json!(!row.get::<bool>(4)?);
+                }
                 if row.get::<bool>(4)?
                     && let Some(marker) = task_recovery
                     && !truthy(marker.get("settled"))

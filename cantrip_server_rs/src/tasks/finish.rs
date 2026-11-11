@@ -461,83 +461,88 @@ impl Repository {
                         )
                         .await?;
                     }
-                    let Some(task) = locked_task(tx, &chat).await? else {
-                        return Ok(None);
-                    };
-                    if task["row_version"] != version {
-                        return conflict(
-                            "stale-version",
-                            "The Task changed before its Goal status was synchronized.",
-                        );
-                    }
-                    let current = summary(&task, None)?;
-                    let c = &next["classification"];
-                    let implementation = |state: &Value| {
-                        matches!(
-                            state.as_str(),
-                            Some("implementing" | "paused" | "blocked" | "complete" | "failed")
-                        )
-                    };
-                    if !implementation(&current["state"])
-                        || !implementation(&c["state"])
-                        || !c["activeOperationKind"].is_null()
-                        || !c["stableStateBeforeFailure"].is_null()
-                        || [
-                            "planningRound",
-                            "planAuthorship",
-                            "hasPlan",
-                            "hasQuestions",
-                            "hasFinalPlan",
-                            "hasGoalPrompt",
-                        ]
-                        .iter()
-                        .any(|k| c[*k] != current[*k])
-                        || next["protectedContent"]["keyRevision"]
-                            != current["protectedContent"]["keyRevision"]
-                    {
-                        return conflict(
-                            "idempotency-conflict",
-                            "The encrypted Goal update changes protected planning metadata.",
-                        );
-                    }
-                    let recovering = current["state"] == "failed"
-                        && c["state"] == "complete"
-                        && truthy(current.get("implementationStartedAt"))
-                        && current["hasFinalPlan"] == true
-                        && current["hasGoalPrompt"] == true;
-                    if current["state"] != c["state"]
-                        && !recovering
-                        && !policy::can_transition(&text(&current["state"])?, &text(&c["state"])?)
-                    {
-                        return policy::transition_error(
-                            &text(&current["state"])?,
-                            &text(&c["state"])?,
-                        );
-                    }
-                    // Source compares the raw JSONB object's serialization,
-                    // including stored key order, rather than parsed summaries.
-                    if task_content(&task).stringify() == next.stringify() {
-                        return Ok(Some(current));
-                    }
-                    let now = now();
-                    let mut fields = task_columns(&next);
-                    fields["completed_at"] = if c["state"] == "complete" {
-                        if task["completed_at"].is_null() {
-                            now.clone()
-                        } else {
-                            task["completed_at"].clone()
-                        }
-                    } else {
-                        Value::Null
-                    };
-                    fields["row_version"] = increment(&task["row_version"]);
-                    fields["updated_at"] = now;
-                    let updated = update(tx, Table::Task, &chat, &fields, None)
-                        .await?
-                        .context("Task Goal synchronization returned no row")?;
-                    summary(&updated, None).map(Some)
+                    sync_implementation_state_in(tx, &chat, &version, &next).await
                 })
             })
             .await
     }
+}
+
+pub(super) async fn sync_implementation_state_in(
+    tx: &Transaction<'_>,
+    chat: &str,
+    version: &Value,
+    next: &Value,
+) -> Result<Option<Value>> {
+    let Some(task) = locked_task(tx, chat).await? else {
+        return Ok(None);
+    };
+    if &task["row_version"] != version {
+        return conflict(
+            "stale-version",
+            "The Task changed before its Goal status was synchronized.",
+        );
+    }
+    let current = summary(&task, None)?;
+    let c = &next["classification"];
+    let implementation = |state: &Value| {
+        matches!(
+            state.as_str(),
+            Some("implementing" | "paused" | "blocked" | "complete" | "failed")
+        )
+    };
+    if !implementation(&current["state"])
+        || !implementation(&c["state"])
+        || !c["activeOperationKind"].is_null()
+        || !c["stableStateBeforeFailure"].is_null()
+        || [
+            "planningRound",
+            "planAuthorship",
+            "hasPlan",
+            "hasQuestions",
+            "hasFinalPlan",
+            "hasGoalPrompt",
+        ]
+        .iter()
+        .any(|k| c[*k] != current[*k])
+        || next["protectedContent"]["keyRevision"] != current["protectedContent"]["keyRevision"]
+    {
+        return conflict(
+            "idempotency-conflict",
+            "The encrypted Goal update changes protected planning metadata.",
+        );
+    }
+    let recovering = current["state"] == "failed"
+        && c["state"] == "complete"
+        && truthy(current.get("implementationStartedAt"))
+        && current["hasFinalPlan"] == true
+        && current["hasGoalPrompt"] == true;
+    if current["state"] != c["state"]
+        && !recovering
+        && !policy::can_transition(&text(&current["state"])?, &text(&c["state"])?)
+    {
+        return policy::transition_error(&text(&current["state"])?, &text(&c["state"])?);
+    }
+    // Source compares the raw JSONB object's serialization,
+    // including stored key order, rather than parsed summaries.
+    if task_content(&task).stringify() == next.stringify() {
+        return Ok(Some(current));
+    }
+    let now = now();
+    let mut fields = task_columns(next);
+    fields["completed_at"] = if c["state"] == "complete" {
+        if task["completed_at"].is_null() {
+            now.clone()
+        } else {
+            task["completed_at"].clone()
+        }
+    } else {
+        Value::Null
+    };
+    fields["row_version"] = increment(&task["row_version"]);
+    fields["updated_at"] = now;
+    let updated = update(tx, Table::Task, chat, &fields, None)
+        .await?
+        .context("Task Goal synchronization returned no row")?;
+    summary(&updated, None).map(Some)
 }

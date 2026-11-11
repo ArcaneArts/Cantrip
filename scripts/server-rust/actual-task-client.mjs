@@ -7,6 +7,10 @@ import { taskModelProvider } from "./task-model-provider.mjs";
 import { actualTaskRecovery } from "./actual-task-recovery.mjs";
 import { captureTaskRuntimeState } from "./task-runtime-snapshot.mjs";
 import { browserFixtureSql } from "./browser-fixture-sql.mjs";
+import {
+  activateRecoveredGoalLane,
+  observeSettledGoalLane,
+} from "./actual-task-goal-lane.mjs";
 
 async function verifyOutcomeOrdering(
   readMessages,
@@ -74,13 +78,14 @@ export async function actualTaskClient({
   result,
   requests,
   taskOutcomeOrder,
+  goalLaneScenario,
 }) {
   const model = await taskModelProvider();
   const brief = "Private full-worker direct Task brief 🍄";
   const answer = "Private full-worker direct Task answer 🌲";
   try {
     await page.evaluate(() => window.folderLive.start());
-    await startWorker();
+    const worker = await startWorker();
     await page.evaluate(
       async ({ workerId, baseUrl, nativeModel }) => {
         const models = await import("/src/lib/api/models.ts");
@@ -251,11 +256,14 @@ export async function actualTaskClient({
     const initialGoalAnswer = "Private initial Task Goal turn 🍄";
     const implementationAnswer = "Private full-worker implementation result 🌤";
     const firstTurn =
-      forceGoalOrder || process.argv.includes("--task-goal-autonomous")
+      goalLaneScenario ||
+      forceGoalOrder ||
+      process.argv.includes("--task-goal-autonomous")
         ? model.reply({ text: initialGoalAnswer, hold: forceGoalOrder })
         : null;
-    model.reply({
+    const completeGoal = model.reply({
       calls: [{ name: "update_goal", arguments: { status: "complete" } }],
+      hold: Boolean(goalLaneScenario),
     });
     const implementation = model.reply({
       text: implementationAnswer,
@@ -283,6 +291,17 @@ export async function actualTaskClient({
         result,
         "taskGoalOutcomeOrder",
       );
+    if (goalLaneScenario)
+      await activateRecoveredGoalLane({
+        fixture,
+        page,
+        chatId: planned.chat.id,
+        completeGoal,
+        worker,
+        workerId,
+        ...goalLaneScenario,
+        result,
+      });
     const goalTask = await eventually(
       () =>
         page.evaluate(
@@ -304,6 +323,8 @@ export async function actualTaskClient({
           "idle",
         ),
     );
+    if (goalLaneScenario)
+      await observeSettledGoalLane(fixture, planned.chat.id, result);
     assert.equal(goalTask.finalPlanMarkdown, planText);
     assert.ok(
       goalTask.goalPrompt.startsWith(

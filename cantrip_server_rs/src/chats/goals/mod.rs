@@ -75,6 +75,7 @@ pub struct Observation {
     pub activate: bool,
     pub runtime_failure: Option<Value>,
     pub observation_only: bool,
+    pub cycle_outcome: Option<Value>,
     pub dispatch_guard: Option<Value>,
 }
 #[derive(Debug)]

@@ -239,9 +239,8 @@ after another accepted write. Server identity and all three settings
 values are retained. The SQL exports include the new field.
 
 The [acceptance record](security/rust-server-streamed-goal-receipt-acceptance.json)
-retains the exact packages, results and failed attempts. The autonomous
-Goal observation and recovered lane cases remain open, including loss
-of the worker-owning server after the receipt commits.
+retains the exact packages, results and failed attempts. The recovered
+lane and post-commit worker-owner interruption are qualified below.
 
 ```sh
 node --import tsx scripts/server-rust/actual-folder-client.mjs \
@@ -251,4 +250,57 @@ node --import tsx scripts/server-rust/actual-folder-client.mjs \
 node --import tsx scripts/server-rust/native-recovery-http-compatibility.mjs \
   --streamed-goal-cycle-root --database pglite --profile accounts \
   --report /absolute/path/autonomous-goal-root-receipt.json
+```
+
+## Autonomous Goal projection after recovered lane or peer loss
+
+The browser regression holds the second native turn at the model boundary.
+The original Goal input has settled and its execution lane is suspended.
+The real Task Recovery action observes the running native session and
+reactivates the same lane. The prior Rust package accepted the autonomous
+outcome and completed the Task while the recovered lane remained active.
+
+The outcome transaction now advances the durable managed-queue revision
+when it first records the terminal fact. Queue delivery requests a native
+execution observation and keeps the revision pending if the worker is
+unavailable or a runtime transition is still in progress. Projection
+checks the original cycle and the current worker, thread, route,
+worktree and lane activation. The protected Task state, matching lane
+settlement and terminal projection timestamp commit together. Replays
+reuse the receipt, and reconnect can enqueue an unprojected terminal
+fact from an earlier package.
+
+The worker-owner interruption case holds the native observation response
+on the existing WebSocket after the HTTP receipt commits. It kills that
+peer and keeps the original worker and browser peer running. The test
+checks the original worker process and replacement connection, the
+original receipt turn, the exact suspended lane, and both encrypted
+answers through restart.
+
+The optimized macOS ARM64 package `1.1.2864` passed six browser runs
+across all three stores and two shared Rust servers. The runs passed
+94 steps, with 49 successful outcome responses and one expected HTTP
+409 for a changed receipt. The worker-owner loss case projected in
+6.7 seconds from the original commit, with one delivery of that receipt.
+The original worker PID and continuity identity were retained. The
+replacement connection acknowledged the durable queue revision.
+
+The controlled comparisons passed 249 paired Goal and 150 paired
+direct-round observations. The controlled streamed autonomous root
+case passed 87 Rust observations. All 87 Rust library tests and strict
+library Clippy passed locally.
+
+The [acceptance record](security/rust-server-autonomous-goal-lane-acceptance.json)
+retains the prior package failures, exact macOS ARM64 package and local
+results. The bundled PostgreSQL failure is a separate admission case.
+The worker recorded the start of the native Goal turn, the model
+received no Goal request and the server received no terminal receipt.
+A traced rerun completed the flow. The original admission stall and
+final platform and dependency interruption coverage remain open.
+
+```sh
+node --import tsx scripts/server-rust/actual-folder-client.mjs \
+  --tasks --task-goal-autonomous --task-goal-lane-owner-loss \
+  --production-server --database postgres --server-pair rust/rust \
+  --report /absolute/path/autonomous-goal-owner-loss.json
 ```
