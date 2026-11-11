@@ -17,6 +17,13 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current Winterhold and Linux x64 qualification](RUST_SERVER_WINTERHOLD.md#current-linux-x64-qualification)
+uses the exact `1.1.2816` distribution and container across all three stores.
+The container passes 2,546 package hashes per store. All 18 installer cases
+pass with verified Caddy TLS, post-write rollback to a distinct older Rust or
+Node release, and ten running executable hashes. The local x64 runs use Rosetta
+on an ARM64 Linux host. Final desktop and multi-instance acceptance remain open.
+
 The [CantripOS source backup comparison](RUST_SERVER_OS_SOURCE_BACKUP.md)
 repairs public backup placement errors and qualifies physical restore and
 rollback in an actual guest across all three stores. Both peers recover the

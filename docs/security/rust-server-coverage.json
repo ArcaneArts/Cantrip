@@ -28787,6 +28787,23 @@
         "aggregateRepositoryCheck": "Fails Node budgets1539/1500 and2329/1999; reproduced on cleanPrimary; downstreamaggregate stages unrun."
       }
     },
+    "currentWinterholdX64Qualification": {
+      "status": "implemented-with-scoped-local-qualification",
+      "evidence": [
+        "docs/RUST_SERVER_WINTERHOLD.md",
+        "docs/security/rust-server-winterhold-x64-acceptance.json",
+        "scripts/server-rust/winterhold-systemd-acceptance.mjs",
+        "scripts/server-rust/container-server-acceptance.mjs"
+      ],
+      "candidateVersion": "1.1.2816",
+      "sourceCommit": "4c42484d8b3575b5fd6ea8234e1b179885b8b0a4",
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+      "containerArtifactFilesVerifiedPerMode": 2546,
+      "installerCalls": 18,
+      "recoveredInstallerFailures": 6,
+      "runningExecutableHashesCompared": 10,
+      "scope": "Linux x64 container and Winterhold service rehearsal under Rosetta on a local ARM64 Linux host. Verified Caddy TLS, retained writes through distinct native and Node rollback, and graceful shutdown. Current desktop release and update, representative performance and remaining product and multi-instance acceptance are open."
+    },
     "defaultRuntimeCutover": {
       "status": "implemented-with-scoped-local-qualification",
       "implementation": [

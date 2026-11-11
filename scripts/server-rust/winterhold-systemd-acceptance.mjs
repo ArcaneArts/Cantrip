@@ -24,6 +24,7 @@ const { values } = parseArgs({
     image: { type: "string" },
     artifact: { type: "string" },
     "node-image": { type: "string" },
+    "previous-native-image": { type: "string" },
     "systemd-image": { type: "string" },
     report: { type: "string" },
   },
@@ -64,6 +65,13 @@ const id = (label) =>
     .slice(0, 40);
 const domain = "api.rehearsal.example",
   origin = "https://app.rehearsal.example";
+const productionDirectory = path.join(root, "deploy/production");
+const productionTarget = JSON.parse(
+  await readFile(path.join(productionDirectory, "deploy.json"), "utf8"),
+);
+const caddyfile = (
+  await readFile(path.join(productionDirectory, "Caddyfile"), "utf8")
+).replace(`${productionTarget.apiDomain} {`, `${domain} {\n\ttls internal`);
 const password = "local-fixture-password-only";
 const pgPassword = randomBytes(24).toString("hex");
 const baseSecrets = new Map(
@@ -114,9 +122,54 @@ async function exportImage(image, label) {
     bytes: bytes.length,
     sha256: createHash("sha256").update(bytes).digest("hex"),
   };
+  if (label === "previousNative" || label === "native") {
+    report[label].manifest = JSON.parse(
+      await readFile(path.join(directory, "native-server.json"), "utf8"),
+    );
+  }
   return archive;
 }
+function nativeExecutableHash(artifact) {
+  const binary = artifact.manifest.files.find(
+    ({ path }) => path === "bin/cantrip-server",
+  );
+  assert.ok(binary, "native artifact manifest records its executable");
+  return binary.sha256;
+}
+async function observeNativeExecutable(release, expectedHash) {
+  const pid = await runHost(
+    "systemctl",
+    "show",
+    "cantrip-server.service",
+    "-p",
+    "MainPID",
+    "--value",
+  );
+  assert.match(pid, /^[1-9][0-9]*$/);
+  const executable = `/opt/cantrip/releases/${release}/bin/cantrip-server`;
+  const processExecutable = `/proc/${pid}/exe`;
+  const observedExecutable = await runHost("readlink", processExecutable);
+  let mappedExecutable = processExecutable;
+  if (observedExecutable !== executable) {
+    // Under Rosetta, /proc/PID/exe points to the interpreter. The map identifies
+    // the input inode and can be hashed even if its on-disk path is replaced.
+    const range = await runHost(
+      "awk",
+      "-v",
+      `file=${executable}`,
+      "$NF == file { print $1; exit }",
+      `/proc/${pid}/maps`,
+    );
+    assert.match(range, /^[a-f0-9]+-[a-f0-9]+$/);
+    mappedExecutable = `/proc/${pid}/map_files/${range}`;
+    assert.equal(await runHost("readlink", mappedExecutable), executable);
+  }
+  const sha256 = (await runHost("sha256sum", mappedExecutable)).split(/\s+/)[0];
+  assert.equal(sha256, expectedHash, "systemd runs the selected artifact");
+  return { pid, observedExecutable, mappedExecutable, sha256 };
+}
 let port,
+  certificateAuthority,
   cookies = new Map(),
   csrf;
 function request(route, { method = "GET", body, headers = {} } = {}) {
@@ -129,8 +182,8 @@ function request(route, { method = "GET", body, headers = {} } = {}) {
         path: route,
         method,
         agent: false,
-        // This isolated Caddy uses its own internal fixture CA, never public TLS.
-        rejectUnauthorized: false,
+        ca: certificateAuthority,
+        rejectUnauthorized: true,
         headers: {
           host: domain,
           origin,
@@ -179,13 +232,20 @@ async function ok(route, options) {
   return result;
 }
 async function ready() {
-  return retry(() => ok("/readyz"), "service must serve HTTPS through Caddy");
+  return retry(async () => {
+    certificateAuthority ??= await runHost(
+      "cat",
+      "/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt",
+    );
+    return ok("/readyz");
+  }, "service must serve HTTPS through Caddy");
 }
 async function live() {
   const socket = new WebSocket(`wss://127.0.0.1:${port}/api/live`, {
     handshakeTimeout: 10000,
     servername: domain,
-    rejectUnauthorized: false,
+    ca: certificateAuthority,
+    rejectUnauthorized: true,
     headers: {
       host: domain,
       origin,
@@ -257,12 +317,9 @@ async function install(
   ])
     await writeFile(
       path.join(directory, file),
-      await readFile(path.join(root, "deploy/production", file)),
+      await readFile(path.join(productionDirectory, file)),
     );
-  await writeFile(
-    path.join(directory, "Caddyfile"),
-    `${domain} {\n tls internal\n reverse_proxy 127.0.0.1:4310\n}\n`,
-  );
+  await writeFile(path.join(directory, "Caddyfile"), caddyfile);
   await writeFile(
     path.join(directory, "production.env"),
     serializeSystemdEnvironment(environment),
@@ -333,7 +390,13 @@ try {
       sha256: createHash("sha256").update(bytes).digest("hex"),
     };
   } else nativeArchive = await exportImage(values.image, "native");
+  const previousNativeArchive = await exportImage(
+    values["previous-native-image"],
+    "previousNative",
+  );
   const nodeArchive = await exportImage(values["node-image"], "node");
+  const nativeHash = nativeExecutableHash(report.native);
+  const previousNativeHash = nativeExecutableHash(report.previousNative);
   const systemdImage = JSON.parse(
     await docker("image", "inspect", values["systemd-image"]),
   )[0];
@@ -417,16 +480,19 @@ try {
     }
     const baseline = id(mode + "base"),
       upgraded = id(mode + "native");
+    const baselineArchive =
+      mode === "postgres" ? nodeArchive : previousNativeArchive;
     const steps = [];
+    const nativeExecutables = {};
     steps.push(
-      await install(
-        mode === "postgres" ? nodeArchive : nativeArchive,
-        baseline,
-        environment,
-        mode + "-baseline",
-      ),
+      await install(baselineArchive, baseline, environment, mode + "-baseline"),
     );
     await ready();
+    if (mode !== "postgres")
+      nativeExecutables.baseline = await observeNativeExecutable(
+        baseline,
+        previousNativeHash,
+      );
     const login = await ok("/api/auth/login", {
       method: "POST",
       body: { email: baseSecrets.get("CANTRIP_ADMIN_EMAIL"), password },
@@ -442,6 +508,10 @@ try {
       await install(nativeArchive, upgraded, environment, mode + "-upgrade"),
     );
     const dependency = (await ready()).body.database;
+    nativeExecutables.upgrade = await observeNativeExecutable(
+      upgraded,
+      nativeHash,
+    );
     assert.equal(dependency.engine, mode === "pglite" ? "pglite" : "postgres");
     assert.equal((await ok("/api/settings")).body.preferences.theme, "dark");
     assert.equal((await ok("/api/bootstrap")).body.server.id, identity);
@@ -518,14 +588,20 @@ try {
     }
     // Code rollback opens the latest database, including the Rust write.
     steps.push(
-      await install(
-        mode === "postgres" ? nodeArchive : nativeArchive,
-        baseline,
-        environment,
-        mode + "-rollback",
-      ),
+      await install(baselineArchive, baseline, environment, mode + "-rollback"),
     );
     await ready();
+    if (mode !== "postgres") {
+      nativeExecutables.rollback = await observeNativeExecutable(
+        baseline,
+        previousNativeHash,
+      );
+      assert.notEqual(
+        nativeExecutables.rollback.sha256,
+        nativeExecutables.upgrade.sha256,
+        "rollback executes a distinct native release",
+      );
+    }
     assert.equal((await ok("/api/settings")).body.preferences.theme, "light");
     assert.equal((await ok("/api/bootstrap")).body.server.id, identity);
     await ok("/api/settings", { method: "PATCH", body: { theme: "system" } });
@@ -538,16 +614,13 @@ try {
       ),
     );
     await ready();
-    assert.equal((await ok("/api/settings")).body.preferences.theme, "system");
-    const pid = await runHost(
-      "systemctl",
-      "show",
-      "cantrip-server.service",
-      "-p",
-      "MainPID",
-      "--value",
+    nativeExecutables.returnNative = await observeNativeExecutable(
+      upgraded,
+      nativeHash,
     );
-    const executable = await runHost("readlink", `/proc/${pid}/exe`);
+    assert.equal((await ok("/api/settings")).body.preferences.theme, "system");
+    const { pid, observedExecutable: executable } =
+      nativeExecutables.returnNative;
     const commandLine = await runHost("cat", `/proc/${pid}/cmdline`);
     assert.match(commandLine, /cantrip-server/);
     await runHost("test", "!", "-e", "/opt/cantrip/current/runtime/node");
@@ -593,11 +666,15 @@ try {
       sessionSurvived: true,
       restartAndChildrenReaped: true,
       executable,
+      nativeExecutables,
       ownedPids,
       rollbackRuntime: mode === "postgres" ? "node" : "rust",
       steps,
     });
   }
+  report.caddyCaSha256 = createHash("sha256")
+    .update(certificateAuthority)
+    .digest("hex");
   report.passed = true;
 } catch (error) {
   report.passed = false;

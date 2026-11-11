@@ -83,24 +83,27 @@ docker buildx build --platform linux/arm64 \
   --load -t cantrip-systemd-qa:ubuntu24 .
 node scripts/server-rust/winterhold-systemd-acceptance.mjs \
   --artifact /absolute/path/to/native-linux-x64 \
+  --previous-native-image cantrip-server-rust:previous-qa \
   --node-image cantrip-node-baseline:qa \
   --systemd-image cantrip-systemd-qa:ubuntu24 \
   --report .qa/winterhold/report.json
 ```
 
-The Node baseline image must contain the existing standalone distribution at
-`/opt/cantrip`. Build it locally with `deploy/docker/server.Dockerfile` and the
-same commit-count version. It is comparison/rollback tooling, not a native
-server dependency.
+Both baseline images must contain their standalone distributions at
+`/opt/cantrip`. Use an older packaged Rust image for the two local stores and an
+archived Node image for external PostgreSQL. Record the image IDs and build
+versions with the current artifact so the rollback is reproducible.
 
 The driver exercises the actual production installer and units on isolated
 PGlite, private PostgreSQL and TLS-enabled external PostgreSQL databases. It
-checks HTTPS through Caddy's fixture CA, secure session cookies, CSRF-backed
-writes, CORS, App Live upgrades/initialization/ping, retained sessions and
-identity, failed native migrations and startup, configuration restoration,
-post-write code rollback, restart, SIGTERM status and database-child reaping.
-External PostgreSQL runs Node → Rust → Node → Rust against the latest database;
-the two local modes test native-release rollback without an engine conversion.
+uses the production Caddy configuration with a fixture hostname and verifies
+HTTPS and App Live against that hostname and the fixture CA. It checks secure
+session cookies, CSRF, CORS, retained sessions and identity, failed native
+migrations and startup, configuration restoration, post-write rollback,
+restart, SIGTERM status and database-child reaping. External PostgreSQL runs
+Node → Rust → Node → Rust against the latest database. Each local store rolls
+back to the older native artifact and returns to the current build. The driver
+hashes each running native executable to verify which release systemd loaded.
 
 Reports identify the artifact and systemd-host architectures separately. Docker
 Desktop's x64 systemd emulation failed to execute even basic services in the
@@ -111,10 +114,38 @@ Retain reports, journals, fixture profiles and artifact checksums before
 removing only that run's named containers and network. No GitHub Actions or
 production deployment is involved in this rehearsal.
 
-Full replacement still requires the remaining platform, product, coordination
-and performance acceptance, final default cutover and production Node removal.
+Final shipping qualification also covers desktop installers and updates,
+interrupted product flows, multi-instance coordination and performance.
 
-## Qualified local result
+## Current Linux x64 qualification
+
+The production build from `4c42484d8b3575b5fd6ea8234e1b179885b8b0a4` exported
+version `1.1.2816` as a Linux x64 distribution and a Debian container. Each
+running container matched all 2,546 packaged file hashes and the separately
+exported server executable. PGlite, bundled PostgreSQL and external PostgreSQL
+passed migrations, SQL export, retained identity and settings, local and hosted
+reopen, and graceful shutdown. The container ran without Node as a non-root
+user with a read-only root and a 256 MiB noexec temporary mount.
+
+The systemd rehearsal passed all 18 installer calls across the three stores.
+The six deliberate migration and startup failures restored the working service
+and configuration. Both local stores upgraded from `1.1.2783`, accepted a write
+through `1.1.2816`, rolled back to `1.1.2783` and returned to `1.1.2816`.
+External PostgreSQL exercised the same sequence with Node `1.1.2739` as the
+rollback release. The original sessions, identities and latest writes survived.
+Ten running executable hashes confirmed the selected native release at the
+observed phases. HTTPS and App Live verified Caddy's certificate and fixture
+hostname. All six observed external PostgreSQL connections used TLS, and an
+actual write outside the profile failed in the service's mount namespace.
+
+The [acceptance record](security/rust-server-winterhold-x64-acceptance.json)
+records artifact hashes and local reports. Both runs used an ARM64 Linux host
+executing the x64 artifact under Rosetta. This qualifies the observed service
+and container behavior on that host. Bare-metal x64 performance and a production
+Winterhold deployment remain outside this rehearsal. All 28 local deployment and
+release tests passed.
+
+## Earlier local results
 
 The [integrated artifact qualification](RUST_SERVER_INTEGRATED_ARTIFACT_ACCEPTANCE.md)
 refreshes this rehearsal with candidate `1.1.2778`: all three stores, all 18
