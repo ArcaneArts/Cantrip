@@ -74,6 +74,29 @@ describe("Codex runtime discovery", () => {
     },
   );
 
+  it.skipIf(process.platform === "win32")(
+    "honors the version deadline for a slow executable",
+    async () => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "cantrip-version-deadline-"),
+      );
+      const binary = path.join(directory, "codex");
+      try {
+        await writeFile(
+          binary,
+          '#!/bin/sh\nsleep 0.2\nprintf "codex-cli 0.166.0\\n"\n',
+          { mode: 0o700 },
+        );
+        expect(await discoverCodexVersion(binary, 20)).toBeNull();
+        expect(await discoverCodexVersion(binary, 3_000)).toBe(
+          "codex-cli 0.166.0",
+        );
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("probes every native customization capability family without duplicates", () => {
     expect(CODEX_CUSTOMIZATION_METHODS).toMatchObject({
       collaboration: ["collaborationMode/list"],

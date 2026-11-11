@@ -557,6 +557,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       discoverCodexRuntime(
         config.codexBinary,
         path.join(config.dataDirectory, "codex-compatibility-probe"),
+        { bundled: Boolean(bundledCodex) },
       ),
     { workerId: config.workerId },
   );
