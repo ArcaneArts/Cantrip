@@ -115,7 +115,7 @@ the real worker reply. The separate Windows ARM64 guest qualifies Node
 post-write rollback and native re-upgrade of the published Node profile.
 
 The [current Linux ARM64 qualification](RUST_SERVER_WINTERHOLD.md#current-linux-arm64-qualification)
-passes all three stores in the `1.1.2817` container and local systemd
+passes all three stores in the `1.1.2845` container and local systemd
 rehearsal. All 18 installer cases pass, and ten direct process hashes confirm
 the current and previous native releases through post-write rollback.
 
@@ -127,7 +127,7 @@ and accepted write. The two private stores and the external PostgreSQL
 connection are verified before and after installation.
 
 The [current Winterhold and Linux x64 qualification](RUST_SERVER_WINTERHOLD.md#current-linux-x64-qualification)
-uses the exact `1.1.2816` distribution and container across all three stores.
+uses the exact `1.1.2845` distribution and container across all three stores.
 The container passes 2,546 package hashes per store. All 18 installer cases
 pass with verified Caddy TLS, post-write rollback to a distinct older Rust or
 Node release, and ten running executable hashes. The local x64 runs use Rosetta

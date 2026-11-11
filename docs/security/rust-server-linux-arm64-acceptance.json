@@ -98,5 +98,70 @@
       "sha256": "4a5fe0efc3d97c31cd17d9de3a7fe115401681c15ad3360177b6f25a115f2027"
     }
   ],
-  "scope": "Native ARM64 Debian container and Ubuntu systemd/Caddy service on a local ARM64 Linux host. The external PostgreSQL rollback uses the retained x64 Node reference. Desktop, broader product and coordination acceptance remain open."
+  "scope": "Native ARM64 Debian container and Ubuntu systemd/Caddy service on a local ARM64 Linux host. The external PostgreSQL rollback uses the retained x64 Node reference. Desktop, broader product and coordination acceptance remain open.",
+  "currentCandidate": {
+    "sourceCommit": "2e60d2042203f64c8105d5c52d12ae1db92d2d83",
+    "version": "1.1.2845",
+    "target": "linux-arm64",
+    "architecture": "arm64",
+    "hostArchitecture": "arm64",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "artifactFiles": 2546,
+    "binary": {
+      "path": "linux-arm64-distribution-1.1.2845/bin/cantrip-server",
+      "bytes": 105613424,
+      "sha256": "e2759f7be563a67b8b6996afcde953dc2939613e3d872200a547090042153db4"
+    },
+    "manifest": {
+      "path": "linux-arm64-distribution-1.1.2845/native-server.json",
+      "bytes": 488948,
+      "sha256": "efbca2758f5574790123ebeb18582e54b4bf72270ce62b840b41fc7530fc5cb3"
+    },
+    "standaloneArchive": {
+      "path": "winterhold-linux-arm64/native.tar.gz",
+      "bytes": 138195557,
+      "sha256": "277810e8c4228940f0ff486b873d45612d9a3cc789bb52dce00cdf6ff237c028"
+    },
+    "containerImage": "cantrip-server-rust:current-2845-linux-arm64-qa",
+    "containerImageId": "sha256:704cefa27e983a94b79dae228749095ab33434611ec0a1bdc375ce5468e7ff29",
+    "containerArchive": {
+      "path": "linux-arm64-container-1.1.2845.tar.zst",
+      "bytes": 177044040,
+      "sha256": "96bfad91da1947151e623e74a5e8386be9d046f913dda4ce66d17fb29c4c598d"
+    },
+    "installerCalls": 18,
+    "recoveredInstallerFailures": 6,
+    "runningExecutableHashes": 10,
+    "externalPostgresTlsConnections": 6,
+    "readOnlyServiceNamespace": true,
+    "reports": {
+      "container": {
+        "path": "linux-arm64-container-acceptance.json",
+        "bytes": 5351,
+        "sha256": "d29cb7a1a304604ffd1b4307c5ec210c9f169b1e34cedbec9e031a71c103fe6f"
+      },
+      "systemd": {
+        "path": "winterhold-linux-arm64/report.json",
+        "bytes": 1093189,
+        "sha256": "b081546bd8f12805df12f7a06bbc2dcdaa13fc148efecf0de50bc32f2b15739c"
+      },
+      "runtime": {
+        "path": "winterhold-linux-arm64/runtime-observations.json",
+        "bytes": 456,
+        "sha256": "abd39c12e0eb11fad0b9d4003008dcd309b61414471f5f5e87360e4979b556e2"
+      },
+      "build": {
+        "path": "linux-arm64-build-result.json",
+        "bytes": 1103,
+        "sha256": "03744f533e719f825133e2d93670c54fafed3abaf458444addb133800a42b4e6"
+      }
+    },
+    "retainedEvidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1",
+    "independentVerification": {
+      "path": "linux-arm64-qualification.json",
+      "bytes": 2177,
+      "sha256": "3e8ab8facf69b537d05dca91639a961bf8c0ebfdbeedfc192773a8d4bf95add6"
+    },
+    "execution": "native Linux ARM64"
+  }
 }
