@@ -17,6 +17,13 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [encrypted Chat steer comparison](RUST_SERVER_LEGACY_CHAT_STEER.md)
+exercises an active Chat without a native activation across all nine storage and
+authentication combinations. It verifies the actual worker codecs and steer RPC
+inputs, rejection, and exact encrypted message and queue state through 18 paused
+server restarts. Scoped worker command coverage is 290 of 323. The native turn
+and RPC result are controlled, and unpaused reconnect and settlement remain open.
+
 The [encrypted Chat import comparison](RUST_SERVER_ENCRYPTED_CHAT_IMPORT.md)
 runs the worker's message, metadata, and relay encryption across all nine
 storage and authentication combinations. The tests compare 330 scenarios and
