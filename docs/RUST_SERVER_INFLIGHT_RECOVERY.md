@@ -115,8 +115,49 @@ node --import tsx scripts/server-rust/actual-folder-client.mjs \
 The [current acceptance record](security/rust-server-active-redis-outage.json)
 identifies the executables, reports and retained fixture archive. This local
 comparison covers a Redis process restart and expired claims. Redis network
-partition and TLS behavior, PostgreSQL interruption during the same operation,
-and the final shipping artifacts remain separate.
+partition, TLS behavior and the final shipping artifacts remain separate.
+
+## Active Task during a PostgreSQL process outage
+
+Two current Rust production servers share private external PostgreSQL and
+Redis. The browser-facing server holds the Task's actual dispatch lease and
+the other server owns the worker connection. The existing full Node worker
+and Codex runtime run the Task.
+
+The test waits for the original model response to stream, then stops the
+owned PostgreSQL postmaster with `SIGQUIT`. Both Rust servers report HTTP
+503 while Redis responds to PING. The worker finishes the original response,
+writes its protected outcome to its durable outbox and attempts authenticated
+delivery while PostgreSQL is still down. The test verifies the same bytes
+and original dispatch fence before the database restarts. Two independent
+Rust/Rust runs keep PostgreSQL down for 45 seconds.
+
+The new PostgreSQL process uses the same cluster and port and logs automatic
+recovery. Both server processes and the full worker keep their identities.
+The Task finishes with one inference, one dispatch attempt, the original
+fencing token and one decrypted answer. The matching outcome leaves the
+worker outbox, and a new remote WorkerLink request succeeds.
+
+The initial readiness assertion expected coordination to report ready when
+PostgreSQL was unavailable. The existing readiness endpoint skips its
+coordination check when the database check fails. The corrected test checks
+both the HTTP response and the actual Redis connection independently.
+The compiled Node reference exited with an unhandled PostgreSQL connection
+error when it owned the Task dispatch in the initial Node/Node and Node/Rust
+runs and again after the test correction. The Rust/Node run timed out and its
+Node peer was killed during fixture shutdown. The reference failures are
+retained, and this case qualifies Rust/Rust. The Redis process-loss scenario
+also passed as a control.
+
+```sh
+node --import tsx scripts/server-rust/actual-folder-client.mjs \
+  --database postgres --server-pair rust/rust --native-inflight-recovery \
+  --inflight-peer postgres --keep-fixture --report /absolute/path/to/postgres-outage.json
+```
+
+Use `CANTRIP_TEST_POSTGRES_BIN_DIR` to select the PostgreSQL binaries. The
+[acceptance record](security/rust-server-active-postgres-outage.json) identifies
+the current artifacts and reports.
 
 ## Local validation and artifacts
 

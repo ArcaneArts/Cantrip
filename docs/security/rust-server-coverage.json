@@ -28904,6 +28904,21 @@
       "verifiedArtifactFiles": 1762,
       "scope": "Native ARM64 macOS standalone package on all three stores. PGlite signed desktop install and restart retained state after rejecting an altered package. Keychain authorization of the new ad-hoc app was denied; the encrypted update matrix remains incomplete."
     },
+    "currentActiveTaskPostgresOutage": {
+      "status": "implemented-with-scoped-local-qualification",
+      "evidence": [
+        "docs/RUST_SERVER_INFLIGHT_RECOVERY.md",
+        "docs/security/rust-server-active-postgres-outage.json",
+        "scripts/server-rust/native-task-postgres-outage.mjs",
+        "scripts/server-rust/restartable-postgres.mjs"
+      ],
+      "serverSourceCommit": "020254f3c3aabb5e2e1e712c2c597a5cc73a5950",
+      "databaseMode": "postgres",
+      "serverPairing": "rust/rust",
+      "qualifiedSustainedPostgresOutages": 2,
+      "redisProcessOutageControls": 1,
+      "scope": "Local macOS ARM64 production servers, browser SDK, full worker and native Codex. PostgreSQL immediate process stop and automatic recovery on the same cluster while Redis remains available. The original protected outcome survives failed delivery and commits once. Node-reference failures and broader shipping/fault qualification remain open."
+    },
     "currentActiveTaskRedisOutage": {
       "status": "implemented-with-scoped-local-qualification",
       "evidence": [

@@ -17,6 +17,13 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [active Task PostgreSQL comparison](RUST_SERVER_INFLIGHT_RECOVERY.md#active-task-during-a-postgresql-process-outage)
+passes two 45-second outages with two current Rust production servers and
+the full worker. The original outcome stays in the worker's durable outbox
+until the same database cluster reopens and accepts it. The existing browser
+then sees one completed result, and a new remote worker request succeeds.
+Node-reference failures under this fault remain recorded.
+
 The [active Task Redis comparison](RUST_SERVER_INFLIGHT_RECOVERY.md#active-task-during-a-redis-process-outage)
 passes all four Node/Rust pairings on shared PostgreSQL. Across a real
 45-second Redis outage, the remote Task retains and extends its original

@@ -1,5 +1,5 @@
 // Browser Task APIs, the complete worker and actual Codex remain in use. Only
-// the public model stream is held while an owned server or Redis is interrupted.
+// the public model stream is held while an owned process is interrupted.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
@@ -9,8 +9,9 @@ import { captureTaskRuntimeState } from "./task-runtime-snapshot.mjs";
 import { eventually } from "./full-worker.mjs";
 import {
   nativeTaskRedisOutage,
-  verifyRedisRecoveredWorker,
+  verifyRecoveredWorker,
 } from "./native-task-redis-outage.mjs";
+import { nativeTaskPostgresOutage } from "./native-task-postgres-outage.mjs";
 
 const postgres = createRequire(
   new URL("../../tests/reference-node-server/package.json", import.meta.url),
@@ -23,6 +24,7 @@ export async function actualNativeInflightClient({
   workerId,
   worker,
   dataDirectory,
+  postgresCluster,
   requests,
   result,
 }) {
@@ -102,7 +104,9 @@ export async function actualNativeInflightClient({
     let placementWarmups = 0;
     while (pendingRoles.length) {
       const role = pendingRoles[0];
-      assert.ok(["client", "worker", "admission", "redis"].includes(role));
+      assert.ok(
+        ["client", "worker", "admission", "redis", "postgres"].includes(role),
+      );
       const index = role === "worker" ? 1 : 0;
       const brief = "Private in-flight Task brief " + randomUUID() + " 🍄";
       const answer = "Private in-flight Task answer " + randomUUID() + " 🌲";
@@ -265,7 +269,9 @@ export async function actualNativeInflightClient({
       // matching lease is counted as the requested interruption scenario.
       active.placementWarmup =
         role !== "admission" &&
-        (executorRole === "client" || role === "redis") &&
+        (executorRole === "client" ||
+          role === "redis" ||
+          role === "postgres") &&
         active.executorPeer !== 0;
       if (active.placementWarmup) {
         assert.ok(
@@ -281,6 +287,25 @@ export async function actualNativeInflightClient({
           active,
           read,
           snapshot,
+          reply,
+          assertOriginalStream,
+        });
+      } else if (role === "postgres") {
+        assert.ok(
+          postgresCluster,
+          "PostgreSQL interruption needs an owned cluster",
+        );
+        await nativeTaskPostgresOutage({
+          fixture,
+          cluster: postgresCluster,
+          worker,
+          workerId,
+          claim: before,
+          dataDirectory,
+          serverId: await page.evaluate(() => window.folderIdentity.serverId),
+          ownerId: pageOwner,
+          dispatch,
+          active,
           reply,
           assertOriginalStream,
         });
@@ -312,7 +337,8 @@ export async function actualNativeInflightClient({
       assert.equal(worker.child.pid, report.workerPid);
       assert.equal(worker.child.exitCode, null);
       assert.equal(worker.child.signalCode, null);
-      if (!active.redisOutage) assertOriginalStream();
+      const dependencyOutage = active.redisOutage ?? active.postgresOutage;
+      if (!dependencyOutage) assertOriginalStream();
       active.afterReconnect = await snapshot();
       if (
         process.argv.includes("--inflight-expire-lease") &&
@@ -341,7 +367,7 @@ export async function actualNativeInflightClient({
         assert.equal(posts().length, beforePosts + 1);
         active.afterLeaseExpiry = await snapshot();
       }
-      if (!active.redisOutage) {
+      if (!dependencyOutage) {
         const retained = await read();
         assert.equal(retained.state, "implementing");
         assert.equal(retained.activeOperationId, operationId);
@@ -373,7 +399,7 @@ export async function actualNativeInflightClient({
         });
       };
       if (role === "admission") await replayAdmission();
-      if (!active.redisOutage) reply.release();
+      if (!dependencyOutage) reply.release();
       const completed = await eventually(
         read,
         (task) => assert.equal(task.state, "complete"),
@@ -410,12 +436,13 @@ export async function actualNativeInflightClient({
         ),
         credential,
       );
-      if (active.redisOutage) {
-        active.redisOutage.recoveredWorker = await verifyRedisRecoveredWorker(
+      if (dependencyOutage) {
+        dependencyOutage.recoveredWorker = await verifyRecoveredWorker(
           page,
           workerId,
+          role,
         );
-        assert.equal(active.redisOutage.recoveredWorker, workerId);
+        assert.equal(dependencyOutage.recoveredWorker, workerId);
       }
       for (const marker of [brief, answer]) {
         assert.equal(JSON.stringify(requests).includes(marker), false);
@@ -477,7 +504,9 @@ export async function actualNativeInflightClient({
             ? "native Task survives admission commit before lost client response and exact receipt replay, with one inference and unchanged earlier Task history"
             : role === "redis"
               ? "native Task completes once during a sustained Redis outage and the same full worker serves a fresh remote request after recovery"
-              : `native Task survives ${role} peer SIGKILL during a real held model stream with the same full worker and no duplicate inference`,
+              : role === "postgres"
+                ? "native Task retains the original worker outcome during PostgreSQL process loss and commits it once after recovery"
+                : `native Task survives ${role} peer SIGKILL during a real held model stream with the same full worker and no duplicate inference`,
         );
       }
     }
