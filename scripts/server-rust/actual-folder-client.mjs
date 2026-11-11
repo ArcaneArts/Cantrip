@@ -261,6 +261,9 @@ async function flow(
 ) {
   const context = await browser.newContext();
   const page = await context.newPage();
+  const taskRoundOrderFile = process.argv.includes("--task-round-outcome-order")
+    ? path.join(root, fixture.kind, "task-round-outcome-order.json")
+    : undefined;
   const errors = [],
     requests = [];
   result.requests = requests;
@@ -371,6 +374,24 @@ async function flow(
                   process.env.NODE_OPTIONS,
                   "--import=" +
                     new URL("./os-backup-response-fault.mjs", import.meta.url)
+                      .href,
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              }
+            : {}),
+          ...(taskRoundOrderFile
+            ? {
+                CANTRIP_TEST_TASK_ROUND_ORDER_FILE: taskRoundOrderFile,
+                CANTRIP_TEST_TASK_ROUND_ORDER_WORKER_ENTRY: path.resolve(
+                  process.env.CANTRIP_TEST_WORKER_PACKAGE ??
+                    path.join(repositoryRoot, "cantrip_worker"),
+                  "dist/index.js",
+                ),
+                NODE_OPTIONS: [
+                  process.env.NODE_OPTIONS,
+                  "--import=" +
+                    new URL("./worker-task-round-order.mjs", import.meta.url)
                       .href,
                 ]
                   .filter(Boolean)
@@ -1346,6 +1367,7 @@ async function flow(
         stopWorker,
         result,
         requests,
+        taskRoundOrderFile,
       });
     if (
       process.argv.includes("--project-chats") ||

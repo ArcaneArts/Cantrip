@@ -85,8 +85,12 @@ impl Repository {
             let mut message=Value::Null;
             if let Some(result)=&result {
                 super::finish::complete_operation_in(tx,&owner,&chat,&operation,result,n["outcome"]["result"]["turnId"].as_str(),Some(&guard)).await?;
-                message=crate::chats::message_writes::append_task_with(Executor::Transaction(tx),&owner,&chat,&result["assistantMessage"],
-                    Some(&json!({"executionLaneId":r["executionLaneId"],"worktreeId":r["worktreeId"]}))).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?;
+                let native=&n["outcome"]["result"];
+                let streamed_root=round["kind"]=="direct" && super::response_publication::kind(
+                    &result["assistantMessage"], &Value::Null, native, &physical["nativeExecution"]
+                )==Some(super::response_publication::Kind::NativeRoot);
+                message=crate::chats::message_writes::append_task_round_outcome_with(Executor::Transaction(tx),&owner,&chat,&result["assistantMessage"],
+                    &json!({"executionLaneId":r["executionLaneId"],"worktreeId":r["worktreeId"]}),streamed_root).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?;
                 if !goal_startup {super::retries::clear_pending_in(tx,&owner,&chat,&guard).await?;}
                 tx.query("UPDATE task_planning_rounds SET execution_lane_id=$2,user_message_id=$3,assistant_message_id=$4 WHERE id=$1",&[&operation,&lane_id,&text(&r["clientMessageId"])?,&text(&message["id"])?]).await?;
             } else {

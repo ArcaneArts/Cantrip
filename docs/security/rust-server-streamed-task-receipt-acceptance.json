@@ -1,0 +1,488 @@
+{
+  "completeReplacement": false,
+  "scope": "Actual encrypted direct Task streamed-answer receipt arriving ahead of the final WebSocket event, exact replay, changed replay rejection, late provisional event and persisted restart. Separate Goal failures are retained below.",
+  "baseCommit": "daa318c59c6e210ffc2021bbe09f15489cd840a7",
+  "localEvidenceRoot": "rust-server-final-native-2e60d2042-20261111-v1",
+  "rustSourcePatch": {
+    "path": "pglite-task-outcome-retry/final-rust-source.patch",
+    "bytes": 9492,
+    "sha256": "fb5c59746a974b0a2f203a340406c5814a2a9a575ac991e1677052bc880fa474"
+  },
+  "package": {
+    "target": "darwin-arm64",
+    "version": "1.1.2862",
+    "serverRequiresNode": false,
+    "verifiedManifestFiles": 1762,
+    "manifest": {
+      "path": "pglite-task-outcome-retry/cantrip-server-darwin-arm64/native-server.json",
+      "bytes": 325804,
+      "sha256": "d8d5375fc947f1c637381d125eed323c3c0c01be504b83df7c580150a04b85d2"
+    },
+    "executable": {
+      "path": "pglite-task-outcome-retry/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94343760,
+      "sha256": "5aadebe33de4f548ae3c8b43fccb012cf04dd8746cb678409c758b10a737a684"
+    }
+  },
+  "productionWorkerEvidence": "docs/security/rust-server-current-native-admission.json",
+  "priorForcedFailures": [
+    {
+      "database": "pglite",
+      "runtimes": [
+        {
+          "kind": "rust",
+          "completedSteps": 9
+        }
+      ],
+      "outcomeResponses": {
+        "round": {
+          "500": 1
+        }
+      },
+      "report": {
+        "path": "pglite-task-outcome-retry/forced-baseline-final/product.json",
+        "bytes": 150751,
+        "sha256": "a544c11e41ae425123f651b8306cba320093e27a0b899fe5a710b95653fe3fb5"
+      },
+      "failure": "Expected values to be strictly equal:\n\n500 !== 200\n",
+      "forcedOrder": {
+        "status": 500,
+        "committed": false,
+        "finalEventHeld": true,
+        "receiptMatchesFinalEvent": true,
+        "differsFromProvisionalEvent": true,
+        "replayedProvisionalEvent": false
+      }
+    },
+    {
+      "database": "pglite",
+      "runtimes": [
+        {
+          "kind": "node",
+          "completedSteps": 9
+        }
+      ],
+      "outcomeResponses": {
+        "round": {
+          "500": 1
+        }
+      },
+      "report": {
+        "path": "pglite-task-outcome-retry/forced-reference/product.json",
+        "bytes": 174313,
+        "sha256": "26474dd29a4c1d16153292265679a1fd965b02b2fd21077114559c77aeecc823"
+      },
+      "failure": "Expected values to be strictly equal:\n\n500 !== 200\n",
+      "forcedOrder": {
+        "status": 500,
+        "committed": false,
+        "finalEventHeld": true,
+        "receiptMatchesFinalEvent": true,
+        "differsFromProvisionalEvent": true,
+        "replayedProvisionalEvent": false
+      }
+    }
+  ],
+  "diagnosis": [
+    {
+      "path": "pglite-task-outcome-retry/diagnostic-a/receipt-replay-state.json",
+      "bytes": 1721,
+      "sha256": "2dbeab32b4a06fb0414adc61f9f03e6ffec8b066d57a1baeb80b7775a786819a"
+    },
+    {
+      "path": "pglite-task-outcome-retry/diagnostic-d/71546.jsonl",
+      "bytes": 885,
+      "sha256": "0c98d85e9dfaf460ac832b2bea3308674dbdd011f3bba7967d1fd6cf8fa09f76"
+    },
+    {
+      "path": "pglite-task-outcome-retry/diagnostic-d/72547.jsonl",
+      "bytes": 898,
+      "sha256": "457e356cc4826ea75c38612a2eed87553c841e48c7defa777ed4d001162a0b04"
+    },
+    {
+      "path": "pglite-task-outcome-retry/envelope-b/product.json",
+      "bytes": 174239,
+      "sha256": "1253be6dbb6e2c01f542b0d4ae767592cea4c32cf0bfecf28cab5a0187d00592"
+    },
+    {
+      "path": "pglite-task-outcome-retry/envelope-d/product.json",
+      "bytes": 666288,
+      "sha256": "83ea676c354bc610e1a8990ec4a7ec6c635cbd508cc756979c576b644be27581"
+    }
+  ],
+  "packagedForcedOrdering": [
+    {
+      "database": "pglite",
+      "runtimes": [
+        {
+          "kind": "rust",
+          "completedSteps": 16
+        }
+      ],
+      "outcomeResponses": {
+        "goal": {
+          "200": 1
+        },
+        "goal-cycle": {
+          "200": 1
+        },
+        "round": {
+          "200": 7,
+          "409": 1
+        }
+      },
+      "report": {
+        "path": "pglite-task-outcome-retry/final-forced-pglite/product.json",
+        "bytes": 673762,
+        "sha256": "89efc6b434ff9d8fb01b54faee4e1cf2413f15bdf83d603d7c8e0abc7cfd0c1c"
+      },
+      "forcedOrder": {
+        "committed": true,
+        "finalEventHeld": true,
+        "receiptMatchesFinalEvent": true,
+        "differsFromProvisionalEvent": true,
+        "replayedProvisionalEvent": true,
+        "exactReplay": true,
+        "status": 200,
+        "changedReplayStatus": 409
+      }
+    },
+    {
+      "database": "bundled-postgres",
+      "runtimes": [
+        {
+          "kind": "rust",
+          "completedSteps": 16
+        }
+      ],
+      "outcomeResponses": {
+        "goal": {
+          "200": 1
+        },
+        "goal-cycle": {
+          "200": 1
+        },
+        "round": {
+          "200": 7,
+          "409": 1
+        }
+      },
+      "report": {
+        "path": "pglite-task-outcome-retry/final-forced-bundled-postgres/product.json",
+        "bytes": 704126,
+        "sha256": "360257565337aff241efbc452650309cc5026fb503fb8a8fbcf6affadd63580d"
+      },
+      "forcedOrder": {
+        "committed": true,
+        "finalEventHeld": true,
+        "receiptMatchesFinalEvent": true,
+        "differsFromProvisionalEvent": true,
+        "replayedProvisionalEvent": true,
+        "exactReplay": true,
+        "status": 200,
+        "changedReplayStatus": 409
+      }
+    },
+    {
+      "database": "postgres",
+      "runtimes": [
+        {
+          "kind": "rust",
+          "completedSteps": 16
+        }
+      ],
+      "outcomeResponses": {
+        "goal": {
+          "200": 1
+        },
+        "goal-cycle": {
+          "200": 1
+        },
+        "round": {
+          "200": 7,
+          "409": 1
+        }
+      },
+      "report": {
+        "path": "pglite-task-outcome-retry/final-forced-postgres/product.json",
+        "bytes": 689492,
+        "sha256": "461eaddff39dbedc5baa879f222b925bfddb347a98fe0a8092623bf0a6266ef6"
+      },
+      "forcedOrder": {
+        "committed": true,
+        "finalEventHeld": true,
+        "receiptMatchesFinalEvent": true,
+        "differsFromProvisionalEvent": true,
+        "replayedProvisionalEvent": true,
+        "exactReplay": true,
+        "status": 200,
+        "changedReplayStatus": 409
+      }
+    },
+    {
+      "database": "postgres",
+      "runtimes": [
+        {
+          "kind": "rust/rust",
+          "completedSteps": 16
+        }
+      ],
+      "outcomeResponses": {
+        "goal": {
+          "200": 1
+        },
+        "goal-cycle": {
+          "200": 1
+        },
+        "round": {
+          "200": 7,
+          "409": 1
+        }
+      },
+      "report": {
+        "path": "pglite-task-outcome-retry/final-shared-forced-rerun/product.json",
+        "bytes": 827353,
+        "sha256": "7b5ed80fd2d6b49de52bae13a46a31966cf4b2d16d21f3b83fa65be861164d05"
+      },
+      "serverPair": "rust/rust",
+      "forcedOrder": {
+        "committed": true,
+        "finalEventHeld": true,
+        "receiptMatchesFinalEvent": true,
+        "differsFromProvisionalEvent": true,
+        "replayedProvisionalEvent": true,
+        "exactReplay": true,
+        "status": 200,
+        "changedReplayStatus": 409
+      }
+    }
+  ],
+  "normalProductComparisons": [
+    {
+      "database": "pglite",
+      "runtimes": [
+        {
+          "kind": "node",
+          "completedSteps": 15
+        },
+        {
+          "kind": "rust",
+          "completedSteps": 15
+        }
+      ],
+      "outcomeResponses": {
+        "goal": {
+          "200": 2,
+          "500": 1
+        },
+        "goal-cycle": {
+          "200": 2
+        },
+        "round": {
+          "200": 12
+        }
+      },
+      "report": {
+        "path": "pglite-task-outcome-retry/final-normal-pglite/product.json",
+        "bytes": 1563356,
+        "sha256": "789e18880990174d07bca9461d2e185491b32a24df4ae8284e4678c6e780411c"
+      }
+    },
+    {
+      "database": "bundled-postgres",
+      "runtimes": [
+        {
+          "kind": "node",
+          "completedSteps": 15
+        },
+        {
+          "kind": "rust",
+          "completedSteps": 10
+        }
+      ],
+      "outcomeResponses": {
+        "goal": {
+          "200": 1
+        },
+        "goal-cycle": {
+          "200": 1
+        },
+        "round": {
+          "200": 9
+        }
+      },
+      "report": {
+        "path": "pglite-task-outcome-retry/final-normal-bundled-postgres/product.json",
+        "bytes": 1180702,
+        "sha256": "903118d6453e1d965bd4fba06d033d46f660f9b9bdcff224f7e7391a654890fe"
+      },
+      "failure": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'implementing'\n- 'complete'\n"
+    },
+    {
+      "database": "postgres",
+      "runtimes": [
+        {
+          "kind": "node",
+          "completedSteps": 15
+        },
+        {
+          "kind": "rust",
+          "completedSteps": 15
+        }
+      ],
+      "outcomeResponses": {
+        "goal": {
+          "200": 2
+        },
+        "goal-cycle": {
+          "200": 2
+        },
+        "round": {
+          "200": 12
+        }
+      },
+      "report": {
+        "path": "pglite-task-outcome-retry/final-normal-postgres/product.json",
+        "bytes": 1619476,
+        "sha256": "4289593c370b5e80a7b17f396f5e6b0004482b75cb5d09509684cbed65d2e86e"
+      }
+    },
+    {
+      "database": "bundled-postgres",
+      "runtimes": [
+        {
+          "kind": "node",
+          "completedSteps": 15
+        },
+        {
+          "kind": "rust",
+          "completedSteps": 15
+        }
+      ],
+      "outcomeResponses": {
+        "goal": {
+          "200": 2
+        },
+        "goal-cycle": {
+          "200": 2
+        },
+        "round": {
+          "200": 12
+        }
+      },
+      "report": {
+        "path": "pglite-task-outcome-retry/final-normal-bundled-postgres-rerun/product.json",
+        "bytes": 1613681,
+        "sha256": "bbda88948b33271d6c4fc7b840aa1145fd336cb8b0786f37b49c3a465a9445d3"
+      }
+    }
+  ],
+  "retainedSharedGoalFailure": {
+    "database": "postgres",
+    "runtimes": [
+      {
+        "kind": "rust/rust",
+        "completedSteps": 11
+      }
+    ],
+    "outcomeResponses": {
+      "goal": {
+        "200": 1
+      },
+      "goal-cycle": {
+        "200": 1
+      },
+      "round": {
+        "200": 4,
+        "409": 1
+      }
+    },
+    "report": {
+      "path": "pglite-task-outcome-retry/final-shared-forced/product.json",
+      "bytes": 319858,
+      "sha256": "b50ae0ceb41c698bc4cd7ba4ae8d37ffe8261aaed268747df34d25736ae636d3"
+    },
+    "serverPair": "rust/rust",
+    "failure": "Expected values to be strictly equal:\n\n'running' !== 'idle'\n",
+    "forcedOrder": {
+      "status": 200,
+      "committed": true,
+      "finalEventHeld": true,
+      "receiptMatchesFinalEvent": true,
+      "differsFromProvisionalEvent": true,
+      "replayedProvisionalEvent": true,
+      "exactReplay": true,
+      "changedReplayStatus": 409
+    }
+  },
+  "retainedSharedGoalDatabaseState": {
+    "path": "pglite-task-outcome-retry/shared-failure-retained-state.json",
+    "bytes": 2850,
+    "sha256": "e448c3a844b5333f5feb4b0325333a7ae1d2b7c5c5379b3f0062594460eddaf7"
+  },
+  "controlledWorkerHttp": [
+    {
+      "database": "pglite",
+      "case": "goal",
+      "cells": 1,
+      "pairedObservations": 28,
+      "report": {
+        "path": "pglite-task-outcome-retry/controlled-goal-pglite.json",
+        "bytes": 212302,
+        "sha256": "bc35b0828aeeeff8457fd6344cee3303d964b99ad6cbfacda4089ac88f6550a1"
+      }
+    },
+    {
+      "database": "bundled-postgres",
+      "case": "round",
+      "cells": 3,
+      "pairedObservations": 50,
+      "report": {
+        "path": "pglite-task-outcome-retry/controlled-round-bundled-postgres.json",
+        "bytes": 445376,
+        "sha256": "332bab7bf03de4f95bac11eae871a9e5ba39bb16b93817785a5ec8470c0c98ab"
+      }
+    },
+    {
+      "database": "pglite",
+      "case": "round",
+      "cells": 3,
+      "pairedObservations": 50,
+      "report": {
+        "path": "pglite-task-outcome-retry/controlled-round-pglite.json",
+        "bytes": 444726,
+        "sha256": "8a7c1190d104c74ea1988aa93c84990c00bc0df26e85feb5a53fddbc677e8b54"
+      }
+    },
+    {
+      "database": "postgres",
+      "case": "round",
+      "cells": 3,
+      "pairedObservations": 50,
+      "report": {
+        "path": "pglite-task-outcome-retry/controlled-round-postgres.json",
+        "bytes": 444847,
+        "sha256": "bfeeed1f5c02a531ee9f4b1413f07fde4c9d4b1f54a8bf98221ba795039da4f4"
+      }
+    }
+  ],
+  "rustLibrary": {
+    "passed": 87,
+    "failed": 0,
+    "log": {
+      "path": "pglite-task-outcome-retry/final-library-tests.log",
+      "bytes": 9675,
+      "sha256": "65c1c01866ade0b4b25dcdc3e9a93e39a19a50eafa6ccd9e6fe1d1c185210a71"
+    }
+  },
+  "strictLibraryClippy": {
+    "path": "pglite-task-outcome-retry/final-clippy.log",
+    "bytes": 1004,
+    "sha256": "141da14d46800b5127a14d8e021cd2bf8bfa74eefcc8b0c8baa3e2f767cb509b"
+  },
+  "remaining": [
+    "Diagnose the separate PGlite Goal input receipt HTTP 500 that replayed successfully, and the bundled PostgreSQL Goal that remained implementing in the first ordinary comparison.",
+    "Complete autonomous Goal observation and lane release, including the retained shared failure and loss of the worker-owning peer after durable commit.",
+    "Repeat on the final supported shipping artifacts."
+  ]
+}
