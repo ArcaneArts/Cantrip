@@ -1,5 +1,55 @@
 use super::*;
 impl Service {
+    pub(crate) fn schedule_cycle_outcome_observation(
+        self: &Arc<Self>,
+        owner: &str,
+        source: &Value,
+    ) {
+        let (this, owner, source) = (self.clone(), owner.to_owned(), source.clone());
+        drop(self.operations.run(async move {
+            if let Err(error) = this.observe_cycle_outcome(&owner, &source).await
+                && crate::operations::shared_failure::downcast_ref::<task_dispatch::Conflict>(
+                    &error,
+                )
+                .is_none()
+            {
+                this.log(
+                    "warn",
+                    "Could not observe a committed Task Goal cycle",
+                    json!({
+                        "event": "task.goal.cycle-observation-deferred",
+                        "chatId": source["parent"]["chatId"],
+                        "err": logging::error_details(&error)
+                    }),
+                );
+            }
+            Ok(())
+        }));
+    }
+
+    async fn observe_cycle_outcome(self: &Arc<Self>, owner: &str, source: &Value) -> Result<()> {
+        let chat = text(&source["parent"]["chatId"])?;
+        let Some(context) = self.chats.execution_context(owner, &chat).await? else {
+            return Ok(());
+        };
+        let Some(task) = self.tasks.get(owner, &chat).await? else {
+            return Ok(());
+        };
+        if context["experience"] != "task"
+            || task["dispatch"]["id"] != source["cycle"]["cycleId"]
+            || context["threadId"] != source["threadId"]
+            || context["workerId"] != source["parent"]["workerId"]
+            || context["worktreeId"] != source["parent"]["worktreeId"]
+            || context["modelRouteId"] != source["cycle"]["modelRouteId"]
+            || context["providerAccountId"] != source["cycle"]["providerAccountId"]
+        {
+            return Ok(());
+        }
+        self.read_one(owner, &context, &task, Observation::default())
+            .await?;
+        Ok(())
+    }
+
     pub fn recover_task_goal_cycle(
         self: &Arc<Self>,
         owner: &str,

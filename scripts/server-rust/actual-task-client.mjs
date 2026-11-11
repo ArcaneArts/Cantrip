@@ -172,16 +172,21 @@ export async function actualTaskClient({
         goalPrompt: objective,
       }),
     });
+    const initialGoalAnswer = "Private initial Task Goal turn 🍄";
+    const implementationAnswer = "Private full-worker implementation result 🌤";
+    const firstTurn = process.argv.includes("--task-goal-autonomous")
+      ? model.reply({ text: initialGoalAnswer })
+      : null;
     model.reply({
       calls: [{ name: "update_goal", arguments: { status: "complete" } }],
     });
     const implementation = model.reply({
-      text: "Private full-worker implementation result 🌤",
+      text: implementationAnswer,
     });
     // Goal activation attempts an idle turn. The saved encrypted Task control
     // can arrive first and make that automatic turn unnecessary.
     model.reply({
-      text: "Private full-worker implementation result 🌤",
+      text: implementationAnswer,
       onlyFor: (request) => JSON.stringify(request.input).includes(objective),
     });
     await page.evaluate(
@@ -220,6 +225,7 @@ export async function actualTaskClient({
       ),
     );
     assert.ok(goalTask.goalPrompt.endsWith(objective));
+    if (firstTurn) assert.equal(firstTurn.request?.completed, true);
     assert.equal(implementation.request.completed, true);
     const nativeGoal = implementation.request.input.input
       .filter((item) => item.type === "function_call_output")
@@ -253,11 +259,19 @@ export async function actualTaskClient({
       async (chat) => (await import("/src/lib/api/chats.ts")).getMessages(chat),
       planned.chat.id,
     );
-    assert.ok(
-      JSON.stringify(goalMessages).includes(
-        "Private full-worker implementation result 🌤",
-      ),
-    );
+    assert.ok(JSON.stringify(goalMessages).includes(implementationAnswer));
+    if (firstTurn) {
+      for (const text of [initialGoalAnswer, implementationAnswer])
+        assert.equal(
+          goalMessages.filter((message) =>
+            JSON.stringify(message).includes(text),
+          ).length,
+          1,
+        );
+      result.steps.push(
+        "an autonomous continuation completes the active Task and preserves each encrypted turn exactly once",
+      );
+    }
     assert.deepEqual(model.failures, []);
     result.steps.push(
       "the existing Task APIs plan, review and finalize through real Codex; its native Goal tool completes implementation and the browser decrypts the objective and transcript",
@@ -326,6 +340,8 @@ export async function actualTaskClient({
       answer,
       planText,
       objective,
+      initialGoalAnswer,
+      implementationAnswer,
       ...recovery.privateMarkers,
     ]) {
       assert.equal(

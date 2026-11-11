@@ -125,11 +125,21 @@ async fn apply(
             let committed = tasks
                 .commit_goal_cycle_outcome(&owner, input["workerId"].as_str().unwrap(), &input)
                 .await?;
-            if committed["committed"] == true && !committed["message"].is_null() {
+            if committed["committed"] == true {
+                if !committed["message"].is_null() {
+                    service
+                        .execution
+                        .publish_task_outcome_message(
+                            &owner,
+                            &committed["message"],
+                            &committed["chat"],
+                        )
+                        .await;
+                }
                 service
                     .execution
-                    .publish_task_outcome_message(&owner, &committed["message"], &committed["chat"])
-                    .await;
+                    .goals
+                    .schedule_cycle_outcome_observation(&owner, &input["goalCycleSource"]);
             }
             let mut receipt = json!({"deliveryId":input["deliveryId"],"goalCycleSourceKey":input["goalCycleSource"]["sourceKey"],"committed":committed["committed"]});
             if !committed["retiredReason"].is_null() {

@@ -122,12 +122,25 @@ export async function actualTaskRecovery({
   assert.equal(retried.request.completed, true);
   assert.equal(recovered.lastError, null);
   assert.equal(recovered.briefMarkdown, failure.briefMarkdown);
-  const transcript = await page.evaluate(
-    async (chatId) =>
-      (await import("/src/lib/api/chats.ts")).getMessages(chatId),
-    failedTask.chat.id,
-  );
-  assert.ok(JSON.stringify(transcript).includes(privateAnswer));
+  const retryMessages = () =>
+    page.evaluate(
+      async (chatId) =>
+        (await import("/src/lib/api/chats.ts")).getMessages(chatId),
+      failedTask.chat.id,
+    );
+  const transcript = await eventually(retryMessages, (messages) => {
+    assert.ok(JSON.stringify(messages).includes(privateAnswer));
+    const summaries = messages
+      .flatMap((message) => message.content)
+      .filter(
+        (item) =>
+          item.type === "activity" && item.activity.type === "turnSummary",
+      );
+    assert.ok(
+      summaries.some(({ activity }) => activity.status === "completed"),
+    );
+    assert.ok(summaries.every(({ activity }) => activity.status !== "running"));
+  });
   assert.equal(
     posts(),
     before + 2,
@@ -202,14 +215,7 @@ export async function actualTaskRecovery({
     "unpause executes the saved admission once",
   );
   assert.equal((await read(failedTask.chat.id)).state, "complete");
-  assert.deepEqual(
-    await page.evaluate(
-      async (chatId) =>
-        (await import("/src/lib/api/chats.ts")).getMessages(chatId),
-      failedTask.chat.id,
-    ),
-    transcript,
-  );
+  assert.deepEqual(await retryMessages(), transcript);
   assert.deepEqual(model.failures, []);
   result.steps.push(
     "project pause retains an admitted Task across both server and worker restart; unpause executes it once and preserves the earlier retried Task transcript",

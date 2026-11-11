@@ -32,6 +32,13 @@ With shared PostgreSQL and Redis, all four Node and Rust pairings preserve two
 remote worker connections, the settled job and its exact replay through the
 loss of the browser-facing peer.
 
+The [packaged native admission qualification](RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md#packaged-autonomous-task-completion)
+fixes an autonomous Goal that committed its terminal outcome while its Task
+stayed implementing. The browser and packaged worker complete the Task and
+retain both encrypted answers across restart on all three stores and two Rust
+peers. The Agent queue comparison also exercises actual native receipts on all
+three stores.
+
 The packaged macOS ARM64 `1.1.2845` server and signed desktop worker passed
 the current Task and Agent product matrix against the Node reference. All
 six suites cover real native execution across PGlite, bundled PostgreSQL

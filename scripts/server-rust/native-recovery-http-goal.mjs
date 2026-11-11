@@ -9,7 +9,10 @@ import {
   taskGoalOutcomeDeliverySchema,
   taskGoalOutcomeCommitSchema,
 } from "../../packages/protocol/dist/index.js";
-import { settingsWorker as worker } from "./native-settings-http-fixture.mjs";
+import {
+  settingsWorker as worker,
+  until,
+} from "./native-settings-http-fixture.mjs";
 import {
   task as chat,
   taskProject as project,
@@ -317,6 +320,7 @@ export async function nativeRecoveryHttpGoal(h, result) {
   h.worker.close();
   await h.reconnectWorker();
   assert.notEqual(h.worker.connectionGeneration(), previous);
+  const readsBeforeDelivery = result.goalCommands.length;
   const committed = await call(
     "deliver captured Goal result after worker replacement",
     outcome,
@@ -328,6 +332,15 @@ export async function nativeRecoveryHttpGoal(h, result) {
     goalCycleSourceKey: sourceKey,
     committed: true,
   });
+  if (result.kind === "rust") {
+    await until(
+      () => result.goalCommands,
+      (commands) =>
+        commands
+          .slice(readsBeforeDelivery)
+          .some((command) => command.observeExecution === false),
+    );
+  }
   const accepted = await state();
   assert.equal(accepted.messages.length, 3);
   assert.equal(
@@ -426,6 +439,7 @@ export async function nativeRecoveryHttpGoal(h, result) {
         content.noteDigest(delivery.notification),
       );
       const contracts = new Map();
+      let cycleOutcomeReads = 0;
       for (const command of result.goalCommands) {
         assert.equal(command.type, "chat.goal.get");
         assert.equal(command.chatId, chat);
@@ -433,7 +447,7 @@ export async function nativeRecoveryHttpGoal(h, result) {
         assert.equal(command.cwd, "/event-task");
         assert.equal(command.model.routeId, parent.modelRouteId);
         assert.equal(command.provider.id, parent.providerId);
-        assert.equal(command.observeExecution, true);
+        assert.equal(typeof command.observeExecution, "boolean");
         assert.deepEqual(command.taskContext.nativeCycle, {
           cycleId,
           orderEpoch: 0,
@@ -444,6 +458,12 @@ export async function nativeRecoveryHttpGoal(h, result) {
         assert.ok(
           ["running", "offline"].includes(command.taskContext.chatStatus),
         );
+        // The controlled worker declines the passive read. Committed delivery
+        // and replay above must still succeed with the original stored rows.
+        if (!command.observeExecution) {
+          cycleOutcomeReads++;
+          continue;
+        }
         // Reconnect observations can run on either side of startup's offline
         // transition. Preserve all actual reads; compare their stable scope,
         // while each read independently retains the exact protected Task.
@@ -455,6 +475,7 @@ export async function nativeRecoveryHttpGoal(h, result) {
       }
       result.goalCommandContracts = [...contracts.values()];
       result.backgroundGoalReadsVerified = result.goalCommands.length;
+      result.cycleOutcomeReads = cycleOutcomeReads;
       await content.prove(value);
     },
   };
