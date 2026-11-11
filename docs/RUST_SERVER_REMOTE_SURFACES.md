@@ -165,7 +165,8 @@ server exits and 40 clean worker exits.
 The first rebuilt PGlite run used a pre-existing default runtime cache
 that lacked `postgres.bki`. The same executable passed migration with a fresh
 default temporary root and passed the full product run with an owned
-`PGLITE_RUNTIME_DIR`. The incomplete default cache recovery remains open.
+`PGLITE_RUNTIME_DIR`. The native engine now
+[recovers incomplete default caches](RUST_SERVER_DATABASE_LIFECYCLE.md#embedded-pglite-cache-recovery).
 
 The first pilot used an older workspace package that lacks `desktop-target`.
 The acceptance image has workspace 0.4.0, executor 0.12.0 and remote 0.11.0.

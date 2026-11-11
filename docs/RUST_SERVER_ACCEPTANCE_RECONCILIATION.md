@@ -17,6 +17,11 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [embedded PGlite cache recovery](RUST_SERVER_DATABASE_LIFECYCLE.md#embedded-pglite-cache-recovery)
+repairs actual startup failure from incomplete automatically extracted assets.
+Concurrent fresh and retained profile starts pass with the original identity
+and accepted write preserved. Configured assets still surface actual failures.
+
 The [host inventory and CantripOS guest comparison](RUST_SERVER_REMOTE_SURFACES.md#current-host-inventory-and-cantripos-guest-surfaces)
 fixes the single-worker desktop inventory request. It qualifies encrypted
 host inventory, a real guest desktop before and after restart, stale
