@@ -17,6 +17,14 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [current browser surface lifecycle comparison](RUST_SERVER_REMOTE_SURFACES.md#current-browser-suspend-and-resume)
+qualifies suspend and resume through the full worker and actual Chromium on all
+three stores and all four PostgreSQL and Redis pairings. An offline resume
+persists the existing error. Server restart clears that transient status and
+retains exact encrypted state. A successful resume restores authenticated frames
+on the original attachment. Scoped worker command coverage accounts for 315 of
+323 identities.
+
 The [native Agent approval cancellation comparison](RUST_SERVER_AGENT_APPROVAL_CANCELLATION.md)
 passes the full-worker cancellation and normal approval control on all three
 stores. Both peers interrupt the next prompt in the canceled Agent before it

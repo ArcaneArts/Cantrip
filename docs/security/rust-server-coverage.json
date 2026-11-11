@@ -12051,6 +12051,34 @@
         ]
       },
       {
+        "command": "surface.suspend",
+        "implementation": "cantrip_server_rs/src/http/remote_surfaces.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_REMOTE_SURFACES.md",
+          "docs/security/rust-server-remote-surface-lifecycle.json",
+          "scripts/server-rust/actual-remote-surfaces-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "The browser lifecycle is qualified through the existing browser SDK, production servers, full worker and real Chromium on all three stores and all four shared PostgreSQL and Redis pairings. Positive desktop capture, failover during an active attachment, and supported desktop shipping retain separate acceptance scope."
+        ]
+      },
+      {
+        "command": "surface.resume",
+        "implementation": "cantrip_server_rs/src/http/remote_surfaces.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_REMOTE_SURFACES.md",
+          "docs/security/rust-server-remote-surface-lifecycle.json",
+          "scripts/server-rust/actual-remote-surfaces-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "The browser lifecycle is qualified through the existing browser SDK, production servers, full worker and real Chromium on all three stores and all four shared PostgreSQL and Redis pairings. Positive desktop capture, failover during an active attachment, and supported desktop shipping retain separate acceptance scope."
+        ]
+      },
+      {
         "command": "surface.close",
         "implementation": "cantrip_server_rs/src/http/remote_surfaces.rs",
         "status": "implemented-pending-platform-acceptance",

@@ -5,6 +5,7 @@ import {
 import { actualProjectWorktrees } from "./actual-project-worktrees.mjs";
 import { actualProjectAdministration } from "./actual-project-administration.mjs";
 import {
+  assertOfflineRemoteSurface,
   prepareActualRemoteSurface,
   actualRemoteSurface,
 } from "./actual-remote-surfaces-client.mjs";
@@ -140,6 +141,7 @@ const providerAuth = process.argv.includes("--provider-auth");
 const taskLabel = process.argv.includes("--task-label");
 const inlineChatLabels = process.argv.includes("--inline-chat-labels");
 const approvalCancellation = process.argv.includes("--approval-cancellation");
+const remoteSurfaces = process.argv.includes("--remote-surfaces");
 assert.ok(!workerLinkRenewal || !sharedPair);
 const singleProduct =
   cantripOsRun ||
@@ -181,8 +183,7 @@ const runtimeCases = sharedPair
     ? [[selectedRuntime]]
     : [["node"], ["rust"]];
 const needsRemoteSurface =
-  process.argv.includes("--surfaces") ||
-  process.argv.includes("--remote-surfaces");
+  process.argv.includes("--surfaces") || remoteSurfaces;
 const workerLinkRoute = option("--worker-link-route") ?? "relay";
 const reportPath = option("--report");
 const liveTaskDiagnostics =
@@ -195,7 +196,7 @@ const fullServerLogs =
   process.argv.includes("--project-insights") ||
   process.argv.includes("--operational-status") ||
   process.argv.includes("--worker-logs") ||
-  process.argv.includes("--remote-surfaces") ||
+  remoteSurfaces ||
   process.argv.includes("--computer-use") ||
   process.argv.includes("--project-administration") ||
   process.argv.includes("--chat-controls");
@@ -309,6 +310,7 @@ async function flow(
       taskLabel ||
       inlineChatLabels ||
       approvalCancellation ||
+      remoteSurfaces ||
       [
         "--mcp-settings",
         "--terminals",
@@ -338,7 +340,8 @@ async function flow(
           providerAuth ||
           taskLabel ||
           inlineChatLabels ||
-          approvalCancellation
+          approvalCancellation ||
+          remoteSurfaces
             ? { CANTRIP_LOG_LEVEL: "debug" }
             : {}),
           ...(providerTest ? providerBoundary?.environment : {}),
@@ -896,7 +899,7 @@ async function flow(
           result,
         })
       : undefined;
-    const legacySurface = process.argv.includes("--remote-surfaces")
+    const legacySurface = remoteSurfaces
       ? await prepareActualRemoteSurface({
           page,
           projectId: created.id,
@@ -960,6 +963,18 @@ async function flow(
         phase: "connected",
       });
     await stopWorker();
+    if (legacySurface) {
+      await eventually(workers, (values) =>
+        assert.equal(
+          values.find((entry) => entry.workerId === workerId)?.online,
+          false,
+        ),
+      );
+      result.legacySurfaceOffline = await assertOfflineRemoteSurface(
+        page,
+        legacySurface,
+      );
+    }
     if (process.argv.includes("--worker-logs"))
       await actualWorkerLogsDisconnected({ page, result, phase: "connected" });
     const scratch = projectShares
@@ -1094,7 +1109,12 @@ async function flow(
           result,
         });
       if (legacySurface)
-        await actualRemoteSurface({ page, surface: legacySurface, result });
+        await actualRemoteSurface({
+          page,
+          surface: legacySurface,
+          result,
+          diagnostics: () => worker.diagnostics(),
+        });
       if (surface)
         await actualWorkerBrowserSurface({
           page,

@@ -1,0 +1,476 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "productBaseCommit": "55dc775e86051261baed4e026b77bf65665fe005",
+  "servingExecutableSourceCommit": "020254f3c3aabb5e2e1e712c2c597a5cc73a5950",
+  "unchangedProductionTreesAtProductBase": [
+    "cantrip_server_rs",
+    "cantrip_worker",
+    "packages",
+    "tests/reference-node-server"
+  ],
+  "platform": "darwin-arm64",
+  "workerRuntime": "Node v24.22.2",
+  "postgresVersion": "18.6",
+  "authentication": "accounts",
+  "servingExecutable": {
+    "path": "current-binaries/cantrip-server",
+    "bytes": 94116304,
+    "sha256": "129dfce547025b0bdfaaaf57d7fb4b86dc5cdd075b20012348d96b0ab4a97bf4"
+  },
+  "nodeReferenceEntrypoint": {
+    "path": "tests/reference-node-server/dist/index.js",
+    "bytes": 106,
+    "sha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310"
+  },
+  "workerEntrypoint": {
+    "path": "cantrip_worker/dist/index.js",
+    "bytes": 391660,
+    "sha256": "ed0cd85f4756c5960b20b1283b680fb0c5701d54dc13e187a92c86923093beab"
+  },
+  "chromium": {
+    "path": "chromium-1234/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+    "bytes": 52112,
+    "sha256": "a596b1cfc6353e987fcec8d71a23a28cd6a9e7a6b4e20b908e4c4fcffe51158e",
+    "version": "151.0.7922.34",
+    "playwright": "1.62.1"
+  },
+  "currentWorkerCommandCoverage": {
+    "mapped": 315,
+    "total": 323,
+    "remaining": [
+      "computer-use.effects.sync",
+      "computer-use.operation",
+      "computer-use.preview.open",
+      "computer-use.preview.stop",
+      "surface.desktop.os-prepare",
+      "surface.desktop.probe",
+      "surface.desktop.targets",
+      "surface.tunnel.os-prepare"
+    ]
+  },
+  "product": [
+    {
+      "mode": "pglite",
+      "report": {
+        "path": "pglite-matrix-v2.json",
+        "bytes": 386323,
+        "sha256": "3f12260df905357f29064b4a152a50484713787d60bef3fceced604e8d39525a"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "offlineResume": {
+            "httpStatus": 503,
+            "message": "Worker is offline.",
+            "savedStatus": "offline",
+            "lastError": "Worker is offline."
+          },
+          "commands": [
+            {
+              "command": "surface.suspend",
+              "surfaceId": "b6a9d871-3917-4102-964b-9726d6d567ae",
+              "requestId": "20009b86-8322-4940-88d4-f3d8d0a6d2f1",
+              "committedStatus": "suspended"
+            },
+            {
+              "command": "surface.resume",
+              "surfaceId": "b6a9d871-3917-4102-964b-9726d6d567ae",
+              "requestId": "da7db95a-3aaf-43ff-8389-7f2fb1bc0740",
+              "committedStatus": "active"
+            }
+          ],
+          "reopenedStatus": "idle",
+          "retainedExactEnvelopes": true,
+          "pausedFrames": 6,
+          "resumedFrames": 7,
+          "restoredFrames": 3,
+          "authenticatedBytes": 39993,
+          "aadRejected": true,
+          "savedRevision": 2,
+          "deleted": true,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3
+        },
+        {
+          "kind": "rust",
+          "offlineResume": {
+            "httpStatus": 503,
+            "message": "Worker is offline.",
+            "savedStatus": "offline",
+            "lastError": "Worker is offline."
+          },
+          "commands": [
+            {
+              "command": "surface.suspend",
+              "surfaceId": "dc28bef0-d944-4e79-85ae-58cbd30ffa25",
+              "requestId": "e6278fa7-0e46-48b7-ae95-94161cc8d51d",
+              "committedStatus": "suspended"
+            },
+            {
+              "command": "surface.resume",
+              "surfaceId": "dc28bef0-d944-4e79-85ae-58cbd30ffa25",
+              "requestId": "6579e196-3d2d-42ea-8b5d-1bd28c5d038f",
+              "committedStatus": "active"
+            }
+          ],
+          "reopenedStatus": "idle",
+          "retainedExactEnvelopes": true,
+          "pausedFrames": 5,
+          "resumedFrames": 6,
+          "restoredFrames": 2,
+          "authenticatedBytes": 26504,
+          "aadRejected": true,
+          "savedRevision": 2,
+          "deleted": true,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3
+        }
+      ]
+    },
+    {
+      "mode": "bundled-postgres",
+      "report": {
+        "path": "bundled-postgres-matrix-v2.json",
+        "bytes": 454792,
+        "sha256": "ecfeb25a2311daed5e172dfa61b4774e926a5fdfacf460b1e4d9f5bedfd11209"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "offlineResume": {
+            "httpStatus": 503,
+            "message": "Worker is offline.",
+            "savedStatus": "offline",
+            "lastError": "Worker is offline."
+          },
+          "commands": [
+            {
+              "command": "surface.suspend",
+              "surfaceId": "d53910bf-8d41-453a-bda7-7cc2b9894ffe",
+              "requestId": "e933eb57-7f0d-4be7-9df0-70cc7f48fec9",
+              "committedStatus": "suspended"
+            },
+            {
+              "command": "surface.resume",
+              "surfaceId": "d53910bf-8d41-453a-bda7-7cc2b9894ffe",
+              "requestId": "4f63a82f-b17a-4794-a5cf-3378808c49e8",
+              "committedStatus": "active"
+            }
+          ],
+          "reopenedStatus": "idle",
+          "retainedExactEnvelopes": true,
+          "pausedFrames": 8,
+          "resumedFrames": 9,
+          "restoredFrames": 1,
+          "authenticatedBytes": 13015,
+          "aadRejected": true,
+          "savedRevision": 2,
+          "deleted": true,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3
+        },
+        {
+          "kind": "rust",
+          "offlineResume": {
+            "httpStatus": 503,
+            "message": "Worker is offline.",
+            "savedStatus": "offline",
+            "lastError": "Worker is offline."
+          },
+          "commands": [
+            {
+              "command": "surface.suspend",
+              "surfaceId": "75ffda51-cb30-4192-89c8-86b6ed18fafe",
+              "requestId": "c0e3104b-14b7-4e5c-8840-d8f1dd4f5733",
+              "committedStatus": "suspended"
+            },
+            {
+              "command": "surface.resume",
+              "surfaceId": "75ffda51-cb30-4192-89c8-86b6ed18fafe",
+              "requestId": "2e714e3b-0c44-45ce-b74d-658804926359",
+              "committedStatus": "active"
+            }
+          ],
+          "reopenedStatus": "idle",
+          "retainedExactEnvelopes": true,
+          "pausedFrames": 8,
+          "resumedFrames": 9,
+          "restoredFrames": 5,
+          "authenticatedBytes": 67092,
+          "aadRejected": true,
+          "savedRevision": 2,
+          "deleted": true,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3
+        }
+      ]
+    },
+    {
+      "mode": "postgres",
+      "report": {
+        "path": "postgres-matrix-v3.json",
+        "bytes": 452886,
+        "sha256": "00932ffcd4ce428bfb3f429a8ee28a1f68a1180e535ba2782f4e4f6a1972ab39"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "offlineResume": {
+            "httpStatus": 503,
+            "message": "Worker is offline.",
+            "savedStatus": "offline",
+            "lastError": "Worker is offline."
+          },
+          "commands": [
+            {
+              "command": "surface.suspend",
+              "surfaceId": "611da196-430b-4469-88a9-46adb96df2b4",
+              "requestId": "cb9166a3-4dda-4270-b7e0-48228a4e7d70",
+              "committedStatus": "suspended"
+            },
+            {
+              "command": "surface.resume",
+              "surfaceId": "611da196-430b-4469-88a9-46adb96df2b4",
+              "requestId": "c6f60504-f310-4d76-82f3-89abda92e5f7",
+              "committedStatus": "active"
+            }
+          ],
+          "reopenedStatus": "idle",
+          "retainedExactEnvelopes": true,
+          "pausedFrames": 4,
+          "resumedFrames": 5,
+          "restoredFrames": 4,
+          "authenticatedBytes": 53482,
+          "aadRejected": true,
+          "savedRevision": 2,
+          "deleted": true,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3
+        },
+        {
+          "kind": "rust",
+          "offlineResume": {
+            "httpStatus": 503,
+            "message": "Worker is offline.",
+            "savedStatus": "offline",
+            "lastError": "Worker is offline."
+          },
+          "commands": [
+            {
+              "command": "surface.suspend",
+              "surfaceId": "647cfbf2-70e2-4bf6-8f0d-bb7d76ec09e0",
+              "requestId": "02e0953c-1f23-4005-a15e-c5da10fa5bc1",
+              "committedStatus": "suspended"
+            },
+            {
+              "command": "surface.resume",
+              "surfaceId": "647cfbf2-70e2-4bf6-8f0d-bb7d76ec09e0",
+              "requestId": "d89fee9c-2edc-4cdd-9920-883557ef810a",
+              "committedStatus": "active"
+            }
+          ],
+          "reopenedStatus": "idle",
+          "retainedExactEnvelopes": true,
+          "pausedFrames": 5,
+          "resumedFrames": 6,
+          "restoredFrames": 1,
+          "authenticatedBytes": 13015,
+          "aadRejected": true,
+          "savedRevision": 2,
+          "deleted": true,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3
+        }
+      ]
+    }
+  ],
+  "initialPostgresAttachmentFailure": {
+    "report": {
+      "path": "postgres-matrix-v2.json",
+      "bytes": 204495,
+      "sha256": "68d748b9c76907aff77596e804b8b1d2d4f736bce6d334d42df6bcb5d8eb7e44"
+    },
+    "peer": "node",
+    "workerError": "CDP -32000: Not attached to an active page",
+    "phase": "initial surface.attach before suspend or resume",
+    "rerun": {
+      "path": "postgres-matrix-v3.json",
+      "bytes": 452886,
+      "sha256": "00932ffcd4ce428bfb3f429a8ee28a1f68a1180e535ba2782f4e4f6a1972ab39"
+    }
+  },
+  "fixtureArchive": {
+    "path": "fixture-evidence.tar.zst",
+    "bytes": 98472154,
+    "sha256": "a3db381e3f2d984796f5b94ab39b2eb48ea139c926215e28c02f7d50571bce65",
+    "verifiedRegularFiles": 26516,
+    "redactedServerProcessLogs": 24,
+    "excludedRebuildablePaths": [
+      "*/worker/managed-runtimes",
+      "*/worker/tools/codegraph/versions"
+    ]
+  },
+  "localEvidenceDirectory": "rust-server-remote-surface-lifecycle-20261111-v1",
+  "scope": "Account-authenticated browser SDK, production servers, full worker and actual Chromium over the legacy encrypted WebSocket on all three stores.",
+  "remaining": [
+    "Positive desktop capture, current mixed-server faults and supported shipping artifacts require their own acceptance.",
+    "The intermittent Chromium attachment failure on the Node peer remains recorded. The individual rerun passed with the same worker and assertions."
+  ],
+  "sharedPostgresRedis": {
+    "report": {
+      "path": "shared-all-v1.json",
+      "bytes": 1100146,
+      "sha256": "fb09fff7cc4f82642ad036d026787da523077906f37613d0117f3bb58e17db3f"
+    },
+    "fixtureArchive": {
+      "path": "shared-fixture-evidence.tar.zst",
+      "bytes": 24508098,
+      "sha256": "78fedfb6a2a09e5105bae036e1c6134ca48d6843fc5e8774d23baef8aa7d81e0",
+      "verifiedRegularFiles": 6439,
+      "redactedServerProcessLogs": 32,
+      "excludedRebuildablePaths": [
+        "*/worker/managed-runtimes",
+        "*/worker/tools/codegraph/versions"
+      ]
+    },
+    "pairs": [
+      {
+        "pair": "node/node",
+        "offlineResume": {
+          "httpStatus": 503,
+          "message": "Worker is offline.",
+          "savedStatus": "offline",
+          "lastError": "Worker is offline."
+        },
+        "commands": [
+          {
+            "command": "surface.suspend",
+            "surfaceId": "50f321d8-4628-443c-9ab7-6ade3b0b61d3",
+            "requestId": "50312d67-0092-4d44-bb63-5182607455ef",
+            "committedStatus": "suspended"
+          },
+          {
+            "command": "surface.resume",
+            "surfaceId": "50f321d8-4628-443c-9ab7-6ade3b0b61d3",
+            "requestId": "f94b1ed2-edba-4cfb-8c0b-d65eb6abfec3",
+            "committedStatus": "active"
+          }
+        ],
+        "reopenedStatus": "idle",
+        "retainedExactEnvelopes": true,
+        "pausedFrames": 6,
+        "resumedFrames": 7,
+        "restoredFrames": 1,
+        "authenticatedBytes": 13015,
+        "aadRejected": true,
+        "savedRevision": 2,
+        "deleted": true,
+        "cleanServerExits": 4,
+        "cleanWorkerExits": 3
+      },
+      {
+        "pair": "node/rust",
+        "offlineResume": {
+          "httpStatus": 503,
+          "message": "Worker is offline.",
+          "savedStatus": "offline",
+          "lastError": "Worker is offline."
+        },
+        "commands": [
+          {
+            "command": "surface.suspend",
+            "surfaceId": "e7672fa2-21a3-40d6-82ff-b6d20ca23fd3",
+            "requestId": "a114b3ed-845a-4e42-b350-ad4807c4d8c7",
+            "committedStatus": "suspended"
+          },
+          {
+            "command": "surface.resume",
+            "surfaceId": "e7672fa2-21a3-40d6-82ff-b6d20ca23fd3",
+            "requestId": "b6c7e916-1537-4c5c-82fc-8c900e0a85c4",
+            "committedStatus": "active"
+          }
+        ],
+        "reopenedStatus": "idle",
+        "retainedExactEnvelopes": true,
+        "pausedFrames": 5,
+        "resumedFrames": 6,
+        "restoredFrames": 3,
+        "authenticatedBytes": 39993,
+        "aadRejected": true,
+        "savedRevision": 2,
+        "deleted": true,
+        "cleanServerExits": 4,
+        "cleanWorkerExits": 3
+      },
+      {
+        "pair": "rust/node",
+        "offlineResume": {
+          "httpStatus": 503,
+          "message": "Worker is offline.",
+          "savedStatus": "offline",
+          "lastError": "Worker is offline."
+        },
+        "commands": [
+          {
+            "command": "surface.suspend",
+            "surfaceId": "7567b79a-f42c-485e-b29a-a66adbfe9705",
+            "requestId": "64342f48-b3d5-4b37-8bea-626c43f4f66d",
+            "committedStatus": "suspended"
+          },
+          {
+            "command": "surface.resume",
+            "surfaceId": "7567b79a-f42c-485e-b29a-a66adbfe9705",
+            "requestId": "879f373a-6c99-4e69-a580-990ba525778a",
+            "committedStatus": "active"
+          }
+        ],
+        "reopenedStatus": "idle",
+        "retainedExactEnvelopes": true,
+        "pausedFrames": 7,
+        "resumedFrames": 8,
+        "restoredFrames": 1,
+        "authenticatedBytes": 13015,
+        "aadRejected": true,
+        "savedRevision": 2,
+        "deleted": true,
+        "cleanServerExits": 4,
+        "cleanWorkerExits": 3
+      },
+      {
+        "pair": "rust/rust",
+        "offlineResume": {
+          "httpStatus": 503,
+          "message": "Worker is offline.",
+          "savedStatus": "offline",
+          "lastError": "Worker is offline."
+        },
+        "commands": [
+          {
+            "command": "surface.suspend",
+            "surfaceId": "66cc3ac8-f27f-4afb-87c9-39dd250e9758",
+            "requestId": "ea9c0323-9500-4126-918f-118924e4681d",
+            "committedStatus": "suspended"
+          },
+          {
+            "command": "surface.resume",
+            "surfaceId": "66cc3ac8-f27f-4afb-87c9-39dd250e9758",
+            "requestId": "cb415ae2-9d33-44bf-ab20-228ce3a5418d",
+            "committedStatus": "active"
+          }
+        ],
+        "reopenedStatus": "idle",
+        "retainedExactEnvelopes": true,
+        "pausedFrames": 7,
+        "resumedFrames": 8,
+        "restoredFrames": 1,
+        "authenticatedBytes": 11488,
+        "aadRejected": true,
+        "savedRevision": 2,
+        "deleted": true,
+        "cleanServerExits": 4,
+        "cleanWorkerExits": 3
+      }
+    ]
+  }
+}
