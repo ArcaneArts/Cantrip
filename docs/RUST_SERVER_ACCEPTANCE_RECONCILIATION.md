@@ -17,6 +17,15 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [CantripOS Run lifecycle comparison](RUST_SERVER_OS_RUN_LIFECYCLE.md)
+uses the existing browser SDK, production servers, full worker and real Linux
+guest across all three stores. It verifies encrypted output and the same
+process across server and worker loss, then advances the generation on
+restart and terminates the replacement on Stop. Scoped worker command coverage
+accounts for 300 of 323 identities, including four worker handlers without
+current server producers. The worker's large retained-output truncation test
+remains open.
+
 The [encrypted Chat steer comparison](RUST_SERVER_LEGACY_CHAT_STEER.md)
 exercises an active Chat without a native activation across all nine storage and
 authentication combinations. It verifies the actual worker codecs and steer RPC
