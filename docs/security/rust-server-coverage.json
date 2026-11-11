@@ -29095,6 +29095,31 @@
         "Complete the remaining supported-platform and full-product qualification."
       ]
     },
+    "currentPopulatedProfilePerformance": {
+      "status": "partial",
+      "scope": "Standalone macOS ARM64, 64 projects, 256 chats and 31,624 encrypted messages. The five-cell Node/Rust baseline passed 130 runs. The optimized 1.1.2857 package and Rust 1.1.2854 baseline passed 156 invocations across all three stores with exact Rust response bytes and equivalent decoded Node project, chat catalog, page and full-history payloads.",
+      "evidence": [
+        "docs/RUST_SERVER_INTEGRATED_ARTIFACT_ACCEPTANCE.md#populated-profile-performance"
+      ],
+      "retainedEvidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1/populated-profile-performance",
+      "nodeRustBaselineReport": {
+        "path": "verified-populated-performance-matrix-v3.json",
+        "sha256": "4b2eab900122490a86a365d6e02c6cdc814f69cdc5d39f5c7ccc008f4d840676"
+      },
+      "optimizedRustReport": {
+        "path": "verified-populated-performance-ab-measured-v2.json",
+        "sha256": "53a201db4601bccdfca2a54a2c979143a7e0c1d0bff92d72138380bf485f7db0"
+      },
+      "completeWorkloadMedianImprovementPct": {
+        "pglite": 32.66,
+        "postgres": 30.73,
+        "bundled-postgres": 30.6
+      },
+      "remaining": [
+        "Full encrypted history remains slower than the earlier Node reference in both comparable stores. External PostgreSQL project and paged reads also remain slower.",
+        "Finish representative performance and recovery acceptance on the final shipping artifacts."
+      ]
+    },
     "currentWorkerLogStreamingPerformance": {
       "status": "partial",
       "scope": "Production-entry controlled worker-log JSON on macOS arm64. PGlite: five warmups and 20 measured 256 MiB runs for original Rust, optimized Rust and Node; all 75 pass with exact payload and wire bytes. All three stores: each production peer passes 64 MiB, slow-consumer 1013/one lease stop and SIGKILL/reconnect with retained identity/write and post-recovery command/stream. Final native package passes all3 local/hosted, embedded fallback, exports/restart/SIGTERM, 1762 file hashes, no Node PATH and denied Homebrew reads/artifact writes.",

@@ -223,22 +223,25 @@ impl ProjectRepository {
     }
     pub async fn list(&self, owner: &str) -> Result<Vec<Value>> {
         let projects=self.database.query("SELECT to_jsonb(p)::text,p.created_at,p.updated_at FROM projects p WHERE owner_id=$1 ORDER BY position ASC,created_at ASC",&[&owner]).await?;
-        let ids = projects
+        let parsed = projects
             .iter()
             .map(|row| {
-                let raw: Value = serde_json::from_str(&row.get::<String>(0)?)?;
-                Ok(raw["id"].as_str().context("Project identity")?.to_owned())
+                let raw: Value = serde_json::from_str(row.get::<&str>(0)?)?;
+                let id = raw["id"].as_str().context("Project identity")?.to_owned();
+                Ok((row, raw, id))
             })
             .collect::<Result<Vec<_>>>()?;
-        let mut by_project = self.replicas_by_project(owner, &ids).await?;
-        projects
+        let ids = parsed
             .iter()
-            .map(|row| {
-                let raw: Value = serde_json::from_str(&row.get::<String>(0)?)?;
-                let id = raw["id"].as_str().context("Project identity")?;
+            .map(|(_, _, id)| id.clone())
+            .collect::<Vec<_>>();
+        let mut by_project = self.replicas_by_project(owner, &ids).await?;
+        parsed
+            .into_iter()
+            .map(|(row, raw, id)| {
                 project(
                     &raw,
-                    by_project.remove(id).unwrap_or_default(),
+                    by_project.remove(&id).unwrap_or_default(),
                     row.get(1)?,
                     row.get(2)?,
                 )

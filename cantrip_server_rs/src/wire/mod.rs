@@ -34,6 +34,7 @@ mod workspaces;
 pub use value::{JsString, Value};
 use value::{Object, json};
 
+use indexmap::IndexMap;
 use serde::Deserialize;
 use serde_json::Map;
 use std::{collections::HashMap, sync::OnceLock};
@@ -103,8 +104,53 @@ struct Check {
     #[serde(default)]
     path: Vec<Value>,
     #[serde(skip)]
-    compiled: Option<regress::Regex>,
+    compiled: Option<StringPattern>,
 }
+
+enum StringPattern {
+    Base64Url,
+    Regex(regress::Regex),
+}
+
+impl StringPattern {
+    fn new(pattern: &str, flags: &str) -> Self {
+        // Only this exact ECMAScript pattern and flag set have the same
+        // semantics as checking every byte against the base64url alphabet.
+        if (pattern, flags) == ("^[A-Za-z0-9_-]*$", "u") {
+            Self::Base64Url
+        } else {
+            Self::Regex(
+                regress::Regex::with_flags(pattern, flags).expect("compiled protocol regex"),
+            )
+        }
+    }
+
+    fn matches(&self, value: &JsString) -> bool {
+        match self {
+            Self::Base64Url => value.as_str().is_some_and(|text| {
+                text.bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+            }),
+            Self::Regex(regex) => regex.find_from_utf16(value.units(), 0).next().is_some(),
+        }
+    }
+}
+
+fn deserialize_shape<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<IndexMap<JsString, usize>, D::Error> {
+    Map::<String, serde_json::Value>::deserialize(deserializer)?
+        .into_iter()
+        .map(|(key, reference)| {
+            let reference = reference
+                .as_u64()
+                .and_then(|value| usize::try_from(value).ok())
+                .ok_or_else(|| serde::de::Error::custom("invalid generated property reference"))?;
+            Ok((key.into(), reference))
+        })
+        .collect()
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Node {
@@ -114,8 +160,8 @@ struct Node {
     optional_in: bool,
     #[serde(default)]
     optional_out: bool,
-    #[serde(default)]
-    shape: Map<String, serde_json::Value>,
+    #[serde(default, deserialize_with = "deserialize_shape")]
+    shape: IndexMap<JsString, usize>,
     #[serde(default)]
     inner_type: Option<usize>,
     #[serde(default)]
@@ -262,9 +308,8 @@ pub(crate) fn parse_property(
     let property = contracts.nodes[*root]
         .shape
         .get(field)
-        .and_then(serde_json::Value::as_u64)
         .ok_or(ValidationError::Operation)?;
-    parsed_value(contracts.run(property as usize, Some(input), &[])?)
+    parsed_value(contracts.run(*property, Some(input), &[])?)
 }
 
 fn parsed_value(result: Parsed) -> Result<Value, ValidationError> {
@@ -300,7 +345,18 @@ impl Contracts {
         path: &[Value],
     ) -> Result<Parsed, ValidationError> {
         let node = &self.nodes[id];
-        let mut result = Parsed::new(input.cloned());
+        // These branches construct or forward their own parsed value.
+        let original = match (node.kind.as_str(), input) {
+            ("nullable", Some(Value::Null)) => Some(Value::Null),
+            ("object", Some(Value::Object(_))) | ("array", Some(Value::Array(_))) => None,
+            (
+                "optional" | "nullable" | "default" | "prefault" | "nonoptional" | "readonly"
+                | "forward" | "pipe" | "json" | "record" | "tuple" | "union" | "intersection",
+                _,
+            ) => None,
+            (_, input) => input.cloned(),
+        };
+        let mut result = Parsed::new(original);
         match node.kind.as_str() {
             "optional" if input.is_none() => {}
             "nullable" if input.is_some_and(Value::is_null) => {}
@@ -401,15 +457,12 @@ impl Contracts {
             }
             "object" => {
                 if let Some(object) = input.and_then(Value::as_object) {
-                    let mut output = Object::new();
-                    for (key, id) in &node.shape {
-                        let schema_id = id.as_u64().unwrap() as usize;
-                        let present = object.contains_key(key.as_str());
-                        let mut child = self.run(
-                            schema_id,
-                            object.get(key.as_str()),
-                            &path_with(path, json!(key)),
-                        )?;
+                    let mut output = Object::with_capacity(node.shape.len());
+                    for (key, &schema_id) in &node.shape {
+                        let property = object.get(key);
+                        let present = property.is_some();
+                        let child_path = path_with(path, Value::String(key.clone()));
+                        let mut child = self.run(schema_id, property, &child_path)?;
                         let schema = &self.nodes[schema_id];
                         if !present && schema.optional_in && schema.optional_out {
                             child.issues.clear();
@@ -420,7 +473,7 @@ impl Contracts {
                             if child.issues.is_empty() {
                                 child.issue(
                                     json!({"code":"invalid_type","expected":"nonoptional"}),
-                                    &path_with(path, json!(key)),
+                                    &child_path,
                                     "Invalid input: expected nonoptional, received undefined"
                                         .into(),
                                     true,
@@ -428,17 +481,17 @@ impl Contracts {
                             }
                             child.value = None;
                         }
-                        if let Some(value) = &child.value {
-                            output.insert(key.clone().into(), value.clone());
+                        if let Some(value) = child.value.take() {
+                            output.insert(key.clone(), value);
                         }
                         result.merge(child);
                     }
-                    let extra: Vec<_> = coercion::keys(object)
-                        .into_iter()
-                        .filter(|key| key.as_str() != Some("__proto__"))
-                        .filter(|key| !key.as_str().is_some_and(|key| node.shape.contains_key(key)))
-                        .collect();
                     if let Some(catchall) = node.catchall {
+                        let extra: Vec<_> = coercion::keys(object)
+                            .into_iter()
+                            .filter(|key| key.as_str() != Some("__proto__"))
+                            .filter(|&key| !node.shape.contains_key(key))
+                            .collect();
                         if self.nodes[catchall].kind == "never" {
                             if !extra.is_empty() {
                                 let message = JsString::join_quoted(
@@ -457,13 +510,13 @@ impl Contracts {
                             }
                         } else {
                             for key in extra {
-                                let child = self.run(
+                                let mut child = self.run(
                                     catchall,
                                     object.get(key),
-                                    &path_with(path, json!(key)),
+                                    &path_with(path, Value::String(key.clone())),
                                 )?;
-                                if let Some(value) = &child.value {
-                                    output.insert(key.clone(), value.clone());
+                                if let Some(value) = child.value.take() {
+                                    output.insert(key.clone(), value);
                                 }
                                 result.merge(child);
                             }
@@ -476,23 +529,17 @@ impl Contracts {
             }
             "array" => {
                 if let Some(array) = input.and_then(Value::as_array) {
-                    let mut output = Vec::new();
+                    let mut output = Vec::with_capacity(array.len());
                     for (index, value) in array.iter().enumerate() {
-                        let child = self.run(
+                        let mut child = self.run(
                             node.element.expect("array element"),
                             Some(value),
-                            &path_with(path, json!(index)),
+                            &path_with(path, Value::Number(index as f64)),
                         )?;
-                        output.push(child.value.clone().unwrap_or(Value::Null));
+                        output.push(child.value.take().unwrap_or(Value::Null));
                         result.merge(child);
                     }
-                    result.value = Some(
-                        if output.iter().all(Value::json_round_trip_preserves_value) {
-                            Value::Array(output)
-                        } else {
-                            json!(output)
-                        },
-                    );
+                    result.value = Some(Value::Array(output).into_json_round_trip());
                 } else {
                     result.invalid("array", path);
                 }
@@ -597,9 +644,9 @@ impl Contracts {
         input: Option<&Value>,
         path: &[Value],
     ) -> Result<Parsed, ValidationError> {
-        let mut result = Parsed::new(input.cloned());
         if let Some(key) = &node.discriminator {
             let Some(object) = input.and_then(Value::as_object) else {
+                let mut result = Parsed::new(input.cloned());
                 result.issue(
                     json!({"code":"invalid_type","expected":"object"}),
                     path,
@@ -614,8 +661,7 @@ impl Contracts {
             let mut values = Vec::new();
             for id in &node.options {
                 let option = &self.nodes[*id];
-                let candidates =
-                    self.discriminator_values(option.shape[key].as_u64().unwrap() as usize)?;
+                let candidates = self.discriminator_values(option.shape[key])?;
                 if candidates
                     .iter()
                     .any(|candidate| candidate.as_ref() == object.get(key))
@@ -636,6 +682,7 @@ impl Contracts {
                     .collect::<Vec<_>>()
                     .join(" | ")
             );
+            let mut result = Parsed::new(input.cloned());
             result.issue(json!({"code":"invalid_union","errors":Vec::<Value>::new(),"note":"No matching discriminator","discriminator":key,"options":values}),&path_with(path,json!(key)),message,true);
             return Ok(result);
         }
@@ -656,6 +703,7 @@ impl Contracts {
             }
             return Ok(chosen);
         }
+        let mut result = Parsed::new(input.cloned());
         result.issue(json!({"code":"invalid_union","errors":alternatives.into_iter().map(|p|p.issues).collect::<Vec<_>>()}),path,"Invalid input".into(),true);
         Ok(result)
     }
@@ -896,13 +944,11 @@ impl Contracts {
                     }
                     return Ok(());
                 }
-                if check
+                if !check
                     .compiled
                     .as_ref()
                     .expect("protocol regex")
-                    .find_from_utf16(value.units(), 0)
-                    .next()
-                    .is_none()
+                    .matches(value)
                 {
                     let format = check.format.as_str();
                     let label = match format {
@@ -961,5 +1007,33 @@ impl Contracts {
             _ => return Err(ValidationError::Operation),
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod string_pattern_tests {
+    use super::*;
+
+    #[test]
+    fn base64url_matches_the_generated_regex() {
+        const PATTERN: &str = "^[A-Za-z0-9_-]*$";
+        let optimized = StringPattern::new(PATTERN, "u");
+        let reference = StringPattern::Regex(regress::Regex::with_flags(PATTERN, "u").unwrap());
+        for unit in 0..=u16::MAX {
+            let value = JsString::new(vec![u16::from(b'A'), unit]);
+            assert_eq!(
+                optimized.matches(&value),
+                reference.matches(&value),
+                "{unit:#06x}"
+            );
+        }
+        for text in ["", "ABCxyz098-_", "AA\r\n", "AA=", "A🦀"] {
+            let value = JsString::from(text);
+            assert_eq!(
+                optimized.matches(&value),
+                reference.matches(&value),
+                "{text:?}"
+            );
+        }
     }
 }

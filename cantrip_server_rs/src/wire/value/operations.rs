@@ -111,9 +111,17 @@ impl Value {
         output
     }
 
+    pub(crate) fn into_json_round_trip(self) -> Self {
+        if self.json_round_trip_preserves_value() {
+            self
+        } else {
+            Self::from_serialize(&self)
+        }
+    }
+
     /// Avoid an encoding round trip only when it preserves the whole value,
     /// including number signs and the object's observable property order.
-    pub(in crate::wire) fn json_round_trip_preserves_value(&self) -> bool {
+    fn json_round_trip_preserves_value(&self) -> bool {
         let mut pending = vec![self];
         while let Some(value) = pending.pop() {
             match value {
@@ -160,6 +168,13 @@ impl Drop for Value {
 
 impl Clone for Value {
     fn clone(&self) -> Self {
+        match self {
+            Self::Null => return Self::Null,
+            Self::Bool(value) => return Self::Bool(*value),
+            Self::Number(value) => return Self::Number(*value),
+            Self::String(value) => return Self::String(value.clone()),
+            Self::Array(_) | Self::Object(_) => {}
+        }
         enum Step<'a> {
             Visit(&'a Value),
             Array(usize),

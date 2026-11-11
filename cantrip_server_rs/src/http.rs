@@ -2,6 +2,7 @@ use std::{sync::Arc, time::Instant};
 
 use axum::{
     Json, Router,
+    body::Body,
     extract::{Request, State},
     http::{StatusCode, header::CONTENT_TYPE},
     response::{IntoResponse, Response},
@@ -159,6 +160,19 @@ pub(super) fn json_response<T: serde::Serialize>(status: StatusCode, value: T) -
             .extensions_mut()
             .insert(usage_hooks::EncodedPayload(bytes as usize));
     }
+    response
+}
+
+fn wire_json_response(status: StatusCode, value: &crate::wire::Value) -> Response {
+    let body = value.stringify();
+    let encoded = usage_hooks::EncodedPayload(body.len());
+    let mut response = (
+        status,
+        [(CONTENT_TYPE, "application/json; charset=utf-8")],
+        Body::from(body),
+    )
+        .into_response();
+    response.extensions_mut().insert(encoded);
     response
 }
 

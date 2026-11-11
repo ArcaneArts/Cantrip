@@ -182,7 +182,94 @@ records every invocation separately and preserves failed runs. The sample used
 the perf-regression-guard skill's capture/compare commands with the same five
 warmups, 20 measurements and a 5% complete-workload regression threshold.
 
-## Local repository checks
+## Populated-profile performance
+
+The compiled Node reference from `c43a645d8` and optimized macOS ARM64 Rust
+`1.1.2854` ran against the same synthetic profile on an Apple M4 Max. The
+profile contains 64 projects, 256 chats, and 31,624 encrypted messages. The
+busiest chat contains 1,024 messages and its full history is about 3.1 MB of
+JSON. The original Node PGlite profile and logical restores preserve the
+same identities and opaque content across all five configurations.
+
+Each configuration passed one pilot, five warmups, and 20 measured runs.
+The workload covers readiness, process-tree memory, sequential and
+eight-client reads, settings writes, App Live pings and enrollment
+publication, paused-client catch-up, retained state, and graceful shutdown.
+Decoded project, chat catalog, message page, and full-history payloads
+matched across all five configurations.
+
+| Median measurement       | Node PGlite | Rust PGlite | Node external PostgreSQL | Rust external PostgreSQL | Rust bundled PostgreSQL |
+| ------------------------ | ----------: | ----------: | -----------------------: | -----------------------: | ----------------------: |
+| Complete workload        |    4,644 ms |    3,852 ms |                 3,327 ms |                 2,992 ms |                3,128 ms |
+| Readiness                |    1,291 ms |      133 ms |                   957 ms |                    61 ms |                  175 ms |
+| Idle process-tree RSS    |   1,308 MiB |     100 MiB |                  453 MiB |                   66 MiB |                 378 MiB |
+| Project list             |     7.52 ms |    13.74 ms |                  4.31 ms |                 13.86 ms |                13.99 ms |
+| 50-message page          |     4.04 ms |     6.51 ms |                  2.71 ms |                  6.70 ms |                 6.77 ms |
+| 1,024-message history    |    34.90 ms |   106.02 ms |                 24.22 ms |                106.58 ms |               106.51 ms |
+| Eight-client mixed reads |   331 req/s |   224 req/s |                681 req/s |                851 req/s |               831 req/s |
+
+Rust `1.1.2854` reduced the complete-workload median by 17% on PGlite and
+10% on external PostgreSQL. Project and message reads still regressed, and
+PGlite mixed-read throughput fell 32%. The bundled PostgreSQL test measures
+the Rust distribution independently. RSS includes server-owned processes
+and shared mappings. The external PostgreSQL process was managed separately.
+
+The retained report is `populated-profile-performance/verified-populated-performance-matrix-v3.json`
+in the local `rust-server-final-native-2e60d2042-20261111-v1` evidence directory.
+It records executable workload results, the logical restore manifest, and
+checksums for the raw benchmark captures.
+
+### Native read optimization
+
+CPU samples showed repeated protocol-value cloning and encoding, generated
+field-name allocation, and regex work on opaque ciphertext. The optimized
+server moves parsed values into response objects, reuses generated field names,
+avoids redundant JSON round trips, and checks the exact base64url alphabet
+directly. The existing schema checks, trailing-bit refinement, JSON escaping,
+and message-page limits still run.
+
+The optimized macOS ARM64 `1.1.2857` package and the previous `1.1.2854`
+package ran the same workload on separate restores of the populated profile.
+All 156 invocations completed, including six pilots, 30 warmups, and 120
+measurements. Project lists, chat catalogs, message pages, and full histories
+matched byte for byte between the two Rust builds and matched the decoded
+Node payloads. A sequential wire-contract oracle ran in the background.
+
+| Median measurement       | PGlite before → after | External PostgreSQL before → after | Bundled PostgreSQL before → after |
+| ------------------------ | --------------------: | ---------------------------------: | --------------------------------: |
+| Complete workload        |   3,954 ms → 2,663 ms |                3,059 ms → 2,119 ms |               3,184 ms → 2,209 ms |
+| Project list             |    14.35 ms → 6.38 ms |                 14.43 ms → 6.34 ms |                14.67 ms → 6.30 ms |
+| 50-message page          |     6.90 ms → 3.21 ms |                  7.04 ms → 3.29 ms |                 7.11 ms → 3.16 ms |
+| 1,024-message history    |  108.70 ms → 41.96 ms |               108.99 ms → 42.71 ms |              110.00 ms → 41.26 ms |
+| Eight-client mixed reads |       215 → 439 req/s |                  828 → 1,557 req/s |                 818 → 1,539 req/s |
+
+The complete-workload median dropped 31–33% across the three paired Rust
+runs. Compared with the earlier Node run on the same hardware and profile,
+PGlite project reads, message pages, and mixed-read throughput improved.
+Full history still takes 42 ms versus 35 ms on PGlite and 43 ms versus 24 ms
+on external PostgreSQL. External PostgreSQL project and paged reads also
+remain slower than the earlier Node measurements. These are open performance
+items. The comparison covers macOS ARM64 standalone packages.
+
+The retained A/B report is
+`populated-profile-performance/verified-populated-performance-ab-measured-v2.json`.
+It records median and p95 results, executable and source-patch hashes, and the
+raw response digests.
+
+The wire and library checks pass 87 library tests, 899,891 generated protocol
+cases, 69,696 JSON round trips, 27,583 contextual Chat cases, and 34,862 worker
+envelope comparisons. The exact optimized distribution passes the standalone
+checks on all three stores, including 1,762 file hashes, local and hosted
+restart, SQL export, and shutdown with a Node-free server PATH.
+
+The encrypted Chat, project, and JSON HTTP/WebSocket comparisons pass on all
+three stores. The initial Chat comparison stopped on an outdated duplicate
+write expectation in the Node reference run. The updated comparison requires
+an exact retry to return the same stored message and a retry with different
+protected content under the same key to fail. External PostgreSQL also tests
+the conflict between concurrent writers under actual row locks.
+
+## Earlier local repository checks
 
 The current Node production build, scoped formatting, server-boundary inventory,
 workflow-removal contract and `git diff --check` passed. The tracked performance
@@ -206,12 +293,12 @@ adds populated old-Node/native/old-Node/native round trips on all three backends
 with exact database comparisons and retained encrypted product writes. Its
 synthetic fixture and execution-replay limits remain explicit.
 
-Complete the encryption-ready existing-client desktop/update matrix, broader
-historical-profile and product-state rollback, outstanding product/background
-and interruption/coordination coverage, supported platform acceptance and
-representative performance. Then select Rust by default across production
-build/launch/deploy paths and remove the production Node server. The worker
-rewrite and shared-crate extraction remain later work.
+The [default cutover](RUST_SERVER_DEFAULT_CUTOVER.md) and
+[production Node retirement](RUST_SERVER_NODE_RETIREMENT.md) are merged.
+Final replacement acceptance still needs the supported shipping artifacts,
+reconciled product and background-service evidence, and representative
+performance, interruption, and rollback checks for the final candidate.
+The worker rewrite and shared-crate extraction remain later work.
 
 See [native packaging](RUST_SERVER_NATIVE_PACKAGING.md),
 [Winterhold deployment](RUST_SERVER_WINTERHOLD.md) and the

@@ -95,7 +95,16 @@ impl JsString {
     }
     fn write_json(&self, output: &mut String) {
         if let Some(text) = self.as_str() {
-            output.push_str(&serde_json::to_string(text).expect("UTF-8 JSON string"));
+            if text
+                .bytes()
+                .all(|byte| byte >= b' ' && !matches!(byte, b'"' | b'\\'))
+            {
+                output.push('"');
+                output.push_str(text);
+                output.push('"');
+            } else {
+                output.push_str(&serde_json::to_string(text).expect("UTF-8 JSON string"));
+            }
             return;
         }
         // The UTF-16 path retains lone surrogates that UTF-8 cannot represent.
@@ -135,12 +144,12 @@ impl JsString {
 impl From<&str> for JsString {
     fn from(value: &str) -> Self {
         let units = if value.is_ascii() {
-            value.bytes().map(u16::from).collect::<Vec<_>>()
+            value.bytes().map(u16::from).collect()
         } else {
             value.encode_utf16().collect()
         };
         Self {
-            units: units.into(),
+            units,
             utf8: Some(Arc::from(value)),
         }
     }
