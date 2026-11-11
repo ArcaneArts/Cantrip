@@ -17,6 +17,13 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The [CantripOS source backup comparison](RUST_SERVER_OS_SOURCE_BACKUP.md)
+repairs public backup placement errors and qualifies physical restore and
+rollback in an actual guest across all three stores. Both peers recover the
+original encrypted worker receipts after lost replies. The guest retains the
+source, the original destination home and the write made after restore.
+Scoped worker command coverage accounts for 302 of 323 identities.
+
 The [CantripOS Run lifecycle comparison](RUST_SERVER_OS_RUN_LIFECYCLE.md)
 uses the existing browser SDK, production servers, full worker and real Linux
 guest across all three stores. It verifies encrypted output and the same

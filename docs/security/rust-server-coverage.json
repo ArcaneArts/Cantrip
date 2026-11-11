@@ -12068,6 +12068,40 @@
         ]
       },
       {
+        "command": "cantrip-os.backup.restore",
+        "implementation": [
+          "cantrip_server_rs/src/cantrip_os/backups.rs",
+          "cantrip_server_rs/src/cantrip_os/backup_coordinator.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_OS_SOURCE_BACKUP.md",
+          "docs/security/rust-server-os-source-backup-acceptance.json",
+          "scripts/server-rust/actual-cantrip-os-backup-client.mjs",
+          "scripts/server-rust/os-backup-response-fault.mjs"
+        ],
+        "remaining": [
+          "The actual account-authenticated browser, worker and Linux guest qualify replacement, protected receipt recovery and unchanged inodes across all three stores. Shared Redis and final supported-platform artifact acceptance remain open for this scenario."
+        ]
+      },
+      {
+        "command": "cantrip-os.backup.rollback",
+        "implementation": [
+          "cantrip_server_rs/src/cantrip_os/backups.rs",
+          "cantrip_server_rs/src/cantrip_os/backup_coordinator.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_OS_SOURCE_BACKUP.md",
+          "docs/security/rust-server-os-source-backup-acceptance.json",
+          "scripts/server-rust/actual-cantrip-os-backup-client.mjs",
+          "scripts/server-rust/os-backup-response-fault.mjs"
+        ],
+        "remaining": [
+          "The actual account-authenticated browser, worker and Linux guest qualify replacement, protected receipt recovery and unchanged inodes across all three stores. Shared Redis and final supported-platform artifact acceptance remain open for this scenario."
+        ]
+      },
+      {
         "command": "cantrip-os.backup.observe",
         "implementation": "cantrip_server_rs/src/cantrip_os/",
         "status": "implemented-pending-platform-acceptance",

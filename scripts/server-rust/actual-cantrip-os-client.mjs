@@ -8,9 +8,11 @@ import { actualCantripOsPackageClient } from "./actual-cantrip-os-package-client
 import { actualCantripOsSystemClient } from "./actual-cantrip-os-system-client.mjs";
 
 import { actualCantripOsRunClient } from "./actual-cantrip-os-run-client.mjs";
+import { actualCantripOsBackupClient } from "./actual-cantrip-os-backup-client.mjs";
 
 export async function actualCantripOsClient({
   runProjectId,
+  backupProjectId,
   page,
   fixture,
   root,
@@ -91,7 +93,7 @@ export async function actualCantripOsClient({
   try {
     // Populate the ordinary Worker-owned public artifact catalog. The full
     // worker reads and snapshots these files through its production catalog.
-    if (!runProjectId) {
+    if (!runProjectId && !backupProjectId) {
       await cp(
         process.env.CANTRIP_TEST_OS_PACKAGE_DIRECTORY,
         path.join(dataDirectory, "cantrip-os-packages"),
@@ -214,6 +216,30 @@ export async function actualCantripOsClient({
       "actual Docker guest attachment and retained workspace-create admission use the existing browser SDK and full worker without duplicate creation",
     );
 
+    if (backupProjectId) {
+      await actualCantripOsBackupClient({
+        page,
+        call,
+        os,
+        guest,
+        record,
+        instance,
+        selected,
+        fixture,
+        workerId,
+        projectId: backupProjectId,
+        dataDirectory,
+        crashWorker,
+        startWorker,
+        report,
+      });
+      result.steps.push(
+        "encrypted source backup restores and rolls back real guest files after lost worker replies",
+      );
+      report.summary = report.snapshots;
+      succeeded = true;
+      return;
+    }
     if (runProjectId) {
       await actualCantripOsRunClient({
         page,

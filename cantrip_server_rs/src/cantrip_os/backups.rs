@@ -58,13 +58,21 @@ impl Repository {
             ensure!(!tx.query("SELECT id FROM cantrip_os_instances WHERE id=$1 AND owner_id=$2 FOR UPDATE", &[&instance,&owner]).await?.is_empty(),crate::cantrip_os::PlacementError("OS attachment not found."));
             let old=decode(tx.query("SELECT to_jsonb(o)::text FROM cantrip_os_backup_operations o WHERE operation_id=$1", &[&text(&input,"operationId")?]).await?)?;
             if let Some(old)=old.first() {
-                ensure!(old["owner_id"]==owner && old["instance_id"]==instance && old["request"]==input,"The operation ID belongs to a different backup admission.");
+                ensure!(
+                    old["owner_id"] == owner && old["instance_id"] == instance && old["request"] == input,
+                    crate::cantrip_os::PlacementError("The operation ID belongs to a different backup admission.")
+                );
                 return Ok((old.clone(),false));
             }
             let targets=decode(tx.query("SELECT jsonb_build_object('instance',to_jsonb(i),'workspace',to_jsonb(w))::text FROM cantrip_os_instances i JOIN cantrip_os_workspaces w ON w.instance_id=i.id JOIN workers k ON k.id=i.worker_id AND k.owner_id=$1 AND k.unlinked_at IS NULL WHERE i.owner_id=$1 AND i.id=$2 AND w.id=$3 FOR UPDATE", &[&owner,&instance,&text(&input,"workspaceId")?]).await?)?;
-            let target=targets.first().context("The selected OS workspace or runtime changed before backup admission.")?;
+            let target_changed = "The selected OS workspace or runtime changed before backup admission.";
+            let target = targets.first().context(crate::cantrip_os::PlacementError(target_changed))?;
             let (i,w)=(&target["instance"],&target["workspace"]);
-            ensure!(i["attachment_generation"]==input["attachmentGeneration"] && i["runtime_generation"]==input["runtimeGeneration"],"The selected OS workspace or runtime changed before backup admission.");
+            ensure!(
+                i["attachment_generation"] == input["attachmentGeneration"]
+                    && i["runtime_generation"] == input["runtimeGeneration"],
+                crate::cantrip_os::PlacementError(target_changed)
+            );
             let scope=json!({"ownerId":owner,"serverId":server,"workerId":i["worker_id"],"instanceId":instance,"guestInstanceId":i["guest_instance_id"],"attachmentGeneration":i["attachment_generation"],"runtimeGeneration":i["runtime_generation"]});
             let action=text(&input,"action")?;
             let mut command=json!({"type":format!("cantrip-os.backup.{action}"),"scope":scope,"operationId":input["operationId"],"transport":i["transport"],"protectedRequest":input["protectedRequest"],"workspace":{"id":w["id"],"guestWorkspaceId":w["guest_workspace_id"],"uid":w["uid"],"gid":w["gid"],"homeGuestPath":w["home_guest_path"]}});
@@ -74,10 +82,30 @@ impl Repository {
             } else if action != "reset" {
                 let reference=if action=="restore" {text(&input,"backupId")?} else {text(&input,"restoreOperationId")?};
                 let references=decode(tx.query("SELECT to_jsonb(o)::text FROM cantrip_os_backup_operations o WHERE operation_id=$1 AND owner_id=$2", &[&reference,&owner]).await?)?;
-                let r=references.first().context("The referenced backup operation belongs to another target or storage Worker.")?;
-                ensure!(r["worker_id"]==i["worker_id"] && (if action=="restore" {r["action"]=="capture"} else {r["action"]=="restore" || r["action"]=="reset"}),"The referenced backup operation belongs to another target or storage Worker.");
-                if action=="restore" {command["backupId"]=input["backupId"].clone();command["backupScope"]=r["command"]["scope"].clone();command["replace"]=input["replace"].clone();}
-                else {ensure!(r["instance_id"]==i["id"] && r["workspace_id"]==w["id"] && r["command"]["scope"]["guestInstanceId"]==i["guest_instance_id"] && r["command"]["scope"]["attachmentGeneration"]==i["attachment_generation"],"Rollback must target the original restore workspace.");command["restoreOperationId"]=input["restoreOperationId"].clone();}
+                let invalid_reference = "The referenced backup operation belongs to another target or storage Worker.";
+                let r = references.first().context(crate::cantrip_os::PlacementError(invalid_reference))?;
+                let action_matches = if action == "restore" {
+                    r["action"] == "capture"
+                } else {
+                    r["action"] == "restore" || r["action"] == "reset"
+                };
+                ensure!(
+                    r["worker_id"] == i["worker_id"] && action_matches,
+                    crate::cantrip_os::PlacementError(invalid_reference)
+                );
+                if action == "restore" {
+                    command["backupId"] = input["backupId"].clone();
+                    command["backupScope"] = r["command"]["scope"].clone();
+                    command["replace"] = input["replace"].clone();
+                } else {
+                    ensure!(
+                        r["instance_id"] == i["id"] && r["workspace_id"] == w["id"]
+                            && r["command"]["scope"]["guestInstanceId"] == i["guest_instance_id"]
+                            && r["command"]["scope"]["attachmentGeneration"] == i["attachment_generation"],
+                        crate::cantrip_os::PlacementError("Rollback must target the original restore workspace.")
+                    );
+                    command["restoreOperationId"] = input["restoreOperationId"].clone();
+                }
             }
             let command=checked("workerRequestEnvelopeSchema",json!({"kind":"request","requestId":"backup-admission","command":command}))?["command"].clone();
             let values=Json(json!({"owner":owner,"instance":instance,"worker":i["worker_id"],"workspace":w["id"],"input":input,"command":command}));
@@ -107,7 +135,17 @@ impl Repository {
             let current=rows.first().context(crate::cantrip_os::PlacementError("Backup operation not found."))?;
             let (o,i,w)=(&current["operation"],&current["instance"],&current["workspace"]);let original=&o["command"]["scope"];
             let workspace=json!({"id":w["id"],"guestWorkspaceId":w["guest_workspace_id"],"uid":w["uid"],"gid":w["gid"],"homeGuestPath":w["home_guest_path"]});
-            ensure!(i["owner_id"]==owner && i["attachment_generation"]==input["attachmentGeneration"] && i["attachment_generation"]==original["attachmentGeneration"] && i["runtime_generation"]==input["runtimeGeneration"] && i["guest_instance_id"]==original["guestInstanceId"] && i["worker_id"]==original["workerId"] && original["serverId"]==server && o["command"]["workspace"]==workspace,"The continuation target changed. Check recovery and select its current runtime before continuing.");
+            ensure!(
+                i["owner_id"] == owner && i["attachment_generation"] == input["attachmentGeneration"]
+                    && i["attachment_generation"] == original["attachmentGeneration"]
+                    && i["runtime_generation"] == input["runtimeGeneration"]
+                    && i["guest_instance_id"] == original["guestInstanceId"]
+                    && i["worker_id"] == original["workerId"] && original["serverId"] == server
+                    && o["command"]["workspace"] == workspace,
+                crate::cantrip_os::PlacementError(
+                    "The continuation target changed. Check recovery and select its current runtime before continuing."
+                )
+            );
             let mut scope=original.clone();scope["runtimeGeneration"]=input["runtimeGeneration"].clone();let scope=Json(scope);
             let rows=decode(tx.query("UPDATE cantrip_os_backup_operations SET revision=revision+1,continuation_scope=$3 WHERE owner_id=$1 AND operation_id=$2 RETURNING to_jsonb(cantrip_os_backup_operations)::text", &[&owner,&id,&scope]).await?)?;
             Ok(rows[0].clone())
