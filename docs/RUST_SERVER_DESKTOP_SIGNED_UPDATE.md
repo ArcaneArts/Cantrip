@@ -43,6 +43,38 @@ local updater, packaging and catalog tests and 41 first-run encryption tests
 passed. This rehearsal used local Developer ID signing. Release notarization
 and Windows installer acceptance remain separate.
 
+## Current installed app and signed update
+
+The local release-mode macOS ARM64 app updates from `1.1.2831` to
+`1.1.2845` on PGlite, bundled PostgreSQL and external PostgreSQL. Both apps
+use client source `241e94256fa22a5ab753f900808d15060a1c653f`. The candidate
+embeds the verified `1.1.2845` server from
+`2e60d2042203f64c8105d5c52d12ae1db92d2d83`, a fresh worker JavaScript build
+and portable Node `24.22.1` for the worker. The nine retained worker helper
+files match the earlier verified app, and their source has no changes in
+this interval.
+
+The production signer applied the same Developer ID to both app versions
+and signed 198 embedded Mach-O files per app. The installed app matched the
+candidate application and server hashes in all three cases. A separate
+archive comparison verified all 13,567 files in each installation. The loopback
+HTTPS updater with a disposable signing key rejected a tampered archive,
+then installed and relaunched the signed candidate. Each updated WebView
+authenticated using its retained device key. The server retained its
+identity, database selection and accepted setting. The packaged worker
+reconnected with the same identity and answered a real version command.
+Each updated app accepted another setting change and shut down its owned
+services cleanly.
+
+The `1.1.2831` baseline initialized the profiles during the rehearsal.
+The earlier encrypted-profile qualification covers original Node profiles.
+[Historical encrypted-profile qualification](RUST_SERVER_DESKTOP_ENCRYPTED_ACCEPTANCE.md)
+
+The current local run used a separate application identifier and test trust
+root. The reports and signed archives are retained. The production frontend
+build, 40 focused desktop script tests and 13 renderer auth tests passed locally.
+[macOS acceptance record](security/rust-server-darwin-arm64-acceptance.json)
+
 ## Current standalone package
 
 The optimized macOS ARM64 server `1.1.2845` from
