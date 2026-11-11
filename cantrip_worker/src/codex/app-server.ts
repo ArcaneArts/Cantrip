@@ -7751,8 +7751,9 @@ export class CodexAppServer implements CodexRuntime {
       return options.threadId;
     }
     const structuredReadOnly = options.resultMode?.kind === "structured";
+    const planningPermissionKey = "cantrip:task-read-only";
     const permissionKey = structuredReadOnly
-      ? "cantrip:task-read-only"
+      ? planningPermissionKey
       : options.permissionProfileId;
     const modelProvider = codexModelProviderName(options.provider);
     const mcpConfig =
@@ -7796,11 +7797,18 @@ export class CodexAppServer implements CodexRuntime {
         ...codexProviderLogContext(options.provider),
       });
       try {
+        const previousPermissionKey =
+          this.#permissionProfilesByThread.get(threadId);
+        const restoreTaskPermissions =
+          options.executionGate?.inferenceOnly === true &&
+          !inheritManagedSecurity &&
+          previousPermissionKey === planningPermissionKey &&
+          !structuredReadOnly;
         if (
-          !options.managedConfiguration &&
+          (!options.managedConfiguration || restoreTaskPermissions) &&
           this.#loadedThreads.has(threadId) &&
           ((!inheritManagedSecurity &&
-            this.#permissionProfilesByThread.get(threadId) !== permissionKey) ||
+            previousPermissionKey !== permissionKey) ||
             this.#mcpConfigFingerprintsByThread.get(threadId) !==
               threadConfigFingerprint)
         ) {
