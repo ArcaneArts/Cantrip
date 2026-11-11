@@ -1,6 +1,6 @@
 // Actual HTTP upgrades and binary sockets, using the unchanged production
-// WorkerConnection with controlled authority acknowledgments. Resource execution,
-// direct attachments and shared-server routing have separate acceptance work.
+// WorkerConnection with controlled authority acknowledgments. Resource
+// execution, direct data-plane I/O and shared-server routing are separate.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
@@ -18,6 +18,7 @@ import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.
 import { buildRustServer } from "./build.mjs";
 import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { HttpFixture } from "./http-fixture.mjs";
+import { deadline } from "./live-sockets.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { heartbeat, password } from "./security-fixtures.mjs";
 import { workerLinkWireFixtures } from "./worker-link-wire-fixtures.mjs";
@@ -1288,17 +1289,101 @@ try {
           101,
         );
         if (profile === "accounts") {
+          const activateDirect = async (label, sessionId, client) => {
+            const sessionBase = `/api/worker-links/${sessionId}`;
+            const ticket = directAttachmentTicketSchema.parse(
+              await visit(label + " ticket", "POST", sessionBase + "/direct", {
+                client,
+                status: 201,
+              }),
+            );
+            assert.equal(ticket.binding.attachmentId, sessionId);
+            const { capabilityId } = ticket.binding;
+            await visit(
+              label + " activation",
+              "POST",
+              sessionBase + "/direct-activate",
+              { client, json: { capabilityId }, status: 204 },
+            );
+            return capabilityId;
+          };
+          const openAccountLink = async (client) => {
+            const clientInstanceId = "sign-out-" + client;
+            const session = protocol.workerLinkSessionSchema.parse(
+              await visit(
+                client + " sign-out session",
+                "POST",
+                `/api/workers/${workerId}/worker-link/sessions`,
+                { client, json: { clientInstanceId }, status: 201 },
+              ),
+            );
+            assert.ok(session.identity.accountSessionId);
+            const sessionBase = `/api/worker-links/${session.sessionId}`;
+            const capabilityId = await activateDirect(
+              client + " sign-out direct",
+              session.sessionId,
+              client,
+            );
+            const relay = await observeSocket(
+              client + " sign-out relay",
+              sessionBase +
+                `/connect?clientInstanceId=${clientInstanceId}&routeGeneration=${session.routeGeneration}`,
+              { client },
+              101,
+            );
+            return { session, sessionBase, capabilityId, relay };
+          };
+          const directRevocations = (capabilityId) =>
+            commands
+              .filter(
+                (c) =>
+                  c.type === "direct.capability.revoke" &&
+                  c.capabilityId === capabilityId,
+              )
+              .map((c) => c.reason);
+          const rememberSession = (alias) => {
+            const { cookies, csrf } = fixture.client();
+            fixture.clients.set(alias, { cookies: new Map(cookies), csrf });
+          };
+          const logoutDirect = await activateDirect(
+            "single-session sign-out direct",
+            opened.sessionId,
+            "main",
+          );
+          const sibling = await openAccountLink("second");
+          rememberSession("single-revoked");
           await visit("logout revokes capability", "POST", "/api/auth/logout", {
             status: 204,
           });
-          assert.deepEqual(await beforeLogout.closed, {
+          const singleClose = await deadline(
+            beforeLogout.closed,
+            "single-session relay revocation",
+          );
+          assert.deepEqual(singleClose, {
             code: 1008,
             reason: "Account session ended",
           });
+          const singleRevocations = directRevocations(logoutDirect);
+          assert.deepEqual(singleRevocations, [
+            "Authorization session was revoked",
+          ]);
+          assert.equal(sibling.relay.ws.readyState, WebSocket.OPEN);
+          assert.deepEqual(directRevocations(sibling.capabilityId), []);
           result.sockets.push({
             label: "logout closes relay",
-            ...(await beforeLogout.closed),
+            ...singleClose,
           });
+          result.faults.push({
+            label:
+              "single-session sign-out revokes direct attachment only for its session",
+            reasons: singleRevocations,
+          });
+          await visit(
+            "revoked single-session cookie rejected",
+            "GET",
+            "/api/workers",
+            { client: "single-revoked", status: 401 },
+          );
           await visit("login again", "POST", "/api/auth/login", {
             json: { email: "link-main@example.invalid", password },
           });
@@ -1345,6 +1430,81 @@ try {
             `/api/worker-links/${cancelled.sessionId}/renew`,
             { status: 404 },
           );
+          await visit(
+            "sibling direct survives single-session sign-out",
+            "POST",
+            sibling.sessionBase + "/direct-activate",
+            {
+              client: "second",
+              json: { capabilityId: sibling.capabilityId },
+              status: 204,
+            },
+          );
+          const primary = await openAccountLink("main");
+          assert.notEqual(
+            primary.session.identity.accountSessionId,
+            sibling.session.identity.accountSessionId,
+          );
+          rememberSession("owner-revoked");
+          assert.deepEqual(
+            await visit(
+              "sign out all sessions",
+              "POST",
+              "/api/auth/logout-all",
+            ),
+            { revokedSessions: 2 },
+          );
+          for (const [client, link] of [
+            ["main", primary],
+            ["second", sibling],
+          ]) {
+            const closed = await deadline(
+              link.relay.closed,
+              client + " account-wide relay revocation",
+            );
+            assert.deepEqual(closed, {
+              code: 1008,
+              reason: "Account sessions ended",
+            });
+            result.sockets.push({
+              label: client + " account-wide close",
+              ...closed,
+            });
+            const reasons = directRevocations(link.capabilityId);
+            assert.deepEqual(reasons, ["Account sessions were revoked"]);
+            result.faults.push({
+              label: client + " account-wide direct revocation",
+              reasons,
+            });
+            await visit(
+              client + " account-wide revoked cookie rejected",
+              "GET",
+              "/api/workers",
+              {
+                client: client === "main" ? "owner-revoked" : client,
+                status: 401,
+              },
+            );
+          }
+          assert.deepEqual(
+            await visit(
+              "other account remains signed in",
+              "GET",
+              "/api/workers",
+              {
+                client: "other",
+              },
+            ),
+            [],
+          );
+          await visit(
+            "login after account-wide sign-out",
+            "POST",
+            "/api/auth/login",
+            {
+              json: { email: "link-main@example.invalid", password },
+            },
+          );
         } else await beforeLogout.close();
         mode = "reject";
         await visit(
@@ -1388,22 +1548,33 @@ try {
     const comparable = (value) => {
       const { kind, ...rest } = value;
       const commands = [...rest.commands];
-      // The reference explicitly uses Promise.all for account revocations.
-      // Independent owner lookups may complete in either order; retain the raw
-      // trace above and compare each contiguous batch as a complete multiset.
+      // The reference explicitly uses Promise.all within each revocation kind.
+      // Compare each contiguous batch as a multiset and retain the raw trace.
       const independent = (command) =>
-        command.type === "worker-link.session.revoke" &&
-        command.revocation.reason === "account-session-ended";
+        (command.type === "worker-link.session.revoke" &&
+          command.revocation.reason === "account-session-ended") ||
+        (command.type === "direct.capability.revoke" &&
+          command.reason === "Account sessions were revoked");
       for (let start = 0; start < commands.length; start++) {
         if (!independent(commands[start])) continue;
+        const { type } = commands[start];
         let end = start + 1;
-        while (end < commands.length && independent(commands[end])) end++;
+        while (
+          end < commands.length &&
+          commands[end].type === type &&
+          independent(commands[end])
+        )
+          end++;
         commands.splice(
           start,
           end - start,
           ...commands
             .slice(start, end)
-            .sort((a, b) => a.sessionId.localeCompare(b.sessionId)),
+            .sort((a, b) =>
+              (a.sessionId ?? a.capabilityId).localeCompare(
+                b.sessionId ?? b.capabilityId,
+              ),
+            ),
         );
         start = end - 1;
       }

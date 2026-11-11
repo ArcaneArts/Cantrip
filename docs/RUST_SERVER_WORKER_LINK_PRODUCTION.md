@@ -112,7 +112,42 @@ separate from stream measurements. Raw reports and their SHA256 values are
 retained in `final-performance-summary-v2.json`, alongside original failures and
 the all-store acceptance receipts, for archival before cleanup.
 
-## Reproduce
+## Packaged account sign-out
+
+The macOS ARM64 `1.1.2845` distribution from
+`2e60d2042203f64c8105d5c52d12ae1db92d2d83` matches the Node reference across
+PGlite, bundled PostgreSQL and external PostgreSQL. The comparison ran the
+distribution's `start.sh` with its packaged database assets. It compared 843
+HTTP observations, 159 socket observations and 477 worker commands across
+nine runtime pairs. All 18 server processes shut down cleanly.
+
+Single-session sign-out closes its relay with code 1008 and sends exactly one
+direct capability revoke to the connected worker transport. The server rejects
+the original cookie. The sibling session's relay stays open and its direct
+capability remains active. Account-wide sign-out then ends both authenticated
+sessions and closes both relays with code 1008. The worker receives exactly
+one revoke for each direct capability, both old cookies are rejected, and the
+independent account stays signed in.
+
+The worker command handler uses controlled acknowledgments through the
+production `WorkerConnection`. These cases exercise server authority and relay
+teardown. The [macOS acceptance record](security/rust-server-darwin-arm64-acceptance.json)
+identifies the exact artifact and reports.
+
+Build the worker and protocol dependencies and the Node reference. Run the
+comparison from the repository root.
+
+```sh
+CANTRIP_RUST_SERVER_BINARY=/absolute/path/to/native-server/start.sh \
+  node --import tsx scripts/server-rust/worker-link-http-compatibility.mjs \
+  --database pglite --report /absolute/path/to/worker-link-pglite.json
+```
+
+Repeat with `bundled-postgres` and `postgres`. For those cases, set
+`CANTRIP_TEST_POSTGRES_BIN_DIR` to the packaged PostgreSQL binaries and
+`CANTRIP_RUST_DATABASE_FIXTURE_BINARY` to the local database fixture executable.
+
+## Reproduce the byte transport comparison
 
 Build the worker/protocol dependencies and the Node reference, and provide an
 optimized native distribution. Run from the repository root:
