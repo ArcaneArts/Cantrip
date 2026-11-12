@@ -487,5 +487,10 @@
         }
       }
     ]
+  },
+  "activeSharedRedisDispatch": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/shared-replica-redis-outage/qualified-four-pair-redis-outage.json",
+    "bytes": 3883,
+    "sha256": "176e5f5dd074d988fff4bbc5d5050e66291013e155c6c471a70c26f0488ab7bc"
   }
 }

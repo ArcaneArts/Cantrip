@@ -133,6 +133,11 @@ const option = (name) => {
 };
 const databaseMode = option("--database") ?? "pglite";
 const sharedPair = option("--server-pair");
+assert.ok(
+  !process.argv.includes("--replica-redis-outage") ||
+    (sharedPair && process.argv.includes("--replicas")),
+  "Replica Redis interruption requires --server-pair and --replicas",
+);
 const postgresOutage = option("--inflight-peer") === "postgres";
 const goalLaneDependency = option("--task-goal-lane-dependency");
 const taskGoalFirstInputPhase = option("--task-goal-first-input-order");

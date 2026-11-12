@@ -185,9 +185,15 @@ jobs retained a handle that resolved on the worker responsible for the link.
 Rust now uses that replica job handle when available and falls back to the
 project handle for older records. A macOS ARM64 development build restored the
 link and left the checkout unchanged on repeat repair on all three stores.
-The controlled HTTP comparison passed 714 paired observations. Dependency loss
-during shared replica dispatch and qualification of the final shipping
-artifacts remain open.
+The controlled HTTP comparison passed 714 paired observations.
+
+The shared interruption fixture holds a real Git read after a full worker has
+accepted a replica job, then stops its private Redis. Both peers report
+coordination unavailable while PostgreSQL stays ready and renews the original
+job's lease. After Redis returns, the same workers regain their remote claims
+and the browser observes the same job succeed on its second attempt. The
+fixture checks the retained checkout, App Live revisions and admission replay.
+Qualification of the final shipping artifacts remains open.
 
 Set the existing fixture variables to the packaged server, database assets,
 worker, CLI and Redis executables. With the workspace packages and Node
@@ -206,6 +212,10 @@ node --import tsx scripts/server-rust/actual-folder-client.mjs \
 node --import tsx scripts/server-rust/actual-folder-client.mjs \
   --replicas --database postgres --server-pair all \
   --report /absolute/path/shared-replicas.json
+
+node --import tsx scripts/server-rust/actual-folder-client.mjs \
+  --replicas --replica-redis-outage --database postgres --server-pair all \
+  --report /absolute/path/shared-replica-redis-outage.json
 
 node --import tsx scripts/server-rust/replica-http-lifetimes.mjs \
   --report /absolute/path/replica-lifetimes.json
