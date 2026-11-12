@@ -24285,6 +24285,7 @@
           "sha256": "b81b99cd27ea380b21ddf960af9375bb6f17ad73193052a4eed53ddc0a658885"
         }
       },
+      "currentBrowserMobileSignIn": "docs/security/rust-server-2881-browser-mobile-sign-in.json",
       "installedMobileSignIn": {
         "clientVersion": "1.1.2867",
         "serverVersion": "1.1.2866",
