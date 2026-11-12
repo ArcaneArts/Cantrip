@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "version": "1.1.2869",
+  "sourceCommit": "0ae86163efb8503387a2b3d627f9e962d099e1cd",
+  "buildCheckout": "db40ec6e1aa93b64c433a72e9eb70ecd96d6e410",
+  "buildCheckoutDifference": "Documentation and acceptance records only.",
+  "evidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1/current-arm64-windows-packages",
+  "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+  "platform": {
+    "target": "linux-arm64",
+    "systemdHost": "linux-arm64",
+    "elfMachine": 183
+  },
+  "binary": {
+    "path": "linux-arm64-distribution/bin/cantrip-server",
+    "bytes": 105426896,
+    "sha256": "868b0c172c5137358c9619ad59870c4736cadcc6571f01b24db0438fc77ea390"
+  },
+  "manifest": {
+    "path": "linux-arm64-distribution/native-server.json",
+    "bytes": 488948,
+    "sha256": "2b3eb5578c1138fff82c1eddc0c7d9aac5b2e51214fab46d7c28aec23bde7f63"
+  },
+  "container": {
+    "imageId": "sha256:f0c0f59980a390c13bd732ca1dbc6bd641b6e3b2ba6cdf6c63390504b28732c1",
+    "archive": {
+      "path": "cantrip-server-1.1.2869-linux-arm64.tar.zst",
+      "bytes": 177177487,
+      "sha256": "ba5d97337d648fc34a853033cd13334200fc6111a4ba18a6684435af2cdc12a6"
+    },
+    "report": {
+      "path": "linux-arm64-container/report.json",
+      "bytes": 5351,
+      "sha256": "e3134d3aab9058e2706d3d177b4d8c70ac32e3d50f5d1941fdf59a50dafc671c"
+    },
+    "verifiedArtifactFilesPerStore": 2546,
+    "retainedFixtureVolumes": {
+      "path": "linux-arm64-container/retained-volumes.sha256",
+      "bytes": 906,
+      "sha256": "1a5b18c7d6ad362a270773489b02d37199383b6f17a2902c636e50aa41f218c8"
+    }
+  },
+  "winterhold": {
+    "report": {
+      "path": "linux-arm64-winterhold/report.json",
+      "bytes": 1093252,
+      "sha256": "f60a554ee103bfefd4276bd80b3ec50e4ace8397be9ee069f0986bcb82cef337"
+    },
+    "standaloneArchive": {
+      "path": "linux-arm64-winterhold/native.tar.gz",
+      "bytes": 138421790,
+      "sha256": "68baac8627318bf8cdec1f00fbab0ff692e4746d30670336d6089264da7f0188"
+    },
+    "installerCalls": 18,
+    "recoveredInstallerFailures": 6,
+    "runningExecutableHashesCompared": 10,
+    "localRollbackVersion": "1.1.2783",
+    "externalPostgresRollbackVersion": "1.1.2739",
+    "previousRustImageId": "sha256:534903c92908bb639fd68beabe138531f0f7927c9acef50f67a42b5814033982",
+    "previousNodeImageId": "sha256:e45a5bb676e4efec2ec75897dd24829fadfd23165a545de155fa1c5a7da5a9d8",
+    "systemdImageId": "sha256:1a4719cffced31ab606bf1b4ccd0625d218a2d885708708435f66a7da36c6b92",
+    "retainedProfiles": {
+      "path": "linux-arm64-winterhold/retained-systemd-profiles.tar.zst",
+      "bytes": 13336898,
+      "sha256": "6121e3270cd829bbb50487490e6c8bc71f252d11038201cfa130ed54c9955463"
+    },
+    "retainedExternalPostgres": {
+      "path": "linux-arm64-winterhold/retained-external-postgres.dump",
+      "bytes": 677092,
+      "sha256": "3f717822f1434524c4e935a58aab15de0225dba2a446b764953b0c22a4b3e55e"
+    },
+    "scope": "Native ARM64 Linux Rust server and systemd host. Local production installer and units, Caddy HTTPS and App Live, required TLS on external PostgreSQL, restart and data-preserving rollback. The legacy rollback image runs x64 through Rosetta."
+  },
+  "redisTls": {
+    "redisVersion": "8.10.3",
+    "rejectedUntrustedCertificate": true,
+    "cases": [
+      {
+        "pair": "rust/rust",
+        "scenarioGroups": 7,
+        "cleanPeerShutdowns": 2,
+        "exactReplayedPublications": 4,
+        "report": {
+          "path": "linux-arm64-redis-tls/rust-rust.json",
+          "bytes": 4236,
+          "sha256": "4e57f25d6bb1a9cb4a16b3f471ab50d6a436edf6e98f2764eeecc3a58b44b0a3"
+        }
+      },
+      {
+        "pair": "node/rust",
+        "scenarioGroups": 7,
+        "cleanPeerShutdowns": 2,
+        "exactReplayedPublications": 4,
+        "report": {
+          "path": "linux-arm64-redis-tls/node-rust.json",
+          "bytes": 4013,
+          "sha256": "16e0eb1406be6b6df40839b5496b7b1bf054f1ba02b6e5fa7b96656d2030a024"
+        }
+      },
+      {
+        "pair": "rust/node",
+        "scenarioGroups": 7,
+        "cleanPeerShutdowns": 2,
+        "exactReplayedPublications": 4,
+        "report": {
+          "path": "linux-arm64-redis-tls/rust-node.json",
+          "bytes": 4291,
+          "sha256": "4714427da38257a91a1f405472e1653ca08f08554ff7d2cdaee9c013f1e3a2ae"
+        }
+      }
+    ],
+    "scope": "Local account-mode shared PostgreSQL and TLS-only Redis. The compiled Node compatibility reference ran on the macOS ARM64 host. The worker connection used controlled acknowledgments."
+  }
+}

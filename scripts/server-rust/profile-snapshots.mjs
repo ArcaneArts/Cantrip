@@ -51,6 +51,7 @@ export function assertImportedProfile(
   manifest,
   before,
   after,
+  { migrationsApplied = 0 } = {},
 ) {
   const expected = structuredClone(source);
   const key = `profile-import:${receipt.bundleId}:${receipt.manifestSha256}`;
@@ -66,7 +67,7 @@ export function assertImportedProfile(
   assert.deepEqual(row.value, {
     bytes: manifest.sqlBytes,
     sha256: manifest.sqlSha256,
-    migrationsApplied: 0,
+    migrationsApplied,
   });
   assert.deepEqual(receipt.database, row.value);
   const time = Date.parse(row.updated_at);

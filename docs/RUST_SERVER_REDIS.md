@@ -348,6 +348,18 @@ failover and network blackholes remain separate requirements.
 
 ## Packaged Linux Redis TLS
 
+The Linux ARM64 `1.1.2869` production image passes Rust/Rust, Node/Rust,
+and Rust/Node on shared PostgreSQL and TLS-only Redis 8.10.3. Across 21
+scenario groups, the pairs preserve both worker claims after a Redis process
+restart, complete new remote WorkerLink requests and replay 12 App Live
+publications with the original cursors and payloads. All six peers shut down
+cleanly. The native image rejects the fixture certificate when its CA is
+absent. One mixed pairing needed fresh enrollments while an App Live
+subscriber reconnected. The retained report includes those attempts.
+[Linux ARM64 acceptance record](security/rust-server-2869-linux-arm64-acceptance.json)
+
+### Linux candidates `1.1.2855`
+
 The optimized Linux ARM64 and x64 `1.1.2855` images from `67ed809d0` passed the
 account-mode shared-server comparison on PostgreSQL and Redis 8.10.3.
 Redis accepted authenticated connections on its TLS port with the plaintext

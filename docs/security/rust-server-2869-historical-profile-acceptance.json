@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceCommit": "0ae86163efb8503387a2b3d627f9e962d099e1cd",
+  "nativeVersion": "1.1.2869",
+  "legacyVersion": "1.1.2733",
+  "evidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1/current-arm64-windows-packages",
+  "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+  "originalMigrationEntries": 287,
+  "appliedMigration": {
+    "tag": "0287_task_output_finalization",
+    "id": 288,
+    "hash": "93fd926d3fccd21987eb3a402020718a8fb7fc81b5363adfee87f36ec1f3cf96",
+    "created_at": 1794437252033
+  },
+  "finalizedDefaultForOriginalMessages": false,
+  "tableCount": 137,
+  "sequenceCount": 4,
+  "originalSessionIdentityAndFilesRetained": true,
+  "encryptedWritesBeforeAndAfterRollback": true,
+  "nativeExecutable": {
+    "name": "cantrip-server",
+    "bytes": 94199904,
+    "sha256": "12119fe998d6d2338b799cd1a832a4f1414eb8bd849887233296da360c51eeb8"
+  },
+  "nativeManifest": {
+    "name": "native-server.json",
+    "bytes": 325804,
+    "sha256": "2741df5241f1dea599396ef9ea9d2e5ae7b727ea86935390c155677f53ce5e69"
+  },
+  "report": {
+    "path": "historical-product-roundtrip-v2/report.json",
+    "bytes": 72978,
+    "sha256": "b1f1b19e751d0425686c205a749afb2f2249984075a6aaf335474753d9036b51"
+  },
+  "expectedUpgradedDatabase": {
+    "path": "historical-product-roundtrip-v2/expected-historical-upgrade-database.json",
+    "bytes": 84630,
+    "sha256": "a9991d6eeffa7f9473b91e854852c50ccccb7c89d18a2c1edc8784e5c64f4d3f"
+  },
+  "originalZeroMigrationExpectationFailure": {
+    "path": "historical-product-roundtrip/report.json",
+    "bytes": 16051,
+    "sha256": "9be7c878ab5e2c64acf86f40b7ca43b4d4996ed852caa98f580dd078b9ebbaf9"
+  },
+  "scope": "Actual historical packaged Node distribution and a protected original profile, copied and populated with encrypted product state. All three native stores compare exact table and sequence snapshots after the expected schema change and through Rust, old Node and returned Rust serving and writing."
+}
