@@ -11,6 +11,11 @@ in signed desktop updates from `1.1.2869`, and through the original Node
 `1.1.2733` upgrade and post-write rollback. The signed installed apps kept
 their encrypted client bindings and accepted state. The rollback passed the
 137-table and four-sequence comparisons and preserved the original profile.
+The macOS ARM64 package rebuilt at `ff6a4b060` matched all 1,762 manifest
+files. Its standalone test passed migration, export, restart and hosted
+reopening on all three stores. It also passed queued Task transfer on
+all three stores and the read during settlement and active-dispatch
+rejection on external PostgreSQL.
 [macOS package acceptance](security/rust-server-2881-macos-acceptance.json)
 
 The Linux x64 `1.1.2881` container and local Winterhold rehearsal passed all

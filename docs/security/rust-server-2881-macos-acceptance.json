@@ -187,5 +187,52 @@
     },
     "scope": "Empty-profile HTTP route discovery and generated contract equality.",
     "hostedDevelopmentRuns": 0
+  },
+  "rebuiltStandalone": {
+    "sourceCommit": "ff6a4b060c60ee1f391b70161fdffd0c933c38c7",
+    "target": "darwin-arm64",
+    "version": "1.1.2881",
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/cantrip-server-1.1.2881-ff6a4b060-darwin-arm64.native.tar.gz",
+      "bytes": 66972019,
+      "sha256": "a2050c10c633e89376a8eafda458d5cc116d1e71c753a04a8b5cd702fabeefe0"
+    },
+    "binary": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94174128,
+      "sha256": "9390204ce8869552f44f8eb11324e760b9791836c6d6a481f620ccbee38951ab"
+    },
+    "nativeManifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/cantrip-server-darwin-arm64/native-server.json",
+      "bytes": 325804,
+      "sha256": "e90406e407173d47ca38738bb9462887f9640cfb6494266cd12f56a0b5f001db"
+    },
+    "packagedMachOVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/macos-arm64-packaged-binary-verification.json",
+      "bytes": 236,
+      "sha256": "55a8116dd799b35bc561c48f1e2e425810373c17a77cf43205d75cd44ef547bb"
+    },
+    "buildLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/macos-arm64-rebuilt-build.log",
+      "bytes": 9728,
+      "sha256": "9ff826e4452b8253a2dffa46a2bf4afeff2de536ad1ebe997987afb82139e5b5"
+    },
+    "packagerReport": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/macos-arm64-rebuilt-package.log",
+      "bytes": 493,
+      "sha256": "b8d0339fdd0705472cc6f01b75a3caf7b2dd18c3aaaf0dcf6145fa3afc285d8d"
+    },
+    "standaloneReport": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/macos-arm64-standalone.json",
+      "bytes": 2868,
+      "sha256": "273c94984a6b72de72b3c9e9bfcf3c345c5ab6dcc34ebf705fe207cbc28b8ca9"
+    },
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "verifiedFiles": 1762,
+    "serverRuntimePathHasNoNode": true,
+    "embeddedPgliteRuntimeFallback": true,
+    "artifactWritesDenied": true,
+    "homebrewAccessDenied": true,
+    "hostedReopen": true
   }
 }
