@@ -234,5 +234,91 @@
     "artifactWritesDenied": true,
     "homebrewAccessDenied": true,
     "hostedReopen": true
+  },
+  "rebuiltSignedDesktopUpdate": {
+    "scope": "Local Developer ID and disposable Tauri updater key over loopback HTTPS",
+    "desktopSourceCommit": "deefa4204ce1f0eb0c76d84df854f1fb14130c47",
+    "serverSourceCommit": "ff6a4b060c60ee1f391b70161fdffd0c933c38c7",
+    "version": "1.1.2881",
+    "previousVersion": "1.1.2869",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "baselineArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-macos-updater.QIx9jkmV/run-v3/baseline/Cantrip Server Signed Update QA.app.tar.gz",
+      "bytes": 335629506,
+      "sha256": "24c9cf4a4b2f691d95e664ad38d78ea46acfa7fc5299742d00a8df9c2a62c3d4"
+    },
+    "candidateArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-macos-updater.QIx9jkmV/run-v3/candidate/Cantrip Server Signed Update QA.app.tar.gz",
+      "bytes": 335753256,
+      "sha256": "753076867580dc9fbd5d21aa86f4e2dfd72e5e559e3ba5674cc8e921506a55e4"
+    },
+    "candidateSignature": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-macos-updater.QIx9jkmV/run-v3/candidate/Cantrip Server Signed Update QA.app.tar.gz.sig",
+      "bytes": 436,
+      "sha256": "2df032149a79c9de93826836651a296f746548989a4d1236e899ea59413b68a7"
+    },
+    "candidateApp": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-macos-updater.QIx9jkmV/run-v3/candidate/Cantrip Server Signed Update QA.app/Contents/MacOS/cantrip-app",
+      "bytes": 24218928,
+      "sha256": "868efee7c4c396b684a072f7136e48d0703e09adf87139d59be2e9d404d619f7"
+    },
+    "unsignedServerInput": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94174128,
+      "sha256": "9390204ce8869552f44f8eb11324e760b9791836c6d6a481f620ccbee38951ab"
+    },
+    "candidateSignedServer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-macos-updater.QIx9jkmV/run-v3/candidate/Cantrip Server Signed Update QA.app/Contents/Resources/runtime/server/bin/cantrip-server",
+      "bytes": 94192256,
+      "sha256": "0934ddcc48e5ea31c2d1a7d280827dcf334680636373b929262c2d17a4fc7416"
+    },
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-macos-updater.QIx9jkmV/run-v3/report.json",
+      "bytes": 11828,
+      "sha256": "394ed07d0f5ed1fcc93424d932bdab433ac3acfd3d8b213faae0b3a19fa74e6b"
+    },
+    "driverLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-macos-updater.QIx9jkmV/driver-v3.log",
+      "bytes": 51947,
+      "sha256": "8c6d621af235e262c47e559588c94d5dc317e450fa85e8b2bdaae242c6985bf4"
+    },
+    "candidateArchiveVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-macos-updater.QIx9jkmV/run-v3/candidate-archive-verification.json",
+      "bytes": 802,
+      "sha256": "048a48218b7b14e795430b328a0f1d3bddea4a89068328405a07b327a6c07823"
+    },
+    "baselineArchiveVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-macos-updater.QIx9jkmV/run-v3/baseline-archive-verification.json",
+      "bytes": 800,
+      "sha256": "c5d923bdbd07d5f597ad9f8e4c11e47c3256c2d785fa0735b42eb0ecf6695eda"
+    },
+    "verifiedInstalledFilesPerCase": 13571,
+    "installedArchiveReceipts": {
+      "pglite": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-macos-updater.QIx9jkmV/run-v3/pglite-installed-archive-verification.json",
+        "bytes": 808,
+        "sha256": "f8a4f90e1f439917cb910f4c63a0ed935454c803924e3236d899c7192bef8841"
+      },
+      "bundled-postgres": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-macos-updater.QIx9jkmV/run-v3/bundled-postgres-installed-archive-verification.json",
+        "bytes": 818,
+        "sha256": "642cd119b3bbebdcb46728f3649b8081da81507458a2121a3fc1727c5933343a"
+      },
+      "postgres": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-macos-updater.QIx9jkmV/run-v3/postgres-installed-archive-verification.json",
+        "bytes": 810,
+        "sha256": "459ce7a1cced543880dbdcf9b084116f33ea12fde3f689bf94f16ee17061b1dd"
+      }
+    },
+    "retainedAcceptedSettingsAndAcceptedNewWrites": true,
+    "retainedEncryptedClientBindingsAndServiceIdentities": true,
+    "tamperedPgliteArchiveRejected": true,
+    "cleanShutdowns": true,
+    "compilerCacheCleanup": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-macos-updater.QIx9jkmV/compiler-cache-cleanup.log",
+      "bytes": 39,
+      "sha256": "cecb96d0b1bb8007c54e9acf3a58044b6b3ebf3e6e36fb300aa6b1a35787a7fb"
+    },
+    "productionNotarization": "release validation"
   }
 }

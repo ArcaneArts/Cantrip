@@ -1,5 +1,22 @@
 # Signed macOS desktop update rehearsal
 
+## Rebuilt server and desktop shell on macOS ARM64
+
+The release-mode desktop shell from `deefa4204` embeds the `1.1.2881`
+server rebuilt from `ff6a4b060` and the existing packaged worker. The
+local signed update from `1.1.2869` passed on PGlite, bundled PostgreSQL,
+and external PostgreSQL. Each installed app retained its encrypted client
+bindings, server and worker identities, database selection and accepted
+setting. Each accepted another write and shut down its services cleanly.
+The PGlite case rejected a tampered archive before installing the valid
+one over loopback HTTPS.
+
+Every installed app passed strict Developer ID verification and matched
+all 13,571 files in the rebuilt candidate archive. This rehearsal used a
+disposable Tauri updater key. Production notarization remains release
+validation.
+[Rebuilt macOS signed-update record](security/rust-server-2881-macos-acceptance.json#rebuiltSignedDesktopUpdate)
+
 ## Installed app and signed update `1.1.2881`
 
 The native macOS ARM64 server and worker were packaged from

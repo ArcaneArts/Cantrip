@@ -49,6 +49,11 @@ The earlier signed update from `1.1.2831` to `1.1.2845` retained the
 authenticated client, server, worker and written setting, and verified the
 installed bundles against the signed archive.
 [Signed macOS desktop qualification](RUST_SERVER_DESKTOP_SIGNED_UPDATE.md#current-installed-app-and-signed-update)
+The rebuilt macOS ARM64 desktop shell and server passed a signed update
+from `1.1.2869` to `1.1.2881` on all three stores. Each installation matched
+the rebuilt signed archive and preserved its encrypted client bindings,
+accepted setting, server identity, and worker identity.
+[Rebuilt macOS signed update](RUST_SERVER_DESKTOP_SIGNED_UPDATE.md#rebuilt-server-and-desktop-shell-on-macos-arm64)
 The Windows x64 `1.1.2881` standalone distribution passed all three stores,
 including migration, SQL export, hosted reopening and retained writes.
 [Windows x64 standalone record](security/rust-server-2881-win32-x64-standalone.json)
@@ -74,6 +79,10 @@ open for that installer.
 The follow-up Windows PGlite fix passed direct first start and reopening in
 the Windows 11 x64 guest. It retained the accepted setting and server
 identity, and both launches shut down cleanly on supervision stdin close.
+The native archive built with that fix passed the full PGlite standalone
+case. The same run reached bundled PostgreSQL readiness and exceeded the
+standalone shutdown deadline. The rebuilt NSIS installer matched all
+14,092 staged files and its QA updater signature verified.
 [Windows x64 qualification](RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md)
 The [native desktop workspace qualification](RUST_SERVER_DESKTOP_WORKSPACE_ACCEPTANCE.md)
 also exercises actual macOS popouts, dirty documents, server restart, WebView
