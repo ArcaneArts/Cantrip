@@ -29660,7 +29660,8 @@
       "recoveredInstallerFailures": 6,
       "directNativeExecutableHashes": 10,
       "scope": "Native Linux ARM64 1.1.2881 Debian container and local Ubuntu ARM64 systemd and Caddy. All three stores retain sessions and accepted writes across post-write rollback and return to Rust. External PostgreSQL uses required TLS and the x64 Node rollback image. Direct executable observations match the native ARM64 distribution. An attempted write outside the profile failed in the service mount namespace.",
-      "replicaRepairRebuild": "docs/security/rust-server-2881-linux-arm64-acceptance.json#replicaRepairRebuild"
+      "replicaRepairRebuild": "docs/security/rust-server-2881-linux-arm64-acceptance.json#replicaRepairRebuild",
+      "currentReplicaRepairWinterhold": "docs/security/rust-server-2881-linux-arm64-acceptance.json#replicaRepairRebuild"
     },
     "defaultRuntimeCutover": {
       "status": "implemented-with-scoped-local-qualification",

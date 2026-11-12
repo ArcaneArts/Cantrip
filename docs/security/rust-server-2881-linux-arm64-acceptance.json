@@ -343,6 +343,51 @@
       "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-arm64-cache-cleanup.log",
       "bytes": 133,
       "sha256": "c4a4bb06859f96ec8a1f984357c6460d48990889d11926c66ded9e788742dda1"
+    },
+    "winterhold": {
+      "status": "passed",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/winterhold-linux-arm64-final/acceptance.json",
+        "bytes": 1093371,
+        "sha256": "e958299d8a5729ecac61bf01604b2c31fda0f9f285d0726850cb231bd171b68f"
+      },
+      "deploymentArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/winterhold-linux-arm64-final/native.tar.gz",
+        "bytes": 138395198,
+        "sha256": "b628da467a33f17f01bebc9b87516d2e1ccbd053fe559a346a2e735874cd37be"
+      },
+      "binarySha256": "497d9c9e42c0641ce476237de968156abad37e2a140976efb5dea54797389062",
+      "systemdImage": {
+        "id": "sha256:1a4719cffced31ab606bf1b4ccd0625d218a2d885708708435f66a7da36c6b92",
+        "architecture": "arm64"
+      },
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+      "installerCalls": 18,
+      "expectedRejectedCandidates": 6,
+      "runningExecutableHashesCompared": 10,
+      "rollbackRuntimes": {
+        "pglite": "rust",
+        "bundled-postgres": "rust",
+        "postgres": "node"
+      },
+      "startLimitRecoveryObserved": true,
+      "retainedSessionsAndAcceptedWrites": true,
+      "verifiedCaddyHttpsAndAppLive": true,
+      "externalPostgresTlsRequired": true,
+      "interruptedAttempt": {
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/winterhold-linux-arm64/acceptance.json",
+          "bytes": 1091482,
+          "sha256": "a3cd59e2727042d02c687c1da7962d2b63802510bc5c254116dd88e5b3daa7d4"
+        },
+        "hostDiskExhaustedDuring": "external PostgreSQL rollback",
+        "completedModes": ["pglite", "bundled-postgres"]
+      },
+      "verifiedDistributionCleanup": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/winterhold-linux-arm64-final/verified-distribution-cleanup.json",
+        "bytes": 1698,
+        "sha256": "801310b666b858254779d722ecd2e71d7b928db4eac456ac4ec7df86919c52e5"
+      }
     }
   }
 }
