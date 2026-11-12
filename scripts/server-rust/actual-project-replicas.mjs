@@ -1,4 +1,8 @@
 import { actualGithubReplicas } from "./actual-github-replicas.mjs";
+import {
+  prepareReplicaRedisOutage,
+  recoverReplicaAcrossRedisOutage,
+} from "./actual-replica-redis-outage.mjs";
 // Existing encrypted browser APIs and two complete worker processes; all Git
 // paths belong to this disposable fixture. No command/repository substitution.
 import assert from "node:assert/strict";
@@ -28,6 +32,9 @@ export async function actualProjectReplicas({
     encoding: "utf8",
   }).trim();
   const contents = await readFile(path.join(clone, "retained.txt"), "utf8");
+  const redisOutage = process.argv.includes("--replica-redis-outage")
+    ? await prepareReplicaRedisOutage(path.dirname(clone), target)
+    : undefined;
   const requests = [];
   const capture = (request) => {
     if (
@@ -56,6 +63,7 @@ export async function actualProjectReplicas({
         enrollmentCode,
         workerId,
         traceShutdown: true,
+        environment: redisOutage?.environment,
       },
     );
     await worker.ready();
@@ -144,6 +152,7 @@ export async function actualProjectReplicas({
     await liveReady();
     const original = await call("getProjectReplicas", [projectId]);
     assert.equal(original.length, 1);
+    const primaryWorker = redisOutage ? await startWorker() : undefined;
     const enrollment = await page.evaluate(
       async (workerId) =>
         (await import("/src/lib/api/workers.ts")).createWorkerEnrollmentCode({
@@ -159,8 +168,20 @@ export async function actualProjectReplicas({
       idempotencyKey: "actual-local-git-replica",
     };
     const admitted = await call("createProjectReplica", [projectId, input]);
-    const completed = await waitJob(admitted.id);
-    assert.equal(completed.attempt, 1);
+    const completed = redisOutage
+      ? await recoverReplicaAcrossRedisOutage({
+          fixture,
+          gate: redisOutage,
+          worker,
+          primaryWorker,
+          workerId,
+          primaryWorkerId: original[0].workerId,
+          admitted,
+          waitJob,
+          result,
+        })
+      : await waitJob(admitted.id);
+    assert.equal(completed.attempt, redisOutage ? 2 : 1);
     await jobLive(completed);
     const attached = await eventually(
       () => call("getProjectReplicas", [projectId]),
@@ -357,7 +378,9 @@ export async function actualProjectReplicas({
     };
     throw error;
   } finally {
+    await redisOutage?.release();
     await stop();
+    if (redisOutage) await stopWorker();
     await page.evaluate(() => window.replicaLive?.stop()).catch(() => {});
     page.off("request", capture);
   }

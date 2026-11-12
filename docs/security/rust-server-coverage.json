@@ -2703,10 +2703,10 @@
           "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
           "docs/security/rust-server-current-replica-acceptance.json",
           "scripts/server-rust/actual-project-replicas.mjs",
-          "scripts/server-rust/replica-http-lifetimes.mjs"
+          "scripts/server-rust/replica-http-lifetimes.mjs",
+          "scripts/server-rust/actual-replica-redis-outage.mjs"
         ],
         "remaining": [
-          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
           "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
@@ -2835,10 +2835,10 @@
           "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
           "docs/security/rust-server-current-replica-acceptance.json",
           "scripts/server-rust/actual-project-replicas.mjs",
-          "scripts/server-rust/replica-http-lifetimes.mjs"
+          "scripts/server-rust/replica-http-lifetimes.mjs",
+          "scripts/server-rust/actual-replica-redis-outage.mjs"
         ],
         "remaining": [
-          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
           "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
@@ -14226,11 +14226,11 @@
           "scripts/server-rust/replica-shutdown-cases.mjs",
           "scripts/server-rust/replica-concurrency-cases.mjs",
           "docs/security/rust-server-current-replica-acceptance.json",
-          "scripts/server-rust/actual-project-replicas.mjs"
+          "scripts/server-rust/actual-project-replicas.mjs",
+          "scripts/server-rust/actual-replica-redis-outage.mjs"
         ],
         "remaining": [
           "Run managed Git provisioning through the full worker on the current candidate. The full worker passes local Git attachment on all three stores and all four shared pairings.",
-          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
           "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
@@ -23651,10 +23651,10 @@
           "scripts/server-rust/replica-concurrency-cases.mjs",
           "docs/security/rust-server-current-replica-acceptance.json",
           "scripts/server-rust/actual-project-replicas.mjs",
-          "scripts/server-rust/replica-http-lifetimes.mjs"
+          "scripts/server-rust/replica-http-lifetimes.mjs",
+          "scripts/server-rust/actual-replica-redis-outage.mjs"
         ],
         "remaining": [
-          "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
           "Qualify replica behavior on the final supported shipping artifacts."
         ]
       },
@@ -29944,9 +29944,10 @@
         "coveredRoutes": 10
       },
       "remaining": [
-        "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
+        "Extend active interruption coverage beyond direct replica provisioning.",
         "Qualify replica behavior on the final supported shipping artifacts."
-      ]
+      ],
+      "activeSharedRedisDispatch": "docs/security/rust-server-current-replica-acceptance.json#activeSharedRedisDispatch"
     },
     "currentStreamedTaskReceiptAcceptance": {
       "status": "partial",
