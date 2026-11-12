@@ -610,8 +610,12 @@ The packaged Rust server and Node worker also passed the offline transfer on
 all three stores. After a fresh worker process rejoined with its retained
 enrollment, the transfer completed at revision 4 with the original encrypted
 input. The local-store cases confirmed the committed state after shutdown.
-These cases seeded queued input. Transfer during an active model call and
-Windows and Linux runtime qualification are pending.
+These cases seeded queued input. In a separate external PostgreSQL run, the
+existing browser and packaged worker started a real Codex request. While the
+model response was held, both the Node reference and the packaged Rust server
+withheld the queued source and returned HTTP 409 `stale-lease` without changing
+the Task or its dispatch fence. The original Task completed when the response
+resumed. Windows and Linux runtime qualification is pending.
 [Task provider transfer record](security/rust-server-task-inference-route-acceptance.json)
 
 ## Current implementation and evidence
