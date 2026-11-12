@@ -1,0 +1,476 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.2881",
+  "sourceCommit": "ccafd3cd4baea444ab43c1b84471ab3225f718e3",
+  "platform": "darwin-arm64",
+  "completeReplacement": false,
+  "host": {
+    "path": "host.txt",
+    "bytes": 198,
+    "sha256": "329a7322ea85aeafa7e471987e4a6f956f1691501a41c70b6c42e5e13bfad7c3"
+  },
+  "rustExecutable": {
+    "path": "cantrip-server",
+    "bytes": 94198976,
+    "sha256": "fbb5069e83c4d9a7b5824713900b62477ad6d3ba90419c71702abd11d3815244"
+  },
+  "smallPgliteProfile": {
+    "warmupsPerRuntime": 5,
+    "measuredRunsPerRuntime": 20,
+    "completeCommandGuard": {
+      "medianThresholdPct": 5,
+      "verdict": "pass",
+      "captures": {
+        "node": {
+          "capture": {
+            "path": "node-runtime-capture.json",
+            "bytes": 1013,
+            "sha256": "7352f0c9448332503a0c58d4cd7942995428f58d5ea0651c8f1ae895d8961fc0"
+          },
+          "medianMs": 5400.9348125,
+          "p95Ms": 9352.292208
+        },
+        "rust": {
+          "capture": {
+            "path": "rust-runtime-capture.json",
+            "bytes": 1008,
+            "sha256": "f71c35e182154968dfd87d6e4621b63caf50464392fc3f4443b47a3279614bc3"
+          },
+          "medianMs": 2359.7127085,
+          "p95Ms": 4810.413125
+        }
+      }
+    },
+    "initialSeries": {
+      "summary": {
+        "path": "runtime-summary.json",
+        "bytes": 6133,
+        "sha256": "1c4300fbd89c17ff8d9f53495ee94d4d592ed570b59721aee901622d4fbca506"
+      },
+      "firstFreshProfileSample": {
+        "node": {
+          "readyMs": 10978.939709,
+          "report": {
+            "path": "1794477531322-27712.json",
+            "bytes": 2471,
+            "sha256": "21197741245a9585937beeb8584afb9e0cfb2564921ba24e93c5833b41dd3a29"
+          }
+        },
+        "rust": {
+          "readyMs": 1485.062125,
+          "report": {
+            "path": "1794477697796-35720.json",
+            "bytes": 2471,
+            "sha256": "3a3107b52aa7d74e22f7a811717012830bd1e44e1e645fec4cca43ac5507a8df"
+          }
+        }
+      },
+      "metrics": {
+        "warmReadyMs": {
+          "node": {
+            "median": 1944.6220205,
+            "p95": 2945.262041,
+            "count": 20
+          },
+          "rust": {
+            "median": 124.0315415,
+            "p95": 265.2691669999999,
+            "count": 20
+          },
+          "medianDeltaPercent": -93.6218174949953
+        },
+        "idleRssKiB": {
+          "node": {
+            "median": 1335920,
+            "p95": 1342608,
+            "count": 20
+          },
+          "rust": {
+            "median": 102424,
+            "p95": 104032,
+            "count": 20
+          },
+          "medianDeltaPercent": -92.3330738367567
+        },
+        "readRequestsPerSecond": {
+          "node": {
+            "median": 490.79383678022566,
+            "p95": 629.0830322946042,
+            "count": 20
+          },
+          "rust": {
+            "median": 1393.411197355641,
+            "p95": 2717.6515613327147,
+            "count": 20
+          },
+          "medianDeltaPercent": 183.9096771257137
+        },
+        "bootstrapMedianMs": {
+          "node": {
+            "median": 0.7185104999999794,
+            "p95": 1.9018335000000661,
+            "count": 20
+          },
+          "rust": {
+            "median": 0.457416999999964,
+            "p95": 0.996833499999866,
+            "count": 20
+          },
+          "medianDeltaPercent": -36.338160681023155
+        },
+        "settingsMedianMs": {
+          "node": {
+            "median": 5.822041499999955,
+            "p95": 12.578958499999771,
+            "count": 20
+          },
+          "rust": {
+            "median": 1.9965210000000297,
+            "p95": 3.932458499999939,
+            "count": 20
+          },
+          "medianDeltaPercent": -65.70754433818368
+        },
+        "settingsRunP95Ms": {
+          "node": {
+            "median": 6.690292000000227,
+            "p95": 21.80554200000006,
+            "count": 20
+          },
+          "rust": {
+            "median": 2.888646499999936,
+            "p95": 27.686749999999847,
+            "count": 20
+          },
+          "medianDeltaPercent": -56.82331204677108
+        },
+        "projectsRunP95Ms": {
+          "node": {
+            "median": 2.409582999999884,
+            "p95": 6.833792000000358,
+            "count": 20
+          },
+          "rust": {
+            "median": 0.9696665000000166,
+            "p95": 7.93816599999991,
+            "count": 20
+          },
+          "medianDeltaPercent": -59.75791246866934
+        },
+        "settingsWriteMedianMs": {
+          "node": {
+            "median": 6.444739749999826,
+            "p95": 11.18106250000028,
+            "count": 20
+          },
+          "rust": {
+            "median": 2.7072497500000168,
+            "p95": 5.710062499999822,
+            "count": 20
+          },
+          "medianDeltaPercent": -57.9928770591537
+        },
+        "settingsWriteRunP95Ms": {
+          "node": {
+            "median": 8.130020999999942,
+            "p95": 14.637624999999389,
+            "count": 20
+          },
+          "rust": {
+            "median": 6.217145999999957,
+            "p95": 45.40304100000003,
+            "count": 20
+          },
+          "medianDeltaPercent": -23.528537011159003
+        },
+        "pausedConsumerCatchupMs": {
+          "node": {
+            "median": 1.0017290000000685,
+            "p95": 2.813749999999345,
+            "count": 20
+          },
+          "rust": {
+            "median": 1.000791999999933,
+            "p95": 4.952125000000251,
+            "count": 20
+          },
+          "medianDeltaPercent": -0.09353827234065415
+        },
+        "shutdownMs": {
+          "node": {
+            "median": 60.75725049999983,
+            "p95": 175.29954199999975,
+            "count": 20
+          },
+          "rust": {
+            "median": 10.71295850000024,
+            "p95": 32.10045799999989,
+            "count": 20
+          },
+          "medianDeltaPercent": -82.36760483425715
+        }
+      }
+    },
+    "alternatingOrderSeries": {
+      "summary": {
+        "path": "runtime-summary.json",
+        "bytes": 6141,
+        "sha256": "f480d816dc60000459771c375dbee33acb439c9aa491474a36aba0a6cd9d1742"
+      },
+      "firstFreshProfileSample": {
+        "node": {
+          "readyMs": 3071.576458,
+          "report": {
+            "path": "1794478020004-44848.json",
+            "bytes": 2473,
+            "sha256": "325dc4fde0980bdd7337b921db7f99fac130f58814c4436b8805a869892d3a0f"
+          }
+        },
+        "rust": {
+          "readyMs": 1157.628667,
+          "report": {
+            "path": "1794478022735-45256.json",
+            "bytes": 2461,
+            "sha256": "1b50c34816c9d762d898b2a1867159f81f9877ccc24d72015f0e062cf5ed33ac"
+          }
+        }
+      },
+      "metrics": {
+        "warmReadyMs": {
+          "node": {
+            "median": 1241.850187,
+            "p95": 1271.3398750000001,
+            "count": 20
+          },
+          "rust": {
+            "median": 89.93270800000002,
+            "p95": 108.767875,
+            "count": 20
+          },
+          "medianDeltaPercent": -92.75816769676099
+        },
+        "idleRssKiB": {
+          "node": {
+            "median": 1339008,
+            "p95": 1349408,
+            "count": 20
+          },
+          "rust": {
+            "median": 102352,
+            "p95": 103488,
+            "count": 20
+          },
+          "medianDeltaPercent": -92.35613230092726
+        },
+        "readRequestsPerSecond": {
+          "node": {
+            "median": 693.2157609774601,
+            "p95": 725.2520037670317,
+            "count": 20
+          },
+          "rust": {
+            "median": 2518.4720759472452,
+            "p95": 2983.437261577524,
+            "count": 20
+          },
+          "medianDeltaPercent": 263.30277205413006
+        },
+        "bootstrapMedianMs": {
+          "node": {
+            "median": 0.5511042499999803,
+            "p95": 0.5991460000000188,
+            "count": 20
+          },
+          "rust": {
+            "median": 0.3504060000000777,
+            "p95": 0.3921460000000252,
+            "count": 20
+          },
+          "medianDeltaPercent": -36.417474552212184
+        },
+        "settingsMedianMs": {
+          "node": {
+            "median": 4.406677249999802,
+            "p95": 4.698249999999916,
+            "count": 20
+          },
+          "rust": {
+            "median": 1.4750835000000393,
+            "p95": 1.6881879999999683,
+            "count": 20
+          },
+          "medianDeltaPercent": -66.52617343373389
+        },
+        "settingsRunP95Ms": {
+          "node": {
+            "median": 4.925478999999996,
+            "p95": 5.447500000000218,
+            "count": 20
+          },
+          "rust": {
+            "median": 1.6975415000000567,
+            "p95": 2.136833000000024,
+            "count": 20
+          },
+          "medianDeltaPercent": -65.53550426262993
+        },
+        "projectsRunP95Ms": {
+          "node": {
+            "median": 1.655187000000069,
+            "p95": 2.032875000000331,
+            "count": 20
+          },
+          "rust": {
+            "median": 0.5496044999999867,
+            "p95": 0.6854999999998199,
+            "count": 20
+          },
+          "medianDeltaPercent": -66.79502074388188
+        },
+        "settingsWriteMedianMs": {
+          "node": {
+            "median": 4.716979249999895,
+            "p95": 5.185812499999884,
+            "count": 20
+          },
+          "rust": {
+            "median": 1.630489999999952,
+            "p95": 2.4808335000001307,
+            "count": 20
+          },
+          "medianDeltaPercent": -65.43359820800593
+        },
+        "settingsWriteRunP95Ms": {
+          "node": {
+            "median": 5.649771000000101,
+            "p95": 6.464750000000095,
+            "count": 20
+          },
+          "rust": {
+            "median": 3.889938000000029,
+            "p95": 5.937750000000051,
+            "count": 20
+          },
+          "medianDeltaPercent": -31.14874921479189
+        },
+        "pausedConsumerCatchupMs": {
+          "node": {
+            "median": 0.7474375000001601,
+            "p95": 0.9042500000000473,
+            "count": 20
+          },
+          "rust": {
+            "median": 0.6483124999999745,
+            "p95": 0.7582499999998618,
+            "count": 20
+          },
+          "medianDeltaPercent": -13.261978426311805
+        },
+        "shutdownMs": {
+          "node": {
+            "median": 45.81820799999991,
+            "p95": 47.949833000000126,
+            "count": 20
+          },
+          "rust": {
+            "median": 6.844146000000023,
+            "p95": 8.178083000000015,
+            "count": 20
+          },
+          "medianDeltaPercent": -85.0623882976828
+        }
+      }
+    }
+  },
+  "workerLogStream": {
+    "samplesPerStoreAndRuntime": 1,
+    "payloadSha256": "e20a69eca39368572e90b9135738a613838f954987a0b44b6220889c171cbb76",
+    "cases": [
+      {
+        "database": "pglite",
+        "runtime": "node",
+        "report": {
+          "path": "report.json",
+          "bytes": 3105,
+          "sha256": "6de610139c33c6a60afc70a349e7490237cf64467f063e41802f458724a56a1d"
+        },
+        "payloadBytes": 67108864,
+        "payloadMiBPerSecond": 198.95501984498577,
+        "closeCode": 1013,
+        "leaseStopsPerSubscription": 1,
+        "recoveryMs": 29186.047833000004
+      },
+      {
+        "database": "pglite",
+        "runtime": "rust",
+        "report": {
+          "path": "report.json",
+          "bytes": 3091,
+          "sha256": "a20155257098196e6edfeb2b9ac07122f558e178bb5751ddddba373a5b27e965"
+        },
+        "payloadBytes": 67108864,
+        "payloadMiBPerSecond": 206.30744725560726,
+        "closeCode": 1013,
+        "leaseStopsPerSubscription": 1,
+        "recoveryMs": 27551.883125
+      },
+      {
+        "database": "bundled-postgres",
+        "runtime": "node",
+        "report": {
+          "path": "report.json",
+          "bytes": 3101,
+          "sha256": "fa9ab9daf89690c147c5f1b484653254ca9081fb26b68e5152a3242b7176d038"
+        },
+        "payloadBytes": 67108864,
+        "payloadMiBPerSecond": 204.6176715769297,
+        "closeCode": 1013,
+        "leaseStopsPerSubscription": 1,
+        "recoveryMs": 26052.231334
+      },
+      {
+        "database": "bundled-postgres",
+        "runtime": "rust",
+        "report": {
+          "path": "report.json",
+          "bytes": 6160,
+          "sha256": "6ebe829c7dad88454ad2cfadbd490718fddfb6bad4d962666a911a8d7c952d9e"
+        },
+        "payloadBytes": 67108864,
+        "payloadMiBPerSecond": 203.58203675194608,
+        "closeCode": 1013,
+        "leaseStopsPerSubscription": 1,
+        "recoveryMs": 26653.908667
+      },
+      {
+        "database": "postgres",
+        "runtime": "node",
+        "report": {
+          "path": "report.json",
+          "bytes": 3107,
+          "sha256": "8bf7cb5bfd0139ca2f479c4985e39973e5b80823ba36b1d7856cc9a72510fb89"
+        },
+        "payloadBytes": 67108864,
+        "payloadMiBPerSecond": 202.31727057386698,
+        "closeCode": 1013,
+        "leaseStopsPerSubscription": 1,
+        "recoveryMs": 25809.576957999998
+      },
+      {
+        "database": "postgres",
+        "runtime": "rust",
+        "report": {
+          "path": "report.json",
+          "bytes": 3096,
+          "sha256": "b00b0ce1dc347263df622cf4f569a05f877bd2ef520dd227b7a834f3fc1f4dd2"
+        },
+        "payloadBytes": 67108864,
+        "payloadMiBPerSecond": 204.86151286507726,
+        "closeCode": 1013,
+        "leaseStopsPerSubscription": 1,
+        "recoveryMs": 27751.393875
+      }
+    ],
+    "scope": "Controlled 64 MiB worker-log JSON with a slow-consumer lease close and same-profile SIGKILL recovery. Recovery time includes the real worker reconnect schedule."
+  }
+}

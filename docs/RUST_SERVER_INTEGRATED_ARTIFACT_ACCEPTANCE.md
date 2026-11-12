@@ -124,6 +124,34 @@ The
 [macOS acceptance record](security/rust-server-darwin-arm64-acceptance.json)
 contains the artifact and report checksums.
 
+## Packaged `1.1.2881` small-profile performance
+
+The macOS ARM64 Rust package and freshly compiled Node reference ran
+the same local PGlite workload on an M4 Max. Each runtime completed
+five warmups and 20 measured runs, preserving the server identity and
+accepted settings across warm restarts. The complete command median
+fell from 5.40 s to 2.36 s and p95 fell from 9.35 s to 4.81 s. The
+5% median regression guard passed.
+
+| Metric, median across measured runs |      Node |    Rust |
+| ----------------------------------- | --------: | ------: |
+| Warm readiness                      |  1,945 ms |  124 ms |
+| Idle process-tree RSS               | 1,305 MiB | 100 MiB |
+| Bootstrap request                   |   0.72 ms | 0.46 ms |
+| Settings write                      |   6.44 ms | 2.71 ms |
+| Eight-client reads per second       |       491 |   1,393 |
+
+RSS includes shared process mappings. The first fresh-profile
+readiness samples were 10.98 s for Node and 1.49 s for Rust.
+
+The first series had slower Rust tail samples for settings writes and
+paused-consumer catch-up. The p95 of each run's settings-write p95 was
+14.64 ms for Node and 45.40 ms for Rust. A second series alternated
+runtime order across 25 pairs. It measured 6.46 ms for Node and 5.94 ms
+for Rust on that metric, and catch-up p95 of 0.90 ms for Node and 0.76 ms
+for Rust. Both series passed all 50 invocations.
+[Current performance evidence](security/rust-server-2881-performance-acceptance.json)
+
 ## Earlier production-entry performance sample
 
 The benchmark launches the current compiled Node production entry point and the
