@@ -239,5 +239,57 @@
       "sha256": "2e53c1060c795356d29fa8abee67dad2afd83357dbe4f719dc4ad7b0150f690c"
     },
     "productionDeployment": false
+  },
+  "workspaceRemovalRebuild": {
+    "sourceCommit": "01928fcffe97701e36e0bf51a1639bffaf1ef0c3",
+    "target": "linux-x64",
+    "version": "1.1.2881",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "verifiedFiles": 2546,
+    "ociArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/cantrip-server-1.1.2881-01928fcff-linux-x64.oci.tar",
+      "bytes": 172283904,
+      "sha256": "79aae3153248294540dac168da8814501b403fd7ecec8744b5c25e252d43f33e"
+    },
+    "nativeArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/cantrip-server-1.1.2881-01928fcff-linux-x64.native.tar.gz",
+      "bytes": 142939072,
+      "sha256": "fa4864515f78d3c5fe37c94728966bcb4c54238e2e9003cf4b25c209902850cb"
+    },
+    "archiveVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/linux-x64-artifact-verification.json",
+      "bytes": 495,
+      "sha256": "f813277b0ae09af72d4fbdfca4f615519dcac7671f9c801f5fbdc9e5a9ef7c8e"
+    },
+    "containerReport": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/linux-x64-container.json",
+      "bytes": 5408,
+      "sha256": "631697374413bb236e9bf1d1972fd79899e410795abf90b35a74a554d8633b08"
+    },
+    "winterhold": {
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/winterhold-linux-x64/acceptance.json",
+        "bytes": 1093003,
+        "sha256": "fa14f72e2fbb279316429f45ff757c633f83675b3637a598485e02046555e56a"
+      },
+      "installationOperations": 18,
+      "systemdHostArchitecture": "arm64",
+      "rollbackRuntimes": {
+        "pglite": "rust",
+        "bundled-postgres": "rust",
+        "postgres": "node"
+      },
+      "startLimitRecoveryObserved": true,
+      "retainedProfiles": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/winterhold-linux-x64/retained-profiles.tar.gz",
+        "bytes": 15797368,
+        "sha256": "50cd4dd7fba46576180921e9de4fb5f7b91079013a45f84fd0d57f44bb2b1d0e"
+      },
+      "retainedExternalPostgres": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/winterhold-linux-x64/retained-external-postgres.dump",
+        "bytes": 677157,
+        "sha256": "4520b81996a523c45c73fa755bf7e5da7e6118d6f18d0eb9a34782c8677861ee"
+      }
+    }
   }
 }

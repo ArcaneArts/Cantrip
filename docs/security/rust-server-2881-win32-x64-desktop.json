@@ -464,5 +464,41 @@
         "sha256": "4b858df9b2880ad6fb6a47cf445503150491ad4bd61fe2f74674105e4e4d2625"
       }
     }
+  },
+  "workspaceRemovalRebuild": {
+    "sourceCommit": "01928fcffe97701e36e0bf51a1639bffaf1ef0c3",
+    "target": "win32-x64",
+    "version": "1.1.2881",
+    "verifiedFiles": 14092,
+    "installedRuntimeAcceptance": "pending",
+    "signedUpdateRuntimeAcceptance": "pending",
+    "installer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/Cantrip_1.1.2881_x64-setup.exe",
+      "bytes": 256723849,
+      "sha256": "659879495cd78bcc5302ccb4eb7a60c500602205844da7c4b4293d56c2553911"
+    },
+    "qaUpdaterSignature": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/Cantrip_1.1.2881_x64-setup.exe.sig",
+      "bytes": 420,
+      "sha256": "7c7071bad23d7bcba0e7983c1cfa4fb2b8a673092d31dc35cbda5ddb229e0ee9"
+    },
+    "qaUpdaterSignatureVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/minisign-verification.log",
+      "bytes": 115,
+      "sha256": "30b6db8a7c9451b2359cd55a08c3c7dcc487e2be46d14e9aa1b1e6bf3927d549"
+    },
+    "embeddedManifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/nsis-embedded-runtime-manifest.json",
+      "bytes": 2506190,
+      "sha256": "639a8faa700021d527ec565d3c12d9c17058195dcdcf134b053b77e49f85f5c3"
+    },
+    "payloadDifference": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/payload-diff.json",
+      "bytes": 133,
+      "sha256": "c3064f10567b716b2235439c13c21379da98dcebace6c72a6dfe21acfad4beda"
+    },
+    "appSha256": "2afcde52e844ccd73f2b00587a325cdaa033704a31405801170423db612a3658",
+    "serverSha256": "f4975ed6b989aec38e8e7560d330c765ca3034177688c0ecfe53b0b6b72ed0c5",
+    "workerSha256": "c632631c9a6d250d2e56d938441b5d39dc972d1b03a6b521d4ddf6c85569e4a9"
   }
 }
