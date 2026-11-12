@@ -568,9 +568,17 @@ The iOS simulator build used an ad hoc signature with its application
 identifier entitlement so the installed app could use Keychain. Its UI test
 passed server switching and app relaunch both before and after the Rust
 process restarts. The local [acceptance record](security/rust-server-installed-mobile-acceptance.json)
-includes the artifacts and observed wire results. Physical-camera runs,
-installed iOS QR sign-in, external PostgreSQL for the installed clients,
-and the shipping mobile packages retain separate acceptance.
+includes the artifacts and observed wire results.
+
+The installed `1.1.2881` iOS simulator app passed sign-in on PGlite, bundled
+PostgreSQL and external PostgreSQL against the packaged macOS ARM64 Rust server.
+It retained its account bindings and native installation key across app relaunch
+and Rust process restarts. Each mode returned an authenticated session and
+upgraded App Live over TLS after its restart. The
+[current iOS acceptance record](security/rust-server-2881-ios-acceptance.json)
+includes four passing XCTest runs and six clean Rust exits. Installed iOS QR
+sign-in, physical devices, shipping mobile packages and current Android
+qualification retain separate acceptance.
 
 ## Current implementation and evidence
 
