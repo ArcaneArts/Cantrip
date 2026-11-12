@@ -24,6 +24,7 @@ import {
 } from "./actual-worker-logs-client.mjs";
 import { actualTaskClient } from "./actual-task-client.mjs";
 import { interruptTaskGoalTransferDependency } from "./task-goal-transfer-dependency-outage.mjs";
+import { interruptTaskGoalTransferPeer } from "./task-goal-transfer-peer-outage.mjs";
 import { actualTaskLabelClient } from "./actual-task-label-client.mjs";
 import { actualInlineChatLabels } from "./actual-inline-chat-labels.mjs";
 import { actualAgentInteractionCancel } from "./actual-agent-interaction-cancel.mjs";
@@ -154,24 +155,28 @@ const taskGoalTransferFaultMode = option("--task-goal-provider-transfer-fault");
 const taskGoalTransferDependency = ["postgres", "redis"].find(
   (dependency) => taskGoalTransferFaultMode === `${dependency}-after-commit`,
 );
+const taskGoalTransferPeer = ["client", "worker"].find(
+  (peer) => taskGoalTransferFaultMode === `${peer}-peer-after-commit`,
+);
+const taskGoalSharedFault = taskGoalTransferDependency || taskGoalTransferPeer;
 const taskGoalTransferredPause = process.argv.includes(
   "--task-goal-transferred-pause",
 );
 const taskGoalAutonomousTransfer =
-  Boolean(taskGoalTransferDependency) ||
+  Boolean(taskGoalSharedFault) ||
   taskGoalTransferredPause ||
   process.argv.includes("--task-goal-autonomous-provider-transfer");
 assert.ok(
   taskGoalTransferFaultMode === undefined ||
-    taskGoalTransferDependency ||
+    taskGoalSharedFault ||
     ["cancel-prepared", "worker-after-commit"].includes(
       taskGoalTransferFaultMode,
     ),
-  "Task Goal transfer fault expects cancel-prepared, worker-after-commit, postgres-after-commit, or redis-after-commit",
+  "Task Goal transfer fault expects cancel-prepared, worker-after-commit, postgres-after-commit, redis-after-commit, client-peer-after-commit, or worker-peer-after-commit",
 );
 assert.ok(
-  !taskGoalTransferDependency || sharedPair === "rust/rust",
-  "Task Goal transfer dependency interruption requires --server-pair rust/rust",
+  !taskGoalSharedFault || sharedPair === "rust/rust",
+  "Shared Task Goal transfer interruption requires --server-pair rust/rust",
 );
 const taskGoalProviderTransfer =
   Boolean(taskGoalTransferFaultMode) ||
@@ -506,7 +511,7 @@ async function flow(
                 CANTRIP_TEST_TASK_GOAL_HANDOFF_FILE: taskGoalTransferFaultFile,
                 CANTRIP_TEST_TASK_GOAL_HANDOFF_SOURCE:
                   taskGoalAutonomousTransfer ? "autonomous" : "first-input",
-                ...(taskGoalTransferDependency
+                ...(taskGoalSharedFault
                   ? { CANTRIP_TEST_TASK_GOAL_HANDOFF_RELEASE: "1" }
                   : {}),
                 CANTRIP_TEST_TASK_GOAL_HANDOFF_ACTION:
@@ -1515,19 +1520,28 @@ async function flow(
           ? {
               mode: taskGoalTransferFaultMode,
               file: taskGoalTransferFaultFile,
-              ...(taskGoalTransferDependency
+              ...(taskGoalSharedFault
                 ? {
-                    interruptDependency: (held, interruption) =>
-                      interruptTaskGoalTransferDependency({
-                        dependency: taskGoalTransferDependency,
+                    interruptAfterCommit: (held, interruption) => {
+                      const context = {
                         fixture,
-                        cluster: postgres?.cluster,
                         workerId,
                         worker,
                         file: taskGoalTransferFaultFile,
                         held,
                         interruption,
-                      }),
+                      };
+                      return taskGoalTransferPeer
+                        ? interruptTaskGoalTransferPeer({
+                            ...context,
+                            peer: taskGoalTransferPeer,
+                          })
+                        : interruptTaskGoalTransferDependency({
+                            ...context,
+                            dependency: taskGoalTransferDependency,
+                            cluster: postgres?.cluster,
+                          });
+                    },
                   }
                 : {}),
               restartWorker: async (previousPid) => {

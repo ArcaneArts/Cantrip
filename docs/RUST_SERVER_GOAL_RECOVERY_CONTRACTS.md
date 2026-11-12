@@ -248,3 +248,22 @@ Run the browser fixture with `--database postgres --server-pair rust/rust`
 and `--task-goal-provider-transfer-fault postgres-after-commit` or
 `--task-goal-provider-transfer-fault redis-after-commit`.
 [Shared dependency acceptance record](security/rust-server-shared-task-goal-transfer-acceptance.json)
+
+## Participating server loss after transfer commit
+
+The fixture kills one Rust server with SIGKILL after PostgreSQL commits the
+handoff and before the worker consumes the held HTTP response. The
+replacement starts at the same origin with a new instance identity. The
+browser and worker stay alive, as does the other Rust peer.
+
+Loss of the browser-facing server leaves the worker's Redis connection claim
+unchanged. Loss of the worker-facing server produces a new claim with the
+same worker continuity identity. In both cases the worker consumes the held
+response and finishes the original handoff. The withdrawn source stays
+retired and the new provider admits one Goal cycle. The browser reopens the
+same encrypted transcript without additional inference.
+
+Run the browser fixture with `--database postgres --server-pair rust/rust`
+and `--task-goal-provider-transfer-fault client-peer-after-commit` or
+`--task-goal-provider-transfer-fault worker-peer-after-commit`.
+[Participating server acceptance record](security/rust-server-task-goal-peer-loss-acceptance.json)
