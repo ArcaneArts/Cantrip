@@ -23,11 +23,12 @@ The earlier signed update from `1.1.2831` to `1.1.2845` retained the
 authenticated client, server, worker and written setting, and verified the
 installed bundles against the signed archive.
 [Signed macOS desktop qualification](RUST_SERVER_DESKTOP_SIGNED_UPDATE.md#current-installed-app-and-signed-update)
-The [current installed Windows x64 qualification](RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md#windows-x64-installed-112845)
-updated the installed app to `1.1.2845` through its signed updater and verified
-14,090 files. The retained profile and all three database modes passed
-reopening, real worker replies and tray shutdown. The Windows standalone
-distribution passed on all three stores as well.
+The Windows x64 `1.1.2869` standalone distribution passed all three stores.
+The signed desktop update to the same version verified 14,089 installed
+files and passed tray shutdown and reopening with the retained PGlite
+profile. The installed app passed first start, persisted-profile reopening,
+worker replies, and tray shutdown across all three stores.
+[Windows x64 qualification](RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md)
 The [native desktop workspace qualification](RUST_SERVER_DESKTOP_WORKSPACE_ACCEPTANCE.md)
 also exercises actual macOS popouts, dirty documents, server restart, WebView
 reload, application SIGKILL/restart, native close/return and explicit worker-file
@@ -189,7 +190,7 @@ also account for two retained legacy worker handlers. Scoped worker command
 coverage accounts for 306 of 323 identities.
 
 The [current Windows qualification](RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md)
-passes `1.1.2845` standalone across all three stores on the Windows x64
+passes `1.1.2869` standalone across all three stores on the Windows x64
 guest and verifies 2,281 package files and three SQL export checksums. The installed `1.1.2839` to
 `1.1.2841` signed update retains the PGlite profile, server identity and
 accepted write and exercises the full worker before and after installation.

@@ -1,5 +1,61 @@
 # Current Windows native server qualification
 
+## Windows x64 standalone `1.1.2869`
+
+The Windows 11 x64 QEMU guest packaged the Rust server from
+`0ae86163efb8503387a2b3d627f9e962d099e1cd` with PostgreSQL 18.6 and the
+bundled Visual C++ runtime. The relocated package passed PGlite, bundled
+PostgreSQL, and external PostgreSQL. The tests ran migrations, matched
+each SQL export to its runtime receipt, retained settings and identity
+across restart and hosted reopening, and shut down when supervision stdin
+closed. They verified 2,281 files, the Windows launchers, configuration
+precedence, and embedded PGlite fallback. The server's runtime PATH had
+no Node executable.
+
+The native packager exited zero. Its transfer disk filled while copying
+the archive, which was recovered from a read-only guest snapshot. The
+archive and verified manifest matched the guest executable and the
+standalone suite's serial and disk receipts. The guest used a 240-second
+readiness observation window for software emulation.
+[Windows x64 acceptance record](security/rust-server-2869-win32-x64-acceptance.json)
+
+## Windows x64 signed update to `1.1.2869`
+
+The installed `1.1.2845` app rejected an altered installer with
+`update_signature_invalid` and installed `1.1.2869` through its updater
+over loopback HTTPS using a disposable QA updater key. A read-only
+guest snapshot matched 14,089 installed files to the signed NSIS payload.
+
+The original observer failed on an uninitialized variable after
+requesting installation. Fresh WebView and HTTP probes on the same
+relaunched app verified that the app, Rust server, and bundled worker
+each reported `1.1.2869`. The PGlite profile retained its server
+identity, worker identity, and saved theme. The updated app exited zero
+through its tray, reaped the Rust server and worker, and logged a
+completed server shutdown.
+On a subsequent launch, the same installed app reopened the retained
+profile using its persisted PGlite selection, read back the theme,
+received a worker reply, and shut down again through the tray.
+The Windows evaluation guest later shut down at its license deadline.
+The retained-profile receipt was recovered from the guest disk.
+[Windows x64 signed update record](security/rust-server-2869-win32-x64-acceptance.json#signedUpdate)
+
+## Windows x64 installed database modes on `1.1.2869`
+
+The installed app passed first start and reopening on PGlite, bundled
+PostgreSQL, and external PostgreSQL. Each first start completed anonymous
+recovery setup and wrote a setting. Each reopen selected its database from
+the stored profile with database environment overrides cleared and
+read back the same setting and server identity.
+
+The three first starts, three reopens, and signed-update profile reopen
+each received an actual reply from the packaged worker, exited zero
+through the tray, reaped the server and worker, and logged a completed
+Rust server shutdown. The bundled postmaster exited and its PID file
+was removed on shutdown. The external PostgreSQL fixture observed an app
+connection and remained running after app shutdown.
+[Windows x64 installed matrix](security/rust-server-2869-win32-x64-acceptance.json#installedMatrix)
+
 ## Windows x64 standalone `1.1.2845`
 
 The `1.1.2845` Rust server from `5f4d4691d1b83b8216e9d0f194c7f9d3217aa298`

@@ -29489,23 +29489,34 @@
       "status": "implemented-with-scoped-local-qualification",
       "evidence": [
         "docs/RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md",
+        "docs/security/rust-server-2869-win32-x64-acceptance.json",
         "docs/security/rust-server-win32-x64-acceptance.json",
         "scripts/server-rust/packaged-server-acceptance.mjs",
         "scripts/server-rust/desktop-runtime-acceptance.mjs",
         "scripts/server-rust/desktop-profile-upgrade-compatibility.mjs",
         "scripts/server-rust/packaged-node-fixture.test.mjs"
       ],
-      "sourceCommit": "2ec06de47a6bdd58439c0ad04cfaea0e3922d995",
-      "candidateVersion": "1.1.2819",
+      "sourceCommit": "0ae86163efb8503387a2b3d627f9e962d099e1cd",
+      "candidateVersion": "1.1.2869",
       "databaseModes": ["pglite", "bundled-postgres", "postgres"],
-      "verifiedArtifactFiles": 2278,
-      "profileUpgradeAndInterruptionCases": 8,
-      "publishedNodeVersion": "1.1.2397",
-      "currentNativeStandalone": "docs/security/rust-server-win32-x64-acceptance.json#currentNativeStandalone",
-      "currentInstalledDesktop": "docs/security/rust-server-win32-x64-acceptance.json#currentInstalledDesktop",
+      "verifiedArtifactFiles": 2281,
+      "verifiedInstalledPayloadFiles": 14089,
+      "historicalArm64Guest": {
+        "sourceCommit": "2ec06de47a6bdd58439c0ad04cfaea0e3922d995",
+        "candidateVersion": "1.1.2819",
+        "verifiedArtifactFiles": 2278,
+        "profileUpgradeAndInterruptionCases": 8,
+        "publishedNodeVersion": "1.1.2397"
+      },
+      "currentNativeStandalone": "docs/security/rust-server-2869-win32-x64-acceptance.json#standalone",
+      "previousNativeStandalone": "docs/security/rust-server-win32-x64-acceptance.json#currentNativeStandalone",
+      "currentInstalledDesktop": "docs/security/rust-server-2869-win32-x64-acceptance.json#installedMatrix",
+      "currentInstalledSignedUpdate": "docs/security/rust-server-2869-win32-x64-acceptance.json#signedUpdate",
+      "installedDesktopCases": 7,
+      "previousInstalledDesktop": "docs/security/rust-server-win32-x64-acceptance.json#currentInstalledDesktop",
       "installedX64SignedUpdate": "docs/security/rust-server-win32-x64-acceptance.json#installedX64SignedUpdate",
       "installedX64PostgresModes": "docs/security/rust-server-win32-x64-acceptance.json#installedX64PostgresModes",
-      "scope": "The earlier Windows ARM64 guest passes all three stores with x64 standalone and server-only desktop supervision, plus Node PGlite upgrade, post-write rollback and re-upgrade. The Windows x64 guest qualifies the 1.1.2845 GNU standalone artifact across all three stores with 2281 package files and three verified SQL exports. It also passes the installed signed 1.1.2839 to 1.1.2841 PGlite update with full worker and retained identity/write. The installed 1.1.2841 historical PGlite profile passes conversion and preserves all 1660 original files. Current installed Windows x64 1.1.2845 updates a retained PGlite profile and verifies all 14090 signed payload files. The retained profile and each first-start/reopen database pair pass real worker replies and seven tray shutdowns. Bundled and external PostgreSQL reopen from the persisted selection."
+      "scope": "The earlier Windows ARM64 guest passes all three stores with x64 standalone and server-only desktop supervision, plus Node PGlite upgrade, post-write rollback and re-upgrade. The Windows x64 guest qualifies the 1.1.2869 GNU standalone artifact across all three stores with 2281 package files and three verified SQL exports. The installed signed 1.1.2845 to 1.1.2869 update rejects a modified installer, verifies 14089 installed files, retains the PGlite profile and passes its subsequent reopen and tray shutdown. The current installed app passes seven tray shutdowns, including the retained profile and three first-start/reopen database pairs. Both PostgreSQL modes reopen from the persisted selection, and the external cluster survives application shutdown. It also passes the installed signed 1.1.2839 to 1.1.2841 PGlite update with full worker and retained identity/write. The installed 1.1.2841 historical PGlite profile passes conversion and preserves all 1660 original files. Earlier installed Windows x64 1.1.2845 updates a retained PGlite profile and verifies all 14090 signed payload files. The retained profile and each first-start/reopen database pair pass real worker replies and seven tray shutdowns. Bundled and external PostgreSQL reopen from the persisted selection."
     },
     "currentLinuxArm64Qualification": {
       "status": "implemented-with-scoped-local-qualification",
