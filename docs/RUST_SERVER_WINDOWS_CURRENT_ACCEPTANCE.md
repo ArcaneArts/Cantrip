@@ -21,6 +21,14 @@ package timed out during PGlite startup after 240 seconds. The earlier
 three-store result still applies to its recorded executable.
 [Windows 1.1.2881 standalone record](security/rust-server-2881-win32-x64-standalone.json)
 
+The Windows build now passes `NUL` to the embedded PGlite runtime when it
+redirects standard input. The Windows CRT probe returned end of file for
+`NUL` and error 2 for `/dev/null`. The patched `1.1.2881` executable
+started directly with a fresh PGlite profile, saved a setting, reopened
+with the same identity and setting, and exited zero on supervision stdin
+close both times in the Windows 11 x64 guest.
+[Windows PGlite runtime record](security/rust-server-2881-win32-x64-standalone.json#rebuiltPackage)
+
 ## Windows x64 rebuilt desktop installer
 
 The rebuilt NSIS installer contains the Rust server from `ff6a4b060` and
