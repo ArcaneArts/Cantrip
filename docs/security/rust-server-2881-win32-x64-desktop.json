@@ -253,5 +253,55 @@
         "sha256": "73df3831412ef52ec8d6c5436da1bd1ebd44ba5d2c8463307fb7b810fca40618"
       }
     }
+  },
+  "rebuiltInstaller": {
+    "version": "1.1.2881",
+    "target": "win32-x64",
+    "desktopSourceCommit": "2dcc69ed82a019d5ba3ab5f9fbef30eea517aa13",
+    "unchangedFrontendSourceCommit": "ccafd3cd4baea444ab43c1b84471ab3225f718e3",
+    "serverSourceCommit": "ff6a4b060c60ee1f391b70161fdffd0c933c38c7",
+    "installer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-x64-rebuilt-guest/desktop/Cantrip_1.1.2881_x64-setup.exe",
+      "bytes": 256760823,
+      "sha256": "455c6378345b703ece830a741be06d504f6a7e8c8a8244fa0d41212eb5259a57"
+    },
+    "qaUpdaterSignature": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-x64-rebuilt-guest/desktop/Cantrip_1.1.2881_x64-setup.exe.sig",
+      "bytes": 420,
+      "sha256": "e95b1b635e215aaacff276d4aa460f4fbc3759dbebe705b7289cd3417a9201fa"
+    },
+    "qaUpdaterSignatureVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-x64-rebuilt-guest/desktop/minisign-verification.log",
+      "bytes": 115,
+      "sha256": "f4905edb181d5816861650ee8547547f7a158a9d3e60b65c606f800f7f5e9865"
+    },
+    "embeddedManifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-x64-rebuilt-guest/desktop/nsis-embedded-runtime-manifest.json",
+      "bytes": 2506190,
+      "sha256": "7068e3f17dd8ea814216085cb11232677beecf72a29d0f1329212d41157f7d8d"
+    },
+    "verifiedFiles": 14092,
+    "unchangedWorkerNodeAndConverterFiles": 11807,
+    "desktopLauncherConfiguration": {
+      "bytes": 118,
+      "sha256": "ddc26f8d2ea513f5120f221caa5be4118cccdb145c7d5d7382080b611d17806d"
+    },
+    "appBuildLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-x64-rebuilt-guest/desktop/build.log",
+      "bytes": 1887,
+      "sha256": "47764bd72f776fb365c7569b0e726248bffa0929cb4724875db8032ce3f7396b"
+    },
+    "bundleLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-x64-rebuilt-guest/desktop/bundle.log",
+      "bytes": 1218,
+      "sha256": "7f7dc45b03b88c72b5b886f9af4e1851fff56ef97622d0d33742eeaf11abe33c"
+    },
+    "appBundleMarkerVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-x64-rebuilt-guest/desktop/app-bundle-marker.json",
+      "bytes": 104,
+      "sha256": "83a37892a0d0ba8aa25217d07dc9a44439e0d8a0af2fdbffa2cfb1e1c2f21fef"
+    },
+    "installedDatabaseModes": [],
+    "signedUpdateRuntimeAcceptance": "pending"
   }
 }
