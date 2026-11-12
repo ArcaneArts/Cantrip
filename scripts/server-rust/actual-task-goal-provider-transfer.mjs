@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { glob, readFile, realpath } from "node:fs/promises";
+import { glob, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { eventually } from "./full-worker.mjs";
 import {
@@ -21,6 +21,20 @@ export function readTaskGoalTransfer(page, chatId) {
       })
     ).latest;
   }, chatId);
+}
+
+export async function releaseTaskGoalTransfer(file, operationId) {
+  await writeFile(file + ".resume", "");
+  const release = await eventually(
+    () =>
+      readFile(file + ".released", "utf8").then(JSON.parse, (error) => {
+        if (error.code === "ENOENT") return undefined;
+        throw error;
+      }),
+    (record) => assert.ok(record),
+  );
+  assert.equal(release.operationId, operationId);
+  return release;
 }
 
 function cancelTaskGoalTransfer(page, { chatId, operationId }) {
@@ -83,8 +97,8 @@ async function interruptTransfer(page, begun, fault, observation) {
       status: 409,
       code: "handoff-already-committed",
     });
-    if (fault.interruptDependency)
-      await fault.interruptDependency(held, observation.interruption);
+    if (fault.interruptAfterCommit)
+      await fault.interruptAfterCommit(held, observation.interruption);
     else {
       const newPid = await fault.restartWorker(held.pid);
       assert.notEqual(newPid, held.pid);
@@ -370,8 +384,8 @@ export async function transferQueuedTaskGoal({
       target.providerId,
     );
     result.steps.push(
-      fault?.interruptDependency
-        ? "the original worker finishes the committed Goal transfer after a shared dependency outage"
+      fault?.interruptAfterCommit
+        ? "the original worker finishes the committed Goal transfer after an outage"
         : fault
           ? "a replacement worker resumes the committed transfer on the original conversation and sends the queued Goal to the destination"
           : autonomous

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { eventually } from "./full-worker.mjs";
+import { releaseTaskGoalTransfer } from "./actual-task-goal-provider-transfer.mjs";
 import {
   redisIdentity,
   sharedDependencyReadiness,
@@ -52,16 +52,7 @@ export async function interruptTaskGoalTransferDependency({
       dependency,
       true,
     );
-    await writeFile(file + ".resume", "");
-    outage.release = await eventually(
-      () =>
-        readFile(file + ".released", "utf8").then(JSON.parse, (error) => {
-          if (error.code === "ENOENT") return undefined;
-          throw error;
-        }),
-      (record) => assert.ok(record),
-    );
-    assert.equal(outage.release.operationId, held.operationId);
+    outage.release = await releaseTaskGoalTransfer(file, held.operationId);
     // Let Redis's recorded claim expire. During PostgreSQL loss leave time
     // for the worker to issue the next request after receiving the commit.
     await delay(
