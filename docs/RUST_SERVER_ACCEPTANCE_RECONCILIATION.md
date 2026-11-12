@@ -164,6 +164,13 @@ The local source and server boundary audits verify all 17 generated contract
 graphs and maps, the current route inventory, real Rust authentication after
 restart and current HTTP authority boundaries.
 
+The rebuilt macOS ARM64 server matched the Node reference on 100 App Live
+socket cases across the three stores and four authentication or capacity
+profiles. Chromium and the existing worker client components also matched
+14 steps per store, including replay from a retained cursor, heartbeat,
+credential rotation, reconnect and revocation.
+[App Live and worker coverage](security/rust-server-coverage.json)
+
 The [Linux Redis TLS comparison](RUST_SERVER_REDIS.md#packaged-linux-redis-tls)
 qualifies authenticated TLS, certificate trust, Redis process restart, worker
 routing, App Live replay and cross-peer sign-out through the optimized
