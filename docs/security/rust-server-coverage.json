@@ -29360,32 +29360,32 @@
       "status": "implemented-with-scoped-local-qualification",
       "evidence": [
         "docs/RUST_SERVER_WINTERHOLD.md",
-        "docs/security/rust-server-winterhold-x64-acceptance.json",
+        "docs/security/rust-server-2869-production-packages.json",
         "scripts/server-rust/winterhold-systemd-acceptance.mjs",
         "scripts/server-rust/container-server-acceptance.mjs"
       ],
-      "candidateVersion": "1.1.2845",
-      "sourceCommit": "2e60d2042203f64c8105d5c52d12ae1db92d2d83",
+      "candidateVersion": "1.1.2869",
+      "sourceCommit": "0ae86163efb8503387a2b3d627f9e962d099e1cd",
       "databaseModes": ["pglite", "bundled-postgres", "postgres"],
       "containerArtifactFilesVerifiedPerMode": 2546,
       "installerCalls": 18,
       "recoveredInstallerFailures": 6,
       "runningExecutableHashesCompared": 10,
-      "scope": "Linux x64 1.1.2845 container and Winterhold service rehearsal under Rosetta on a local ARM64 Linux host. Verified Caddy TLS, external PostgreSQL TLS, retained writes through distinct native and Node rollback, read-only service namespace and graceful shutdown."
+      "scope": "Linux x64 1.1.2869 container and local Winterhold systemd and Caddy rehearsal under Rosetta on an ARM64 Linux host. All three stores preserve sessions and accepted writes through rollback and return to Rust. External PostgreSQL requires TLS. Native processes match the packaged binary and shut down cleanly."
     },
     "currentDarwinArm64PackageQualification": {
       "status": "implemented-with-scoped-local-qualification",
       "evidence": [
         "docs/RUST_SERVER_DESKTOP_SIGNED_UPDATE.md",
-        "docs/security/rust-server-darwin-arm64-acceptance.json",
+        "docs/security/rust-server-2869-production-packages.json",
         "scripts/server-rust/packaged-server-acceptance.mjs",
         "scripts/server-rust/native-desktop-updater-acceptance.mjs"
       ],
-      "sourceCommit": "2e60d2042203f64c8105d5c52d12ae1db92d2d83",
-      "candidateVersion": "1.1.2845",
+      "sourceCommit": "0ae86163efb8503387a2b3d627f9e962d099e1cd",
+      "candidateVersion": "1.1.2869",
       "standaloneDatabaseModes": ["pglite", "bundled-postgres", "postgres"],
       "verifiedArtifactFiles": 1762,
-      "scope": "Native ARM64 macOS 1.1.2845 standalone package passes all three stores. The separate Developer ID desktop updater rehearsal from 1.1.2786 to 1.1.2831 retained the encrypted client identity and settings and exercised the full worker across all three stores."
+      "scope": "Native ARM64 macOS 1.1.2869 standalone package passes all three stores. Developer ID-signed updates from 1.1.2845 retain the encrypted device and account bindings, service identities, selected stores and accepted settings. All 13,569 files in each installation match the signed archive."
     },
     "currentActiveTaskPostgresOutage": {
       "status": "implemented-with-scoped-local-qualification",
@@ -29901,9 +29901,10 @@
       "status": "partial",
       "qualification": "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md#ordering-the-first-encrypted-task-goal-input",
       "acceptance": "docs/security/rust-server-task-goal-first-input-acceptance.json",
-      "verifiedScope": "Real browser, full worker and Core. Force an early native Goal begin across actual first input claim or dispatch. Verify the unused begin is denied and ends, the explicit turn binds the original Task receipt, and later autonomous completion survives restart.",
+      "packagedAcceptance": "docs/security/rust-server-2869-production-packages.json",
+      "verifiedScope": "Real browser, full worker and Core. Force an early native Goal begin across actual first input claim or dispatch. Verify the unused begin is denied and ends, the explicit turn binds the original Task receipt, and later autonomous completion survives restart. The exact macOS ARM64 1.1.2869 server and worker pass the forced dispatch case on all three stores.",
       "remaining": [
-        "Qualify the exact shipping worker and server artifacts and the full provider-transfer and interruption matrix."
+        "Qualify the remaining provider-transfer and interruption cases and final supported shipping platforms."
       ]
     },
     "currentPackagedNativeAdmission": {

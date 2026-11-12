@@ -80,6 +80,28 @@ artifacts are retained for archival before cleanup.
 
 ## Current macOS ARM64 production-entry performance
 
+The packaged `1.1.2869` Rust server and compiled Node reference from
+`0ae86163efb8503387a2b3d627f9e962d099e1cd` completed five warmups and 20
+measured runs per runtime. The local macOS ARM64 test used separate PGlite
+profiles and retained identity and settings across each warm restart.
+
+| Measurement, median          |              Node |                Rust |
+| ---------------------------- | ----------------: | ------------------: |
+| Complete workload            |       3,557.31 ms |         1,562.45 ms |
+| Warm readiness               |       1,175.72 ms |            77.81 ms |
+| Idle process-tree RSS        |     1,340,592 KiB |         101,880 KiB |
+| Durable settings request     |          3.865 ms |            1.262 ms |
+| Eight-client read throughput | 806.88 requests/s | 3,177.04 requests/s |
+| Paused-client catch-up       |          0.732 ms |            0.635 ms |
+
+The complete-workload guard passed. Its median was 56.08% lower and its p95
+was 52.96% lower. RSS includes shared mappings. This sample covers a small
+local profile. The
+[acceptance record](security/rust-server-2869-production-packages.json)
+links the benchmark output and exact executable.
+
+### macOS ARM64 candidate `1.1.2845`
+
 The Node production reference built at `2e60d2042203f64c8105d5c52d12ae1db92d2d83`
 and the optimized `1.1.2845` Rust package ran the same small PGlite workload.
 On an M4 Max with macOS 27.0.1, all five warmups and 20 measured runs per

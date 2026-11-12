@@ -120,6 +120,29 @@ interrupted product flows, multi-instance coordination and performance.
 
 ## Current Linux x64 qualification
 
+The production Dockerfile built the Linux x64 `1.1.2869` runtime image and
+standalone distribution from `0ae86163efb8503387a2b3d627f9e962d099e1cd`.
+All three stores passed migrations, SQL export, retained settings and identity,
+local and hosted reopening, and graceful shutdown. Each non-root container
+verified the mapped native executable and all 2,546 package files with a
+read-only root, a 256 MiB noexec temporary mount, and Node absent from PATH.
+
+The local systemd and Caddy rehearsal passed 18 installer calls. It recovered
+from six deliberate migration and startup failures, preserved sessions and
+accepted writes through rollback and return to Rust, and verified ten running
+native executables. The two local stores rolled back to Rust `1.1.2783`.
+External PostgreSQL rolled back to Node `1.1.2739` with TLS required. Caddy
+served HTTPS and App Live with the fixture CA. The running unit reported
+`ProtectSystem=strict` and `ReadWritePaths=/var/lib/cantrip`. Shutdown
+reaped the bundled PostgreSQL processes.
+
+The x64 executable ran through Rosetta on a local ARM64 Linux host. The
+[acceptance record](security/rust-server-2869-production-packages.json)
+includes the native executable, saved image, archived profiles and reports.
+The rehearsal used isolated local services.
+
+### Linux x64 candidate `1.1.2845`
+
 The production build from `2e60d2042203f64c8105d5c52d12ae1db92d2d83` exported
 `1.1.2845` as a Linux x64 distribution and a Debian runtime image. Each
 running container matched the exported executable hash and all 2,546
