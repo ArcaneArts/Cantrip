@@ -1901,6 +1901,7 @@ export class CodexAppServer implements CodexRuntime {
       scopeId: string;
       rootThreadId: string;
       goalEpoch: string | null;
+      parkedForFirstInput: TaskGoalFirstInput | undefined;
       phase: "begin" | "begin-independent" | "suspend" | "resume";
       denied: Promise<void>;
       confirmDenial(): void;
@@ -5540,14 +5541,13 @@ export class CodexAppServer implements CodexRuntime {
       await hold.hold(operation, runner, threadId, transport);
       input.dispatching = true;
       const goal = await this.readManagedGoalRecovery(threadId, transport);
-      if (goal.goalEpoch)
-        await this.settleTaskGoalInputProducer(
-          operation,
-          scope,
-          transport,
-          goal.goalEpoch,
-          taskGoalFirstInputDispatch,
-        );
+      await this.settleTaskGoalInputProducer(
+        operation,
+        scope,
+        transport,
+        goal.goalEpoch,
+        input,
+      );
       const deadline = AbortSignal.timeout(CODEX_RPC_TIMEOUT_MS);
       const wait = signal ? AbortSignal.any([signal, deadline]) : deadline;
       while (!(await this.readThreadExecution(threadId)).nativeIdle) {
@@ -5605,26 +5605,31 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   /** The real root hold has already fenced allow for fresh autonomous begins.
-   * Deny only exact still-pending Core requests for this same Goal. Children,
-   * independent helpers, resumed turns and already-allowed work settle normally. */
+   * Deny only an exact still-pending Core request for this Goal, or one
+   * parked for this first input before recovery advanced the Goal epoch. */
   private async settleTaskGoalInputProducer(
     operationId: string,
     scope: TaskGoalRootScope,
     transport: string,
-    goalEpoch: string,
-    reason = new Error(
-      "The unused autonomous Goal begin yields to its first-input transfer.",
-    ),
+    goalEpoch: string | null,
+    firstInput?: TaskGoalFirstInput,
   ) {
     const overlay = this.taskGoalRoot(scope, transport);
     const runner = overlay.options.executionGate!.runnerGeneration;
+    const reason = firstInput
+      ? taskGoalFirstInputDispatch
+      : new Error(
+          "The unused autonomous Goal begin yields to its first-input transfer.",
+        );
     for (const pending of this.#nativeInferenceWaits.values()) {
       if (
         pending.phase !== "begin" ||
         pending.threadId !== scope.threadId ||
         pending.rootThreadId !== scope.threadId ||
         pending.runnerGeneration !== runner ||
-        pending.goalEpoch !== goalEpoch ||
+        !pending.goalEpoch ||
+        (pending.goalEpoch !== goalEpoch &&
+          !(firstInput && pending.parkedForFirstInput === firstInput)) ||
         pending.controller.signal.aborted
       )
         continue;
@@ -5649,7 +5654,7 @@ export class CodexAppServer implements CodexRuntime {
       if (
         !claim.claimed ||
         !claim.inferenceOnly ||
-        claim.goalEpoch !== goalEpoch ||
+        claim.goalEpoch !== pending.goalEpoch ||
         this.#nativeInferenceWaits.get(pending.attemptId) !== pending
       )
         continue;
@@ -5680,11 +5685,27 @@ export class CodexAppServer implements CodexRuntime {
    * managed-input runner must never be silently converted to a Task root. */
   taskGoalHandoffConfiguration(
     options: Omit<PrepareManagedThreadOptions, "intent">,
+    firstInput?: TaskInferenceInputReceipt,
   ) {
     const configured = this.taskInferenceOptions(options);
     if (configured.executionGate?.inferenceOnly !== true)
       throw new Error("The Task handoff has no private inference gate.");
-    return configured;
+    if (!firstInput) return configured;
+    if (firstInput.kind !== "goal" || firstInput.chatId !== options.chatId)
+      throw new Error("The Task handoff first input belongs to another root.");
+    // The imported Goal can produce an autonomous begin during thread/resume,
+    // before the server is able to redeliver its canonical first input.
+    return {
+      ...configured,
+      onThreadIdentified: (threadId: string) => {
+        this.expectTaskGoalFirstInput(
+          threadId,
+          firstInput.chatId,
+          firstInput.clientMessageId,
+        );
+        return configured.onThreadIdentified?.(threadId);
+      },
+    };
   }
 
   /** Wake the existing Goal without replaying its setter or an input. Core and
@@ -8961,11 +8982,24 @@ export class CodexAppServer implements CodexRuntime {
       rejectDenial = reject;
     });
     void denied.catch(() => {});
+    const firstInput = this.#taskGoalFirstInputs.get(base.threadId);
+    const overlay = this.#managedThreadOverlays.get(base.threadId);
+    const parkedForFirstInput =
+      phase === "begin" &&
+      (rootThreadId ?? base.threadId) === base.threadId &&
+      payload.data.goalEpoch &&
+      firstInput?.transport === transport &&
+      overlay?.chatId === firstInput.chatId &&
+      overlay.options.executionGate?.inferenceOnly === true &&
+      overlay.options.executionGate.runnerGeneration === base.runnerGeneration
+        ? firstInput
+        : undefined;
     const pending = {
       ...base,
       scopeId,
       rootThreadId: rootThreadId ?? base.threadId,
       goalEpoch: payload.data.goalEpoch ?? null,
+      parkedForFirstInput,
       phase,
       controller: new AbortController(),
       denied,
@@ -8985,20 +9019,10 @@ export class CodexAppServer implements CodexRuntime {
       changed();
     try {
       signal.throwIfAborted();
-      const firstInput = this.#taskGoalFirstInputs.get(base.threadId);
-      const overlay = this.#managedThreadOverlays.get(base.threadId);
-      if (
-        phase === "begin" &&
-        pending.rootThreadId === base.threadId &&
-        pending.goalEpoch &&
-        firstInput?.transport === transport &&
-        overlay?.chatId === firstInput.chatId &&
-        overlay.options.executionGate?.inferenceOnly === true &&
-        overlay.options.executionGate.runnerGeneration === base.runnerGeneration
-      ) {
+      if (parkedForFirstInput) {
         // Leave the exact native begin parked without acquiring a second
         // inference ticket while the canonical first input is still queued.
-        if (!firstInput.dispatching) {
+        if (!parkedForFirstInput.dispatching) {
           await new Promise<never>((_resolve, reject) => {
             signal.addEventListener("abort", () => reject(signal.reason), {
               once: true,

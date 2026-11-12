@@ -175,8 +175,16 @@ impl Service {
         );
         let operation=self.operations.run(async move{
             let result=async{
-                if this.commands.request_with_timeout(&text(&state["workerId"])?,json!({"type":"chat.runtime.handoff","chatId":state["chatId"],"operationId":state["operationId"],"intent":intent}),RequestTimeout::Disabled,None).await.is_err(){
-                    this.repository.failure(&owner,&text(&state["workerId"])?,&text(&state["operationId"])?,"handoff-worker-unavailable").await?;
+                let request = this.commands.request_with_timeout(
+                    &text(&state["workerId"])?,
+                    json!({"type":"chat.runtime.handoff","chatId":state["chatId"],"operationId":state["operationId"],"intent":intent}),
+                    RequestTimeout::Disabled,
+                    None,
+                ).await;
+                let owns_attempt = this.active.lock().unwrap().get(&copied)
+                    .is_some_and(|(current,_)|*current==id);
+                if request.is_err() && owns_attempt {
+                    this.repository.dispatch_failure(&owner, &state).await?;
                 }
                 Ok(())
             }.await;

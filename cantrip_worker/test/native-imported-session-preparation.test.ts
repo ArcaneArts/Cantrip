@@ -12,6 +12,7 @@ import {
 } from "../src/codex/app-server.js";
 import { nativeRuntimeHandoffStateSchema } from "@cantrip/protocol";
 import { ManagedRuntimeHandoffJournal } from "../src/codex/managed-runtime-handoff-journal.js";
+import { ManagedRootProducerHold } from "../src/codex/managed-root-producer-hold.js";
 import { discoverCodexRuntime } from "../src/codex/discovery.js";
 
 const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();
@@ -97,7 +98,7 @@ for await (const line of createInterface({ input: process.stdin })) {
       const provider = {
         id: "source-provider",
         name: "Source fixture",
-        kind: "openai" as const,
+        kind: "openai-compatible" as const,
         baseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}/v1`,
         apiKey: "fixture-not-a-real-key",
       };
@@ -114,12 +115,14 @@ for await (const line of createInterface({ input: process.stdin })) {
         subagentDefaults: { model: { ...model, name: "gpt-5-mini" }, provider },
         canonicalHistory: true,
       };
+      const runnerGeneration = randomUUID();
       const initial = await source.prepareManagedThread({
         ...common,
         model,
         provider,
         threadId: null,
         intent: "configure",
+        executionGate: { runnerGeneration },
         planMode: "plan",
         mcpServers: [],
       });
@@ -127,6 +130,12 @@ for await (const line of createInterface({ input: process.stdin })) {
         .confirmed!.settings;
       expect(original.collaborationMode.mode).toBe("plan");
       const transferId = randomUUID();
+      await new ManagedRootProducerHold(source).hold(
+        transferId,
+        runnerGeneration,
+        initial.threadId,
+        source.transportGeneration!,
+      );
       const scope = {
         serverId: "fixture-server",
         ownerId: "fixture-owner",

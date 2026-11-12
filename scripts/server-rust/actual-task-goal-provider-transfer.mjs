@@ -8,6 +8,87 @@ import {
   suspensionCapacityStatus,
 } from "./suspension-capacity-browser.mjs";
 
+export function readTaskGoalTransfer(page, chatId) {
+  return page.evaluate(async (chatId) => {
+    const { getClientSessionIdentitySnapshot } =
+      await import("/src/lib/client-session.ts");
+    const { readRuntimeHandoffs } =
+      await import("/src/lib/native-runtime-handoff.ts");
+    return (
+      await readRuntimeHandoffs({
+        chatId,
+        identity: getClientSessionIdentitySnapshot(),
+      })
+    ).latest;
+  }, chatId);
+}
+
+function cancelTaskGoalTransfer(page, { chatId, operationId }) {
+  return page.evaluate(
+    async ({ chatId, operationId }) => {
+      const { getClientSessionIdentitySnapshot } =
+        await import("/src/lib/client-session.ts");
+      const { controlRuntimeHandoff } =
+        await import("/src/lib/native-runtime-handoff.ts");
+      try {
+        return {
+          state: await controlRuntimeHandoff(
+            { chatId, identity: getClientSessionIdentitySnapshot() },
+            operationId,
+            "cancel",
+          ),
+        };
+      } catch (error) {
+        if (error.status !== 409) throw error;
+        return { status: error.status, code: error.code };
+      }
+    },
+    { chatId, operationId },
+  );
+}
+
+async function interruptTransfer(page, begun, fault, observation) {
+  const held = await eventually(
+    () =>
+      readFile(fault.file, "utf8").then(JSON.parse, (error) => {
+        if (error.code === "ENOENT") return undefined;
+        throw error;
+      }),
+    (receipt) => assert.ok(receipt, "worker received the real server response"),
+    60_000,
+  );
+  observation.interruption = { mode: fault.mode, held };
+  const before = (observation.interruption.before = await readTaskGoalTransfer(
+    page,
+    begun.chatId,
+  ));
+  const cancel = fault.mode === "cancel-prepared";
+  assert.equal(held.status, 200);
+  assert.equal(held.phase, cancel ? "prepared" : "committed");
+  assert.equal(held.sourceWithdrawn, true);
+  assert.equal(held.operationId, begun.operationId);
+  assert.equal(before.operationId, held.operationId);
+  assert.equal(before.phase, held.phase);
+  assert.equal(
+    before.prepared.runtimeGeneration,
+    held.preparedRuntimeGeneration,
+  );
+  const cancellation = (observation.interruption.cancellation =
+    await cancelTaskGoalTransfer(page, begun));
+  if (cancel) {
+    assert.equal(cancellation.state.operationId, begun.operationId);
+    assert.equal(cancellation.state.cancelRequested, true);
+  } else {
+    assert.deepEqual(cancellation, {
+      status: 409,
+      code: "handoff-already-committed",
+    });
+    const newPid = await fault.restartWorker(held.pid);
+    assert.notEqual(newPid, held.pid);
+    observation.interruption.restartedWorkerPid = newPid;
+  }
+}
+
 export async function transferQueuedTaskGoal({
   page,
   projectId,
@@ -19,6 +100,8 @@ export async function transferQueuedTaskGoal({
   destination,
   finalizer,
   firstTurn,
+  queueRestoredReplies,
+  fault,
   objective,
   result,
 }) {
@@ -121,6 +204,7 @@ export async function transferQueuedTaskGoal({
       60_000,
     );
     const sourceCalls = modelCalls();
+    const sourceRequestCount = source.requests.length;
     const captured = await page.evaluate(async (chatId) => {
       const { getClientSessionIdentitySnapshot } =
         await import("/src/lib/client-session.ts");
@@ -166,36 +250,67 @@ export async function transferQueuedTaskGoal({
       begun.queuedSource.taskGoal.identity,
       observation.keeper.identity,
     );
-    const readTransfer = () =>
-      page.evaluate(async (chatId) => {
-        const { getClientSessionIdentitySnapshot } =
-          await import("/src/lib/client-session.ts");
-        return (
-          await (
-            await import("/src/lib/native-runtime-handoff.ts")
-          ).readRuntimeHandoffs({
-            chatId,
-            identity: getClientSessionIdentitySnapshot(),
-          })
-        ).latest;
-      }, chatId);
+    if (fault) await interruptTransfer(page, begun, fault, observation);
+    const cancelled = fault?.mode === "cancel-prepared";
     const finished = await eventually(
       async () => {
-        const state = (observation.latest = await readTransfer());
-        if (state?.errorCode)
+        const state = (observation.latest = await readTaskGoalTransfer(
+          page,
+          chatId,
+        ));
+        if (state?.errorCode && !fault)
           throw new Error(
             `Provider transfer failed in ${state.phase}: ${state.errorCode}`,
           );
         return state;
       },
       (state) => {
-        assert.equal(state?.phase, "completed", JSON.stringify(state));
+        assert.equal(state?.phase, cancelled ? "cancelled" : "completed");
       },
       60_000,
     );
     assert.equal(finished.operationId, begun.operationId);
+    assert.equal(finished.errorCode, null);
     assert.equal(finished.queuedSource.withdrawn, true);
     assert.equal(finished.binding.threadId, captured.threadId);
+    if (cancelled) {
+      assert.equal(finished.binding.modelRouteId, captured.modelRouteId);
+      assert.equal(finished.cancelRequested, true);
+      assert.ok(
+        finished.retiredRuntimeGenerations.includes(
+          observation.interruption.held.preparedRuntimeGeneration,
+        ),
+      );
+      assert.equal(modelCalls(), sourceCalls);
+      assert.equal(blocker.reply.request.completed, false);
+      const resumed = queueRestoredReplies();
+      blocker.reply.release();
+      await eventually(
+        () => resumed.entered,
+        (entered) =>
+          assert.equal(entered, true, "source receives the restored Goal"),
+        60_000,
+      );
+      assert.ok(JSON.stringify(resumed.request.input).includes(objective));
+      assert.equal(
+        destination.requests.filter(({ method }) => method === "POST").length,
+        0,
+      );
+      const selections = await Array.fromAsync(
+        glob(
+          `managed-native-namespaces/*/*/selections/${begun.operationId}.json`,
+          {
+            cwd: workerData,
+          },
+        ),
+      );
+      assert.deepEqual(selections, []);
+      observation.sourceResumedAfterCancellation = true;
+      result.steps.push(
+        "browser cancellation retires the prepared destination and sends the original encrypted Goal input through the restored source",
+      );
+      return;
+    }
     assert.equal(finished.binding.modelRouteId, target.routeId);
     assert.notEqual(
       finished.binding.runtimeGeneration,
@@ -207,22 +322,32 @@ export async function transferQueuedTaskGoal({
         assert.equal(entered, true, "the queued input reached the destination"),
       60_000,
     );
-    assert.equal(
-      modelCalls(),
-      sourceCalls,
-      "the source provider never starts the queued Goal",
-    );
-    assert.equal(blocker.reply.request.completed, false);
+    if (fault) {
+      const retired = observation.interruption.held.preparedRuntimeGeneration;
+      assert.notEqual(finished.binding.runtimeGeneration, retired);
+      assert.ok(finished.retiredRuntimeGenerations.includes(retired));
+      assert.equal(
+        source.requests
+          .slice(sourceRequestCount)
+          .some((request) => JSON.stringify(request.input).includes(objective)),
+        false,
+      );
+    } else {
+      assert.equal(modelCalls(), sourceCalls);
+      assert.equal(blocker.reply.request.completed, false);
+      observation.destinationStartedWhileSourceBusy = true;
+    }
     assert.ok(JSON.stringify(firstTurn.request.input).includes(objective));
     observation.sourceCalls = sourceCalls;
-    observation.destinationStartedWhileSourceBusy = true;
     observation.files = await readTransferFiles(
       workerData,
       finished,
       target.providerId,
     );
     result.steps.push(
-      "the browser transfers an unused encrypted Task Goal input to another provider through the full worker and native history import",
+      fault
+        ? "a replacement worker resumes the committed transfer on the original conversation and sends the queued Goal to the destination"
+        : "the browser transfers an unused encrypted Task Goal input to another provider through the full worker and native history import",
     );
   } finally {
     finalizer.release();

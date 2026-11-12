@@ -19,7 +19,7 @@ import { UnstartedInferenceUnavailableError } from "../inference-withdrawal.js";
 
 type Preparation = Omit<
   PrepareManagedThreadOptions,
-  "threadId" | "intent" | "replacementSettings" | "onThreadIdentified"
+  "threadId" | "intent" | "replacementSettings"
 >;
 export interface HandoffRuntime {
   runtime: Pick<
