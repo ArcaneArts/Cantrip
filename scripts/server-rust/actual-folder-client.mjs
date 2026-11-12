@@ -180,8 +180,8 @@ assert.ok(
   "Task Goal transfer fault expects cancel-prepared, worker-after-commit, postgres-after-commit, redis-after-commit, client-peer-after-commit, or worker-peer-after-commit",
 );
 assert.ok(
-  !taskGoalSharedFault || sharedPair === "rust/rust",
-  "Shared Task Goal transfer interruption requires --server-pair rust/rust",
+  !taskGoalSharedFault || sharedPair,
+  "Shared Task Goal transfer interruption requires --server-pair",
 );
 const taskGoalProviderTransfer =
   Boolean(taskGoalTransferFaultMode) ||
@@ -1969,6 +1969,7 @@ try {
         }
       }
     };
+    let productFailed = false;
     try {
       await fixture.start();
       await flow(
@@ -1978,20 +1979,23 @@ try {
         nativeProbeBinary,
         directBrokerBinary,
       );
+    } catch (error) {
+      productFailed = true;
+      throw error;
     } finally {
-      if (sharedPair) {
-        try {
-          await fixture.dispose();
-        } finally {
-          result.sharedServerGenerations = fixture.generations;
-        }
-      } else {
-        try {
-          await fixture.close();
-        } finally {
-          if (fixture.generations)
-            result.singleServerGenerations = fixture.generations;
-        }
+      try {
+        if (sharedPair) await fixture.dispose();
+        else await fixture.close();
+      } catch (error) {
+        result.serverCleanupFailure = {
+          message: error.message,
+          stack: error.stack,
+        };
+        if (!productFailed) throw error;
+      } finally {
+        if (sharedPair) result.sharedServerGenerations = fixture.generations;
+        else if (fixture.generations)
+          result.singleServerGenerations = fixture.generations;
       }
     }
   }

@@ -289,3 +289,43 @@ The fixture now retains the server's actual loopback address for Task cases
 selected through individual Goal flags. The original worker enrollment can
 therefore reconnect after the fixture's initial server restart.
 [Packaged post-commit acceptance](security/rust-server-autonomous-task-goal-interruption-acceptance.json#currentPackagedPostCommit)
+
+## Mixed-server post-commit recovery
+
+The browser fixture can place the browser and worker on either server
+implementation. During a PostgreSQL outage, it requires the Rust peer to
+report unavailable readiness and samples the legacy Node peer's readiness
+and liveness before restarting the database. The Node readiness probe can
+reach its five-second deadline while liveness stays available. Both peers
+must report ready again after restart.
+
+With the browser on Rust and the worker on the compiled legacy Node
+reference, both the PostgreSQL and Redis interruption runs completed the
+original handoff. The browser then failed to find the destination answer.
+A read-only copy of the PostgreSQL fixture showed a completed Task, and the
+destination's native rollout contained the expected answer. The available
+evidence places the failure between native completion and the browser's
+read of the durable transcript. The PostgreSQL repeat with a freshly built
+Node reference reproduced it. Both peers recovered readiness, the original
+handoff completed, and the browser read 18 messages with one copy of the
+initial answer and zero copies of the destination answer. Both peers shut
+down cleanly.
+
+With the browser on Node and the worker on Rust, the PostgreSQL rerun
+completed the original handoff. The Node process exceeded its shutdown
+deadline during the subsequent restart. The Redis case ended before the
+fixture observed the worker's commit response, so it never injected the
+outage. A host disk-full error interrupted PostgreSQL WAL replay on the
+initial run and later interrupted peer log capture with a freshly built
+Node reference. The archived reports retain these outcomes.
+
+The rebuilt Node reference passed two cutover cases. After either the
+browser-facing or worker-facing Node peer was killed, a Rust replacement
+took over at the same address. The same worker finished the original
+handoff, and the browser reopened the transcript with one copy of the
+destination answer. Replacing the worker-facing peer established a new
+connection with the same continuity identity. The local fixture disabled
+optional native plugin synchronization for the rebuilt-reference runs.
+
+Mixed dependency recovery with Node still serving one peer remains open.
+[Mixed post-commit evidence](security/rust-server-autonomous-task-goal-interruption-acceptance.json#mixedPostCommit)

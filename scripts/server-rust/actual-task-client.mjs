@@ -522,8 +522,19 @@ export async function actualTaskClient({
             (await import("/src/lib/api/chats.ts")).getMessages(chat),
           planned.chat.id,
         ),
-      (messages) =>
-        assert.ok(JSON.stringify(messages).includes(implementationAnswer)),
+      (messages) => {
+        if (taskGoalTransferFault)
+          result.taskGoalTransferTranscript = messages.map((message) => {
+            const serialized = JSON.stringify(message);
+            return {
+              id: message.id,
+              role: message.role,
+              initialAnswer: serialized.includes(initialGoalAnswer),
+              destinationAnswer: serialized.includes(implementationAnswer),
+            };
+          });
+        assert.ok(JSON.stringify(messages).includes(implementationAnswer));
+      },
     );
     if (forceGoalOrder) {
       assertFinalAnswer(
