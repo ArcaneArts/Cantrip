@@ -673,5 +673,172 @@
       "sha256": "0987edb00d6c08fa5f45431b9607778edf28740da90f496f3dcf985c6ff0976f",
       "bytes": 2011
     }
-  ]
+  ],
+  "currentPackagedPostCommit": {
+    "sourceBaseline": "4410750c7a7c78eee0cd9250a11ddaaa872d31db",
+    "nativeSourceCommit": "cb41197c6bacb199427bdd050c8ef8507bd3d06f",
+    "nativeArtifactVersion": "1.1.2881",
+    "platform": "darwin-arm64",
+    "nativeArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/cantrip-server-1.1.2881-cb41197c6-darwin-arm64.native.tar.gz",
+      "bytes": 66871813,
+      "sha256": "7038df56ee151cbbf53e922fbb3a611f80948174e6908dcaa8d6cf7b274b17e4"
+    },
+    "nativeBinarySha256": "704a20e13ed16165fb808055b8a16bdeca58bdca2588d3fb5c8cd344bfdd3ee2",
+    "workerEntry": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/cantrip-worker-darwin-arm64/dist/index.js",
+      "bytes": 391601,
+      "sha256": "c632631c9a6d250d2e56d938441b5d39dc972d1b03a6b521d4ddf6c85569e4a9"
+    },
+    "workerCore": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/cantrip-worker-darwin-arm64/bin/codex",
+      "bytes": 281161744,
+      "sha256": "159efa081468910fbe00493d12d3cb18fbb9e3a091e2ea63745432d35fccbecc"
+    },
+    "workerCli": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/cantrip-worker-darwin-arm64/bin/cantrip",
+      "bytes": 1332160,
+      "sha256": "7825db54c7c8cfbcac6c5c45fc0c3b19b860d137813764cfa946a17050458236"
+    },
+    "standalone": [
+      {
+        "databaseMode": "pglite",
+        "server": "rust",
+        "fault": "worker-after-commit",
+        "handoff": "completed",
+        "reopenMatches": true,
+        "sourceCaptureRequests": 1,
+        "productSteps": 16,
+        "destinationModelRequests": 2,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/goal-transfer-interruption/rust-pglite-worker-after-commit.json",
+          "bytes": 823853,
+          "sha256": "97fe66ac165bb77ae686c4ac84045cbe44c93268d7390835e234ff1c8d6a1727"
+        },
+        "retiredPreparedRuntime": true
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "server": "rust",
+        "fault": "worker-after-commit",
+        "handoff": "completed",
+        "reopenMatches": true,
+        "sourceCaptureRequests": 1,
+        "productSteps": 16,
+        "destinationModelRequests": 2,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/goal-transfer-interruption/rust-bundled-postgres-worker-after-commit.json",
+          "bytes": 808896,
+          "sha256": "5c5b9d8abda0e573c42bef300adf67b1cc4ae49e1b7776ee1bd75eb708af81cf"
+        },
+        "retiredPreparedRuntime": true
+      },
+      {
+        "databaseMode": "postgres",
+        "server": "rust",
+        "fault": "worker-after-commit",
+        "handoff": "completed",
+        "reopenMatches": true,
+        "sourceCaptureRequests": 1,
+        "productSteps": 16,
+        "destinationModelRequests": 2,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/goal-transfer-interruption/rust-postgres-worker-after-commit.json",
+          "bytes": 778974,
+          "sha256": "79559716ef722ccfcc24ee6e6d2cfdb39142011ea31e265b2b22fa691eefee8b"
+        },
+        "retiredPreparedRuntime": true
+      }
+    ],
+    "shared": [
+      {
+        "databaseMode": "postgres",
+        "server": "rust/rust",
+        "fault": "postgres-after-commit",
+        "handoff": "completed",
+        "reopenMatches": true,
+        "sourceCaptureRequests": 1,
+        "productSteps": 16,
+        "destinationModelRequests": 2,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/goal-transfer-interruption/rust-rust-postgres-after-commit.json",
+          "bytes": 984013,
+          "sha256": "034742838edf1aef908d09ab8e6168ae701ca04ae7796bb830863fcee4a44b06"
+        },
+        "sameWorkerSurvived": true,
+        "dependencyProcessReplaced": true,
+        "outageMilliseconds": 1548
+      },
+      {
+        "databaseMode": "postgres",
+        "server": "rust/rust",
+        "fault": "redis-after-commit",
+        "handoff": "completed",
+        "reopenMatches": true,
+        "sourceCaptureRequests": 1,
+        "productSteps": 16,
+        "destinationModelRequests": 2,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/goal-transfer-interruption/rust-rust-redis-after-commit.json",
+          "bytes": 961792,
+          "sha256": "d47d8f0fd2063927e397d348517d678864525b111a5584e43576f15b6d3bc638"
+        },
+        "sameWorkerSurvived": true,
+        "dependencyProcessReplaced": true,
+        "outageMilliseconds": 5412
+      },
+      {
+        "databaseMode": "postgres",
+        "server": "rust/rust",
+        "fault": "client-peer-after-commit",
+        "handoff": "completed",
+        "reopenMatches": true,
+        "sourceCaptureRequests": 1,
+        "productSteps": 16,
+        "destinationModelRequests": 2,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/goal-transfer-interruption/rust-rust-client-peer-after-commit.json",
+          "bytes": 954712,
+          "sha256": "401681cc2a8d67e1e73b71406c6bd70a35d16d4e8ecacf8ebeffb2edce376bf0"
+        },
+        "sameWorkerSurvived": true,
+        "serverPeerReplaced": "client"
+      },
+      {
+        "databaseMode": "postgres",
+        "server": "rust/rust",
+        "fault": "worker-peer-after-commit",
+        "handoff": "completed",
+        "reopenMatches": true,
+        "sourceCaptureRequests": 1,
+        "productSteps": 16,
+        "destinationModelRequests": 2,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/goal-transfer-interruption/rust-rust-worker-peer-after-commit.json",
+          "bytes": 975769,
+          "sha256": "6f974bac4a1c54fde34a2267d07f2f432db7014aa9d5edfe4a622482e78137fa"
+        },
+        "sameWorkerSurvived": true,
+        "serverPeerReplaced": "worker"
+      }
+    ],
+    "fixtureSetupFailures": [
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/goal-transfer-interruption/rust-pglite-worker-after-commit.origin-change-failure.json",
+        "bytes": 99429,
+        "sha256": "4bebd7e65f80359ec01ec26b2ad4dab2ba154b7c96f89e2dbc75c7097e82963e"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/goal-transfer-interruption/rust-pglite-worker-after-commit.sparse-import-failure.log",
+        "bytes": 1607,
+        "sha256": "76b45eae3fe5a17569692c56cfcb5d6c119cd863e13eba6825a5a0b405763878"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/goal-transfer-interruption/rust-bundled-postgres-worker-after-commit.fixture-build-failure.json",
+        "bytes": 3783,
+        "sha256": "369426cc0a6226087adfb9b99e8939ba7b27451015523e883652e6bdb5f206e6"
+      }
+    ],
+    "scope": "Existing Chromium browser and production server sockets with the packaged worker and native runtime. The fixture controls model HTTP replies and holds the actual worker response after the commit. Shared runs use two Rust peers with disposable PostgreSQL and Redis."
+  }
 }
