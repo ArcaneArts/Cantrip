@@ -5457,7 +5457,7 @@
         ],
         "scope": "Local 1.1.2869 HTTP fixtures compare source capture, encrypted binding and rollback across all three databases and authentication modes using controlled native replies. An existing browser, packaged worker and Core also capture and transfer the exact unused first Task Goal input through the Rust server on all three stores, then reopen the same Goal and transcript after restart.",
         "remaining": [
-          "The macOS ARM64 package passed autonomous Goal transfer after worker loss on all three stores, PostgreSQL and Redis loss with two Rust peers, and replacement of either Node peer with Rust after commit. Mixed dependency recovery with a continuing Node peer and remaining supported shipping platforms need qualification."
+          "The macOS ARM64 package passed autonomous Goal transfer after worker loss on all three stores, PostgreSQL and Redis loss with two Rust peers, and replacement of either Node peer with Rust after commit. Both mixed PostgreSQL and Redis pairings passed with the rebuilt Node test reference that supports the encrypted publication response. Intermittent mixed failures before commit and remaining shipping platforms need qualification."
         ]
       },
       {
@@ -30082,7 +30082,7 @@
       "databaseModes": ["pglite", "bundled-postgres", "postgres"],
       "scope": "On macOS ARM64, the existing browser and full worker with Core reserve and transfer the unused first Task Goal input or an autonomous Goal turn while the source provider is occupied. Local tests exercise prepared cancellation, worker loss after commit, and resuming a transferred turn with its tool result after a worker restart. The browser reopens the completed Goal and transcript. A populated historical profile upgrades and rolls back with the new eligibility migration.",
       "remaining": [
-        "Recover and reopen the destination answer after a shared dependency outage with a continuing Node peer.",
+        "Resolve intermittent mixed Goal handoff failures before commit, including the PostgreSQL deadlock observed during source capture through the Node peer.",
         "Repeat transfer and recovery qualification on the final supported shipping artifacts."
       ]
     },

@@ -21,6 +21,7 @@ import {
   taskInferenceInputDispatchSchema,
   taskInferenceInputDispatchResultSchema,
   taskGoalCycleDispatchSchema,
+  taskGoalCycleDispatchPublicationResultSchema,
   taskGoalCycleDispatchResultSchema,
   taskGoalOutcomeDeliverySchema,
   taskGoalOutcomeCommitSchema,
@@ -347,6 +348,8 @@ export function installInternalNativeCommandRoutes(
     "/api/internal/native-commands/task-goal-cycle-dispatch",
     { logLevel: "warn" },
     async (request, reply) => {
+      const includePublication =
+        request.headers["x-cantrip-task-goal-publication"] === "1";
       const parsed = taskGoalCycleDispatchSchema.safeParse(request.body);
       if (!parsed.success)
         return reply
@@ -381,10 +384,15 @@ export function installInternalNativeCommandRoutes(
             await repository.tasks.inferenceInputs.goalCycles.dispatch(
               authentication.ownerId,
               input,
+              includePublication,
             );
           if (!current())
             return reply.code(409).send({ code: "stale-worker-generation" });
-          return taskGoalCycleDispatchResultSchema.parse(result);
+          return (
+            includePublication
+              ? taskGoalCycleDispatchPublicationResultSchema
+              : taskGoalCycleDispatchResultSchema
+          ).parse(result);
         } catch (error) {
           if (error instanceof TaskDispatchConflictError)
             return reply.code(409).send({ code: "stale-task-goal-cycle" });

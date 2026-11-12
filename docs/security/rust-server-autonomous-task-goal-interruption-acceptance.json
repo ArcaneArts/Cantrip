@@ -843,7 +843,7 @@
   },
   "mixedPostCommit": {
     "sourceBaseline": "a6c7a713c6b355a8e29264bfa1f00a8aaa1966b4",
-    "completedFullCases": 2,
+    "completedFullCases": 6,
     "platform": "darwin-arm64",
     "rustArtifact": "#currentPackagedPostCommit",
     "testedNodeReference": {
@@ -1086,6 +1086,222 @@
       "bytes": 332,
       "sha256": "8750f7a13e4a475459ff56f58b6fd76f9ab8bcbcc2db905f06a9d2838828ca69"
     },
-    "scope": "The initial dependency cases used the existing compiled legacy Node test reference. The fresh-reference runs use the same packaged native runtime with optional plugin synchronization disabled for this local fixture. The two-Rust-peer packaged results remain in currentPackagedPostCommit."
+    "scope": "The initial dependency cases used the existing compiled legacy Node test reference. The fresh-reference runs use the same packaged native runtime with optional plugin synchronization disabled for this local fixture. The two-Rust-peer packaged results remain in currentPackagedPostCommit.",
+    "continuingNodePublication": {
+      "sourceBaseline": "8e6dd1cbaf130694c9fbf34214f5bfdf7f6a46ab",
+      "referenceSource": [
+        {
+          "path": "tests/reference-node-server/src/app/routes/internal-native-commands.ts",
+          "sha256": "26d71f017e01e513ddee3740f695dbbcec2d9900a82a0622118a6662918c7a50"
+        },
+        {
+          "path": "tests/reference-node-server/src/db/task-goal-cycle-recovery.ts",
+          "sha256": "8f711f269de80cf728f98833aa1d009998d28e265bfda7481ab64880ed9ede02"
+        }
+      ],
+      "referenceBuild": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-reference-publication-dist.tar.gz",
+        "bytes": 2230122,
+        "sha256": "2cd9546ad3b5672f647c54b6905997ed7c705be55fd065b9a2388b17df9e7ffb"
+      },
+      "protocolBuild": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-reference-publication-protocol-dist.tar.gz",
+        "bytes": 1355673,
+        "sha256": "5afbddaa13cea077b0fa0b71734f9f98fffd5175ef459862a97ddc42ed456df3"
+      },
+      "failedBaseline": {
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-postgres-after-commit.current-reference.json",
+          "bytes": 439572,
+          "sha256": "82ead79a269da2b7398379eae2c8034857ecbb1b955d03a9a53e685a25a32553"
+        },
+        "readOnlyDatabaseRows": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-postgres-current-reference-diagnostics/durable-history.txt",
+          "bytes": 6845,
+          "sha256": "01b1fc3f8dd8ea493617cd9bbdcca2c60a1b807365d6c3ddc272a944a24f3417"
+        },
+        "durableTaskState": "complete",
+        "durableTranscriptMessages": 18,
+        "browserReadEveryDurableMessage": true,
+        "durableMessagesCreatedBeforeHandoff": true,
+        "missingDispatchMaterial": "publicationPrompt"
+      },
+      "localBuildSetupFailure": {
+        "outcome": "The stale protocol distribution lacked the publication response export. The subsequent build used a fresh distribution from the local checkout.",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-postgres-after-commit.publication-reference.json",
+          "bytes": 47955,
+          "sha256": "e928c0fe2fd66180fa4d567917932aa64b2e620bffcc1ee3e4a3c0cbfce110b5"
+        },
+        "fixtureArchive": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-postgres-after-commit.publication-reference.fixture-archive.json",
+          "bytes": 488,
+          "sha256": "a8709cb00e66c2eb8ceaa65a48f6e6b76a5fdc534ea9e2b7f5421fad0e3dab21"
+        }
+      },
+      "localStorageFailure": {
+        "outcome": "Host disk filled while capturing peer diagnostics for the reverse PostgreSQL case. The fixture exited before it wrote a product report.",
+        "log": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-postgres-after-commit.publication-reference-rebuilt-protocol.log",
+          "bytes": 1022,
+          "sha256": "37b1861da9eb020abaf708899720bb4e1ac49406e163d0eeb0252a7869248a97"
+        },
+        "fixtureArchive": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-postgres-after-commit.publication-reference-rebuilt-protocol.disk-full.fixture-archive.json",
+          "bytes": 515,
+          "sha256": "1e96df6730afb0d267f5a751f65f6948874eb27105208138210e7659c44899af"
+        }
+      },
+      "cases": [
+        {
+          "pair": "rust/node",
+          "fault": "postgres-after-commit",
+          "productSteps": 16,
+          "outcome": "passed",
+          "handoffPhase": "completed",
+          "transcriptReopenCompleted": true,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-postgres-after-commit.publication-reference-rebuilt-protocol.json",
+            "bytes": 751459,
+            "sha256": "c744cffc8d90c3cde8e51177d519ac7228b6637f4171f102f0e9168e697bb957"
+          },
+          "log": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-postgres-after-commit.publication-reference-rebuilt-protocol.log",
+            "bytes": 1534,
+            "sha256": "c4a38322cbbe3c554665e57fcfb8cb64579c6620b0fbd8df2a8d42a42b81940e"
+          },
+          "transcriptMessages": 19,
+          "initialAnswerOccurrences": 1,
+          "destinationAnswerOccurrences": 1,
+          "outageMilliseconds": 6061,
+          "readyPeersAfterOutage": 2,
+          "sameWorkerContinuity": true
+        },
+        {
+          "pair": "rust/node",
+          "fault": "redis-after-commit",
+          "productSteps": 16,
+          "outcome": "passed",
+          "handoffPhase": "completed",
+          "transcriptReopenCompleted": true,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-redis-after-commit.publication-reference-rebuilt-protocol.retry.json",
+            "bytes": 918439,
+            "sha256": "c4940debd0df32103aab53afa048066b459fbcc126f440586adcac324be168ab"
+          },
+          "log": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-redis-after-commit.publication-reference-rebuilt-protocol.retry.log",
+            "bytes": 731,
+            "sha256": "bae01c0502d92c8ed8a9b0dcd5a3eec5dd8c2f250d7a486a572c3e7de4a38ac9"
+          },
+          "previousReports": [
+            {
+              "report": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-redis-after-commit.publication-reference-rebuilt-protocol.json",
+                "bytes": 270626,
+                "sha256": "6aec693cbfb0d8135b0f0c38872fe3a8fdac17dd82150a8c7017b310fcf9816e"
+              },
+              "log": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-redis-after-commit.publication-reference-rebuilt-protocol.log",
+                "bytes": 2941,
+                "sha256": "f2b41df63f1f72dfdc05fdbab86997c17cf46f1c7bad56335309da01c1de2d0d"
+              },
+              "fixtureArchive": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-redis-after-commit.publication-reference-rebuilt-protocol.fixture-archive.json",
+                "bytes": 504,
+                "sha256": "55ce65bbf8c19096c65368f6939d516d8afccb3a4482449440e92b55ef94520b"
+              },
+              "workerRejection": "handoff-native-operation-pending",
+              "workerLog": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-redis-publication-reference-diagnostics/worker-2026-11-12.part-0001.jsonl",
+                "bytes": 154232,
+                "sha256": "c07cfe98004d97beab13acfe75204cd3b92000d7948f3e88f1920de736517ff8"
+              }
+            }
+          ],
+          "transcriptMessages": 19,
+          "initialAnswerOccurrences": 1,
+          "destinationAnswerOccurrences": 1,
+          "outageMilliseconds": 4118,
+          "readyPeersAfterOutage": 2,
+          "sameWorkerContinuity": true
+        },
+        {
+          "pair": "node/rust",
+          "fault": "postgres-after-commit",
+          "productSteps": 16,
+          "outcome": "passed",
+          "handoffPhase": "completed",
+          "transcriptReopenCompleted": true,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-postgres-after-commit.publication-reference-rebuilt-protocol.retry.json",
+            "bytes": 1168016,
+            "sha256": "b9405fffe2998c204ab88dfb3a0de583fb43182a51ea46286c59ff7c1dc1a7a8"
+          },
+          "log": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-postgres-after-commit.publication-reference-rebuilt-protocol.retry.log",
+            "bytes": 1163,
+            "sha256": "fa92d8d48e5922f31d39313f0b2751c8e385ac540813035efb8b883a4c3d4a1c"
+          },
+          "transcriptMessages": 19,
+          "initialAnswerOccurrences": 1,
+          "destinationAnswerOccurrences": 1,
+          "outageMilliseconds": 5537,
+          "readyPeersAfterOutage": 2,
+          "sameWorkerContinuity": true
+        },
+        {
+          "pair": "node/rust",
+          "fault": "redis-after-commit",
+          "productSteps": 16,
+          "outcome": "passed",
+          "handoffPhase": "completed",
+          "transcriptReopenCompleted": true,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-redis-after-commit.publication-reference-rebuilt-protocol.retry.json",
+            "bytes": 1099820,
+            "sha256": "c5773f16f0173b789f112ac598fe9e0587a824dc1c844c7a4e735b1e7fbacb2e"
+          },
+          "log": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-redis-after-commit.publication-reference-rebuilt-protocol.retry.log",
+            "bytes": 959,
+            "sha256": "faeb9b7011025d19dcfee1cbe1de3133ccf4a05fa301f8867e51e984de182ebb"
+          },
+          "previousReports": [
+            {
+              "report": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-redis-after-commit.publication-reference-rebuilt-protocol.json",
+                "bytes": 383555,
+                "sha256": "bf92c8f91775c2a5ba19bbf3244368f2e366a8f53ed9511d92534862821f4aa8"
+              },
+              "log": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-redis-after-commit.publication-reference-rebuilt-protocol.log",
+                "bytes": 3343,
+                "sha256": "c11b8115d9553545b2855b87d8f7df60f8aa1fd0f34e9dad59bd36256a278fbf"
+              },
+              "fixtureArchive": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-redis-after-commit.publication-reference-rebuilt-protocol.fixture-archive.json",
+                "bytes": 504,
+                "sha256": "9949bd29e8b2c38cb53e01ae2859e3bbefc8ee944299af6970d3721ef930f004"
+              },
+              "postgresError": "deadlock detected",
+              "browserRoute": "/api/chats/:chatId/runtime-handoffs/source",
+              "nodeLog": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-redis-publication-reference-diagnostics/peer-0-3.stderr.log",
+                "bytes": 2049,
+                "sha256": "dbf7461c2c6270d2ecd498bcdf57cc463350a853e22fac0bd782937539ef0678"
+              }
+            }
+          ],
+          "transcriptMessages": 19,
+          "initialAnswerOccurrences": 1,
+          "destinationAnswerOccurrences": 1,
+          "outageMilliseconds": 5273,
+          "readyPeersAfterOutage": 2,
+          "sameWorkerContinuity": true
+        }
+      ],
+      "scope": "The Node test reference honors the worker's opt-in encrypted Goal publication contract already implemented by Rust. The original production Node binary predates that contract. These results apply to the rebuilt compatibility reference with the current protocol package and the packaged macOS ARM64 Rust server and worker. Optional native plugin synchronization was disabled in the local fixture."
+    }
   }
 }
