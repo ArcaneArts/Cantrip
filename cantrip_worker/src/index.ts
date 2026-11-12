@@ -8645,6 +8645,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             taskOwned: encryptedTaskGoal,
             taskGoalCycleId: command.taskContext?.nativeCycle?.cycleId,
             taskGoalOrderEpoch: command.taskContext?.nativeCycle?.orderEpoch,
+            firstTaskInputMessageId:
+              typeof command.objective === "string"
+                ? undefined
+                : (command.taskContext?.message?.id ??
+                  command.objective.startMessage.id),
             chatId: command.chatId,
             operationId: command.operationId,
             cwd: command.cwd,

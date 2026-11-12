@@ -347,7 +347,8 @@ PostgreSQL runs preserved the encrypted answers through restart.
 The [local evidence](security/rust-server-autonomous-goal-dependency-acceptance.json)
 retains the baseline and intermediate failures, the exact package
 and the current comparison runs. All traced bundled PostgreSQL runs
-reached the model. The original pre-model stall remains unexplained.
+reached the model. The first-input ordering case below reproduces the
+earlier stall.
 
 Run the same case with `redis` or `postgres` and a selected peer pairing.
 
@@ -386,3 +387,44 @@ node --import tsx scripts/server-rust/actual-folder-client.mjs \
   --production-server --database postgres --server-pair rust/node \
   --report /absolute/path/autonomous-goal-mixed-postgres.json
 ```
+
+## Ordering the first encrypted Task Goal input
+
+The full worker could receive a native autonomous Goal begin while the
+Task's first encrypted input was waiting for its claim or dispatch reply.
+The early begin acquired a separate inference ticket and waited for that
+first input to finish. Core accepted the explicit request into the already
+active turn, which was still waiting for permission to call the model.
+The Task remained in `implementing`. The forced order reproduced with
+the original worker on Rust and on the legacy Node reference.
+
+The worker now parks the early native begin before acquiring provider
+capacity. After the server authorizes the canonical input, the worker
+holds the native root, denies the exact unused begin and observes the
+thread return to idle. It sends the explicit input on its own turn and
+releases the hold after Core acknowledges the start. Later autonomous
+cycles still wait for the existing durable Task publication.
+
+The local [acceptance record](security/rust-server-task-goal-first-input-acceptance.json)
+includes the exact server and worker files, provider hold test, and
+browser runs. The harness holds delivery of a successful server response
+and uses the current native gate to wake Core. It checks the earlier
+denial, first input binding, and later autonomous cycle separately.
+
+The rebuilt worker passed six forced browser runs across the three Rust
+storage modes and the Node reference. The bundled PostgreSQL runs
+covered both reply phases and a withheld native release acknowledgement.
+In that release case the worker re-read Core's hold state and retried
+the same operation. A separate bundled PostgreSQL run passed native
+Task Goal recovery after worker loss. The original worker fails the
+checked-in ordering scenario before sending a Goal request to the model.
+
+```sh
+node --import tsx scripts/server-rust/actual-folder-client.mjs \
+  --production-server --runtime rust --database bundled-postgres \
+  --task-goal-first-input-order dispatch \
+  --report /absolute/path/task-goal-first-input.json
+```
+
+Use `claim` to force the earlier order. The existing worker and package
+environment options select the runtime artifacts.

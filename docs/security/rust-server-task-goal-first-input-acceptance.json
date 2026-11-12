@@ -1,0 +1,223 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "recordedAt": "2026-11-12T01:39:01.191143+00:00",
+  "localEvidenceRoot": "rust-server-final-native-2e60d2042-20261111-v1",
+  "sourceBase": "2d76c8801685027621eb02cd3144e3ff08532581",
+  "sourceSha256": {
+    "cantrip_worker/src/codex/app-server.ts": "2495e8b42d1df42f9b99387d4fe4cf808b9164495b0e5b0cccb3910b94d1edc3",
+    "cantrip_worker/src/index.ts": "9c0cfa6a7939440b4af92a1e02593b19cd060d8684be930d53f823062b6fc9ca",
+    "cantrip_worker/test/task-permission-handoff.test.ts": "0d1cda8894dfbefea7d98770e457d8d3f462b888240c690a491794c508ee9f64",
+    "scripts/server-rust/actual-folder-client.mjs": "96b5851410dae78e8b51eadeac1caeddad304cfe2f5bb4b8c5d52214b8565f35",
+    "scripts/server-rust/actual-task-client.mjs": "ced84a5ac93241cafda68ac1491b22db87660c07b7da82b96844ac1c51de0e9d",
+    "scripts/server-rust/worker-task-goal-first-input-order.mjs": "12dbe44edb977bff7130f8fbc10cd1b3d8973ff7d72e3b9a2ec976ea384db51a"
+  },
+  "scope": "Local macOS ARM64 real browser and full production worker with the packaged Rust server and Node compatibility reference. The fixture controls model responses and forces the existing native idle producer to wake before the worker receives the real Task input reply.",
+  "artifacts": {
+    "rustServerVersion": "1.1.2866",
+    "rustServer": {
+      "path": "autonomous-goal-dependency/cantrip-server-darwin-arm64-final/bin/cantrip-server",
+      "bytes": 94199904,
+      "sha256": "17aa1bc9a5f63e753e454115bd96d3f7bb27aadcceb71921ef98056da0f60215"
+    },
+    "workerBuildVersion": "1.1.2867",
+    "workerFiles": [
+      {
+        "path": "bundled-postgres-goal-stall/worker-candidate-3/dist/index.js",
+        "bytes": 391958,
+        "sha256": "d83bb59a3a681b9bbd885519935a167029e969fc7241804bcfbe563cc4367e2b"
+      },
+      {
+        "path": "bundled-postgres-goal-stall/worker-candidate-3/dist/codex/app-server.js",
+        "bytes": 372971,
+        "sha256": "0e2b6d1aa2be209987cdd568fe5840213b0cd565329c9f45e8dc9b6824a1b671"
+      },
+      {
+        "path": "bundled-postgres-goal-stall/worker-candidate-3/bin/codex",
+        "bytes": 279545328,
+        "sha256": "d2bc564513ece54a6c1df0132f8ebc8c494b088ebc9fd48fc34d64cea18b766c"
+      }
+    ]
+  },
+  "baseline": {
+    "forcedStallsAcrossBothImplementations": 5,
+    "previousVerifiedReproduction": {
+      "path": "bundled-postgres-goal-stall/verified-reproduction.json",
+      "bytes": 22541,
+      "sha256": "72632f1e2e7e11eac87d34f5d2d931bf7392f96be9fe30e08455bd1e144e3213"
+    },
+    "checkedInScenarioWithOriginalWorker": {
+      "path": "bundled-postgres-goal-stall/tracked-baseline-bundled-dispatch/product.json",
+      "bytes": 241259,
+      "sha256": "d20b2ee7c0f1110d005f78b45828ac397383e8f5c805a2759af8dd2e5f1a029d"
+    },
+    "taskState": "implementing",
+    "providerPostsBeforeGoalOnly": 3
+  },
+  "productScenarios": [
+    {
+      "name": "tracked-bundled-dispatch-1",
+      "database": "bundled-postgres",
+      "serverRuntime": "rust",
+      "forcedReplyPhase": "dispatch",
+      "completedProductSteps": 16,
+      "verifiedFirstInputBinding": true,
+      "verifiedLaterAutonomousTurn": true,
+      "ordinaryPausedAdmissionRecovery": true,
+      "evidence": [
+        {
+          "path": "bundled-postgres-goal-stall/tracked-bundled-dispatch-1/product.json",
+          "bytes": 694491,
+          "sha256": "539bbe069f9ba8de7a237c641abe6535bae28785856551d65f7c68e9131463d9"
+        },
+        {
+          "path": "bundled-postgres-goal-stall/tracked-bundled-dispatch-1/product.log",
+          "bytes": 471,
+          "sha256": "feba131ac85812885ffb453412748a31c8c83817f2ecf72e67bebb03d6cac524"
+        }
+      ]
+    },
+    {
+      "name": "tracked-bundled-postgres-claim",
+      "database": "bundled-postgres",
+      "serverRuntime": "rust",
+      "forcedReplyPhase": "claim",
+      "completedProductSteps": 16,
+      "verifiedFirstInputBinding": true,
+      "verifiedLaterAutonomousTurn": true,
+      "ordinaryPausedAdmissionRecovery": true,
+      "evidence": [
+        {
+          "path": "bundled-postgres-goal-stall/tracked-bundled-postgres-claim/product.json",
+          "bytes": 682445,
+          "sha256": "46351d1a9514413dccc309087093baed173baf02678c143cb0240f02e118aa0d"
+        },
+        {
+          "path": "bundled-postgres-goal-stall/tracked-bundled-postgres-claim/product.log",
+          "bytes": 428,
+          "sha256": "eb4dfd6298072eede8d34d12c7d3cca64e7d93c202006cec59ad8f5c9d23d737"
+        }
+      ]
+    },
+    {
+      "name": "tracked-pglite-dispatch",
+      "database": "pglite",
+      "serverRuntime": "rust",
+      "forcedReplyPhase": "dispatch",
+      "completedProductSteps": 16,
+      "verifiedFirstInputBinding": true,
+      "verifiedLaterAutonomousTurn": true,
+      "ordinaryPausedAdmissionRecovery": true,
+      "evidence": [
+        {
+          "path": "bundled-postgres-goal-stall/tracked-pglite-dispatch/product.json",
+          "bytes": 698774,
+          "sha256": "cb486e98a620388857501d3997257abab677032bd1d1e4682804b04df851aa7a"
+        },
+        {
+          "path": "bundled-postgres-goal-stall/tracked-pglite-dispatch/product.log",
+          "bytes": 418,
+          "sha256": "3484c487349dbddb1536a71c8e1de86417697c2699b477b4098e28be1c5535da"
+        }
+      ]
+    },
+    {
+      "name": "tracked-postgres-dispatch",
+      "database": "postgres",
+      "serverRuntime": "rust",
+      "forcedReplyPhase": "dispatch",
+      "completedProductSteps": 16,
+      "verifiedFirstInputBinding": true,
+      "verifiedLaterAutonomousTurn": true,
+      "ordinaryPausedAdmissionRecovery": true,
+      "evidence": [
+        {
+          "path": "bundled-postgres-goal-stall/tracked-postgres-dispatch/product.json",
+          "bytes": 695673,
+          "sha256": "d96d7c2dab034969eaa5aef6ce04389578b797b0b0fd33f0aed11e1754b5370e"
+        },
+        {
+          "path": "bundled-postgres-goal-stall/tracked-postgres-dispatch/product.log",
+          "bytes": 420,
+          "sha256": "b60e7b66646c44dea768c1683f01e35dfe646ace7fe0360cb2428348a65e0b9d"
+        }
+      ]
+    },
+    {
+      "name": "tracked-node-bundled-dispatch",
+      "database": "bundled-postgres",
+      "serverRuntime": "node",
+      "forcedReplyPhase": "dispatch",
+      "completedProductSteps": 16,
+      "verifiedFirstInputBinding": true,
+      "verifiedLaterAutonomousTurn": true,
+      "ordinaryPausedAdmissionRecovery": true,
+      "evidence": [
+        {
+          "path": "bundled-postgres-goal-stall/tracked-node-bundled-dispatch/product.json",
+          "bytes": 916395,
+          "sha256": "e31f6fe44f44c393aef329cb6f98f113abd281bb917497f0a42d92be0a9fb3df"
+        },
+        {
+          "path": "bundled-postgres-goal-stall/tracked-node-bundled-dispatch/product.log",
+          "bytes": 656,
+          "sha256": "5392640155b68fe4a00e7ae2ca266dd9ea70e425fc9e9ef2346777432fab2779"
+        }
+      ]
+    },
+    {
+      "name": "tracked-bundled-lost-release-ack",
+      "database": "bundled-postgres",
+      "serverRuntime": "rust",
+      "forcedReplyPhase": "dispatch",
+      "completedProductSteps": 16,
+      "verifiedFirstInputBinding": true,
+      "verifiedLaterAutonomousTurn": true,
+      "ordinaryPausedAdmissionRecovery": true,
+      "evidence": [
+        {
+          "path": "bundled-postgres-goal-stall/tracked-bundled-lost-release-ack/product.json",
+          "bytes": 687416,
+          "sha256": "09319902ca5105c71616b335f1583bfc0d80da3fa52855f9f0cbd729ea978da3"
+        },
+        {
+          "path": "bundled-postgres-goal-stall/tracked-bundled-lost-release-ack/product.log",
+          "bytes": 471,
+          "sha256": "41ee1d18ffa8c01179e029493df5b577af327e52490facd99c9cca3f2c5ca332"
+        }
+      ]
+    }
+  ],
+  "uncertainNativeHoldRelease": {
+    "observedNativeReleaseBeforeWithholdingReply": true,
+    "readAndRetriedExactOperation": true,
+    "trace": {
+      "path": "bundled-postgres-goal-stall/tracked-bundled-lost-release-ack/release-24195.jsonl",
+      "bytes": 731,
+      "sha256": "c72895abad19e85cf8642163b9324a131780be128f8f1ee033eda53e2f2ccf28"
+    }
+  },
+  "workerRecovery": {
+    "database": "bundled-postgres",
+    "completedProductSteps": 16,
+    "workerStops": 8,
+    "report": {
+      "path": "bundled-postgres-goal-stall/production-task-goal-worker-recovery/product.json",
+      "bytes": 2470212,
+      "sha256": "94837f6eb8a8ecb245c8a9e6573cd01ef2a91e13cda632e93a0dbe66a1330537"
+    }
+  },
+  "focusedWorkerTests": {
+    "passed": 138,
+    "includesPreservingAnExistingProviderTransferHold": true,
+    "log": {
+      "path": "bundled-postgres-goal-stall/production-worker-focused-final.log",
+      "bytes": 39140,
+      "sha256": "21740bd1bd8b36fd696783bd5112ac47b1b3b38b508642f7f72f40b63c2e392a"
+    }
+  },
+  "remaining": [
+    "Full installed release and Winterhold artifact acceptance.",
+    "End-to-end queued provider transfer interleaved with the forced first-input order and final cross-platform interruption coverage."
+  ]
+}

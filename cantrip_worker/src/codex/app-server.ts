@@ -1527,6 +1527,17 @@ type TaskGoalRootScope = Pick<
   "cycleId" | "modelRouteId" | "providerAccountId" | "orderEpoch"
 > & { chatId: string; threadId: string };
 
+type TaskGoalFirstInput = {
+  chatId: string;
+  messageId: string;
+  transport: string;
+  dispatching: boolean;
+};
+
+const taskGoalFirstInputDispatch = new Error(
+  "The first Task Goal input owns native dispatch.",
+);
+
 export class CodexAppServer implements CodexRuntime {
   readonly #liveManagedModelCatalog = new LiveManagedModelCatalog();
   readonly #managedAttributionModels = new Map<
@@ -1770,6 +1781,7 @@ export class CodexAppServer implements CodexRuntime {
     Promise<AgentTurnResult | AgentOperationResult>
   >();
   readonly #taskInputPublications = new Map<string, Promise<void>>();
+  readonly #taskGoalFirstInputs = new Map<string, TaskGoalFirstInput>();
   #goalObserver: ((threadId: string, goal: ThreadGoal | null) => void) | null =
     null;
   readonly #managedQueueResumers = new Map<
@@ -4019,6 +4031,17 @@ export class CodexAppServer implements CodexRuntime {
         options.inferenceSource,
         admission,
       );
+      const recovery = options.inferenceRecovery?.();
+      const taskGoalInput =
+        admission && recovery?.taskInput?.kind === "goal"
+          ? recovery.taskInput
+          : undefined;
+      if (taskGoalInput && options.threadId)
+        this.expectTaskGoalFirstInput(
+          options.threadId,
+          taskGoalInput.chatId,
+          taskGoalInput.clientMessageId,
+        );
       const request = {
         operationId:
           options.operationGeneration ??
@@ -4027,7 +4050,7 @@ export class CodexAppServer implements CodexRuntime {
         lifetime,
         purpose: "turn" as const,
         recoveryKey: `chat:${options.chatId}:message:${options.clientMessageId}`,
-        recovery: options.inferenceRecovery?.() ?? {
+        recovery: recovery ?? {
           messageId: options.clientMessageId,
           threadId: options.threadId,
         },
@@ -4056,7 +4079,7 @@ export class CodexAppServer implements CodexRuntime {
         await options.initialLabel.run(inference, options.preparationSignal);
       options.inferenceSource?.assertCurrent();
       executionEntered = true;
-      return await this.executeInferenceTurn(options, inference);
+      return await this.executeInferenceTurn(options, inference, taskGoalInput);
     } catch (error) {
       failure = error;
       if (error instanceof InferenceWithdrawalError)
@@ -4121,6 +4144,7 @@ export class CodexAppServer implements CodexRuntime {
   private async executeInferenceTurn(
     options: RunAgentTurnOptions,
     inference?: CodexInferenceExecution,
+    taskGoalInput?: TaskInferenceInputReceipt,
   ): Promise<AgentTurnResult> {
     const resultMode = options.resultMode ?? { kind: "visible" as const };
     if (options.automationPaused) this.#pausedChats.add(options.chatId);
@@ -4198,11 +4222,13 @@ export class CodexAppServer implements CodexRuntime {
       ),
     );
     options.preparationSignal?.throwIfAborted();
-    if (this.hasActiveThread(threadId)) {
-      throw new Error(`Codex thread ${threadId} already has an active turn.`);
-    }
-    this.#executions.trackActiveThread(threadId, activeTurn);
-    this.registerRootExecution(activeTurn);
+    const track = () => {
+      if (this.hasActiveThread(threadId))
+        throw new Error(`Codex thread ${threadId} already has an active turn.`);
+      this.#executions.trackActiveThread(threadId, activeTurn);
+      this.registerRootExecution(activeTurn);
+    };
+    if (!taskGoalInput) track();
     let response: TurnStartResponse;
     let dispatchedInput: ReadonlyArray<Record<string, unknown>> | undefined;
     try {
@@ -4269,12 +4295,21 @@ export class CodexAppServer implements CodexRuntime {
       await inference?.sealInputDispatch();
       await options.onBeforeNativeDispatch?.(threadId);
       options.preparationSignal?.throwIfAborted();
-      dispatchedInput = params.input;
-      inference?.dispatched();
-      response = (await this.request(
-        "turn/start",
-        params,
-      )) as TurnStartResponse;
+      const start = () => {
+        options.preparationSignal?.throwIfAborted();
+        if (taskGoalInput) track();
+        dispatchedInput = params.input;
+        inference?.dispatched();
+        return this.request("turn/start", params) as Promise<TurnStartResponse>;
+      };
+      response = taskGoalInput
+        ? await this.startTaskGoalFirstInput(
+            threadId,
+            taskGoalInput,
+            start,
+            options.preparationSignal,
+          )
+        : await start();
     } catch (error) {
       if (
         error instanceof CodexNativeRpcError &&
@@ -5449,6 +5484,101 @@ export class CodexAppServer implements CodexRuntime {
     return overlay;
   }
 
+  private expectTaskGoalFirstInput(
+    threadId: string,
+    chatId: string,
+    messageId: string,
+  ): TaskGoalFirstInput {
+    const transport = this.transportGeneration;
+    if (!transport) throw new Error("The Task Goal has no native transport.");
+    const previous = this.#taskGoalFirstInputs.get(threadId);
+    if (
+      previous?.transport === transport &&
+      previous.chatId === chatId &&
+      previous.messageId === messageId
+    )
+      return previous;
+    const input = { chatId, messageId, transport, dispatching: false };
+    this.#taskGoalFirstInputs.set(threadId, input);
+    return input;
+  }
+
+  private async startTaskGoalFirstInput(
+    threadId: string,
+    receipt: TaskInferenceInputReceipt,
+    start: () => Promise<TurnStartResponse>,
+    signal?: AbortSignal,
+  ): Promise<TurnStartResponse> {
+    const input = this.expectTaskGoalFirstInput(
+      threadId,
+      receipt.chatId,
+      receipt.clientMessageId,
+    );
+    const transport = input.transport;
+    const scope = {
+      threadId,
+      chatId: receipt.chatId,
+      cycleId: receipt.dispatch.cycleId,
+      orderEpoch:
+        this.#managedThreadOverlays.get(threadId)?.taskGoalCycle?.orderEpoch ??
+        0,
+      modelRouteId: receipt.modelRouteId,
+      providerAccountId: receipt.providerAccountId,
+    };
+    const overlay = this.taskGoalRoot(scope, transport);
+    const hold = (overlay.rootHold ??= new ManagedRootProducerHold(this));
+    const runner = overlay.options.executionGate!.runnerGeneration;
+    const operation = receipt.operationId;
+    const release = () =>
+      this.transportGeneration === transport
+        ? hold.release(operation, runner, threadId, transport)
+        : Promise.resolve();
+    let started = false;
+    try {
+      // The canonical first input now owns dispatch. Fence automatic
+      // producers while retiring a Goal that was already waiting in Core.
+      await hold.hold(operation, runner, threadId, transport);
+      input.dispatching = true;
+      const goal = await this.readManagedGoalRecovery(threadId, transport);
+      if (goal.goalEpoch)
+        await this.settleTaskGoalInputProducer(
+          operation,
+          scope,
+          transport,
+          goal.goalEpoch,
+          taskGoalFirstInputDispatch,
+        );
+      const deadline = AbortSignal.timeout(CODEX_RPC_TIMEOUT_MS);
+      const wait = signal ? AbortSignal.any([signal, deadline]) : deadline;
+      while (!(await this.readThreadExecution(threadId)).nativeIdle) {
+        this.taskGoalRoot(scope, transport);
+        await retryDelay(10, undefined, { signal: wait });
+      }
+      this.taskGoalRoot(scope, transport);
+      if (this.#taskGoalFirstInputs.get(threadId) !== input)
+        throw new Error("The Task Goal first input was superseded.");
+      wait.throwIfAborted();
+      const result = await start();
+      started = true;
+      return result;
+    } finally {
+      input.dispatching = false;
+      if (started && this.#taskGoalFirstInputs.get(threadId) === input)
+        this.#taskGoalFirstInputs.delete(threadId);
+      try {
+        await release().catch(release);
+      } catch (error) {
+        if (!started) throw error;
+        workerLogger.event("warn", "Task Goal producer release failed", {
+          event: "inference.task-goal-first-input.release-failed",
+          subsystem: "codex",
+          threadId,
+          operationId: operation,
+        });
+      }
+    }
+  }
+
   async holdTaskGoalForProviderTransfer(
     operationId: string,
     scope: TaskGoalRootScope,
@@ -5482,6 +5612,9 @@ export class CodexAppServer implements CodexRuntime {
     scope: TaskGoalRootScope,
     transport: string,
     goalEpoch: string,
+    reason = new Error(
+      "The unused autonomous Goal begin yields to its first-input transfer.",
+    ),
   ) {
     const overlay = this.taskGoalRoot(scope, transport);
     const runner = overlay.options.executionGate!.runnerGeneration;
@@ -5520,11 +5653,7 @@ export class CodexAppServer implements CodexRuntime {
         this.#nativeInferenceWaits.get(pending.attemptId) !== pending
       )
         continue;
-      pending.controller.abort(
-        new Error(
-          "The unused autonomous Goal begin yields to its first-input transfer.",
-        ),
-      );
+      pending.controller.abort(reason);
       await pending.denied;
     }
   }
@@ -5856,6 +5985,7 @@ export class CodexAppServer implements CodexRuntime {
       tokenBudget?: number | null;
       operationId?: string;
       configureTaskPermissions?: boolean;
+      firstTaskInputMessageId?: string;
     },
   ): Promise<ChatGoalResponse> {
     let threadId = this.managedGuiThread(options.threadId);
@@ -5885,6 +6015,12 @@ export class CodexAppServer implements CodexRuntime {
       this.#goals.delete(threadId);
       this.#goalObserver?.(threadId, null);
     }
+    if (options.firstTaskInputMessageId && options.chatId && this.#inference)
+      this.expectTaskGoalFirstInput(
+        threadId,
+        options.chatId,
+        options.firstTaskInputMessageId,
+      );
     const response = chatGoalResponseSchema.parse(
       await this.requestGuiThreadMutation(
         "thread/goal/set",
@@ -8194,6 +8330,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#taskGoalPublications.delete(threadId);
     this.#chatExecutionCompletions.delete(threadId);
     this.#taskInputPublications.delete(threadId);
+    this.#taskGoalFirstInputs.delete(threadId);
   }
 
   private permissionProfilesSupported(): boolean {
@@ -8848,6 +8985,28 @@ export class CodexAppServer implements CodexRuntime {
       changed();
     try {
       signal.throwIfAborted();
+      const firstInput = this.#taskGoalFirstInputs.get(base.threadId);
+      const overlay = this.#managedThreadOverlays.get(base.threadId);
+      if (
+        phase === "begin" &&
+        pending.rootThreadId === base.threadId &&
+        pending.goalEpoch &&
+        firstInput?.transport === transport &&
+        overlay?.chatId === firstInput.chatId &&
+        overlay.options.executionGate?.inferenceOnly === true &&
+        overlay.options.executionGate.runnerGeneration === base.runnerGeneration
+      ) {
+        // Leave the exact native begin parked without acquiring a second
+        // inference ticket while the canonical first input is still queued.
+        if (!firstInput.dispatching) {
+          await new Promise<never>((_resolve, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+          });
+        }
+        throw taskGoalFirstInputDispatch;
+      }
       if (
         phase === "begin" ||
         phase === "begin-independent" ||
@@ -9080,6 +9239,7 @@ export class CodexAppServer implements CodexRuntime {
             base.attemptId,
           );
         pending.confirmDenial();
+        if (error === taskGoalFirstInputDispatch) return;
       } catch (denialError) {
         pending.rejectDenial(denialError);
       }
@@ -10891,6 +11051,7 @@ export class CodexAppServer implements CodexRuntime {
     for (const pending of this.#nativeInferenceWaits.values())
       pending.controller.abort();
     this.#nativeInferenceWaits.clear();
+    this.#taskGoalFirstInputs.clear();
     this.#inference?.observationLost();
     this.clearManagedExecutionGateHandlers();
     this.#nativeTransportGeneration = null;

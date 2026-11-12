@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
+import {
+  taskInferenceInputReceiptSchema,
+  type TaskInferenceInputReceipt,
+  unprobedCodexRuntimeReport,
+} from "@cantrip/protocol";
 import {
   CodexAppServer,
   type GoalRuntimeOptions,
@@ -63,6 +67,11 @@ function fixture() {
       },
     ): Promise<string | null>;
     handleMessage(data: Buffer): void;
+    startTaskGoalFirstInput(
+      threadId: string,
+      receipt: TaskInferenceInputReceipt,
+      start: () => Promise<unknown>,
+    ): Promise<unknown>;
   };
   native.ensureStarted = vi.fn().mockResolvedValue(undefined);
   native.permissionProfilesSupported = () => true;
@@ -211,6 +220,71 @@ describe("Task planning permission handoff", () => {
     expect(f.security()).toMatchObject({
       permissions: ":read-only",
       approvalPolicy: "on-request",
+    });
+  });
+
+  it("leaves an existing provider hold with its transfer owner", async () => {
+    const { runtime, native } = fixture();
+    const threadId = options.threadId!;
+    const receipt = taskInferenceInputReceiptSchema.parse({
+      kind: "goal",
+      operationId: "a3ba60ba-8974-4e4c-878c-511ae1c56388",
+      chatId: "chat",
+      clientMessageId: "a1efcccb-4b35-4c41-93d9-ae330bb993a2",
+      workerId: "worker",
+      worktreeId: "worktree",
+      executionLaneId: "lane",
+      executionLaneActivatedAt: "2026-01-01T00:00:00Z",
+      providerId: options.provider.id,
+      modelRouteId: options.model.routeId,
+      providerAccountId: null,
+      dispatch: {
+        cycleId: "053d313b-3b10-4672-a941-198827f6a2c0",
+        operationId: "finalize",
+        leaseOwner: "worker",
+        fencingToken: 1,
+      },
+    });
+    const scope = {
+      threadId,
+      chatId: receipt.chatId,
+      cycleId: receipt.dispatch.cycleId,
+      orderEpoch: 0,
+      modelRouteId: receipt.modelRouteId,
+      providerAccountId: null,
+    };
+    const transport = runtime.transportGeneration!;
+    const transferId = "b452ed5f-4f5a-4c22-8ced-b86c36c4b21e";
+    const producer = vi
+      .spyOn(runtime, "controlManagedRootProducer")
+      .mockResolvedValueOnce({ revision: "0", heldBy: null })
+      .mockResolvedValueOnce({ revision: "1", heldBy: transferId });
+    await runtime.createGoal({
+      ...options,
+      chatId: receipt.chatId,
+      taskGoalCycleId: receipt.dispatch.cycleId,
+      firstTaskInputMessageId: receipt.clientMessageId,
+      objective: "Implement plan",
+      configureTaskPermissions: true,
+    });
+    await runtime.holdTaskGoalForProviderTransfer(transferId, scope, transport);
+    const start = vi.fn();
+    await expect(
+      native.startTaskGoalFirstInput(threadId, receipt, start),
+    ).rejects.toThrow("Another provider transfer owns this native root.");
+    expect(start).not.toHaveBeenCalled();
+    expect(producer.mock.calls.map(([control]) => control.action)).toEqual([
+      "read",
+      "hold",
+    ]);
+    producer
+      .mockResolvedValueOnce({ revision: "1", heldBy: transferId })
+      .mockResolvedValueOnce({ revision: "2", heldBy: null });
+    await runtime.releaseTaskGoalProviderTransfer(transferId, scope, transport);
+    expect(producer.mock.lastCall?.[0]).toMatchObject({
+      action: "release",
+      operationId: transferId,
+      expectedRevision: "1",
     });
   });
 });
