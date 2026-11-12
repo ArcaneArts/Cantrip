@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.2881",
+  "sourceCommit": "ccafd3cd4baea444ab43c1b84471ab3225f718e3",
+  "harnessCommit": "1a08e33f97a332d397058a6a7461d3a0d56fef9c",
+  "platform": "darwin-arm64",
+  "completeReplacement": false,
+  "scope": "Paired Node and Rust HTTP using the real worker connection and existing worker CLI client. Controlled endpoint, Git and Run replies exercise server behavior.",
+  "artifacts": {
+    "currentSourceHttpSqlFixture": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/http-sql-fixture-ccafd3cd",
+      "bytes": 180031616,
+      "sha256": "f3df2c3eb65b15e3a0613ba738da1ee25419f4c8beab2a4ccd47700f463eb581"
+    }
+  },
+  "totals": {
+    "storageModes": 3,
+    "authenticationModes": 3,
+    "pairedCalls": 972,
+    "responses": 1944,
+    "admittedSocketDisconnects": 18,
+    "serverRestarts": 18
+  },
+  "cases": [
+    {
+      "store": "pglite",
+      "profiles": [
+        {
+          "authentication": "none",
+          "pairedCalls": 108,
+          "serverRestarts": 2,
+          "admittedSocketDisconnects": 2
+        },
+        {
+          "authentication": "password",
+          "pairedCalls": 108,
+          "serverRestarts": 2,
+          "admittedSocketDisconnects": 2
+        },
+        {
+          "authentication": "accounts",
+          "pairedCalls": 108,
+          "serverRestarts": 2,
+          "admittedSocketDisconnects": 2
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-cli-contract/exact/pglite-all-auth.json",
+        "bytes": 7643225,
+        "sha256": "f55dad4d7e2a11b11b5c05cc946d4eb500b9be9f4bbf9898c07746f2de43c7a9"
+      }
+    },
+    {
+      "store": "bundled-postgres",
+      "profiles": [
+        {
+          "authentication": "none",
+          "pairedCalls": 108,
+          "serverRestarts": 2,
+          "admittedSocketDisconnects": 2
+        },
+        {
+          "authentication": "password",
+          "pairedCalls": 108,
+          "serverRestarts": 2,
+          "admittedSocketDisconnects": 2
+        },
+        {
+          "authentication": "accounts",
+          "pairedCalls": 108,
+          "serverRestarts": 2,
+          "admittedSocketDisconnects": 2
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-cli-contract/exact/bundled-postgres-all-auth.json",
+        "bytes": 7642976,
+        "sha256": "9449ddb8f0e4f3d9e15da4dcb5f74a4c87afb741b79c81206d0c1f212efca206"
+      }
+    },
+    {
+      "store": "postgres",
+      "profiles": [
+        {
+          "authentication": "none",
+          "pairedCalls": 108,
+          "serverRestarts": 2,
+          "admittedSocketDisconnects": 2
+        },
+        {
+          "authentication": "password",
+          "pairedCalls": 108,
+          "serverRestarts": 2,
+          "admittedSocketDisconnects": 2
+        },
+        {
+          "authentication": "accounts",
+          "pairedCalls": 108,
+          "serverRestarts": 2,
+          "admittedSocketDisconnects": 2
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-cli-contract/exact/postgres-all-auth.json",
+        "bytes": 7643165,
+        "sha256": "5634f043911b4b2276bba6d4dba81261036cbdc13ccd6bd9aebbf98704c7f70e"
+      }
+    }
+  ]
+}

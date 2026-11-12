@@ -592,6 +592,23 @@ server backed by external PostgreSQL exchanged the grant for a secure session. T
 [current Android acceptance record](security/rust-server-2881-android-acceptance.json)
 includes the installed APK digest, real Keystore test and wire results.
 
+## Current CLI and queued Task provider transfer
+
+The `1.1.2881` Rust source passed 972 paired CLI calls across PGlite,
+bundled PostgreSQL and external PostgreSQL in anonymous, password and
+account modes. The suite used the existing worker CLI client and real
+worker connections, and included 18 admitted socket disconnects and 18
+server restarts.
+[Current CLI matrix](security/rust-server-cli-http-contract-matrix.json)
+
+Queued Task provider transfer preserved the encrypted input and fenced the
+old dispatch before sending a worker revocation. In all three Rust stores
+the route remained draining until the replacement connection acknowledged
+settlement. The Node reference stayed draining after positive replies. Its
+JSON serialization comparison encountered different property order.
+The packaged server ran the external PostgreSQL case.
+[Task provider transfer record](security/rust-server-task-inference-route-acceptance.json)
+
 ## Current implementation and evidence
 
 | Area                          | Current evidence                                                                                                                                                                                                           | Remaining acceptance                                                                                                                        |
