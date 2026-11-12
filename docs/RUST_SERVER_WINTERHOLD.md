@@ -195,6 +195,27 @@ release tests passed.
 
 ## Current Linux ARM64 qualification
 
+The production Dockerfile built the Linux ARM64 `1.1.2869` runtime image
+and standalone distribution from the same runtime source as the x64
+candidate. All three stores passed migrations, SQL export, retained settings
+and identity, local and hosted reopening, and graceful shutdown. Each
+container verified all 2,546 packaged files and the actual ARM64 executable
+through `/proc/PID/exe`. The runtime ran as a non-root user with a read-only
+root, a 256 MiB noexec temporary mount, and Node absent from PATH.
+
+The native ARM64 systemd and Caddy rehearsal passed 18 installer calls,
+including recovery from six deliberate migration and startup failures. It
+matched ten running executable hashes and retained sessions and accepted
+writes through rollback and return to Rust. The local stores rolled back
+to ARM64 Rust `1.1.2783`. External PostgreSQL rolled back to the x64 Node
+`1.1.2739` reference with TLS required. Caddy verified HTTPS and App Live
+with the fixture CA, and service shutdown reaped its bundled PostgreSQL
+processes.
+
+[Linux ARM64 acceptance record](security/rust-server-2869-linux-arm64-acceptance.json)
+
+### Linux ARM64 candidate `1.1.2845`
+
 The same `2e60d2042203f64c8105d5c52d12ae1db92d2d83` source built
 `1.1.2845` as a native Linux ARM64 distribution and Debian runtime image.
 All three stores passed the container workload, and each running server

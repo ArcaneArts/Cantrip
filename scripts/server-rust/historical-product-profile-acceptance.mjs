@@ -376,6 +376,46 @@ async function legacySnapshot(data, name) {
     await db.close();
   }
 }
+async function historicalImportExpectation(data, source) {
+  const directory = new URL("../../cantrip_server/drizzle/", import.meta.url);
+  const journal = JSON.parse(
+    await readFile(new URL("meta/_journal.json", directory), "utf8"),
+  );
+  const migration = journal.entries.find(
+    ({ tag }) => tag === "0287_task_output_finalization",
+  );
+  assert.ok(migration);
+  const hash = sha(await readFile(new URL(migration.tag + ".sql", directory)));
+  const applied = source.tables["drizzle.__drizzle_migrations"]
+    .map((row) => JSON.parse(row))
+    .find((row) => row.created_at === migration.when);
+  if (applied) {
+    assert.equal(applied.hash, hash);
+    return { database: source, migrationsApplied: 0 };
+  }
+
+  // Model the expected upgrade in an independent copy of the old database.
+  const expectedDirectory = path.join(root, "expected-upgrade-db");
+  await cp(path.join(data, "server-db"), expectedDirectory, {
+    recursive: true,
+    mode: constants.COPYFILE_FICLONE,
+  });
+  const db = await PGlite.create(expectedDirectory);
+  try {
+    await db.exec(
+      "ALTER TABLE public.chat_messages ADD COLUMN task_output_finalized boolean NOT NULL DEFAULT false",
+    );
+    await db.query(
+      "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)",
+      [hash, migration.when],
+    );
+    const database = await snapshot(db);
+    await save("expected-historical-upgrade-database", database);
+    return { database, migrationsApplied: 1 };
+  } finally {
+    await db.close();
+  }
+}
 async function nativeSnapshot(data, mode, env, name) {
   const directory =
     mode === "pglite"
@@ -527,6 +567,10 @@ try {
   await save("historical-http-baseline", baseline);
   await stop("legacy-populated");
   const sourceSnapshot = await legacySnapshot(data, "historical-database");
+  const expectedImport = await historicalImportExpectation(
+    data,
+    sourceSnapshot,
+  );
   report.nonemptyTables = Object.fromEntries(
     Object.entries(sourceSnapshot.tables)
       .filter(([, r]) => r.length)
@@ -584,12 +628,13 @@ try {
       mode + "-after-import",
     );
     assertImportedProfile(
-      sourceSnapshot,
+      expectedImport.database,
       observed,
       receipt,
       bundleManifest,
       before,
       after,
+      { migrationsApplied: expectedImport.migrationsApplied },
     );
     await verifyFiles(nativeData);
     const launch = () =>

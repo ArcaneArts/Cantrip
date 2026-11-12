@@ -86,6 +86,23 @@ was not treated as proof of enforcement.
 
 ## Current packaged round trip
 
+The macOS ARM64 `1.1.2869` package passed the complete round trip from the
+actual Node `1.1.2733` installation across all three stores. The old
+profile has 287 migration entries. The first import applies exactly one
+migration, `0287_task_output_finalization`. The harness constructs the
+expected upgraded state in an independent copy of the old database and
+compares the migration hash, new column default, all 137 tables and all
+four sequences. The second Rust import retains the existing migration
+entry and applies zero migrations.
+
+Each runtime retains the same session, server identity, encrypted state
+and the latest writes across rollback and restart. The protected original
+profile stays byte-for-byte unchanged. The first run's zero-migration
+expectation failed before the new comparison, and its report is retained.
+[Historical profile acceptance record](security/rust-server-2869-historical-profile-acceptance.json)
+
+### macOS ARM64 candidate `1.1.2845`
+
 The complete driver passed again with the optimized macOS ARM64 `1.1.2845`
 package at `2e60d2042203f64c8105d5c52d12ae1db92d2d83`. It ran the actual
 `1.1.2733` Node distribution and original profile across PGlite, bundled

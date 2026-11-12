@@ -24730,7 +24730,7 @@
     },
     "fullPostWriteRollback": {
       "status": "partial",
-      "limitedEvidence": "Native logical/profile reversal, automatic packaged legacy conversion and actual app post-write rollback have scoped historical local evidence. Current populated Node 1.1.2733 -> native 1.1.2845 -> Node -> native round trips pass all three stores, with exact comparisons of 137 tables and four sequences and retained session, identity, credential summary, crypto wrappers and encrypted product writes. Winterhold separately qualifies external PostgreSQL post-write code rollback over TLS. Full-client, current-platform, historical-profile and complete execution-replay rollback acceptance remain incomplete.",
+      "limitedEvidence": "Native logical/profile reversal, automatic packaged legacy conversion and actual app post-write rollback have scoped historical local evidence. Populated Node 1.1.2733 -> native 1.1.2869 -> Node -> native round trips pass all three stores with exact comparisons of the expected migration, 137 tables and four sequences. Sessions, identities, credentials, crypto wrappers and encrypted product writes survive. Winterhold separately qualifies external PostgreSQL post-write code rollback over TLS. Full-client, current-platform, historical-profile and execution-replay rollback acceptance remain incomplete.",
       "historicalLimitedEvidence": "Existing auth/encryption/policy/workspace suites retain selected writes across Node/Rust/Node on external PostgreSQL. Native SQL export adds current/historical all-store database rollback after real password-authenticated Rust workspace/protection writes. Complete-profile CLI transfer now retains original keys/files/backend selection, compares all115tables4sequences and lets actualNode retain session/CSRF/serverUUID plus Rust workspace revision2 and write revision3 on all3stores. Packaged existing-profile activation and product-wide post-write rollback remain incomplete; see installationProfileTransfer.",
       "evidence": [
         "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md",
@@ -24748,10 +24748,10 @@
       "currentPopulatedHistoricalQualification": {
         "status": "implemented-pending-platform-acceptance",
         "sourceRuntime": "Actual packaged Node 1.1.2733 and a preserved original profile with 1,773 files; actual 287-entry migration chain. A private copy is populated through real login, encryption initialization and enrollment, plus controlled offline domain records.",
-        "nativeRuntime": "Optimized macOS ARM64 native 1.1.2845 at 2e60d2042, executable SHA256 f8a2d070020752305e2045a80d1a59d1192ad943cdfc9e0c466ed3d3d2213474",
-        "currentReport": "docs/security/rust-server-darwin-arm64-acceptance.json#currentStandalone",
+        "nativeRuntime": "Optimized macOS ARM64 native 1.1.2869 at 0ae86163e, executable SHA256 12119fe998d6d2338b799cd1a832a4f1414eb8bd849887233296da360c51eeb8",
+        "currentReport": "docs/security/rust-server-2869-historical-profile-acceptance.json",
         "storageModes": ["pglite", "bundled-postgres", "postgres"],
-        "localQualification": "Final tracked run passes all three stores: 35 nonempty baseline tables; all 137 tables and four sequences, exact import receipt and timestamp; original files and modes unchanged; original session, CSRF and server identity. The original password wrapper and actual HPKE client grant unwrap the same key. The enrolled credential summary, three encrypted messages and frozen queue survive. Rust, old Node and returned Rust accept encrypted title/composer, revision-fenced Task and document writes; restart retains them. Original files, key, empty directory, modes and numeric/null/binary/time/Unicode probes are checked.",
+        "localQualification": "All three stores retain the original session, identity, enrolled credential summary, encrypted messages and frozen queue. The first import applies the expected Task output finalization migration once and preserves all 137 tables and four sequences. The return import applies zero migrations. Rust, old Node and returned Rust accept encrypted title, composer, revision-fenced Task and document writes. Restart retains those writes, and original profile files and modes remain unchanged.",
         "historyScope": "Validated empty history checkpoint receipt and canonical payload digest are preserved. This is not native-turn archive replay or in-flight execution acceptance.",
         "remaining": [
           "Full existing-client encryption, update and restart acceptance, plus representative historical profiles.",
@@ -29511,18 +29511,18 @@
       "status": "implemented-with-scoped-local-qualification",
       "evidence": [
         "docs/RUST_SERVER_WINTERHOLD.md",
-        "docs/security/rust-server-linux-arm64-acceptance.json",
+        "docs/security/rust-server-2869-linux-arm64-acceptance.json",
         "scripts/server-rust/winterhold-systemd-acceptance.mjs",
         "scripts/server-rust/container-server-acceptance.mjs"
       ],
-      "sourceCommit": "2e60d2042203f64c8105d5c52d12ae1db92d2d83",
-      "candidateVersion": "1.1.2845",
+      "sourceCommit": "0ae86163efb8503387a2b3d627f9e962d099e1cd",
+      "candidateVersion": "1.1.2869",
       "databaseModes": ["pglite", "bundled-postgres", "postgres"],
       "containerArtifactFilesVerifiedPerMode": 2546,
       "installerCalls": 18,
       "recoveredInstallerFailures": 6,
       "directNativeExecutableHashes": 10,
-      "scope": "Native ARM64 1.1.2845 Debian container and Ubuntu systemd/Caddy on a local ARM64 host. Verified Caddy and external PostgreSQL TLS, read-only service namespace, graceful shutdown and retained writes through native and x64 Node rollback."
+      "scope": "Native Linux ARM64 1.1.2869 Debian container and local Ubuntu ARM64 systemd and Caddy. All three stores retain sessions and accepted writes across post-write rollback and return to Rust. External PostgreSQL uses required TLS and the x64 Node rollback image. Direct executable observations match the native ARM64 distribution."
     },
     "defaultRuntimeCutover": {
       "status": "implemented-with-scoped-local-qualification",

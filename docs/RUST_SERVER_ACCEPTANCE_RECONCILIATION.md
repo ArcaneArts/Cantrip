@@ -12,6 +12,10 @@ Winterhold installation and rollback. Each qualification exercises all three
 storage modes. The Linux x64 tests ran through Rosetta on an ARM64 Linux host.
 [Production package acceptance](security/rust-server-2869-production-packages.json)
 
+The native Linux ARM64 `1.1.2869` container and local Winterhold rehearsal
+also pass all three storage modes and preserve writes through rollback.
+[Linux ARM64 acceptance record](security/rust-server-2869-linux-arm64-acceptance.json)
+
 The original-profile rehearsal passes upgrades and restarts with retained
 client keys on all three stores.
 [Encrypted macOS profile qualification](RUST_SERVER_DESKTOP_ENCRYPTED_ACCEPTANCE.md)
