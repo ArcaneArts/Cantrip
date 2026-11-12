@@ -236,6 +236,19 @@ Chat executes through its opaque scratch routing handle. The direct scratch
 resolve handler stays in the worker contract. Scoped worker command coverage
 accounts for 312 of 323 identities.
 
+The standalone scratch filesystem comparison ran the existing browser APIs
+and App Live client against the rebuilt Rust server and the Node reference
+with the same packaged worker. On all three stores, the worker provisioned
+the directory and handled encrypted listing, read, reference resolution,
+save, and delete requests. A stale file version and a mismatched root binding
+were rejected. The file and root identity survived an archive and worker
+restart. When the archive committed while the worker was offline, its next
+connection applied the retained archive deadline. Permanent deletion removed
+the worker directory and registry entry. All 114 captured HTTP exchanges
+kept titles, paths, and file contents encrypted. The bundled PostgreSQL
+comparison used a separate external cluster for the Node reference.
+[Coverage ledger](security/rust-server-coverage.json)
+
 The [automatic Task title comparison](RUST_SERVER_TASK_LABEL_ACCEPTANCE.md)
 fixes browser authorization for the worker's private label key. With that key,
 the current Rust server and Node reference complete standalone label generation
