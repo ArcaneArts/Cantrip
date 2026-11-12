@@ -1,5 +1,21 @@
 # Current Windows native server qualification
 
+## Windows x64 rebuild at `01928fcff`
+
+The `1.1.2881` Windows standalone archive matched all 2,281 manifest files
+and passed PGlite, bundled PostgreSQL, and external PostgreSQL. Each mode
+ran migrations, exported SQL, retained its server identity and setting
+across restart and hosted reopening, and exited on supervision stdin close
+within the existing 15-second limit. The disk receipts matched the guest
+serial output and each SQL export matched its receipt.
+[Windows x64 standalone rebuild](security/rust-server-2881-win32-x64-standalone.json#workspaceRemovalRebuild)
+
+The corresponding NSIS bundle matched all 14,092 payload files. It contains
+the same Rust executable as the standalone archive and its QA updater
+signature verified. Installed runtime and signed-update qualification
+remain open for this bundle.
+[Windows x64 desktop rebuild](security/rust-server-2881-win32-x64-desktop.json#workspaceRemovalRebuild)
+
 ## Windows x64 standalone `1.1.2881`
 
 The Windows 11 x64 QEMU guest packaged the `1.1.2881` Rust executable and

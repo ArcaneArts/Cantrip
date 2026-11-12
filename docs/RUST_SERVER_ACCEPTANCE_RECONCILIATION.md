@@ -49,6 +49,14 @@ rehearsal forced the candidate to exhaust its start budget and verified
 that the previous release restarted with its accepted writes.
 [Linux ARM64 acceptance record](security/rust-server-2881-linux-arm64-acceptance.json)
 
+The Linux ARM64 and x64 packages rebuilt at `01928fcff` each matched 2,546
+native manifest files and passed all three database modes in the container.
+The representative Winterhold rehearsal repeated 18 installer operations
+per architecture. It kept the accepted writes across rollback, verified
+Caddy HTTPS and App Live, and recovered from a forced systemd start-limit hit.
+The x64 executable ran through emulation on the ARM64 Linux host.
+[Linux ARM64 rebuild](security/rust-server-2881-linux-arm64-acceptance.json#workspaceRemovalRebuild), [Linux x64 rebuild](security/rust-server-2881-linux-x64-acceptance.json#workspaceRemovalRebuild)
+
 The original-profile rehearsal passes upgrades and restarts with retained
 client keys on all three stores.
 [Encrypted macOS profile qualification](RUST_SERVER_DESKTOP_ENCRYPTED_ACCEPTANCE.md)
@@ -95,6 +103,12 @@ reopen cases on the three stores. It retained the accepted settings and
 identities, received real worker replies, and shut down cleanly through the
 tray. A read-only guest disk snapshot matched all 14,092 installed files.
 [Windows x64 qualification](RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md)
+
+The Windows x64 rebuild at `01928fcff` passed the standalone three-store
+matrix with the original stdin-close shutdown deadline. The rebuilt NSIS
+bundle contains the same server executable and matched 14,092 payload
+files. Its QA updater signature verified.
+[Windows rebuild qualification](RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md#windows-x64-rebuild-at-01928fcff)
 The [native desktop workspace qualification](RUST_SERVER_DESKTOP_WORKSPACE_ACCEPTANCE.md)
 also exercises actual macOS popouts, dirty documents, server restart, WebView
 reload, application SIGKILL/restart, native close/return and explicit worker-file
