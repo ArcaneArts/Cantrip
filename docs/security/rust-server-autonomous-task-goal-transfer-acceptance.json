@@ -1,0 +1,360 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceBase": "91e4d5eec7e531590e9d42b51269c86a1107b46e",
+  "version": "1.1.2869",
+  "platform": "darwin-arm64",
+  "evidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1/task-autonomous-goal-transfer-2869",
+  "scope": "Existing Chromium browser APIs, locally rebuilt Rust executable and worker JavaScript/protocol over the 1.1.2869 worker distribution, with its unchanged native Core and local controlled provider endpoints.",
+  "nativeServer": {
+    "path": "candidate/cantrip-server-v2",
+    "bytes": 179775760,
+    "sha256": "2d4ccae774dc814a14a4b04f166b6a9d23122573e318e35766386df9c97b2940"
+  },
+  "worker": {
+    "coreVersion": "0.166.0",
+    "core": {
+      "path": "bin/codex",
+      "bytes": 281161744,
+      "sha256": "159efa081468910fbe00493d12d3cb18fbb9e3a091e2ea63745432d35fccbecc"
+    },
+    "entrypoint": {
+      "path": "dist/index.js",
+      "bytes": 390815,
+      "sha256": "ab325958767430552bb4333d8327b2171e4ac2e512f1b67e631164f15ff471d7"
+    },
+    "nativeTransport": {
+      "path": "dist/codex/app-server.js",
+      "bytes": 375434,
+      "sha256": "105a46b125bd2d1b3ac24157d2a68c75a881aeda458b0c85f233450dca9656c4"
+    },
+    "publisher": {
+      "path": "dist/task-goal-publisher.js",
+      "bytes": 2751,
+      "sha256": "556850ae35ced8a057343a83605b98e4115e6b0574818e8b268851b094f5138c"
+    },
+    "protocol": {
+      "path": "node_modules/@cantrip/protocol/dist/task-goal-cycle.js",
+      "bytes": 7736,
+      "sha256": "e68c6d66a8ec632779db31c74012f28cb12f3c2c782b9170915ddda413bce346"
+    }
+  },
+  "cases": [
+    {
+      "databaseMode": "pglite",
+      "productSteps": 16,
+      "explicitInputCommits": 1,
+      "autonomousOutcomeCommits": 1,
+      "destinationModelRequests": 2,
+      "orderEpochBefore": 0,
+      "orderEpochAfter": 1,
+      "report": {
+        "path": "pglite-projection.json",
+        "bytes": 812523,
+        "sha256": "8f4e279c1c7bc76f02ac6e41fb0393064e6d720086880a4930df17cf2430921a"
+      },
+      "handoff": {
+        "path": "pglite-projection-handoff.jsonl",
+        "bytes": 705,
+        "sha256": "0a42bd1b8f221ca451338eb58a90257030e53ed7d35503d695b65a8a1fb40a31"
+      },
+      "outcomes": {
+        "path": "pglite-projection-receipts.jsonl",
+        "bytes": 9856,
+        "sha256": "5ed518caae5b16dbbe6ab8242ac482a965ac27cda2f476a00606f2ca01efa4a7"
+      },
+      "native": {
+        "path": "pglite-projection-native.jsonl",
+        "bytes": 60705,
+        "sha256": "468f839c2ddec557223d90d55d0fdbfb488a69eb65f268c4a487805d90addd3e"
+      },
+      "publication": {
+        "path": "pglite-projection-publisher.jsonl",
+        "bytes": 694,
+        "sha256": "ea794bed98cc61ed69e2804415179b4795a9c99d3748cddb860b256f7af689ec"
+      },
+      "export": {
+        "path": "tmp/cantrip-actual-folder-Qv8b6e/rust/worker/codex-home/managed-history-exports/21258067-f669-4685-861d-fdf9425ca2f8.json",
+        "bytes": 112734,
+        "sha256": "b6972a155c0c75d92f4353bd4db9270a129b9bedecbbc5abf29cbe058d4b7395"
+      },
+      "importedRollout": {
+        "path": "tmp/cantrip-actual-folder-Qv8b6e/rust/worker/managed-native-namespaces/5cb2cdfc5664e89290fe1e27c84b2afc9f4e90d23ecaf119225e826cbb0b1804/ea22004fd42102c9f8a344d3ad4738237c9eeb64202bf19da2bedb9597c51a83/homes/21258067-f669-4685-861d-fdf9425ca2f8/sessions/managed-tree-21258067-f669-4685-861d-fdf9425ca2f8/rollout-2026-11-12T05-58-42-01a1ce56-4537-7b82-88f4-653f590b354a.jsonl",
+        "bytes": 168918,
+        "sha256": "6216a0f65390cef102e4b639dd571e17bb7fe9d044a1dba189ebe15f68f6de7b"
+      },
+      "selectedNamespace": {
+        "path": "tmp/cantrip-actual-folder-Qv8b6e/rust/worker/managed-native-namespaces/5cb2cdfc5664e89290fe1e27c84b2afc9f4e90d23ecaf119225e826cbb0b1804/ea22004fd42102c9f8a344d3ad4738237c9eeb64202bf19da2bedb9597c51a83/selections/21258067-f669-4685-861d-fdf9425ca2f8.json",
+        "bytes": 435,
+        "sha256": "451a0ad9b57fbbaf0ecd08ffbc594ed9253eecbe86f8ab5f8af49e744d34d7af"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "productSteps": 16,
+      "explicitInputCommits": 1,
+      "autonomousOutcomeCommits": 1,
+      "destinationModelRequests": 2,
+      "orderEpochBefore": 0,
+      "orderEpochAfter": 1,
+      "report": {
+        "path": "bundled-postgres-projection.json",
+        "bytes": 808759,
+        "sha256": "f93b780d11fad6a441b03112634e535411f301ef04fa5689175fe294e9cc6737"
+      },
+      "handoff": {
+        "path": "bundled-postgres-projection-handoff.jsonl",
+        "bytes": 705,
+        "sha256": "e105d5bf7f5553b9b40a861c99736530f81b826ed444ef275ba41eeeeef1edad"
+      },
+      "outcomes": {
+        "path": "bundled-postgres-projection-receipts.jsonl",
+        "bytes": 9856,
+        "sha256": "172cbca30fff1c414f72b7245d1e1fe26d6ff39c0e8aee4c3f69248ef43250ce"
+      },
+      "native": {
+        "path": "bundled-postgres-projection-native.jsonl",
+        "bytes": 59992,
+        "sha256": "84c7371cfac01e822ac8e71f70f06fc95bf0374ace3c08dc7c3b96bd9a7631c2"
+      },
+      "publication": {
+        "path": "bundled-postgres-projection-publisher.jsonl",
+        "bytes": 694,
+        "sha256": "62722bc1ed9ac78d602ef135e5cf5178b7b49b3c925e5bfec16fe79af45a228a"
+      },
+      "export": {
+        "path": "tmp/cantrip-actual-folder-Y0Kmo8/rust/worker/codex-home/managed-history-exports/3e44cbdd-ad8a-4439-afd7-b4fcea69a9e4.json",
+        "bytes": 112733,
+        "sha256": "1438b12885bf073c662c99a0304a7b255b9b855015f8fda11fe0a30293b7ef5b"
+      },
+      "importedRollout": {
+        "path": "tmp/cantrip-actual-folder-Y0Kmo8/rust/worker/managed-native-namespaces/edc1f05fe16e9809e9117f631b24f4071492f0215dcd1f93df2dd80ff2556175/f54065467aeb27bceb437b06325a16ed78ccc6d2a71b8bac4915faead5d43d4b/homes/3e44cbdd-ad8a-4439-afd7-b4fcea69a9e4/sessions/managed-tree-3e44cbdd-ad8a-4439-afd7-b4fcea69a9e4/rollout-2026-11-12T05-59-34-01a1ce57-0dab-7d81-9541-c8c2b1279cbd.jsonl",
+        "bytes": 168917,
+        "sha256": "9cafe4dcb5981419872460c71a18638b81ef5ffaf435504e3b63234aab115c55"
+      },
+      "selectedNamespace": {
+        "path": "tmp/cantrip-actual-folder-Y0Kmo8/rust/worker/managed-native-namespaces/edc1f05fe16e9809e9117f631b24f4071492f0215dcd1f93df2dd80ff2556175/f54065467aeb27bceb437b06325a16ed78ccc6d2a71b8bac4915faead5d43d4b/selections/3e44cbdd-ad8a-4439-afd7-b4fcea69a9e4.json",
+        "bytes": 435,
+        "sha256": "62e9086a6d5a7bccd88066b41204498a95910074c3a50f62d73be7d548192bae"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "productSteps": 16,
+      "explicitInputCommits": 1,
+      "autonomousOutcomeCommits": 1,
+      "destinationModelRequests": 2,
+      "orderEpochBefore": 0,
+      "orderEpochAfter": 1,
+      "report": {
+        "path": "postgres-projection.json",
+        "bytes": 808450,
+        "sha256": "c107832630b49d7ad6a4bf24dfe0cf82f7f33726695619dffdcae2a2eb7fb8c2"
+      },
+      "handoff": {
+        "path": "postgres-projection-handoff.jsonl",
+        "bytes": 705,
+        "sha256": "6b43e1beea23acbbed76052e127f2ca6e88584ba7091bf843a29309cf1f6ccaf"
+      },
+      "outcomes": {
+        "path": "postgres-projection-receipts.jsonl",
+        "bytes": 9856,
+        "sha256": "1978a7e81aa87f708e56ee76c369ea3e38d9bc8bd55606725bba0fe061a6b301"
+      },
+      "native": {
+        "path": "postgres-projection-native.jsonl",
+        "bytes": 59597,
+        "sha256": "88637139a1f71808ddbe8a84117abf8ff7d58368df9cb79c1ac3bd4f7ae6f7d0"
+      },
+      "publication": {
+        "path": "postgres-projection-publisher.jsonl",
+        "bytes": 694,
+        "sha256": "cbe0301c639404b174bfd4714489f0fec4e27440da44a1edc786240b8b7fdc6e"
+      },
+      "export": {
+        "path": "tmp/cantrip-actual-folder-s2PptL/rust/worker/codex-home/managed-history-exports/13d231ff-b383-4b08-933d-28371071b940.json",
+        "bytes": 112733,
+        "sha256": "453869787e0c975c8de5ebf54784753a25459b8a633e2bbf1a6128ad80550c03"
+      },
+      "importedRollout": {
+        "path": "tmp/cantrip-actual-folder-s2PptL/rust/worker/managed-native-namespaces/9d1b32efcd63194c340cc92efd2d997d105f9af801157b02d1af7c05724e3491/2f8d6e3f031ffe1cf5bd2a7c50adf2d7313db887db599b89d026c75fa16fea98/homes/13d231ff-b383-4b08-933d-28371071b940/sessions/managed-tree-13d231ff-b383-4b08-933d-28371071b940/rollout-2026-11-12T06-00-19-01a1ce57-bd4a-7f30-927c-2a35f03f1a5d.jsonl",
+        "bytes": 168919,
+        "sha256": "ffb6a113c88bc1cec82018e9f5ed4df5a8c81ad882ea384517b0255e5eb382ce"
+      },
+      "selectedNamespace": {
+        "path": "tmp/cantrip-actual-folder-s2PptL/rust/worker/managed-native-namespaces/9d1b32efcd63194c340cc92efd2d997d105f9af801157b02d1af7c05724e3491/2f8d6e3f031ffe1cf5bd2a7c50adf2d7313db887db599b89d026c75fa16fea98/selections/13d231ff-b383-4b08-933d-28371071b940.json",
+        "bytes": 435,
+        "sha256": "01bb0a9e69406e36ffdce0ade08200152430152f07d23bcbfef1b77a8f28b036"
+      }
+    }
+  ],
+  "originalRustWorker": {
+    "report": {
+      "path": "pglite-pilot.json",
+      "bytes": 289973,
+      "sha256": "b2485a7608613fda78679246d4bd5219951d6093a7acf461d4b0e7d6a213b07e"
+    },
+    "outcomes": {
+      "path": "pglite-pilot-receipts.jsonl",
+      "bytes": 5165,
+      "sha256": "6d5332a6c15948d16c0ff09b7d5104e328d6363597bdfc3b098e1c79d7338e47"
+    }
+  },
+  "originalNodeReference": {
+    "report": {
+      "path": "node-pglite-baseline.json",
+      "bytes": 463345,
+      "sha256": "f07dfa8be2a2e239ad2681c7bd132182bb6cdb293be4abbd299c155b2a5dfdb4"
+    },
+    "outcomes": {
+      "path": "node-pglite-baseline-receipts.jsonl",
+      "bytes": 5165,
+      "sha256": "920be9619de3049ec8020a055037c2a1a2a242dc7c02f0eaf4135db2113a839f"
+    }
+  },
+  "publisherBeforeProjectionFix": [
+    {
+      "databaseMode": "pglite",
+      "report": {
+        "path": "pglite-publication.json",
+        "bytes": 288135,
+        "sha256": "0230dcc67825694e31f18b861e778d7730e324735ac0b3c9d1557092ca1d80d2"
+      },
+      "outcomes": {
+        "path": "pglite-publication-receipts.jsonl",
+        "bytes": 5451,
+        "sha256": "e13a56812aecad9a3cb317e921b034a681efcecd664d416b37da2abd546db53a"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "report": {
+        "path": "bundled-postgres-publication.json",
+        "bytes": 299327,
+        "sha256": "07c9293674c275ea901beed6f2baadbbad4a8b1a01c284669e6a20f480b7cf0e"
+      },
+      "outcomes": {
+        "path": "bundled-postgres-publication-receipts.jsonl",
+        "bytes": 5451,
+        "sha256": "2a185faae299714a9a778813bc0b7ac0e5f985e6a5c9d3408e42a18de63e76fa"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "report": {
+        "path": "postgres-publication.json",
+        "bytes": 288609,
+        "sha256": "f1b4430890edba063d8190d98e0b17341a16cbcf924b350bc5a9dc4e47bdcb28"
+      },
+      "outcomes": {
+        "path": "postgres-publication-receipts.jsonl",
+        "bytes": 5451,
+        "sha256": "f34fea5e33f7bc6ad656749d91569c99abfe208f9a02026720e89df24b1340f5"
+      }
+    }
+  ],
+  "existingPublisherControl": {
+    "report": {
+      "path": "original-publication.json",
+      "bytes": 695073,
+      "sha256": "32c36363d1f683a452aadbde8308a932f38fc97b61fda7386eb271b0bc33343a"
+    },
+    "unchangedWire": {
+      "path": "original-publication-publisher.jsonl",
+      "bytes": 618,
+      "sha256": "7237dadd8ca3b5d449a2335ff49a796567ecfbd1b3f63b8412b6b6d1b18b907d"
+    }
+  },
+  "localVerifier": {
+    "path": "verify-autonomous.py",
+    "bytes": 11437,
+    "sha256": "613d81745b904d395a925c4f4d3e14cb2ac8aa261e04a62ce86a761ec8934589"
+  },
+  "workerTests": {
+    "path": "projection-worker-tests.log",
+    "bytes": 252,
+    "sha256": "51188a218e4c08db7f67ae80a8c7dfb6d95a690a19acbe648005dfe195a0eb3d"
+  },
+  "protocolTests": {
+    "path": "projection-protocol-tests-passed.log",
+    "bytes": 252,
+    "sha256": "f10dc6ecc1a9ba6e93b586f5fc581e7ab4b506052797f77ea83cab3963240bdd"
+  },
+  "source": [
+    {
+      "path": "cantrip_server_rs/contracts/security.json",
+      "bytes": 2312732,
+      "sha256": "4adf986e64cd26a6dd4b91526ba55c5213847687f4f274220842560a1b61371c"
+    },
+    {
+      "path": "cantrip_server_rs/src/http/native_admission.rs",
+      "bytes": 22153,
+      "sha256": "c0e715d21a69544d3335db38d017b6d3c65a4da0cf8684667cfac680f4c0a0ba"
+    },
+    {
+      "path": "cantrip_server_rs/src/tasks/goal_cycle_recovery.rs",
+      "bytes": 30638,
+      "sha256": "6e806f0e31b2340481b0ddfe61e79b7dcea422867b4f57d58c4d5b0916203bbc"
+    },
+    {
+      "path": "cantrip_server_rs/src/tasks/goal_inference_inputs.rs",
+      "bytes": 51893,
+      "sha256": "04645315a89f6cf27a1d16c561ae12645505223b1a943cb38ec76a39b261c7d7"
+    },
+    {
+      "path": "cantrip_server_rs/src/tasks/resumption.rs",
+      "bytes": 15848,
+      "sha256": "b03e5758f721c3e18e073924e50e2a42db3fd3f1bff3ccf535ce0025d32a6a95"
+    },
+    {
+      "path": "cantrip_worker/src/codex/app-server.ts",
+      "bytes": 386801,
+      "sha256": "2811f335e76facdef681469be1f225f95e13159c6576a40910ea36358668cc0b"
+    },
+    {
+      "path": "cantrip_worker/src/index.ts",
+      "bytes": 365638,
+      "sha256": "c3140f25d90455493e6bd0e3cebd587bc401b4ae5014bcc1cde4ae8435f6069d"
+    },
+    {
+      "path": "cantrip_worker/src/native-command-client.ts",
+      "bytes": 18723,
+      "sha256": "47548e31ff336ef3ba9e276d6e77390d924f6aa5d1bda13cbead11e4b5aaf9e8"
+    },
+    {
+      "path": "cantrip_worker/src/task-goal-publisher.ts",
+      "bytes": 3335,
+      "sha256": "977518d05c9f7e7cf649027f9d46518833f78fcadec356fd10ab303f34fbdc26"
+    },
+    {
+      "path": "packages/protocol/src/task-goal-cycle.ts",
+      "bytes": 8092,
+      "sha256": "65e1865bd051680d7b25e88a67bc37dec8ec7ac2000ae42b7a9643cac41e9f95"
+    },
+    {
+      "path": "packages/protocol/src/public-surface-compatibility.test.ts",
+      "bytes": 50489,
+      "sha256": "e3a371f234bae1470bbe9b377fc4b785973e35a354e754f013492688b6da9556"
+    },
+    {
+      "path": "scripts/server-rust/actual-folder-client.mjs",
+      "bytes": 75913,
+      "sha256": "d3414ce2dafa33fede204e3f79c6bcdc1a8c741be4226b266c09e446eeecf6ce"
+    },
+    {
+      "path": "scripts/server-rust/actual-task-client.mjs",
+      "bytes": 24888,
+      "sha256": "5f7716fb9a0fb6bec2743dddaf3f2233a50231efc513adfde44ce4c21ac845ea"
+    },
+    {
+      "path": "scripts/server-rust/actual-task-goal-provider-transfer.mjs",
+      "bytes": 15343,
+      "sha256": "2d922790c12e781fdadf73f012148834a3fc796dbf9e0fba21ce63c627ce5d0f"
+    },
+    {
+      "path": "scripts/server-rust/contracts.mjs",
+      "bytes": 72317,
+      "sha256": "b1a1849a185c0b73d6283b9ca513225b73d22a5addbd978169b47c781372cdac"
+    }
+  ]
+}

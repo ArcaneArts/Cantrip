@@ -862,6 +862,7 @@ const modelAndGoalExports = [
   "providerOperationSupport",
   "registeredModelOperations",
   "taskGoalCycleCaptureSchema",
+  "taskGoalCycleDispatchPublicationResultSchema",
   "taskGoalCycleDispatchResultSchema",
   "taskGoalCycleDispatchSchema",
   "taskGoalCycleIdentitySchema",

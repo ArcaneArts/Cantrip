@@ -289,6 +289,7 @@ import {
   protectedTaskRuntimeError,
   openTaskConversationPrompt,
 } from "./task-operation.js";
+import { createTaskGoalPublisher } from "./task-goal-publisher.js";
 import { discoverOllamaModels } from "./ollama.js";
 import {
   InferenceProgressObserver,
@@ -2062,7 +2063,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         nativeEnvironment,
         inferenceAdmissionForWorker(),
         createNativeResourceProtection(workerEncryption),
-        async (input, signal) => {
+        async (input, signal, includePublication) => {
           const result = await nativeCommands.dispatchTaskGoalCycle(
             {
               ...input,
@@ -2070,6 +2071,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               workerGeneration: workerProcessGeneration,
             },
             signal,
+            includePublication,
           );
           inferenceAdmissionForWorker().wakeRecovery(input.chatId);
           return result;
@@ -2077,6 +2079,53 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         (input, signal) =>
           handoffStaging.waitInference(runtime!, input, signal),
         (chatId) => taskPauseControls.prepared(chatId),
+        ({ chatId, projectId, ...observer }, source, prompt) => {
+          if (
+            source.parent.chatId !== chatId ||
+            source.parent.clientMessageId !== prompt.id ||
+            prompt.classification.mode !== "goal" ||
+            !["user", "system"].includes(prompt.classification.role)
+          )
+            throw new Error("The Goal publication input does not match.");
+          const eventSealer = new EncryptedTaskEventSealer(workerEncryption);
+          let events = Promise.resolve();
+          let eventFailure: unknown;
+          const seal = (operation: () => Promise<unknown>) => {
+            events = events
+              .then(async () => {
+                await operation();
+              })
+              .catch((error: unknown) => {
+                eventFailure ??= error;
+              });
+          };
+          return {
+            ...createTaskGoalPublisher({
+              runtime: runtime!,
+              store: nativeSuspensionStore,
+              connection: commandConnection,
+              encryption: workerEncryption,
+              scope: nativeNamespaceScope(),
+              chatId,
+              projectId,
+              prompt,
+              eventSealer,
+              settleEvents: async () => {
+                await events;
+                if (eventFailure) throw eventFailure;
+              },
+            }),
+            observer: {
+              ...observer,
+              chatId,
+              executionLaneId: source.parent.executionLaneId,
+              captureProtectedDiagnostics: true,
+              onActivity: (activity) =>
+                seal(() => eventSealer.activity(activity)),
+              onMessage: (message) => seal(() => eventSealer.message(message)),
+            },
+          };
+        },
       );
       runtime.setGoalObserver((threadId, goal) => {
         if (runtime && handoffStaging.held(runtime, threadId)) return;
@@ -7174,92 +7223,29 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   encryptedTaskSealer
                 ) {
                   const prompt = command.protectedTaskPrompt;
-                  const publisherScope = { ...nativeNamespaceScope() };
-                  runtime.registerTaskGoalSuspensionCapture(
-                    threadId,
-                    async (source, active) => {
-                      if (
-                        source.parent.chatId !== command.chatId ||
-                        source.parent.clientMessageId !== prompt.id
-                      )
-                        throw new Error(
-                          "The autonomous Goal publisher belongs to another canonical input.",
-                        );
-                      return createTaskSuspensionCapture(
-                        runtime,
-                        nativeSuspensionStore,
-                        {
-                          kind: "goal-cycle",
-                          receipt: source.parent,
-                          goalCycle: source,
-                          projectId: command.policyProjectId!,
-                          prompt,
-                          publication: source.publication,
-                          events: async () => {
-                            await protectedEventQueue;
-                            if (protectedEventFailure)
-                              throw protectedEventFailure;
-                            return encryptedTaskSealer.snapshot();
-                          },
-                        },
-                      )(active);
-                    },
-                    turnOptions,
-                    async (source, result) => {
+                  const publisher = createTaskGoalPublisher({
+                    runtime,
+                    store: nativeSuspensionStore,
+                    connection: commandConnection,
+                    encryption: workerEncryption,
+                    scope: nativeNamespaceScope(),
+                    chatId: command.chatId,
+                    projectId: command.policyProjectId!,
+                    prompt,
+                    eventSealer: encryptedTaskSealer,
+                    settleEvents: async () => {
                       await protectedEventQueue;
                       if (protectedEventFailure) throw protectedEventFailure;
-                      if (result instanceof CodexTurnFailureError) {
-                        await commandConnection.deliverGoalCycleOutcome(
-                          {
-                            type: "chat.turn.outcome",
-                            chatId: source.parent.chatId,
-                            clientMessageId: source.parent.clientMessageId,
-                            executionLaneId: source.parent.executionLaneId,
-                            contextKind: "project",
-                            scratchRootId: null,
-                            worktreeId: source.parent.worktreeId,
-                            outcome: {
-                              ok: false,
-                              error:
-                                result.terminalStatus === "interrupted"
-                                  ? "The autonomous Task Goal turn was interrupted."
-                                  : "The autonomous Task Goal turn failed.",
-                            },
-                          },
-                          source,
-                          publisherScope,
-                        );
-                        return;
-                      }
-                      const protectedResult = await encryptTaskTurnResult({
-                        eventSealer: encryptedTaskSealer,
-                        reusePublishedResponse:
-                          command.resultMode.kind ===
-                            "task-message-encrypted" &&
-                          command.resultMode.reusePublishedResponse === true,
-                        getComponentKey: () =>
-                          workerEncryption.componentKey("task-content"),
-                        idempotencyKey: source.publication.idempotencyKey,
-                        messageId: source.publication.id,
-                        ownerId: publisherScope.ownerId,
-                        result,
-                        mode: "goal",
-                      });
-                      await commandConnection.deliverGoalCycleOutcome(
-                        {
-                          type: "chat.turn.outcome",
-                          chatId: source.parent.chatId,
-                          clientMessageId: source.parent.clientMessageId,
-                          executionLaneId: source.parent.executionLaneId,
-                          contextKind: "project",
-                          scratchRootId: null,
-                          worktreeId: source.parent.worktreeId,
-                          outcome: { ok: true, result: protectedResult },
-                        },
-                        source,
-                        publisherScope,
-                      );
                     },
+                    reusePublishedResponse:
+                      command.resultMode.kind === "task-message-encrypted" &&
+                      command.resultMode.reusePublishedResponse === true,
+                  });
+                  runtime.registerTaskGoalSuspensionCapture(
+                    threadId,
+                    publisher.capture,
+                    turnOptions,
+                    publisher.complete,
                     commandConnection.taskResultCommitted(
                       command.taskInferenceInput.operationId,
                     ),

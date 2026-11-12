@@ -162,9 +162,11 @@ impl Repository {
             let Some(row) = locked(tx, &owner, &chat).await? else { return Ok(None); };
             let cycle = &row["cycle"];
             let mut marker = cycle["goal_cycle_recovery"].clone();
+            // The original input keeps its provider after a handoff. The
+            // durable native marker owns the continuation's actual provider.
             if committed_source(&marker) != Some(&source)
                 || cycle["goal_input"]["receipt"] != source["parent"]
-                || !same_binding(&row,&source["parent"]["workerId"],&source["parent"]["providerId"],&source["threadId"],&source["cycle"]) {
+                || !same_binding(&row,&source["parent"]["workerId"],&marker["providerId"],&source["threadId"],&source["cycle"]) {
                 return Ok(None);
             }
             anyhow::ensure!(row["handoff"] != true, "The committed Task Goal observation is waiting for its runtime handoff.");
@@ -419,7 +421,12 @@ impl Repository {
         })).await
     }
 
-    pub async fn dispatch_goal_cycle(&self, owner: &str, input: &Value) -> Result<Value> {
+    pub async fn dispatch_goal_cycle(
+        &self,
+        owner: &str,
+        input: &Value,
+        include_prompt: bool,
+    ) -> Result<Value> {
         let (owner, input) = (owner.to_owned(), input.clone());
         self.database.transaction(|tx|Box::pin(async move {
             let chat = text(&input["chatId"])?;
@@ -472,7 +479,17 @@ impl Repository {
                 write(tx,&row["cycle"],&marker,true).await?;
             }
             let mut result = json!({"accepted":true});
-            if !suspension_source.is_null() { result["suspensionSource"] = suspension_source; }
+            if !suspension_source.is_null() {
+                if include_prompt {
+                    let parent = &suspension_source["parent"];
+                    let message = one(Executor::Transaction(tx),
+                        "SELECT to_jsonb(m)::text FROM chat_messages m WHERE m.chat_id=$1 AND m.id=$2 AND m.worktree_id=$3 AND m.role IN ('user','system') AND m.mode='goal' AND m.task_protected_content IS NOT NULL",
+                        &[&chat, &text(&parent["clientMessageId"])?, &text(&parent["worktreeId"])?]).await?;
+                    let Some(message) = message.filter(|message| !truthy(message.get("content"))) else { return stale(); };
+                    result["publicationPrompt"] = goal_inference_inputs::opaque_prompt(&message)?;
+                }
+                result["suspensionSource"] = suspension_source;
+            }
             Ok(result)
         })).await
     }

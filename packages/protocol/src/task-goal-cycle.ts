@@ -3,6 +3,7 @@ import { taskInferenceInputReceiptSchema } from "./task-inference-input.js";
 import { inferenceNativeExecutionSchema } from "./inference-native-execution.js";
 import { nativeSuspensionActorSchema } from "./native-suspensions.js";
 import { taskFailureKindSchema } from "./task-retry.js";
+import { taskMessageOpaqueContentSchema } from "./tasks.js";
 
 const id = z.string().min(1).max(4_096);
 
@@ -170,6 +171,12 @@ export const taskGoalCycleDispatchResultSchema = z
     suspensionSource: taskGoalCycleSuspensionSourceSchema.optional(),
   })
   .strict();
+
+/** Opt-in material for a worker observing a Goal without its original turn. */
+export const taskGoalCycleDispatchPublicationResultSchema =
+  taskGoalCycleDispatchResultSchema.extend({
+    publicationPrompt: taskMessageOpaqueContentSchema.optional(),
+  });
 
 export const taskGoalCycleRecoveryReceiptSchema = z.discriminatedUnion(
   "status",

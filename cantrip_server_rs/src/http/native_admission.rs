@@ -46,6 +46,7 @@ async fn apply(
     owner: String,
     input: Value,
     phase: String,
+    include_goal_publication: bool,
 ) -> Result<Value> {
     if phase == "suspension-execution" {
         let worker = input["workerId"].as_str().unwrap();
@@ -229,7 +230,7 @@ async fn apply(
             repo.fence_goal_recovery_admission(&owner, &input).await?
         } else if phase == "task-goal-cycle-dispatch" {
             crate::tasks::Repository::new(service.repository.database.clone())
-                .dispatch_goal_cycle(&owner, &input)
+                .dispatch_goal_cycle(&owner, &input, include_goal_publication)
                 .await?
         } else if phase == "task-input-dispatch" {
             crate::tasks::Repository::new(service.repository.database.clone())
@@ -282,7 +283,11 @@ async fn apply(
             if phase == "task-input-dispatch" {
                 "taskInferenceInputDispatchResultSchema"
             } else if phase == "task-goal-cycle-dispatch" {
-                "taskGoalCycleDispatchResultSchema"
+                if include_goal_publication {
+                    "taskGoalCycleDispatchPublicationResultSchema"
+                } else {
+                    "taskGoalCycleDispatchResultSchema"
+                }
             } else if phase == "goal-recovery-fence" {
                 "nativeGoalRecoveryFenceResultSchema"
             } else {
@@ -399,6 +404,9 @@ async fn handle(
 ) -> Response {
     let phase = request.uri().path().rsplit('/').next().unwrap().to_owned();
     let authorization = middleware::value(request.headers(), "authorization");
+    let include_goal_publication =
+        middleware::value(request.headers(), "x-cantrip-task-goal-publication").as_deref()
+            == Some("1");
     // Match TASK_GOAL_OUTCOME_MAX_BYTES: protected 16 MiB responses expand in base64.
     let limit = if phase == "task-goal-outcome" {
         32 * 1_024 * 1_024
@@ -475,7 +483,13 @@ async fn handle(
     );
     match service
         .scratch_roots
-        .owned(apply(service.clone(), owner, input, phase))
+        .owned(apply(
+            service.clone(),
+            owner,
+            input,
+            phase,
+            include_goal_publication,
+        ))
         .await
     {
         Ok(v) => json_response(StatusCode::OK, v),

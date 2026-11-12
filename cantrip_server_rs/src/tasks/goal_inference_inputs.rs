@@ -4,6 +4,14 @@ use super::*;
 fn stale<T>() -> Result<T> {
     Err(crate::task_dispatch::Conflict::stale().into())
 }
+pub(super) fn opaque_prompt(message: &Value) -> Result<Value> {
+    parse(
+        "taskMessageOpaqueContentSchema",
+        &json!({"id":message["id"],
+        "classification":json!({"role":message["role"],"mode":message["mode"],"attachmentIds":message["task_attachment_ids"]}),
+        "protectedContent":message["task_protected_content"],"reasoningEffort":message["reasoning_effort"],"idempotencyKey":message["idempotency_key"]}),
+    )
+}
 fn outcome_guard(r: &Value) -> Value {
     let mut guard = r["dispatch"].clone();
     guard["kind"] = json!("outcome");
