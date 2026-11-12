@@ -535,6 +535,17 @@ The three runs completed six QR transfers and nine clean server exits.
 The mobile runs used Chromium's iPhone viewport and virtual camera. Installed
 iOS and Android camera integration retains its separate acceptance scope.
 
+The `1.1.2881` web build, packaged macOS ARM64 Rust server and compiled
+Node reference repeated this flow on all three Rust stores. Chromium passed
+21 scenario steps, six QR exchanges and nine clean server shutdowns.
+Both accounts retained their original desktop sessions after switching, and
+the Rust account and server identity survived restart. The bundled PostgreSQL
+run initially timed out scanning a perfectly static QR frame. A virtual
+camera feed with slight rotation decoded the app-rendered QR through the
+same browser scanner and completed the real exchange. The
+[current browser acceptance record](security/rust-server-2881-browser-mobile-sign-in.json)
+binds the reports to the built client and server artifacts.
+
 ## Installed mobile sessions and Android QR sign-in
 
 The installed `1.1.2867` clients ran against the packaged macOS ARM64
