@@ -72,6 +72,21 @@ The original full replacement goal remains incomplete.
 See [machine-readable evidence](security/rust-server-native-control-acceptance.json)
 and the [current replacement reconciliation](RUST_SERVER_ACCEPTANCE_RECONCILIATION.md).
 
+## Packaged cold Stop after worker restart
+
+The macOS ARM64 Rust package built at `cb41197c6` and the Node reference
+passed 12 cases using the Chromium SDK, packaged worker, and actual native
+runtime. Both peers passed cold Chat Stop and cold Task Stop on PGlite,
+bundled PostgreSQL, and external PostgreSQL. The Node reference used isolated
+external databases for both PostgreSQL comparisons.
+
+Each run paused a native turn, killed the owned worker tree, restarted the
+worker, and sent two Stop requests over HTTP. The original native turn
+recorded one abort and no completion. In the Chat cases a late Resume left
+the turn stopped and did not start inference. The Task cases also preserved the dispatch
+operation, attempt count, and planning round.
+[Current cold Stop evidence](security/rust-server-native-control-acceptance.json#currentPackagedColdStop)
+
 ## Local checks
 
 Rust formatting, strict all-target Clippy and all 86 library tests pass. The

@@ -5565,10 +5565,12 @@
           "cantrip_server_rs/src/http/chat_execution/interrupt.rs",
           "cantrip_server_rs/src/chats/automation_pause_task.rs",
           "cantrip_worker/src/task-pause-controls.ts",
-          "cantrip_codex/patches/0086-native-task-interrupt.patch"
+          "cantrip_codex/patches/0086-native-task-interrupt.patch",
+          "docs/RUST_SERVER_NATIVE_CONTROL_CONTRACTS.md",
+          "docs/security/rust-server-native-control-acceptance.json#currentPackagedColdStop"
         ],
         "remaining": [
-          "This extension was source-reviewed and formatted only. Native patch application, compilation, migration execution, actual HTTP/worker/native behavior and platform acceptance were not run."
+          "Paired HTTP and native-control comparisons executed the route. The current macOS ARM64 package also passed cold Chat and Task Stop after a worker restart on all three stores. Active and restoring interruption and supported-platform product acceptance remain open for this route."
         ]
       },
       {
