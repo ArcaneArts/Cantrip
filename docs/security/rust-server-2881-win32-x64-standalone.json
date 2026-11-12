@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.2881",
+  "sourceCommit": "ccafd3cd4baea444ab43c1b84471ab3225f718e3",
+  "target": "win32-x64",
+  "guest": "Windows 11 x64 under local QEMU software emulation",
+  "completeReplacement": false,
+  "standalone": {
+    "archive": {
+      "path": "cantrip-server-1.1.2881-win32-x64.tar.gz",
+      "bytes": 97641483,
+      "sha256": "d1a13804a10a58b4b84d8a4f91fa50ec699fcf6c40ef25cd5b6446b193c63d2a"
+    },
+    "binary": {
+      "path": "cantrip-server.exe",
+      "bytes": 110975779,
+      "sha256": "f2706ce0c0f0e49f0c96fadc725b6c4d398b4c661df570cbbb94fd0ff49ebf68"
+    },
+    "manifest": {
+      "path": "native-server.json",
+      "bytes": 407860,
+      "sha256": "168ba8d93cf563afbf8692c96a2a3a059a554f693e1e99dfdb2771f35dca2498"
+    },
+    "packagerReceipt": {
+      "path": "pack-current.json",
+      "bytes": 417,
+      "sha256": "d443731b6ce80b9b3f8822c1dbc41853872efa4fee8c6ff2e4445c44ca528fa0"
+    },
+    "runtimeReceipt": {
+      "path": "standalone-2881-receipt.json",
+      "bytes": 2421,
+      "sha256": "86809b904bce27c37dcf70d9622cb6c9a6abd48862e8421894de4a99efd58e74"
+    },
+    "runtimeReport": {
+      "path": "standalone-2881.json",
+      "bytes": 2721,
+      "sha256": "85050586eba5fbffa73e90dada0324d59ba0d1b5513ad7581eb959f99be2587d"
+    },
+    "verifiedFiles": 2281,
+    "nodeAbsentFromServerPath": true,
+    "embeddedPgliteRuntimeFallback": true,
+    "windowsLauncherEncodingVerified": true,
+    "readinessTimeoutMs": 240000,
+    "shutdownMethod": "supervision-stdin-close",
+    "databaseModes": [
+      {
+        "mode": "pglite",
+        "engine": "pglite",
+        "settingsWriteAndRestart": true,
+        "migrationLauncher": true,
+        "hostedReopen": true,
+        "configurationPrecedence": true,
+        "supervisionStdinClose": true,
+        "sqlExport": {
+          "format": "postgresql-sql",
+          "bytes": 493315,
+          "sha256": "fdf20d844ccb64b3fa619ffeb0e4a0f33c3b39efab9ebb43c83a3a3413da0b19"
+        }
+      },
+      {
+        "mode": "bundled-postgres",
+        "engine": "postgres",
+        "settingsWriteAndRestart": true,
+        "migrationLauncher": true,
+        "hostedReopen": true,
+        "configurationPrecedence": true,
+        "supervisionStdinClose": true,
+        "sqlExport": {
+          "format": "postgresql-sql",
+          "bytes": 493540,
+          "sha256": "77e11456796febaa140646c84dfbe76ced91d3f07a252fe19471ef9a52aa0dcd"
+        }
+      },
+      {
+        "mode": "postgres",
+        "engine": "postgres",
+        "settingsWriteAndRestart": true,
+        "migrationLauncher": true,
+        "hostedReopen": true,
+        "configurationPrecedence": true,
+        "supervisionStdinClose": true,
+        "sqlExport": {
+          "format": "postgresql-sql",
+          "bytes": 493545,
+          "sha256": "2cfe6aecd647a69cde56c2a5e6f54d70f237f8afe4dbbff92a57baab74b78e9b"
+        }
+      }
+    ]
+  },
+  "scope": "Standalone native Windows package and all three database modes. The installed desktop app and signed updater have separate qualification."
+}
