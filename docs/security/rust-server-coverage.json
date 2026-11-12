@@ -29478,7 +29478,8 @@
       "installerCalls": 18,
       "recoveredInstallerFailures": 6,
       "runningExecutableHashesCompared": 10,
-      "scope": "Linux x64 1.1.2881 container and local Winterhold systemd and Caddy rehearsal with x64 emulation on an ARM64 Linux host. All three stores preserve sessions and accepted writes through rollback and return to Rust. External PostgreSQL requires TLS. Native processes match the packaged binary and shut down cleanly. An actual write outside the profile failed in the read-only service mount namespace."
+      "scope": "Linux x64 1.1.2881 container and local Winterhold systemd and Caddy rehearsal with x64 emulation on an ARM64 Linux host. All three stores preserve sessions and accepted writes through rollback and return to Rust. External PostgreSQL requires TLS. Native processes match the packaged binary and shut down cleanly. An actual write outside the profile failed in the read-only service mount namespace.",
+      "replicaRepairRebuild": "docs/security/rust-server-2881-linux-x64-acceptance.json#replicaRepairRebuild"
     },
     "currentDarwinArm64PackageQualification": {
       "status": "implemented-with-scoped-local-qualification",

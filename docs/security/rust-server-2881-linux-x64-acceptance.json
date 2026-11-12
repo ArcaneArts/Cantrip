@@ -291,5 +291,120 @@
         "sha256": "4520b81996a523c45c73fa755bf7e5da7e6118d6f18d0eb9a34782c8677861ee"
       }
     }
+  },
+  "replicaRepairRebuild": {
+    "sourceCommit": "9e2dd57116aca8d0525427f7963d3cc26ef3febb",
+    "target": "linux-x64",
+    "version": "1.1.2881",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "ociArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/cantrip-server-1.1.2881-9e2dd5711-linux-x64.oci.tar",
+      "bytes": 181450240,
+      "sha256": "e55b8e6d687b0513a8ef58ef7ff1bb3ff2b6fba2cec0159a7800dbd83013461c"
+    },
+    "nativeArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/cantrip-server-1.1.2881-9e2dd5711-linux-x64.native.tar.gz",
+      "bytes": 146505408,
+      "sha256": "0f4b90f46d45133f64f2c2fa693a1e2a52a2b31ce1d880d2edab9242121720f8"
+    },
+    "artifactVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/native-package-verification.json",
+      "bytes": 637,
+      "sha256": "42d886db2ebd8b8498ec6f144349939df8a069df6451f04f92fba2d5f47c8143"
+    },
+    "dockerRootfsVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/docker-rootfs.json",
+      "bytes": 298,
+      "sha256": "8ecd4b6e219faccc173d1977d1d2fdaf2c5cd8fba86e2c660e3859d6d2cfef59"
+    },
+    "containerReport": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/container-acceptance.json",
+      "bytes": 5406,
+      "sha256": "334a77ab65e8bb5deb8d3a4a8bf7159eb2bb1f34840e1f2cf2d632f184493d09"
+    },
+    "containerProfileArchives": [
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/container-volumes/cantrip-native-package-7e6da88c-bundled-postgres-data.tar.gz",
+        "bytes": 8427979,
+        "sha256": "7342eba3fc7d17f8d9944a03fdde6197ad8d84f7105c012f1fa91039bc474594"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/container-volumes/cantrip-native-package-7e6da88c-database-data.tar.gz",
+        "bytes": 9422408,
+        "sha256": "95f505d7af6273afb3234a9dec1e6674a9b1a71a9bef0050b86c10faf66eb844"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/container-volumes/cantrip-native-package-7e6da88c-pglite-data.tar.gz",
+        "bytes": 7145995,
+        "sha256": "7a6e18b4e7fc95925585105da5395d653a070cf45dda187aa5f9c406a765cd51"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/container-volumes/cantrip-native-package-7e6da88c-postgres-data.tar.gz",
+        "bytes": 72011,
+        "sha256": "8106313edbbf9450d99137098ba067d95586f9257cc7df02423002881f131c47"
+      }
+    ],
+    "compilerCacheCleanup": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/target-cache-cleanup.log",
+      "bytes": 133,
+      "sha256": "25e1ea880e0e43e6188bbad7ed28dde614b194f371aa7d7b89a539bfa7160eb5"
+    },
+    "winterhold": {
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/winterhold/acceptance.json",
+        "bytes": 1092887,
+        "sha256": "6d956fd257698e14c7d92b4ca5388ef617d9882ce1dc9f0acc42195fb52adfdb"
+      },
+      "deploymentArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/winterhold/native.tar.gz",
+        "bytes": 142703299,
+        "sha256": "d19aac349ff200bae67b4429ceff078b7993275d2592ac104858fefdbdfe4952"
+      },
+      "binarySha256": "13cf1e265e5d448b0073512061459b9fd0d3bce8bde98e0a31443dee2021319a",
+      "systemdImage": {
+        "id": "sha256:1a4719cffced31ab606bf1b4ccd0625d218a2d885708708435f66a7da36c6b92",
+        "architecture": "arm64"
+      },
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+      "installerCalls": 18,
+      "expectedRejectedCandidates": 6,
+      "runningExecutableHashesCompared": 10,
+      "rollbackRuntimes": {
+        "pglite": "rust",
+        "bundled-postgres": "rust",
+        "postgres": "node"
+      },
+      "startLimitRecoveryObserved": true,
+      "retainedSessionsAndAcceptedWrites": true,
+      "verifiedCaddyHttpsAndAppLive": true,
+      "externalPostgresTlsRequired": true,
+      "retainedProfiles": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/winterhold/retained-profiles.tar.gz",
+        "bytes": 15797383,
+        "sha256": "63345e439a46c850ca287a06b48f484699b29af62b542a0b34fc69140fe11ac0"
+      },
+      "retainedExternalPostgres": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/winterhold/retained-external-postgres.dump",
+        "bytes": 677150,
+        "sha256": "1125ad1cef4df126c70ffe8a68c3bae608d369edb5bbfb8f988e520ad42a5a55"
+      },
+      "verifiedDistributionCleanup": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/winterhold/verified-distribution-cleanup.json",
+        "bytes": 1710,
+        "sha256": "2daa253819ca422b044f83527f81ab224d50f720170244e35a3657558510ad96"
+      }
+    },
+    "interruptedBuild": {
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-oci-build.log",
+        "bytes": 8041,
+        "sha256": "404555d198798716ce5b2870fe41acc9cddb327ec6f199ea31f7ab5191ebd818"
+      },
+      "dockerGuestKernelLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-docker-kernel.log",
+        "bytes": 13953,
+        "sha256": "ec671e790ea677bd9ea67305e22be00ce3bf6c47349987b50a8d79cf41b5c0c7"
+      }
+    }
   }
 }

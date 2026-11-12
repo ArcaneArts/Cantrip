@@ -81,6 +81,16 @@ Node release over required TLS for external PostgreSQL. Each mode returned
 to the rebuilt Rust executable and verified App Live over HTTPS.
 [Linux ARM64 replica repair rebuild](security/rust-server-2881-linux-arm64-acceptance.json#replicaRepairRebuild)
 
+The Linux x64 build at `9e2dd5711` matched all 2,546 native manifest files
+and passed the three-store container and local Winterhold rehearsals.
+The container ran as a non-root user with a read-only root and verified
+SQL exports and retained settings on restart and hosted reopening.
+The systemd rehearsal exercised 18 installer operations, recovered from
+six injected failures and preserved accepted writes through rollback and
+return to Rust. Caddy HTTPS, App Live, and required external PostgreSQL TLS
+passed. The x64 binary ran under emulation on an ARM64 Linux host.
+[Linux x64 replica repair rebuild](security/rust-server-2881-linux-x64-acceptance.json#replicaRepairRebuild)
+
 The original-profile rehearsal passes upgrades and restarts with retained
 client keys on all three stores.
 [Encrypted macOS profile qualification](RUST_SERVER_DESKTOP_ENCRYPTED_ACCEPTANCE.md)
