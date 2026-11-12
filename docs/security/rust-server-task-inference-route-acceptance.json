@@ -87,8 +87,7 @@
     }
   ],
   "remaining": [
-    "Windows rejection after active dispatch and deterministic read during settlement.",
-    "Repeat queued transfer and rejection after dispatch on the Linux ARM64 package rebuilt at 01928fcff. The earlier ARM64 image passed both cases."
+    "Windows rejection after active dispatch while the real model response is held."
   ],
   "fullWorkerReconnect": {
     "scope": "The macOS ARM64 1.1.2881 packaged server and worker executed both HTTP routes and the worker revocation for a previously queued Task on each store. The Task and its encrypted input were seeded. A development SQL executable seeded and inspected the two local databases in separate, stopped-server phases. The external PostgreSQL case used a direct database connection for those checks.",
@@ -1100,5 +1099,324 @@
         }
       }
     ]
+  },
+  "currentLinuxArtifactTaskFaults": {
+    "sourceCommit": "01928fcffe97701e36e0bf51a1639bffaf1ef0c3",
+    "version": "1.1.2881",
+    "workerTarget": "darwin-arm64",
+    "scope": "Actual Linux server images, local macOS browser and packaged worker. Active-dispatch cases hold the fixture model response during the transfer. The deterministic settlement read uses external PostgreSQL and a held table lock. Linux x64 executes through Rosetta in Docker Desktop.",
+    "workerEntrypointSha256": "c632631c9a6d250d2e56d938441b5d39dc972d1b03a6b521d4ddf6c85569e4a9",
+    "targets": [
+      {
+        "target": "linux-arm64",
+        "containerImageId": "sha256:79f6c9a20546a97294ee5ac7250b9b1267923cbc8acd04db6eef85b3ac508143",
+        "nativeExecutableSha256": "6f627ffc13043a3436e3ed19de6968afca2d6240b3a8eb8711f16ad2deb8a958",
+        "processObservation": "direct",
+        "cases": [
+          {
+            "databaseMode": "pglite",
+            "queuedTransfer": {
+              "drainingRevision": 3,
+              "completedRevision": 4,
+              "dispatchFence": 9,
+              "retainedWorkerEnrollment": true,
+              "retainedEncryptedInput": true,
+              "report": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/linux-task-current/pglite/arm64-full-packaged-worker.json",
+                "bytes": 2629,
+                "sha256": "d93ce3751142d29ccd545561f7f7849f2b7ed34c560f0633a843af118a3f146a"
+              }
+            },
+            "activeDispatch": {
+              "activeProviderResponse": true,
+              "sourceHidden": true,
+              "status": 409,
+              "code": "stale-lease",
+              "durableStateUnchanged": true,
+              "taskCompleted": true,
+              "plannedGoalCompleted": true,
+              "failedOperationRetried": true,
+              "pausedAdmissionRecovered": true,
+              "productSteps": 14,
+              "cleanWorkerExits": 5,
+              "cleanServerExits": 4,
+              "report": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/linux-task-current/pglite/arm64-dispatched.json",
+                "bytes": 702569,
+                "sha256": "f2b4c12272ce9bbb5b649d8c7644012a220ddcb96f1a9405c969a30197556692"
+              }
+            }
+          },
+          {
+            "databaseMode": "bundled-postgres",
+            "queuedTransfer": {
+              "drainingRevision": 3,
+              "completedRevision": 4,
+              "dispatchFence": 9,
+              "retainedWorkerEnrollment": true,
+              "retainedEncryptedInput": true,
+              "report": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/linux-task-current/bundled-postgres/arm64-full-packaged-worker.json",
+                "bytes": 1732,
+                "sha256": "6589819913ef4407efb38fe9aa4ef258a6bc715f0e7f0d2542cc4884307f0b34"
+              }
+            },
+            "activeDispatch": {
+              "activeProviderResponse": true,
+              "sourceHidden": true,
+              "status": 409,
+              "code": "stale-lease",
+              "durableStateUnchanged": true,
+              "taskCompleted": true,
+              "plannedGoalCompleted": true,
+              "failedOperationRetried": true,
+              "pausedAdmissionRecovered": true,
+              "productSteps": 14,
+              "cleanWorkerExits": 5,
+              "cleanServerExits": 4,
+              "report": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/linux-task-current/bundled-postgres/arm64-dispatched.json",
+                "bytes": 690497,
+                "sha256": "d3fd0be78c7cb359b1b8d58132ff5d6628f048d3064564a45395c4499b6f3d94"
+              }
+            }
+          },
+          {
+            "databaseMode": "postgres",
+            "queuedTransfer": {
+              "drainingRevision": 3,
+              "completedRevision": 4,
+              "dispatchFence": 9,
+              "retainedWorkerEnrollment": true,
+              "retainedEncryptedInput": true,
+              "report": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/linux-task-current/postgres/arm64-full-packaged-worker.json",
+                "bytes": 1698,
+                "sha256": "4020159e5059f1b95b13e1cfaa2f69f0f642061d6d888feb442f9bdcba579559"
+              }
+            },
+            "activeDispatch": {
+              "activeProviderResponse": true,
+              "sourceHidden": true,
+              "status": 409,
+              "code": "stale-lease",
+              "durableStateUnchanged": true,
+              "taskCompleted": true,
+              "plannedGoalCompleted": true,
+              "failedOperationRetried": true,
+              "pausedAdmissionRecovered": true,
+              "productSteps": 14,
+              "cleanWorkerExits": 5,
+              "cleanServerExits": 4,
+              "report": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/linux-task-current/postgres/arm64-dispatched.json",
+                "bytes": 710538,
+                "sha256": "add08665817444c22110f2c3db26fe3c47b6d01aeb1d6be3854c3ebf14ccbde5"
+              }
+            }
+          }
+        ],
+        "externalPostgresSettlementRead": {
+          "during": {
+            "revision": 4,
+            "phase": "completed"
+          },
+          "after": {
+            "revision": 4,
+            "phase": "completed"
+          },
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/linux-task-current/arm64-route-snapshot.json",
+            "bytes": 981,
+            "sha256": "4dcd092024a375fe5ea64bb9528fde358732fd945fc8528570d8348bb6a82f88"
+          }
+        }
+      },
+      {
+        "target": "linux-x64",
+        "containerImageId": "sha256:6e044199bcadd2ae92a0acfd5935a94f6001eda121177b01677aa80f7d1a8488",
+        "nativeExecutableSha256": "fa5d59d3e9d75c282820fd9ccd47cf70a114870b20324c2a549d657042786cae",
+        "processObservation": "mapped",
+        "cases": [
+          {
+            "databaseMode": "pglite",
+            "queuedTransfer": {
+              "drainingRevision": 3,
+              "completedRevision": 4,
+              "dispatchFence": 9,
+              "retainedWorkerEnrollment": true,
+              "retainedEncryptedInput": true,
+              "report": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/linux-task-current/pglite/x64-full-packaged-worker.json",
+                "bytes": 2646,
+                "sha256": "6a9f53b9e265372724e7c0a811309190174d6e15a6e6b1ca0f88b0f09469b4c6"
+              }
+            },
+            "activeDispatch": {
+              "activeProviderResponse": true,
+              "sourceHidden": true,
+              "status": 409,
+              "code": "stale-lease",
+              "durableStateUnchanged": true,
+              "taskCompleted": true,
+              "plannedGoalCompleted": true,
+              "failedOperationRetried": true,
+              "pausedAdmissionRecovered": true,
+              "productSteps": 14,
+              "cleanWorkerExits": 5,
+              "cleanServerExits": 4,
+              "report": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/linux-task-current/pglite/x64-dispatched.json",
+                "bytes": 705822,
+                "sha256": "d18679c2efb4a199c1e953ae2a3be51bc2f6c72b0e97df417f1df736917a9200"
+              }
+            }
+          },
+          {
+            "databaseMode": "bundled-postgres",
+            "queuedTransfer": {
+              "drainingRevision": 3,
+              "completedRevision": 4,
+              "dispatchFence": 9,
+              "retainedWorkerEnrollment": true,
+              "retainedEncryptedInput": true,
+              "report": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/linux-task-current/bundled-postgres/x64-full-packaged-worker.json",
+                "bytes": 1749,
+                "sha256": "a7b22f4d5934d31880d359aaf64c9ac8f7a8bac83c6ad8cdbdd7d17b63ec3531"
+              }
+            },
+            "activeDispatch": {
+              "activeProviderResponse": true,
+              "sourceHidden": true,
+              "status": 409,
+              "code": "stale-lease",
+              "durableStateUnchanged": true,
+              "taskCompleted": true,
+              "plannedGoalCompleted": true,
+              "failedOperationRetried": true,
+              "pausedAdmissionRecovered": true,
+              "productSteps": 14,
+              "cleanWorkerExits": 5,
+              "cleanServerExits": 4,
+              "report": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/linux-task-current/bundled-postgres/x64-dispatched.json",
+                "bytes": 725893,
+                "sha256": "1476270371dadf970db1c6e9034cc8af422f6d70983011b2c7466d2f1dd69af6"
+              }
+            }
+          },
+          {
+            "databaseMode": "postgres",
+            "queuedTransfer": {
+              "drainingRevision": 3,
+              "completedRevision": 4,
+              "dispatchFence": 9,
+              "retainedWorkerEnrollment": true,
+              "retainedEncryptedInput": true,
+              "report": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/linux-task-current/postgres/x64-full-packaged-worker.json",
+                "bytes": 1715,
+                "sha256": "8eee1e7f1b96577b986db2e546ed9f69489e6196c2051aa7cfcabff884ee6b16"
+              }
+            },
+            "activeDispatch": {
+              "activeProviderResponse": true,
+              "sourceHidden": true,
+              "status": 409,
+              "code": "stale-lease",
+              "durableStateUnchanged": true,
+              "taskCompleted": true,
+              "plannedGoalCompleted": true,
+              "failedOperationRetried": true,
+              "pausedAdmissionRecovered": true,
+              "productSteps": 14,
+              "cleanWorkerExits": 5,
+              "cleanServerExits": 4,
+              "report": {
+                "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/linux-task-current/postgres/x64-dispatched.json",
+                "bytes": 709747,
+                "sha256": "2e63d3cb26de754c426e6a14551558f543c6a76d0fb74553a730814c2f382716"
+              }
+            }
+          }
+        ],
+        "externalPostgresSettlementRead": {
+          "during": {
+            "revision": 4,
+            "phase": "completed"
+          },
+          "after": {
+            "revision": 4,
+            "phase": "completed"
+          },
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/linux-task-current/x64-route-snapshot.json",
+            "bytes": 1000,
+            "sha256": "3b41ef5168f367dc6ff25cfaf97d4913e51e4c5addfe93bbe44147edd2b30b06"
+          }
+        }
+      }
+    ],
+    "matrix": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/linux-task-current/verified-matrix.json",
+      "bytes": 10920,
+      "sha256": "5df6d998af78604ea914a6ef3ace76aae33d45701d2aafc1919d4b5efc384ff1"
+    }
+  },
+  "currentWindowsSettlementRead": {
+    "platform": "win32-x64",
+    "databaseMode": "postgres",
+    "serverSha256": "f4975ed6b989aec38e8e7560d330c765ca3034177688c0ecfe53b0b6b72ed0c5",
+    "version": "1.1.2881",
+    "serialMatchesDisk": true,
+    "observation": {
+      "suite": "task-inference-route-snapshot",
+      "platform": "win32",
+      "status": "passed",
+      "serverSha256": "f4975ed6b989aec38e8e7560d330c765ca3034177688c0ecfe53b0b6b72ed0c5",
+      "serverVersion": "1.1.2881",
+      "before": {
+        "revision": 3,
+        "phase": "draining"
+      },
+      "blockingQueryObserved": true,
+      "during": {
+        "revision": 4,
+        "phase": "completed"
+      },
+      "after": {
+        "revision": 4,
+        "phase": "completed"
+      },
+      "cleanServerShutdown": true
+    },
+    "sourceCommit": "01928fcffe97701e36e0bf51a1639bffaf1ef0c3",
+    "scope": "Windows 11 x64 in local QEMU. Exact packaged server with a disposable external PostgreSQL cluster. The production HTTP GET crosses a deliberately held database lock while the Task revision and transfer phase settle in one transaction.",
+    "guestDiskReport": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-task-snapshot/guest-export/snapshot.json",
+      "bytes": 460,
+      "sha256": "05d5f65bbf1499b1ec89b8ca69b8f6de4da66650920f1d735d848d2c833997c8"
+    },
+    "guestDiskReceipt": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-task-snapshot/guest-export/receipt.json",
+      "bytes": 671,
+      "sha256": "a5478e727d9cb16d85df3b9b1c1c614ddf8bbf8ad1492d4099052b22584b2422"
+    },
+    "verification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-task-snapshot/guest-export/verified.json",
+      "bytes": 718,
+      "sha256": "2fa77f178a520266ad0d07cb12da3f0dbc0aabeb4e00751f9398900c176e4186"
+    },
+    "fixtureMedia": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-task-snapshot/media.iso",
+      "bytes": 497664,
+      "sha256": "82cfc6531a26e9dba895c2f9ed7e9c1f0d5746ffcdb2afc15a156e4ff6675d97"
+    },
+    "fixtureBuilder": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-task-snapshot/build-driver.mjs",
+      "bytes": 6066,
+      "sha256": "3c43ed91f92d0441d9575fbd7a19f7d4ed3f504752a46b1e5aaeb6473e3aedd1"
+    }
   }
 }

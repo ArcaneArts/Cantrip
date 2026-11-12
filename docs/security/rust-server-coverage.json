@@ -29601,6 +29601,7 @@
       "status": "implemented-with-scoped-local-qualification",
       "currentStandaloneAcceptance": "docs/security/rust-server-2881-win32-x64-standalone.json",
       "currentQueuedTaskTransfer": "docs/security/rust-server-task-inference-route-acceptance.json#rebuiltWindowsArtifact",
+      "currentTaskSettlementRead": "docs/security/rust-server-task-inference-route-acceptance.json#currentWindowsSettlementRead",
       "currentInstalledDesktopAcceptance": "docs/security/rust-server-2881-win32-x64-desktop.json",
       "currentSignedUpdaterAcceptance": "docs/security/rust-server-2881-win32-x64-desktop.json#signedUpdate",
       "patchedInstalledDesktop": {
@@ -29645,6 +29646,7 @@
     },
     "currentLinuxArm64Qualification": {
       "status": "implemented-with-scoped-local-qualification",
+      "currentLinuxTaskFaultMatrix": "docs/security/rust-server-task-inference-route-acceptance.json#currentLinuxArtifactTaskFaults",
       "evidence": [
         "docs/RUST_SERVER_WINTERHOLD.md",
         "docs/security/rust-server-2881-linux-arm64-acceptance.json",
