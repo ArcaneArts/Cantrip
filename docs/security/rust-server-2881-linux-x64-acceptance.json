@@ -168,5 +168,76 @@
       "sha256": "2e53c1060c795356d29fa8abee67dad2afd83357dbe4f719dc4ad7b0150f690c"
     },
     "productionDeployment": false
+  },
+  "rebuiltWinterholdWithStartLimitRecovery": {
+    "sourceCommit": "ff6a4b060c60ee1f391b70161fdffd0c933c38c7",
+    "version": "1.1.2881",
+    "imageDigest": "sha256:da8090ab4346ba0dd42507095fa857523858862c3b5be975f27d2cba85a697c3",
+    "nativeArchive": {
+      "path": "rebuilt-ff6a4b060/cantrip-server-1.1.2881-ff6a4b060-linux-x64.native.tar.gz",
+      "bytes": 156292394,
+      "sha256": "39d385169d664928e190255314ba65512799efc8d42434b81e062da5fa14d78f"
+    },
+    "nativeExecutableSha256": "cb02d8daafcf8153bca74f90605378d9607034f17e379e067a941e536df27fe8",
+    "report": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64-restart-limit/report.json",
+      "bytes": 1092919,
+      "sha256": "076a68210cc120590b3a03365f1290fb04f96c0d6e4c2f008b9bc267941d114c"
+    },
+    "localDriver": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64-restart-limit/retained-artifact-acceptance.mjs",
+      "bytes": 24548,
+      "sha256": "a18c9ae9ed5fa280faca3674bd7c9bf37b5eb240ab92735243798d1beae38b00"
+    },
+    "testedInstaller": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64-restart-limit/pglite-fault-startup/install.sh",
+      "bytes": 7206,
+      "sha256": "c5b55fa449e47f0b12c50baf61240a11c68430f5d5c5011d17ae11b69d91e872"
+    },
+    "systemdHost": {
+      "id": "sha256:1a4719cffced31ab606bf1b4ccd0625d218a2d885708708435f66a7da36c6b92",
+      "architecture": "arm64"
+    },
+    "releaseStorage": "tmpfs",
+    "profileStorage": "container writable filesystem",
+    "installerCalls": 18,
+    "recoveredInstallerFailures": 6,
+    "runningExecutableHashesCompared": 10,
+    "rebuiltExecutableHashesCompared": 6,
+    "rollbackRuntimes": {
+      "pglite": "rust",
+      "bundled-postgres": "rust",
+      "postgres": "node"
+    },
+    "sessionsAndAcceptedWritesRetainedAcrossRollback": true,
+    "verifiedCaddyHttpsAndAppLive": true,
+    "recoveredAfterSystemdStartLimit": true,
+    "startLimitJournal": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64-restart-limit/journal.log",
+      "bytes": 696831,
+      "sha256": "f4bbf7a6cf89bc2cb7230dc59e9f9864c1af56c92aefe5b6084d8832bea83a17"
+    },
+    "retainedProfiles": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64-restart-limit/retained-systemd-profiles.tar.zst",
+      "bytes": 13354218,
+      "sha256": "fe94ebd05240b1d0cd549a3269ad17ce899f41f150d98adc229cf5b419c489f3"
+    },
+    "retainedPostgresDump": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64-restart-limit/retained-external-postgres.dump",
+      "bytes": 677177,
+      "sha256": "df33e6267488001d0344b458d2788216c4e4072d8f85b33da3626a0bc2a62e12"
+    },
+    "externalPostgresTlsConnections": 6,
+    "tlsConnectionWitness": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64-restart-limit/external-postgres-tls-connections.txt",
+      "bytes": 2,
+      "sha256": "06e9d52c1720fca412803e3b07c4b228ff113e303f4c7ab94665319d832bbfb7"
+    },
+    "cleanServiceStopWitness": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64-restart-limit/post-rehearsal-stop.txt",
+      "bytes": 32,
+      "sha256": "2e53c1060c795356d29fa8abee67dad2afd83357dbe4f719dc4ad7b0150f690c"
+    },
+    "productionDeployment": false
   }
 }

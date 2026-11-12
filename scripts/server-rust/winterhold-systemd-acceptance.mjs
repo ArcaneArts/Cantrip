@@ -566,6 +566,24 @@ try {
         ...environment,
         CANTRIP_METRICS_TOKEN: randomBytes(32).toString("hex"),
       };
+      const exhaustStartLimit = mode === "pglite" && phase === "startup";
+      const override =
+        "/run/systemd/system/cantrip-server.service.d/qa-start-limit.conf";
+      if (exhaustStartLimit) {
+        // A failed launch consumes the entire budget before the installer
+        // restores the working service. Exercise the real systemd limiter.
+        await runHost("mkdir", "-p", path.posix.dirname(override));
+        await runHost(
+          "sh",
+          "-c",
+          'printf "%s\n" "$2" > "$1"',
+          "sh",
+          override,
+          "[Unit]\nStartLimitIntervalSec=5min\nStartLimitBurst=1",
+        );
+        await runHost("systemctl", "daemon-reload");
+        await runHost("systemctl", "reset-failed", "cantrip-server.service");
+      }
       steps.push(
         await install(
           archive,
@@ -575,6 +593,22 @@ try {
           true,
         ),
       );
+      if (exhaustStartLimit) {
+        assert.match(
+          await runHost(
+            "journalctl",
+            "--unit",
+            "cantrip-server.service",
+            "--output=cat",
+            "--no-pager",
+            "--grep=Start request repeated too quickly",
+          ),
+          /Start request repeated too quickly/,
+        );
+        await runHost("rm", override);
+        await runHost("systemctl", "daemon-reload");
+        report.startLimitRecoveryObserved = true;
+      }
       await ready();
       assert.equal(
         await runHost("readlink", "-f", "/opt/cantrip/current"),

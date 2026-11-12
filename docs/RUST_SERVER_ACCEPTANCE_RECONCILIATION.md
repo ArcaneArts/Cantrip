@@ -21,13 +21,20 @@ The x64 package rebuilt at `ff6a4b060` repeated all 18 installer
 operations across the three stores, including six injected migration and
 startup failures. Caddy HTTPS, App Live, external PostgreSQL TLS, and
 systemd shutdown passed. The rehearsal used tmpfs for release files and
-the container filesystem for database profiles.
+the container filesystem for database profiles. The updated installer
+repeated this matrix and recovered after a forced systemd start-limit hit.
 [Linux x64 package acceptance](security/rust-server-2881-linux-x64-acceptance.json)
 
 The native Linux ARM64 `1.1.2881` container and local Winterhold rehearsal
 passed all three stores. The production installer recovered from six
 injected failures and preserved accepted writes through rollback and return
 to Rust. The run verified Caddy HTTPS, App Live, and external PostgreSQL TLS.
+The ARM64 package rebuilt at `ff6a4b060` repeated the container and systemd
+matrices across all three stores. The first installer run hit the systemd
+start limit during a rapid release transition. The installer now clears the
+start limit before each explicit activation and rollback. The local
+rehearsal forced the candidate to exhaust its start budget and verified
+that the previous release restarted with its accepted writes.
 [Linux ARM64 acceptance record](security/rust-server-2881-linux-arm64-acceptance.json)
 
 The original-profile rehearsal passes upgrades and restarts with retained
@@ -641,8 +648,10 @@ The rebuilt x64 PGlite package also rejected transfer after dispatch and
 completed the original Task. On the rebuilt x64 image, queued settlement and
 rejection after dispatch passed with all three stores. Migration, SQL export,
 restart, and hosted reopening passed on each store. Its native
-archive matched all 2,546 manifest entries. Windows and the rebuilt Linux
-ARM64 package remain open for these Task cases.
+archive matched all 2,546 manifest entries. The rebuilt ARM64 image passed
+the same three-store tests and deterministic read during settlement. Its
+native archive matched all 2,546 manifest entries. Windows remains open
+for these Task cases.
 [Task provider transfer record](security/rust-server-task-inference-route-acceptance.json)
 
 ## Current implementation and evidence
