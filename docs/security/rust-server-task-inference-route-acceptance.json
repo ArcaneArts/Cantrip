@@ -87,7 +87,8 @@
     }
   ],
   "remaining": [
-    "Windows runtime qualification and current Linux ARM64 rebuild acceptance for queued transfer and rejection after dispatch."
+    "Windows rejection after active dispatch and deterministic read during settlement.",
+    "Repeat queued transfer and rejection after dispatch on the Linux ARM64 package rebuilt at 01928fcff. The earlier ARM64 image passed both cases."
   ],
   "fullWorkerReconnect": {
     "scope": "The macOS ARM64 1.1.2881 packaged server and worker executed both HTTP routes and the worker revocation for a previously queued Task on each store. The Task and its encrypted input were seeded. A development SQL executable seeded and inspected the two local databases in separate, stopped-server phases. The external PostgreSQL case used a direct database connection for those checks.",
@@ -1003,5 +1004,101 @@
       "productSteps": 14,
       "cleanServerShutdowns": 4
     }
+  },
+  "rebuiltWindowsArtifact": {
+    "sourceCommit": "01928fcffe97701e36e0bf51a1639bffaf1ef0c3",
+    "version": "1.1.2881",
+    "platform": "win32-x64",
+    "fixturePullRequest": 2930,
+    "scope": "Windows 11 x64 under QEMU on macOS ARM64. Exact packaged server and existing worker, isolated persisted profiles, offline fixture SQL for initial Task state, real HTTP, worker reconnection and database restart.",
+    "serverSha256": "f4975ed6b989aec38e8e7560d330c765ca3034177688c0ecfe53b0b6b72ed0c5",
+    "workerEntrypointSha256": "c632631c9a6d250d2e56d938441b5d39dc972d1b03a6b521d4ddf6c85569e4a9",
+    "verifiedDiskAndSerialReports": true,
+    "fixtureMedia": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-worker-teardown/task/media.iso",
+      "bytes": 122791936,
+      "sha256": "3a56b4e716e15ff844f3249d9340016ffb40b177c336247322acc3fd4a1ac1cf"
+    },
+    "teardownDiagnostic": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-worker-teardown/process-teardown-diagnostic.json",
+      "bytes": 2526,
+      "sha256": "f5137bfabb344f6cf22f7110437f3c447167dec9fd1c50a9d78de549c01ca620"
+    },
+    "cases": [
+      {
+        "mode": "pglite",
+        "dispatchFence": 9,
+        "drainingRevision": 3,
+        "completedRevision": 4,
+        "retainedWorkerEnrollment": true,
+        "retainedEncryptedInput": true,
+        "durableAfterShutdown": true,
+        "exitMs": [20859, 17733],
+        "verifiedTreeMs": [13433, 13820],
+        "verifiedTreeProcessCounts": [3, 3],
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-worker-teardown/export/full-packaged-worker-pglite.json",
+          "bytes": 1106,
+          "sha256": "74245cb31812d9f9e821886fb6776e50c4d7bc3f3cf10ae75fdf8919847747c7"
+        }
+      },
+      {
+        "mode": "bundled-postgres",
+        "dispatchFence": 9,
+        "drainingRevision": 3,
+        "completedRevision": 4,
+        "retainedWorkerEnrollment": true,
+        "retainedEncryptedInput": true,
+        "durableAfterShutdown": true,
+        "exitMs": [20226, 18597],
+        "verifiedTreeMs": [14491, 14548],
+        "verifiedTreeProcessCounts": [3, 3],
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-worker-teardown/export/full-packaged-worker-bundled-postgres.json",
+          "bytes": 1126,
+          "sha256": "5f13e15771e5d7a92796994189639380631bb0b984db3f7a2479b71e3d38a63e"
+        }
+      },
+      {
+        "mode": "postgres",
+        "dispatchFence": 9,
+        "drainingRevision": 3,
+        "completedRevision": 4,
+        "retainedWorkerEnrollment": true,
+        "retainedEncryptedInput": true,
+        "durableAfterShutdown": true,
+        "exitMs": [19449, 17327],
+        "verifiedTreeMs": [13889, 13989],
+        "verifiedTreeProcessCounts": [3, 3],
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-worker-teardown/export/full-packaged-worker-postgres.json",
+          "bytes": 1110,
+          "sha256": "f528db5fcfae7a447ff7c9d66b2a5b1113d5eb76c166d8d23eae32ab38befa04"
+        }
+      }
+    ],
+    "verifiedMatrix": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-worker-teardown/verified-matrix.json",
+      "bytes": 3402,
+      "sha256": "873a2631a0f79893f0171af97e7b6819c3027feae80b265544a9d0348722b65b"
+    },
+    "earlierDriverFailures": [
+      {
+        "failure": "Bundled test driver attempted to invoke rustc in the Windows guest.",
+        "diagnostic": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-export/task-retry/task-before.stderr.log",
+          "bytes": 1758,
+          "sha256": "069d27afc739646c50c7980a801165dbdba9781c36d4bdc778dc1dccc1186016"
+        }
+      },
+      {
+        "failure": "The exit timer included the Windows query that verified the process tree after exit.",
+        "diagnostic": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-export/task-retry/full-packaged-worker-pglite.json",
+          "bytes": 4410,
+          "sha256": "a0f84aaf9f1d800059fa8cffdd44cba23318eb6087b26d3b3fdbce43e5b1ada1"
+        }
+      }
+    ]
   }
 }

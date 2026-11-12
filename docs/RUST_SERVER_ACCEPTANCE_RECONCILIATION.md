@@ -122,6 +122,12 @@ runtime benchmark. The worker-log comparison passed 64 MiB streams,
 slow-consumer closure, and restart recovery on all three stores.
 [Current runtime and stream measurements](security/rust-server-2881-performance-acceptance.json)
 
+The macOS ARM64 rebuild at `01928fcff` also matched the `1.1.2881` Node
+reference for 64 MiB WorkerLink downloads and tunnel echoes across all three
+stores. Both peers passed selective revocation, slow-consumer closure,
+reconnect and crash recovery with retained state.
+[WorkerLink rebuild record](security/rust-server-2881-macos-acceptance.json#workerLinkRebuild)
+
 The [packaged replica qualification](RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md#packaged-replica-lifecycle-and-shared-peers)
 compares the current local Git attach and detach flow on all three stores.
 With shared PostgreSQL and Redis, all four Node and Rust pairings preserve two
@@ -717,8 +723,10 @@ rejection after dispatch passed with all three stores. Migration, SQL export,
 restart, and hosted reopening passed on each store. Its native
 archive matched all 2,546 manifest entries. The rebuilt ARM64 image passed
 the same three-store tests and deterministic read during settlement. Its
-native archive matched all 2,546 manifest entries. Windows remains open
-for these Task cases.
+native archive matched all 2,546 manifest entries. The Windows x64 package
+rebuilt at `01928fcff` passed queued transfer and replacement-worker
+settlement on all three stores. Windows rejection after active dispatch
+and the deterministic read during settlement remain open.
 [Task provider transfer record](security/rust-server-task-inference-route-acceptance.json)
 
 ## Current implementation and evidence

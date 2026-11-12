@@ -29391,6 +29391,7 @@
     },
     "currentProductionWorkerLinkQualification": {
       "status": "partial",
+      "currentRebuildReport": "docs/security/rust-server-2881-macos-acceptance.json#workerLinkRebuild",
       "currentReport": "docs/security/rust-server-darwin-arm64-acceptance.json#currentStandalone",
       "scope": "Current 1.1.2845 macOS ARM64 production Node/native entries with unchanged WorkerConnection/WorkerLinkGateway and real public HTTP-issued observation/tunnel grants. All six peer/store runs pass 64 MiB events download, 64 MiB stream echo, selective revocation preserving a sibling, paused TCP congestion with four lawful 8 MiB windows, endpoint transport/gateway shutdown/recreation with retained enrollment, actual server SIGKILL/reconnect retaining identity/settings/opaque tunnel record, generation/capability rejection and exact default-quota admission. All final endpoint shutdowns remove all worker authority.",
       "evidence": [
@@ -29599,6 +29600,7 @@
     "currentWindowsQualification": {
       "status": "implemented-with-scoped-local-qualification",
       "currentStandaloneAcceptance": "docs/security/rust-server-2881-win32-x64-standalone.json",
+      "currentQueuedTaskTransfer": "docs/security/rust-server-task-inference-route-acceptance.json#rebuiltWindowsArtifact",
       "currentInstalledDesktopAcceptance": "docs/security/rust-server-2881-win32-x64-desktop.json",
       "currentSignedUpdaterAcceptance": "docs/security/rust-server-2881-win32-x64-desktop.json#signedUpdate",
       "patchedInstalledDesktop": {

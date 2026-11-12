@@ -224,7 +224,7 @@ The relocated distribution also passed migrations, retained settings after
 restart, SQL export, hosted reopen and SIGTERM on all three database modes.
 The package check verified all 1,762 manifest files.
 
-## Current packaged relay and recovery run
+## Packaged relay and recovery at `1.1.2845`
 
 The optimized macOS ARM64 `1.1.2845` distribution and compiled Node reference
 from `2e60d2042203f64c8105d5c52d12ae1db92d2d83` both passed on all three
@@ -243,6 +243,30 @@ the same controlled payload and credit window. The repeated benchmark above
 has a separate sample size and artifact. The
 [macOS acceptance record](security/rust-server-darwin-arm64-acceptance.json)
 contains the current matrix checksum.
+
+## Packaged relay and recovery at `1.1.2881`
+
+The macOS ARM64 distribution from `01928fcff` and the compiled Node
+reference from `ccafd3cd` passed on PGlite, bundled PostgreSQL and external
+PostgreSQL. The reference, worker and protocol sources were identical across
+those commits. Each pair matched the 64 MiB download and tunnel echo
+payloads, frame sizes, upload credit and default quota cutoff. Both peers
+preserved an authorized sibling during selective revocation, closed a
+congested consumer and resumed traffic after an endpoint reconnect.
+
+After server SIGKILL, every peer kept its identity, an accepted preference
+and the protected tunnel record. The worker reconnected and streamed
+again. All six server processes exited cleanly after the recovery tests.
+
+| Database            | Node download | Rust download | Node echo    | Rust echo    |
+| ------------------- | ------------- | ------------- | ------------ | ------------ |
+| PGlite              | 190.73 MiB/s  | 211.37 MiB/s  | 116.08 MiB/s | 117.99 MiB/s |
+| Bundled PostgreSQL  | 192.16 MiB/s  | 201.18 MiB/s  | 117.24 MiB/s | 116.92 MiB/s |
+| External PostgreSQL | 182.23 MiB/s  | 203.21 MiB/s  | 114.76 MiB/s | 117.06 MiB/s |
+
+Each cell is one local observation collected while the Windows QA VM ran.
+The archived profiles and six reports include their verified checksums.
+[macOS WorkerLink rebuild record](security/rust-server-2881-macos-acceptance.json#workerLinkRebuild)
 
 ## Scope and remaining replacement work
 
