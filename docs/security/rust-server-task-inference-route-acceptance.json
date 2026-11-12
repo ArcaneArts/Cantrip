@@ -87,7 +87,7 @@
     }
   ],
   "remaining": [
-    "Run this transfer during actual model execution and qualify it on Windows and Linux."
+    "Windows and Linux runtime qualification for queued transfer and rejection after dispatch."
   ],
   "fullWorkerReconnect": {
     "scope": "The macOS ARM64 1.1.2881 packaged server and worker executed both HTTP routes and the worker revocation for a previously queued Task on each store. The Task and its encrypted input were seeded. A development SQL executable seeded and inspected the two local databases in separate, stopped-server phases. The external PostgreSQL case used a direct database connection for those checks.",
@@ -155,6 +155,51 @@
         "completedRevision": 4,
         "retainedWorkerEnrollment": true,
         "retainedEncryptedInput": true
+      }
+    ]
+  },
+  "activeDispatchRejection": {
+    "scope": "The existing browser SDK started the Task through the packaged Node worker and bundled Codex on external PostgreSQL. A loopback model provider held the actual response stream after first dispatch. The fixture used read-only SQL to inspect the active receipt and verify that the rejected provider change left the Task, dispatch fence, and inference input unchanged. Releasing the original response completed the Task.",
+    "drivers": [
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/dispatched-refusal/actual-folder-client.mjs",
+        "bytes": 82159,
+        "sha256": "296566cc9e670f83759bb0ed152b8f655395a6194f59ef284af81add85b74f78"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/dispatched-refusal/actual-task-client.mjs",
+        "bytes": 30985,
+        "sha256": "e84e4b60e6e332754d7942433366a672e4b08b6c71d73afb03bbf25f16cf06e6"
+      }
+    ],
+    "cases": [
+      {
+        "runtime": "rust",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/dispatched-refusal/report.json",
+          "bytes": 608341,
+          "sha256": "2539418a3e651232ab6e533ba8d0121dadb04b3bd541b0d9fde74830a7f4935a"
+        },
+        "activeProviderResponse": true,
+        "sourceHidden": true,
+        "status": 409,
+        "code": "stale-lease",
+        "durableStateUnchanged": true,
+        "originalTaskCompleted": true
+      },
+      {
+        "runtime": "node",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/dispatched-refusal/report-node.json",
+          "bytes": 549533,
+          "sha256": "d2d1ea8e66abafef3a2c66e6a78241eca695882b69463ce4158917dae41026ea"
+        },
+        "activeProviderResponse": true,
+        "sourceHidden": true,
+        "status": 409,
+        "code": "stale-lease",
+        "durableStateUnchanged": true,
+        "originalTaskCompleted": true
       }
     ]
   }
