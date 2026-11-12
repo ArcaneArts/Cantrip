@@ -87,5 +87,61 @@
       }
     ]
   },
-  "scope": "Standalone native Windows package and all three database modes. The installed desktop app and signed updater have separate qualification."
+  "scope": "Standalone native Windows package and all three database modes. The installed desktop app and signed updater have separate qualification.",
+  "rebuiltPackage": {
+    "sourceCommit": "ff6a4b060c60ee1f391b70161fdffd0c933c38c7",
+    "version": "1.1.2881",
+    "target": "win32-x64",
+    "toolchain": "Rust 1.95.0 x86_64-pc-windows-gnu",
+    "serverRequiresNode": false,
+    "verifiedFiles": 2281,
+    "filesChangedSincePriorPackage": ["bin/cantrip-server.exe"],
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-x64-rebuilt-guest/export/cantrip-server-1.1.2881-win32-x64.tar.gz",
+      "bytes": 97642057,
+      "sha256": "8691d8041ad4008a446d373c98c637bef92bbe384a929649e0fc2bcc550a13ba"
+    },
+    "binary": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-x64-rebuilt-guest/media/cantrip-server-1.1.2881.exe",
+      "bytes": 110966952,
+      "sha256": "df6031276447092605181ed202f7d4c1e2ef67e5ce27b2bc63775e803ad4a33f"
+    },
+    "archiveVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-x64-rebuilt-guest/export/verified-native-package.json",
+      "bytes": 652,
+      "sha256": "20b97f1b6167e6256c3ef36c090ec3fdf46ebad333bea7cd194de11b6c5e2962"
+    },
+    "firstTransferAttempt": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-x64-rebuilt-guest/export/pack-current.json",
+      "bytes": 303,
+      "sha256": "4f7a6e8ffd17d47463916a35333d2eadd5e2ac65c51caf60fe8897c9a5c71bfc"
+    },
+    "transferRecovery": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-x64-rebuilt-guest/export/transfer-recovery.json",
+      "bytes": 267,
+      "sha256": "356973f8cb599ee6b045cb4a99945caf7ebccde9e94f4c397335e333e9d0676b"
+    },
+    "nativeBuildLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-x64-rebuilt-build.log",
+      "bytes": 9718,
+      "sha256": "273a6637ed4e06b7011f492512391ce4c9a788e9ff281d755c988da5295f0532"
+    },
+    "standaloneRuntimeAttempt": {
+      "result": "failed",
+      "databaseMode": "pglite",
+      "databaseModesCompleted": [],
+      "readinessTimeoutMs": 240000,
+      "observed": "The process reached the PostgreSQL 17.5 standalone backend prompt and the server did not announce readiness.",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-x64-rebuilt-guest/export/standalone-2881.json",
+        "bytes": 1616,
+        "sha256": "de895ac14b531044263cefb235e21069aa77a072532f3dda7d9189bcfb8a636b"
+      },
+      "receipt": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-x64-rebuilt-guest/export/standalone-2881-receipt.json",
+        "bytes": 1904,
+        "sha256": "476cad7070f2a9a11bc80d44952d4be9ae2a38613b64ad9e9addbe2a19d97979"
+      }
+    }
+  }
 }

@@ -61,6 +61,11 @@ The earlier signed desktop update to `1.1.2869` verified 14,089 installed
 files and passed tray shutdown and reopening with the retained PGlite
 profile. The installed app passed first start, persisted-profile reopening,
 worker replies, and tray shutdown across all three stores.
+The rebuilt Windows server from `ff6a4b060` matched its 2,281-file
+standalone manifest. Its first standalone attempt timed out during
+PGlite startup. The rebuilt desktop installer matched all 14,092 files
+and its QA updater signature verified. Installed runtime testing remains
+open for that installer.
 [Windows x64 qualification](RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md)
 The [native desktop workspace qualification](RUST_SERVER_DESKTOP_WORKSPACE_ACCEPTANCE.md)
 also exercises actual macOS popouts, dirty documents, server restart, WebView

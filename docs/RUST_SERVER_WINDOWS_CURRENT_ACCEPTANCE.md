@@ -14,7 +14,22 @@ replacement transfer disk recovered the archive. The evaluation guest
 shut down during an earlier standalone attempt. The completed rerun used
 the same verified package, and the host matched both receipts to the
 guest serial output.
+The package rebuilt at `ff6a4b060` matched all 2,281 manifest files after
+transfer from the same Windows guest. The server executable is the only
+changed package member. The first standalone attempt with the rebuilt
+package timed out during PGlite startup after 240 seconds. The earlier
+three-store result still applies to its recorded executable.
 [Windows 1.1.2881 standalone record](security/rust-server-2881-win32-x64-standalone.json)
+
+## Windows x64 rebuilt desktop installer
+
+The rebuilt NSIS installer contains the Rust server from `ff6a4b060` and
+the desktop shell from `2dcc69ed8`. All 14,092 installer entries matched
+the staged payload. The 11,807 worker, Node and profile converter files
+match the previous installer byte for byte. The QA updater signature
+verified. Installation, database startup and signed update remain open
+for this installer.
+[Windows x64 desktop record](security/rust-server-2881-win32-x64-desktop.json)
 
 ## Windows x64 installed database modes on `1.1.2881`
 
