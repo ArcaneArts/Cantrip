@@ -10,6 +10,7 @@ export async function startSuspensionCapacityBlocker({
   providerId,
   workerId,
   configuration,
+  waitForAdmission = true,
 }) {
   const blocker = await page.evaluate(
     async ({ projectId }) =>
@@ -47,6 +48,7 @@ export async function startSuspensionCapacityBlocker({
     },
     { chatId: blocker.id, configuration },
   );
+  if (!waitForAdmission) return { chatId: blocker.id, reply };
   await eventually(
     () => reply.entered,
     (value) => assert.equal(value, true),

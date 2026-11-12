@@ -83,7 +83,7 @@ impl Repository {
     ) -> Result<Option<Value>> {
         let (owner, chat) = (owner.to_owned(), chat.to_owned());
         self.database.transaction(|tx|Box::pin(async move {
-            tx.query("SELECT id FROM users WHERE id=$1 FOR UPDATE",&[&owner]).await?;
+            crate::tasks::lock_task_owner(tx,&owner).await?;
             lock_chat(tx,&owner,&chat).await?;
             if intent(tx,&owner,&chat).await?.is_none_or(|v|v["paused"]!=true || v["scope"]["revision"]!=revision) {return Ok(None);}
             let cycles=tx.query("SELECT to_jsonb(c)::text FROM task_dispatch_cycles c WHERE owner_id=$1 AND chat_id=$2 ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE",&[&owner,&chat]).await?;

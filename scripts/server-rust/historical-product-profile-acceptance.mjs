@@ -381,16 +381,25 @@ async function historicalImportExpectation(data, source) {
   const journal = JSON.parse(
     await readFile(new URL("meta/_journal.json", directory), "utf8"),
   );
-  const migration = journal.entries.find(
-    ({ tag }) => tag === "0287_task_output_finalization",
+  const applied = new Map(
+    source.tables["drizzle.__drizzle_migrations"].map((row) => {
+      const migration = JSON.parse(row);
+      return [migration.created_at, migration.hash];
+    }),
   );
-  assert.ok(migration);
-  const hash = sha(await readFile(new URL(migration.tag + ".sql", directory)));
-  const applied = source.tables["drizzle.__drizzle_migrations"]
-    .map((row) => JSON.parse(row))
-    .find((row) => row.created_at === migration.when);
-  if (applied) {
-    assert.equal(applied.hash, hash);
+  const pending = [];
+  for (const tag of [
+    "0287_task_output_finalization",
+    "0288_task_provider_transfer_eligibility",
+  ]) {
+    const migration = journal.entries.find((entry) => entry.tag === tag);
+    assert.ok(migration);
+    const hash = sha(await readFile(new URL(tag + ".sql", directory)));
+    if (applied.has(migration.when))
+      assert.equal(applied.get(migration.when), hash);
+    else pending.push({ ...migration, hash });
+  }
+  if (!pending.length) {
     return { database: source, migrationsApplied: 0 };
   }
 
@@ -402,16 +411,20 @@ async function historicalImportExpectation(data, source) {
   });
   const db = await PGlite.create(expectedDirectory);
   try {
-    await db.exec(
-      "ALTER TABLE public.chat_messages ADD COLUMN task_output_finalized boolean NOT NULL DEFAULT false",
-    );
-    await db.query(
-      "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)",
-      [hash, migration.when],
-    );
+    for (const migration of pending) {
+      if (migration.tag === "0287_task_output_finalization")
+        await db.exec(
+          "ALTER TABLE public.chat_messages ADD COLUMN task_output_finalized boolean NOT NULL DEFAULT false",
+        );
+      // The eligibility constraint changes no existing rows or sequences.
+      await db.query(
+        "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)",
+        [migration.hash, migration.when],
+      );
+    }
     const database = await snapshot(db);
     await save("expected-historical-upgrade-database", database);
-    return { database, migrationsApplied: 1 };
+    return { database, migrationsApplied: pending.length };
   } finally {
     await db.close();
   }

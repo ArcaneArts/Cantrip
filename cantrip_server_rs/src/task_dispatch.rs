@@ -6,7 +6,7 @@ mod recovery;
 mod resume;
 mod rows;
 use crate::{
-    database::{Database, Executor, Parameters, Transaction},
+    database::{Database, Executor, Parameters},
     wire::{Value, value::json},
 };
 use anyhow::{Context, Result};

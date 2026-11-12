@@ -4063,7 +4063,7 @@ export const taskDispatchCycles = pgTable(
     ),
     check(
       "task_dispatch_cycles_eligibility_code_check",
-      sql`${table.eligibilityCode} IS NULL OR ${table.eligibilityCode} IN ('assignment-mismatch', 'capacity-unavailable', 'continuity-mismatch', 'encryption-grant-unavailable', 'model-unavailable', 'plan-goal-unsupported', 'placement-unavailable', 'project-paused', 'provider-route-unavailable', 'reconciliation-required', 'task-worker-disabled', 'worker-offline')`,
+      sql`${table.eligibilityCode} IS NULL OR ${table.eligibilityCode} IN ('assignment-mismatch', 'capacity-unavailable', 'continuity-mismatch', 'encryption-grant-unavailable', 'model-unavailable', 'plan-goal-unsupported', 'placement-unavailable', 'project-paused', 'provider-route-unavailable', 'provider-transfer-pending', 'reconciliation-required', 'task-worker-disabled', 'worker-offline')`,
     ),
   ],
 );

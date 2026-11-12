@@ -50,10 +50,12 @@ pub(super) async fn owned(
 ) -> Result<Option<Value>> {
     one(ex, &format!("SELECT to_jsonb(t)::text FROM tasks t JOIN chats c ON c.id=t.chat_id JOIN projects p ON p.id=c.project_id WHERE p.owner_id=$1 AND t.chat_id=$2 LIMIT 1{}", if lock { " FOR UPDATE" } else { "" }), &[&owner, &chat]).await
 }
-pub(super) async fn lock_user(tx: &Transaction<'_>, owner: &str) -> Result<bool> {
+pub(crate) async fn lock_user(tx: &Transaction<'_>, owner: &str) -> Result<bool> {
+    // Serialize Task writers without blocking foreign-key checks by native
+    // command writers that already hold the project or chat row.
     Ok(!tx
         .query(
-            "SELECT id FROM users WHERE id=$1 LIMIT 1 FOR UPDATE",
+            "SELECT id FROM users WHERE id=$1 LIMIT 1 FOR NO KEY UPDATE",
             &[&owner],
         )
         .await?

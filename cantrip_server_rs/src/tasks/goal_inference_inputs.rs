@@ -284,10 +284,10 @@ impl Repository {
         let (owner, n, worker) = (owner.to_owned(), n.clone(), worker.to_owned());
         self.database.transaction(|tx|Box::pin(async move {
             let chat=text(&n["chatId"])?;
+            let current=cycle(tx,&owner,&chat,None).await?;
             tx.query("WITH p AS MATERIALIZED (SELECT projects.id FROM projects JOIN chats ON chats.project_id=projects.id WHERE projects.owner_id=$1 AND chats.id=$2 FOR UPDATE OF projects) SELECT chats.id FROM p JOIN chats ON chats.project_id=p.id WHERE chats.id=$2 FOR UPDATE OF chats",&[&owner,&chat]).await?;
             let row=one(Executor::Transaction(tx),"SELECT jsonb_build_object('state',m.task_goal_input)::text FROM chat_messages m JOIN chats c ON c.id=m.chat_id JOIN projects p ON p.id=c.project_id AND p.owner_id=$1 WHERE m.id=$2 AND m.chat_id=$3 LIMIT 1 FOR UPDATE OF m,c,p",&[&owner,&text(&n["clientMessageId"])?,&chat]).await?;
             let Some(row)=row else{return Ok(Some("canonical-input-deleted"));};
-            let current=cycle(tx,&owner,&chat,None).await?;
             let canonical=current.as_ref().map(|c|&c["goal_input"]).filter(|s| !s.is_null() && s["receipt"]==row["state"]["receipt"]).unwrap_or(&row["state"]);
             let physical=super::resumption::physical(canonical);
             if let Ok(receipt)=parse("taskInferenceInputReceiptSchema",&physical["receipt"])
