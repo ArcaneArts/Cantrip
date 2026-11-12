@@ -1072,5 +1072,250 @@
       }
     ],
     "scope": "Actual Chromium SDK, packaged worker, native runtime, and production server sockets. The model HTTP responses are controlled. These are single-server worker-restart cases."
+  },
+  "currentPackagedLiveStop": {
+    "platform": "darwin-arm64",
+    "sourceBaseline": "667608c57bed3d2a008e342d6504207eca472ef3",
+    "nativeSourceCommit": "cb41197c6bacb199427bdd050c8ef8507bd3d06f",
+    "nativeArtifactVersion": "1.1.2881",
+    "artifactEvidence": "#currentPackagedColdStop",
+    "rustScenariosPassed": 9,
+    "nodeScenariosPassed": 7,
+    "cases": {
+      "pglite": {
+        "chatMountedActive": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-pglite-mounted-active-stop.json",
+            "bytes": 35829,
+            "sha256": "d23c9138ba2fd9f1114eff0b0d6d61507b9d19d441974823161db446a6e5c973"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "pglite",
+              "external": false,
+              "workerRestarts": 1
+            },
+            {
+              "runtime": "rust",
+              "engine": "pglite",
+              "external": false,
+              "workerRestarts": 1
+            }
+          ]
+        },
+        "taskRunning": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-pglite-task-running-stop.json",
+            "bytes": 51459,
+            "sha256": "1bb5ca2baf4111d66463e84479d9182aaa1a0f5e1516a6dbfaebf0c9386fdcdf"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "pglite",
+              "external": false,
+              "workerRestarts": 0
+            },
+            {
+              "runtime": "rust",
+              "engine": "pglite",
+              "external": false,
+              "workerRestarts": 0
+            }
+          ]
+        },
+        "taskRestoring": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-pglite-task-stop-restoring.json",
+            "bytes": 90326,
+            "sha256": "1a6566bf2a3f6ca8ebe0255f38d8169e2dc0940f3e953ca025f0228839eadea5"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "pglite",
+              "external": false,
+              "workerRestarts": 1
+            },
+            {
+              "runtime": "rust",
+              "engine": "pglite",
+              "external": false,
+              "workerRestarts": 1
+            }
+          ]
+        }
+      },
+      "bundled-postgres": {
+        "chatMountedActive": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-bundled-postgres-mounted-active-stop.json",
+            "bytes": 34963,
+            "sha256": "790f8bd07906f3b5e80ff0dca0481ab78782b4772cf549c5a81beadc57c17b48"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 1
+            },
+            {
+              "runtime": "rust",
+              "engine": "postgres",
+              "external": false,
+              "workerRestarts": 1
+            }
+          ]
+        },
+        "taskRunning": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-bundled-postgres-task-running-stop.json",
+            "bytes": 51474,
+            "sha256": "68c3bb07c78b6562a32571c0d4e0588d0d50fc5a6c52b4620a3f415d36218c3d"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 0
+            },
+            {
+              "runtime": "rust",
+              "engine": "postgres",
+              "external": false,
+              "workerRestarts": 0
+            }
+          ]
+        },
+        "taskRestoring": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/rust-bundled-postgres-task-stop-restoring.json",
+            "bytes": 45041,
+            "sha256": "263b028623dcf59707193f0e732e1c41dc97d7f65960fc450d27f069ba42efc0"
+          },
+          "peers": [
+            {
+              "runtime": "rust",
+              "engine": "postgres",
+              "external": false,
+              "workerRestarts": 1
+            }
+          ]
+        }
+      },
+      "postgres": {
+        "chatMountedActive": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-postgres-mounted-active-stop.json",
+            "bytes": 34975,
+            "sha256": "1c21a2028b422a4e1b9bf1022264641e51fe3ac5bd67481e48fb6d0a70d00060"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 1
+            },
+            {
+              "runtime": "rust",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 1
+            }
+          ]
+        },
+        "taskRunning": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-postgres-task-running-stop.json",
+            "bytes": 51466,
+            "sha256": "e7d01335dd6d56d689dd99f09ce78ab863b0fc21134d1f083e3239d8e05bbb59"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 0
+            },
+            {
+              "runtime": "rust",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 0
+            }
+          ]
+        },
+        "taskRestoring": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/rust-postgres-task-stop-restoring.json",
+            "bytes": 45334,
+            "sha256": "f3af4814deb1f97bf0b5e09ed5faa3b9b8d4925bb27bd6b1dccfa89f9eb41516"
+          },
+          "peers": [
+            {
+              "runtime": "rust",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 1
+            }
+          ]
+        }
+      }
+    },
+    "referenceFailures": [
+      {
+        "databaseMode": "bundled-postgres",
+        "runtime": "node",
+        "databaseEngine": "postgres",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-bundled-postgres-task-stop-restoring.json",
+          "bytes": 52144,
+          "sha256": "07a981395a1e2816777324479933efd6c93830de3995d96a1321cb4626c19051"
+        },
+        "phase": "stop",
+        "responseStatus": 502,
+        "postgresDeadlocks": 3,
+        "databaseLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/node-bundled-postgres-task-stop-restoring-deadlock.postgres.log",
+          "bytes": 7517,
+          "sha256": "4a4c2c5d1f80c588beeb4cbd81bf776daaf369a4b767ccce97224af49c911cc3"
+        }
+      },
+      {
+        "databaseMode": "postgres",
+        "runtime": "node",
+        "databaseEngine": "postgres",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-postgres-task-stop-restoring.json",
+          "bytes": 53066,
+          "sha256": "02c5c21971fd0c2dca2b16b7a34a33df31cee6573d5eab2765f3b979e48f7849"
+        },
+        "phase": "teardown",
+        "connectionError": "CONNECTION_ENDED"
+      },
+      {
+        "databaseMode": "postgres",
+        "runtime": "node",
+        "databaseEngine": "postgres",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/node-postgres-task-stop-restoring-repeat.json",
+          "bytes": 51773,
+          "sha256": "2fc305b981b79f29838a1f1a9126e6f08196eedb4c63c0608011b9cd2a8b1b58"
+        },
+        "phase": "stop",
+        "responseStatus": 502,
+        "postgresDeadlocks": 3,
+        "databaseLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/node-postgres-task-stop-restoring-deadlock.postgres.log",
+          "bytes": 7517,
+          "sha256": "276a22f564aca9c1d961ff3fa4c07c71f64867cf021486ccd5a5a5f82522a7c6"
+        }
+      }
+    ],
+    "scope": "Single-server macOS ARM64 cases using the mounted Chromium Chat UI or browser SDK, production HTTP sockets, the packaged worker, and the actual native runtime. Model HTTP responses and capacity are controlled."
   }
 }

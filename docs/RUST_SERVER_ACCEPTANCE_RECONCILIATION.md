@@ -34,6 +34,13 @@ preserved the encrypted session, accepted settings and service identities
 in all three cases. The updater rejected a tampered PGlite download.
 [macOS replica repair rebuild](security/rust-server-2881-macos-acceptance.json#replicaRepairRebuild)
 
+The same packaged Rust server and the Node reference matched on Chat and
+direct Task Stop after a worker restart across all three stores. The mounted
+Chat UI also stopped a turn whose active command blocked durable Pause. The
+browser SDK stopped a running Task and cancelled a Task restoration waiting
+for provider capacity. The tests used the packaged worker and native runtime.
+[Packaged interruption qualification](RUST_SERVER_NATIVE_CONTROL_CONTRACTS.md#packaged-stop-during-live-execution-and-restoration)
+
 The Linux x64 `1.1.2881` container and local Winterhold rehearsal passed all
 three stores on an ARM64 Linux host with x64 emulation. The installer
 recovered from six injected failures, and accepted writes survived

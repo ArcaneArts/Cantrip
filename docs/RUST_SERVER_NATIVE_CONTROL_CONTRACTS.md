@@ -83,9 +83,36 @@ external databases for both PostgreSQL comparisons.
 Each run paused a native turn, killed the owned worker tree, restarted the
 worker, and sent two Stop requests over HTTP. The original native turn
 recorded one abort and no completion. In the Chat cases a late Resume left
-the turn stopped and did not start inference. The Task cases also preserved the dispatch
-operation, attempt count, and planning round.
+the turn stopped and did not start inference. The Task cases also preserved the
+dispatch operation, attempt count, and planning round.
 [Current cold Stop evidence](security/rust-server-native-control-acceptance.json#currentPackagedColdStop)
+
+## Packaged Stop during live execution and restoration
+
+The same macOS ARM64 Rust package passed all nine cases across PGlite,
+bundled PostgreSQL, and external PostgreSQL. The Node reference used the
+same packaged worker and actual native runtime for comparison.
+
+- In the mounted Chat UI, Pause returned the active-command error without
+  committing a checkpoint. The Stop control stopped the original turn. The
+  yielded command remained alive until the worker tree was killed. After the
+  worker restarted, the chat stayed stopped and rejected late Resume.
+- The browser SDK stopped an actively executing direct Task and a direct Task
+  whose restoration was waiting for provider capacity. In both cases two Stop
+  requests produced one native abort, preserved the dispatch operation and
+  counters, and left the Task stopped after a late Resume. Freeing provider
+  capacity did not restart the stopped restoration.
+
+The Node reference passed both the mounted Chat and running Task cases on
+all three stores. Its restoration test passed on PGlite. Its comparison
+against Rust's bundled mode hit a PostgreSQL deadlock and returned HTTP 502
+from Stop. The first external PostgreSQL comparison completed the Stop
+assertions, then the Node process exited with `CONNECTION_ENDED` during
+teardown. A repeat against Node reproduced the PostgreSQL deadlock. The
+Rust-only PostgreSQL tests exercised the same assertions through clean
+teardown. All three Node failures are retained.
+
+[Current live and restoring Stop evidence](security/rust-server-native-control-acceptance.json#currentPackagedLiveStop)
 
 ## Local checks
 
