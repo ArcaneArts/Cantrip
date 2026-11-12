@@ -336,5 +336,156 @@
     "The browser and both packaged workers exercised encrypted local Git attachment and detachment. In shared mode, the browser-facing peer was replaced after durable completion while both workers remained on the other peer.",
     "The controlled matrix exercised successful synchronization and managed-link repair, job retries and cancellation, ownership checks, shutdown recovery and canonical stored rows.",
     "Replica work in flight during shared peer or dependency loss, the full managed Git lifecycle on this candidate and final shipping artifacts retain separate acceptance scope."
-  ]
+  ],
+  "managedSynchronizationAndLinkRepair": {
+    "baseCommit": "dad0d57f1bcf93ddec270bee46ba08e31e5095fc",
+    "scope": "macOS ARM64, exact packaged 1.1.2881 server and full worker for the initial comparison. The repair uses a development executable compiled from the base and retained source patch, with the same packaged worker and browser SDK.",
+    "sourcePatch": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/current-managed-replica/repair-source.patch",
+      "bytes": 6173,
+      "sha256": "c1ae3b934f44b05cef191f2ec20843083675019be69e3db25a66a90ea556207a"
+    },
+    "repairExecutable": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/current-managed-replica/cantrip-server-darwin-arm64-replica-repair",
+      "bytes": 179762016,
+      "sha256": "06cfe4156332a4ad6b94764dc8507504dc18adddec9b46c2c93279c1430ed6f0"
+    },
+    "workerEntrypoint": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/cantrip-worker-darwin-arm64/dist/index.js",
+      "bytes": 391601,
+      "sha256": "c632631c9a6d250d2e56d938441b5d39dc972d1b03a6b521d4ddf6c85569e4a9"
+    },
+    "baselineFailures": [
+      {
+        "runtime": "node",
+        "status": 502,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/current-managed-replica/managed-link-retry-node.json",
+          "bytes": 217740,
+          "sha256": "280bfae2b28ad2a38231694e00b2a1541a4ba455bf60420ef4bd7513f8e09b11"
+        }
+      },
+      {
+        "runtime": "rust",
+        "status": 502,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/current-managed-replica/managed-link-retry-rust.json",
+          "bytes": 266582,
+          "sha256": "70f1ebc88bdcdc3ec67a93b22a0e2153fa5ac7bf1d22e5fc67f8377c6c7f35b8"
+        }
+      }
+    ],
+    "routingOwnership": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/current-managed-replica/rust-routing-evidence/summary.json",
+      "bytes": 587,
+      "sha256": "244d3d5ee8f405e086d7f8f30b2e350cf86103ee88a6acf64cb1863776ed0eb2"
+    },
+    "archivedFailedFixtures": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/current-managed-replica/replica-repair-fixture-archive.json",
+      "bytes": 457,
+      "sha256": "0a99cb99f9cfa589548f357343cfd2106d56843ba5be1a47dfbbfd7b31835603"
+    },
+    "pairedManagedSynchronization": [
+      {
+        "databaseMode": "pglite",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/current-managed-replica/paired-pglite.json",
+          "bytes": 589532,
+          "sha256": "5b5f03dfcf41914668ab2f82fcfa24bc6463c3b0c307a64e0450af62c804b513"
+        },
+        "peerRuns": 2
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/current-managed-replica/paired-bundled-postgres.json",
+          "bytes": 605495,
+          "sha256": "98ded2d5ec5855f75b5f78080a5755e2c01fface37de13a29e619f6bf974246b"
+        },
+        "peerRuns": 2
+      },
+      {
+        "databaseMode": "postgres",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/current-managed-replica/paired-postgres.json",
+          "bytes": 540171,
+          "sha256": "8ea5a7004165cc0aa42962beb935dab380a99ff39cf7a2b376894da9e6523423"
+        },
+        "peerRuns": 2
+      }
+    ],
+    "fixedManagedLinkRepair": [
+      {
+        "databaseMode": "pglite",
+        "repair": {
+          "repaired": true,
+          "replayChanged": false,
+          "revision": "7fd1a60b01f91b314f59955a4e4d4e80d8edf11d"
+        },
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/current-managed-replica/fixed-pglite.json",
+          "bytes": 286316,
+          "sha256": "abcaa5a6f520b9a43738461d2d63e2424f84f12016758174389f5e255a52478a"
+        }
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "repair": {
+          "repaired": true,
+          "replayChanged": false,
+          "revision": "7fd1a60b01f91b314f59955a4e4d4e80d8edf11d"
+        },
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/current-managed-replica/fixed-bundled-postgres.json",
+          "bytes": 283972,
+          "sha256": "dbb209d7f0e0438e0bbc862eb3dc1e91fa6577ac3b6fd699f8f0f54bba4d058d"
+        }
+      },
+      {
+        "databaseMode": "postgres",
+        "repair": {
+          "repaired": true,
+          "replayChanged": false,
+          "revision": "7fd1a60b01f91b314f59955a4e4d4e80d8edf11d"
+        },
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/current-managed-replica/fixed-postgres.json",
+          "bytes": 311102,
+          "sha256": "6401011e4968a9d3942c66a446223bdf40e30361e839203fd099c1a9f6706d9e"
+        }
+      }
+    ],
+    "controlledHttp": [
+      {
+        "databaseMode": "pglite",
+        "authProfiles": 3,
+        "httpObservations": 238,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/current-managed-replica/controlled-pglite.json",
+          "bytes": 576281,
+          "sha256": "555d7c1eb7e447cffbca59e38cdf6a64f8152af1ea15bc48f7ec6db9da20f152"
+        }
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "authProfiles": 3,
+        "httpObservations": 238,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/current-managed-replica/controlled-bundled-postgres.json",
+          "bytes": 576291,
+          "sha256": "9d5641b9f74fee7ece83dfb9a8f84efb6a8a5a09567b48eea5d66415a5d5e098"
+        }
+      },
+      {
+        "databaseMode": "postgres",
+        "authProfiles": 3,
+        "httpObservations": 238,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/current-managed-replica/controlled-postgres.json",
+          "bytes": 576283,
+          "sha256": "c9153af98076de7da8aa7886690bfe4ef32c5c52de36a8c64bb3a415f65a9fc0"
+        }
+      }
+    ]
+  }
 }
