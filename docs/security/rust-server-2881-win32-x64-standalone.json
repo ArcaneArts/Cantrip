@@ -188,5 +188,50 @@
       "supervisedStdinCloseExitCodes": [0, 0],
       "serverRuntimePathHasNoNode": true
     }
+  },
+  "patchedStandalonePackage": {
+    "version": "1.1.2881",
+    "sourceCommit": "deefa4204ce1f0eb0c76d84df854f1fb14130c47",
+    "target": "win32-x64",
+    "verifiedFiles": 2281,
+    "binarySha256": "3fa9b19ea0dd528a7b7e38b5ad2088f0c97387c4b62dbb5854b01267f92d1611",
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/export/cantrip-server-1.1.2881-win32-x64-pglite-fix.tar.gz",
+      "bytes": 97641768,
+      "sha256": "920b42634a772c1b98c5eea4225e43d50eba85d14fef92a92f57b446831ccb7a"
+    },
+    "manifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/export/native-server.json",
+      "bytes": 407860,
+      "sha256": "0e7747299a71a6320b0efde5c1e651e1e6544f768edd7d24ddcc48f2b3d34af6"
+    },
+    "packagerReceipt": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/export/pack-fixed-pglite-2881.json",
+      "bytes": 338,
+      "sha256": "547598e97ec7aefca5d83546f490d5dbb713e9dbb67c603dc1b6ec9176fb300f"
+    },
+    "archiveVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/export/verified-native-package.json",
+      "bytes": 318,
+      "sha256": "42d75dff3824b5428ecc2e104233671abd54cf1828804d7bcf3aa4f2d5f10f9f"
+    },
+    "standaloneAttempt": {
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/export/standalone-fixed-pglite-2881.json",
+        "bytes": 1587,
+        "sha256": "51cc4b4a4368bd69887f7608afe6562852af7ab95af0c4373924fe19b4f4f9ec"
+      },
+      "receipt": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/export/standalone-fixed-pglite-2881-receipt.json",
+        "bytes": 1644,
+        "sha256": "9ac003b99e04534f548b8dc82df8888715b38a42a7e673dc9fb84e40082bc79d"
+      },
+      "result": "failed",
+      "completedModes": ["pglite"],
+      "failedMode": "bundled-postgres",
+      "shutdownDeadlineMs": 15000,
+      "failure": "Bundled PostgreSQL was ready, then supervisor stdin close exceeded the acceptance deadline.",
+      "remainingMode": "postgres"
+    }
   }
 }

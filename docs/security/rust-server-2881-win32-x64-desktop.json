@@ -303,5 +303,46 @@
     },
     "installedDatabaseModes": [],
     "signedUpdateRuntimeAcceptance": "pending"
+  },
+  "patchedInstaller": {
+    "version": "1.1.2881",
+    "target": "win32-x64",
+    "serverSourceCommit": "deefa4204ce1f0eb0c76d84df854f1fb14130c47",
+    "installer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/desktop-installer.ejvxE6iO/Cantrip_1.1.2881_x64-setup.exe",
+      "bytes": 256749346,
+      "sha256": "6040bb7c17641167f4cea4c055f1f854c8415e406d7b1c64344c2d7302f4365c"
+    },
+    "appSha256": "2afcde52e844ccd73f2b00587a325cdaa033704a31405801170423db612a3658",
+    "serverSha256": "3fa9b19ea0dd528a7b7e38b5ad2088f0c97387c4b62dbb5854b01267f92d1611",
+    "workerSha256": "c632631c9a6d250d2e56d938441b5d39dc972d1b03a6b521d4ddf6c85569e4a9",
+    "verifiedFiles": 14092,
+    "qaUpdaterSignature": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/desktop-installer.ejvxE6iO/Cantrip_1.1.2881_x64-setup.exe.sig",
+      "bytes": 420,
+      "sha256": "cc6bd07c8b41ab28b8b2d4b81738452369eae6c5079cf1f359b091e56309bd35"
+    },
+    "qaUpdaterSignatureVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/desktop-installer.ejvxE6iO/minisign-verification.log",
+      "bytes": 115,
+      "sha256": "61ac36cb4a7f46c54fa6fca935d143ad810fb0786b66deb93755d9ead1007cd1"
+    },
+    "bundleLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/desktop-installer.ejvxE6iO/bundle.log",
+      "bytes": 1830,
+      "sha256": "6fc65c40fe3cbfa2b54b403237f4c4dc698312a7d64f134f51bbab24170d93ec"
+    },
+    "embeddedManifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/desktop-installer.ejvxE6iO/nsis-embedded-runtime-manifest.json",
+      "bytes": 2506190,
+      "sha256": "2d4d17bfc3c1725b94067fa9fb88bc3a6af8a196c76b60b94f3f9905ee68dd53"
+    },
+    "payloadDifference": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/desktop-installer.ejvxE6iO/payload-diff.json",
+      "bytes": 133,
+      "sha256": "5ba6770bce30ce580d254862f6443fd4dab36305b396fbc73d64dc00dd5ccf8a"
+    },
+    "installedRuntimeAcceptance": "pending",
+    "signedUpdateRuntimeAcceptance": "pending"
   }
 }

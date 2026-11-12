@@ -29,6 +29,19 @@ with the same identity and setting, and exited zero on supervision stdin
 close both times in the Windows 11 x64 guest.
 [Windows PGlite runtime record](security/rust-server-2881-win32-x64-standalone.json#rebuiltPackage)
 
+The Windows guest packaged that executable and the host independently
+matched all 2,281 files. The rebuilt archive passed the PGlite standalone
+case, including migration, SQL export, settings, restart, hosted reopening,
+and stdin-close shutdown. The bundled PostgreSQL case reached readiness and
+exceeded the suite's 15-second shutdown deadline. The external PostgreSQL
+case remained unrun in that attempt.
+[Patched Windows standalone record](security/rust-server-2881-win32-x64-standalone.json#patchedStandalonePackage)
+
+The patched NSIS installer matched all 14,092 staged files. Its changes
+relative to the previous installer were the Rust server executable and its
+manifest. The local QA updater signature verified.
+[Patched Windows installer record](security/rust-server-2881-win32-x64-desktop.json#patchedInstaller)
+
 ## Windows x64 rebuilt desktop installer
 
 The rebuilt NSIS installer contains the Rust server from `ff6a4b060` and
