@@ -24288,6 +24288,7 @@
       },
       "currentBrowserMobileSignIn": "docs/security/rust-server-2881-browser-mobile-sign-in.json",
       "currentInstalledIosSignIn": "docs/security/rust-server-2881-ios-acceptance.json",
+      "currentInstalledAndroidSignIn": "docs/security/rust-server-2881-android-acceptance.json",
       "installedMobileSignIn": {
         "clientVersion": "1.1.2867",
         "serverVersion": "1.1.2866",
