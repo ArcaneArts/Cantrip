@@ -615,7 +615,11 @@ existing browser and packaged worker started a real Codex request. While the
 model response was held, both the Node reference and the packaged Rust server
 withheld the queued source and returned HTTP 409 `stale-lease` without changing
 the Task or its dispatch fence. The original Task completed when the response
-resumed. Windows and Linux runtime qualification is pending.
+resumed. The Linux ARM64 and x64 containers also passed queued settlement and
+active-dispatch rejection with external PostgreSQL and the packaged macOS
+worker. Both browser runs completed the original Task, a planned Goal, a retry,
+and recovery from paused admission. The x64 container ran under Rosetta.
+Windows and the two Linux local stores remain open for these cases.
 [Task provider transfer record](security/rust-server-task-inference-route-acceptance.json)
 
 ## Current implementation and evidence
