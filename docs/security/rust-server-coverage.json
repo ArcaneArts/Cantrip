@@ -97,7 +97,8 @@
         "status": "implemented",
         "evidence": [
           "scripts/server-rust/auth-compatibility.mjs",
-          "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md#browser-server-switching-and-mobile-qr-sign-in"
+          "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md#browser-server-switching-and-mobile-qr-sign-in",
+          "docs/security/rust-server-installed-mobile-acceptance.json"
         ],
         "remaining": []
       },
@@ -108,7 +109,8 @@
         "status": "implemented",
         "evidence": [
           "scripts/server-rust/auth-compatibility.mjs",
-          "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md#browser-server-switching-and-mobile-qr-sign-in"
+          "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md#browser-server-switching-and-mobile-qr-sign-in",
+          "docs/security/rust-server-installed-mobile-acceptance.json"
         ],
         "remaining": []
       },
@@ -24277,6 +24279,20 @@
           "path": "rust-server-final-native-2e60d2042-20261111-v1/mobile-sign-in/verified-browser-mobile-sign-in.json",
           "sha256": "b81b99cd27ea380b21ddf960af9375bb6f17ad73193052a4eed53ddc0a658885"
         }
+      },
+      "installedMobileSignIn": {
+        "clientVersion": "1.1.2867",
+        "serverVersion": "1.1.2866",
+        "serverTarget": "darwin-arm64",
+        "rustStores": ["pglite", "bundled-postgres"],
+        "androidNativeQrExchanges": 1,
+        "iosPassingUiRuns": 2,
+        "scope": "Installed Android API 36 and signed iOS 26.4 simulator builds. Both retained authenticated account access and App Live on both stores through app and Rust server restarts. Android verified actual Keystore recovery and a browser-issued QR exchange through its native scanner with emulator camera input.",
+        "report": "docs/security/rust-server-installed-mobile-acceptance.json",
+        "remaining": [
+          "Installed iOS QR sign-in and physical-camera runs on both platforms.",
+          "Installed mobile checks against external PostgreSQL and the shipping mobile packages."
+        ]
       }
     },
     "workerEnrollment": {
