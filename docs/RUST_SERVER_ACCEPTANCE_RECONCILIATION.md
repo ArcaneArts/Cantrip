@@ -606,7 +606,12 @@ old dispatch before sending a worker revocation. In all three Rust stores
 the route remained draining until the replacement connection acknowledged
 settlement. The Node reference stayed draining after positive replies. Its
 JSON serialization comparison encountered different property order.
-The packaged server ran the external PostgreSQL case.
+The packaged Rust server and Node worker also passed the offline transfer on
+all three stores. After a fresh worker process rejoined with its retained
+enrollment, the transfer completed at revision 4 with the original encrypted
+input. The local-store cases confirmed the committed state after shutdown.
+These cases seeded queued input. Transfer during an active model call and
+Windows and Linux runtime qualification are pending.
 [Task provider transfer record](security/rust-server-task-inference-route-acceptance.json)
 
 ## Current implementation and evidence

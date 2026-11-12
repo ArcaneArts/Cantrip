@@ -87,6 +87,75 @@
     }
   ],
   "remaining": [
-    "Full worker provider execution and Windows and Linux runtime qualification for this operation"
-  ]
+    "Run this transfer during actual model execution and qualify it on Windows and Linux."
+  ],
+  "fullWorkerReconnect": {
+    "scope": "The macOS ARM64 1.1.2881 packaged server and worker executed both HTTP routes and the worker revocation for a previously queued Task on each store. The Task and its encrypted input were seeded. A development SQL executable seeded and inspected the two local databases in separate, stopped-server phases. The external PostgreSQL case used a direct database connection for those checks.",
+    "harnessCommit": "a5d6a25eab1914ba07323d0749aad1e55bd1bb15",
+    "artifacts": {
+      "workerEntrypoint": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/cantrip-worker-darwin-arm64/dist/index.js",
+        "bytes": 391601,
+        "sha256": "c632631c9a6d250d2e56d938441b5d39dc972d1b03a6b521d4ddf6c85569e4a9"
+      },
+      "localStoreDriver": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/full-packaged-worker-local-stores.mjs",
+        "bytes": 9763,
+        "sha256": "5626c5fb495f79161cfd947db71c4cc62b94000759f9b4002deab5d42d1792cc"
+      },
+      "externalPostgresDriver": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/full-packaged-worker.mjs",
+        "bytes": 9025,
+        "sha256": "7582998565fd764b2cd79367b400d4b4badc5dd8a540c9f0c4b61b5cdfdb742a"
+      },
+      "seed": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/full-worker-task-seed.mjs",
+        "bytes": 4471,
+        "sha256": "9c0b60477ad91357c90e2737469d49c6f23850bfa343fe18cb1aa97f838eab39"
+      }
+    },
+    "cases": [
+      {
+        "store": "pglite",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/full-packaged-worker-pglite.json",
+          "bytes": 1146,
+          "sha256": "e9f90f6b588a0665c3f465dc2064c1e2f0857e2fdfac2f9b1babfcfb72a244e9"
+        },
+        "drainingRevision": 3,
+        "dispatchFence": 9,
+        "completedRevision": 4,
+        "retainedWorkerEnrollment": true,
+        "retainedEncryptedInput": true,
+        "verifiedAfterCleanServerShutdown": true
+      },
+      {
+        "store": "bundled-postgres",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/full-packaged-worker-bundled-postgres.json",
+          "bytes": 1166,
+          "sha256": "1702f353a1f7c8b68abbd04c227a0d06e0996e8435df450d49dbb07c02848c49"
+        },
+        "drainingRevision": 3,
+        "dispatchFence": 9,
+        "completedRevision": 4,
+        "retainedWorkerEnrollment": true,
+        "retainedEncryptedInput": true,
+        "verifiedAfterCleanServerShutdown": true
+      },
+      {
+        "store": "postgres",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/full-packaged-worker.json",
+          "bytes": 899,
+          "sha256": "55be98209ff80dde4d5bd9da926a017ad8fc81460ff9988e4a13436f726e7da1"
+        },
+        "drainingRevision": 3,
+        "dispatchFence": 9,
+        "completedRevision": 4,
+        "retainedWorkerEnrollment": true,
+        "retainedEncryptedInput": true
+      }
+    ]
+  }
 }

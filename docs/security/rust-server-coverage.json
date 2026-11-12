@@ -5388,9 +5388,9 @@
           "docs/security/rust-server-task-inference-route-acceptance.json"
         ],
         "remaining": [
-          "Full worker provider execution and Windows and Linux runtime qualification for this operation."
+          "Run this transfer during actual model execution and qualify it on Windows and Linux."
         ],
-        "scope": "Current macOS ARM64 HTTP qualification across all three stores verifies owner isolation, typed conflicts, idempotent transfer, encrypted input retention and completion after worker reconnection. The external PostgreSQL case used the packaged server."
+        "scope": "Current macOS ARM64 HTTP qualification across all three stores verifies owner isolation, typed conflicts and idempotent transfer. The packaged server and worker passed queued transfer after an offline worker rejoined with its retained enrollment and acknowledged revocation. The dispatch fence advanced and the encrypted input was preserved."
       },
       {
         "method": "POST",
@@ -5403,9 +5403,9 @@
           "docs/security/rust-server-task-inference-route-acceptance.json"
         ],
         "remaining": [
-          "Full worker provider execution and Windows and Linux runtime qualification for this operation."
+          "Run this transfer during actual model execution and qualify it on Windows and Linux."
         ],
-        "scope": "Current macOS ARM64 HTTP qualification across all three stores verifies owner isolation, typed conflicts, idempotent transfer, encrypted input retention and completion after worker reconnection. The external PostgreSQL case used the packaged server."
+        "scope": "Current macOS ARM64 HTTP qualification across all three stores verifies owner isolation, typed conflicts and idempotent transfer. The packaged server and worker passed queued transfer after an offline worker rejoined with its retained enrollment and acknowledged revocation. The dispatch fence advanced and the encrypted input was preserved."
       },
       {
         "method": "POST",
