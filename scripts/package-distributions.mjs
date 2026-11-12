@@ -232,7 +232,10 @@ async function packageDesktopRuntime() {
       recursive: true,
       dereference: true,
     });
-    await cp(workerArtifact, path.join(runtime, "worker"), { recursive: true });
+    await cp(workerArtifact, path.join(runtime, "worker"), {
+      recursive: true,
+      verbatimSymlinks: true,
+    });
     const workerRoot = path.join(runtime, "worker");
     await rm(path.join(workerRoot, "runtime"), {
       force: true,
