@@ -120,6 +120,31 @@ interrupted product flows, multi-instance coordination and performance.
 
 ## Current Linux x64 qualification
 
+The production Dockerfile built the `1.1.2881` Linux x64 runtime image
+and standalone distribution from `ccafd3cd4baea444ab43c1b84471ab3225f718e3`.
+All three database modes passed migrations, SQL export, retained settings
+and identity, local and hosted reopening, and graceful shutdown. The
+containers verified all 2,546 package files and the running executable.
+The server ran as a non-root user with a read-only root, a 256 MiB noexec
+temporary mount, and Node absent from its runtime PATH.
+
+The local systemd and Caddy rehearsal passed all 18 installer calls. It
+recovered from six injected migration and startup failures and verified
+ten running executable hashes. PGlite and bundled PostgreSQL rolled back
+to Rust `1.1.2783`, and external PostgreSQL rolled back to Node
+`1.1.2739`. Sessions and accepted writes survived rollback and return to
+Rust `1.1.2881`. The rehearsal verified Caddy HTTPS, App Live, six TLS
+database connections, and an actual failed write outside the profile
+inside the service mount namespace.
+
+The x64 executables ran with emulation on a local ARM64 Linux host. The
+first installer rehearsal stopped after a guest storage I/O failure. The
+successful rerun used the same verified distribution. The
+[acceptance record](security/rust-server-2881-linux-x64-acceptance.json)
+lists the release archives, hashes, and local reports.
+
+### Linux x64 candidate `1.1.2869`
+
 The production Dockerfile built the Linux x64 `1.1.2869` runtime image and
 standalone distribution from `0ae86163efb8503387a2b3d627f9e962d099e1cd`.
 All three stores passed migrations, SQL export, retained settings and identity,
