@@ -1,0 +1,677 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceBase": "23c84093f26b016cbf367cf0dcbfd7448088dcb6",
+  "artifactVersion": "1.1.2869",
+  "nativeCoreVersion": "0.166.0",
+  "fixtureWorkerNodeVersion": "22.12.0",
+  "platform": "darwin-arm64",
+  "evidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1/task-autonomous-transfer-interruption-2869",
+  "scope": "Existing Chromium browser APIs, local Rust build, rebuilt worker JavaScript over the 1.1.2869 macOS ARM64 worker distribution, and its unchanged native Core. Each case uses an isolated database and local model endpoints.",
+  "cases": [
+    {
+      "databaseMode": "pglite",
+      "scenario": "cancel-prepared",
+      "productSteps": 16,
+      "destinationModelRequests": 0,
+      "finalHandoffPhase": "cancelled",
+      "admittedOrderEpoch": 0,
+      "sameNativeTurnAfterRestart": false,
+      "legacyCheckpoint": false,
+      "evidence": {
+        "report": {
+          "path": "final-pglite-cancel-prepared.json",
+          "sha256": "6660f563430fefa855b78d56822cdb1c5a6c85c43f1ec4cdb9c0445fa095ca74",
+          "bytes": 831618
+        },
+        "handoff": {
+          "path": "final-pglite-cancel-prepared-handoff.jsonl",
+          "sha256": "d4bf7848b8ac8c389d38cc7792e13193a192e5990c46dfb60b9fbfd1faf3dc11",
+          "bytes": 995
+        },
+        "export": {
+          "path": "tmp/cantrip-actual-folder-PATusR/rust/worker/codex-home/managed-history-exports/3ba849ee-03e2-4065-9dcd-240e50456243.json",
+          "sha256": "71b0c87cd8b8f8bfe8dda6fb560e769fc6372bce6ddf47dc59c11bbb2c76ade5",
+          "bytes": 113404
+        },
+        "receipts": {
+          "path": "final-pglite-cancel-prepared-receipts.jsonl",
+          "sha256": "b5fd345bb218501056d0121ca9fc0861edd922bfda0a299d9f95b348eda051d0",
+          "bytes": 10249
+        },
+        "native": {
+          "path": "final-pglite-cancel-prepared-native.jsonl",
+          "sha256": "bca31de096407773010070929e29dfada507ca1188848db22ca28d9f0884db84",
+          "bytes": 62849
+        },
+        "publisher": {
+          "path": "final-pglite-cancel-prepared-publisher.jsonl",
+          "sha256": "b0f0c52491c429a6a8329e2ffeacfa9955fcc79bb24ca1a219db45115dd78816",
+          "bytes": 618
+        }
+      }
+    },
+    {
+      "databaseMode": "pglite",
+      "scenario": "worker-after-commit",
+      "productSteps": 16,
+      "destinationModelRequests": 2,
+      "finalHandoffPhase": "completed",
+      "admittedOrderEpoch": 1,
+      "sameNativeTurnAfterRestart": false,
+      "legacyCheckpoint": false,
+      "evidence": {
+        "report": {
+          "path": "final-pglite-worker-after-commit.json",
+          "sha256": "e321e85c09dbaed920e96de42d20572ce2238304ff9dda708cd416799285be27",
+          "bytes": 829157
+        },
+        "handoff": {
+          "path": "final-pglite-worker-after-commit-handoff.jsonl",
+          "sha256": "84b86318d82b505cac656ae1c7c5c5ecd7e292bd949027df79498571fe45a530",
+          "bytes": 1026
+        },
+        "export": {
+          "path": "tmp/cantrip-actual-folder-UyllWT/rust/worker/codex-home/managed-history-exports/1edb39e9-1377-4bf9-b7e6-a758bff1f0a1.json",
+          "sha256": "226081d8985aec37de500152dce52d768223e419ade16f6bfff9a71a40130967",
+          "bytes": 113412
+        },
+        "importedRollout": {
+          "path": "tmp/cantrip-actual-folder-UyllWT/rust/worker/managed-native-namespaces/55dc4d6563cd9ae98400d591fb5c79b0d7cd0e509a8a07ec2271812a6b1571a4/a4ad900301cc03f366d7794a58c7efaa7d9fc471b149a3f0b6c15aa78dbee68f/homes/1edb39e9-1377-4bf9-b7e6-a758bff1f0a1/sessions/managed-tree-1edb39e9-1377-4bf9-b7e6-a758bff1f0a1/rollout-2026-11-12T06-26-00-01a1ce6f-40c1-7150-928b-b5496ab97137.jsonl",
+          "sha256": "64c0e1d3b8a6873061489db7375ee9a29dd09bbda857c4d3ded36846b2db2cdc",
+          "bytes": 175440
+        },
+        "selectedNamespace": {
+          "path": "tmp/cantrip-actual-folder-UyllWT/rust/worker/managed-native-namespaces/55dc4d6563cd9ae98400d591fb5c79b0d7cd0e509a8a07ec2271812a6b1571a4/a4ad900301cc03f366d7794a58c7efaa7d9fc471b149a3f0b6c15aa78dbee68f/selections/1edb39e9-1377-4bf9-b7e6-a758bff1f0a1.json",
+          "sha256": "02f23092aaae8a1306becc280a85fac1d5a33a9e18dbf2ed3ff4e5615e9609f6",
+          "bytes": 435
+        },
+        "receipts": {
+          "path": "final-pglite-worker-after-commit-receipts.jsonl",
+          "sha256": "7fc0577744c66dd885c733213b12b89d2889e5aa4d6488b8cc7a8b7128bba031",
+          "bytes": 9856
+        },
+        "native": {
+          "path": "final-pglite-worker-after-commit-native.jsonl",
+          "sha256": "95e26c39d1286159d576d37e5d67b77c5dc87b83a5e5c3b67c482469b3618f34",
+          "bytes": 64771
+        },
+        "publisher": {
+          "path": "final-pglite-worker-after-commit-publisher.jsonl",
+          "sha256": "b5ebdd23fe7f136fd8699e4039185e5724c09f5911c0565b4f70a104b0fa6048",
+          "bytes": 694
+        }
+      }
+    },
+    {
+      "databaseMode": "pglite",
+      "scenario": "pause-restart",
+      "productSteps": 17,
+      "destinationModelRequests": 4,
+      "finalHandoffPhase": "completed",
+      "admittedOrderEpoch": 1,
+      "sameNativeTurnAfterRestart": true,
+      "legacyCheckpoint": false,
+      "evidence": {
+        "report": {
+          "path": "final-pglite-pause-restart.json",
+          "sha256": "7688013e0ec258bca6f3d32df84d43bd6b38357d3d9ac73f334d771ff2c0d032",
+          "bytes": 882062
+        },
+        "handoff": {
+          "path": "final-pglite-pause-restart-handoff.jsonl",
+          "sha256": "1e1a9c5f5fa0f355569f73e0ea426af90c68a9cba6e152df1128b3335974de6e",
+          "bytes": 705
+        },
+        "export": {
+          "path": "tmp/cantrip-actual-folder-7pxr63/rust/worker/codex-home/managed-history-exports/b86f4b58-f2cd-43a0-b3bd-0f1606b49fe9.json",
+          "sha256": "6cb68687ed6883e75e4efcecbb86a46f27c557849ffbb9554358fe1eabeac0e3",
+          "bytes": 113406
+        },
+        "importedRollout": {
+          "path": "tmp/cantrip-actual-folder-7pxr63/rust/worker/managed-native-namespaces/bb36b5e3f07372baa26d3ff224668fd2fcb23a2923ebba3d1964e4e75d3e6c27/67f2e5958d9cddb41c810f25db8dfb176f6a16607dcc65fc60bf0426e41b0abf/homes/b86f4b58-f2cd-43a0-b3bd-0f1606b49fe9/sessions/managed-tree-b86f4b58-f2cd-43a0-b3bd-0f1606b49fe9/rollout-2026-11-12T06-23-59-01a1ce6d-69fd-7413-9b4b-d3dcdb615459.jsonl",
+          "sha256": "f96359cd5240ec902402c0e1ef917f314a49c47ff4511fa8966f5fd26fcde923",
+          "bytes": 191083
+        },
+        "selectedNamespace": {
+          "path": "tmp/cantrip-actual-folder-7pxr63/rust/worker/managed-native-namespaces/bb36b5e3f07372baa26d3ff224668fd2fcb23a2923ebba3d1964e4e75d3e6c27/67f2e5958d9cddb41c810f25db8dfb176f6a16607dcc65fc60bf0426e41b0abf/selections/b86f4b58-f2cd-43a0-b3bd-0f1606b49fe9.json",
+          "sha256": "c6a787662e6f3da0e82d29038ca087bf742a8970fbcd3505cb865cd1739b1f2a",
+          "bytes": 435
+        },
+        "receipts": {
+          "path": "final-pglite-pause-restart-receipts.jsonl",
+          "sha256": "ada7b7a13bf04669e0fb18a10628dd68535c84d5575be08ece2c403ee4fa97c8",
+          "bytes": 10784
+        },
+        "native": {
+          "path": "final-pglite-pause-restart-native.jsonl",
+          "sha256": "9a79753dd8911d8d77d58dc229242339552b0171790f388ac05b49ba1d558cbf",
+          "bytes": 68247
+        },
+        "publisher": {
+          "path": "final-pglite-pause-restart-publisher.jsonl",
+          "sha256": "8fc4794fca83a23d1043cfe1b22bb3d6da9098397452cc0f86a7c510250c060b",
+          "bytes": 694
+        },
+        "serverLogs": [
+          {
+            "path": "tmp/cantrip-actual-folder-7pxr63/actual-folder/rust/logs/server-2026-11-12.part-0001.jsonl",
+            "sha256": "f89870b97a2370fca984b43f9410002257607c49345999d0e68941f0e11ebd1e",
+            "bytes": 509616
+          }
+        ]
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "scenario": "cancel-prepared",
+      "productSteps": 16,
+      "destinationModelRequests": 0,
+      "finalHandoffPhase": "cancelled",
+      "admittedOrderEpoch": 0,
+      "sameNativeTurnAfterRestart": false,
+      "legacyCheckpoint": false,
+      "evidence": {
+        "report": {
+          "path": "final-bundled-postgres-cancel-prepared.json",
+          "sha256": "187740c910e0dd514995740a16c8f4ec6e115f3e7c2daec1413854986cc164e3",
+          "bytes": 845993
+        },
+        "handoff": {
+          "path": "final-bundled-postgres-cancel-prepared-handoff.jsonl",
+          "sha256": "eeb5d8159ee1dacaef9259025a39dcf67b3f5f61d067cb5627fc325a243d80c3",
+          "bytes": 995
+        },
+        "export": {
+          "path": "tmp/cantrip-actual-folder-MXiicC/rust/worker/codex-home/managed-history-exports/e94356de-4264-4fb8-af07-9929a0bd688a.json",
+          "sha256": "6d407f04cc6e2a75f1d4b43bbfc2205d8d8da3fce1366ae47d45309726a3f1e4",
+          "bytes": 113403
+        },
+        "receipts": {
+          "path": "final-bundled-postgres-cancel-prepared-receipts.jsonl",
+          "sha256": "3580ea5fda9c7f4c1aef6430c3c5589ba94b170d7e76ef21c4eba37d47b98b5b",
+          "bytes": 10249
+        },
+        "native": {
+          "path": "final-bundled-postgres-cancel-prepared-native.jsonl",
+          "sha256": "2a44b59a5f195ed4cbf8363c4094155049dcf4e3b95ace92ee992271cf535cdd",
+          "bytes": 62087
+        },
+        "publisher": {
+          "path": "final-bundled-postgres-cancel-prepared-publisher.jsonl",
+          "sha256": "e554733429a6470914437aff4b3a28bebf95f7cdb9fb68fb28e48716bc1ef11a",
+          "bytes": 618
+        }
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "scenario": "worker-after-commit",
+      "productSteps": 16,
+      "destinationModelRequests": 2,
+      "finalHandoffPhase": "completed",
+      "admittedOrderEpoch": 1,
+      "sameNativeTurnAfterRestart": false,
+      "legacyCheckpoint": false,
+      "evidence": {
+        "report": {
+          "path": "final-bundled-postgres-worker-after-commit.json",
+          "sha256": "5665a9f1da9b8594f469d7acf4131063dbd4fcc4d52961b1fda20d187c22e6ff",
+          "bytes": 830093
+        },
+        "handoff": {
+          "path": "final-bundled-postgres-worker-after-commit-handoff.jsonl",
+          "sha256": "8f07014873e2183b102db13760d4a51aafc063360da6eced19c529713c8c1b44",
+          "bytes": 1026
+        },
+        "export": {
+          "path": "tmp/cantrip-actual-folder-niHvKH/rust/worker/codex-home/managed-history-exports/b043a067-336d-4b1a-8581-4374cf05fb39.json",
+          "sha256": "8f2c766e5be5e239fb55991c8a16e9e18ef15181b127524e79ca85d32af0d888",
+          "bytes": 113406
+        },
+        "importedRollout": {
+          "path": "tmp/cantrip-actual-folder-niHvKH/rust/worker/managed-native-namespaces/8ca698043dde52d1ac11a89ddfffb42e5bdd1701e25f08893eeb28723b4ec9d8/a49ce1a334181bf211a63bf9f620441f1725b5dd854fe57c0f66f20257ef52db/homes/b043a067-336d-4b1a-8581-4374cf05fb39/sessions/managed-tree-b043a067-336d-4b1a-8581-4374cf05fb39/rollout-2026-11-12T06-28-16-01a1ce71-54c6-7113-8b58-09387afb8199.jsonl",
+          "sha256": "3a916a6a2b081f246266b241c2e8518fb5bc215027ff0ea51d96151fd0f6ce47",
+          "bytes": 175434
+        },
+        "selectedNamespace": {
+          "path": "tmp/cantrip-actual-folder-niHvKH/rust/worker/managed-native-namespaces/8ca698043dde52d1ac11a89ddfffb42e5bdd1701e25f08893eeb28723b4ec9d8/a49ce1a334181bf211a63bf9f620441f1725b5dd854fe57c0f66f20257ef52db/selections/b043a067-336d-4b1a-8581-4374cf05fb39.json",
+          "sha256": "a3579bf83603e08151dda64f1be96105f18fcbcdd1ae037edb20388d10fc2af1",
+          "bytes": 435
+        },
+        "receipts": {
+          "path": "final-bundled-postgres-worker-after-commit-receipts.jsonl",
+          "sha256": "d5d64b7f15609c6cd36986db454661ac864565d95b0c5148f672611699cc6206",
+          "bytes": 9856
+        },
+        "native": {
+          "path": "final-bundled-postgres-worker-after-commit-native.jsonl",
+          "sha256": "2b16c87c869a9288071706c02f58a0b7b092cf19a4d9a0dc252d0adf3b0a8aac",
+          "bytes": 63778
+        },
+        "publisher": {
+          "path": "final-bundled-postgres-worker-after-commit-publisher.jsonl",
+          "sha256": "8f11b7c655fbc34feb68a14a43133d34510813c36793683af15c39df39f67469",
+          "bytes": 694
+        }
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "scenario": "pause-restart",
+      "productSteps": 17,
+      "destinationModelRequests": 4,
+      "finalHandoffPhase": "completed",
+      "admittedOrderEpoch": 1,
+      "sameNativeTurnAfterRestart": true,
+      "legacyCheckpoint": false,
+      "evidence": {
+        "report": {
+          "path": "final-bundled-postgres-pause-restart.json",
+          "sha256": "1b2fb2c0eabc61f813dc1f3abfd7ab35b3503c7065443df96f7d60e23534d9bf",
+          "bytes": 880972
+        },
+        "handoff": {
+          "path": "final-bundled-postgres-pause-restart-handoff.jsonl",
+          "sha256": "44b18eb9795b63624b1894775aaa62ffc17cc4f99eb0bbc71b1c66e51c98fdc7",
+          "bytes": 705
+        },
+        "export": {
+          "path": "tmp/cantrip-actual-folder-epHVq4/rust/worker/codex-home/managed-history-exports/90aba303-ec15-4db2-85d6-65b6ccee35c2.json",
+          "sha256": "491b5e6e27455a0c3ad36f14669262fdfa4f4cbce669dabe49b1d5c5c8b16ba0",
+          "bytes": 113404
+        },
+        "importedRollout": {
+          "path": "tmp/cantrip-actual-folder-epHVq4/rust/worker/managed-native-namespaces/4bedf0e97da3ec3bac384fa1c8a62914fef4a1acac7dd1e86998583caa5556db/e3429c7e9b8a7108d37eca036ba4248165c4bb8c035dc5fdd6cea29581532d78/homes/90aba303-ec15-4db2-85d6-65b6ccee35c2/sessions/managed-tree-90aba303-ec15-4db2-85d6-65b6ccee35c2/rollout-2026-11-12T06-29-14-01a1ce72-381d-7080-a67f-7a6be5b472cd.jsonl",
+          "sha256": "8cd7fbb7f9438391bac0078fe202a62d3a1ebe85ef67d70379cd64f3c4cb5d84",
+          "bytes": 191083
+        },
+        "selectedNamespace": {
+          "path": "tmp/cantrip-actual-folder-epHVq4/rust/worker/managed-native-namespaces/4bedf0e97da3ec3bac384fa1c8a62914fef4a1acac7dd1e86998583caa5556db/e3429c7e9b8a7108d37eca036ba4248165c4bb8c035dc5fdd6cea29581532d78/selections/90aba303-ec15-4db2-85d6-65b6ccee35c2.json",
+          "sha256": "ca99f3566c9eb397c178d239c4b222046a23c30ad13f28100be3a9f396b2c68a",
+          "bytes": 435
+        },
+        "receipts": {
+          "path": "final-bundled-postgres-pause-restart-receipts.jsonl",
+          "sha256": "5b89328f57b48778274c2696747efdf1532df52a2c9d680035512ce841ebb8ab",
+          "bytes": 10784
+        },
+        "native": {
+          "path": "final-bundled-postgres-pause-restart-native.jsonl",
+          "sha256": "2dd42b77107926a7558c7bd27bba85e3bcba71d11fda98d09442e5061963c4ec",
+          "bytes": 68019
+        },
+        "publisher": {
+          "path": "final-bundled-postgres-pause-restart-publisher.jsonl",
+          "sha256": "378f8f05dc8cf81c62ba8b6d341e6f73a59a2a964e70ae25d89e5242951519f5",
+          "bytes": 694
+        },
+        "serverLogs": [
+          {
+            "path": "tmp/cantrip-actual-folder-epHVq4/actual-folder/rust/logs/server-2026-11-12.part-0001.jsonl",
+            "sha256": "32721bc71d8f1cd034bac38bfd2658d5c9ddc0aaff4fdd8d6675aa3b655931bc",
+            "bytes": 527047
+          }
+        ]
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "scenario": "cancel-prepared",
+      "productSteps": 16,
+      "destinationModelRequests": 0,
+      "finalHandoffPhase": "cancelled",
+      "admittedOrderEpoch": 0,
+      "sameNativeTurnAfterRestart": false,
+      "legacyCheckpoint": false,
+      "evidence": {
+        "report": {
+          "path": "final-postgres-cancel-prepared.json",
+          "sha256": "bde767f997eed773d7fb0931866e0ca2acba5066f520921dcad53ec2485a9747",
+          "bytes": 824413
+        },
+        "handoff": {
+          "path": "final-postgres-cancel-prepared-handoff.jsonl",
+          "sha256": "087b426993b33b0fba13e59934a061ccdc2b4f7fc010ecd58990f173dc3bdb59",
+          "bytes": 995
+        },
+        "export": {
+          "path": "tmp/cantrip-actual-folder-6K7CrU/rust/worker/codex-home/managed-history-exports/ce3938ae-3c8f-458d-849c-b91af2f9a751.json",
+          "sha256": "125d131f156134f314e2c61e432dbb24ad77ab1d7d4b3cc6c29447345a7c0c1d",
+          "bytes": 113407
+        },
+        "receipts": {
+          "path": "final-postgres-cancel-prepared-receipts.jsonl",
+          "sha256": "b3068ee8d1227c8b7245041dab26ee598461d8208063dcf11733d79a1f2c0bb8",
+          "bytes": 10249
+        },
+        "native": {
+          "path": "final-postgres-cancel-prepared-native.jsonl",
+          "sha256": "bec1129c1e2dfc435d123cb57faf0164adfaddba24c39666bb9f4ab5340ebc19",
+          "bytes": 61692
+        },
+        "publisher": {
+          "path": "final-postgres-cancel-prepared-publisher.jsonl",
+          "sha256": "668798863ac313e1efffd186740919c69bf4daaa303dad373c855b2c7618a6d9",
+          "bytes": 618
+        }
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "scenario": "worker-after-commit",
+      "productSteps": 16,
+      "destinationModelRequests": 2,
+      "finalHandoffPhase": "completed",
+      "admittedOrderEpoch": 1,
+      "sameNativeTurnAfterRestart": false,
+      "legacyCheckpoint": false,
+      "evidence": {
+        "report": {
+          "path": "final-postgres-worker-after-commit.json",
+          "sha256": "f988edae78f301fe49d6ae02a8d691b5ff276c134909ce16551639bc63965440",
+          "bytes": 845430
+        },
+        "handoff": {
+          "path": "final-postgres-worker-after-commit-handoff.jsonl",
+          "sha256": "056d9cc459c7c883e98575ea521bec436231de2b811ce9625f28441c3659a8cb",
+          "bytes": 1026
+        },
+        "export": {
+          "path": "tmp/cantrip-actual-folder-lrEzv3/rust/worker/codex-home/managed-history-exports/595ddc64-2d49-488b-a0a8-2a10932ff38f.json",
+          "sha256": "a21ad11ec8743b50e6145df6f1871e167d69545270723fce078e7bd17193afdf",
+          "bytes": 113408
+        },
+        "importedRollout": {
+          "path": "tmp/cantrip-actual-folder-lrEzv3/rust/worker/managed-native-namespaces/ba9585e6f4a39f87b831b6d2ecfea646445b360a002b0c36422357897e8c1d25/b914417f2ad75487ee4420dc95a9347627ae89443fc97f7168e275e850008904/homes/595ddc64-2d49-488b-a0a8-2a10932ff38f/sessions/managed-tree-595ddc64-2d49-488b-a0a8-2a10932ff38f/rollout-2026-11-12T06-31-06-01a1ce73-ef09-72e0-aa60-e837d3aad3bc.jsonl",
+          "sha256": "437dfacc0f5bbdf951ed3a0acfbb48a6925a4125e5803dbc72013f271d0b4c42",
+          "bytes": 175436
+        },
+        "selectedNamespace": {
+          "path": "tmp/cantrip-actual-folder-lrEzv3/rust/worker/managed-native-namespaces/ba9585e6f4a39f87b831b6d2ecfea646445b360a002b0c36422357897e8c1d25/b914417f2ad75487ee4420dc95a9347627ae89443fc97f7168e275e850008904/selections/595ddc64-2d49-488b-a0a8-2a10932ff38f.json",
+          "sha256": "6a2cfd83d1388302feef7159577ba7fba6896ad1d38bcd70c359a84d1eec6c9e",
+          "bytes": 435
+        },
+        "receipts": {
+          "path": "final-postgres-worker-after-commit-receipts.jsonl",
+          "sha256": "bce3fcc37fecb4589af21b609c8a85d60d61bbd468fa0e96e0e49dffbdec960f",
+          "bytes": 9856
+        },
+        "native": {
+          "path": "final-postgres-worker-after-commit-native.jsonl",
+          "sha256": "87339d9f1f266cdc52596645d15906d5ce400f2c5bae517fd1c96961d10de507",
+          "bytes": 64512
+        },
+        "publisher": {
+          "path": "final-postgres-worker-after-commit-publisher.jsonl",
+          "sha256": "e8f2886121690dd0acb7a24ce155197e6cfb063c9cda02e705d614fff9f1f586",
+          "bytes": 694
+        }
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "scenario": "pause-restart",
+      "productSteps": 17,
+      "destinationModelRequests": 4,
+      "finalHandoffPhase": "completed",
+      "admittedOrderEpoch": 1,
+      "sameNativeTurnAfterRestart": true,
+      "legacyCheckpoint": false,
+      "evidence": {
+        "report": {
+          "path": "final-postgres-pause-restart.json",
+          "sha256": "003f9bca8bf2abee94e1ac9158ae19113cfde1393d585f1189d3c5de0050729a",
+          "bytes": 892407
+        },
+        "handoff": {
+          "path": "final-postgres-pause-restart-handoff.jsonl",
+          "sha256": "87c8eba4d505ee0aa10afc7270c4f4076fc7166b14d73fd500bdc7701b573b49",
+          "bytes": 705
+        },
+        "export": {
+          "path": "tmp/cantrip-actual-folder-3nYGEL/rust/worker/codex-home/managed-history-exports/cd02a8a9-c117-4af3-aacc-b31f4df41ffa.json",
+          "sha256": "5ecac4a0c1357c082fabddb317bbf768cfa26f6f6011488e228d08bb3b28e4d8",
+          "bytes": 113404
+        },
+        "importedRollout": {
+          "path": "tmp/cantrip-actual-folder-3nYGEL/rust/worker/managed-native-namespaces/9d47a2caa0311a48d54dcbc829b4343df1d2cc05a0c1e7593dbde11c8b18767a/67dce4815729a8a11c6aed07852a468f40338a6cdd29a55eabd15b8cb3fdc271/homes/cd02a8a9-c117-4af3-aacc-b31f4df41ffa/sessions/managed-tree-cd02a8a9-c117-4af3-aacc-b31f4df41ffa/rollout-2026-11-12T06-32-39-01a1ce75-5954-77c3-ab68-bf9afc71a495.jsonl",
+          "sha256": "137f85173acdbc9e484026b3c23afd7b513337841832aa2391b15222d929f8f4",
+          "bytes": 191075
+        },
+        "selectedNamespace": {
+          "path": "tmp/cantrip-actual-folder-3nYGEL/rust/worker/managed-native-namespaces/9d47a2caa0311a48d54dcbc829b4343df1d2cc05a0c1e7593dbde11c8b18767a/67dce4815729a8a11c6aed07852a468f40338a6cdd29a55eabd15b8cb3fdc271/selections/cd02a8a9-c117-4af3-aacc-b31f4df41ffa.json",
+          "sha256": "a83215bbafb769680946edc22fa9e8a2b15f369b6b2bb2cb822a056cd9b77dcb",
+          "bytes": 435
+        },
+        "receipts": {
+          "path": "final-postgres-pause-restart-receipts.jsonl",
+          "sha256": "a25ae75963a298fff385cc4b6d6199a8b4a9a991c3a9bedfcdd643204b5f0f67",
+          "bytes": 10784
+        },
+        "native": {
+          "path": "final-postgres-pause-restart-native.jsonl",
+          "sha256": "8693980af78218bbafede24d97e1517f23e7a68480d39f555c0a69ccf8c021fd",
+          "bytes": 67245
+        },
+        "publisher": {
+          "path": "final-postgres-pause-restart-publisher.jsonl",
+          "sha256": "69afce8121abeef03d0068cf8491d320d5fd60e0a44955b0a590e192acbcb15c",
+          "bytes": 694
+        },
+        "serverLogs": [
+          {
+            "path": "tmp/cantrip-actual-folder-3nYGEL/actual-folder/rust/logs/server-2026-11-12.part-0001.jsonl",
+            "sha256": "16d1a0e52b3d45268c80a6e07cf4a751bb761d221ff76540ae491d4f09089924",
+            "bytes": 563174
+          }
+        ]
+      }
+    }
+  ],
+  "firstInputControl": {
+    "databaseMode": "pglite",
+    "scenario": "first-input-control",
+    "productSteps": 16,
+    "destinationModelRequests": 0,
+    "finalHandoffPhase": "cancelled",
+    "admittedOrderEpoch": 0,
+    "sameNativeTurnAfterRestart": false,
+    "legacyCheckpoint": false,
+    "evidence": {
+      "report": {
+        "path": "final-pglite-first-input-control.json",
+        "sha256": "8eb0042bbd640585d876a4a328ed81ca36a10f2814c476a034e9f2a4b10a5a1d",
+        "bytes": 814897
+      },
+      "handoff": {
+        "path": "final-pglite-first-input-control-handoff.jsonl",
+        "sha256": "42b32570bd075174c65b5b9769943f746d5354676205b6bb5edadb0eb0142093",
+        "bytes": 995
+      },
+      "export": {
+        "path": "tmp/cantrip-actual-folder-2iqIKn/rust/worker/codex-home/managed-history-exports/59db8032-bbf0-49c6-aa8f-196e03808e49.json",
+        "sha256": "1ec85ec19bec74480f461fac2092c970ec6b15e3a2d64408f347bb01f646bda5",
+        "bytes": 74131
+      },
+      "receipts": {
+        "path": "final-pglite-first-input-control-receipts.jsonl",
+        "sha256": "a2b768a808035c3fac49a9c7121fe7947a7c2f7b906ad28dd48ac55f9dcdb8d1",
+        "bytes": 10911
+      },
+      "native": {
+        "path": "final-pglite-first-input-control-native.jsonl",
+        "sha256": "ba53df644d4e916c4e137eb39950823e2d25b50983375661ff68d730382a04aa",
+        "bytes": 57327
+      },
+      "publisher": {
+        "path": "final-pglite-first-input-control-publisher.jsonl",
+        "sha256": "472fa3977921228cb58950a438e8083b20580ccd5c78a1414c7566692094fd1b",
+        "bytes": 618
+      }
+    }
+  },
+  "legacyCheckpoint": {
+    "databaseMode": "pglite",
+    "scenario": "pause-restart",
+    "productSteps": 17,
+    "destinationModelRequests": 4,
+    "finalHandoffPhase": "completed",
+    "admittedOrderEpoch": 1,
+    "sameNativeTurnAfterRestart": true,
+    "legacyCheckpoint": true,
+    "evidence": {
+      "report": {
+        "path": "legacy-pglite-pause-restart.json",
+        "sha256": "ea3d7a8d2edee1eeb7c67fcc5992c6510480241661cc2ce636b77cc81c427f2e",
+        "bytes": 910905
+      },
+      "handoff": {
+        "path": "legacy-pglite-pause-restart-handoff.jsonl",
+        "sha256": "74353c4d9d9a57ec8ba023a10ded997d1f81578149cb0a7d0ca5942e0a7a85a5",
+        "bytes": 705
+      },
+      "export": {
+        "path": "tmp/cantrip-actual-folder-SnHduf/rust/worker/codex-home/managed-history-exports/41b907b3-12de-49c0-b2d9-e1e0e201ba37.json",
+        "sha256": "3211591eea2fb99a5feeec384c2457a46c1198c6824f993db30b535a5968f54c",
+        "bytes": 113406
+      },
+      "importedRollout": {
+        "path": "tmp/cantrip-actual-folder-SnHduf/rust/worker/managed-native-namespaces/d8387f1eaf58ac8e9d56162390cff3886224a949d77667414a4c270f0b7681ab/449eb0e0c6901c821df13038c9aa89959a4293a55b9d6d159accc49de58fa658/homes/41b907b3-12de-49c0-b2d9-e1e0e201ba37/sessions/managed-tree-41b907b3-12de-49c0-b2d9-e1e0e201ba37/rollout-2026-11-12T06-30-34-01a1ce73-6fdf-7a92-9da0-261dc7775230.jsonl",
+        "sha256": "3eab17470b3419725116cca9466e84565f857f3d5368ed1c4679722b34ca6498",
+        "bytes": 191083
+      },
+      "selectedNamespace": {
+        "path": "tmp/cantrip-actual-folder-SnHduf/rust/worker/managed-native-namespaces/d8387f1eaf58ac8e9d56162390cff3886224a949d77667414a4c270f0b7681ab/449eb0e0c6901c821df13038c9aa89959a4293a55b9d6d159accc49de58fa658/selections/41b907b3-12de-49c0-b2d9-e1e0e201ba37.json",
+        "sha256": "eb211a32f75c1120828113e3ce89c3596a4816e4319ece1bb808cf9a326be70f",
+        "bytes": 435
+      },
+      "receipts": {
+        "path": "legacy-pglite-pause-restart-receipts.jsonl",
+        "sha256": "414256c9bad5e36f4ed5fb289736883786191f6b31a2fde444a55fc570323ef3",
+        "bytes": 10784
+      },
+      "native": {
+        "path": "legacy-pglite-pause-restart-native.jsonl",
+        "sha256": "d33092f52fad146a9957209501296f9b8989487645c07bb7c1c370027718391e",
+        "bytes": 69989
+      },
+      "publisher": {
+        "path": "legacy-pglite-pause-restart-publisher.jsonl",
+        "sha256": "8b24eb4ba2bba3b04c919915687717ac40a99bf3e2e18538ec4eef2a309aae59",
+        "bytes": 694
+      },
+      "serverLogs": [
+        {
+          "path": "tmp/cantrip-actual-folder-SnHduf/actual-folder/rust/logs/server-2026-11-12.part-0001.jsonl",
+          "sha256": "0e4d1b6c585a707442798c282a2ef1735208fad21102d3b0cb7d5cfc3f25b9f1",
+          "bytes": 575124
+        }
+      ],
+      "worker-switch": {
+        "path": "legacy-pglite-pause-restart-worker-switch.jsonl",
+        "sha256": "08f3d1181605855c111b60f6c8d5fb99d0a98f9e6b2e503ed437f8b8b9bebde1",
+        "bytes": 2565
+      }
+    }
+  },
+  "originalFailures": {
+    "workerLoss": {
+      "path": "pglite-pilot-worker-after-commit.json",
+      "sha256": "6595cb45a6cf78d63322fec911aaf25d5110e1d59748d9c4205bd137ca0797ea",
+      "bytes": 322845
+    },
+    "suspendedParentLane": {
+      "path": "db-diagnosis-worker-after-commit.json",
+      "sha256": "cf6c1b581f5ba253c879a9bbf9d6db873db2580096e7bfe60704e60292443b66",
+      "bytes": 8650
+    },
+    "legacyPauseAdmission": {
+      "path": "pglite-diagnostic-identity.json",
+      "sha256": "660e0580a1e7079818e9c435ae702ab9b5aa78966f3c9d50c4c0e1db108ac93c",
+      "bytes": 225536
+    }
+  },
+  "nativeServer": {
+    "path": "candidate/cantrip-server",
+    "sha256": "4895c9b089d168787d9363a9339ec1dfeee734050df1ed90b4aa90568e09f05f",
+    "bytes": 179777168
+  },
+  "core": {
+    "path": "candidate/worker/bin/codex",
+    "sha256": "159efa081468910fbe00493d12d3cb18fbb9e3a091e2ea63745432d35fccbecc",
+    "bytes": 281161744
+  },
+  "workerEntry": {
+    "path": "candidate/worker/dist/index.js",
+    "sha256": "c632631c9a6d250d2e56d938441b5d39dc972d1b03a6b521d4ddf6c85569e4a9",
+    "bytes": 391601
+  },
+  "previousWorkerEntry": {
+    "path": "task-autonomous-goal-transfer-2869/candidate/worker-v2/dist/index.js",
+    "sha256": "ab325958767430552bb4333d8327b2171e4ac2e512f1b67e631164f15ff471d7",
+    "bytes": 390815
+  },
+  "localVerifier": {
+    "path": "verify-interruption.py",
+    "sha256": "1238e32c71b3b3ed2c5f23fcf05ee029bb8b79f94d9d8a14e86137c2fb4d85b7",
+    "bytes": 14112
+  },
+  "localWorkerTests": {
+    "path": "focused-worker-tests.log",
+    "sha256": "0fac6e33ef81c82fa3c323ac15a768c649b0a9698e2b07c171fb015833144830",
+    "bytes": 260
+  },
+  "localServerBoundaries": {
+    "path": "server-boundaries-check.log",
+    "sha256": "f0e5ab7db4f1578d5c5fa2678e2d14cb33ee85ba9410ab13812225695cf4815f",
+    "bytes": 1605
+  },
+  "sourceDriftThroughBase": {
+    "path": "source-drift-through-2890.json",
+    "sha256": "6d95800aa1e24422942715235d02a85eaab5177769287fee0f94389a847c501e",
+    "bytes": 5536
+  },
+  "source": [
+    {
+      "path": "cantrip_server_rs/src/tasks/goal_cycle_recovery.rs",
+      "sha256": "ef5a99c42b0a511df7e1cf9593e384d66fa9e714aaa26cb7517b2dee9e703c1f",
+      "bytes": 31522
+    },
+    {
+      "path": "cantrip_worker/src/index.ts",
+      "sha256": "ec9607fe21542f9592ff91d33186a2cb6c79990674e1132bbb68024c967f4528",
+      "bytes": 366362
+    },
+    {
+      "path": "scripts/server-rust/actual-durable-suspension.mjs",
+      "sha256": "bf896b6e6722217b91a49fc3d72bb0fde5cb3943a47da24658926bf1a3adc580",
+      "bytes": 45097
+    },
+    {
+      "path": "scripts/server-rust/actual-folder-client.mjs",
+      "sha256": "7a2bc2709884e840731dee14b1caa43df3d153cb5dc610bf0760a3e82cb62e8c",
+      "bytes": 76200
+    },
+    {
+      "path": "scripts/server-rust/actual-task-client.mjs",
+      "sha256": "e36dd5ed715706c989469d5510fa38d4c58ee76085953d8f4b585b56d08d4ba9",
+      "bytes": 26760
+    },
+    {
+      "path": "scripts/server-rust/actual-task-goal-transfer-pause.mjs",
+      "sha256": "5f1eae5e978618732d764249ec86b4d875e400dc3c5ef69b4007ac4a9b21e7c7",
+      "bytes": 3007
+    },
+    {
+      "path": "scripts/server-rust/task-model-provider.mjs",
+      "sha256": "2c2e5abf0b9401a9a94413d9bf312bd7de61e215e88a4544a83cb9f45c64cb37",
+      "bytes": 7908
+    },
+    {
+      "path": "scripts/server-rust/worker-task-goal-handoff-fault.mjs",
+      "sha256": "0987edb00d6c08fa5f45431b9607778edf28740da90f496f3dcf985c6ff0976f",
+      "bytes": 2011
+    }
+  ]
+}

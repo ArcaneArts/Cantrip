@@ -192,3 +192,34 @@ after restart. Run the browser fixture with
 `--task-goal-autonomous-provider-transfer` and each database mode.
 
 [Autonomous Task Goal transfer acceptance record](security/rust-server-autonomous-task-goal-transfer-acceptance.json)
+
+## Interrupting a transferred autonomous Task Goal
+
+The browser can cancel while the worker's prepared acknowledgment is held.
+The original route resumes from the requeued source, and the destination
+makes zero model requests. After commit, the same cancellation returns HTTP 409. The fixture kills the worker before it can consume the commit response.
+A fresh worker completes the same handoff and publishes the Goal outcome
+under the destination route.
+
+Worker loss can suspend the original execution lane before the terminal Goal
+outcome is projected. The terminal observation now settles the chat when the
+same owner, worker, worktree, and lane activation still match. The suspended
+lane stays closed.
+
+The pause case captures a transferred turn after Core executes a shell
+command. It reopens the same checkpoint after a worker restart and resumes
+that turn with the original tool result. The handoff resolves the worker's
+repository routing token before capturing the continuation. When an older
+checkpoint stores that token, the worker resolves it after opening the scoped
+checkpoint and still checks the resulting path against the admitted execution.
+
+Run the browser fixture with `--task-goal-transferred-pause` or combine
+`--task-goal-autonomous-provider-transfer` with
+`--task-goal-provider-transfer-fault cancel-prepared` or
+`--task-goal-provider-transfer-fault worker-after-commit`. Use
+`--database pglite`, `--database bundled-postgres`, or `--database postgres`.
+
+The macOS ARM64 matrix passes all nine combinations with the local Rust
+executable and full worker. A PGlite upgrade run resumes a checkpoint created
+by the previous worker build using the same worker profile.
+[Autonomous Task Goal interruption acceptance record](security/rust-server-autonomous-task-goal-interruption-acceptance.json)
