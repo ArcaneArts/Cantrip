@@ -166,6 +166,9 @@ export function launchActualWorker(
           } else child.kill("SIGTERM");
         }
         const result = await completion;
+        // The shutdown timer guards worker exit. Windows verifies the owned
+        // descendants separately after the worker has already exited.
+        clearTimeout(timer);
         if (verifyTree) result.treeTermination = await verifyTree();
         assert.equal(forced, false, `Worker shutdown timed out.\n${output}`);
         // Windows taskkill does not deliver Node signal handlers.
