@@ -388,6 +388,23 @@ node --import tsx scripts/server-rust/actual-folder-client.mjs \
   --report /absolute/path/autonomous-goal-mixed-postgres.json
 ```
 
+### Packaged `1.1.2881` dependency recovery
+
+The macOS ARM64 package and Node reference compiled from the same
+source repeated Redis and PostgreSQL process interruptions with
+`rust/node`, `node/rust`, and `rust/rust`. The six complete browser
+runs passed 102 product steps. Each released the original observation
+while the dependency was stopped, suspended the original lane, and
+retained the encrypted Task transcript. Both peers returned ready
+after each dependency restarted.
+
+The first PostgreSQL `rust/node` attempt settled the Goal and reached
+14 product steps. The legacy Node peer later exceeded its graceful
+shutdown deadline and the harness killed it. The same pairing passed
+all 17 steps on rerun. A two-Node control recovered readiness and also
+hit the graceful shutdown deadline. The reports retain both failures.
+[Current dependency interruption record](security/rust-server-2881-goal-dependency-acceptance.json)
+
 ## Ordering the first encrypted Task Goal input
 
 The full worker could receive a native autonomous Goal begin while the

@@ -29893,6 +29893,7 @@
       "status": "partial",
       "qualification": "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
       "acceptance": "docs/security/rust-server-autonomous-goal-dependency-acceptance.json",
+      "candidateAcceptance": "docs/security/rust-server-2881-goal-dependency-acceptance.json",
       "counts": {
         "packagedBrowserRuns": 7,
         "completedProductSteps": 115,
