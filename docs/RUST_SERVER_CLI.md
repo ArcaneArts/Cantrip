@@ -6,8 +6,14 @@ The server executes these requests through native repositories, worker command
 transport and domain services. Normal server startup and CLI execution require
 no JavaScript server helper.
 
-Desktop and standalone defaults still select the existing Node server. This
-milestone does not establish complete replacement or packaged readiness.
+Desktop and standalone now select the Rust server. The CLI comparison
+exercises the retained Node reference alongside the native implementation.
+The [acceptance reconciliation](RUST_SERVER_ACCEPTANCE_RECONCILIATION.md)
+records the packaged and product runs.
+
+The [current CLI matrix](security/rust-server-cli-http-contract-matrix.json)
+repeats the paired HTTP, worker-client, disconnect and restart checks
+against the `1.1.2881` Rust source.
 
 ## Preserved behavior
 

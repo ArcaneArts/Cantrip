@@ -5381,27 +5381,31 @@
         "method": "GET",
         "path": "/api/tasks/:chatId/inference-route",
         "implementation": "cantrip_server_rs/src/http/task_controls/mod.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "cantrip_server_rs/src/tasks/inference_routes.rs",
-          "cantrip_server_rs/src/workers/resource_revocations.rs"
+          "cantrip_server_rs/src/workers/resource_revocations.rs",
+          "docs/security/rust-server-task-inference-route-acceptance.json"
         ],
         "remaining": [
-          "Source review, direct formatting and git diff --check only. Runtime, migration, race and supported-platform behavior are unverified; tests, builds, typechecks and native/helper execution remain prohibited."
-        ]
+          "Full worker provider execution and Windows and Linux runtime qualification for this operation."
+        ],
+        "scope": "Current macOS ARM64 HTTP qualification across all three stores verifies owner isolation, typed conflicts, idempotent transfer, encrypted input retention and completion after worker reconnection. The external PostgreSQL case used the packaged server."
       },
       {
         "method": "POST",
         "path": "/api/tasks/:chatId/inference-route",
         "implementation": "cantrip_server_rs/src/http/task_controls/mod.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "cantrip_server_rs/src/tasks/inference_routes.rs",
-          "cantrip_server_rs/src/workers/resource_revocations.rs"
+          "cantrip_server_rs/src/workers/resource_revocations.rs",
+          "docs/security/rust-server-task-inference-route-acceptance.json"
         ],
         "remaining": [
-          "Source review, direct formatting and git diff --check only. Runtime, migration, race and supported-platform behavior are unverified; tests, builds, typechecks and native/helper execution remain prohibited."
-        ]
+          "Full worker provider execution and Windows and Linux runtime qualification for this operation."
+        ],
+        "scope": "Current macOS ARM64 HTTP qualification across all three stores verifies owner isolation, typed conflicts, idempotent transfer, encrypted input retention and completion after worker reconnection. The external PostgreSQL case used the packaged server."
       },
       {
         "method": "POST",
@@ -28162,6 +28166,7 @@
     },
     "legacyWorkerCli": {
       "status": "partial",
+      "currentHttpQualification": "docs/security/rust-server-cli-http-contract-matrix.json",
       "implementation": [
         "cantrip_server_rs/src/cli",
         "cantrip_server_rs/src/http/cli.rs",

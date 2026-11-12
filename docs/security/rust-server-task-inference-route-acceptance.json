@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.2881",
+  "sourceCommit": "ccafd3cd4baea444ab43c1b84471ab3225f718e3",
+  "harnessCommit": "1a08e33f97a332d397058a6a7461d3a0d56fef9c",
+  "platform": "darwin-arm64",
+  "completeReplacement": false,
+  "scope": "Real account HTTP, controlled replies through the existing worker connection and actual SQL. The production Rust executable ran with external PostgreSQL. The same source's development SQL fixture ran with PGlite and bundled PostgreSQL.",
+  "artifacts": {
+    "packagedServer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94198976,
+      "sha256": "fbb5069e83c4d9a7b5824713900b62477ad6d3ba90419c71702abd11d3815244"
+    },
+    "currentSourceHttpSqlFixture": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/http-sql-fixture-ccafd3cd",
+      "bytes": 180031616,
+      "sha256": "f3df2c3eb65b15e3a0613ba738da1ee25419f4c8beab2a4ccd47700f463eb581"
+    },
+    "fixtureBuild": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/current-fixture-build.log",
+      "bytes": 9461,
+      "sha256": "e3fc832b0e68b41396ba4de48d56bac7fa489d652778110e28212f74080183e7"
+    },
+    "sqlFixtureDriver": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/route-compatibility.mjs",
+      "bytes": 11760,
+      "sha256": "1f26c4c3211cda15caf05c204f9eea5489eb636017923666834f95ea68b83ec5"
+    },
+    "packagedServerDriver": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/route-compatibility-packaged-postgres.mjs",
+      "bytes": 12774,
+      "sha256": "2385a1a44856065a8542ee22899cddc61cf0696e7da9fea708d6b84d800dee1b"
+    }
+  },
+  "observations": [
+    "A foreign owner received 404. Stale revisions and unknown destinations returned typed conflicts. Replaying the same operation returned its receipt, and changed inputs under that operation ID conflicted.",
+    "The transfer incremented the dispatch fence and retained the canonical encrypted message. It remained draining until a replacement worker connection acknowledged settlement.",
+    "After acknowledgment Rust completed the transfer at revision 4. The Node reference stayed draining at revision 3 after repeated positive acknowledgments. The stored JSONB source and schema-shaped source had identical fields in different order. The reference compares them by JSON serialization.",
+    "An older Rust test binary returned HTTP 500 on successful admission and lacked the provider-transfer eligibility migration. The rebuilt fixture includes that migration and completed the operation on both local stores."
+  ],
+  "cases": [
+    {
+      "store": "pglite",
+      "rustExecutable": "currentSourceHttpSqlFixture",
+      "retainedEncryptedInput": true,
+      "deniedForeignOwner": true,
+      "matchedAdmissionAndIdempotency": true,
+      "rustSettledAfterWorkerReconnect": true,
+      "rustFinalRevision": 4,
+      "referenceStayedDrainingAfterAcknowledgment": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/pglite.json",
+        "bytes": 1445,
+        "sha256": "6823ab8c6d626f33c952cec0e5b3df5ae3aa5562798fd76afaf1c94f5eaeb0c6"
+      }
+    },
+    {
+      "store": "bundled-postgres",
+      "rustExecutable": "currentSourceHttpSqlFixture",
+      "retainedEncryptedInput": true,
+      "deniedForeignOwner": true,
+      "matchedAdmissionAndIdempotency": true,
+      "rustSettledAfterWorkerReconnect": true,
+      "rustFinalRevision": 4,
+      "referenceStayedDrainingAfterAcknowledgment": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/bundled-postgres.json",
+        "bytes": 1455,
+        "sha256": "fe6721ab7051433a1ba49f68e36a4c820b39a8bad8b392f828c16a51025356b8"
+      }
+    },
+    {
+      "store": "postgres",
+      "rustExecutable": "packagedServer",
+      "retainedEncryptedInput": true,
+      "deniedForeignOwner": true,
+      "matchedAdmissionAndIdempotency": true,
+      "rustSettledAfterWorkerReconnect": true,
+      "rustFinalRevision": 4,
+      "referenceStayedDrainingAfterAcknowledgment": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/postgres.json",
+        "bytes": 1447,
+        "sha256": "3b2567e8f81ac3e5368d69b4d55dcdbd714d847c8e275798d528f46dc8541ac6"
+      }
+    }
+  ],
+  "remaining": [
+    "Full worker provider execution and Windows and Linux runtime qualification for this operation"
+  ]
+}
