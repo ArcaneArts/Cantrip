@@ -83,6 +83,15 @@ strict.
 
 ## Replacement and retention checks
 
+The macOS ARM64 `1.1.2881` package and same-source Node reference passed
+128 resource steps across all four initial server pairings. All eight
+peer replacements retained the original worker process. The browser
+kept its encrypted session and App Live continuity and read and wrote
+the same 64 KiB test file through both replacement peers. The run also
+covered workspace ownership, detached editor drafts, file-document
+replay, Git views, terminal snapshots and both encrypted PTY transports.
+[Current rolling resource acceptance](security/rust-server-2881-shared-resource-rolling.json)
+
 `--rolling-servers` replaces the application peer with Rust while the full
 worker stays connected to its existing owner. It then replaces the worker-owner
 peer with Rust and requires a new real connection generation. Both steps retain
