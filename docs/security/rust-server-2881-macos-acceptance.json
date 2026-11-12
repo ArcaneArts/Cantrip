@@ -399,5 +399,121 @@
       "bytes": 1508,
       "sha256": "ec008c1efaa7e7d081f0e77df0bf986143d2a6f4d652580b3ec3154001385ea9"
     }
+  },
+  "workerLinkRebuild": {
+    "sourceCommit": "01928fcffe97701e36e0bf51a1639bffaf1ef0c3",
+    "referenceSourceCommit": "ccafd3cd4baea444ab43c1b84471ab3225f718e3",
+    "version": "1.1.2881",
+    "platform": "darwin-arm64",
+    "payloadBytesPerDirection": 67108864,
+    "scope": "Production server entrypoints with the existing WorkerConnection and WorkerLinkGateway, real HTTP grants and controlled opaque events and tunnel endpoints. One sample per runtime and store while the Windows QA VM was active.",
+    "passed": [
+      "exact relay frames and upload credit",
+      "selective revocation with an active sibling",
+      "congested consumer cleanup",
+      "endpoint reconnect with retained enrollment",
+      "server crash recovery with retained identity, write and protected tunnel record",
+      "default relay quota cutoff"
+    ],
+    "cases": [
+      {
+        "databaseMode": "pglite",
+        "runtime": "node",
+        "downloadMiBPerSecond": 190.73,
+        "echoMiBPerSecond": 116.08,
+        "serverRecoveryMs": 1868.29,
+        "quotaAcceptedFrames": 4079,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/macos-worker-link-2881-reference/pglite/acceptance/node/runs/1794510381797-14518/report.json",
+          "bytes": 8009,
+          "sha256": "b91ba61453f757c7f41333fd4e8492a90c2bf50152e4974637c6a4af743628d6"
+        }
+      },
+      {
+        "databaseMode": "pglite",
+        "runtime": "rust",
+        "downloadMiBPerSecond": 211.37,
+        "echoMiBPerSecond": 117.99,
+        "serverRecoveryMs": 798.19,
+        "quotaAcceptedFrames": 4079,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/macos-worker-link-2881-reference/pglite/acceptance/rust/runs/1794510412155-15049/report.json",
+          "bytes": 8004,
+          "sha256": "8e49dd41cde4f313217ef536a8e6bd5c5c3029d918941900598eaff371b9ddeb"
+        }
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "runtime": "node",
+        "downloadMiBPerSecond": 192.16,
+        "echoMiBPerSecond": 117.24,
+        "serverRecoveryMs": 1854.07,
+        "quotaAcceptedFrames": 4079,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/macos-worker-link-2881-reference/bundled-postgres/acceptance/node/runs/1794510439080-15294/report.json",
+          "bytes": 8009,
+          "sha256": "0828353fcf4f63c78abcf6dda6262d4bb3c60d4e07de3486bd4776429a089000"
+        }
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "runtime": "rust",
+        "downloadMiBPerSecond": 201.18,
+        "echoMiBPerSecond": 116.92,
+        "serverRecoveryMs": 875.1,
+        "quotaAcceptedFrames": 4079,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/macos-worker-link-2881-reference/bundled-postgres/acceptance/rust/runs/1794510468564-15931/report.json",
+          "bytes": 14122,
+          "sha256": "654999941bdd82f29ac369fbade8471bbe81910244edc4b0bd27d586db121024"
+        }
+      },
+      {
+        "databaseMode": "postgres",
+        "runtime": "node",
+        "downloadMiBPerSecond": 182.23,
+        "echoMiBPerSecond": 114.76,
+        "serverRecoveryMs": 1638.52,
+        "quotaAcceptedFrames": 4079,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/macos-worker-link-2881-reference/postgres/acceptance/node/runs/1794510495898-16168/report.json",
+          "bytes": 8005,
+          "sha256": "ec419350e3cdb1586abd7f1ef6321eb0f2464f556fbfc91498712e0754c2f801"
+        }
+      },
+      {
+        "databaseMode": "postgres",
+        "runtime": "rust",
+        "downloadMiBPerSecond": 203.21,
+        "echoMiBPerSecond": 117.06,
+        "serverRecoveryMs": 853.82,
+        "quotaAcceptedFrames": 4079,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/macos-worker-link-2881-reference/postgres/acceptance/rust/runs/1794510525362-16768/report.json",
+          "bytes": 7995,
+          "sha256": "07dce4428f11f5d954a821e230a97608de52001a1fd376afa97397608b2e778e"
+        }
+      }
+    ],
+    "inputDigests": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/macos-worker-link-2881-reference/inputs-sha256.txt",
+      "bytes": 616,
+      "sha256": "e60649e5e6c175a78175854057f6c96fab3344c77ff19f56a8dc2e51e3498983"
+    },
+    "verifiedMatrix": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/macos-worker-link-2881-reference/verified-matrix.json",
+      "bytes": 3141,
+      "sha256": "bc0c6a67d709d0b99a9b523a935ad146076d061ebe858a1722e7bce5bd421d20"
+    },
+    "retainedFixtureArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/macos-worker-link-2881-reference/disposable-profiles.tar.zst",
+      "bytes": 46521041,
+      "sha256": "59723a7dbd7e9ff4b2f6fcbfabaae6cec51a8cabcb3c8debc09d9b3598e41ee5"
+    },
+    "retainedFixtureVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/macos-worker-link-2881-reference/profile-archive-verification.json",
+      "bytes": 1249,
+      "sha256": "b036e5a7aa6f75f2979d6d256d34b0428c6dca3533dda182f0d021d9a6cb3db1"
+    }
   }
 }

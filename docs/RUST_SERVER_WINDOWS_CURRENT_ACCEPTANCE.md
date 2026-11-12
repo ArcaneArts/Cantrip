@@ -16,6 +16,19 @@ signature verified. Installed runtime and signed-update qualification
 remain open for this bundle.
 [Windows x64 desktop rebuild](security/rust-server-2881-win32-x64-desktop.json#workspaceRemovalRebuild)
 
+The standalone server and packaged worker passed queued Task provider
+transfer on all three stores. Each test persisted the transfer at revision
+3 and fence 9 while the worker was offline. The replacement worker reused
+its enrollment, settled the original encrypted input at revision 4, and
+preserved the result across shutdown. The disk reports matched guest serial.
+
+The first driver attempted to invoke `rustc` inside the guest. A second
+attempt enrolled the worker and reached the exit check. The fixture then
+counted the post-exit Windows process query against the 30-second exit
+timer. The corrected fixture verified all six worker exits inside that
+deadline and confirmed that every observed descendant was gone.
+[Windows Task transfer record](security/rust-server-task-inference-route-acceptance.json#rebuiltWindowsArtifact)
+
 ## Windows x64 standalone `1.1.2881`
 
 The Windows 11 x64 QEMU guest packaged the `1.1.2881` Rust executable and
