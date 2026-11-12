@@ -20,7 +20,6 @@
       "bytes": 94199904,
       "sha256": "17aa1bc9a5f63e753e454115bd96d3f7bb27aadcceb71921ef98056da0f60215"
     },
-    "workerBuildVersion": "1.1.2867",
     "workerFiles": [
       {
         "path": "bundled-postgres-goal-stall/worker-candidate-3/dist/index.js",
@@ -36,8 +35,15 @@
         "path": "bundled-postgres-goal-stall/worker-candidate-3/bin/codex",
         "bytes": 279545328,
         "sha256": "d2bc564513ece54a6c1df0132f8ebc8c494b088ebc9fd48fc34d64cea18b766c"
+      },
+      {
+        "path": "bundled-postgres-goal-stall/worker-candidate-3/node_modules/@cantrip/version/dist/version.json",
+        "bytes": 179,
+        "sha256": "9859329058ef2359049bada8a278911d44d247cdf4bdbd3a906cb1de09662f20"
       }
-    ]
+    ],
+    "workerRuntimeVersion": "1.1.2845",
+    "workerPackaging": "Current compiled worker code over the retained dependency and native runtime bundle."
   },
   "baseline": {
     "forcedStallsAcrossBothImplementations": 5,
