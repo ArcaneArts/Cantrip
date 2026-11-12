@@ -438,6 +438,31 @@
       ],
       "observerRecovery": "The evaluation guest shut down after bundled PostgreSQL first start. The remainder used the same disk after boot. The external PostgreSQL first-start observer resumed tray confirmation on the original app process after the overflow panel became visible."
     },
-    "signedUpdateRuntimeAcceptance": "pending"
+    "signedUpdateRuntimeAcceptance": "pending",
+    "signedUpdateInterruptedAttempt": {
+      "fromVersion": "1.1.2869",
+      "toVersion": "1.1.2881",
+      "store": "pglite",
+      "rejectedTamperedDownload": "update_signature_invalid",
+      "validInstallationRequested": true,
+      "guestStoppedDuringInstallation": true,
+      "installedAppAndServerMatchedCandidate": true,
+      "installedWorkerMatchedCandidate": false,
+      "diskState": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/desktop-installer.ejvxE6iO/signed-retry-after-shutdown.json",
+        "bytes": 8414,
+        "sha256": "2087bc074df2f5192e6438627157636551c56d8ac0574c26c878560654a8a9e2"
+      },
+      "guestShutdown": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/desktop-installer.ejvxE6iO/signed-guest-shutdown-qmp.json",
+        "bytes": 41,
+        "sha256": "e99101a31e5e1e6f1c02902b1c07b6cd27ebd34cbb83ee05c1fcafde18dac126"
+      },
+      "installerRequestedCheckpoint": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/desktop-installer.ejvxE6iO/signed-guest-checkpoints/signed-update-observation-20261112180405.json.progress.installation-requested",
+        "bytes": 710,
+        "sha256": "4b858df9b2880ad6fb6a47cf445503150491ad4bd61fe2f74674105e4e4d2625"
+      }
+    }
   }
 }

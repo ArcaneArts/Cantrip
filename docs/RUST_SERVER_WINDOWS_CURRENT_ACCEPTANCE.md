@@ -54,6 +54,13 @@ to the installer manifest. All six disk receipts match the guest serial.
 The evaluation guest shut down after bundled PostgreSQL first start, and
 the test resumed from the same disk. The external PostgreSQL first-start
 observer resumed tray confirmation on the same app process.
+
+The signed update retry reused the initialized `1.1.2869` PGlite profile.
+The app and worker were observed before the update, and the updater
+rejected the modified download. Windows shut down while the valid package
+was installing. The guest disk matched the new app and server hashes and
+still held the previous worker. Signed-update relaunch and profile retention
+for this installer remain open.
 [Patched Windows installer record](security/rust-server-2881-win32-x64-desktop.json#patchedInstaller)
 
 ## Windows x64 rebuilt desktop installer

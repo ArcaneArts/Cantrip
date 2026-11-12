@@ -18,6 +18,13 @@ all three stores and the read during settlement and active-dispatch
 rejection on external PostgreSQL.
 [macOS package acceptance](security/rust-server-2881-macos-acceptance.json)
 
+The macOS ARM64 rebuild at `01928fcff` repeated the three-store standalone
+and queued Task transfer tests with the packaged worker. Its archive
+matched all 1,762 manifest files. The packaged Rust server also matched
+the Node reference when Redis denied terminal-link revocation during
+workspace removal.
+[macOS rebuild qualification](security/rust-server-2881-macos-acceptance.json#workspaceRemovalRebuild)
+
 The Linux x64 `1.1.2881` container and local Winterhold rehearsal passed all
 three stores on an ARM64 Linux host with x64 emulation. The installer
 recovered from six injected failures, and accepted writes survived
