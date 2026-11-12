@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { taskResponsePublicationKind } from "./task-response-publication.js";
 import {
   taskGoalCycleRecoverySchema,
   taskGoalCycleRecoveryBinding,
   taskGoalCycleSuspensionSourceSchema,
+  taskMessageOpaqueContentSchema,
   taskMessageRelayResultSchema,
   type TaskGoalOutcomeDelivery,
   type NativeInferenceRecovery,
@@ -517,7 +518,11 @@ export class TaskGoalCycleRecoveryRepository {
     });
   }
 
-  async dispatch(owner: string, input: TaskGoalCycleDispatch) {
+  async dispatch(
+    owner: string,
+    input: TaskGoalCycleDispatch,
+    includePublication = false,
+  ) {
     return this.database.transaction(async (tx) => {
       const row = await this.locked(tx, owner, input.chatId);
       if (
@@ -632,9 +637,43 @@ export class TaskGoalCycleRecoveryRepository {
             turnId: input.turnId,
           },
         });
+      let publicationPrompt;
+      if (includePublication && suspensionSource) {
+        const parent = suspensionSource.parent;
+        const [message] = await tx
+          .select()
+          .from(schema.chatMessages)
+          .where(
+            and(
+              eq(schema.chatMessages.chatId, input.chatId),
+              eq(schema.chatMessages.id, parent.clientMessageId),
+              eq(schema.chatMessages.worktreeId, parent.worktreeId),
+              inArray(schema.chatMessages.role, ["user", "system"]),
+              eq(schema.chatMessages.mode, "goal"),
+              isNotNull(schema.chatMessages.taskProtectedContent),
+            ),
+          );
+        if (!message || message.content)
+          throw new TaskDispatchConflictError(
+            "The encrypted Goal publication input changed.",
+            "stale-lease",
+          );
+        publicationPrompt = taskMessageOpaqueContentSchema.parse({
+          id: message.id,
+          classification: {
+            role: message.role,
+            mode: message.mode,
+            attachmentIds: message.taskAttachmentIds,
+          },
+          protectedContent: message.taskProtectedContent,
+          reasoningEffort: message.reasoningEffort,
+          idempotencyKey: message.idempotencyKey,
+        });
+      }
       return {
         accepted: true as const,
         ...(suspensionSource ? { suspensionSource } : {}),
+        ...(publicationPrompt ? { publicationPrompt } : {}),
       };
     });
   }

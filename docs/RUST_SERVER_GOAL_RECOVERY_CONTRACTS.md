@@ -302,22 +302,28 @@ must report ready again after restart.
 With the browser on Rust and the worker on the compiled legacy Node
 reference, both the PostgreSQL and Redis interruption runs completed the
 original handoff. The browser then failed to find the destination answer.
-A read-only copy of the PostgreSQL fixture showed a completed Task, and the
-destination's native rollout contained the expected answer. The available
-evidence places the failure between native completion and the browser's
-read of the durable transcript. The PostgreSQL repeat with a freshly built
-Node reference reproduced it. Both peers recovered readiness, the original
-handoff completed, and the browser read 18 messages with one copy of the
-initial answer and zero copies of the destination answer. Both peers shut
-down cleanly.
+A read-only copy of the PostgreSQL fixture contained exactly the same 18
+messages the browser read, all written before the handoff. The Task was
+complete and the destination's native rollout contained the expected answer.
+The Node reference ignored the worker's opt-in request for the encrypted
+publication prompt at Goal-cycle dispatch. Without that prompt, the worker
+could execute the new turn without registering its result publisher.
 
-With the browser on Node and the worker on Rust, the PostgreSQL rerun
-completed the original handoff. The Node process exceeded its shutdown
-deadline during the subsequent restart. The Redis case ended before the
-fixture observed the worker's commit response, so it never injected the
-outage. A host disk-full error interrupted PostgreSQL WAL replay on the
-initial run and later interrupted peer log capture with a freshly built
-Node reference. The archived reports retain these outcomes.
+The rebuilt Node test reference now supports the same opt-in dispatch
+response as Rust. It returns the existing encrypted parent message only
+after authenticating the worker and validating the original Task and native
+execution binding. With this reference, the PostgreSQL interruption passed
+with the browser and worker on either pairing. Both peers recovered readiness
+and shut down cleanly, the original worker finished the original handoff,
+and the browser reopened the transcript with one copy of each answer. The
+original production Node binary predates this dispatch response.
+
+With the browser on the older Node reference and the worker on Rust, one
+PostgreSQL run completed the original handoff before the Node process
+exceeded its shutdown deadline during reopen. The older Redis run ended
+before the fixture observed the worker's commit response. Host disk-full
+errors interrupted the initial PostgreSQL WAL replay and two later peer
+log captures. The archived reports retain these outcomes.
 
 The rebuilt Node reference passed two cutover cases. After either the
 browser-facing or worker-facing Node peer was killed, a Rust replacement
@@ -327,5 +333,9 @@ destination answer. Replacing the worker-facing peer established a new
 connection with the same continuity identity. The local fixture disabled
 optional native plugin synchronization for the rebuilt-reference runs.
 
-Mixed dependency recovery with Node still serving one peer remains open.
+Both mixed Redis pairings passed on retry with the updated Node reference.
+Earlier attempts stopped before the outage. The worker-facing Node case
+returned `handoff-native-operation-pending`. The browser-facing Node case
+returned HTTP 500 from the Task Goal source read after PostgreSQL detected a
+deadlock. The successful retries qualify the observed recovery behavior.
 [Mixed post-commit evidence](security/rust-server-autonomous-task-goal-interruption-acceptance.json#mixedPostCommit)
