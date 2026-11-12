@@ -1,8 +1,26 @@
 # Current wire protocol reconciliation
 
-The full replacement remains incomplete and Node remains the default server.
-This milestone restores broad wire comparisons after additive protocol changes.
-It does not establish complete product, platform or deployment acceptance.
+Rust now serves production. The current candidate and the original wire
+milestone below exercise the native parser against the TypeScript protocol.
+Complete product, platform and deployment acceptance remains open.
+
+## Packaged candidate `1.1.2881`
+
+The current TypeScript schemas parse all 2,705 baseline examples across
+804 roots. The native streaming comparison passed 902,008 cases over
+803 roots, including 2,117 cases for the new Task Goal publication response.
+The response fixtures cover acceptance, a retained suspension source and the
+optional encrypted publication prompt. The outgoing worker request root
+retains its dedicated command corpus.
+
+The macOS ARM64 package and current Node reference matched 156 HTTP and
+81 WebSocket cases on PGlite, bundled PostgreSQL and external PostgreSQL.
+The cases cover malformed and deeply nested JSON, lone UTF-16 surrogates,
+strict and stripped fields, and App Live frame handling. An initial
+PostgreSQL fixture failure used the wrong executable path. The reruns used
+the path from the packaged manifest. The
+[candidate acceptance record](security/rust-server-2881-wire-acceptance.json)
+includes the source audit, exact artifacts and retained reports.
 
 ## Current source coverage
 
