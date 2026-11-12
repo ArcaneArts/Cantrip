@@ -624,6 +624,141 @@
         "bytes": 2809,
         "sha256": "79bc3435be3d5d86ef73383d411ad1e7923de0d25255accc59aa05799e8cab69"
       }
+    },
+    "completedSignedUpdate": {
+      "status": "passed",
+      "fromVersion": "1.1.2869",
+      "toVersion": "1.1.2881",
+      "databaseMode": "pglite",
+      "retainedServerIdentity": true,
+      "retainedWorkerIdentity": true,
+      "retainedAcceptedSetting": true,
+      "tamperedDownloadCode": "update_signature_invalid",
+      "realWorkerReply": "1.1.2881",
+      "cleanShutdown": true,
+      "servicesReaped": true,
+      "guestReceipt": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/windows-x64/signed-export-verified/signed-update-9e2dd5711-receipt.json",
+        "bytes": 2360,
+        "sha256": "331aa5627a1fb5ca458d41a0e2b685d5d6fb5e7bfaf8b8e4afa2d78f13c42d42"
+      },
+      "guestObservation": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/windows-x64/signed-export-verified/signed-update-observation.json",
+        "bytes": 1757,
+        "sha256": "44e5f5ee44321ae8eb8bbef0b467e3ef7d040403ebbca6404d183aca03b1391c"
+      },
+      "verifiedExport": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/windows-x64/signed-export-verified/verified-export.json",
+        "bytes": 434,
+        "sha256": "dbdc4aad2107b2f7fa2ba5cfa85dc57780aa814ad499a49bf8068ff8375a4bf5"
+      }
+    },
+    "installedDesktopMatrix": {
+      "status": "passed",
+      "casesPassed": 6,
+      "verifiedInstalledFiles": 14092,
+      "payloadVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/windows-x64/installed-desktop-evidence/installed-disk.json",
+        "bytes": 1660,
+        "sha256": "79a7f38db526ab81461f1560fa56ce8eb20e7185050f66d154478d10f1022c50"
+      },
+      "cases": [
+        {
+          "mode": "pglite",
+          "reopen": false,
+          "configurationSource": "explicit-initial-configuration",
+          "retainedIdentityAndSetting": false,
+          "realWorkerVersion": "1.1.2881",
+          "serverShutdownCompleted": "2026-11-13T06:35:17.022Z",
+          "cleanShutdown": true,
+          "servicesReaped": true,
+          "receipt": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/windows-x64/installed-desktop-evidence/installed-2881-pglite.json",
+            "bytes": 907,
+            "sha256": "e5cf754a6a063fade7c32f857a256c3f9fe8ae59dd7f8ed3ed203bd68022b1b9"
+          }
+        },
+        {
+          "mode": "pglite",
+          "reopen": true,
+          "configurationSource": "persisted-profile",
+          "retainedIdentityAndSetting": true,
+          "realWorkerVersion": "1.1.2881",
+          "serverShutdownCompleted": "2026-11-13T06:36:48.029Z",
+          "cleanShutdown": true,
+          "servicesReaped": true,
+          "receipt": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/windows-x64/installed-desktop-evidence/installed-2881-pglite-reopen.json",
+            "bytes": 895,
+            "sha256": "1ab80cdceff919ea19c36deba083f7309f0125ad3f3855499ac55dfaf3b2982e"
+          }
+        },
+        {
+          "mode": "bundled-postgres",
+          "reopen": false,
+          "configurationSource": "explicit-initial-configuration",
+          "retainedIdentityAndSetting": false,
+          "realWorkerVersion": "1.1.2881",
+          "serverShutdownCompleted": "2026-11-13T06:40:46.207Z",
+          "cleanShutdown": true,
+          "servicesReaped": true,
+          "receipt": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/windows-x64/installed-desktop-evidence/installed-2881-bundled-postgres.json",
+            "bytes": 1204,
+            "sha256": "dce72bf9aea846bf58d360d73654279cac1beba02eb9edd84ff8da8d5b120a56"
+          },
+          "managedPostgresStopped": true
+        },
+        {
+          "mode": "bundled-postgres",
+          "reopen": true,
+          "configurationSource": "persisted-profile",
+          "retainedIdentityAndSetting": true,
+          "realWorkerVersion": "1.1.2881",
+          "serverShutdownCompleted": "2026-11-13T06:42:34.715Z",
+          "cleanShutdown": true,
+          "servicesReaped": true,
+          "receipt": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/windows-x64/installed-desktop-evidence/installed-2881-bundled-postgres-reopen.json",
+            "bytes": 1189,
+            "sha256": "f6943b3578c392b0bf77c0f723c318a10bdc28eddded9d35f7172d4a0c03f8af"
+          },
+          "managedPostgresStopped": true
+        },
+        {
+          "mode": "postgres",
+          "reopen": false,
+          "configurationSource": "explicit-initial-configuration",
+          "retainedIdentityAndSetting": false,
+          "realWorkerVersion": "1.1.2881",
+          "serverShutdownCompleted": "2026-11-13T06:45:26.852Z",
+          "cleanShutdown": true,
+          "servicesReaped": true,
+          "receipt": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/windows-x64/installed-desktop-evidence/installed-2881-postgres.json",
+            "bytes": 957,
+            "sha256": "b7ac735cf88247751497d82070e451e47f8eb983e396a938a9e41445231afa50"
+          },
+          "externalPostgresSurvivedAppShutdown": true
+        },
+        {
+          "mode": "postgres",
+          "reopen": true,
+          "configurationSource": "persisted-profile",
+          "retainedIdentityAndSetting": true,
+          "realWorkerVersion": "1.1.2881",
+          "serverShutdownCompleted": "2026-11-13T06:47:19.543Z",
+          "cleanShutdown": true,
+          "servicesReaped": true,
+          "receipt": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/windows-x64/installed-desktop-evidence/installed-2881-postgres-reopen.json",
+            "bytes": 942,
+            "sha256": "96cf5cf8f3e48384370a0a6b4d96f4f5a0cef3aa17ba5698aae396cabfbd0eb3"
+          },
+          "externalPostgresSurvivedAppShutdown": true
+        }
+      ],
+      "platformScope": "Windows 11 x64 QEMU guest on macOS ARM64 using the installer produced with the disposable QA updater signature."
     }
   }
 }

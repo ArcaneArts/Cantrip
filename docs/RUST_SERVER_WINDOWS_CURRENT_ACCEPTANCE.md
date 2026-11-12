@@ -1,5 +1,29 @@
 # Current Windows native server qualification
 
+## Windows x64 desktop rebuild at `9e2dd5711`
+
+The `1.1.2881` desktop updater rejected a tampered download and installed
+the verified QA-signed package over `1.1.2869`. The app, Rust server, and
+packaged worker all reported the updated version. The retained PGlite
+profile kept its server identity, enrolled worker, and written setting.
+Tray quit exited zero, recorded the server's orderly shutdown, and reaped
+both child services. Both guest exports matched their reported hashes and
+the serial observations.
+
+The same installed package passed first launch and persisted-profile
+reopening on PGlite, bundled PostgreSQL, and external PostgreSQL. Every
+case received a real worker version reply and shut down through the tray.
+Each reopened profile retained its identity, selected backend, and saved
+setting. Bundled PostgreSQL stopped with the app, and external PostgreSQL
+continued running after app shutdown. A read-only guest disk snapshot matched
+all six serial receipts and all 14,092 installed payload files.
+
+The run used a Windows 11 x64 QEMU guest on macOS ARM64. The installer used a
+disposable QA updater signature. Release Authenticode verification remains
+open. The initial guest shutdown before the update is retained in the
+record alongside the completed retry.
+[Windows x64 rebuild evidence](security/rust-server-2881-win32-x64-desktop.json#replicaRepairRebuild)
+
 ## Windows x64 rebuild at `01928fcff`
 
 The `1.1.2881` Windows standalone archive matched all 2,281 manifest files
