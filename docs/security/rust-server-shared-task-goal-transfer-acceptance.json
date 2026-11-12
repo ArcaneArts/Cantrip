@@ -1,0 +1,252 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceBase": "c4917e90358d6dd9b4fab6f2d3d1a9af6fe95c79",
+  "artifactVersion": "1.1.2869",
+  "platform": "darwin-arm64",
+  "postgres": "postgres (PostgreSQL) 18.6 (Homebrew)",
+  "redis": "Redis server v=8.10.3 sha=5a56d658:0 malloc=libc bits=64 build=e6ccec1f7cce9a95",
+  "evidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1/shared-autonomous-goal-transfer-2891",
+  "scope": "Existing Chromium browser and full worker connect to separate Rust peers on external PostgreSQL and Redis. The worker distribution includes the rebuilt handoff client module and unchanged native Core. Local model responses and dependency processes are isolated fixtures.",
+  "originalPostgresFailure": {
+    "report": {
+      "path": "pilot-postgres-after-commit.json",
+      "bytes": 469183,
+      "sha256": "8b79c4d0cc17d30c2118ce6b813d983a90d948786e9882dc2d15a772e87f23ec"
+    },
+    "handoffTrace": {
+      "path": "pilot-postgres-after-commit-handoff.jsonl",
+      "bytes": 874,
+      "sha256": "329fa3b5f13a11f0fe1c750336d45f973c2a3a797bd271f79fd120739ccc5efb"
+    }
+  },
+  "originalSharedControl": {
+    "scenario": "control",
+    "productSteps": 16,
+    "destinationModelRequests": 2,
+    "finalPhase": "completed",
+    "orderEpoch": 1,
+    "report": {
+      "path": "shared-control.json",
+      "bytes": 928646,
+      "sha256": "4e40648e0f46054baa4764c2402450b9b05b9549c1dcbf548c4204db58cdbc19"
+    },
+    "handoffTrace": {
+      "path": "shared-control-handoff.jsonl",
+      "bytes": 705,
+      "sha256": "a49bd31e804da669fbbb29a3c61616946603b0883f6807afa75b626230003b21"
+    },
+    "receiptTrace": {
+      "path": "shared-control-receipts.jsonl",
+      "bytes": 9856,
+      "sha256": "54fcc05fd858afb7e16a3e525681d574d9cce1d032ac9b2f6870a769bf858fb5"
+    },
+    "nativeTrace": {
+      "path": "shared-control-native.jsonl",
+      "bytes": 59993,
+      "sha256": "d31fec2a7085b6cce11b62b92888b5947c210e87956847275d96d37e1cf63782"
+    },
+    "publicationTrace": {
+      "path": "shared-control-publisher.jsonl",
+      "bytes": 694,
+      "sha256": "fc3b0b81322123c592b839c1b8256f01c07d8e00266f495c2dcbfa43781435c1"
+    }
+  },
+  "cases": [
+    {
+      "scenario": "postgres-after-commit",
+      "productSteps": 16,
+      "destinationModelRequests": 2,
+      "finalPhase": "completed",
+      "orderEpoch": 1,
+      "report": {
+        "path": "verified-postgres-after-commit.json",
+        "bytes": 944534,
+        "sha256": "491f1039187de0046746c36668128d2b4f04f09435920dcbfa5ee4064917dde8"
+      },
+      "handoffTrace": {
+        "path": "verified-postgres-after-commit-handoff.jsonl",
+        "bytes": 1258,
+        "sha256": "9729bff9174f904476dd9528034bc8a4c282b3d780eb848addc882866c554278"
+      },
+      "receiptTrace": {
+        "path": "verified-postgres-after-commit-receipts.jsonl",
+        "bytes": 9856,
+        "sha256": "46c321c8a72388df35d605dfba7ca1553052402f3411f7befb81f114f6da3f21"
+      },
+      "nativeTrace": {
+        "path": "verified-postgres-after-commit-native.jsonl",
+        "bytes": 61013,
+        "sha256": "d5e3f5f040502e9111447968067fe7cec467effc95b335ef220787cbbf538cc3"
+      },
+      "publicationTrace": {
+        "path": "verified-postgres-after-commit-publisher.jsonl",
+        "bytes": 694,
+        "sha256": "cee0ab0335b0e2a4f0add77d3412a4af235394617254659f3698a07dd86d0a50"
+      },
+      "finishHttp500DuringOutage": 2,
+      "offlineMs": 1062,
+      "finishedBeforeDependencyRestart": false
+    },
+    {
+      "scenario": "redis-after-commit",
+      "productSteps": 16,
+      "destinationModelRequests": 2,
+      "finalPhase": "completed",
+      "orderEpoch": 1,
+      "report": {
+        "path": "verified-redis-after-commit.json",
+        "bytes": 926660,
+        "sha256": "a3ddd0e8b03f9f565e858961100f4f336e9b04cec921151609c3e67225e11da3"
+      },
+      "handoffTrace": {
+        "path": "verified-redis-after-commit-handoff.jsonl",
+        "bytes": 922,
+        "sha256": "7a99f3bc4f90e158cf75a11acd5682be67f9a124b463435552e933a0a6181752"
+      },
+      "receiptTrace": {
+        "path": "verified-redis-after-commit-receipts.jsonl",
+        "bytes": 9856,
+        "sha256": "763dd991b0d81f1aea3c1c29ffc34d62b49abb6d4dc6c673a4cd80893b1e4d58"
+      },
+      "nativeTrace": {
+        "path": "verified-redis-after-commit-native.jsonl",
+        "bytes": 61762,
+        "sha256": "cae375814d8eaa056c821d97f21c8c3786c14d77a419ca76309c7590c34a4391"
+      },
+      "publicationTrace": {
+        "path": "verified-redis-after-commit-publisher.jsonl",
+        "bytes": 694,
+        "sha256": "14480a508e3a94018d193dce8580beb11aac81216668b4920e4abf9ce9cb5795"
+      },
+      "offlineMs": 4127,
+      "finishedBeforeDependencyRestart": true
+    },
+    {
+      "scenario": "worker-after-commit",
+      "productSteps": 16,
+      "destinationModelRequests": 2,
+      "finalPhase": "completed",
+      "orderEpoch": 1,
+      "report": {
+        "path": "verified-worker-after-commit.json",
+        "bytes": 973737,
+        "sha256": "62e296fe4ae5a4d502244318b2158ec6ea1c50654f4b291b8cae487ee18b2311"
+      },
+      "handoffTrace": {
+        "path": "verified-worker-after-commit-handoff.jsonl",
+        "bytes": 1336,
+        "sha256": "1e625e2ae09f83a1b947b3fb6b7fcc8105fc5ff1b281a87a9a8334fa454fbca0"
+      },
+      "receiptTrace": {
+        "path": "verified-worker-after-commit-receipts.jsonl",
+        "bytes": 9856,
+        "sha256": "c637c64985ef82ced311e2949ed554e11d7ac0ea49fc0e3e5fef1fc4979cccfa"
+      },
+      "nativeTrace": {
+        "path": "verified-worker-after-commit-native.jsonl",
+        "bytes": 63171,
+        "sha256": "9ab4b276d15726805263247682126b8a40b82b4972db13044a2a3d15e9b35a0b"
+      },
+      "publicationTrace": {
+        "path": "verified-worker-after-commit-publisher.jsonl",
+        "bytes": 694,
+        "sha256": "b93680940b8a00facf2ddc96e2e384e84bf5099361bad2c99784f5f9e2356704"
+      }
+    },
+    {
+      "scenario": "cancel-prepared",
+      "productSteps": 16,
+      "destinationModelRequests": 0,
+      "finalPhase": "cancelled",
+      "orderEpoch": 0,
+      "report": {
+        "path": "verified-cancel-prepared.json",
+        "bytes": 952761,
+        "sha256": "0065ecc1900d7e18f5a485adb1002ef98b015d909e7cb824108a29185fb948f6"
+      },
+      "handoffTrace": {
+        "path": "verified-cancel-prepared-handoff.jsonl",
+        "bytes": 1305,
+        "sha256": "cbdf637e499c0847265f0af01404f7c64ac842012fd0644356f983c20c17f9ff"
+      },
+      "receiptTrace": {
+        "path": "verified-cancel-prepared-receipts.jsonl",
+        "bytes": 10249,
+        "sha256": "4d73bebc3855bdd18b468ed09315f5fea34599ae1d723d4d2d64a9b5aa491e38"
+      },
+      "nativeTrace": {
+        "path": "verified-cancel-prepared-native.jsonl",
+        "bytes": 62593,
+        "sha256": "2c5daed6954c5b83949c56d952721d225f82851f6e1f0dfd31a7845472332dfe"
+      },
+      "publicationTrace": {
+        "path": "verified-cancel-prepared-publisher.jsonl",
+        "bytes": 618,
+        "sha256": "c76185201bb11982bd82ad3f702a6e2e1862a11f744e11ee25ddf5142abaa214"
+      }
+    }
+  ],
+  "server": {
+    "path": "task-autonomous-transfer-interruption-2869/candidate/cantrip-server",
+    "bytes": 179777168,
+    "sha256": "4895c9b089d168787d9363a9339ec1dfeee734050df1ed90b4aa90568e09f05f"
+  },
+  "workerHandoffClient": {
+    "path": "candidate/worker/dist/native-runtime-handoff-client.js",
+    "bytes": 5048,
+    "sha256": "f40d5c357a15f854c0f5031c48c7b0e3d319c0333ebc6e8ae8d0b5dbe15996c4"
+  },
+  "nativeCore": {
+    "path": "candidate/worker/bin/codex",
+    "bytes": 281161744,
+    "sha256": "159efa081468910fbe00493d12d3cb18fbb9e3a091e2ea63745432d35fccbecc"
+  },
+  "workerTests": {
+    "path": "worker-retry-tests.log",
+    "bytes": 255,
+    "sha256": "a77fc4eb282a029ebf3bf13037a6e613390b2eebb5878431d788fec4cf4bdfb2"
+  },
+  "verifier": {
+    "path": "verify-shared-transfer.py",
+    "bytes": 11442,
+    "sha256": "c0f8a7ff12cefad1b5e0e741770d36801e4a998daaa335878a41b91f6e6271c8"
+  },
+  "source": [
+    {
+      "path": "cantrip_worker/src/native-runtime-handoff-client.ts",
+      "bytes": 5395,
+      "sha256": "709570ccf0df13126e2482ed6109be6bcc133e107affd183e14a071e1bb8eef2"
+    },
+    {
+      "path": "cantrip_worker/test/native-runtime-handoff-client.test.ts",
+      "bytes": 5438,
+      "sha256": "93b594e542222a56b6be6e514d27d001a229f3ee6d65bb40a65cf71aaf741a66"
+    },
+    {
+      "path": "scripts/server-rust/actual-folder-client.mjs",
+      "bytes": 77516,
+      "sha256": "5dab09fc948872e1444aade2b70f0d5f796fdc6e652b265dcb25a045309cb8a5"
+    },
+    {
+      "path": "scripts/server-rust/actual-task-goal-provider-transfer.mjs",
+      "bytes": 15681,
+      "sha256": "34ecbf65069dad74b037281a141e954cf2ba7ef061c62df00242167a9e90d2b1"
+    },
+    {
+      "path": "scripts/server-rust/goal-lane-dependency-outage.mjs",
+      "bytes": 7305,
+      "sha256": "b323f219d6485ae7d55171c2b01d75f2ef516a58511bc65dfba892175606926f"
+    },
+    {
+      "path": "scripts/server-rust/task-goal-transfer-dependency-outage.mjs",
+      "bytes": 3631,
+      "sha256": "646dc7502f1bb22195b21767a51a44978f99074923b906e11722822fe710ee1a"
+    },
+    {
+      "path": "scripts/server-rust/worker-task-goal-handoff-fault.mjs",
+      "bytes": 2600,
+      "sha256": "ada0f793a940e3ab2ef1692a7daac71ae9d1f07d30d58e83eca18eaf67b00005"
+    }
+  ]
+}

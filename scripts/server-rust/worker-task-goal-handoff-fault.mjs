@@ -1,11 +1,13 @@
 // Keep the real server response from reaching the worker at a durable boundary.
 import { existsSync, renameSync, writeFileSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 
 const {
   CANTRIP_TEST_TASK_GOAL_HANDOFF_FILE: file,
   CANTRIP_TEST_TASK_GOAL_HANDOFF_ACTION: action,
   CANTRIP_TEST_TASK_GOAL_HANDOFF_WORKER_ENTRY: entry,
   CANTRIP_TEST_TASK_GOAL_HANDOFF_SOURCE: source,
+  CANTRIP_TEST_TASK_GOAL_HANDOFF_RELEASE: release,
 } = process.env;
 if (file && process.argv[1] === entry && !existsSync(file)) {
   const fetch = globalThis.fetch;
@@ -50,6 +52,23 @@ if (file && process.argv[1] === entry && !existsSync(file)) {
       { mode: 0o600 },
     );
     renameSync(temporary, file);
+    if (release) {
+      let delivered = false;
+      try {
+        while (!existsSync(file + ".resume"))
+          await delay(30, undefined, { signal });
+        signal.throwIfAborted();
+        delivered = true;
+        return response;
+      } finally {
+        writeFileSync(
+          temporary,
+          JSON.stringify({ operationId: state.operationId, delivered }),
+          { mode: 0o600 },
+        );
+        renameSync(temporary, file + ".released");
+      }
+    }
     signal.throwIfAborted();
     return new Promise((_, reject) => {
       signal.addEventListener("abort", () => reject(signal.reason), {
