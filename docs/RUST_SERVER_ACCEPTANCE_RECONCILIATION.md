@@ -54,6 +54,12 @@ With shared PostgreSQL and Redis, all four Node and Rust pairings preserve two
 remote worker connections, the settled job and its exact replay through the
 loss of the browser-facing peer.
 
+The `1.1.2881` package completed eight peer replacements across all four
+Node and Rust pairings. The existing browser and full worker retained
+their session, encrypted file operations, and workspace state over
+shared PostgreSQL and Redis.
+[Current rolling resource acceptance](security/rust-server-2881-shared-resource-rolling.json)
+
 The [packaged native admission qualification](RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md#packaged-autonomous-task-completion)
 fixes an autonomous Goal that committed its terminal outcome while its Task
 stayed implementing. The browser and packaged worker complete the Task and

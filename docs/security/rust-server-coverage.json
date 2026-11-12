@@ -23932,6 +23932,7 @@
     },
     "sharedRelayCoordination": {
       "status": "partial",
+      "candidateRollingResourceAcceptance": "docs/security/rust-server-2881-shared-resource-rolling.json",
       "referenceImplementation": [
         "tests/reference-node-server/src/coordination/relay-coordinator.ts",
         "tests/reference-node-server/src/workers/coordinated-bridge.ts",
