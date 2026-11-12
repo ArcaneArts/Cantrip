@@ -88,6 +88,13 @@ also settles the original Goal on two Rust peers and in both mixed
 orientations. The legacy Node readiness and exit behavior have their
 own recorded evidence.
 
+The macOS ARM64 `1.1.2881` standalone server and packaged Node worker passed
+the encrypted browser Task and autonomous Goal flow on all three stores.
+The freshly compiled Node reference ran the same cases. The browser
+completed planning, Goal continuation, retry after a controlled model
+failure, and restart recovery without duplicate inference.
+[Current Task and Goal acceptance](security/rust-server-2881-browser-task-goal.json)
+
 The packaged macOS ARM64 `1.1.2845` server and signed desktop worker passed
 the current Task and Agent product matrix against the Node reference. All
 six suites cover real native execution across PGlite, bundled PostgreSQL
