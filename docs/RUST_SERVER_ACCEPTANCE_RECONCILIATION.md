@@ -71,6 +71,9 @@ standalone manifest. Its first standalone attempt timed out during
 PGlite startup. The rebuilt desktop installer matched all 14,092 files
 and its QA updater signature verified. Installed runtime testing remains
 open for that installer.
+The follow-up Windows PGlite fix passed direct first start and reopening in
+the Windows 11 x64 guest. It retained the accepted setting and server
+identity, and both launches shut down cleanly on supervision stdin close.
 [Windows x64 qualification](RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md)
 The [native desktop workspace qualification](RUST_SERVER_DESKTOP_WORKSPACE_ACCEPTANCE.md)
 also exercises actual macOS popouts, dirty documents, server restart, WebView

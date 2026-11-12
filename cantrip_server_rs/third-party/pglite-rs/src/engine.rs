@@ -214,7 +214,8 @@ impl Engine {
             .push(CString::new(runtime_dir.join("bin/postgres").to_str().unwrap()).unwrap());
         self.boot_strings
             .push(CString::new(self.data_dir.to_str().unwrap()).unwrap());
-        let devnull = CString::new("/dev/null").unwrap();
+        // The native library passes this path directly to the platform CRT.
+        let devnull = CString::new(if cfg!(windows) { "NUL" } else { "/dev/null" }).unwrap();
         let rmode = CString::new("r").unwrap();
 
         let mut arg_strings: Vec<String> = [
