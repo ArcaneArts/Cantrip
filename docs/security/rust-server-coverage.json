@@ -30082,7 +30082,7 @@
       "databaseModes": ["pglite", "bundled-postgres", "postgres"],
       "scope": "On macOS ARM64, the existing browser and full worker with Core reserve and transfer the unused first Task Goal input or an autonomous Goal turn while the source provider is occupied. Local tests exercise prepared cancellation, worker loss after commit, and resuming a transferred turn with its tool result after a worker restart. The browser reopens the completed Goal and transcript. A populated historical profile upgrades and rolls back with the new eligibility migration.",
       "remaining": [
-        "Resolve intermittent mixed Goal handoff failures before commit, including the PostgreSQL deadlock observed during source capture through the Node peer.",
+        "Resolve the intermittent worker-facing Node rejection before mixed Goal handoff commit. The separate source-capture deadlock was reproduced and corrected in the Node reference.",
         "Repeat transfer and recovery qualification on the final supported shipping artifacts."
       ]
     },

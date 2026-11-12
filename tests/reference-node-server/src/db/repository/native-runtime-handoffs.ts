@@ -71,8 +71,8 @@ const activePhases = ["preparing", "prepared", "committed"];
 const fail = (code: string): never => {
   throw new NativeCommandError(code);
 };
-/** Task input writers own the user row before their cycle/chat locks. Taking
- * that same owner lock first avoids a cycle->chat/chat->cycle inversion. */
+/** Serialize with Task input writers before taking project and chat locks.
+ * Native command writers holding those locks can still check the owner FK. */
 async function lockNativeCommandChat(
   tx: RepositoryTransaction,
   ownerId: string,
@@ -82,7 +82,7 @@ async function lockNativeCommandChat(
     .select({ id: schema.users.id })
     .from(schema.users)
     .where(eq(schema.users.id, ownerId))
-    .for("update")
+    .for("no key update")
     .limit(1);
   await lockChat(tx, ownerId, chatId);
 }
