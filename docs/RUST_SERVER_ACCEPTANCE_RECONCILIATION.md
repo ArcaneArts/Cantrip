@@ -39,6 +39,12 @@ The rebuilt Windows x64 `1.1.2881` desktop installer matched 14,092
 installed files. All three stores passed first start and persisted-profile
 reopening, real worker replies, accepted writes and clean tray shutdown.
 [Windows x64 installed desktop record](security/rust-server-2881-win32-x64-desktop.json)
+The same QA-signed installer updated the registered Windows x64 desktop from
+`1.1.2869` to `1.1.2881`. The updater rejected a modified download, relaunched
+the app, retained the PGlite identity and written theme, and received a real
+`1.1.2881` worker version reply. All 14,092 installed files matched again
+after the update. Tray quit drained the Rust server and reaped the desktop
+services.
 The earlier signed desktop update to `1.1.2869` verified 14,089 installed
 files and passed tray shutdown and reopening with the retained PGlite
 profile. The installed app passed first start, persisted-profile reopening,
