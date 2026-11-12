@@ -9,6 +9,7 @@ export async function runTaskGoalCyclePublicationCases({
   receipt,
   native,
   rows,
+  reopen,
   id,
 }) {
   const turn = "autonomous-turn";
@@ -86,6 +87,10 @@ export async function runTaskGoalCyclePublicationCases({
       key === rootKey
         ? response()
         : { ...response(key), id: source.publication.id };
+    const expected = {
+      finalizedMessageId: key === rootKey ? message.id : undefined,
+      autonomousWake: true,
+    };
     const note = notification(message);
     const before = await rows("before autonomous Goal publisher " + key);
     for (const { value } of await run(
@@ -95,7 +100,10 @@ export async function runTaskGoalCyclePublicationCases({
       assert.equal(value.committed, true);
       assert.equal(value.message.id, message.id);
     }
-    const accepted = await rows("after autonomous Goal publisher " + key);
+    const accepted = await rows(
+      "after autonomous Goal publisher " + key,
+      expected,
+    );
     for (const [i, row] of accepted.entries()) {
       assert.deepEqual(row.task, before[i].task);
       assert.deepEqual(row.lanes, before[i].lanes);
@@ -107,7 +115,7 @@ export async function runTaskGoalCyclePublicationCases({
     }
     await run("exact autonomous Goal publisher replay " + key, note);
     assert.deepEqual(
-      await rows("autonomous replay preserves exact state " + key),
+      await rows("autonomous replay preserves exact state " + key, expected),
       accepted,
     );
     for (const changed of [
@@ -130,7 +138,10 @@ export async function runTaskGoalCyclePublicationCases({
       ))
         assert.equal(value.conflict, "stale-lease");
       assert.deepEqual(
-        await rows("autonomous changed response rolls back exactly " + key),
+        await rows(
+          "autonomous changed response rolls back exactly " + key,
+          expected,
+        ),
         accepted,
       );
     }
@@ -184,5 +195,8 @@ export async function runTaskGoalCyclePublicationCases({
     "DROP FUNCTION fail_autonomous_publisher_terminal()",
   ]);
   await run("autonomous Goal reply succeeds after actual SQL failure");
-  await h.reopen("autonomous Goal publisher and digest survive restart");
+  return reopen("autonomous Goal publisher and digest survive restart", {
+    finalizedMessageId: response().id,
+    autonomousWake: true,
+  });
 }

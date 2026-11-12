@@ -727,5 +727,5 @@ export async function runTaskGoalCases(h) {
       );
     },
   );
-  await runTaskResponsePublicationCases(h, finalized, operation);
+  return runTaskResponsePublicationCases(h, finalized, operation);
 }

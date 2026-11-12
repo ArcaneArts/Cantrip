@@ -337,7 +337,7 @@ async function seed(statements) {
     for (const sql of Array.isArray(items) ? items : [items]) await r.seed(sql);
   }
 }
-async function snapshot(name) {
+async function snapshot(name, comparisonValue) {
   const values = [];
   for (const [i, r] of pair.entries()) {
     const result = await r.request({
@@ -373,10 +373,11 @@ async function snapshot(name) {
   }
   report.snapshots.push({ name, values });
   const canonical = (value, i) => {
+    const compared = comparisonValue ? comparisonValue(value, i) : value;
     const result = normalized(
       report.domain === "task-background"
-        ? backgroundSnapshotObservation(value)
-        : value,
+        ? backgroundSnapshotObservation(compared)
+        : compared,
       i,
     );
     // These raw relational tables are queried by random UUID. Compare every
@@ -408,6 +409,7 @@ async function observe(
     sqlstate,
     status = "accepted",
     rejection,
+    comparisonValue,
   } = {},
 ) {
   report.lastOperation = { name };
@@ -931,27 +933,21 @@ async function observe(
       if (rejection) assert.equal(receipt.rejectionCode, rejection, name);
     }
   }
-  if (!error)
-    assert.deepEqual(
-      automaticOrder(
+  if (!error) {
+    const canonical = (i) => {
+      const value = outcomes[i].value;
+      const compared = comparisonValue ? comparisonValue(value, i) : value;
+      return automaticOrder(
         normalized(
           report.domain === "task-background"
-            ? backgroundObservation(outcomes[1].value)
-            : outcomes[1].value,
-          1,
+            ? backgroundObservation(compared)
+            : compared,
+          i,
         ),
-      ),
-      automaticOrder(
-        normalized(
-          report.domain === "task-background"
-            ? backgroundObservation(outcomes[0].value)
-            : outcomes[0].value,
-          0,
-        ),
-      ),
-      name,
-    );
-  else if (!sqlstate)
+      );
+    };
+    assert.deepEqual(canonical(1), canonical(0), name);
+  } else if (!sqlstate)
     assert.deepEqual(
       {
         code: outcomes[1].commandError,
@@ -1001,13 +997,13 @@ const open = (kind, i) =>
     databaseMode,
     databaseUrl: urls[i],
   });
-async function reopen(name) {
-  const before = await snapshot("before " + name);
+async function reopen(name, comparisonValue) {
+  const before = await snapshot("before " + name, comparisonValue);
   for (const r of pair) await r.close();
   pair.length = 0;
   for (const [i, kind] of ["node", "rust"].entries())
     pair.push(await open(kind, i));
-  const after = await snapshot(name);
+  const after = await snapshot(name, comparisonValue);
   assert.deepEqual(after, before, name);
   (report.reopens ??= []).push({ name, passed: true });
 }
@@ -1084,7 +1080,7 @@ try {
                                             : report.domain === "interactions"
                                               ? runAgentInteractionCases
                                               : runAdmissionCases;
-  await runCases({
+  const finalComparison = await runCases({
     pair,
     urls,
     databaseMode,
@@ -1192,7 +1188,10 @@ try {
       report,
       normalized,
     });
-  await reopen("actual admission backend reopen");
+  await reopen(
+    "actual admission backend reopen",
+    report.domain === "task-goal" ? finalComparison : undefined,
+  );
   if (
     databaseMode === "postgres" &&
     report.domain !== "prompts" &&

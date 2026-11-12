@@ -5438,11 +5438,12 @@
         "status": "partial",
         "evidence": [
           "cantrip_server_rs/src/native_handoffs/task_goal_capture.rs",
-          "cantrip_server_rs/src/native_handoffs/task_goal.rs"
+          "cantrip_server_rs/src/native_handoffs/task_goal.rs",
+          "docs/security/rust-server-2869-goal-publication-acceptance.json"
         ],
+        "scope": "Local 1.1.2869 HTTP fixtures compare source capture, encrypted binding and rollback across all three databases and authentication modes. Actual worker transport carries controlled native replies. The suite verifies authorization, a SQL failure and retry, stale generation rejection, and persisted state reopening.",
         "remaining": [
-          "Source reviewed only: actual native private-scope capture, transfer, cancellation, restart recovery and platform behavior have not been executed.",
-          "Native0083/0084 patches were authored and formatted but not applied, compiled or run."
+          "Qualify actual Core private-scope capture, provider transfer, cancellation, restart recovery, and supported shipping platforms."
         ]
       },
       {
@@ -29907,6 +29908,18 @@
         "Retain the legacy Node readiness and shutdown limitations in mixed rolling-deployment qualification.",
         "Repeat qualification on the final supported shipping artifacts."
       ]
+    },
+    "currentGoalPublicationRepositoryParity": {
+      "status": "implemented-with-scoped-local-qualification",
+      "acceptance": "docs/security/rust-server-2869-goal-publication-acceptance.json",
+      "qualification": "docs/RUST_SERVER_GOAL_RECOVERY_CONTRACTS.md#current-goal-publication-and-source-capture",
+      "candidateVersion": "1.1.2869",
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+      "pairedRepositoryCases": 1101,
+      "repositoryReopens": 15,
+      "pairedSourceCaptureHttpObservations": 165,
+      "sourceCaptureReopens": 54,
+      "scope": "Actual repositories, HTTP and isolated databases on macOS ARM64. The repository suite verifies the Rust output seal and durable projection wake through replay, SQL rollback and restart. Native source capture replies are controlled."
     },
     "currentTaskGoalFirstInputOrdering": {
       "status": "partial",

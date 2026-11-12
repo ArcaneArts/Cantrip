@@ -5,6 +5,41 @@ import { taskMessage, taskEnvelope } from "./task-wire-fixtures.mjs";
 import { nativeHistoryPayloadDigest } from "../../tests/reference-node-server/src/db/repository/native-history-digest.ts";
 import { runTaskGoalCyclePublicationCases } from "./task-goal-cycle-publication-cases.mjs";
 
+function goalPublicationComparison({
+  finalizedMessageId,
+  autonomousWake,
+} = {}) {
+  return (state, peer) => {
+    const messages =
+      state.messages?.map(({ task_output_finalized, ...message }) => {
+        // Migration 0287 adds a private Rust marker for the settled native output.
+        assert.equal(
+          task_output_finalized,
+          peer === 1 && message.id === finalizedMessageId,
+          `Goal output finalization for message ${message.id} on ${peer === 1 ? "Rust" : "Node"}`,
+        );
+        return message;
+      }) ?? state.messages;
+    const wake = state.queues?.find((queue) => queue.chat_id === "task");
+    if (!autonomousWake || peer === 0) {
+      assert.equal(wake, undefined);
+      return { ...state, messages };
+    }
+    // The terminal receipt and its pending projection wake commit together.
+    assert.ok(wake);
+    const { notification_due_at, ...stateFields } = wake;
+    assert.ok(Number.isFinite(Date.parse(notification_due_at)));
+    assert.deepEqual(stateFields, {
+      chat_id: "task",
+      revision: 1,
+      notified_revision: -1,
+      goal_recovery: null,
+    });
+    const queues = state.queues.filter((queue) => queue !== wake);
+    return { ...state, messages, queues: queues.length ? queues : null };
+  };
+}
+
 export async function runTaskResponsePublicationCases(h, finalized, operation) {
   const id = (n) => `92929292-9292-4929-8929-${String(n).padStart(12, "0")}`;
   const cycle = id(1),
@@ -88,14 +123,23 @@ export async function runTaskResponsePublicationCases(h, finalized, operation) {
       },
       { op: "native-command-task", shape: "raw", ...options },
     );
-  const rows = (name) =>
+  const rows = (name, expected) =>
     h.observe(
       name,
       {
-        sql: "SELECT jsonb_build_object('task',(SELECT to_jsonb(t) FROM tasks t WHERE chat_id='task'),'lanes',(SELECT jsonb_agg(to_jsonb(l) ORDER BY id) FROM chat_execution_lanes l),'messages',(SELECT jsonb_agg(to_jsonb(m) ORDER BY sequence) FROM chat_messages m),'cycles',(SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM task_dispatch_cycles c)) result",
+        sql: "SELECT jsonb_build_object('task',(SELECT to_jsonb(t) FROM tasks t WHERE chat_id='task'),'lanes',(SELECT jsonb_agg(to_jsonb(l) ORDER BY id) FROM chat_execution_lanes l),'messages',(SELECT jsonb_agg(to_jsonb(m) ORDER BY sequence) FROM chat_messages m),'cycles',(SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM task_dispatch_cycles c),'queues',(SELECT jsonb_agg(to_jsonb(q) ORDER BY chat_id) FROM managed_queue_states q WHERE chat_id='task')) result",
       },
-      { op: "query-json", shape: "raw" },
+      {
+        op: "query-json",
+        shape: "raw",
+        comparisonValue: goalPublicationComparison(expected),
+      },
     );
+  const reopen = async (name, expected) => {
+    const compare = goalPublicationComparison(expected);
+    await h.reopen(name, compare);
+    return compare;
+  };
   async function clean(historical = false) {
     await finalized();
     for (const value of await h.observe(
@@ -105,6 +149,7 @@ export async function runTaskResponsePublicationCases(h, finalized, operation) {
     ))
       assert.equal(value.value.task.state, "implementing");
     await h.seed([
+      "DELETE FROM managed_queue_states WHERE chat_id='task'",
       "UPDATE chats SET active_worker_id='alpha',active_worktree_id='github-alpha-main',status='running',native_suspension_state=NULL WHERE id='task'",
       `INSERT INTO chat_execution_lanes(id,chat_id,worker_id,worktree_id,acquiring_actor,exclusive,purpose,state,activated_at,created_at,updated_at) VALUES('${lane}','task','alpha','github-alpha-main','agent',false,'Publisher recovery','active',${literal(stamp)},${literal(stamp)},${literal(stamp)})`,
       `INSERT INTO chat_messages(id,chat_id,worktree_id,execution_lane_id,role,mode,task_protected_content,task_goal_input,idempotency_key,created_at) VALUES('${user}','task','github-alpha-main','${lane}','user','goal',${json(taskEnvelope)},${json(input)},'publication-user',${literal(stamp)})`,
@@ -123,6 +168,10 @@ export async function runTaskResponsePublicationCases(h, finalized, operation) {
         key === publication.idempotencyKey
           ? { ...response(key), id: publication.id }
           : response(key);
+      const finalizedMessageId =
+        !historical && key !== publication.idempotencyKey
+          ? message.id
+          : undefined;
       const before = await rows(
         "before canonical Goal response " + historical + key,
       );
@@ -140,6 +189,7 @@ export async function runTaskResponsePublicationCases(h, finalized, operation) {
       }
       const accepted = await rows(
         "after canonical Goal response " + historical + key,
+        { finalizedMessageId },
       );
       for (const [i, row] of accepted.entries()) {
         assert.deepEqual(row.task, before[i].task);
@@ -151,7 +201,9 @@ export async function runTaskResponsePublicationCases(h, finalized, operation) {
         notification(message),
       );
       assert.deepEqual(
-        await rows("after exact Goal response replay " + historical + key),
+        await rows("after exact Goal response replay " + historical + key, {
+          finalizedMessageId,
+        }),
         accepted,
       );
       for (const changed of [
@@ -180,6 +232,7 @@ export async function runTaskResponsePublicationCases(h, finalized, operation) {
         assert.deepEqual(
           await rows(
             "changed Goal response rolls back exactly " + historical + key,
+            { finalizedMessageId },
           ),
           accepted,
         );
@@ -313,13 +366,16 @@ export async function runTaskResponsePublicationCases(h, finalized, operation) {
     "same Goal response succeeds after actual SQL failure",
     notification(),
   );
-  await h.reopen("canonical Goal response and digest survive restart");
-  await runTaskGoalCyclePublicationCases({
+  await reopen("canonical Goal response and digest survive restart", {
+    finalizedMessageId: response().id,
+  });
+  return runTaskGoalCyclePublicationCases({
     h,
     clean,
     receipt,
     native,
     rows,
+    reopen,
     id,
   });
 }
