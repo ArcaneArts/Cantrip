@@ -46,6 +46,13 @@ export function taskGoalWireFixtures(fixtures) {
     orderEpoch: cycle.orderEpoch,
     sourceQueueRevision: 0,
   };
+  const prompt = fixtures.taskMessageOpaqueContentSchema[0];
+  const publicationPrompt = {
+    ...prompt,
+    id: cycleParent.clientMessageId,
+    classification: { ...prompt.classification, mode: "goal" },
+    reasoningEffort: null,
+  };
   const capture = { record, snapshot };
   const nativeExecution = {
     threadId: cycleSource.threadId,
@@ -161,6 +168,11 @@ export function taskGoalWireFixtures(fixtures) {
     taskGoalCycleDispatchResultSchema: [
       { accepted: true },
       { accepted: true, suspensionSource: cycleSource },
+    ],
+    taskGoalCycleDispatchPublicationResultSchema: [
+      { accepted: true },
+      { accepted: true, suspensionSource: cycleSource },
+      { accepted: true, suspensionSource: cycleSource, publicationPrompt },
     ],
     taskGoalCycleRecoveryReceiptSchema: [
       {

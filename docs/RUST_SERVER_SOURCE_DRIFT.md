@@ -121,6 +121,21 @@ The local report `current-source-drift-40a9f1d90.json` in
 `4b0ee3a4a93fe0e8bc5b46b9be2f4202b0fdc6674a78457b243552930e50d75c`. The [acceptance ledger](security/rust-server-coverage.json)
 tracks the scoped behavior and artifact evidence.
 
+## Candidate `1.1.2881` source audit
+
+At `ccafd3cd4baea444ab43c1b84471ab3225f718e3`, the 16 generated schema
+graphs and endpoint-provider map match the rebuilt TypeScript protocol.
+The inventory check confirms 584 routes, 323 worker commands, 135 durable
+tables, 370 repository methods and 47 App Live resources. The separate
+MCP read-query generator matches all seven actual Drizzle captures.
+
+The one Node-reference source change since `40a9f1d90` adds the Task Goal
+provider-transfer column in the same change that updates the Rust dispatch
+path. The later Rust and worker Goal publication change adds one schema root,
+which now has an executable parser fixture. The
+[candidate wire acceptance](security/rust-server-2881-wire-acceptance.json)
+records the actual comparisons.
+
 ## Repeat locally
 
 Use the repository's supported Node toolchain for development commands:

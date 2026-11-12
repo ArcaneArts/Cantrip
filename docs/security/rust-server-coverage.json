@@ -23806,6 +23806,7 @@
   "crossCutting": {
     "currentBroadWireCompatibility": {
       "status": "implemented-pending-platform-acceptance",
+      "candidateAcceptance": "docs/security/rust-server-2881-wire-acceptance.json",
       "evidence": [
         "docs/RUST_SERVER_CURRENT_WIRE_COMPATIBILITY.md",
         "scripts/server-rust/security-fixtures.mjs",
