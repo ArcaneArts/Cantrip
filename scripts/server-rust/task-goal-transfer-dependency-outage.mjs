@@ -3,7 +3,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import { eventually } from "./full-worker.mjs";
 import { releaseTaskGoalTransfer } from "./actual-task-goal-provider-transfer.mjs";
 import {
+  assertReferencePostgresOutage,
   redisIdentity,
+  sampleReferencePostgresReadiness,
   sharedDependencyReadiness,
 } from "./goal-lane-dependency-outage.mjs";
 
@@ -19,6 +21,9 @@ export async function interruptTaskGoalTransferDependency({
 }) {
   const postgres = dependency === "postgres";
   const service = postgres ? cluster : fixture.redis;
+  const offlinePeers = postgres
+    ? fixture.peers.filter(({ kind }) => kind === "rust")
+    : fixture.peers;
   const serverPids = () => fixture.peers.map(({ server }) => server.child.pid);
   const outage = (interruption.dependencyOutage = {
     dependency,
@@ -40,6 +45,9 @@ export async function interruptTaskGoalTransferDependency({
   const stoppedAt = performance.now();
   outage.stoppedAt = Date.now();
   try {
+    const referenceSamples = postgres
+      ? sampleReferencePostgresReadiness(fixture.peers, "after-stop")
+      : [];
     if (postgres) {
       assert.equal(outage.stop.requestedSignal, "SIGQUIT");
       assert.equal(await fixture.redis.client.ping(), "PONG");
@@ -48,7 +56,7 @@ export async function interruptTaskGoalTransferDependency({
       assert.equal(outage.stop.code, null);
     }
     outage.offlineReadiness = await sharedDependencyReadiness(
-      fixture.peers,
+      offlinePeers,
       dependency,
       true,
     );
@@ -64,10 +72,17 @@ export async function interruptTaskGoalTransferDependency({
           ),
     );
     outage.afterReleaseReadiness = await sharedDependencyReadiness(
-      fixture.peers,
+      offlinePeers,
       dependency,
       true,
     );
+    if (referenceSamples.length) {
+      referenceSamples.push(
+        ...sampleReferencePostgresReadiness(fixture.peers, "after-release"),
+      );
+      outage.referenceOfflineReadiness = await Promise.all(referenceSamples);
+      assertReferencePostgresOutage(outage.referenceOfflineReadiness);
+    }
   } finally {
     outage.offlineMs = Math.round(performance.now() - stoppedAt);
     outage.restartStartedAt = Date.now();

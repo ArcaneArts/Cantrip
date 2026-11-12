@@ -53,6 +53,28 @@ export async function sharedDependencyReadiness(peers, dependency, offline) {
   );
 }
 
+export function sampleReferencePostgresReadiness(peers, phase) {
+  return peers
+    .filter(({ kind }) => kind === "node")
+    .map(async (peer) => {
+      const [readiness, liveness] = await Promise.all([
+        probe(peer),
+        probe(peer, "/healthz"),
+      ]);
+      return { phase, readiness, liveness };
+    });
+}
+
+export function assertReferencePostgresOutage(samples) {
+  for (const { readiness, liveness } of samples) {
+    assert.equal(liveness.status, 200);
+    assert.equal(liveness.body.status, "alive");
+    if (readiness.transportError) {
+      assert.equal(readiness.transportError, "TimeoutError");
+    } else assertReadiness(readiness, "postgres", true);
+  }
+}
+
 function postgresQueueRetries(server) {
   return server
     .diagnostics()
@@ -88,18 +110,12 @@ export async function interruptGoalLaneDependency({
   const nativePeers = postgres
     ? fixture.peers.filter(({ kind }) => kind === "rust")
     : fixture.peers;
-  const referencePeers = postgres
-    ? fixture.peers.filter(({ kind }) => kind === "node")
-    : [];
   const referenceSamples = [];
   function sampleReference(phase) {
-    for (const peer of referencePeers) {
+    if (postgres)
       referenceSamples.push(
-        Promise.all([probe(peer), probe(peer, "/healthz")]).then(
-          ([readiness, liveness]) => ({ phase, readiness, liveness }),
-        ),
+        ...sampleReferencePostgresReadiness(fixture.peers, phase),
       );
-    }
   }
   const serverPids = fixture.peers.map(({ server }) => server.child.pid);
   const outage = (evidence.dependencyOutage = { dependency, serverPids });
@@ -180,13 +196,7 @@ export async function interruptGoalLaneDependency({
   }
   if (referenceSamples.length) {
     outage.referenceOfflineReadiness = await Promise.all(referenceSamples);
-    for (const { readiness, liveness } of outage.referenceOfflineReadiness) {
-      assert.equal(liveness.status, 200);
-      assert.equal(liveness.body.status, "alive");
-      if (readiness.transportError) {
-        assert.equal(readiness.transportError, "TimeoutError");
-      } else assertReadiness(readiness, dependency, true);
-    }
+    assertReferencePostgresOutage(outage.referenceOfflineReadiness);
   }
   if (!postgres) {
     assert.ok(outage.offlineMs > outage.claimTtlMs);
