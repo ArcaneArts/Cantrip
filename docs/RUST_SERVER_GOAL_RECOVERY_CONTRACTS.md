@@ -69,3 +69,19 @@ first. Supply the native fixture executables, PostgreSQL test binaries and
 PGlite runtime assets as for the other server HTTP suites. Use
 `--database bundled-postgres` or `--database postgres` for the other backends,
 and `--profile none|password|accounts` to run one authentication profile.
+
+## Current Goal publication and source capture
+
+The `1.1.2869` repository fixtures passed 1,101 paired cases and 15
+exact reopens across PGlite, bundled PostgreSQL, and external PostgreSQL.
+The comparisons explicitly check the output seal on an active native-root
+response and the pending queue wake on an autonomous terminal receipt.
+Replay, authority rejection, SQL rollback, and restart preserve the full
+raw state within each runtime.
+
+The same build passed 165 paired HTTP observations and 54 state reopens
+across all nine database and authentication combinations. The Task source
+capture exercises actual worker transport, encrypted binding, and database
+rollback with controlled native replies. Actual Core provider transfer
+remains open.
+[Current Goal acceptance record](security/rust-server-2869-goal-publication-acceptance.json)
