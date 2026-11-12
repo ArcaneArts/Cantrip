@@ -175,10 +175,19 @@ attempt after the stale completion.
 
 The [packaged replica acceptance record](security/rust-server-current-replica-acceptance.json)
 binds the executable, worker, harness and reports to all ten routes, the
-`project_replica_jobs` table and the `project-replica-job` Live resource. The
-current managed-link repair and synchronization cases use controlled worker
-responses. Full managed Git execution on this candidate, dependency loss
-during shared replica dispatch and final shipping artifacts remain open.
+`project_replica_jobs` table and the `project-replica-job` Live resource.
+
+The existing browser and packaged 1.1.2881 worker passed managed clone,
+synchronization and removal against both servers on all three stores. A
+separate managed-link repair returned HTTP 502 on both servers. The project's
+repository handle resolved on the primary worker, while the successful replica
+jobs retained a handle that resolved on the worker responsible for the link.
+Rust now uses that replica job handle when available and falls back to the
+project handle for older records. A macOS ARM64 development build restored the
+link and left the checkout unchanged on repeat repair on all three stores.
+The controlled HTTP comparison passed 714 paired observations. Dependency loss
+during shared replica dispatch and qualification of the final shipping
+artifacts remain open.
 
 Set the existing fixture variables to the packaged server, database assets,
 worker, CLI and Redis executables. With the workspace packages and Node
@@ -189,6 +198,10 @@ comparison on external PostgreSQL:
 node --import tsx scripts/server-rust/actual-folder-client.mjs \
   --replicas --production-server --database pglite \
   --report /absolute/path/replicas-pglite.json
+
+node --import tsx scripts/server-rust/actual-folder-client.mjs \
+  --runtime rust --replicas --github-replicas --github-replica-repair \
+  --database pglite --report /absolute/path/replica-link-repair-pglite.json
 
 node --import tsx scripts/server-rust/actual-folder-client.mjs \
   --replicas --database postgres --server-pair all \

@@ -2,7 +2,15 @@
 // All server state and checkouts belong to the disposable acceptance fixture.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFile, realpath, stat, writeFile, rm } from "node:fs/promises";
+import {
+  lstat,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { eventually } from "./full-worker.mjs";
 
@@ -109,13 +117,18 @@ export async function actualGithubReplicas({
     result.steps.push(
       "existing encrypted browser imports public GitHub repository through real gh clone and full worker into a managed checkout",
     );
+    const repairLink = process.argv.includes("--github-replica-repair");
+    const linkPath = path.join(secondaryDataDirectory, "replica-link");
+    const placement = repairLink
+      ? { mode: "managed-link", path: linkPath }
+      : { mode: "managed" };
     const provision = await call("createProjectReplica", [
       projectId,
       {
         workerId: secondaryWorkerId,
         repository,
         expectedRevision: revision,
-        placement: { mode: "managed" },
+        placement,
         idempotencyKey: "actual-github-replica",
       },
     ]);
@@ -150,7 +163,7 @@ export async function actualGithubReplicas({
         workerId: secondaryWorkerId,
         repository,
         expectedRevision: revision,
-        placement: { mode: "managed" },
+        placement,
         idempotencyKey: "actual-github-replica",
       },
     ]);
@@ -174,6 +187,38 @@ export async function actualGithubReplicas({
     result.steps.push(
       "encrypted synchronization uses real Git fetch and verifies the exact managed replica revision",
     );
+    if (repairLink) {
+      assert.equal(secondary.placementMode, "managed-link");
+      assert.match(secondary.linkPath, /^ctrr_[A-Za-z0-9_-]{43}$/u);
+      assert.equal((await lstat(linkPath)).isSymbolicLink(), true);
+      assert.equal(await realpath(linkPath), await realpath(secondary.path));
+      await unlink(linkPath);
+      await assert.rejects(lstat(linkPath), { code: "ENOENT" });
+
+      const repaired = await call("repairProjectReplicaLink", [
+        projectId,
+        secondary.id,
+      ]);
+      assert.equal(repaired.status, "ready");
+      assert.equal(repaired.repaired, true);
+      assert.equal(await realpath(linkPath), await realpath(secondary.path));
+      assert.equal(git(secondary.path, "rev-parse", "HEAD"), revision);
+
+      const replayed = await call("repairProjectReplicaLink", [
+        projectId,
+        secondary.id,
+      ]);
+      assert.equal(replayed.status, "ready");
+      assert.equal(replayed.repaired, false);
+      result.managedLinkRepair = {
+        repaired: repaired.repaired,
+        replayChanged: replayed.repaired,
+        revision,
+      };
+      result.steps.push(
+        "the full replica worker restores its managed link and repeats repair without changing the checkout",
+      );
+    }
     const ignoredName = "private-replica-user-data.tmp";
     const ignoreRules = path.join(
       secondaryDataDirectory,

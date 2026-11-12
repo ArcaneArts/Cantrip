@@ -2750,7 +2750,6 @@
           "scripts/server-rust/replica-http-lifetimes.mjs"
         ],
         "remaining": [
-          "Run the managed synchronization lifecycle through the full worker on the current candidate.",
           "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
           "Qualify replica behavior on the final supported shipping artifacts."
         ]
@@ -2795,7 +2794,6 @@
           "scripts/server-rust/replica-http-lifetimes.mjs"
         ],
         "remaining": [
-          "Run managed-link repair through the full worker on the current candidate.",
           "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
           "Qualify replica behavior on the final supported shipping artifacts."
         ]
@@ -14255,7 +14253,6 @@
           "scripts/server-rust/actual-project-replicas.mjs"
         ],
         "remaining": [
-          "Run the managed synchronization lifecycle through the full worker on the current candidate.",
           "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
           "Qualify replica behavior on the final supported shipping artifacts."
         ]
@@ -14303,7 +14300,6 @@
           "scripts/server-rust/actual-project-replicas.mjs"
         ],
         "remaining": [
-          "Run managed-link repair through the full worker on the current candidate.",
           "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
           "Qualify replica behavior on the final supported shipping artifacts."
         ]
@@ -29936,6 +29932,7 @@
       "status": "partial",
       "qualification": "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
       "acceptance": "docs/security/rust-server-current-replica-acceptance.json",
+      "managedSynchronizationAndLinkRepair": "docs/security/rust-server-current-replica-acceptance.json#managedSynchronizationAndLinkRepair",
       "counts": {
         "packagedBrowserRuntimeRuns": 10,
         "sharedServerPairings": 4,
@@ -29947,8 +29944,6 @@
         "coveredRoutes": 10
       },
       "remaining": [
-        "Run the managed synchronization lifecycle through the full worker on the current candidate.",
-        "Run managed-link repair through the full worker on the current candidate.",
         "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
         "Qualify replica behavior on the final supported shipping artifacts."
       ]
