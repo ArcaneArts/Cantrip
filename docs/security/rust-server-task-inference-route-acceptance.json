@@ -87,7 +87,7 @@
     }
   ],
   "remaining": [
-    "Windows and Linux runtime qualification for queued transfer and rejection after dispatch."
+    "Windows runtime qualification and Linux container qualification on PGlite and bundled PostgreSQL for queued transfer and rejection after dispatch."
   ],
   "fullWorkerReconnect": {
     "scope": "The macOS ARM64 1.1.2881 packaged server and worker executed both HTTP routes and the worker revocation for a previously queued Task on each store. The Task and its encrypted input were seeded. A development SQL executable seeded and inspected the two local databases in separate, stopped-server phases. The external PostgreSQL case used a direct database connection for those checks.",
@@ -200,6 +200,123 @@
         "code": "stale-lease",
         "durableStateUnchanged": true,
         "originalTaskCompleted": true
+      }
+    ]
+  },
+  "linuxContainers": {
+    "scope": "Production Rust Linux ARM64 and x64 containers connected to isolated external PostgreSQL databases. The unchanged packaged macOS ARM64 worker connected over HTTP and WebSocket. The x64 Linux executable ran under Rosetta, with its mapped ELF inode and artifact hash verified. Queued transfer used seeded encrypted input. The browser SDK, bundled Codex and a loopback model fixture exercised active dispatch, with a read-only database comparison around the rejected request.",
+    "store": "postgres",
+    "workerTarget": "darwin-arm64",
+    "drivers": [
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/full-worker-task-seed.mjs",
+        "bytes": 4471,
+        "sha256": "9c0b60477ad91357c90e2737469d49c6f23850bfa343fe18cb1aa97f838eab39"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/linux-queued/full-packaged-worker-linux.mjs",
+        "bytes": 9037,
+        "sha256": "b83e1144fefe457045499e122400be1159c7f57c562c198e91cd4e61bd53c22b"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/linux-queued/container-task-fixture.mjs",
+        "bytes": 4807,
+        "sha256": "a18714ec935193d36379788b0590024468d47e53cff55673a2e0ec04a29ebd81"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/linux-dispatched/actual-folder-client.mjs",
+        "bytes": 82308,
+        "sha256": "122b28a6997454d5c3dd34afa962b11e01d66d68d53a17d5d8aee79656197f2f"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/linux-dispatched/actual-task-client.mjs",
+        "bytes": 30985,
+        "sha256": "e84e4b60e6e332754d7942433366a672e4b08b6c71d73afb03bbf25f16cf06e6"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/linux-dispatched/container-browser-fixture.mjs",
+        "bytes": 6537,
+        "sha256": "3ea62e4189623c20926e91c9edff4014388d416954c77fb470b4d468ad69a0e4"
+      }
+    ],
+    "cases": [
+      {
+        "target": "linux-arm64",
+        "containerImageId": "sha256:d8a7fac4f56fa62aa1c17680eb608e5a69ec5ce1de23001e7d650df4f573cae5",
+        "processObservation": "direct",
+        "elfMachine": 183,
+        "serverBytes": 106333480,
+        "serverSha256": "7738748c83116e678912a32f1681e946b2215205b85eb54e4b2415b2da689da3",
+        "verifiedArtifactFiles": 2546,
+        "queuedTransfer": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/linux-queued/arm64-full-packaged-worker.json",
+            "bytes": 1694,
+            "sha256": "4763d16d5a75d68d7015331d97dfa4c82dd67b9e68945dab3fba6206ef5e5c4e"
+          },
+          "drainingRevision": 3,
+          "dispatchFence": 9,
+          "completedRevision": 4,
+          "retainedWorkerEnrollment": true,
+          "retainedEncryptedInput": true
+        },
+        "activeDispatchRejection": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/linux-dispatched/arm64-report.json",
+            "bytes": 697893,
+            "sha256": "1ffdaba6ff234e78477697c58bdb58f9d593bcb89f174343fed0a370e77aeb43"
+          },
+          "activeProviderResponse": true,
+          "sourceHidden": true,
+          "status": 409,
+          "code": "stale-lease",
+          "durableStateUnchanged": true,
+          "originalTaskCompleted": true,
+          "plannedGoalCompleted": true,
+          "failedOperationRetried": true,
+          "pausedAdmissionRecovered": true,
+          "productSteps": 14,
+          "cleanServerShutdowns": 4
+        }
+      },
+      {
+        "target": "linux-x64",
+        "containerImageId": "sha256:059dc3842a2a8810219fc7920c9ee3a5fbae777a84505eba74d5b78570847ad7",
+        "processObservation": "mapped",
+        "elfMachine": 62,
+        "serverBytes": 110957920,
+        "serverSha256": "2b247d16a9ad93b2e59bc8db7c105b234d73505f333c5920279ea759e076e58c",
+        "verifiedArtifactFiles": 2546,
+        "queuedTransfer": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/linux-queued/x64-full-packaged-worker.json",
+            "bytes": 1711,
+            "sha256": "96e2f708580ce4489cdcf101dcf4489db4db2752a127a6c7999eed6a9bf3504a"
+          },
+          "drainingRevision": 3,
+          "dispatchFence": 9,
+          "completedRevision": 4,
+          "retainedWorkerEnrollment": true,
+          "retainedEncryptedInput": true
+        },
+        "activeDispatchRejection": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/linux-dispatched/x64-report.json",
+            "bytes": 706245,
+            "sha256": "c75089265c287e72f23105557cd2cef07fd6d7c3991c0fa4def8aeb646827496"
+          },
+          "activeProviderResponse": true,
+          "sourceHidden": true,
+          "status": 409,
+          "code": "stale-lease",
+          "durableStateUnchanged": true,
+          "originalTaskCompleted": true,
+          "plannedGoalCompleted": true,
+          "failedOperationRetried": true,
+          "pausedAdmissionRecovered": true,
+          "productSteps": 14,
+          "cleanServerShutdowns": 4
+        }
       }
     ]
   }

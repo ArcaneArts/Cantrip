@@ -5390,9 +5390,9 @@
           "docs/security/rust-server-task-inference-route-acceptance.json"
         ],
         "remaining": [
-          "Windows and Linux runtime qualification for queued transfer and rejection after dispatch."
+          "Windows runtime qualification and Linux container qualification on PGlite and bundled PostgreSQL for queued transfer and rejection after dispatch."
         ],
-        "scope": "Current macOS ARM64 HTTP qualification across all three stores verifies owner isolation, typed conflicts and idempotent transfer. The packaged server and worker passed queued transfer after an offline worker rejoined with its retained enrollment and acknowledged revocation. The dispatch fence advanced and the encrypted input was preserved. With a real Codex model request already dispatched on macOS with external PostgreSQL, both the Node reference and packaged Rust hid the queued source and returned HTTP 409 stale-lease without mutating the Task."
+        "scope": "Current macOS ARM64 HTTP qualification across all three stores verifies owner isolation, typed conflicts and idempotent transfer. The packaged server and worker passed queued transfer after an offline worker rejoined with its retained enrollment and acknowledged revocation. The dispatch fence advanced and the encrypted input was preserved. With a real Codex model request already dispatched on macOS with external PostgreSQL, both the Node reference and packaged Rust hid the queued source and returned HTTP 409 stale-lease without mutating the Task. The Rust Linux ARM64 and x64 containers passed both cases with external PostgreSQL and the packaged macOS worker."
       },
       {
         "method": "POST",
@@ -5405,9 +5405,9 @@
           "docs/security/rust-server-task-inference-route-acceptance.json"
         ],
         "remaining": [
-          "Windows and Linux runtime qualification for queued transfer and rejection after dispatch."
+          "Windows runtime qualification and Linux container qualification on PGlite and bundled PostgreSQL for queued transfer and rejection after dispatch."
         ],
-        "scope": "Current macOS ARM64 HTTP qualification across all three stores verifies owner isolation, typed conflicts and idempotent transfer. The packaged server and worker passed queued transfer after an offline worker rejoined with its retained enrollment and acknowledged revocation. The dispatch fence advanced and the encrypted input was preserved. With a real Codex model request already dispatched on macOS with external PostgreSQL, both the Node reference and packaged Rust hid the queued source and returned HTTP 409 stale-lease without mutating the Task."
+        "scope": "Current macOS ARM64 HTTP qualification across all three stores verifies owner isolation, typed conflicts and idempotent transfer. The packaged server and worker passed queued transfer after an offline worker rejoined with its retained enrollment and acknowledged revocation. The dispatch fence advanced and the encrypted input was preserved. With a real Codex model request already dispatched on macOS with external PostgreSQL, both the Node reference and packaged Rust hid the queued source and returned HTTP 409 stale-lease without mutating the Task. The Rust Linux ARM64 and x64 containers passed both cases with external PostgreSQL and the packaged macOS worker."
       },
       {
         "method": "POST",
