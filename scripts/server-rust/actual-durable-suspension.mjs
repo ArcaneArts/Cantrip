@@ -19,6 +19,7 @@ import { pathToFileURL } from "node:url";
 import { chromium } from "playwright-core";
 import { buildRustServer, buildWorkerCli, repositoryRoot } from "./build.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
+import { postgresFixture } from "./postgres-fixture.mjs";
 import { eventually, launchActualWorker } from "./full-worker.mjs";
 import { modelFunctions, taskModelProvider } from "./task-model-provider.mjs";
 import { prestartPreparationFixture } from "./prestart-preparation-fixture.mjs";
@@ -86,8 +87,10 @@ const root = await mkdtemp(
 process.env.PGLITE_RUNTIME_DIR = path.join(root, "native-runtime");
 const reportPath = option("--report") ?? root + "-report.json";
 const kinds = option("--server") ? [option("--server")] : ["node", "rust"];
+const databaseMode = option("--database") ?? "pglite";
 const report = {
   suite: "production-durable-suspension",
+  databaseMode,
   root,
   passed: false,
   runtimes: [],
@@ -99,7 +102,7 @@ const taskStage = process.argv.includes("--task-planning-origin")
   : process.argv.includes("--task-finalizer-origin")
     ? "finalize"
     : "direct";
-let browser, vite, failure;
+let browser, vite, postgres, failure;
 
 async function flow(kind, executable, cliBinary) {
   const result = { kind, kills: [], stages: [] };
@@ -135,16 +138,26 @@ async function flow(kind, executable, cliBinary) {
     ? await prestartPreparationFixture(directory)
     : null;
   const workerId = "durable-production-worker";
+  const databaseUrl =
+    postgres && (kind === "node" || databaseMode === "postgres")
+      ? await postgres.database()
+      : undefined;
   const fixture = new HttpFixture({
     kind,
     executable,
     root,
     name: "durable-server",
-    databaseMode: "pglite",
+    databaseMode,
     providerAuthDrain: true,
     environment: {
       CANTRIP_AUTH_MODE: "accounts",
       CANTRIP_APP_ORIGINS: new URL(vite.resolvedUrls.local[0]).origin,
+      ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
+      ...(databaseMode === "bundled-postgres" && kind === "rust"
+        ? {
+            CANTRIP_POSTGRES_BIN_DIR: process.env.CANTRIP_TEST_POSTGRES_BIN_DIR,
+          }
+        : {}),
     },
   });
   let worker, terminal, terminalId;
@@ -160,6 +173,17 @@ async function flow(kind, executable, cliBinary) {
   };
   try {
     await fixture.start();
+    const ready = await fetch(fixture.server.origin + "/readyz");
+    assert.equal(ready.status, 200);
+    const { database } = await ready.json();
+    assert.equal(
+      database.engine,
+      databaseMode === "pglite" ? "pglite" : "postgres",
+    );
+    result.database = {
+      engine: database.engine,
+      external: Boolean(databaseUrl),
+    };
     await page.goto(
       vite.resolvedUrls.local[0] + "__durable_suspension_fixture",
     );
@@ -1272,6 +1296,7 @@ try {
   vite = await createServer({
     root: appRoot,
     configFile: path.join(appRoot, "vite.config.ts"),
+    cacheDir: path.join(root, "vite"),
     server: { host: "127.0.0.1", port: 0, strictPort: false },
     plugins: [
       {
@@ -1298,18 +1323,35 @@ try {
   });
   await vite.listen();
   browser = await chromium.launch({ headless: true });
-  const cliBinary = await buildWorkerCli();
+  const cliBinary =
+    process.env.CANTRIP_TEST_CLI_BIN ?? (await buildWorkerCli());
   const executable = kinds.includes("rust")
-    ? await buildRustServer()
+    ? (process.env.CANTRIP_TEST_SERVER_BINARY ?? (await buildRustServer()))
     : undefined;
+  if (
+    databaseMode === "postgres" ||
+    (databaseMode === "bundled-postgres" && kinds.includes("node"))
+  )
+    postgres = await postgresFixture(path.join(root, "postgres"), {
+      restartable: true,
+    });
   for (const kind of kinds) await flow(kind, executable, cliBinary);
   report.passed = true;
 } catch (error) {
   failure = error;
   report.error = error.stack;
 } finally {
-  await browser?.close();
-  await vite?.close();
+  const cleanup = await Promise.allSettled([
+    browser?.close(),
+    vite?.close(),
+    postgres?.close(),
+  ]);
+  const cleanupFailure = cleanup.find((result) => result.status === "rejected");
+  if (cleanupFailure) {
+    report.cleanupError = cleanupFailure.reason.stack;
+    report.passed = false;
+    failure ??= cleanupFailure.reason;
+  }
   if (report.passed && !process.argv.includes("--retain")) {
     try {
       await rm(root, { recursive: true });

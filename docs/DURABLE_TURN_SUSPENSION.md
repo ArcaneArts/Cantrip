@@ -498,10 +498,23 @@ CANTRIP_CODEX_BIN=/absolute/path/to/bundle/codex \
 ```
 
 The default run exercises both Node and Rust servers with isolated PGlite
-storage. `--server node` or `--server rust` selects one implementation;
-`--report <path>` saves its report. Successful runs remove disposable state
-unless `--retain` is supplied; failures preserve it for diagnosis. The current
-process-tree inspection uses POSIX tools.
+storage. Use `--database bundled-postgres` or `--database postgres` to
+exercise PostgreSQL. Set `CANTRIP_TEST_POSTGRES_BIN_DIR` to the packaged
+PostgreSQL `bin` directory. The Node reference uses its own disposable
+external database for both PostgreSQL cases. Rust runs its private
+PostgreSQL process in bundled mode and uses a separate disposable database
+in external mode. Each run records the engine returned by the live readiness
+endpoint.
+
+Set `CANTRIP_TEST_SERVER_BINARY` and `CANTRIP_TEST_CLI_BIN` to exercise
+existing server and CLI executables. Set `CANTRIP_TEST_WORKER_PACKAGE`
+to launch the packaged worker entrypoint with its installed dependencies.
+`CANTRIP_CODEX_BIN` still identifies the verified native runtime.
+
+Use `--server node` or `--server rust` to select one implementation.
+`--report <path>` saves the report. Successful runs remove disposable state
+unless `--retain` is supplied. Failures preserve it for diagnosis. The
+current process-tree inspection uses POSIX tools.
 
 Add `--mounted-ui` to drive the real application. Setup still uses the encrypted
 SDK. The test then selects the chat through the sidebar, clicks Pause while
