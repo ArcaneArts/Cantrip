@@ -72,7 +72,13 @@ with a read-only root, a non-executable temporary mount and a non-root
 service account. The suite verified SQL export and retained state on
 restart and through hosted reopening. The first run exposed an empty
 Docker port mapping immediately after restart. The harness now refreshes
-the mapping on each readiness attempt.
+the mapping on each readiness attempt. The same native archive passed the
+local Winterhold rehearsal on ARM64 systemd and Caddy across all three
+stores. The 18 installer calls included six expected migration and startup
+failures and a forced start-limit recovery. Sessions and accepted writes
+survived rollback to the previous Rust release for the local stores and the
+Node release over required TLS for external PostgreSQL. Each mode returned
+to the rebuilt Rust executable and verified App Live over HTTPS.
 [Linux ARM64 replica repair rebuild](security/rust-server-2881-linux-arm64-acceptance.json#replicaRepairRebuild)
 
 The original-profile rehearsal passes upgrades and restarts with retained
