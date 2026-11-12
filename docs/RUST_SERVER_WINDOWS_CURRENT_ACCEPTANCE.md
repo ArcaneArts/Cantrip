@@ -40,6 +40,20 @@ case remained unrun in that attempt.
 The patched NSIS installer matched all 14,092 staged files. Its changes
 relative to the previous installer were the Rust server executable and its
 manifest. The local QA updater signature verified.
+
+The installed app from this patched NSIS package passed first start and
+persisted-profile reopen on PGlite, bundled PostgreSQL, and external
+PostgreSQL. Each pair retained the server identity and the setting written on
+first start. All six launches received a reply from the bundled worker and
+quit through the native tray, with a completed Rust shutdown and both child
+processes reaped. Bundled PostgreSQL stopped with the app. External
+PostgreSQL observed the app connection and remained running after app shutdown.
+
+A read-only NTFS snapshot independently matched all 14,092 installed files
+to the installer manifest. All six disk receipts match the guest serial.
+The evaluation guest shut down after bundled PostgreSQL first start, and
+the test resumed from the same disk. The external PostgreSQL first-start
+observer resumed tray confirmation on the same app process.
 [Patched Windows installer record](security/rust-server-2881-win32-x64-desktop.json#patchedInstaller)
 
 ## Windows x64 rebuilt desktop installer

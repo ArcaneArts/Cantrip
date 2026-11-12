@@ -29599,6 +29599,15 @@
       "currentStandaloneAcceptance": "docs/security/rust-server-2881-win32-x64-standalone.json",
       "currentInstalledDesktopAcceptance": "docs/security/rust-server-2881-win32-x64-desktop.json",
       "currentSignedUpdaterAcceptance": "docs/security/rust-server-2881-win32-x64-desktop.json#signedUpdate",
+      "patchedInstalledDesktop": {
+        "record": "docs/security/rust-server-2881-win32-x64-desktop.json#patchedInstaller",
+        "serverSourceCommit": "deefa4204ce1f0eb0c76d84df854f1fb14130c47",
+        "candidateVersion": "1.1.2881",
+        "installedCasesPassed": 6,
+        "verifiedInstalledPayloadFiles": 14092,
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "scope": "The Windows 11 x64 guest passes first start, persisted-profile reopen, real worker replies, retained writes, and native tray shutdown using the installer with the PGlite null-device fix."
+      },
       "evidence": [
         "docs/RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md",
         "docs/security/rust-server-2869-win32-x64-acceptance.json",

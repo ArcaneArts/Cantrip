@@ -83,6 +83,10 @@ The native archive built with that fix passed the full PGlite standalone
 case. The same run reached bundled PostgreSQL readiness and exceeded the
 standalone shutdown deadline. The rebuilt NSIS installer matched all
 14,092 staged files and its QA updater signature verified.
+The patched installed app also passed six first-start and persisted-profile
+reopen cases on the three stores. It retained the accepted settings and
+identities, received real worker replies, and shut down cleanly through the
+tray. A read-only guest disk snapshot matched all 14,092 installed files.
 [Windows x64 qualification](RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md)
 The [native desktop workspace qualification](RUST_SERVER_DESKTOP_WORKSPACE_ACCEPTANCE.md)
 also exercises actual macOS popouts, dirty documents, server restart, WebView
