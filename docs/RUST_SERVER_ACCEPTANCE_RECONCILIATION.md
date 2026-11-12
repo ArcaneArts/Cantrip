@@ -17,6 +17,11 @@ The Linux x64 `1.1.2881` container and local Winterhold rehearsal passed all
 three stores on an ARM64 Linux host with x64 emulation. The installer
 recovered from six injected failures, and accepted writes survived
 rollback to the previous Rust or Node release and return to Rust.
+The x64 package rebuilt at `ff6a4b060` repeated all 18 installer
+operations across the three stores, including six injected migration and
+startup failures. Caddy HTTPS, App Live, external PostgreSQL TLS, and
+systemd shutdown passed. The rehearsal used tmpfs for release files and
+the container filesystem for database profiles.
 [Linux x64 package acceptance](security/rust-server-2881-linux-x64-acceptance.json)
 
 The native Linux ARM64 `1.1.2881` container and local Winterhold rehearsal
