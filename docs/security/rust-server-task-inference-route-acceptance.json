@@ -86,9 +86,7 @@
       }
     }
   ],
-  "remaining": [
-    "Windows rejection after active dispatch while the real model response is held."
-  ],
+  "remaining": [],
   "fullWorkerReconnect": {
     "scope": "The macOS ARM64 1.1.2881 packaged server and worker executed both HTTP routes and the worker revocation for a previously queued Task on each store. The Task and its encrypted input were seeded. A development SQL executable seeded and inspected the two local databases in separate, stopped-server phases. The external PostgreSQL case used a direct database connection for those checks.",
     "harnessCommit": "a5d6a25eab1914ba07323d0749aad1e55bd1bb15",
@@ -1418,5 +1416,31 @@
       "bytes": 6066,
       "sha256": "3c43ed91f92d0441d9575fbd7a19f7d4ed3f504752a46b1e5aaeb6473e3aedd1"
     }
+  },
+  "currentWindowsActiveDispatch": {
+    "sourceCommit": "01928fcffe97701e36e0bf51a1639bffaf1ef0c3",
+    "databaseMode": "postgres",
+    "observation": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/installed-current/external-retry/task-active-disk/active-dispatch.json",
+      "bytes": 2131,
+      "sha256": "c1803346d96086c9050324ae00ba4f625a46be7cd6ea00e06cbe172abc042fd4"
+    },
+    "diskAndSerialVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/installed-current/external-retry/task-active-disk/verified.json",
+      "bytes": 588,
+      "sha256": "3094d7393f345a76611c573fada0a7b5eb860c21f3025a101707790660f09e1e"
+    },
+    "guestReceipt": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/installed-current/external-retry/task-active-disk/receipt.json",
+      "bytes": 1805,
+      "sha256": "41a6d36dcc5264b19f4de8df2d5708da3629b4f3177f73db1d706cfb0f7a3c18"
+    },
+    "serialObservations": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/installed-current/external-retry/task-active-disk/serial-events.json",
+      "bytes": 4266,
+      "sha256": "db4ceacb4e12cbabcaf573646763ad087f3157d77e0489ccf5aedf6f2673e48a"
+    },
+    "workerTeardown": "Windows taskkill observed eight process identities and verified the owned tree was gone.",
+    "cleanServerShutdown": true
   }
 }

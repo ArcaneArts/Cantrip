@@ -12,8 +12,19 @@ serial output and each SQL export matched its receipt.
 
 The corresponding NSIS bundle matched all 14,092 payload files. It contains
 the same Rust executable as the standalone archive and its QA updater
-signature verified. Installed runtime and signed-update qualification
-remain open for this bundle.
+signature verified. Fresh and reopened profiles passed for all three stores.
+Each pair retained its server identity and accepted setting, received a
+packaged worker reply and shut down cleanly. The bundled database stopped
+with Cantrip. External PostgreSQL stayed running after the app quit.
+The guest shut down during the first external run when its evaluation
+license expired. The retry used a separate profile and passed both cases.
+All six guest disk receipts match the serial observations.
+
+The signed updater rejected a tampered package, installed the verified
+payload and retained the PGlite profile. The updated app owned the expected
+server and worker. A guest disk snapshot shows the server completed its
+shutdown and a separate process observation shows both children exited.
+The PowerShell fixture's final receipt is still missing.
 [Windows x64 desktop rebuild](security/rust-server-2881-win32-x64-desktop.json#workspaceRemovalRebuild)
 
 The standalone server and packaged worker passed queued Task provider
@@ -35,6 +46,15 @@ lock, then committed the phase and revision together. Both the waiting
 read and a subsequent read returned completed at revision 4. The guest
 disk report matched serial, and the server shut down cleanly.
 [Windows settlement read](security/rust-server-task-inference-route-acceptance.json#currentWindowsSettlementRead)
+
+With the same server and worker, the existing browser received HTTP 409
+with `stale-lease` while a real Task dispatch awaited its model response.
+The rejection left the durable revision and fence unchanged and kept the
+provider route hidden. The original Task finished after the response was
+released, and the browser decrypted its answer. Guest disk and serial
+receipts match. The Rust server shut down cleanly, and the Windows
+teardown verified that the eight observed worker processes exited.
+[Windows active dispatch](security/rust-server-task-inference-route-acceptance.json#currentWindowsActiveDispatch)
 
 ## Windows x64 standalone `1.1.2881`
 

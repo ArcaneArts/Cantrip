@@ -29638,7 +29638,9 @@
       "previousInstalledDesktop": "docs/security/rust-server-win32-x64-acceptance.json#currentInstalledDesktop",
       "installedX64SignedUpdate": "docs/security/rust-server-win32-x64-acceptance.json#installedX64SignedUpdate",
       "installedX64PostgresModes": "docs/security/rust-server-win32-x64-acceptance.json#installedX64PostgresModes",
-      "scope": "The earlier Windows ARM64 guest passes all three stores with x64 standalone and server-only desktop supervision, plus Node PGlite upgrade, post-write rollback and re-upgrade. The Windows x64 guest qualifies the 1.1.2869 GNU standalone artifact across all three stores with 2281 package files and three verified SQL exports. The installed signed 1.1.2845 to 1.1.2869 update rejects a modified installer, verifies 14089 installed files, retains the PGlite profile and passes its subsequent reopen and tray shutdown. The current installed app passes seven tray shutdowns, including the retained profile and three first-start/reopen database pairs. Both PostgreSQL modes reopen from the persisted selection, and the external cluster survives application shutdown. It also passes the installed signed 1.1.2839 to 1.1.2841 PGlite update with full worker and retained identity/write. The installed 1.1.2841 historical PGlite profile passes conversion and preserves all 1660 original files. Earlier installed Windows x64 1.1.2845 updates a retained PGlite profile and verifies all 14090 signed payload files. The retained profile and each first-start/reopen database pair pass real worker replies and seven tray shutdowns. Bundled and external PostgreSQL reopen from the persisted selection."
+      "scope": "The earlier Windows ARM64 guest passes all three stores with x64 standalone and server-only desktop supervision, plus Node PGlite upgrade, post-write rollback and re-upgrade. The Windows x64 guest qualifies the 1.1.2869 GNU standalone artifact across all three stores with 2281 package files and three verified SQL exports. The installed signed 1.1.2845 to 1.1.2869 update rejects a modified installer, verifies 14089 installed files, retains the PGlite profile and passes its subsequent reopen and tray shutdown. The current installed app passes seven tray shutdowns, including the retained profile and three first-start/reopen database pairs. Both PostgreSQL modes reopen from the persisted selection, and the external cluster survives application shutdown. It also passes the installed signed 1.1.2839 to 1.1.2841 PGlite update with full worker and retained identity/write. The installed 1.1.2841 historical PGlite profile passes conversion and preserves all 1660 original files. Earlier installed Windows x64 1.1.2845 updates a retained PGlite profile and verifies all 14090 signed payload files. The retained profile and each first-start/reopen database pair pass real worker replies and seven tray shutdowns. Bundled and external PostgreSQL reopen from the persisted selection.",
+      "rebuiltInstalledDesktop": "docs/security/rust-server-2881-win32-x64-desktop.json#workspaceRemovalRebuild",
+      "currentTaskActiveDispatch": "docs/security/rust-server-task-inference-route-acceptance.json#currentWindowsActiveDispatch"
     },
     "currentLinuxArm64Qualification": {
       "status": "implemented-with-scoped-local-qualification",
@@ -29657,7 +29659,8 @@
       "installerCalls": 18,
       "recoveredInstallerFailures": 6,
       "directNativeExecutableHashes": 10,
-      "scope": "Native Linux ARM64 1.1.2881 Debian container and local Ubuntu ARM64 systemd and Caddy. All three stores retain sessions and accepted writes across post-write rollback and return to Rust. External PostgreSQL uses required TLS and the x64 Node rollback image. Direct executable observations match the native ARM64 distribution. An attempted write outside the profile failed in the service mount namespace."
+      "scope": "Native Linux ARM64 1.1.2881 Debian container and local Ubuntu ARM64 systemd and Caddy. All three stores retain sessions and accepted writes across post-write rollback and return to Rust. External PostgreSQL uses required TLS and the x64 Node rollback image. Direct executable observations match the native ARM64 distribution. An attempted write outside the profile failed in the service mount namespace.",
+      "replicaRepairRebuild": "docs/security/rust-server-2881-linux-arm64-acceptance.json#replicaRepairRebuild"
     },
     "defaultRuntimeCutover": {
       "status": "implemented-with-scoped-local-qualification",
@@ -29947,7 +29950,8 @@
         "Extend active interruption coverage beyond direct replica provisioning.",
         "Qualify replica behavior on the final supported shipping artifacts."
       ],
-      "activeSharedRedisDispatch": "docs/security/rust-server-current-replica-acceptance.json#activeSharedRedisDispatch"
+      "activeSharedRedisDispatch": "docs/security/rust-server-current-replica-acceptance.json#activeSharedRedisDispatch",
+      "optimizedMacosRebuild": "docs/security/rust-server-2881-macos-acceptance.json#replicaRepairRebuild"
     },
     "currentStreamedTaskReceiptAcceptance": {
       "status": "partial",
