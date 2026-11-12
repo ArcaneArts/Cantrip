@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.2881",
+  "sourceCommit": "ccafd3cd4baea444ab43c1b84471ab3225f718e3",
+  "completeReplacement": false,
+  "client": {
+    "device": "iPhone 17 simulator",
+    "iosVersion": "26.4",
+    "architecture": "arm64",
+    "signing": "ad hoc"
+  },
+  "serverPlatform": "darwin-arm64",
+  "scope": "Installed Capacitor app in two disposable simulators against the packaged Rust server in hosted account mode over local TLS. XCTest exercised account sign-in, server switching for the two PostgreSQL peers, app relaunch and retained encrypted account access after real Rust process restarts.",
+  "artifacts": {
+    "iosSimulatorApp": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-ios-external-postgres/cantrip-ios-simulator-1.1.2881.zip",
+      "bytes": 4801897,
+      "sha256": "71322d012556325ed22340a4835039149e57271ad5b2ea1704db8a34227abb0d"
+    },
+    "installedExecutableSha256": "c2ab2c9d69a42162a410d26ffcfda869e75e9d27bda02835fa53f9d29ece3286",
+    "installedWebIndexSha256": "8ae112164187154107303293ad4d666e6e9b9227e38159f3ebe6bc5597ef0e02",
+    "packagedRustExecutable": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94198976,
+      "sha256": "fbb5069e83c4d9a7b5824713900b62477ad6d3ba90419c71702abd11d3815244"
+    },
+    "appSignatureVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-ios-external-postgres/installed-app-signature-verification.log",
+      "bytes": 383,
+      "sha256": "8340380608ba96bcf2a5eeca11e8cae6e68c8e8726befef81a1fb896e1897bd1"
+    },
+    "uiSummary": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-ios-external-postgres/ui-summary-all-stores.md",
+      "bytes": 211,
+      "sha256": "57e5d45ed1c7b45e86ae5dfe00e70d6d8d0755080a87443bbf6f7ff65846c2bc"
+    }
+  },
+  "scenarios": [
+    {
+      "rustStores": ["postgres", "bundled-postgres"],
+      "passingUiRuns": 2,
+      "retainedInstallationKeys": 1,
+      "retainedAccountBindings": 2,
+      "cleanRustServerRestarts": 2,
+      "cleanRustServerExits": 4,
+      "transportAfterRustRestart": {
+        "postgres": {
+          "authenticatedSessionResponses": 1,
+          "appLiveWebSocketUpgrades": 1
+        },
+        "bundled-postgres": {
+          "authenticatedSessionResponses": 2,
+          "appLiveWebSocketUpgrades": 2
+        }
+      },
+      "uiResults": [
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-ios-external-postgres/installed-external-and-bundled-product-name-summary.json",
+          "bytes": 1031,
+          "sha256": "8eb037a677e3de9dc12bb1f47312410314cfefad0e6fd563e36547544da45662"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-ios-external-postgres/installed-after-rust-restart-summary.json",
+          "bytes": 1032,
+          "sha256": "c823e1047e0cfaef04ee80375af94b2a2f2df85f3fde31fe5c179032f47f383b"
+        }
+      ],
+      "transportWitness": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-ios-external-postgres/http-witness.jsonl",
+        "bytes": 47105,
+        "sha256": "e04930e2117d3aa136d705f37cd2f3e677fa710696a65ece0428474f7379aad7"
+      },
+      "catalogBeforeRestart": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-ios-external-postgres/catalog-before-restart.sqlite3",
+        "bytes": 40960,
+        "sha256": "2143b935fd9bce1d5a61678fa5d74c31d9bbea938d7af4b49a55923b81a069ea"
+      },
+      "catalogAfterRestart": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-ios-external-postgres/catalog-after-restart.sqlite3",
+        "bytes": 40960,
+        "sha256": "e0b6b230686299ec0d5827d4ad70fbcabf2682c01b784aac31160f1248733279"
+      }
+    },
+    {
+      "rustStores": ["pglite"],
+      "passingUiRuns": 2,
+      "retainedInstallationKeys": 1,
+      "retainedAccountBindings": 1,
+      "cleanRustServerRestarts": 1,
+      "cleanRustServerExits": 2,
+      "transportAfterRustRestart": {
+        "pglite": {
+          "authenticatedSessionResponses": 1,
+          "appLiveWebSocketUpgrades": 1
+        }
+      },
+      "uiResults": [
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-ios-external-postgres/pglite/installed-pglite-summary.json",
+          "bytes": 1039,
+          "sha256": "1ac1293c5e079f19673077d4f5588ff7d24aaf02e15289290da6eccdcb1ac5b2"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-ios-external-postgres/pglite/installed-after-rust-restart-summary.json",
+          "bytes": 1039,
+          "sha256": "babf242c4e033c5878210b4924bdae764fa85a66c30d71cda2373281f29fe6b1"
+        }
+      ],
+      "transportWitness": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-ios-external-postgres/pglite/http-witness.jsonl",
+        "bytes": 16007,
+        "sha256": "1273a04ece3f009a50b58a4f2ae43ce0b3357d32e73522c964ed3b3ad3c7655f"
+      },
+      "catalogBeforeRestart": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-ios-external-postgres/pglite/catalog-before-restart.sqlite3",
+        "bytes": 40960,
+        "sha256": "c7c90bf1628b15b11f2cca6213e7e1ae4e48b0c12032c3d4f4091ac428a2860a"
+      },
+      "catalogAfterRestart": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-ios-external-postgres/pglite/catalog-after-restart.sqlite3",
+        "bytes": 40960,
+        "sha256": "caf695e6ee042b059ad6825d2b2617d5922ce620ed89f082487cc6c641a56156"
+      }
+    }
+  ],
+  "remaining": [
+    "Installed iOS QR camera flow",
+    "Physical-device and store-signed mobile packages",
+    "Current installed Android client acceptance"
+  ]
+}
