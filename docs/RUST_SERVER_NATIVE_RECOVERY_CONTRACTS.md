@@ -346,8 +346,7 @@ PostgreSQL runs preserved the encrypted answers through restart.
 
 The [local evidence](security/rust-server-autonomous-goal-dependency-acceptance.json)
 retains the baseline and intermediate failures, the exact package
-and the current comparison runs. The separate mixed PostgreSQL
-readiness timeout remains open. All traced bundled PostgreSQL runs
+and the current comparison runs. All traced bundled PostgreSQL runs
 reached the model. The original pre-model stall remains unexplained.
 
 Run the same case with `redis` or `postgres` and a selected peer pairing.
@@ -357,4 +356,33 @@ node --import tsx scripts/server-rust/actual-folder-client.mjs \
   --tasks --task-goal-autonomous --task-goal-lane-dependency redis \
   --production-server --database postgres --server-pair rust/node \
   --report /absolute/path/autonomous-goal-redis.json
+```
+
+### Mixed peers during the external PostgreSQL outage
+
+The current package settles the original autonomous Goal receipt in both
+mixed orientations after the shared database restarts. The fixture
+releases the real observation while PostgreSQL is stopped, verifies
+that the Rust sweep retries, and checks the Rust peer's actual HTTP 503.
+The legacy Node peer's readiness and liveness are sampled during a fixed
+window. Both peers must return HTTP 200 after PostgreSQL reopens.
+
+During a separate 16.5-second process outage, the Rust peer returned
+503 on all 24 readiness requests. The Node peer returned 503 twice and
+22 requests reached the five-second client deadline. The captured Node
+socket trace records refused connections and a gap of over five seconds
+between attempts. Both peers returned 200 after restart.
+
+The [mixed PostgreSQL evidence](security/rust-server-mixed-postgres-goal-acceptance.json)
+retains an initial product run whose Node peer required a forced exit at
+a later planned restart. Its Goal had already settled. The same case
+completed the history and restart checks on rerun. The probe control
+also required a forced legacy Node exit. Those failures remain visible
+in the archived reports.
+
+```sh
+node --import tsx scripts/server-rust/actual-folder-client.mjs \
+  --tasks --task-goal-autonomous --task-goal-lane-dependency postgres \
+  --production-server --database postgres --server-pair rust/node \
+  --report /absolute/path/autonomous-goal-mixed-postgres.json
 ```

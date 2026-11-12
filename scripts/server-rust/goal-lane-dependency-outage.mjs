@@ -5,35 +5,50 @@ import { readFile, writeFile } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { eventually } from "./full-worker.mjs";
 
-async function readiness(fixture, dependency, offline) {
+const readinessTimeoutMs = 5000;
+
+async function probe({ kind, server }, route = "/readyz") {
+  const started = performance.now();
+  try {
+    const response = await fetch(server.origin + route, {
+      signal: AbortSignal.timeout(readinessTimeoutMs),
+    });
+    const body = await response.json();
+    return {
+      kind,
+      status: response.status,
+      body,
+      elapsedMs: Math.round(performance.now() - started),
+    };
+  } catch (error) {
+    return {
+      kind,
+      transportError: error.name,
+      elapsedMs: Math.round(performance.now() - started),
+    };
+  }
+}
+
+function assertReadiness(peer, dependency, offline) {
+  assert.equal(peer.transportError, undefined, `${peer.kind} readiness probe`);
+  assert.equal(peer.status, offline ? 503 : 200);
+  assert.equal(peer.body.database.engine, "postgres");
+  assert.equal(
+    peer.body.database.status,
+    offline && dependency === "postgres" ? "unavailable" : "ready",
+  );
+  assert.deepEqual(peer.body.coordination, {
+    shared: true,
+    status: offline ? "unavailable" : "ready",
+  });
+}
+
+async function readiness(peers, dependency, offline) {
   return eventually(
-    () =>
-      Promise.all(
-        fixture.peers.map(async ({ server }) => {
-          try {
-            const response = await fetch(server.origin + "/readyz", {
-              signal: AbortSignal.timeout(5000),
-            });
-            return { status: response.status, body: await response.json() };
-          } catch (error) {
-            return { error };
-          }
-        }),
-      ),
-    (peers) => {
-      for (const peer of peers) {
-        assert.ifError(peer.error);
-        assert.equal(peer.status, offline ? 503 : 200);
-        assert.equal(peer.body.database.engine, "postgres");
-        assert.equal(
-          peer.body.database.status,
-          offline && dependency === "postgres" ? "unavailable" : "ready",
-        );
-        assert.deepEqual(peer.body.coordination, {
-          shared: true,
-          status: offline ? "unavailable" : "ready",
-        });
-      }
+    () => Promise.all(peers.map((peer) => probe(peer))),
+    (samples) => {
+      for (const sample of samples)
+        assertReadiness(sample, dependency, offline);
     },
   );
 }
@@ -70,6 +85,22 @@ export async function interruptGoalLaneDependency({
   assert.ok(["redis", "postgres"].includes(dependency));
   const postgres = dependency === "postgres";
   const service = postgres ? cluster : fixture.redis;
+  const nativePeers = postgres
+    ? fixture.peers.filter(({ kind }) => kind === "rust")
+    : fixture.peers;
+  const referencePeers = postgres
+    ? fixture.peers.filter(({ kind }) => kind === "node")
+    : [];
+  const referenceSamples = [];
+  function sampleReference(phase) {
+    for (const peer of referencePeers) {
+      referenceSamples.push(
+        Promise.all([probe(peer), probe(peer, "/healthz")]).then(
+          ([readiness, liveness]) => ({ phase, readiness, liveness }),
+        ),
+      );
+    }
+  }
   const serverPids = fixture.peers.map(({ server }) => server.child.pid);
   const outage = (evidence.dependencyOutage = { dependency, serverPids });
   if (!postgres) {
@@ -89,14 +120,13 @@ export async function interruptGoalLaneDependency({
       assert.equal(outage.stop.signal, "SIGKILL");
       assert.equal(outage.stop.code, null);
     }
-    outage.offlineReadiness = await readiness(fixture, dependency, true);
+    sampleReference("after-stop");
+    outage.offlineReadiness = await readiness(nativePeers, dependency, true);
     if (postgres) {
       outage.redisDuringOutage = await fixture.redis.client.ping();
       assert.equal(outage.redisDuringOutage, "PONG");
     }
-    const rustServers = fixture.peers
-      .filter(({ kind }) => kind === "rust")
-      .map(({ server }) => server);
+    const rustServers = nativePeers.map(({ server }) => server);
     const previousRetries = postgres
       ? rustServers.map(postgresQueueRetries)
       : [];
@@ -128,10 +158,27 @@ export async function interruptGoalLaneDependency({
         evidence.beforeLoss.turnId,
       );
     }
-    outage.outcomeReadiness = await readiness(fixture, dependency, true);
+    sampleReference("after-observation");
+    const referenceWindowEnd = performance.now() + readinessTimeoutMs + 250;
+    outage.outcomeReadiness = await readiness(nativePeers, dependency, true);
+    // The legacy pool may back off past the HTTP deadline. Sample it during
+    // a fixed outage window and restart the database on the same schedule.
+    if (referenceSamples.length) {
+      await delay(Math.max(0, referenceWindowEnd - performance.now()));
+    }
   } finally {
     outage.offlineMs = Math.round(performance.now() - stoppedAt);
     outage.restart = await service.start();
+  }
+  if (referenceSamples.length) {
+    outage.referenceOfflineReadiness = await Promise.all(referenceSamples);
+    for (const { readiness, liveness } of outage.referenceOfflineReadiness) {
+      assert.equal(liveness.status, 200);
+      assert.equal(liveness.body.status, "alive");
+      if (readiness.transportError) {
+        assert.equal(readiness.transportError, "TimeoutError");
+      } else assertReadiness(readiness, dependency, true);
+    }
   }
   if (!postgres) {
     assert.ok(outage.offlineMs > outage.claimTtlMs);
@@ -139,7 +186,12 @@ export async function interruptGoalLaneDependency({
   }
   assert.notEqual(outage.restart.pid, outage.stop.pid);
   assert.equal(outage.restart.port, outage.stop.port);
-  outage.recoveredReadiness = await readiness(fixture, dependency, false);
+  outage.recoveredReadiness = await Promise.all(
+    fixture.peers.map(async (peer) => {
+      const [sample] = await readiness([peer], dependency, false);
+      return sample;
+    }),
+  );
   assert.deepEqual(
     fixture.peers.map(({ server }) => server.child.pid),
     serverPids,

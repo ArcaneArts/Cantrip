@@ -1,0 +1,254 @@
+{
+  "completeReplacement": false,
+  "scope": "Autonomous Goal recovery during external PostgreSQL interruption with both mixed peer orientations and Rust/Rust dependency controls on macOS ARM64.",
+  "sourceCommit": "c55fadc1f9fd79b6a1b93d9c4f6cc517b79f5fc2",
+  "localEvidenceRoot": "rust-server-final-native-2e60d2042-20261111-v1",
+  "package": {
+    "version": "1.1.2866",
+    "target": "darwin-arm64",
+    "filesVerified": 1762,
+    "manifest": {
+      "path": "autonomous-goal-dependency/cantrip-server-darwin-arm64-final/native-server.json",
+      "bytes": 325804,
+      "sha256": "9e9b48b9b3095922942818ee5e8914ffac28b03136e81c33212eda39dc532329"
+    },
+    "executable": {
+      "path": "autonomous-goal-dependency/cantrip-server-darwin-arm64-final/bin/cantrip-server",
+      "bytes": 94199904,
+      "sha256": "17aa1bc9a5f63e753e454115bd96d3f7bb27aadcceb71921ef98056da0f60215"
+    }
+  },
+  "referenceNodeVersion": "v24.22.2",
+  "referenceBuildLog": {
+    "path": "mixed-postgres-readiness/reference-build.log",
+    "bytes": 269,
+    "sha256": "52c5cf0ebeeff7afdfff172a005fe420c8d02b95e9d495433376d4a180999ad1"
+  },
+  "baseline": {
+    "retainedTimeout": {
+      "path": "autonomous-goal-dependency/postgres-mixed-node-rust-retry/product.json",
+      "bytes": 406592,
+      "sha256": "f0020a693f3621cfdb4053fa06dade3241e8fa5f673947ccc1cb50c3beca04f3"
+    },
+    "strictShortOutageRuns": [
+      {
+        "path": "mixed-postgres-readiness/baseline-node-rust/product.json",
+        "bytes": 1007005,
+        "sha256": "e8e0497e755bb2c32c9a7d10565a67b74494a7f0427f9ba62c3575958dfabbda"
+      },
+      {
+        "path": "mixed-postgres-readiness/baseline-rust-node/product.json",
+        "bytes": 793101,
+        "sha256": "b157c436e2765f3dc6785dc32b55dc8bfa9987f847477b0cebaf6bd667cd4025"
+      }
+    ]
+  },
+  "probeControl": {
+    "report": {
+      "path": "mixed-postgres-readiness/probe-control/report.json",
+      "bytes": 12088,
+      "sha256": "a2d339d82d72d5985856e8cb08a4fcfafb9d29f8a997e93ca0f9e54aa9b9e594"
+    },
+    "tcpTrace": {
+      "path": "mixed-postgres-readiness/probe-control/node-postgres-59955.jsonl",
+      "bytes": 2844,
+      "sha256": "164c1b50e9dd51530efa4ae546f4f9f3ab33d24e6132fb54e5ac6e078d30649c"
+    },
+    "log": {
+      "path": "mixed-postgres-readiness/probe-control/run.log",
+      "bytes": 52069,
+      "sha256": "961a96f5a22bab845d70fd882da609005d57d40aafb6898cea1c7cfc44a265de"
+    },
+    "postgresOfflineMs": 16545,
+    "nodeHttp503": 2,
+    "nodeProbeTimeouts": 22,
+    "rustHttp503": 24,
+    "maxGapBetweenNodeConnectionAttemptsMs": 5118,
+    "recoveredProbeMs": {
+      "node": 1485,
+      "rust": 5
+    },
+    "referenceShutdownSignal": "SIGKILL"
+  },
+  "retainedLegacyShutdownFailure": {
+    "report": {
+      "path": "mixed-postgres-readiness/mixed-rust-node/product.json",
+      "bytes": 411582,
+      "sha256": "b8ec99323fd2d273c4bf141fab65ec08e66760fac773dbf5a7e1114223b36d0b"
+    },
+    "rustOutcomeSettled": true,
+    "referenceShutdownSignal": "SIGKILL",
+    "completedSteps": 14,
+    "tracedRerun": [
+      {
+        "path": "mixed-postgres-readiness/mixed-rust-node-shutdown-traced/node-shutdown-76741.jsonl",
+        "bytes": 799,
+        "sha256": "ba746fabd4dadb11d950195f54d69998c43d6c34889bc744614ec8e8394b63c1"
+      },
+      {
+        "path": "mixed-postgres-readiness/mixed-rust-node-shutdown-traced/node-shutdown-76925.jsonl",
+        "bytes": 1090,
+        "sha256": "08bef478d050611790826bb130464d6c35a3854083700007714da9f42bd360ef"
+      },
+      {
+        "path": "mixed-postgres-readiness/mixed-rust-node-shutdown-traced/node-shutdown-79071.jsonl",
+        "bytes": 799,
+        "sha256": "ba746fabd4dadb11d950195f54d69998c43d6c34889bc744614ec8e8394b63c1"
+      },
+      {
+        "path": "mixed-postgres-readiness/mixed-rust-node-shutdown-traced/node-shutdown-80388.jsonl",
+        "bytes": 799,
+        "sha256": "ba746fabd4dadb11d950195f54d69998c43d6c34889bc744614ec8e8394b63c1"
+      }
+    ]
+  },
+  "productCases": [
+    {
+      "peerPair": "node/rust",
+      "dependency": "postgres",
+      "report": {
+        "path": "mixed-postgres-readiness/mixed-node-rust/product.json",
+        "bytes": 997856,
+        "sha256": "3bc0e74f4ea636ab6c130db42460504e31750bdf86bf307f6ea9906e312d91a4"
+      },
+      "httpTrace": {
+        "path": "mixed-postgres-readiness/mixed-node-rust/readiness.jsonl",
+        "bytes": 23198,
+        "sha256": "ce8c23ee1b4495b107387e5e2bdf1791018653d2cbe836f5581424f850a59a22"
+      },
+      "outcomeTrace": {
+        "path": "mixed-postgres-readiness/mixed-node-rust/62805.jsonl",
+        "bytes": 2196,
+        "sha256": "01941f290ce7b247f27d888f6b30ef87ac9c1fbddd298ec5e76d93932e10671b"
+      },
+      "steps": 17,
+      "offlineMs": 5304,
+      "releasedObservation": true,
+      "offlineStatuses": [503],
+      "referenceOffline": [
+        {
+          "phase": "after-stop",
+          "readiness": 503,
+          "readinessMs": 4,
+          "liveness": 200
+        },
+        {
+          "phase": "after-observation",
+          "readiness": 503,
+          "readinessMs": 3,
+          "liveness": 200
+        }
+      ],
+      "recoveredStatuses": [200, 200],
+      "commitToProjectionMs": 6880,
+      "originalReceiptDeliveries": 1,
+      "originalLaneState": "suspended",
+      "settledRevision": 3
+    },
+    {
+      "peerPair": "rust/node",
+      "dependency": "postgres",
+      "report": {
+        "path": "mixed-postgres-readiness/mixed-rust-node-shutdown-traced/product.json",
+        "bytes": 816787,
+        "sha256": "ecaa1c108c2c4be613aeeea07361f5d4d925ab4587f1668800fcdcb3efd97ad3"
+      },
+      "httpTrace": {
+        "path": "mixed-postgres-readiness/mixed-rust-node-shutdown-traced/readiness.jsonl",
+        "bytes": 18890,
+        "sha256": "08304e5b2375bd7106be289ee0938c8718d3f33f4feaea5ca0874f20f709136b"
+      },
+      "outcomeTrace": {
+        "path": "mixed-postgres-readiness/mixed-rust-node-shutdown-traced/76936.jsonl",
+        "bytes": 2196,
+        "sha256": "802ff7f922cbee3af4bd2d7381c2b51645d595c6a5f98f3ae4a70dede549fe90"
+      },
+      "steps": 17,
+      "offlineMs": 5306,
+      "releasedObservation": true,
+      "offlineStatuses": [503],
+      "referenceOffline": [
+        {
+          "phase": "after-stop",
+          "readiness": 503,
+          "readinessMs": 2,
+          "liveness": 200
+        },
+        {
+          "phase": "after-observation",
+          "readiness": 503,
+          "readinessMs": 2,
+          "liveness": 200
+        }
+      ],
+      "recoveredStatuses": [200, 200],
+      "commitToProjectionMs": 11443,
+      "originalReceiptDeliveries": 1,
+      "originalLaneState": "suspended",
+      "settledRevision": 2
+    },
+    {
+      "peerPair": "rust/rust",
+      "dependency": "postgres",
+      "report": {
+        "path": "mixed-postgres-readiness/rust-rust-postgres/product.json",
+        "bytes": 850724,
+        "sha256": "5ef66850d7070790ae321dd47e044522f514be43ff56e6c2ce39c1558c84c99a"
+      },
+      "httpTrace": {
+        "path": "mixed-postgres-readiness/rust-rust-postgres/readiness.jsonl",
+        "bytes": 2784,
+        "sha256": "e781e46dc99404a2dfb53c809b0e8deb4ec371e57189de0e94f7401f40263cf2"
+      },
+      "outcomeTrace": {
+        "path": "mixed-postgres-readiness/rust-rust-postgres/62467.jsonl",
+        "bytes": 2196,
+        "sha256": "6e30f6a6ecec6ffb76b5d7f4ac24c4b6db61d39e44960e05fcec34052752a79d"
+      },
+      "steps": 17,
+      "offlineMs": 55,
+      "releasedObservation": true,
+      "offlineStatuses": [503, 503],
+      "referenceOffline": [],
+      "recoveredStatuses": [200, 200],
+      "commitToProjectionMs": 1299,
+      "originalReceiptDeliveries": 1,
+      "originalLaneState": "suspended",
+      "settledRevision": 2
+    },
+    {
+      "peerPair": "rust/rust",
+      "dependency": "redis",
+      "report": {
+        "path": "mixed-postgres-readiness/rust-rust-redis/product.json",
+        "bytes": 837101,
+        "sha256": "448bebc922dc97a0ddf33039ec8982892d99803b2136a8e51fea435d27e05b9d"
+      },
+      "httpTrace": {
+        "path": "mixed-postgres-readiness/rust-rust-redis/readiness.jsonl",
+        "bytes": 35745,
+        "sha256": "9c06eeb53477541a7f655eb13636451fcc81ec1ca21be691137a956c1201295c"
+      },
+      "outcomeTrace": {
+        "path": "mixed-postgres-readiness/rust-rust-redis/62466.jsonl",
+        "bytes": 2196,
+        "sha256": "3e26f192f2ab173d04a34ae3f4b9a99af4eb023bbe479b24bf537292dd9b303f"
+      },
+      "steps": 17,
+      "offlineMs": 5087,
+      "releasedObservation": true,
+      "offlineStatuses": [503, 503],
+      "referenceOffline": [],
+      "recoveredStatuses": [200, 200],
+      "commitToProjectionMs": 112,
+      "originalReceiptDeliveries": 1,
+      "originalLaneState": "suspended",
+      "settledRevision": 2
+    }
+  ],
+  "remaining": [
+    "The legacy Node peer can need a forced exit after a PostgreSQL outage.",
+    "Find the cause of the separately retained intermittent bundled PostgreSQL Goal stall before model forwarding.",
+    "Complete the compatibility and final shipping platform matrix."
+  ]
+}
