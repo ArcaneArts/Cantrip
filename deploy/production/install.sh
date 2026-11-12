@@ -77,6 +77,14 @@ for index in "${!configuration_files[@]}"; do
   if [[ -f $file ]]; then cp -p "$file" "$rollback_directory/$index"; fi
 done
 
+
+restart_server() {
+  # An intentional activation has its own start budget. Failed candidate
+  # retries must not consume the budget for restoring the previous release.
+  systemctl reset-failed cantrip-server.service >/dev/null 2>&1 || true
+  systemctl restart cantrip-server.service
+}
+
 finish() {
   result=$?
   trap - EXIT INT TERM
@@ -106,7 +114,7 @@ finish() {
       systemctl stop caddy.service || true
     fi
     if [[ $previous_server_active == true ]]; then
-      systemctl restart cantrip-server.service
+      restart_server
       recovered=false
       for _ in $(seq 1 30); do
         if curl --max-time 2 --fail --silent http://127.0.0.1:4310/readyz >/dev/null; then
@@ -176,7 +184,7 @@ ln -sfn "$release_directory" /opt/cantrip/current.next
 mv -Tf /opt/cantrip/current.next /opt/cantrip/current
 
 systemctl restart caddy.service
-systemctl restart cantrip-server.service
+restart_server
 
 ready=false
 for _ in $(seq 1 30); do

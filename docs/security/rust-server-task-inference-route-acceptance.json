@@ -321,7 +321,7 @@
     ]
   },
   "linuxLocalStores": {
-    "scope": "Exact production Linux images with the packaged macOS ARM64 worker. The earlier 1.1.2881 images cover bundled PostgreSQL on both architectures and PGlite on ARM64. The rebuilt x64 image includes the Task route snapshot repair. PGlite queued cases seeded a separate profile through native logical export and restore, then verified final state from a stopped-server export. PGlite active dispatch compared scoped Task rows from two frozen copies, exported each copy with the native binary, and queried the imports read-only in a disposable PostgreSQL instance.",
+    "scope": "Exact production Linux images with the packaged macOS ARM64 worker. The earlier 1.1.2881 images cover bundled PostgreSQL on both architectures and PGlite on ARM64. The rebuilt ARM64 and x64 images include the Task route snapshot repair and passed both cases on all three stores. PGlite queued cases seeded a separate profile through native logical export and restore, then verified final state from a stopped-server export. PGlite active dispatch compared scoped Task rows from two frozen copies, exported each copy with the native binary, and queried the imports read-only in a disposable PostgreSQL instance.",
     "workerTarget": "darwin-arm64",
     "patchedSourceCommit": "ff6a4b060c60ee1f391b70161fdffd0c933c38c7",
     "drivers": [
@@ -700,6 +700,219 @@
         "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-x64-oci-verification.json",
         "bytes": 507,
         "sha256": "49c201f2c5c7abe0304552e1cc6091ac7d62af5914c28aecaa6cfdbedf197e79"
+      }
+    },
+    "rebuiltArm64Artifact": {
+      "sourceCommit": "ff6a4b060c60ee1f391b70161fdffd0c933c38c7",
+      "version": "1.1.2881",
+      "containerImage": "cantrip-server-rust:ff6a4b060-linux-arm64-qa",
+      "containerImageId": "sha256:ab27aa3bd9e170d5577cd8cd947e5d13525cc07a10d141cf1983322d3fecac42",
+      "nativeExecutableSha256": "5f47f046280a1f7bd66202f6e93024527e46010d1c86fbcb57f147ce70ab8d77",
+      "verifiedNativeFiles": 2546,
+      "stores": ["pglite", "bundled-postgres", "postgres"],
+      "buildLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-arm64-oci-build.log",
+        "bytes": 8608,
+        "sha256": "b538798ca8ea20fcd1bb9225602d43eea4b0b6f60532273502c009c67a216211"
+      },
+      "ociArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/cantrip-server-1.1.2881-ff6a4b060-linux-arm64.oci.tar.zst",
+        "bytes": 177297784,
+        "sha256": "0dc7e273a6fefb9617fe14311c89ffc045ec0c3764cbee7836eeceeace776380"
+      },
+      "ociVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-arm64-oci-verification.json",
+        "bytes": 509,
+        "sha256": "dc6f3b72ae16a052f70995d38ae11adf24e916ef000e6c7afeec3a5ecdcc1e77"
+      },
+      "nativeArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/cantrip-server-1.1.2881-ff6a4b060-linux-arm64.native.tar.gz",
+        "bytes": 150422422,
+        "sha256": "8dc146e95af6886324136ac5bfb2f5ecfc2084b4f620d08e9ec0d14c82ee48b2"
+      },
+      "artifactVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-arm64-artifact-verification.json",
+        "bytes": 687,
+        "sha256": "249bdf7a56f5c77fa752489ce4e8f834efc07c964f39ce2c41373dec31db8932"
+      },
+      "threeStoreContainerReport": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-arm64-three-store-container.json",
+        "bytes": 5348,
+        "sha256": "ca503319e2fb792b7b7f3f9807073e68eb1fe04fb9ececfd386f6f8381b1ccd5"
+      },
+      "retainedFixtureVolumes": [
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-arm64-fixture-volumes/cantrip-native-package-fc87c8f4-database-data.tar.zst",
+          "bytes": 7980173,
+          "sha256": "b51e90ad6c07370b23392a93be23683d4bfb65c150b49861ae23ff3956431c1f"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-arm64-fixture-volumes/cantrip-native-package-fc87c8f4-pglite-data.tar.zst",
+          "bytes": 6054900,
+          "sha256": "6d771c2a897ffd89b56648f445c79fcb0ba2fbcf38e50bdecda2fb104e99ee49"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-arm64-fixture-volumes/cantrip-native-package-fc87c8f4-bundled-postgres-data.tar.zst",
+          "bytes": 7143686,
+          "sha256": "21c952a1e6187d309e6e7d6fb9a206aa5ae5170e4109d40c6f79a4ba61b63378"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-arm64-fixture-volumes/cantrip-native-package-fc87c8f4-postgres-data.tar.zst",
+          "bytes": 73914,
+          "sha256": "f68c1e086a2e3b477f9223e6723a329471a14f8b7eb7bd8cf93f1d5f193742f1"
+        }
+      ],
+      "nodeAbsentFromServerPath": true,
+      "hostedAndLocalReopen": true,
+      "firstStorageInterruptedAttempt": {
+        "queuedLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-pglite/arm64-rebuilt-queued-docker-storage-failure.log",
+          "bytes": 4605,
+          "sha256": "0e2465d9700a01c2f66a9f7a69acc2da5072786cb6c7d0ec931932c86e94468a"
+        },
+        "profile": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-arm64-interrupted-profile.tar.zst",
+          "bytes": 2219427,
+          "sha256": "b0b5f89f636bff59b6340dedef4e3780fb7520ec7087cf4957ae44583f5a96f6"
+        }
+      },
+      "revisionRace": {
+        "driver": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-route-snapshot.mjs",
+          "bytes": 7858,
+          "sha256": "0df1c958e9f91f24e2c7f0f32ec7cc3c56e048ea48d40a1e664b9aa3dae5e916"
+        },
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-arm64-route-snapshot.log",
+          "bytes": 717,
+          "sha256": "1eb44682ee99544b14fcb7a732cd6810ec55fc1024faff9d43dbc053e46ba540"
+        },
+        "during": {
+          "revision": 4,
+          "phase": "completed"
+        },
+        "after": {
+          "revision": 4,
+          "phase": "completed"
+        }
+      },
+      "taskRechecks": {
+        "pglite": {
+          "queuedDriver": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-pglite/full-packaged-worker-linux.mjs",
+            "bytes": 9541,
+            "sha256": "7b3fa7c084a0bf7797e8eb552ec537bff1eda9d4ebb897939db19722959b7516"
+          },
+          "browserDriver": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-pglite/actual-folder-client.mjs",
+            "bytes": 82293,
+            "sha256": "533aca158d2a70d186ccdd61cb81bb0394d6b746f7f6225f2bbc28c48f3831d6"
+          },
+          "queuedReport": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-pglite/arm64-full-packaged-worker.json",
+            "bytes": 2616,
+            "sha256": "bc34cc3f62e7447ba583f6ccfb069af18f3f077e3ae88f6f94615f762c0f8328"
+          },
+          "activeDispatchReport": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-pglite/arm64-rebuilt-dispatched-report.json",
+            "bytes": 718355,
+            "sha256": "3ebd2dc6562713f7b8be9b1862ac7afe9f6ccec2132994af244ab85ee0f6f19f"
+          },
+          "completedRevision": 4,
+          "dispatchFence": 9,
+          "retainedEnrollmentAndEncryptedInput": true,
+          "activeDispatchRejection": {
+            "activeProviderResponse": true,
+            "sourceHidden": true,
+            "status": 409,
+            "code": "stale-lease",
+            "durableStateUnchanged": true
+          },
+          "originalTaskCompleted": true,
+          "plannedGoalCompleted": true,
+          "failedOperationRetried": true,
+          "pausedAdmissionRecovered": true,
+          "productSteps": 14,
+          "cleanServerShutdowns": 4,
+          "verifiedAfterCleanServerShutdown": true,
+          "logicalSnapshots": 2
+        },
+        "bundled-postgres": {
+          "queuedDriver": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-postgres-recheck/bundled-postgres/full-packaged-worker-linux.mjs",
+            "bytes": 8771,
+            "sha256": "3fd1cf89834cfc15c910b9acb5ddf5223db0e038dc690998e1085c44661d274c"
+          },
+          "browserDriver": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/linux-bundled-postgres/actual-folder-client.mjs",
+            "bytes": 82190,
+            "sha256": "173fe6e1c976f90b68418768fb8514684439947ec17e84a6e451c6adcdab3294"
+          },
+          "queuedReport": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-postgres-recheck/bundled-postgres/arm64-full-packaged-worker.json",
+            "bytes": 1736,
+            "sha256": "5e9e73f714980552cce15f68b138112cc5a24d8c2d11659792dd7e3ea5882209"
+          },
+          "activeDispatchReport": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-postgres-recheck/bundled-postgres/arm64-rebuilt-dispatched-report.json",
+            "bytes": 717219,
+            "sha256": "e258be3ed38f86c66c6dfde7c073d48cfeebe29884bfe2ca3c2b7fe277b86e07"
+          },
+          "completedRevision": 4,
+          "dispatchFence": 9,
+          "retainedEnrollmentAndEncryptedInput": true,
+          "activeDispatchRejection": {
+            "activeProviderResponse": true,
+            "sourceHidden": true,
+            "status": 409,
+            "code": "stale-lease",
+            "durableStateUnchanged": true
+          },
+          "originalTaskCompleted": true,
+          "plannedGoalCompleted": true,
+          "failedOperationRetried": true,
+          "pausedAdmissionRecovered": true,
+          "productSteps": 14,
+          "cleanServerShutdowns": 4
+        },
+        "postgres": {
+          "queuedDriver": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-postgres-recheck/postgres/full-packaged-worker-linux.mjs",
+            "bytes": 9034,
+            "sha256": "920e154a071943e326f2ac8868e0e7d59ef7fc1371c8551d9b7bc81199fd5e0b"
+          },
+          "browserDriver": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-task-inference-route/linux-dispatched/actual-folder-client.mjs",
+            "bytes": 82308,
+            "sha256": "122b28a6997454d5c3dd34afa962b11e01d66d68d53a17d5d8aee79656197f2f"
+          },
+          "queuedReport": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-postgres-recheck/postgres/arm64-full-packaged-worker.json",
+            "bytes": 1702,
+            "sha256": "64e42e0706d979014959aca3ac8044816478ef3b07f20875bfdc0566bd4240de"
+          },
+          "activeDispatchReport": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/linux-postgres-recheck/postgres/arm64-rebuilt-dispatched-report.json",
+            "bytes": 724427,
+            "sha256": "880a58335a64d8b1380ae8af152384e0c27d511ed9005a9b4715ff0047aa8fb8"
+          },
+          "completedRevision": 4,
+          "dispatchFence": 9,
+          "retainedEnrollmentAndEncryptedInput": true,
+          "activeDispatchRejection": {
+            "activeProviderResponse": true,
+            "sourceHidden": true,
+            "status": 409,
+            "code": "stale-lease",
+            "durableStateUnchanged": true
+          },
+          "originalTaskCompleted": true,
+          "plannedGoalCompleted": true,
+          "failedOperationRetried": true,
+          "pausedAdmissionRecovered": true,
+          "productSteps": 14,
+          "cleanServerShutdowns": 4
+        }
       }
     }
   }
