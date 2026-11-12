@@ -426,10 +426,11 @@
         "status": "partial",
         "evidence": [
           "scripts/server-rust/worker-compatibility.mjs",
-          "scripts/server-rust/worker-client-compatibility.mjs"
+          "scripts/server-rust/worker-client-compatibility.mjs",
+          "cantrip_server_rs/src/chats/recovery/transitions.rs"
         ],
         "remaining": [
-          "Pending worktree-transition recovery hook belongs to the unported worktree/execution domain."
+          "Exercise the worker-triggered pending worktree transition recovery with actual connected workers and retained profiles across supported platforms."
         ]
       },
       {
@@ -439,10 +440,11 @@
         "status": "partial",
         "evidence": [
           "scripts/server-rust/worker-compatibility.mjs",
-          "scripts/server-rust/worker-client-compatibility.mjs"
+          "scripts/server-rust/worker-client-compatibility.mjs",
+          "docs/security/rust-server-2881-shared-resource-rolling.json"
         ],
         "remaining": [
-          "Domain event/notification validation and persistence, binary relays, shared presence/coordination, reconnect-triggered domain recovery and resource reconciliation remain unported."
+          "Complete domain-specific event, notification, binary relay and reconnect recovery acceptance with packaged clients across supported platforms."
         ]
       },
       {
@@ -454,10 +456,11 @@
           "scripts/server-rust/live-hub-oracle.mjs",
           "scripts/server-rust/live-repository-compatibility.mjs",
           "scripts/server-rust/live-compatibility.mjs",
-          "scripts/server-rust/worker-client-compatibility.mjs"
+          "scripts/server-rust/worker-client-compatibility.mjs",
+          "docs/security/rust-server-2881-shared-resource-rolling.json"
         ],
         "remaining": [
-          "Most domain publishers, Redis/shared coordination and full product flows remain unported. Account usage now has local HTTP/WS/storage evidence; this milestone needs fresh supported-platform acceptance."
+          "Complete the remaining domain publisher, supported-platform installed client and shared failure acceptance."
         ]
       },
       {
@@ -25041,7 +25044,85 @@
         "Complete domain persistence and consumers, binary/domain relays, execution and recovery integration. Incoming ingress PR 2286 passed all three platforms; outgoing command changes need fresh acceptance.",
         "Exercise whole app UI and full worker index/runtime across the supported packaging/deployment/platform matrix.",
         "Complete remaining schema, coercion/refinement and authenticated/hash boundaries across the server; the new parser socket cases do not prove all-domain parity."
-      ]
+      ],
+      "currentMacosArtifactAcceptance": {
+        "sourceCommit": "ff6a4b060c60ee1f391b70161fdffd0c933c38c7",
+        "target": "darwin-arm64",
+        "version": "1.1.2881",
+        "executable": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/cantrip-server-darwin-arm64/bin/cantrip-server",
+          "bytes": 94174128,
+          "sha256": "9390204ce8869552f44f8eb11324e760b9791836c6d6a481f620ccbee38951ab"
+        },
+        "liveDriver": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-app-live/live-compatibility.mjs",
+          "bytes": 20294,
+          "sha256": "804902e4288be26b07bcd40efaed45dc9f6cb8ccb9b7152ed7a74d69310696cf"
+        },
+        "databaseModes": {
+          "pglite": {
+            "liveReport": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-app-live/pglite.json",
+              "bytes": 43232,
+              "sha256": "4082a8b1b9fc5176047c178a053833c668f0164aa2df76c239f46f37996a93c2"
+            },
+            "matchingSocketCasesByProfile": {
+              "development": 10,
+              "password": 8,
+              "accounts": 8,
+              "capacity": 7
+            },
+            "browserWorkerReport": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-browser-worker-control/pglite.json",
+              "bytes": 3003,
+              "sha256": "01f14bd40b9411eab7dcaaf911ee62878d1af801de5df952d22d36dc237bb301"
+            },
+            "matchingBrowserSteps": 14,
+            "workerConnectionsPerServer": 3
+          },
+          "bundled-postgres": {
+            "liveReport": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-app-live/bundled-postgres.json",
+              "bytes": 43242,
+              "sha256": "5c0bbcda63fed443f2c993193b9264b0347ad4719942f291aa40615deec5247d"
+            },
+            "matchingSocketCasesByProfile": {
+              "development": 10,
+              "password": 8,
+              "accounts": 8,
+              "capacity": 7
+            },
+            "browserWorkerReport": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-browser-worker-control/bundled-postgres.json",
+              "bytes": 3013,
+              "sha256": "4f17bc84c7a794c82718cd2c850b103e66e27d13dcaa899a016fa73a71c9fb4e"
+            },
+            "matchingBrowserSteps": 14,
+            "workerConnectionsPerServer": 3
+          },
+          "postgres": {
+            "liveReport": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-app-live/postgres.json",
+              "bytes": 44862,
+              "sha256": "0c216ad568e24f180e58013dc538273ea06e1ec15235146031743c4aa3d90eb4"
+            },
+            "matchingSocketCasesByProfile": {
+              "development": 11,
+              "password": 8,
+              "accounts": 8,
+              "capacity": 7
+            },
+            "browserWorkerReport": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/current-browser-worker-control/postgres.json",
+              "bytes": 3005,
+              "sha256": "8cd72ecf42b114012945eb53965d045b8b8c1c090bbdf589947b04a2b9f17792"
+            },
+            "matchingBrowserSteps": 14,
+            "workerConnectionsPerServer": 3
+          }
+        },
+        "scope": "Actual HTTP and App Live WebSocket comparison and Chromium AppLiveClient with the existing worker enrollment, heartbeat, connection and credential store. The credential-rotation command uses a controlled handler."
+      }
     },
     "jsonTransportBoundary": {
       "status": "partial",
