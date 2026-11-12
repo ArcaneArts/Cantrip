@@ -89,6 +89,11 @@ The [external PostgreSQL interruption comparison](RUST_SERVER_NATIVE_RECOVERY_CO
 also settles the original Goal on two Rust peers and in both mixed
 orientations. The legacy Node readiness and exit behavior have their
 own recorded evidence.
+The `1.1.2881` macOS ARM64 package and freshly compiled Node reference
+repeated both interruptions with both mixed orientations and two Rust
+peers. All six complete runs projected the original committed Goal
+outcome and preserved the original worker across dependency restart.
+[Current Goal dependency acceptance](security/rust-server-2881-goal-dependency-acceptance.json)
 
 The macOS ARM64 `1.1.2881` standalone server and packaged Node worker passed
 the encrypted browser Task and autonomous Goal flow on all three stores.
