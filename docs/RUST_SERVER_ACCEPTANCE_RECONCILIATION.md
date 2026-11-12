@@ -577,8 +577,16 @@ and Rust process restarts. Each mode returned an authenticated session and
 upgraded App Live over TLS after its restart. The
 [current iOS acceptance record](security/rust-server-2881-ios-acceptance.json)
 includes four passing XCTest runs and six clean Rust exits. Installed iOS QR
-sign-in, physical devices, shipping mobile packages and current Android
-qualification retain separate acceptance.
+sign-in, physical devices and shipping mobile packages retain separate
+acceptance.
+
+The installed `1.1.2881` Android API 36 app also passed sign-in and session
+recovery on all three stores. It retained one Android Keystore key and all
+three account bindings after app relaunch and Rust restarts. A browser-issued
+QR entered through the emulator camera and the native scanner. The Rust
+server backed by external PostgreSQL exchanged the grant for a secure session. The
+[current Android acceptance record](security/rust-server-2881-android-acceptance.json)
+includes the installed APK digest, real Keystore test and wire results.
 
 ## Current implementation and evidence
 
