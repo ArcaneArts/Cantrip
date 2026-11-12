@@ -106,6 +106,15 @@ accepted setting, server identity, and worker identity.
 The Windows x64 `1.1.2881` standalone distribution passed all three stores,
 including migration, SQL export, hosted reopening and retained writes.
 [Windows x64 standalone record](security/rust-server-2881-win32-x64-standalone.json)
+
+The Windows x64 rebuild at `9e2dd5711` passed standalone migration, SQL
+export, retained-state reopening, and graceful supervisor shutdown on all
+three stores in a local Windows 11 guest. The native packager produced
+2,281 files. Host verification matched all of them to the standalone
+archive and the server files embedded in the QA-signed desktop installer.
+The installer payload matched all 14,092 file hashes.
+[Windows x64 replica repair standalone](security/rust-server-2881-win32-x64-standalone.json#replicaRepairRebuild),
+[Windows x64 replica repair installer](security/rust-server-2881-win32-x64-desktop.json#replicaRepairRebuild)
 The rebuilt Windows x64 `1.1.2881` desktop installer matched 14,092
 installed files. All three stores passed first start and persisted-profile
 reopening, real worker replies, accepted writes and clean tray shutdown.

@@ -290,5 +290,60 @@
         "sha256": "0b07b80e2d9e9a3d0ae9a776091c9f3e85f829908eda174c5ebc7b646da84caf"
       }
     }
+  },
+  "replicaRepairRebuild": {
+    "sourceCommit": "9e2dd57116aca8d0525427f7963d3cc26ef3febb",
+    "target": "win32-x64",
+    "version": "1.1.2881",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "verifiedFiles": 2281,
+    "nativeArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/windows-x64/standalone-evidence/cantrip-server-1.1.2881-win32-x64-9e2dd5711.tar.gz",
+      "bytes": 97658120,
+      "sha256": "725b47c62f33f6a93e6eb18007e82e26df91b0f61d44964792c9fac59f5e1ea6"
+    },
+    "packagerReceipt": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/windows-x64/standalone-evidence/pack-9e2dd5711-win32-x64.json",
+      "bytes": 398,
+      "sha256": "cec2f47a6ac89f89934c3afe5d4743ea6c358e84167a4f8b078c3a93cd5b7aec"
+    },
+    "standaloneReport": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/windows-x64/standalone-evidence/standalone-9e2dd5711-win32-x64.json",
+      "bytes": 2748,
+      "sha256": "cfdb4bc438d6ee134201eb941e612b10e5b2088e4f38dfd6ec404e989fa5f264"
+    },
+    "serialReceipts": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/windows-x64/standalone-evidence/verified-serial.jsonl",
+      "bytes": 4012,
+      "sha256": "b9ad787d1bbae4be98d11b588cc4e5646eb3e8b4f574a323ffe5e48561573279"
+    },
+    "packageVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/windows-x64/standalone-evidence/verified-standalone.json",
+      "bytes": 613,
+      "sha256": "8181fb9809dec79e349871203e5f03c1fdb9338422edc99cf542b300b75c8ca4"
+    },
+    "sqlExports": [
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/windows-x64/standalone-evidence/bundled-postgres-export.sql",
+        "bytes": 493546,
+        "sha256": "f36a04d160d0784ab7334fe54fde8396bc993e4d8be8278eddf1b4029ee34f75"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/windows-x64/standalone-evidence/pglite-export.sql",
+        "bytes": 493318,
+        "sha256": "d174d3cd90e7f5a5eaeb5c4a3b3e493bb895d132f8661039bed76ed68c87706e"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/windows-x64/standalone-evidence/postgres-export.sql",
+        "bytes": 493535,
+        "sha256": "f2fe2ceca18e2b381a3ddbd66af6955e36639ad7d393c80c6e08f68ed853377c"
+      }
+    ],
+    "desktopServerFilesIdentical": 2281,
+    "compilerCacheCleanup": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/windows-x64/compiler-cache-cleanup.log",
+      "bytes": 38,
+      "sha256": "a7c326c8f069b40a096cf70a02faf504fbf5f3343ad414295acaac7fe031e74f"
+    }
   }
 }
