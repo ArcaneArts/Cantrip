@@ -29959,6 +29959,7 @@
       "status": "partial",
       "qualification": "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
       "acceptance": "docs/security/rust-server-current-native-admission.json",
+      "candidateAcceptance": "docs/security/rust-server-2881-browser-task-goal.json",
       "coveredRoutes": [
         "/api/internal/native-commands/task-input-dispatch",
         "/api/internal/native-commands/task-goal-cycle-dispatch",
