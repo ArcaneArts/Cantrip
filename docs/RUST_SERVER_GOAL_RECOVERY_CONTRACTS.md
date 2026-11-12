@@ -223,3 +223,28 @@ The macOS ARM64 matrix passes all nine combinations with the local Rust
 executable and full worker. A PGlite upgrade run resumes a checkpoint created
 by the previous worker build using the same worker profile.
 [Autonomous Task Goal interruption acceptance record](security/rust-server-autonomous-task-goal-interruption-acceptance.json)
+
+## Shared dependency loss after transfer commit
+
+The browser and worker connect to different Rust servers with shared PostgreSQL
+and Redis. The test holds the worker's real commit response, checks that the
+handoff is committed, and releases the response during the selected outage.
+Both peers report unavailable readiness during the outage and recover with
+their original processes.
+
+In the PostgreSQL reproduction, the worker's finish request and subsequent
+failure report both returned HTTP 500. Its existing connection stayed open.
+The browser kept reading the same committed operation after the database
+restarted, and the Goal remained pending.
+
+The worker now retries the exact idempotent commit and completed-finish
+requests after transient HTTP or transport failures. Retry honors cancellation
+and uses a bounded backoff window. The PostgreSQL fixture sees the original
+worker retry finish through recovery and complete the destination Goal once.
+The Redis fixture runs past the original worker claim's TTL and verifies that
+the new connection retains the same worker continuity identity.
+
+Run the browser fixture with `--database postgres --server-pair rust/rust`
+and `--task-goal-provider-transfer-fault postgres-after-commit` or
+`--task-goal-provider-transfer-fault redis-after-commit`.
+[Shared dependency acceptance record](security/rust-server-shared-task-goal-transfer-acceptance.json)

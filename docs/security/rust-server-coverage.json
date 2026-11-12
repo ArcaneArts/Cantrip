@@ -29941,10 +29941,11 @@
       "recoveryAcceptance": "docs/security/rust-server-task-goal-transfer-recovery-acceptance.json",
       "autonomousTransferAcceptance": "docs/security/rust-server-autonomous-task-goal-transfer-acceptance.json",
       "autonomousInterruptionAcceptance": "docs/security/rust-server-autonomous-task-goal-interruption-acceptance.json",
+      "sharedDependencyAcceptance": "docs/security/rust-server-shared-task-goal-transfer-acceptance.json",
       "databaseModes": ["pglite", "bundled-postgres", "postgres"],
       "scope": "On macOS ARM64, the existing browser and full worker with Core reserve and transfer the unused first Task Goal input or an autonomous Goal turn while the source provider is occupied. Local tests exercise prepared cancellation, worker loss after commit, and resuming a transferred turn with its tool result after a worker restart. The browser reopens the completed Goal and transcript. A populated historical profile upgrades and rolls back with the new eligibility migration.",
       "remaining": [
-        "Qualify the remaining transfer boundaries, including shared server or dependency loss, and repeat on the final supported shipping artifacts."
+        "Qualify loss of a participating server during the transfer and repeat on the final supported shipping artifacts."
       ]
     },
     "currentPackagedNativeAdmission": {

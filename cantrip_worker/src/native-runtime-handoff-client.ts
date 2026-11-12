@@ -6,8 +6,13 @@ import {
   nativeRuntimeHandoffWorkerRequestSchema,
   type NativeRuntimeHandoffWorkerRequest,
 } from "@cantrip/protocol";
+import { setTimeout as delay } from "node:timers/promises";
 import type { NativeCommandClientOptions } from "./native-command-client.js";
 import { CantripServerRequestError } from "./cli-client.js";
+
+const handoffEndpoint = "/api/internal/native-runtime-handoffs";
+const settlementRetryWindowMs = 60_000;
+const settlementAttemptTimeoutMs = 15_000;
 
 type WorkerAction = NativeRuntimeHandoffWorkerRequest extends infer Request
   ? Request extends NativeRuntimeHandoffWorkerRequest
@@ -25,11 +30,11 @@ export class NativeRuntimeHandoffClient {
       ...action,
       workerId: this.options.workerId,
     });
-    const body = await this.send(
-      "/api/internal/native-runtime-handoffs",
-      input,
-      signal,
-    );
+    const body =
+      input.action === "commit" ||
+      (input.action === "finish" && input.outcome === "completed")
+        ? await this.sendSettlement(input, signal)
+        : await this.send(handoffEndpoint, input, signal);
     const result = nativeRuntimeHandoffStateSchema.parse(body);
     if (
       result.operationId !== input.operationId ||
@@ -70,6 +75,48 @@ export class NativeRuntimeHandoffClient {
     return result;
   }
 
+  private async sendSettlement(
+    input: NativeRuntimeHandoffWorkerRequest,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    const deadline = performance.now() + settlementRetryWindowMs;
+    let backoff = 500;
+    for (;;) {
+      signal?.throwIfAborted();
+      const timeout = AbortSignal.timeout(
+        Math.min(
+          settlementAttemptTimeoutMs,
+          Math.max(1, Math.ceil(deadline - performance.now())),
+        ),
+      );
+      try {
+        return await this.send(
+          handoffEndpoint,
+          input,
+          signal ? AbortSignal.any([signal, timeout]) : timeout,
+        );
+      } catch (error) {
+        signal?.throwIfAborted();
+        const retryable =
+          timeout.aborted ||
+          error instanceof TypeError ||
+          (error instanceof CantripServerRequestError &&
+            (error.status >= 500 ||
+              error.status === 408 ||
+              error.status === 429));
+        const remaining = deadline - performance.now();
+        if (!retryable || remaining <= 0) throw error;
+        // Commit and completed finish replay the same durable operation. Keep
+        // its staging hold while PostgreSQL or the HTTP response is unavailable.
+        await delay(Math.min(remaining, backoff), undefined, {
+          signal,
+          ref: false,
+        });
+        backoff = Math.min(backoff * 2, 5_000);
+      }
+    }
+  }
+
   private async send(
     endpoint: string,
     input: unknown,
@@ -88,7 +135,11 @@ export class NativeRuntimeHandoffClient {
         body: JSON.stringify(input),
       },
     );
-    const body: unknown = await response.json().catch(() => null);
+    const body: unknown = await response.json().catch((error) => {
+      if (response.ok && (error instanceof TypeError || signal?.aborted))
+        throw error;
+      return null;
+    });
     if (!response.ok) {
       const failure =
         body && typeof body === "object"

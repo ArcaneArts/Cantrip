@@ -83,9 +83,13 @@ async function interruptTransfer(page, begun, fault, observation) {
       status: 409,
       code: "handoff-already-committed",
     });
-    const newPid = await fault.restartWorker(held.pid);
-    assert.notEqual(newPid, held.pid);
-    observation.interruption.restartedWorkerPid = newPid;
+    if (fault.interruptDependency)
+      await fault.interruptDependency(held, observation.interruption);
+    else {
+      const newPid = await fault.restartWorker(held.pid);
+      assert.notEqual(newPid, held.pid);
+      observation.interruption.restartedWorkerPid = newPid;
+    }
   }
 }
 
@@ -341,8 +345,10 @@ export async function transferQueuedTaskGoal({
     );
     if (fault) {
       const retired = observation.interruption.held.preparedRuntimeGeneration;
-      assert.notEqual(finished.binding.runtimeGeneration, retired);
-      assert.ok(finished.retiredRuntimeGenerations.includes(retired));
+      if (fault.mode === "worker-after-commit") {
+        assert.notEqual(finished.binding.runtimeGeneration, retired);
+        assert.ok(finished.retiredRuntimeGenerations.includes(retired));
+      }
       assert.equal(
         source.requests
           .slice(sourceRequestCount)
@@ -364,11 +370,13 @@ export async function transferQueuedTaskGoal({
       target.providerId,
     );
     result.steps.push(
-      fault
-        ? "a replacement worker resumes the committed transfer on the original conversation and sends the queued Goal to the destination"
-        : autonomous
-          ? "the browser transfers an unused native Task Goal cycle and continues the original conversation through the destination provider"
-          : "the browser transfers an unused encrypted Task Goal input to another provider through the full worker and native history import",
+      fault?.interruptDependency
+        ? "the original worker finishes the committed Goal transfer after a shared dependency outage"
+        : fault
+          ? "a replacement worker resumes the committed transfer on the original conversation and sends the queued Goal to the destination"
+          : autonomous
+            ? "the browser transfers an unused native Task Goal cycle and continues the original conversation through the destination provider"
+            : "the browser transfers an unused encrypted Task Goal input to another provider through the full worker and native history import",
     );
   } finally {
     heldSource.release();

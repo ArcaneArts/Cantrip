@@ -23,6 +23,7 @@ import {
   actualWorkerLogsDisconnected,
 } from "./actual-worker-logs-client.mjs";
 import { actualTaskClient } from "./actual-task-client.mjs";
+import { interruptTaskGoalTransferDependency } from "./task-goal-transfer-dependency-outage.mjs";
 import { actualTaskLabelClient } from "./actual-task-label-client.mjs";
 import { actualInlineChatLabels } from "./actual-inline-chat-labels.mjs";
 import { actualAgentInteractionCancel } from "./actual-agent-interaction-cancel.mjs";
@@ -150,18 +151,27 @@ const cantripOsSourceBackup = process.argv.includes(
 );
 const workerLinkRenewal = process.argv.includes("--worker-link-renewal");
 const taskGoalTransferFaultMode = option("--task-goal-provider-transfer-fault");
+const taskGoalTransferDependency = ["postgres", "redis"].find(
+  (dependency) => taskGoalTransferFaultMode === `${dependency}-after-commit`,
+);
 const taskGoalTransferredPause = process.argv.includes(
   "--task-goal-transferred-pause",
 );
 const taskGoalAutonomousTransfer =
+  Boolean(taskGoalTransferDependency) ||
   taskGoalTransferredPause ||
   process.argv.includes("--task-goal-autonomous-provider-transfer");
 assert.ok(
   taskGoalTransferFaultMode === undefined ||
+    taskGoalTransferDependency ||
     ["cancel-prepared", "worker-after-commit"].includes(
       taskGoalTransferFaultMode,
     ),
-  "Task Goal provider transfer fault expects cancel-prepared or worker-after-commit",
+  "Task Goal transfer fault expects cancel-prepared, worker-after-commit, postgres-after-commit, or redis-after-commit",
+);
+assert.ok(
+  !taskGoalTransferDependency || sharedPair === "rust/rust",
+  "Task Goal transfer dependency interruption requires --server-pair rust/rust",
 );
 const taskGoalProviderTransfer =
   Boolean(taskGoalTransferFaultMode) ||
@@ -496,6 +506,9 @@ async function flow(
                 CANTRIP_TEST_TASK_GOAL_HANDOFF_FILE: taskGoalTransferFaultFile,
                 CANTRIP_TEST_TASK_GOAL_HANDOFF_SOURCE:
                   taskGoalAutonomousTransfer ? "autonomous" : "first-input",
+                ...(taskGoalTransferDependency
+                  ? { CANTRIP_TEST_TASK_GOAL_HANDOFF_RELEASE: "1" }
+                  : {}),
                 CANTRIP_TEST_TASK_GOAL_HANDOFF_ACTION:
                   taskGoalTransferFaultMode === "cancel-prepared"
                     ? "prepared"
@@ -1502,6 +1515,21 @@ async function flow(
           ? {
               mode: taskGoalTransferFaultMode,
               file: taskGoalTransferFaultFile,
+              ...(taskGoalTransferDependency
+                ? {
+                    interruptDependency: (held, interruption) =>
+                      interruptTaskGoalTransferDependency({
+                        dependency: taskGoalTransferDependency,
+                        fixture,
+                        cluster: postgres?.cluster,
+                        workerId,
+                        worker,
+                        file: taskGoalTransferFaultFile,
+                        held,
+                        interruption,
+                      }),
+                  }
+                : {}),
               restartWorker: async (previousPid) => {
                 assert.equal(worker.child.pid, previousPid);
                 await crashWorker();
@@ -1779,7 +1807,10 @@ try {
   browser = await chromium.launch({ headless: true });
   if (databaseMode !== "pglite")
     postgres = await postgresFixture(path.join(root, "postgres"), {
-      restartable: postgresOutage || goalLaneDependency === "postgres",
+      restartable:
+        postgresOutage ||
+        goalLaneDependency === "postgres" ||
+        taskGoalTransferDependency === "postgres",
     });
   for (const kinds of runtimeCases) {
     const kind = kinds[0];

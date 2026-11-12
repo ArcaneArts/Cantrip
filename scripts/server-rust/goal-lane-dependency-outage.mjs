@@ -43,7 +43,7 @@ function assertReadiness(peer, dependency, offline) {
   });
 }
 
-async function readiness(peers, dependency, offline) {
+export async function sharedDependencyReadiness(peers, dependency, offline) {
   return eventually(
     () => Promise.all(peers.map((peer) => probe(peer))),
     (samples) => {
@@ -65,7 +65,7 @@ function postgresQueueRetries(server) {
     ).length;
 }
 
-async function redisIdentity(service) {
+export async function redisIdentity(service) {
   const info = await service.client.sendCommand(["INFO", "server"]);
   const pid = Number(/^process_id:(\d+)\r?$/m.exec(info)?.[1]);
   assert.ok(Number.isInteger(pid) && pid > 0);
@@ -121,7 +121,11 @@ export async function interruptGoalLaneDependency({
       assert.equal(outage.stop.code, null);
     }
     sampleReference("after-stop");
-    outage.offlineReadiness = await readiness(nativePeers, dependency, true);
+    outage.offlineReadiness = await sharedDependencyReadiness(
+      nativePeers,
+      dependency,
+      true,
+    );
     if (postgres) {
       outage.redisDuringOutage = await fixture.redis.client.ping();
       assert.equal(outage.redisDuringOutage, "PONG");
@@ -160,7 +164,11 @@ export async function interruptGoalLaneDependency({
     }
     sampleReference("after-observation");
     const referenceWindowEnd = performance.now() + readinessTimeoutMs + 250;
-    outage.outcomeReadiness = await readiness(nativePeers, dependency, true);
+    outage.outcomeReadiness = await sharedDependencyReadiness(
+      nativePeers,
+      dependency,
+      true,
+    );
     // The legacy pool may back off past the HTTP deadline. Sample it during
     // a fixed outage window and restart the database on the same schedule.
     if (referenceSamples.length) {
@@ -188,7 +196,11 @@ export async function interruptGoalLaneDependency({
   assert.equal(outage.restart.port, outage.stop.port);
   outage.recoveredReadiness = await Promise.all(
     fixture.peers.map(async (peer) => {
-      const [sample] = await readiness([peer], dependency, false);
+      const [sample] = await sharedDependencyReadiness(
+        [peer],
+        dependency,
+        false,
+      );
       return sample;
     }),
   );
