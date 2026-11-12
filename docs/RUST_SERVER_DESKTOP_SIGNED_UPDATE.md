@@ -43,6 +43,39 @@ local updater, packaging and catalog tests and 41 first-run encryption tests
 passed. This rehearsal used local Developer ID signing. Release notarization
 and Windows installer acceptance remain separate.
 
+## Installed app and signed update `1.1.2869`
+
+The normal macOS ARM64 service packager produced both the Rust server and
+the Node worker at `1.1.2869` from
+`0ae86163efb8503387a2b3d627f9e962d099e1cd`. The desktop packager assembled
+those same artifacts with portable Node `24.22.1` and the legacy profile
+converter. The standalone server separately verified all 1,762 package files
+and passed all three stores with Node absent from its runtime PATH and
+Homebrew reads and distribution writes denied.
+
+The release-mode desktop fixture updated the previous `1.1.2845` runtime to
+`1.1.2869` with matching Developer ID requirements, a disposable updater key,
+and loopback HTTPS. All three installed apps kept the database selection,
+server and worker identities, accepted setting, and encrypted WebView device
+and account bindings. The worker answered a real command after reconnecting.
+The PGlite case rejected an altered archive before installing the valid
+candidate. The updated app accepted a new write, and its supervised services
+exited cleanly. An independent comparison matched all 13,569 files in each
+installation to the signed archive, including the versioned worker entry.
+
+The exact packaged worker and standalone server also passed the forced
+Task/Goal input-order scenario in a browser on all three stores. The fixture
+controls model responses and makes autonomy attempt an early turn. It
+observed the early denial, the original Task receipt binding to the first
+explicit input, and a later autonomous turn. The runtime startup logs
+reported worker version `1.1.2869` in every case.
+
+The [acceptance record](security/rust-server-2869-production-packages.json)
+includes artifact and report checksums. The desktop rehearsal used fresh
+baseline profiles and an isolated application identifier. The older
+[encrypted profile rehearsal](RUST_SERVER_DESKTOP_ENCRYPTED_ACCEPTANCE.md)
+covers original Node installations.
+
 ## Current installed app and signed update
 
 The local release-mode macOS ARM64 app updates from `1.1.2831` to

@@ -1,0 +1,287 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceCommit": "0ae86163efb8503387a2b3d627f9e962d099e1cd",
+  "version": "1.1.2869",
+  "evidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1/current-production-packages",
+  "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+  "macOSArm64": {
+    "standalone": {
+      "verifiedArtifactFiles": 1762,
+      "serverExecutable": {
+        "path": "darwin-arm64-standalone/cantrip-server-darwin-arm64/bin/cantrip-server",
+        "bytes": 94199904,
+        "sha256": "12119fe998d6d2338b799cd1a832a4f1414eb8bd849887233296da360c51eeb8"
+      },
+      "manifest": {
+        "path": "darwin-arm64-standalone/cantrip-server-darwin-arm64/native-server.json",
+        "bytes": 325804,
+        "sha256": "2741df5241f1dea599396ef9ea9d2e5ae7b727ea86935390c155677f53ce5e69"
+      },
+      "report": {
+        "path": "darwin-arm64-standalone/report.json",
+        "bytes": 2855,
+        "sha256": "e0f45d6920c8e67cc54096a94f0a1de1f3462beafaae9394e64a1d68b3b8fd54"
+      }
+    },
+    "worker": {
+      "version": "1.1.2869",
+      "nodeVersion": "24.22.1",
+      "entry": {
+        "path": "darwin-arm64-worker-distribution/cantrip-worker-darwin-arm64/dist/index.js",
+        "bytes": 391958,
+        "sha256": "d83bb59a3a681b9bbd885519935a167029e969fc7241804bcfbe563cc4367e2b"
+      },
+      "versionMetadata": {
+        "path": "darwin-arm64-worker-distribution/cantrip-worker-darwin-arm64/node_modules/@cantrip/version/dist/version.json",
+        "bytes": 179,
+        "sha256": "a0c1b0c8009e058c22c4af1ae3fa2c44136b7a85199a20d899a48af2ae19002e"
+      },
+      "nodeExecutable": {
+        "path": "darwin-arm64-worker-distribution/cantrip-worker-darwin-arm64/runtime/node",
+        "bytes": 121833248,
+        "sha256": "1cb5ac15fcf30a715e4a220e08a17dd31f6c05855e9fe27c7714b608b3d00bf8"
+      },
+      "codexExecutable": {
+        "path": "darwin-arm64-worker-distribution/cantrip-worker-darwin-arm64/bin/codex",
+        "bytes": 281161744,
+        "sha256": "159efa081468910fbe00493d12d3cb18fbb9e3a091e2ea63745432d35fccbecc"
+      },
+      "taskGoalFirstInputDispatch": [
+        {
+          "mode": "pglite",
+          "steps": 16,
+          "cleanWorkerExits": 5,
+          "report": {
+            "path": "darwin-arm64-worker-product-rust-v2/pglite/product.json",
+            "bytes": 690919,
+            "sha256": "e7f1e89b222ffe0c910362b0067fabf35e3c5dcf1b6840b2ed35d300987b9c60"
+          }
+        },
+        {
+          "mode": "bundled-postgres",
+          "steps": 16,
+          "cleanWorkerExits": 5,
+          "report": {
+            "path": "darwin-arm64-worker-product-rust-v2/bundled-postgres/product.json",
+            "bytes": 708929,
+            "sha256": "edc537f4528d87bb20517915366457fc4c69a13d415c319e30b8d3d81d3e5ddf"
+          }
+        },
+        {
+          "mode": "postgres",
+          "steps": 16,
+          "cleanWorkerExits": 5,
+          "report": {
+            "path": "darwin-arm64-worker-product-rust-v2/postgres/product.json",
+            "bytes": 686645,
+            "sha256": "bd634634f49e7ebb0043e17b32729be771a5e952473d0a75593921496bcef543"
+          }
+        }
+      ]
+    },
+    "desktop": {
+      "previousVersion": "1.1.2845",
+      "signedArchive": {
+        "path": "desktop-updater/candidate/Cantrip Server Signed Update QA.app.tar.gz",
+        "bytes": 335639473,
+        "sha256": "6fd9dfa7e04e984b5eec040b7495aef1895115bc3355babba7f80212224fa7c0"
+      },
+      "archiveSignature": {
+        "path": "desktop-updater/candidate/Cantrip Server Signed Update QA.app.tar.gz.sig",
+        "bytes": 436,
+        "sha256": "c4dff04bdd60b5cc84d95ede2e85e1a6c2efaa0a50acaae65f0ada6fcb534998"
+      },
+      "signedServerExecutableSha256": "e1a388fdbec0934570152bf2d88f9fdb1abf87d19a2fc0edf138ab118fc445b2",
+      "verifiedFilesPerInstalledBundle": 13569,
+      "matchedInstalledBundles": 3,
+      "retainedEncryptedClientAcrossAllStores": true,
+      "tamperRejection": "update_signature_invalid",
+      "report": {
+        "path": "desktop-updater/report.json",
+        "bytes": 11345,
+        "sha256": "37737c68682aa543a6511df4394fe55b46cc10a7a143ceab95264adb6529e918"
+      },
+      "archiveVerification": {
+        "path": "retained-verification.json",
+        "bytes": 3747,
+        "sha256": "1c8f1c0c04f2b3c79cf886fd61adeb23df870287d14836e00c621e85672cf0ca"
+      },
+      "scope": "Developer ID-signed release-mode Tauri fixture with an isolated application identifier, fresh baseline profiles, portable Node worker, disposable updater key and loopback HTTPS."
+    }
+  },
+  "linuxX64": {
+    "binary": {
+      "path": "linux-x64-distribution/bin/cantrip-server",
+      "bytes": 110844816,
+      "sha256": "1d6f1ba1df1c6ce853addb62a1c27bd198940cff23fc3086f394029f0d40bf50"
+    },
+    "manifest": {
+      "path": "linux-x64-distribution/native-server.json",
+      "bytes": 488934,
+      "sha256": "fb23e1724322f9eb42a20625d726aea8e90935bb6e8b72579eac464c006fb577"
+    },
+    "container": {
+      "imageId": "sha256:f74814d052d16a81b12d5d2474f788f3cad7ee88473fc6e5f26e90d00c70f8ab",
+      "archive": {
+        "path": "cantrip-server-1.1.2869-linux-x64.tar.zst",
+        "bytes": 180580394,
+        "sha256": "6e478923a76bd35f048c893ec2d098ed3e0a5e40153708238a2f0a74cc6d734b"
+      },
+      "report": {
+        "path": "linux-x64-container/report.json",
+        "bytes": 5412,
+        "sha256": "5d99b559cea8724190807483ca3b9fa0e82c8cdd29e4add5ea820dde85d23457"
+      },
+      "verifiedArtifactFilesPerStore": 2546,
+      "retainedFixtureVolumes": {
+        "path": "linux-x64-container/retained-volumes.sha256",
+        "bytes": 886,
+        "sha256": "6150e237d73c4c842efaa55c232014815b33dfa3fd121f85ee039ac28f727570"
+      }
+    },
+    "winterhold": {
+      "report": {
+        "path": "linux-x64-winterhold/report.json",
+        "bytes": 1092747,
+        "sha256": "c039b300733c8537db82ad13436e4d507b0561d0a3065308b92683edd074e204"
+      },
+      "standaloneArchive": {
+        "path": "linux-x64-winterhold/native.tar.gz",
+        "bytes": 142600503,
+        "sha256": "6a990f135f716ecfa72e002bb3db570dc9c2f66509cb92afd7e964e74dd4338a"
+      },
+      "installerCalls": 18,
+      "recoveredInstallerFailures": 6,
+      "runningExecutableHashesCompared": 10,
+      "localRollbackVersion": "1.1.2783",
+      "externalPostgresRollbackVersion": "1.1.2739",
+      "previousRustImageId": "sha256:76d045c61319023340d3091d220e6e4f4d9411f30b08782b2f7e8bdeeceff99a",
+      "previousNodeImageId": "sha256:e45a5bb676e4efec2ec75897dd24829fadfd23165a545de155fa1c5a7da5a9d8",
+      "systemdImageId": "sha256:1a4719cffced31ab606bf1b4ccd0625d218a2d885708708435f66a7da36c6b92",
+      "hostArchitecture": "arm64",
+      "retainedProfiles": {
+        "path": "linux-x64-winterhold/retained-systemd-profiles.tar.zst",
+        "bytes": 13330789,
+        "sha256": "6e82c4e8c81196dc3642116abab532aaa97f62151155e72ae023fd6e633fbde0"
+      },
+      "retainedExternalPostgres": {
+        "path": "linux-x64-winterhold/retained-external-postgres.dump",
+        "bytes": 677156,
+        "sha256": "ab49afab424480854bb6305e5c5990671b71970c680dae76c953022ee86baf51"
+      },
+      "scope": "Local Linux ARM64 host with Rosetta x64 execution, production installer and systemd units, Caddy HTTPS and App Live, required TLS on external PostgreSQL, restart and data-preserving rollback."
+    }
+  },
+  "performance": {
+    "scope": "Small-profile macOS ARM64 PGlite production startup, idle process-tree RSS, HTTP, App Live and paused-client catch-up. The compiled reference server and native package each completed five warmups and twenty measurements.",
+    "completeWorkloadMedianMs": {
+      "node": 3557.307,
+      "rust": 1562.454
+    },
+    "guard": {
+      "path": "darwin-arm64-performance/guard-comparison.md",
+      "bytes": 596,
+      "sha256": "6e935a22e746fddef6c62296a174bc9eca6a8ad7f6a14bf119d7a0b9825b54bf"
+    },
+    "report": {
+      "path": "darwin-arm64-performance/summary.json",
+      "bytes": 6127,
+      "sha256": "5388042b1afeb01c7eb490fa46c3837d70932b23ea6a299da3e2e95dc27d5c29"
+    },
+    "workerLogStreamAndRecovery": {
+      "scope": "One 64 MiB worker-log stream, paused-consumer backpressure and actual server SIGKILL/recovery observation per runtime and store. The current test uses the production WorkerConnection with controlled log generation.",
+      "cases": [
+        {
+          "mode": "pglite",
+          "node": {
+            "payloadMiBPerSecond": 220.94,
+            "payloadSha256": "e20a69eca39368572e90b9135738a613838f954987a0b44b6220889c171cbb76",
+            "pressureLeaseStopMs": 29.27,
+            "crashToWorkerReconnectMs": 29124.47,
+            "report": {
+              "path": "darwin-arm64-stream-recovery/pglite/node/runs/1794449148460-42434/report.json",
+              "bytes": 3053,
+              "sha256": "c82e84e168daf9b44e32971a07519269bfa4a86dd25633d99a77b133774081f2"
+            }
+          },
+          "rust": {
+            "payloadMiBPerSecond": 230.51,
+            "payloadSha256": "e20a69eca39368572e90b9135738a613838f954987a0b44b6220889c171cbb76",
+            "pressureLeaseStopMs": 22.38,
+            "crashToWorkerReconnectMs": 27712.87,
+            "report": {
+              "path": "darwin-arm64-stream-recovery/pglite/rust/runs/1794449181503-42979/report.json",
+              "bytes": 3049,
+              "sha256": "6074b24f7db19a88f798559bd1d3dbe7393f3c08aae81ccf9af71eb45ed63d6e"
+            }
+          }
+        },
+        {
+          "mode": "bundled-postgres",
+          "node": {
+            "payloadMiBPerSecond": 228.67,
+            "payloadSha256": "e20a69eca39368572e90b9135738a613838f954987a0b44b6220889c171cbb76",
+            "pressureLeaseStopMs": 22.62,
+            "crashToWorkerReconnectMs": 28834.81,
+            "report": {
+              "path": "darwin-arm64-stream-recovery/bundled-postgres/node/runs/1794449211340-43424/report.json",
+              "bytes": 3054,
+              "sha256": "c83b7c4b12658a692e3c07e886ce1dd3156e2e525e80e3265ae31a09c0dc8d0a"
+            }
+          },
+          "rust": {
+            "payloadMiBPerSecond": 235.98,
+            "payloadSha256": "e20a69eca39368572e90b9135738a613838f954987a0b44b6220889c171cbb76",
+            "pressureLeaseStopMs": 22.24,
+            "crashToWorkerReconnectMs": 27559.86,
+            "report": {
+              "path": "darwin-arm64-stream-recovery/bundled-postgres/rust/runs/1794449243516-43731/report.json",
+              "bytes": 6113,
+              "sha256": "15a9e4688e37559e594ef3204ba8e3e3393e7c77d80cfc63e2d5917407c3fe1a"
+            }
+          }
+        },
+        {
+          "mode": "postgres",
+          "node": {
+            "payloadMiBPerSecond": 230.87,
+            "payloadSha256": "e20a69eca39368572e90b9135738a613838f954987a0b44b6220889c171cbb76",
+            "pressureLeaseStopMs": 23.45,
+            "crashToWorkerReconnectMs": 27644.01,
+            "report": {
+              "path": "darwin-arm64-stream-recovery/postgres/node/runs/1794449273267-44311/report.json",
+              "bytes": 3052,
+              "sha256": "bd3e71dfda0d0b78be4fabba3e2d3e3d19988a37a966e5425757a60f045c50dd"
+            }
+          },
+          "rust": {
+            "payloadMiBPerSecond": 241.81,
+            "payloadSha256": "e20a69eca39368572e90b9135738a613838f954987a0b44b6220889c171cbb76",
+            "pressureLeaseStopMs": 23.03,
+            "crashToWorkerReconnectMs": 28370.3,
+            "report": {
+              "path": "darwin-arm64-stream-recovery/postgres/rust/runs/1794449304126-44874/report.json",
+              "bytes": 3049,
+              "sha256": "53473385c84a1be4c95ca3daafbed213b638cc7714525e84314c670fc98db8d6"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "localChecks": {
+    "deploymentAndReleaseTestsPassed": 40,
+    "deploymentAndReleaseTests": {
+      "path": "deployment-release-tests.log",
+      "bytes": 10564,
+      "sha256": "f3e93a1c71609e89dbf7e96e886759c134ad285b7ce4148a169edcf0e7cee8df"
+    },
+    "hostedDevelopmentRuns": 0
+  },
+  "remaining": [
+    "Current Windows and Linux ARM64 shipping packages and remaining installed mobile acceptance.",
+    "Full historical-profile, rolling-deployment, recovery and performance matrix against the integrated release artifacts.",
+    "Remaining ledger scope reconciliation and queued provider-transfer cases."
+  ]
+}

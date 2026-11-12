@@ -5,14 +5,20 @@ production Node workspace and entrypoints have been retired. The worker remains
 Node. The old server is an explicit development compatibility reference. See
 [default cutover](RUST_SERVER_DEFAULT_CUTOVER.md) and
 [production Node retirement](RUST_SERVER_NODE_RETIREMENT.md) for their qualification.
-Historical ledger entries describe their original milestones; their remaining-work
-text is not a current implementation inventory. The
-[current macOS encrypted desktop qualification](RUST_SERVER_DESKTOP_ENCRYPTED_ACCEPTANCE.md)
-passes all three original-profile upgrades and restarts with retained client keys.
-The [current signed macOS desktop qualification](RUST_SERVER_DESKTOP_SIGNED_UPDATE.md#current-installed-app-and-signed-update)
-updates the installed app to `1.1.2845` on all three stores, retains the
-authenticated client, server, worker and written setting, and verifies the
+Historical ledger entries describe their original milestones. Local qualification
+of `1.1.2869` covers the macOS ARM64 server and worker from the normal packager,
+signed macOS desktop updates from `1.1.2845`, and the Linux x64 container and
+Winterhold installation and rollback. Each qualification exercises all three
+storage modes. The Linux x64 tests ran through Rosetta on an ARM64 Linux host.
+[Production package acceptance](security/rust-server-2869-production-packages.json)
+
+The original-profile rehearsal passes upgrades and restarts with retained
+client keys on all three stores.
+[Encrypted macOS profile qualification](RUST_SERVER_DESKTOP_ENCRYPTED_ACCEPTANCE.md)
+The earlier signed update from `1.1.2831` to `1.1.2845` retained the
+authenticated client, server, worker and written setting, and verified the
 installed bundles against the signed archive.
+[Signed macOS desktop qualification](RUST_SERVER_DESKTOP_SIGNED_UPDATE.md#current-installed-app-and-signed-update)
 The [current installed Windows x64 qualification](RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md#windows-x64-installed-112845)
 updated the installed app to `1.1.2845` through its signed updater and verified
 14,090 files. The retained profile and all three database modes passed

@@ -100,6 +100,26 @@ failed because the default extracted development runtime lacked `postgres.bki`.
 That failure is retained. The successful comparison explicitly selects the
 packaged PGlite assets; the package's separate embedded-fallback test also passes.
 
+## Packaged `1.1.2869` comparison
+
+The packaged macOS ARM64 Rust server and compiled Node reference each ran
+one 64 MiB worker-log stream, slow-consumer test and SIGKILL recovery per
+store. Every run delivered the same payload hash. All six slow consumers
+received close code 1013 with the expected reason and exactly one lease stop.
+The worker reconnected after restart, and the server retained its identity and
+accepted setting.
+
+| Database            | Node MiB/s | Rust MiB/s | Node recovery | Rust recovery |
+| ------------------- | ---------: | ---------: | ------------: | ------------: |
+| PGlite              |     220.94 |     230.51 |       29.12 s |       27.71 s |
+| Bundled PostgreSQL  |     228.67 |     235.98 |       28.83 s |       27.56 s |
+| External PostgreSQL |     230.87 |     241.81 |       27.64 s |       28.37 s |
+
+Recovery includes the worker's reconnect backoff. Each pair is a single
+observation. The repeated PGlite throughput series above has its own earlier
+artifact versions.
+[Production package acceptance](security/rust-server-2869-production-packages.json)
+
 ## Reproduce
 
 Build the current Node reference and worker/protocol dependencies, and package
