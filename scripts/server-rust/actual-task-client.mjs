@@ -78,6 +78,7 @@ export async function actualTaskClient({
   result,
   requests,
   taskOutcomeOrder,
+  taskGoalFirstInputOrder,
   goalLaneScenario,
 }) {
   const model = await taskModelProvider();
@@ -258,6 +259,7 @@ export async function actualTaskClient({
     const firstTurn =
       goalLaneScenario ||
       forceGoalOrder ||
+      taskGoalFirstInputOrder ||
       process.argv.includes("--task-goal-autonomous")
         ? model.reply({ text: initialGoalAnswer, hold: forceGoalOrder })
         : null;
@@ -325,6 +327,23 @@ export async function actualTaskClient({
     );
     if (goalLaneScenario)
       await observeSettledGoalLane(fixture, planned.chat.id, result);
+    if (taskGoalFirstInputOrder) {
+      const order = JSON.parse(await readFile(taskGoalFirstInputOrder, "utf8"));
+      result.taskGoalFirstInputOrder = order;
+      assert.equal(order.authorityStatus, 200);
+      assert.equal(order.wakeScheduled, true);
+      assert.equal(order.earlyBeginBeforeReply, true);
+      assert.equal(order.earlyDenialAcknowledged, true);
+      assert.equal(order.earlyTurnFinishedBeforeFirstInput, true);
+      assert.ok(order.firstInputTurnId);
+      assert.notEqual(order.firstInputTurnId, order.earlyGoalTurnId);
+      assert.equal(order.boundFirstInputTurnId, order.firstInputTurnId);
+      assert.ok(order.laterGoalTurnId);
+      assert.notEqual(order.laterGoalTurnId, order.firstInputTurnId);
+      result.steps.push(
+        "an early native Goal begin settles before the canonical Task input and a later autonomous cycle completes",
+      );
+    }
     assert.equal(goalTask.finalPlanMarkdown, planText);
     assert.ok(
       goalTask.goalPrompt.startsWith(

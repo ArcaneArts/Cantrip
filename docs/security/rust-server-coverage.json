@@ -9915,10 +9915,10 @@
           "docs/security/rust-server-streamed-goal-receipt-acceptance.json",
           "docs/security/rust-server-autonomous-goal-lane-acceptance.json",
           "docs/security/rust-server-autonomous-goal-dependency-acceptance.json",
-          "docs/security/rust-server-mixed-postgres-goal-acceptance.json"
+          "docs/security/rust-server-mixed-postgres-goal-acceptance.json",
+          "docs/security/rust-server-task-goal-first-input-acceptance.json"
         ],
         "remaining": [
-          "Find the cause of the intermittent bundled PostgreSQL Goal admission stall. Both traced builds forwarded the model requests and committed the receipts.",
           "Qualify the remaining mixed interruption combinations and document the legacy Node readiness and shutdown limits for rolling deployment.",
           "Repeat qualification on the final supported shipping artifacts."
         ]
@@ -29895,6 +29895,15 @@
       "remaining": [
         "Retain the legacy Node readiness and shutdown limitations in mixed rolling-deployment qualification.",
         "Repeat qualification on the final supported shipping artifacts."
+      ]
+    },
+    "currentTaskGoalFirstInputOrdering": {
+      "status": "partial",
+      "qualification": "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md#ordering-the-first-encrypted-task-goal-input",
+      "acceptance": "docs/security/rust-server-task-goal-first-input-acceptance.json",
+      "verifiedScope": "Real browser, full worker and Core. Force an early native Goal begin across actual first input claim or dispatch. Verify the unused begin is denied and ends, the explicit turn binds the original Task receipt, and later autonomous completion survives restart.",
+      "remaining": [
+        "Qualify the exact shipping worker and server artifacts and the full provider-transfer and interruption matrix."
       ]
     },
     "currentPackagedNativeAdmission": {

@@ -133,6 +133,12 @@ const databaseMode = option("--database") ?? "pglite";
 const sharedPair = option("--server-pair");
 const postgresOutage = option("--inflight-peer") === "postgres";
 const goalLaneDependency = option("--task-goal-lane-dependency");
+const taskGoalFirstInputPhase = option("--task-goal-first-input-order");
+assert.ok(
+  taskGoalFirstInputPhase === undefined ||
+    ["claim", "dispatch"].includes(taskGoalFirstInputPhase),
+  "Task Goal first-input order expects claim or dispatch",
+);
 const cantripOsRun = process.argv.includes("--cantrip-os-run");
 const cantripOsSurfaces = process.argv.includes("--cantrip-os-surfaces");
 const fakeHostDesktopInventory = process.argv.includes(
@@ -279,6 +285,9 @@ async function flow(
     goalLaneDependency || process.argv.includes("--task-goal-lane-owner-loss")
       ? path.join(root, fixture.kind, "goal-lane-observation.json")
       : undefined;
+  const taskGoalFirstInputOrder = taskGoalFirstInputPhase
+    ? path.join(root, fixture.kind, "task-goal-first-input-order.json")
+    : undefined;
   const errors = [],
     requests = [];
   result.requests = requests;
@@ -432,6 +441,29 @@ async function flow(
                   "--import=" +
                     new URL("./worker-task-round-order.mjs", import.meta.url)
                       .href,
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              }
+            : {}),
+          ...(taskGoalFirstInputOrder
+            ? {
+                CANTRIP_TEST_TASK_GOAL_FIRST_INPUT_FILE:
+                  taskGoalFirstInputOrder,
+                CANTRIP_TEST_TASK_GOAL_FIRST_INPUT_PHASE:
+                  taskGoalFirstInputPhase,
+                CANTRIP_TEST_TASK_GOAL_FIRST_INPUT_WORKER_ENTRY: path.resolve(
+                  process.env.CANTRIP_TEST_WORKER_PACKAGE ??
+                    path.join(repositoryRoot, "cantrip_worker"),
+                  "dist/index.js",
+                ),
+                NODE_OPTIONS: [
+                  process.env.NODE_OPTIONS,
+                  "--import=" +
+                    new URL(
+                      "./worker-task-goal-first-input-order.mjs",
+                      import.meta.url,
+                    ).href,
                 ]
                   .filter(Boolean)
                   .join(" "),
@@ -1397,7 +1429,7 @@ async function flow(
         result,
       });
     }
-    if (process.argv.includes("--tasks"))
+    if (process.argv.includes("--tasks") || taskGoalFirstInputOrder)
       await actualTaskClient({
         page,
         fixture,
@@ -1408,6 +1440,7 @@ async function flow(
         result,
         requests,
         taskOutcomeOrder,
+        taskGoalFirstInputOrder,
         goalLaneScenario:
           goalLaneFault || process.argv.includes("--task-goal-recovered-lane")
             ? {
