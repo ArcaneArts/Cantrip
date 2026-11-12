@@ -3025,8 +3025,10 @@
           "scripts/server-rust/discovery-repository-compatibility.mjs",
           "scripts/server-rust/discovery-http-compatibility.mjs",
           "scripts/server-rust/actual-folder-client.mjs",
-          "scripts/server-rust/actual-workspace-discovery.mjs"
+          "scripts/server-rust/actual-workspace-discovery.mjs",
+          "scripts/server-rust/workspace-removal-http-compatibility.mjs"
         ],
+        "terminalLinkRevocationFailure": "The local production Node and Rust HTTP comparison uses external PostgreSQL and Redis. Redis denies PUBLISH during terminal-link revocation. Both runtimes return 204 and remove the workspace, project and terminal records.",
         "remaining": [
           "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required.",
           "Full managed-execution, archive and automation removal consumers must be ported with their domains. Existing Run, terminal and surface retirement/revocation is invoked; actual offline workspace removal preserves worker files."
