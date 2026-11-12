@@ -1830,7 +1830,7 @@ try {
       restartable:
         postgresOutage ||
         goalLaneDependency === "postgres" ||
-        taskGoalTransferDependency === "postgres",
+        Boolean(taskGoalTransferDependency),
     });
   for (const kinds of runtimeCases) {
     const kind = kinds[0];

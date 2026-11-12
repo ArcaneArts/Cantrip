@@ -338,4 +338,16 @@ Earlier attempts stopped before the outage. The worker-facing Node case
 returned `handoff-native-operation-pending`. The browser-facing Node case
 returned HTTP 500 from the Task Goal source read after PostgreSQL detected a
 deadlock. The successful retries qualify the observed recovery behavior.
+
+The browser-facing deadlock was reproduced on a disposable copy of the
+migrated product database. The Node handoff repository held an exclusive
+owner-row lock and waited for a project lock. The transaction holding the
+project needed to check the owner foreign key when inserting a native
+command. The Node test reference now takes the same `FOR NO KEY UPDATE`
+owner lock Rust uses. It still serializes Task writers and allows the
+foreign-key check to finish. Under the same contention, the command
+committed and source capture returned its normal stale-source response for
+the completed Goal. Both mixed Redis pairings subsequently passed all 16
+product steps and reopened the encrypted transcript. The earlier
+worker-facing rejection remains a separate observation.
 [Mixed post-commit evidence](security/rust-server-autonomous-task-goal-interruption-acceptance.json#mixedPostCommit)

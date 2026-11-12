@@ -1302,6 +1302,130 @@
         }
       ],
       "scope": "The Node test reference honors the worker's opt-in encrypted Goal publication contract already implemented by Rust. The original production Node binary predates that contract. These results apply to the rebuilt compatibility reference with the current protocol package and the packaged macOS ARM64 Rust server and worker. Optional native plugin synchronization was disabled in the local fixture."
+    },
+    "sourceCaptureLock": {
+      "sourceBaseline": "59ccc14fdcaa93068e81996cb7dc342ff9dd1c47",
+      "scope": "On copies of the migrated local product database, the actual Node handoff repository waited for the project while a separate PostgreSQL transaction held it. The second transaction inserted an inert rejected native command and exercised the real owner foreign key. The fixture uses a completed Goal so source capture retains its normal stale-source response after the lock wait.",
+      "referenceSource": {
+        "path": "tests/reference-node-server/src/db/repository/native-runtime-handoffs.ts",
+        "sha256": "c5a882240ab0a139a0ed9376b118acb9c0a80278e65b6b17bf804159f0cb40db"
+      },
+      "referenceBuild": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/goal-source-lock-reference-dist.tar.gz",
+        "bytes": 2230266,
+        "sha256": "b7651defd2bc178d3ec588194165d3835b94b3d4ae9b61b98ccb57a23f5c3298"
+      },
+      "reproducer": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/exercise-goal-source-owner-lock.mjs",
+        "bytes": 3045,
+        "sha256": "4a46e0791914d0de31b1c440661c53317509b3832205be7f297a1d6722933047"
+      },
+      "before": {
+        "sourceCode": "40P01",
+        "commandRows": 1,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/goal-source-lock-race.before.json",
+          "bytes": 748,
+          "sha256": "b22e36e51ddd5d28a0453c83b518ea7bac9a23fa97dc780651767ec0c6dc20c4"
+        },
+        "postgresLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/goal-source-lock-race.before.postgres.log",
+          "bytes": 4069,
+          "sha256": "2f4c5d636e715b676aa53cb0a80f5caa55a9e1a29f9f67bf5739bc8852d24e7b"
+        }
+      },
+      "after": {
+        "sourceCode": "handoff-task-goal-source-replaced",
+        "commandRows": 1,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/goal-source-lock-race.after.json",
+          "bytes": 855,
+          "sha256": "8572e5b68337abf8530551fbaaaa2f495334a74324b391bf0b10957e9fd6e87e"
+        },
+        "postgresLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/goal-source-lock-race.after.postgres.log",
+          "bytes": 2432,
+          "sha256": "a71401399a14f5021a6094ef343b0f6f718b25ac34fd2669e9ea806c268c552b"
+        }
+      },
+      "productControlsBefore": [
+        {
+          "pair": "node/rust",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-redis-after-commit.lock-diagnostic-1.json",
+            "bytes": 1091217,
+            "sha256": "bc8e57e610ed00af1762500d9714d3961c18c1463721525d52a655857d2ef492"
+          },
+          "log": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-redis-after-commit.lock-diagnostic-1.log",
+            "bytes": 959,
+            "sha256": "9eabcc4982742fad08589ca083d688df5e3a4582d9af7f86401fa54dde1bf080"
+          },
+          "productSteps": 16
+        },
+        {
+          "pair": "node/rust",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-redis-after-commit.lock-diagnostic-2.json",
+            "bytes": 1125712,
+            "sha256": "b927d5805b20c11c7cef066b00bb38c69029dc37e19c879008228aea2e82f015"
+          },
+          "log": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-redis-after-commit.lock-diagnostic-2.log",
+            "bytes": 1067,
+            "sha256": "86f5f55687387cbcef217e454b13cebd7e109dbbc3f214fea23db6be134fc026"
+          },
+          "productSteps": 16
+        }
+      ],
+      "productControlDatabaseLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/goal-source-lock-control.postgres.log",
+        "bytes": 1649,
+        "sha256": "774828078fd9aa5967344daba477dc12b63763524552a58e4b5673cd74156b8f"
+      },
+      "productAfter": [
+        {
+          "pair": "node/rust",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-redis-after-commit.source-lock-fixed.json",
+            "bytes": 1145305,
+            "sha256": "1291e8298b0f0b985b05de5ca0c9d87d007d1b4c498c512c45746cd4316e9583"
+          },
+          "log": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-redis-after-commit.source-lock-fixed.log",
+            "bytes": 959,
+            "sha256": "63c8dc9645e9e691047fdc216ac9a896337c7e44316890629f6a3e78127c5017"
+          },
+          "productSteps": 16
+        },
+        {
+          "pair": "rust/node",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-redis-after-commit.source-lock-fixed.json",
+            "bytes": 926588,
+            "sha256": "86e06ec73c8a09960e07a2420023059b14d766e7db6f19336c200b87ecdf65aa"
+          },
+          "log": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-redis-after-commit.source-lock-fixed.log",
+            "bytes": 731,
+            "sha256": "48b27c85bafdbfc5e4f130ea2f5ad030bc596f7efe6a5f20ed5fe67db6e53ff5"
+          },
+          "productSteps": 16
+        }
+      ],
+      "nativeFixtureBaselineFailure": {
+        "reason": "The native handoff unit fixture does not supply holdSource to the coordinator. Both opt-in tests fail identically on the unchanged baseline and the candidate.",
+        "baselineLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/goal-source-lock-native-tests-baseline.log",
+          "bytes": 7277,
+          "sha256": "7e1a38c9fa08c03820ea434467fad3ee58c7902dea918efed8d49b27411c9c47"
+        },
+        "candidateLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/goal-source-lock-native-tests.log",
+          "bytes": 7270,
+          "sha256": "904138e06e7d69152f0570c40f4139b3707791b732baf6129314c54db42cd8bf"
+        }
+      }
     }
   }
 }
