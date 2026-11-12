@@ -5,12 +5,17 @@ production Node workspace and entrypoints have been retired. The worker remains
 Node. The old server is an explicit development compatibility reference. See
 [default cutover](RUST_SERVER_DEFAULT_CUTOVER.md) and
 [production Node retirement](RUST_SERVER_NODE_RETIREMENT.md) for their qualification.
-Historical ledger entries describe their original milestones. Local qualification
-of `1.1.2869` covers the macOS ARM64 server and worker from the normal packager,
-signed macOS desktop updates from `1.1.2845`, and the Linux x64 container and
-Winterhold installation and rollback. Each qualification exercises all three
-storage modes. The Linux x64 tests ran through Rosetta on an ARM64 Linux host.
-[Production package acceptance](security/rust-server-2869-production-packages.json)
+Historical ledger entries describe their original milestones. The local macOS
+ARM64 `1.1.2881` server passed all three stores as a standalone distribution,
+in signed desktop updates from `1.1.2869`, and through the original Node
+`1.1.2733` upgrade and post-write rollback. The signed installed apps kept
+their encrypted client bindings and accepted state. The rollback passed the
+137-table and four-sequence comparisons and preserved the original profile.
+[macOS package acceptance](security/rust-server-2881-macos-acceptance.json)
+
+The Linux x64 `1.1.2869` container and Winterhold installation and rollback
+passed all three stores through Rosetta on an ARM64 Linux host.
+[Linux x64 package acceptance](security/rust-server-2869-production-packages.json)
 
 The native Linux ARM64 `1.1.2869` container and local Winterhold rehearsal
 also pass all three storage modes and preserve writes through rollback.

@@ -24734,7 +24734,7 @@
     },
     "fullPostWriteRollback": {
       "status": "partial",
-      "limitedEvidence": "Native logical/profile reversal, automatic packaged legacy conversion and actual app post-write rollback have scoped historical local evidence. Populated Node 1.1.2733 -> native 1.1.2869 -> Node -> native round trips pass all three stores with exact comparisons of the expected migration, 137 tables and four sequences. Sessions, identities, credentials, crypto wrappers and encrypted product writes survive. Winterhold separately qualifies external PostgreSQL post-write code rollback over TLS. Full-client, current-platform, historical-profile and execution-replay rollback acceptance remain incomplete.",
+      "limitedEvidence": "Native logical/profile reversal, automatic packaged legacy conversion and actual app post-write rollback have scoped historical local evidence. Populated Node 1.1.2733 -> native 1.1.2881 -> Node -> native round trips pass all three stores with exact comparisons of the two expected migrations, 137 tables and four sequences. Sessions, identities, credentials, crypto wrappers and encrypted product writes survive. Winterhold separately qualifies external PostgreSQL post-write code rollback over TLS. Full-client, current-platform, historical-profile and execution-replay rollback acceptance remain incomplete.",
       "historicalLimitedEvidence": "Existing auth/encryption/policy/workspace suites retain selected writes across Node/Rust/Node on external PostgreSQL. Native SQL export adds current/historical all-store database rollback after real password-authenticated Rust workspace/protection writes. Complete-profile CLI transfer now retains original keys/files/backend selection, compares all115tables4sequences and lets actualNode retain session/CSRF/serverUUID plus Rust workspace revision2 and write revision3 on all3stores. Packaged existing-profile activation and product-wide post-write rollback remain incomplete; see installationProfileTransfer.",
       "evidence": [
         "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md",
@@ -24742,6 +24742,7 @@
         "docs/RUST_SERVER_DESKTOP_RUNTIME.md",
         "docs/RUST_SERVER_WINTERHOLD.md",
         "docs/RUST_SERVER_HISTORICAL_PRODUCT_ROLLBACK.md",
+        "docs/security/rust-server-2881-macos-acceptance.json",
         "scripts/server-rust/historical-product-profile-acceptance.mjs",
         "scripts/server-rust/historical-product-profile-material.mjs",
         "docs/RUST_SERVER_PROFILE_RUNTIME_RECOVERY.md",
@@ -24752,10 +24753,10 @@
       "currentPopulatedHistoricalQualification": {
         "status": "implemented-pending-platform-acceptance",
         "sourceRuntime": "Actual packaged Node 1.1.2733 and a preserved original profile with 1,773 files; actual 287-entry migration chain. A private copy is populated through real login, encryption initialization and enrollment, plus controlled offline domain records.",
-        "nativeRuntime": "Optimized macOS ARM64 native 1.1.2869 at 0ae86163e, executable SHA256 12119fe998d6d2338b799cd1a832a4f1414eb8bd849887233296da360c51eeb8",
-        "currentReport": "docs/security/rust-server-2869-historical-profile-acceptance.json",
+        "nativeRuntime": "Optimized macOS ARM64 native 1.1.2881 at ccafd3cd, executable SHA256 fbb5069e83c4d9a7b5824713900b62477ad6d3ba90419c71702abd11d3815244",
+        "currentReport": "docs/security/rust-server-2881-macos-acceptance.json",
         "storageModes": ["pglite", "bundled-postgres", "postgres"],
-        "localQualification": "All three stores retain the original session, identity, enrolled credential summary, encrypted messages and frozen queue. The first import applies the expected Task output finalization migration once and preserves all 137 tables and four sequences. The return import applies zero migrations. Rust, old Node and returned Rust accept encrypted title, composer, revision-fenced Task and document writes. Restart retains those writes, and original profile files and modes remain unchanged.",
+        "localQualification": "All three stores retain the original session, identity, enrolled credential summary, encrypted messages and frozen queue. The first import applies the expected Task output finalization and provider-transfer eligibility migrations and preserves all 137 tables and four sequences. The return import applies zero migrations. Rust, old Node and returned Rust accept encrypted title, composer, revision-fenced Task and document writes. Restart retains those writes, and original profile files and modes remain unchanged.",
         "historyScope": "Validated empty history checkpoint receipt and canonical payload digest are preserved. This is not native-turn archive replay or in-flight execution acceptance.",
         "remaining": [
           "Full existing-client encryption, update and restart acceptance, plus representative historical profiles.",
@@ -24790,6 +24791,7 @@
         "scripts/server-rust/desktop-profile-upgrade-compatibility.mjs",
         "docs/RUST_SERVER_DESKTOP_ENCRYPTED_ACCEPTANCE.md",
         "docs/RUST_SERVER_DESKTOP_SIGNED_UPDATE.md",
+        "docs/security/rust-server-2881-macos-acceptance.json",
         "scripts/server-rust/native-desktop-updater-acceptance.mjs",
         "scripts/server-rust/desktop-client-continuity.mjs"
       ],
@@ -24797,7 +24799,7 @@
         "https://github.com/ArcaneArts/Cantrip/pull/2749",
         "https://github.com/ArcaneArts/Cantrip/pull/2752"
       ],
-      "scope": "The native supervisor and Rust packaging are the default. The macOS ARM64 1.1.2786 app passes all three original encrypted-client profile upgrades. The current signed 1.1.2845 macOS ARM64 candidate also passes all three installed updates from 1.1.2831, including encrypted WebView authentication, real worker replies, retained database selection and accepted writes, and graceful child shutdown. The PGlite updater rejects a tampered archive.",
+      "scope": "The native supervisor and Rust packaging are the default. The macOS ARM64 1.1.2786 app passes all three original encrypted-client profile upgrades. The signed 1.1.2881 macOS ARM64 candidate passes all three installed updates from the 1.1.2869 runtime, including encrypted WebView authentication, real worker replies, retained database selection and accepted writes, and graceful child shutdown. Each installed bundle matches all 13,572 files in the candidate archive. The PGlite updater rejects a tampered archive.",
       "remaining": [
         "Qualify the final Windows shipping artifact and reconcile the separate existing-data and product recovery evidence with the full release requirements."
       ]
@@ -28815,14 +28817,15 @@
         "broadHttpInventoryReason": "Zero generic route fallback differences; successful product/domain and complete replacement acceptance remain separate."
       },
       "currentQualification": {
-        "sourceBaseline": "46e0bd2789bb64a2c1ff11900161c5e8e7100911",
+        "evidence": "docs/security/rust-server-2881-macos-acceptance.json",
+        "sourceBaseline": "ccafd3cd4baea444ab43c1b84471ab3225f718e3",
         "requestsPerPeer": 584,
         "requestErrors": 0,
         "cleanServerExits": 2,
         "remainingActiveFallbackDifferences": 0,
         "inspectionExitCode": 0,
-        "rustExecutableSha256": "ef856f33477671eb4adabe05690383a2bbe601a34bd61b8879095a4f19b44d80",
-        "scope": "Current production empty-profile HTTP probe. Zero generic route fallback differences does not establish successful-operation parity, background-service completeness or replacement acceptance."
+        "rustExecutableSha256": "fbb5069e83c4d9a7b5824713900b62477ad6d3ba90419c71702abd11d3815244",
+        "scope": "Empty-profile HTTP discovery through the macOS ARM64 1.1.2881 standalone package and the compiled Node reference. Successful operations retain separate domain qualification."
       },
       "historicalQualifications": [
         {
@@ -29381,15 +29384,16 @@
       "status": "implemented-with-scoped-local-qualification",
       "evidence": [
         "docs/RUST_SERVER_DESKTOP_SIGNED_UPDATE.md",
+        "docs/security/rust-server-2881-macos-acceptance.json",
         "docs/security/rust-server-2869-production-packages.json",
         "scripts/server-rust/packaged-server-acceptance.mjs",
         "scripts/server-rust/native-desktop-updater-acceptance.mjs"
       ],
-      "sourceCommit": "0ae86163efb8503387a2b3d627f9e962d099e1cd",
-      "candidateVersion": "1.1.2869",
+      "sourceCommit": "ccafd3cd4baea444ab43c1b84471ab3225f718e3",
+      "candidateVersion": "1.1.2881",
       "standaloneDatabaseModes": ["pglite", "bundled-postgres", "postgres"],
       "verifiedArtifactFiles": 1762,
-      "scope": "Native ARM64 macOS 1.1.2869 standalone package passes all three stores. Developer ID-signed updates from 1.1.2845 retain the encrypted device and account bindings, service identities, selected stores and accepted settings. All 13,569 files in each installation match the signed archive."
+      "scope": "Native ARM64 macOS 1.1.2881 standalone package passes all three stores. Developer ID-signed updates from the 1.1.2869 runtime retain the encrypted device and account bindings, service identities, selected stores and accepted settings. All 13,572 files in each installation match the signed archive. The original Node profile upgrade and post-write rollback pass all three stores separately."
     },
     "currentActiveTaskPostgresOutage": {
       "status": "implemented-with-scoped-local-qualification",
