@@ -43,7 +43,7 @@ import {
   type TaskInferenceInputDispatch,
   type TaskGoalCycleDispatch,
   taskGoalCycleDispatchSchema,
-  taskGoalCycleDispatchResultSchema,
+  taskGoalCycleDispatchPublicationResultSchema,
   taskGoalOutcomeDeliverySchema,
   taskGoalOutcomeCommitSchema,
   type TaskGoalOutcomeDelivery,
@@ -151,6 +151,7 @@ export class NativeCommandClient {
     body: unknown,
     schema: { parse(value: unknown): T },
     signal?: AbortSignal,
+    headers?: Record<string, string>,
   ): Promise<T> {
     // A transport failure can follow a committed admission/dispatch. Leave its
     // identity intact for reconciliation; never mint a new ID or replay input.
@@ -166,6 +167,7 @@ export class NativeCommandClient {
         headers: {
           authorization: `Bearer ${this.options.token()}`,
           "content-type": "application/json",
+          ...headers,
         },
         body: JSON.stringify(body),
       },
@@ -309,6 +311,7 @@ export class NativeCommandClient {
   async dispatchTaskGoalCycle(
     input: Omit<TaskGoalCycleDispatch, "workerId">,
     signal: AbortSignal,
+    includePublication = false,
   ) {
     return this.post(
       "task-goal-cycle-dispatch",
@@ -316,8 +319,11 @@ export class NativeCommandClient {
         ...input,
         workerId: this.options.workerId,
       }),
-      taskGoalCycleDispatchResultSchema,
+      taskGoalCycleDispatchPublicationResultSchema,
       AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
+      includePublication
+        ? { "x-cantrip-task-goal-publication": "1" }
+        : undefined,
     );
   }
 

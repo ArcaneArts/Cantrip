@@ -98,8 +98,9 @@ export async function transferQueuedTaskGoal({
   source,
   sourceModel,
   destination,
-  finalizer,
-  firstTurn,
+  heldSource,
+  firstDestinationTurn,
+  autonomous,
   queueRestoredReplies,
   fault,
   objective,
@@ -145,9 +146,9 @@ export async function transferQueuedTaskGoal({
   );
   observation.target = target;
   await eventually(
-    () => finalizer.entered,
+    () => heldSource.entered,
     (entered) =>
-      assert.equal(entered, true, "source finalization reached the model"),
+      assert.equal(entered, true, "the source turn reached the model"),
     60_000,
   );
   const blocker = await startSuspensionCapacityBlocker({
@@ -167,7 +168,7 @@ export async function transferQueuedTaskGoal({
   });
   try {
     await waitForQueued(blocker.chatId);
-    finalizer.release();
+    heldSource.release();
     await eventually(
       () => blocker.reply.entered,
       (entered) => assert.equal(entered, true),
@@ -199,7 +200,14 @@ export async function transferQueuedTaskGoal({
       (record) => {
         assert.equal(record?.state, "waiting");
         assert.equal(record.everGranted, false);
-        assert.equal(record.identity.recovery.taskInput.kind, "goal");
+        const recovery = record.identity.recovery;
+        if (autonomous) {
+          assert.ok(recovery.taskGoalCycle);
+          assert.ok(recovery.turnId);
+          assert.equal(recovery.taskInput ?? null, null);
+        } else {
+          assert.equal(recovery.taskInput.kind, "goal");
+        }
       },
       60_000,
     );
@@ -242,10 +250,15 @@ export async function transferQueuedTaskGoal({
       },
     );
     observation.reservation = begun;
-    assert.ok(
-      begun.queuedSource?.taskGoalInput,
-      "the original Task Goal input is reserved",
-    );
+    if (autonomous) {
+      assert.ok(begun.queuedSource?.taskGoal?.identity.recovery.taskGoalCycle);
+      assert.equal(begun.queuedSource.taskGoalInput ?? null, null);
+    } else {
+      assert.ok(
+        begun.queuedSource?.taskGoalInput,
+        "the original Task Goal input is reserved",
+      );
+    }
     assert.deepEqual(
       begun.queuedSource.taskGoal.identity,
       observation.keeper.identity,
@@ -317,9 +330,13 @@ export async function transferQueuedTaskGoal({
       captured.runtimeGeneration,
     );
     await eventually(
-      () => firstTurn.entered,
+      () => firstDestinationTurn.entered,
       (entered) =>
-        assert.equal(entered, true, "the queued input reached the destination"),
+        assert.equal(
+          entered,
+          true,
+          "the transferred Goal reached the destination",
+        ),
       60_000,
     );
     if (fault) {
@@ -337,7 +354,9 @@ export async function transferQueuedTaskGoal({
       assert.equal(blocker.reply.request.completed, false);
       observation.destinationStartedWhileSourceBusy = true;
     }
-    assert.ok(JSON.stringify(firstTurn.request.input).includes(objective));
+    assert.ok(
+      JSON.stringify(firstDestinationTurn.request.input).includes(objective),
+    );
     observation.sourceCalls = sourceCalls;
     observation.files = await readTransferFiles(
       workerData,
@@ -347,10 +366,12 @@ export async function transferQueuedTaskGoal({
     result.steps.push(
       fault
         ? "a replacement worker resumes the committed transfer on the original conversation and sends the queued Goal to the destination"
-        : "the browser transfers an unused encrypted Task Goal input to another provider through the full worker and native history import",
+        : autonomous
+          ? "the browser transfers an unused native Task Goal cycle and continues the original conversation through the destination provider"
+          : "the browser transfers an unused encrypted Task Goal input to another provider through the full worker and native history import",
     );
   } finally {
-    finalizer.release();
+    heldSource.release();
     blocker.reply.release();
   }
   await eventually(
@@ -383,7 +404,8 @@ async function readTransferFiles(directory, state, providerId) {
   assert.ok(plan.expectedLastTurnId);
   assert.equal(
     plan.expectedGoalEpoch,
-    state.queuedSource.taskGoalInput.goalEpoch,
+    state.queuedSource.taskGoalInput?.goalEpoch ??
+      state.queuedSource.taskGoal.identity.recovery.taskGoalCycle.goalEpoch,
   );
   assert.equal(exportReceipt.threadId, threadId);
   assert.equal(exportReceipt.transferId, operationId);

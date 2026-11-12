@@ -803,7 +803,8 @@
     "projectExternalChatDiscoverySchema": 12439,
     "modelOperationUsageSchema": 7663,
     "modelOperationUsageIdentitySchema": 7653,
-    "modelOperationUsageEvidenceSchema": 7652
+    "modelOperationUsageEvidenceSchema": 7652,
+    "taskGoalCycleDispatchPublicationResultSchema": 12455
   },
   "nodes": [
     {
@@ -75450,6 +75451,24 @@
         { "check": "min_length", "minimum": 1, "when": "length" },
         { "check": "max_length", "maximum": 2000, "when": "length" }
       ]
+    },
+    {
+      "type": "object",
+      "name": "taskGoalCycleDispatchPublicationResultSchema",
+      "shape": {
+        "accepted": 599,
+        "suspensionSource": 600,
+        "publicationPrompt": 12456
+      },
+      "catchall": 601,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 2378,
+      "checks": []
     }
   ]
 }

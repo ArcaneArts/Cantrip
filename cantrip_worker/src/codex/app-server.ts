@@ -4,6 +4,7 @@ import type {
   TaskGoalCycleSuspensionSource,
   NativeSuspensionActiveTurn,
   NativeSuspensionEvidence,
+  TaskMessageOpaqueContent,
 } from "@cantrip/protocol";
 import { CodexInteractions } from "./interactions.js";
 import { ManagedExecutionGates } from "./managed-execution-gates.js";
@@ -1534,6 +1535,22 @@ type TaskGoalFirstInput = {
   dispatching: boolean;
 };
 
+type TaskGoalObserverOptions = Omit<
+  PrepareAdmittedNativeExecutionOptions,
+  "operationGeneration" | "threadId"
+>;
+
+export type TaskGoalPublisher = {
+  capture(
+    source: TaskGoalCycleSuspensionSource,
+    active: NativeSuspensionActiveTurn,
+  ): Promise<NativeSuspensionEvidence>;
+  complete(
+    source: TaskGoalCycleSuspensionSource,
+    result: AgentTurnResult | CodexTurnFailureError,
+  ): Promise<void>;
+};
+
 const taskGoalFirstInputDispatch = new Error(
   "The first Task Goal input owns native dispatch.",
 );
@@ -1764,7 +1781,10 @@ export class CodexAppServer implements CodexRuntime {
       active: NativeSuspensionActiveTurn,
     ) => Promise<NativeSuspensionEvidence>
   >();
-  readonly #taskGoalObserverOptions = new Map<string, RunAgentTurnOptions>();
+  readonly #taskGoalObserverOptions = new Map<
+    string,
+    TaskGoalObserverOptions
+  >();
   readonly #taskGoalCompletions = new Map<
     string,
     (
@@ -1828,6 +1848,8 @@ export class CodexAppServer implements CodexRuntime {
       };
       options: Pick<
         PrepareManagedThreadOptions,
+        | "cwd"
+        | "model"
         | "mcpServers"
         | "executionProfile"
         | "subagentDefaults"
@@ -1956,8 +1978,10 @@ export class CodexAppServer implements CodexRuntime {
             "serverId" | "workerId" | "workerGeneration"
           >,
           signal: AbortSignal,
+          includePublication: boolean,
         ) => Promise<{
           suspensionSource?: TaskGoalCycleSuspensionSource;
+          publicationPrompt?: TaskMessageOpaqueContent;
         } | void>)
       | null = null,
     private readonly beforeNativeInference:
@@ -1972,6 +1996,18 @@ export class CodexAppServer implements CodexRuntime {
       | null = null,
     private readonly taskRootPrepared:
       ((chatId: string) => Promise<void>) | null = null,
+    private readonly taskGoalPublisher:
+      | ((
+          options: Pick<
+            TaskGoalObserverOptions,
+            "chatId" | "cwd" | "model" | "provider"
+          > & {
+            projectId: string;
+          },
+          source: TaskGoalCycleSuspensionSource,
+          prompt: TaskMessageOpaqueContent,
+        ) => TaskGoalPublisher & { observer: TaskGoalObserverOptions })
+      | null = null,
   ) {}
 
   private workspaceContext(cwd: string) {
@@ -2673,25 +2709,25 @@ export class CodexAppServer implements CodexRuntime {
     }
   }
 
-  /** Called only after the admitted live Pause boundary. Native history and
-   * resource capture decide whether durable confirmation is possible. */
+  /** Observe a private Goal turn and capture its actual native Pause boundary. */
   registerTaskGoalSuspensionCapture(
     threadId: string,
     capture: (
       source: TaskGoalCycleSuspensionSource,
       active: NativeSuspensionActiveTurn,
     ) => Promise<NativeSuspensionEvidence>,
-    observer: RunAgentTurnOptions,
+    observer: TaskGoalObserverOptions,
     complete: (
       source: TaskGoalCycleSuspensionSource,
       result: AgentTurnResult | CodexTurnFailureError,
     ) => Promise<void>,
-    parentPublished: Promise<void>,
+    parentPublished?: Promise<void>,
   ) {
     this.#taskGoalSuspensionCaptures.set(threadId, capture);
     this.#taskGoalObserverOptions.set(threadId, observer);
     this.#taskGoalCompletions.set(threadId, complete);
-    this.#taskInputPublications.set(threadId, parentPublished);
+    if (parentPublished)
+      this.#taskInputPublications.set(threadId, parentPublished);
   }
 
   private async waitForGoalObservation(
@@ -8207,6 +8243,8 @@ export class CodexAppServer implements CodexRuntime {
       chatId:
         options.chatId ?? this.#managedThreadOverlays.get(threadId)?.chatId,
       options: structuredClone({
+        cwd: options.cwd,
+        model: options.model,
         mcpServers: options.mcpServers,
         executionProfile: options.executionProfile ?? "ide",
         subagentDefaults: options.subagentDefaults ?? null,
@@ -9113,9 +9151,8 @@ export class CodexAppServer implements CodexRuntime {
               throw new Error(
                 "The private Task Goal has no actual keeper Source.",
               );
-            const chatId = this.#managedThreadOverlays.get(
-              base.threadId,
-            )?.chatId;
+            const overlay = this.#managedThreadOverlays.get(base.threadId);
+            const chatId = overlay?.chatId;
             if (!chatId || !this.dispatchTaskGoalCycle)
               throw new Error(
                 "Task Goal inference lost its canonical association.",
@@ -9138,6 +9175,12 @@ export class CodexAppServer implements CodexRuntime {
               signal,
             );
             this.assertManagedExecutionTransport(transport);
+            const projectId = overlay?.projectId;
+            const includePublication = Boolean(
+              this.taskGoalPublisher &&
+              projectId &&
+              !this.#taskGoalObserverOptions.has(base.threadId),
+            );
             const dispatched = await this.dispatchTaskGoalCycle(
               {
                 sourceKey: recovery?.sourceKey ?? source!.key,
@@ -9156,10 +9199,36 @@ export class CodexAppServer implements CodexRuntime {
                 cycle,
               },
               signal,
+              includePublication,
             );
             this.assertManagedExecutionTransport(transport);
             if (dispatched?.suspensionSource) {
               const source = dispatched.suspensionSource;
+              if (
+                dispatched.publicationPrompt &&
+                !this.#taskGoalObserverOptions.has(base.threadId) &&
+                this.taskGoalPublisher &&
+                overlay &&
+                projectId
+              ) {
+                const publisher = this.taskGoalPublisher(
+                  {
+                    chatId,
+                    projectId,
+                    cwd: overlay.options.cwd,
+                    model: overlay.options.model,
+                    provider,
+                  },
+                  source,
+                  dispatched.publicationPrompt,
+                );
+                this.registerTaskGoalSuspensionCapture(
+                  base.threadId,
+                  publisher.capture,
+                  publisher.observer,
+                  publisher.complete,
+                );
+              }
               const observer = this.#taskGoalObserverOptions.get(base.threadId);
               if (
                 observer &&
@@ -9170,7 +9239,11 @@ export class CodexAppServer implements CodexRuntime {
                 const baseline = await this.snapshotWorkspace(observer.cwd);
                 this.assertManagedExecutionTransport(transport);
                 const observed = this.createChatExecution(
-                  { ...observer, operationGeneration: source.operationId },
+                  {
+                    ...observer,
+                    threadId: base.threadId,
+                    operationGeneration: source.operationId,
+                  },
                   base.threadId,
                   baseline,
                   null,

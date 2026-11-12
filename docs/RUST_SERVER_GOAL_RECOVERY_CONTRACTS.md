@@ -164,3 +164,31 @@ cancel-prepared` or `--task-goal-provider-transfer-fault worker-after-commit`.
 Use `--database pglite`, `--database bundled-postgres`, or `--database postgres`
 with the same packaged worker and Core inputs as the normal transfer case.
 [Transfer cancellation and recovery acceptance record](security/rust-server-task-goal-transfer-recovery-acceptance.json)
+
+## Transferring a queued autonomous Task Goal turn
+
+The browser lets the original explicit Goal input finish while a second
+Agent takes the source provider's only slot. It captures the autonomous
+native turn waiting behind that Agent and matches its scope, attempt and
+operation to the worker's durable admission record. The transfer withdraws
+that exact attempt. The destination opens the same conversation and admits
+a new native Goal turn while the source provider is still occupied.
+
+The previous worker completed the native turn without publishing its result.
+When the active worker needs a publisher, its dispatch request opts in to
+receiving the exact encrypted prompt already stored for the original input.
+The worker observes the admitted native turn and uses the existing durable
+encrypted outcome publisher. Requests without this option retain the
+original response fields.
+
+The Rust terminal projection uses the continuation's provider from the
+durable dispatch marker. The original input keeps its provider and identity.
+Using that provider to check the destination turn had left a committed
+result unprojected.
+
+The local browser runs verify the original input and autonomous result each
+appear once, the Goal completes, and the conversation and transfer reopen
+after restart. Run the browser fixture with
+`--task-goal-autonomous-provider-transfer` and each database mode.
+
+[Autonomous Task Goal transfer acceptance record](security/rust-server-autonomous-task-goal-transfer-acceptance.json)

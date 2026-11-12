@@ -84,6 +84,7 @@ export async function actualTaskClient({
   taskOutcomeOrder,
   taskGoalFirstInputOrder,
   taskGoalTransferWorkerData,
+  taskGoalAutonomousTransfer,
   taskGoalTransferFault,
   goalLaneScenario,
 }) {
@@ -279,7 +280,7 @@ export async function actualTaskClient({
         finalPlanMarkdown: planText,
         goalPrompt: objective,
       }),
-      hold: Boolean(destination),
+      hold: Boolean(destination) && !taskGoalAutonomousTransfer,
     });
     const restoreSource = taskGoalTransferFault?.mode === "cancel-prepared";
     const goalModel = restoreSource ? model : (destination ?? model);
@@ -292,7 +293,10 @@ export async function actualTaskClient({
         forceGoalOrder ||
         taskGoalFirstInputOrder ||
         process.argv.includes("--task-goal-autonomous")
-          ? goalModel.reply({ text: initialGoalAnswer, hold: forceGoalOrder })
+          ? (taskGoalAutonomousTransfer ? model : goalModel).reply({
+              text: initialGoalAnswer,
+              hold: forceGoalOrder || taskGoalAutonomousTransfer,
+            })
           : null;
       const completeGoal = goalModel.reply({
         calls: [{ name: "update_goal", arguments: { status: "complete" } }],
@@ -326,8 +330,13 @@ export async function actualTaskClient({
         source: model,
         sourceModel,
         destination,
-        finalizer,
-        firstTurn: goalReplies?.firstTurn,
+        heldSource: taskGoalAutonomousTransfer
+          ? goalReplies.firstTurn
+          : finalizer,
+        firstDestinationTurn: taskGoalAutonomousTransfer
+          ? goalReplies.completeGoal
+          : goalReplies?.firstTurn,
+        autonomous: taskGoalAutonomousTransfer,
         queueRestoredReplies: restoreSource
           ? () => (goalReplies = queueGoalReplies()).firstTurn
           : undefined,
@@ -413,7 +422,10 @@ export async function actualTaskClient({
       nativeGoal,
       "the actual Codex Goal tool completes the implementation Goal",
     );
-    const useGoalQueryRetry = forceGoalOrder || Boolean(taskGoalTransferFault);
+    const useGoalQueryRetry =
+      forceGoalOrder ||
+      taskGoalAutonomousTransfer ||
+      Boolean(taskGoalTransferFault);
     const { openedGoal, lookupConflicts } = await page.evaluate(
       async ({ chat, useGoalQueryRetry }) => {
         const { getChatGoal } = await import("/src/lib/api/chats.ts");
@@ -525,7 +537,7 @@ export async function actualTaskClient({
       transferredInferenceBeforeRestart,
       "restart does not repeat transferred Goal inference",
     );
-    if (taskGoalTransferFault) {
+    if (taskGoalTransferFault || taskGoalAutonomousTransfer) {
       const before = result.taskGoalProviderTransfer.latest;
       const after = await readTaskGoalTransfer(page, planned.chat.id);
       assert.equal(after.operationId, before.operationId);

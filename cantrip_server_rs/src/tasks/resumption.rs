@@ -169,10 +169,7 @@ impl Repository {
                 saved["controlId"] != restore["controlId"] || saved["phase"] != "resuming" || saved["action"] != "resume" ||
                 saved["checkpoint"] != restore["checkpoint"] || source.receipt != original ||
                 !crate::native_commands::task_suspension::matches_source(&saved, &current, &source) { return stale(); }
-            let m = &row["message"];
-            let message = parse("taskMessageOpaqueContentSchema", &json!({"id":m["id"],
-                "classification":json!({"role":m["role"],"mode":m["mode"],"attachmentIds":m["task_attachment_ids"]}),
-                "protectedContent":m["task_protected_content"],"reasoningEffort":m["reasoning_effort"],"idempotencyKey":m["idempotency_key"]}))?;
+            let message = goal_inference_inputs::opaque_prompt(&row["message"])?;
             Ok(json!({"message":message,"publication":if cycle_restore {source.goal_cycle["publication"].clone()} else {input["publication"].clone()}}))
         })).await
     }

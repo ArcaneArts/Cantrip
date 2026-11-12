@@ -5444,7 +5444,7 @@
         ],
         "scope": "Local 1.1.2869 HTTP fixtures compare source capture, encrypted binding and rollback across all three databases and authentication modes using controlled native replies. An existing browser, packaged worker and Core also capture and transfer the exact unused first Task Goal input through the Rust server on all three stores, then reopen the same Goal and transcript after restart.",
         "remaining": [
-          "Qualify capture of an autonomous private Goal scope and the supported shipping platforms."
+          "Qualify interruption of an autonomous private Goal transfer and the supported shipping platforms."
         ]
       },
       {
@@ -29939,6 +29939,7 @@
       "qualification": "docs/RUST_SERVER_GOAL_RECOVERY_CONTRACTS.md#queued-first-task-goal-input-during-a-provider-transfer",
       "acceptance": "docs/security/rust-server-task-goal-provider-transfer-acceptance.json",
       "recoveryAcceptance": "docs/security/rust-server-task-goal-transfer-recovery-acceptance.json",
+      "autonomousTransferAcceptance": "docs/security/rust-server-autonomous-task-goal-transfer-acceptance.json",
       "databaseModes": ["pglite", "bundled-postgres", "postgres"],
       "scope": "On macOS ARM64, the existing browser and packaged worker with Core reserve and transfer the same unused encrypted first Task Goal input while the source provider is occupied. The browser reopens the completed Goal and transcript after restart. A populated historical profile upgrades and rolls back with the new eligibility migration.",
       "remaining": [
