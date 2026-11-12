@@ -1,0 +1,191 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceCommit": "ccafd3cd4baea444ab43c1b84471ab3225f718e3",
+  "candidateVersion": "1.1.2881",
+  "platform": "macOS 27.0.1 ARM64",
+  "retainedEvidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112",
+  "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+  "standalone": {
+    "artifact": {
+      "path": "cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94198976,
+      "sha256": "fbb5069e83c4d9a7b5824713900b62477ad6d3ba90419c71702abd11d3815244"
+    },
+    "manifest": {
+      "path": "cantrip-server-darwin-arm64/native-server.json",
+      "bytes": 325804,
+      "sha256": "9a6638ed4b79b75b7a21ca4a8f9f04d9b2857c1d4a4b7f9277056118437ede0b"
+    },
+    "archive": {
+      "path": "cantrip-server-darwin-arm64.tar.gz",
+      "bytes": 66713877,
+      "sha256": "2c8b12821f7fb30fd3960e005e9ca7e8fc73fe1df1885f8e837086af0e9fb768"
+    },
+    "verifiedPackageFiles": 1762,
+    "runtimeReport": {
+      "path": "macos-standalone-acceptance.json",
+      "bytes": 2829,
+      "sha256": "3c385d4211bb9de3fce23071eec10fa38c3d7e6db47f15e6935311c14457244c"
+    },
+    "verifiedReport": {
+      "path": "verified-macos-standalone.json",
+      "bytes": 1166,
+      "sha256": "b31515bbe6875d5612183a06b01ce1966a54de7bcd87e0c6b409f1b599f29491"
+    },
+    "independentArchiveVerification": {
+      "path": "verified-macos-server-archive.json",
+      "bytes": 184,
+      "sha256": "d618b861944b062431fba84f8be17d4681435774faae195129ac771795b8950f"
+    },
+    "nodeAbsentFromServerPath": true,
+    "homebrewReadsAndDistributionWritesDenied": true,
+    "embeddedRuntimeFallback": true
+  },
+  "worker": {
+    "archive": {
+      "path": "cantrip-worker-darwin-arm64.tar.gz",
+      "bytes": 237830424,
+      "sha256": "5e4752f658d734cbcdc89a92f1044cfb2a1c7da336e049d9d9cdc499fb267f45"
+    },
+    "workerEntrypoint": {
+      "path": "cantrip-worker-darwin-arm64/dist/index.js",
+      "bytes": 391601,
+      "sha256": "c632631c9a6d250d2e56d938441b5d39dc972d1b03a6b521d4ddf6c85569e4a9"
+    },
+    "portableNode": {
+      "path": "cantrip-worker-darwin-arm64/runtime/node",
+      "bytes": 121833248,
+      "sha256": "1cb5ac15fcf30a715e4a220e08a17dd31f6c05855e9fe27c7714b608b3d00bf8"
+    },
+    "portableNodeVersion": "24.22.1",
+    "signedStandaloneCua": {
+      "path": "cantrip-worker-darwin-arm64/bin/cantrip-cua",
+      "bytes": 4567424,
+      "sha256": "65f68f99488d8e5c6030780f2522f8c65561c753b8c8f6c1fd29c4f6f38b0219"
+    },
+    "archiveExtractedBeforeDesktopAssembly": true,
+    "relocatedDependencyLinks": 8,
+    "relocationReport": {
+      "path": "desktop-worker-links.json",
+      "bytes": 1490,
+      "sha256": "c006814b1ef5c0bf862c2068b91e2293a1248a6cc4e10bf344320b45e6f25e76"
+    }
+  },
+  "signedDesktopUpdate": {
+    "previousVersion": "1.1.2869",
+    "previousRuntimeArchiveSha256": "6fd9dfa7e04e984b5eec040b7495aef1895115bc3355babba7f80212224fa7c0",
+    "signatureVerification": "Developer ID and disposable Tauri updater key",
+    "verifiedLoopbackHttps": true,
+    "productionNotarization": false,
+    "baselineProfiles": "New isolated encrypted profiles created in the previous runtime",
+    "baselineArchive": {
+      "path": "desktop-updater/baseline/Cantrip Server Signed Update QA.app.tar.gz",
+      "bytes": 335637493,
+      "sha256": "db626ec7742aea774c779028383ed25edec7f01826a6224c83fe13c392d6d283"
+    },
+    "candidateArchive": {
+      "path": "desktop-updater/candidate/Cantrip Server Signed Update QA.app.tar.gz",
+      "bytes": 335621446,
+      "sha256": "d41cea1d4d68dbcb030a6f540e04ba3f4ca5dfee9f05925c312c64addd346b5f"
+    },
+    "candidateSignature": {
+      "path": "desktop-updater/candidate/Cantrip Server Signed Update QA.app.tar.gz.sig",
+      "bytes": 436,
+      "sha256": "ed9399abe45ef42957758baaa0dd2ff4561b47240ea110d5cdce851cf3f64597"
+    },
+    "candidateExecutable": {
+      "member": "Cantrip Server Signed Update QA.app/Contents/MacOS/cantrip-app",
+      "bytes": 24222128,
+      "sha256": "7ebd06002e0cef3091fbc02410b747a2e61dbff0c61d4141b3cbe1ed30fa249b"
+    },
+    "candidateSignedServer": {
+      "member": "Cantrip Server Signed Update QA.app/Contents/Resources/runtime/server/bin/cantrip-server",
+      "bytes": 94217104,
+      "sha256": "16e78f0b5f81441a0387af2a03feafc398f19588bc81f9bd57f90a11fbb21963"
+    },
+    "candidateServerBeforeSigningSha256": "fbb5069e83c4d9a7b5824713900b62477ad6d3ba90419c71702abd11d3815244",
+    "tamperedPgliteArchiveRejected": "update_signature_invalid",
+    "retainedClientBindingsServerAndWorkerIdentities": 3,
+    "retainedAcceptedSettingsAndAcceptedNewWrites": 3,
+    "verifiedInstalledFilesPerCase": 13572,
+    "verifiedInstalledBundles": 3,
+    "cleanShutdowns": true,
+    "report": {
+      "path": "desktop-updater/report.json",
+      "bytes": 11333,
+      "sha256": "721baa7d7e4dce5d27fc08bcd0c65340f5d0e31d08439b2c434534b39af7def7"
+    },
+    "independentArchiveVerification": {
+      "path": "retained-verification.json",
+      "bytes": 4636,
+      "sha256": "e4fc77588ea115085b7f15fbac7ae31c5d74dc3f906bed4614ecec46b5845622"
+    },
+    "installedArchiveReceipts": [
+      {
+        "path": "pglite-installed-archive-verification.json",
+        "bytes": 728,
+        "sha256": "808613f379d89735ba9395783e3a0174a8ec28907dba95848297b7d4a82f9ce9"
+      },
+      {
+        "path": "bundled-postgres-installed-archive-verification.json",
+        "bytes": 738,
+        "sha256": "a701ebfb240d55de7c11247618c2155d2ff4d8670f6f4d20de54842b2415706a"
+      },
+      {
+        "path": "postgres-installed-archive-verification.json",
+        "bytes": 730,
+        "sha256": "2234da261b3d517839922bb46fc35feb15bc53b5adf342a34c77dcc97886e608"
+      }
+    ]
+  },
+  "historicalRollback": {
+    "nativeVersion": "1.1.2881",
+    "legacyVersion": "1.1.2733",
+    "migrationsAppliedPerMode": 2,
+    "tableCount": 137,
+    "sequenceCount": 4,
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "retainedOriginalSessionIdentityAndFiles": true,
+    "encryptedWritesPerModeAcrossThreePhases": 12,
+    "report": {
+      "path": "historical-product-roundtrip/report.json",
+      "bytes": 72983,
+      "sha256": "b50a257df2b372855a57ef1d738509da5fb52742ba77d0ebb8a77ed116e56589"
+    },
+    "expectedUpgradedDatabase": {
+      "path": "historical-product-roundtrip/expected-historical-upgrade-database.json",
+      "bytes": 84769,
+      "sha256": "ddca2d71a3e35aeda8dc90a0984680eae99b56f2ba05b94eeacd8a51ea6fbc15"
+    },
+    "sourceWriteDenial": {
+      "path": "historical-source-write-denial.json",
+      "bytes": 76,
+      "sha256": "1f0a96514589f13a6a2bec9dceb5ef0e3f7996e5cd2e60866ae61d67ef4579a2"
+    },
+    "verifiedReport": {
+      "path": "verified-historical-profile.json",
+      "bytes": 961,
+      "sha256": "f5e62ae5873725ec7530bb81b29730f71e915b37595ab7564668be38720c2052"
+    }
+  },
+  "currentContractChecks": {
+    "routesPerServer": 584,
+    "requestErrors": 0,
+    "genericRustFallbackDifferences": 0,
+    "cleanServerExits": 2,
+    "routeDiscoveryReport": {
+      "path": "macos-2881-http-route-inventory.json",
+      "bytes": 2448327,
+      "sha256": "ff1d61365e216ce292790875b909efd18f90725999d04e225f20f5292a6a625d"
+    },
+    "matchingGeneratedContracts": 17,
+    "sourceDriftReport": {
+      "path": "2869-to-2881-source-drift.json",
+      "bytes": 5536,
+      "sha256": "b44e0e274bf054a4b363627731850848c407afd1a72ee94acea471640f793203"
+    },
+    "scope": "Empty-profile HTTP route discovery and generated contract equality.",
+    "hostedDevelopmentRuns": 0
+  }
+}

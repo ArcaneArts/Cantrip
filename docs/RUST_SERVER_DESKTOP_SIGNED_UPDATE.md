@@ -1,5 +1,35 @@
 # Signed macOS desktop update rehearsal
 
+## Installed app and signed update `1.1.2881`
+
+The native macOS ARM64 server and worker were packaged from
+`ccafd3cd4baea444ab43c1b84471ab3225f718e3`. Both service archives were extracted
+before the desktop runtime was assembled. The embedded server matched the
+standalone executable before signing. All eight worker dependency links
+resolved inside the relocated runtime after the original artifact paths were
+removed. The standalone package verified all 1,762 file hashes and passed
+PGlite, bundled PostgreSQL and external PostgreSQL with Node absent from the
+server PATH and Homebrew reads and distribution writes denied.
+
+The release-mode fixture built both clients from the current app source and
+updated from the retained `1.1.2869` runtime to `1.1.2881`. It used the
+same Developer ID, a disposable Tauri updater key and verified loopback HTTPS.
+All three updates retained the selected database, encrypted WebView device
+and account bindings, server and worker identities, and an accepted setting.
+The updated app accepted another write and the existing worker answered a
+command before supervised shutdown. The PGlite case rejected a tampered
+archive. Each installed bundle passed strict signature verification and
+matched all 13,572 files in the signed candidate archive.
+
+The [macOS acceptance record](security/rust-server-2881-macos-acceptance.json)
+lists the archive, executable and report checksums. The signed rehearsal used
+fresh isolated profiles and local Developer ID signing. The
+[historical round trip](RUST_SERVER_HISTORICAL_PRODUCT_ROLLBACK.md#current-packaged-round-trip)
+separately verifies upgrades and post-write rollback from the original Node
+profile. Production notarization remains release validation.
+
+## Developer ID update rehearsal `1.1.2831`
+
 The local Developer ID rehearsal updates release-mode Tauri apps from
 `1.1.2786` to `1.1.2831` on macOS ARM64. Both apps use the current client
 source. The baseline bundles the retained runtime from the encrypted desktop

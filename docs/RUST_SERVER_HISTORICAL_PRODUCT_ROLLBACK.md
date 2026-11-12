@@ -86,6 +86,22 @@ was not treated as proof of enforcement.
 
 ## Current packaged round trip
 
+The optimized macOS ARM64 `1.1.2881` package at
+`ccafd3cd4baea444ab43c1b84471ab3225f718e3` passed the original Node
+`1.1.2733` upgrade, post-write rollback, and return to Rust on all three
+stores. The first import applied `0287_task_output_finalization` and
+`0288_task_provider_transfer_eligibility` to the original 287-entry migration
+chain. The independent upgraded snapshot verified all 137 tables and four
+sequences. Rust, old Node and returned Rust each accepted four encrypted
+product writes per store. The original session, identity, file contents and
+modes remained intact. An attempted writable descriptor on the original
+profile was denied with `EPERM`.
+
+The [macOS acceptance record](security/rust-server-2881-macos-acceptance.json)
+contains the exact release and round-trip report hashes.
+
+### macOS ARM64 candidate `1.1.2869`
+
 The macOS ARM64 `1.1.2869` package passed the complete round trip from the
 actual Node `1.1.2733` installation across all three stores. The old
 profile has 287 migration entries. The first import applies exactly one
