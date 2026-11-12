@@ -29530,18 +29530,19 @@
       "status": "implemented-with-scoped-local-qualification",
       "evidence": [
         "docs/RUST_SERVER_WINTERHOLD.md",
+        "docs/security/rust-server-2881-linux-arm64-acceptance.json",
         "docs/security/rust-server-2869-linux-arm64-acceptance.json",
         "scripts/server-rust/winterhold-systemd-acceptance.mjs",
         "scripts/server-rust/container-server-acceptance.mjs"
       ],
-      "sourceCommit": "0ae86163efb8503387a2b3d627f9e962d099e1cd",
-      "candidateVersion": "1.1.2869",
+      "sourceCommit": "ccafd3cd4baea444ab43c1b84471ab3225f718e3",
+      "candidateVersion": "1.1.2881",
       "databaseModes": ["pglite", "bundled-postgres", "postgres"],
       "containerArtifactFilesVerifiedPerMode": 2546,
       "installerCalls": 18,
       "recoveredInstallerFailures": 6,
       "directNativeExecutableHashes": 10,
-      "scope": "Native Linux ARM64 1.1.2869 Debian container and local Ubuntu ARM64 systemd and Caddy. All three stores retain sessions and accepted writes across post-write rollback and return to Rust. External PostgreSQL uses required TLS and the x64 Node rollback image. Direct executable observations match the native ARM64 distribution."
+      "scope": "Native Linux ARM64 1.1.2881 Debian container and local Ubuntu ARM64 systemd and Caddy. All three stores retain sessions and accepted writes across post-write rollback and return to Rust. External PostgreSQL uses required TLS and the x64 Node rollback image. Direct executable observations match the native ARM64 distribution. An attempted write outside the profile failed in the service mount namespace."
     },
     "defaultRuntimeCutover": {
       "status": "implemented-with-scoped-local-qualification",

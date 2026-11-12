@@ -195,6 +195,32 @@ release tests passed.
 
 ## Current Linux ARM64 qualification
 
+The production Dockerfile built the `1.1.2881` Linux ARM64 runtime image
+and standalone distribution from `ccafd3cd4baea444ab43c1b84471ab3225f718e3`.
+PGlite, bundled PostgreSQL, and external PostgreSQL passed migrations,
+SQL export, retained settings and identity, local and hosted reopening,
+and graceful shutdown. Each running container verified all 2,546 packaged
+files and matched the exported ARM64 executable through `/proc/PID/exe`.
+The server ran as a non-root user with a read-only root, a 256 MiB noexec
+temporary mount, and Node absent from its runtime PATH.
+
+The local Ubuntu ARM64 systemd and Caddy rehearsal passed 18 installer
+calls, including recovery from six injected migration and startup failures.
+Ten running executable hashes identified the expected native release at
+each observed phase. Both local stores retained sessions and accepted
+writes through rollback to Rust `1.1.2783` and return to `1.1.2881`.
+External PostgreSQL passed the same sequence with the Linux x64 Node
+`1.1.2739` rollback image. Caddy served HTTPS and App Live with the fixture
+CA. Six observed database connections used TLS, and an actual write outside
+the service profile failed inside its read-only mount namespace.
+
+Docker Desktop remounted its guest filesystem read-only during an earlier
+attempt. The successful rerun used the same verified native distribution.
+The [acceptance record](security/rust-server-2881-linux-arm64-acceptance.json)
+lists the release archives, hashes, and local reports.
+
+### Linux ARM64 candidate `1.1.2869`
+
 The production Dockerfile built the Linux ARM64 `1.1.2869` runtime image
 and standalone distribution from the same runtime source as the x64
 candidate. All three stores passed migrations, SQL export, retained settings

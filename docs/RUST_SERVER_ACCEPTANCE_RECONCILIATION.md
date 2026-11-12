@@ -17,9 +17,11 @@ The Linux x64 `1.1.2869` container and Winterhold installation and rollback
 passed all three stores through Rosetta on an ARM64 Linux host.
 [Linux x64 package acceptance](security/rust-server-2869-production-packages.json)
 
-The native Linux ARM64 `1.1.2869` container and local Winterhold rehearsal
-also pass all three storage modes and preserve writes through rollback.
-[Linux ARM64 acceptance record](security/rust-server-2869-linux-arm64-acceptance.json)
+The native Linux ARM64 `1.1.2881` container and local Winterhold rehearsal
+passed all three stores. The production installer recovered from six
+injected failures and preserved accepted writes through rollback and return
+to Rust. The run verified Caddy HTTPS, App Live, and external PostgreSQL TLS.
+[Linux ARM64 acceptance record](security/rust-server-2881-linux-arm64-acceptance.json)
 
 The original-profile rehearsal passes upgrades and restarts with retained
 client keys on all three stores.
