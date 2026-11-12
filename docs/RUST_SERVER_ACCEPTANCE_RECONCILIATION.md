@@ -122,6 +122,15 @@ archive and the server files embedded in the QA-signed desktop installer.
 The installer payload matched all 14,092 file hashes.
 [Windows x64 replica repair standalone](security/rust-server-2881-win32-x64-standalone.json#replicaRepairRebuild),
 [Windows x64 replica repair installer](security/rust-server-2881-win32-x64-desktop.json#replicaRepairRebuild)
+
+The same installer passed the signed PGlite update from `1.1.2869` and
+all six installed desktop cases. The updater rejected tampering and retained
+the written setting and service identities. Fresh and reopened profiles on
+all three stores received real worker replies and shut down through the tray.
+The host matched the guest disk receipts to serial and independently
+verified all 14,092 installed files.
+[Current Windows desktop qualification](RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md#windows-x64-desktop-rebuild-at-9e2dd5711)
+
 The rebuilt Windows x64 `1.1.2881` desktop installer matched 14,092
 installed files. All three stores passed first start and persisted-profile
 reopening, real worker replies, accepted writes and clean tray shutdown.
