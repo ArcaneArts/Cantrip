@@ -79,7 +79,7 @@ fn main() -> Result<()> {
         .map_err(anyhow::Error::msg)?,
     );
     capture(&mut server.0);
-    wait_for_server(&mut server.0, port).map_err(anyhow::Error::msg)?;
+    wait_for_server(&mut server.0, port, || false).map_err(anyhow::Error::msg)?;
     let origin = format!("http://127.0.0.1:{port}");
     let mut worker = if without_worker {
         None
