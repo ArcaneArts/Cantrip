@@ -29504,6 +29504,7 @@
     "currentWindowsQualification": {
       "status": "implemented-with-scoped-local-qualification",
       "currentStandaloneAcceptance": "docs/security/rust-server-2881-win32-x64-standalone.json",
+      "currentInstalledDesktopAcceptance": "docs/security/rust-server-2881-win32-x64-desktop.json",
       "evidence": [
         "docs/RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md",
         "docs/security/rust-server-2869-win32-x64-acceptance.json",
