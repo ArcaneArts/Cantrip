@@ -25,6 +25,15 @@ the Node reference when Redis denied terminal-link revocation during
 workspace removal.
 [macOS rebuild qualification](security/rust-server-2881-macos-acceptance.json#workspaceRemovalRebuild)
 
+The macOS ARM64 rebuild at `cb41197c6` passed relocated standalone startup,
+migration, export, and reopening on all three stores. The existing browser
+and full worker repaired a managed replica link and verified idempotent
+replay on each store. The signed desktop update reused the verified desktop
+shell and packaged worker, replaced the server and its manifest, and
+preserved the encrypted session, accepted settings and service identities
+in all three cases. The updater rejected a tampered PGlite download.
+[macOS replica repair rebuild](security/rust-server-2881-macos-acceptance.json#replicaRepairRebuild)
+
 The Linux x64 `1.1.2881` container and local Winterhold rehearsal passed all
 three stores on an ARM64 Linux host with x64 emulation. The installer
 recovered from six injected failures, and accepted writes survived
@@ -56,6 +65,15 @@ per architecture. It kept the accepted writes across rollback, verified
 Caddy HTTPS and App Live, and recovered from a forced systemd start-limit hit.
 The x64 executable ran through emulation on the ARM64 Linux host.
 [Linux ARM64 rebuild](security/rust-server-2881-linux-arm64-acceptance.json#workspaceRemovalRebuild), [Linux x64 rebuild](security/rust-server-2881-linux-x64-acceptance.json#workspaceRemovalRebuild)
+
+The Linux ARM64 rebuild at `cb41197c6` matched all 2,546 native manifest
+files and the loaded OCI image. The current image passed all three stores
+with a read-only root, a non-executable temporary mount and a non-root
+service account. The suite verified SQL export and retained state on
+restart and through hosted reopening. The first run exposed an empty
+Docker port mapping immediately after restart. The harness now refreshes
+the mapping on each readiness attempt.
+[Linux ARM64 replica repair rebuild](security/rust-server-2881-linux-arm64-acceptance.json#replicaRepairRebuild)
 
 The original-profile rehearsal passes upgrades and restarts with retained
 client keys on all three stores.
@@ -107,7 +125,9 @@ tray. A read-only guest disk snapshot matched all 14,092 installed files.
 The Windows x64 rebuild at `01928fcff` passed the standalone three-store
 matrix with the original stdin-close shutdown deadline. The rebuilt NSIS
 bundle contains the same server executable and matched 14,092 payload
-files. Its QA updater signature verified.
+files. Its QA updater signature verified. All six fresh and reopened
+desktop cases passed, and the held Task dispatch returned HTTP 409
+before the original Task completed and the browser decrypted its answer.
 [Windows rebuild qualification](RUST_SERVER_WINDOWS_CURRENT_ACCEPTANCE.md#windows-x64-rebuild-at-01928fcff)
 The [native desktop workspace qualification](RUST_SERVER_DESKTOP_WORKSPACE_ACCEPTANCE.md)
 also exercises actual macOS popouts, dirty documents, server restart, WebView

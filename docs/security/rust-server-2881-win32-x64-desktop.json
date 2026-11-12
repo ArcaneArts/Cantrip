@@ -470,8 +470,82 @@
     "target": "win32-x64",
     "version": "1.1.2881",
     "verifiedFiles": 14092,
-    "installedRuntimeAcceptance": "pending",
-    "signedUpdateRuntimeAcceptance": "pending",
+    "installedRuntimeAcceptance": {
+      "status": "passed",
+      "cases": {
+        "pglite": {
+          "fresh": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/installed-current/guest-evidence/after-bundled-postgres/installed-2881-pglite.json",
+            "bytes": 910,
+            "sha256": "308c963969d4c9e32ca7d56187cf3f54b130edcb93f14db5445810a80479baf2"
+          },
+          "reopen": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/installed-current/guest-evidence/after-bundled-postgres/installed-2881-pglite-reopen.json",
+            "bytes": 896,
+            "sha256": "429b68b631531ffd1d665cbfee21c6a9651c3a87992aee7c5977ee34a216379b"
+          }
+        },
+        "bundled-postgres": {
+          "fresh": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/installed-current/guest-evidence/after-bundled-postgres/installed-2881-bundled-postgres.json",
+            "bytes": 1213,
+            "sha256": "c7619714fd64b91c2ae663406f087b5401e219918295dbbda8c1e3d8fecab7e7"
+          },
+          "reopen": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/installed-current/guest-evidence/after-bundled-postgres/installed-2881-bundled-postgres-reopen.json",
+            "bytes": 1199,
+            "sha256": "d20b96f391a32990ead09fe2ff33105f9a5588bc1cd1ad8082388ee931679083"
+          }
+        },
+        "postgres": {
+          "fresh": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/installed-current/external-retry/guest-evidence/installed-2881-postgres.json",
+            "bytes": 963,
+            "sha256": "4dbf17a7866655120d9f50264611a7bda918d9f793b8373b16de1f3f87bf4a85"
+          },
+          "reopen": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/installed-current/external-retry/guest-evidence/installed-2881-postgres-reopen.json",
+            "bytes": 949,
+            "sha256": "0517462d006637215158eef6e7013a826fe91bf84477c1695e71aba288ca7dba"
+          }
+        }
+      },
+      "fourInitialCasesDiskVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/installed-current/guest-evidence/after-bundled-postgres/verified.json",
+        "bytes": 784,
+        "sha256": "d4cbff6aafd47fa852abaded976e21cdeec08b6d6a373deb6c3e24090702472c"
+      },
+      "externalRetryDiskVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/installed-current/external-retry/guest-evidence/verified.json",
+        "bytes": 188,
+        "sha256": "9b46e2c8e835375af84d5428f398dcbb007b3c260be0881bb47bda99122ff43f"
+      },
+      "firstExternalProfileInterruption": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/installed-current/guest-evidence/after-guest-shutdown/system-shutdown-events.json",
+        "bytes": 21995,
+        "sha256": "6b3f1ca02250291af0e01e844a5433ab0d8c4a4a2fa70106b66d6c178c12809a"
+      },
+      "retryUsesSeparateProfile": true
+    },
+    "signedUpdateRuntimeAcceptance": {
+      "status": "update-profile-and-shutdown-observed",
+      "payloadVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/signed-retry/independent-guest-export/installed-payload-verification.json",
+        "bytes": 350,
+        "sha256": "be51514069edeaefec424550c8c7a218619ca42b8c8a3ce09346fcd66517ee1d"
+      },
+      "browserAndServerDiskObservation": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/signed-retry/live/after-tray-disk.json",
+        "bytes": 8232,
+        "sha256": "20aaf5c460fc0f464ecf3b264ff03be86eedd3181281d03633f08c9f843d1d73"
+      },
+      "postQuitProcessProbe": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/signed-retry/live/guest-process-probe/snapshot.json",
+        "bytes": 8568,
+        "sha256": "bbc3fd695442ed0d5a020902728b8e62fe0dd285c3d12f91e133a5e40cfb07a9"
+      },
+      "guestTerminalPowerShellReceipt": "missing"
+    },
     "installer": {
       "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/windows-desktop/Cantrip_1.1.2881_x64-setup.exe",
       "bytes": 256723849,

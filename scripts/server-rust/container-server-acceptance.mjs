@@ -163,13 +163,15 @@ try {
     containers.push(name);
     const origin = async () => {
       const address = await docker("port", name, "4310/tcp");
-      return "http://" + address.split("\n")[0];
+      const endpoint = address.split("\n")[0];
+      assert.ok(endpoint, "Waiting for Docker to publish the HTTP port");
+      return "http://" + endpoint;
     };
     let localBootstrap;
     const visit = async (mutate) => {
-      const base = await origin();
-      await retry(async () => {
-        const response = await fetch(base + "/readyz", {
+      const base = await retry(async () => {
+        const endpoint = await origin();
+        const response = await fetch(endpoint + "/readyz", {
           signal: AbortSignal.timeout(5000),
         });
         assert.equal(response.status, 200);
@@ -177,6 +179,7 @@ try {
           (await response.json()).database.engine,
           mode === "pglite" ? "pglite" : "postgres",
         );
+        return endpoint;
       }, name);
       const cookies = new Map();
       let csrf;
