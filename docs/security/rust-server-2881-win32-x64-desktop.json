@@ -342,7 +342,102 @@
       "bytes": 133,
       "sha256": "5ba6770bce30ce580d254862f6443fd4dab36305b396fbc73d64dc00dd5ccf8a"
     },
-    "installedRuntimeAcceptance": "pending",
+    "installedRuntimeAcceptance": {
+      "status": "passed",
+      "casesPassed": 6,
+      "installedFilesVerified": 14092,
+      "diskReceiptsMatchGuestSerial": true,
+      "matrixVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/desktop-installer.ejvxE6iO/installed-receipts/verified-matrix.json",
+        "bytes": 1669,
+        "sha256": "875cfdf5ea3830d208a42e61e66774924fecc10e62c957fce35b4f42b52f406e"
+      },
+      "installedManifestVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/desktop-installer.ejvxE6iO/installed-payload-verification.json",
+        "bytes": 338,
+        "sha256": "dd4383ee79eaafd2554791a19647f78b146af8899a7e25e24b2f077617ce077a"
+      },
+      "guestSerial": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/desktop-installer.ejvxE6iO/installed-receipts/installed-matrix-guest-serial.jsonl",
+        "bytes": 15875,
+        "sha256": "d9a82711c0ed485a81a5dcdf7d16302f28332e0a021a08745dfe0ca7243334a8"
+      },
+      "resumedTrayObserver": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/desktop-installer.ejvxE6iO/external-recovered-tray-observer.log",
+        "bytes": 2176,
+        "sha256": "dadde648c38cfcab9fef320820dc8de309256c166195b0a5f3cc5cdec6e43b8d"
+      },
+      "scenarios": [
+        {
+          "store": "pglite",
+          "sameServerIdentityAndAcceptedSetting": true,
+          "configurationSourceOnReopen": "persisted-profile",
+          "actualWorkerReplies": 2,
+          "cleanTrayShutdowns": 2,
+          "initial": {
+            "receipt": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/desktop-installer.ejvxE6iO/installed-receipts/installed-2881-pglite.json",
+              "bytes": 897,
+              "sha256": "bbd0a514dca6dd0443c8d67283466a6012a428dc79c75f0d9d93acc4ddb04a9e"
+            }
+          },
+          "reopen": {
+            "receipt": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/desktop-installer.ejvxE6iO/installed-receipts/installed-2881-pglite-reopen.json",
+              "bytes": 883,
+              "sha256": "66176d5d755c294cbc3ae06d9271cd235e3fd06c7efd23e5fadd30c6fbd58c6c"
+            }
+          }
+        },
+        {
+          "store": "bundled-postgres",
+          "sameServerIdentityAndAcceptedSetting": true,
+          "configurationSourceOnReopen": "persisted-profile",
+          "actualWorkerReplies": 2,
+          "cleanTrayShutdowns": 2,
+          "initial": {
+            "receipt": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/desktop-installer.ejvxE6iO/installed-receipts/installed-2881-bundled-postgres.json",
+              "bytes": 1179,
+              "sha256": "a578a0bd956a5270203967338c3370dfb19d12e33a76093a1542e3bf0aac51ff"
+            }
+          },
+          "reopen": {
+            "receipt": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/desktop-installer.ejvxE6iO/installed-receipts/installed-2881-bundled-postgres-reopen.json",
+              "bytes": 1165,
+              "sha256": "c87f9fd2f1618705a3bef199633819fca19d176959b66e15159a31ccc37cccf0"
+            }
+          },
+          "managedPostmasterExited": true,
+          "managedPostmasterPidFileRemoved": true
+        },
+        {
+          "store": "postgres",
+          "sameServerIdentityAndAcceptedSetting": true,
+          "configurationSourceOnReopen": "persisted-profile",
+          "actualWorkerReplies": 2,
+          "cleanTrayShutdowns": 2,
+          "initial": {
+            "receipt": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/desktop-installer.ejvxE6iO/installed-receipts/installed-2881-postgres.json",
+              "bytes": 945,
+              "sha256": "323f676989fe5b569b8722be14cfb37dd12ced2905601e083eb431ad36754f7e"
+            }
+          },
+          "reopen": {
+            "receipt": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/windows-pglite-null-device/desktop-installer.ejvxE6iO/installed-receipts/installed-2881-postgres-reopen.json",
+              "bytes": 930,
+              "sha256": "2d53170a08f29d378a157fb2563443a5466358299e58bfe3ecb99c8740350196"
+            }
+          },
+          "externalObservedAppConnection": true,
+          "externalSurvivedAppShutdown": true
+        }
+      ],
+      "observerRecovery": "The evaluation guest shut down after bundled PostgreSQL first start. The remainder used the same disk after boot. The external PostgreSQL first-start observer resumed tray confirmation on the original app process after the overflow panel became visible."
+    },
     "signedUpdateRuntimeAcceptance": "pending"
   }
 }
