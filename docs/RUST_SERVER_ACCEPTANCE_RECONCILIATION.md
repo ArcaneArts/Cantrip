@@ -63,7 +63,10 @@ The [shared dependency comparison](RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md#auto
 repairs a mixed Redis outage that left an acknowledged Goal outcome
 with its recovered lane still active. The Rust peer retries the worker
 observation from the terminal marker and settles the original lane.
-The PostgreSQL interruption case also passes on two Rust peers.
+The [external PostgreSQL interruption comparison](RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md#mixed-peers-during-the-external-postgresql-outage)
+also settles the original Goal on two Rust peers and in both mixed
+orientations. The legacy Node readiness and exit behavior have their
+own recorded evidence.
 
 The packaged macOS ARM64 `1.1.2845` server and signed desktop worker passed
 the current Task and Agent product matrix against the Node reference. All

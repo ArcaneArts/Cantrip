@@ -9912,11 +9912,12 @@
           "docs/security/rust-server-streamed-task-receipt-acceptance.json",
           "docs/security/rust-server-streamed-goal-receipt-acceptance.json",
           "docs/security/rust-server-autonomous-goal-lane-acceptance.json",
-          "docs/security/rust-server-autonomous-goal-dependency-acceptance.json"
+          "docs/security/rust-server-autonomous-goal-dependency-acceptance.json",
+          "docs/security/rust-server-mixed-postgres-goal-acceptance.json"
         ],
         "remaining": [
           "Find the cause of the intermittent bundled PostgreSQL Goal admission stall. Both traced builds forwarded the model requests and committed the receipts.",
-          "Reconcile the mixed Node/Rust PostgreSQL readiness timeout and qualify the remaining mixed interruption combinations.",
+          "Qualify the remaining mixed interruption combinations and document the legacy Node readiness and shutdown limits for rolling deployment.",
           "Repeat qualification on the final supported shipping artifacts."
         ]
       }
@@ -29861,7 +29862,22 @@
         "originalReceiptsAcrossInterruptionCases": 5
       },
       "remaining": [
-        "Reconcile the reference Node readiness timeout in the mixed PostgreSQL outage.",
+        "See currentMixedPostgresGoalAcceptance for mixed PostgreSQL outcomes and the legacy Node readiness and shutdown limits.",
+        "Repeat qualification on the final supported shipping artifacts."
+      ]
+    },
+    "currentMixedPostgresGoalAcceptance": {
+      "status": "partial",
+      "qualification": "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
+      "acceptance": "docs/security/rust-server-mixed-postgres-goal-acceptance.json",
+      "counts": {
+        "packagedProductRuns": 4,
+        "completedProductSteps": 68,
+        "mixedPostgresPeerOrientations": 2,
+        "originalReceiptsAcrossInterruptionCases": 4
+      },
+      "remaining": [
+        "Retain the legacy Node readiness and shutdown limitations in mixed rolling-deployment qualification.",
         "Repeat qualification on the final supported shipping artifacts."
       ]
     },
