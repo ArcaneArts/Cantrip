@@ -1,0 +1,1126 @@
+{
+  "completeReplacement": false,
+  "scope": "Product-level autonomous Goal observation after an HTTP outcome commits, including shared PostgreSQL, Redis and peer interruption on macOS ARM64.",
+  "baseCommit": "b1fcc7a2b62422dfc0ad79c49635b94a66f0792e",
+  "localEvidenceRoot": "rust-server-final-native-2e60d2042-20261111-v1",
+  "package": {
+    "version": "1.1.2866",
+    "target": "darwin-arm64",
+    "serverRequiresNode": false,
+    "verifiedFiles": 1762,
+    "manifest": {
+      "path": "autonomous-goal-dependency/cantrip-server-darwin-arm64-final/native-server.json",
+      "bytes": 325804,
+      "sha256": "9e9b48b9b3095922942818ee5e8914ffac28b03136e81c33212eda39dc532329"
+    },
+    "executable": {
+      "path": "autonomous-goal-dependency/cantrip-server-darwin-arm64-final/bin/cantrip-server",
+      "bytes": 94199904,
+      "sha256": "17aa1bc9a5f63e753e454115bd96d3f7bb27aadcceb71921ef98056da0f60215"
+    }
+  },
+  "productionPatch": {
+    "path": "autonomous-goal-dependency/production-source.patch",
+    "bytes": 8831,
+    "sha256": "f4fcba0cd7bca9a5d3887af5e341e049ffd0d4e84a0dd192c628d12ff03e9907"
+  },
+  "baseline": {
+    "rustVersion": "1.1.2864",
+    "mixedRedisFailure": {
+      "path": "autonomous-goal-dependency/mixed-rust-node-redis-final/product.json",
+      "bytes": 300948,
+      "sha256": "6238f207cc1c79c69f3cdf16a70aa6ed0b817742e71565e09607566299718e01"
+    },
+    "retainedDatabase": {
+      "path": "autonomous-goal-dependency/mixed-rust-node-redis-final/retained-database.json",
+      "bytes": 562,
+      "sha256": "15eaae39b95abbbd4a38998dce83ecba72f8f46279e6f96af077040bdd162919"
+    },
+    "retainedDatabaseSelectors": {
+      "path": "autonomous-goal-dependency/mixed-rust-node-redis-final/retained-selector.json",
+      "bytes": 196,
+      "sha256": "2e3c639e5ed93de8f18f41712fdd73bfb95f0c44c269c9d49e23501ed6f69e99"
+    },
+    "selectorOnlyBuildFailure": {
+      "path": "autonomous-goal-dependency/candidate-redis-rust-node/product.json",
+      "bytes": 339271,
+      "sha256": "52f78fd3b410562d4cc164afa15fa4bf2a50aa82968438252537f592f520b418"
+    },
+    "selectorOnlyBuildRetainedBinding": {
+      "path": "autonomous-goal-dependency/candidate-redis-rust-node/retained-selector-facts.json",
+      "bytes": 702,
+      "sha256": "102fc3595146641f560f335447c264cb962201682131c87d4c771c4abe236d77"
+    },
+    "selectorOnlyBuildTracedFailure": {
+      "path": "autonomous-goal-dependency/candidate-redis-rust-node-traced/product.json",
+      "bytes": 275704,
+      "sha256": "6ebd529d84aceac6b3b266ef9ccd6ff2e22e2db394955517c8c258f6548064bf"
+    },
+    "acknowledgedRevision": 18,
+    "taskState": "complete",
+    "laneState": "active",
+    "terminalProjectedAt": null,
+    "mixedPostgresProbeTimeout": {
+      "path": "autonomous-goal-dependency/postgres-mixed-node-rust-retry/product.json",
+      "bytes": 406592,
+      "sha256": "f0020a693f3621cfdb4053fa06dade3241e8fa5f673947ccc1cb50c3beca04f3"
+    },
+    "nodeReceiptRevisionControl": {
+      "path": "autonomous-goal-dependency/postgres-mixed-rust-node-retry/product.json",
+      "bytes": 258834,
+      "sha256": "732991596b8cdabfa932fe41bcd49121da6bddeff6c22c6fb7f9cb2f9321fae9"
+    }
+  },
+  "candidateCases": [
+    {
+      "name": "repaired-redis-rust-node",
+      "serverPair": "rust/node",
+      "database": "postgres",
+      "report": {
+        "path": "autonomous-goal-dependency/repaired-redis-rust-node/product.json",
+        "bytes": 839125,
+        "sha256": "b2b6e7fb93fb2efade2250cff01e7f76dac5eb34fd03e62fdfd7a4b12d748579"
+      },
+      "log": {
+        "path": "autonomous-goal-dependency/repaired-redis-rust-node/product.log",
+        "bytes": 425,
+        "sha256": "cc1c71872cc38c3143caa87965faaef6b2b064e1ec272620eb3802f20f11ac54"
+      },
+      "workerOutcomeTraces": [
+        {
+          "path": "autonomous-goal-dependency/repaired-redis-rust-node/22144.jsonl",
+          "bytes": 2196,
+          "sha256": "2e1ae41f9bdf898375bbd9b27f277b8d32b77af38db8387745d5b6eb915b1304"
+        },
+        {
+          "path": "autonomous-goal-dependency/repaired-redis-rust-node/32772.jsonl",
+          "bytes": 851,
+          "sha256": "12b7bc9a0f11557cbae3c0b90db2c1a47c0fb4b37558ac0fa4b65a8ae4d8627e"
+        },
+        {
+          "path": "autonomous-goal-dependency/repaired-redis-rust-node/36314.jsonl",
+          "bytes": 449,
+          "sha256": "efde683901ca2742b20e8aabfb8ce11a19a5fb882aebe6d6d002dfce02dc8c79"
+        }
+      ],
+      "workerObservationTraces": [
+        {
+          "path": "autonomous-goal-dependency/repaired-redis-rust-node/observation-22144.jsonl",
+          "bytes": 2806,
+          "sha256": "43de10ef6ebeb0c852c95c689bfe685f953f64bfe451e60a9ed75fb9b40e6117"
+        },
+        {
+          "path": "autonomous-goal-dependency/repaired-redis-rust-node/observation-32772.jsonl",
+          "bytes": 452,
+          "sha256": "7f85e53e04ea304e9f1d94b3b9b616d77a51a43f95ae2582e7d25f9bdf9d57b0"
+        }
+      ],
+      "runs": [
+        {
+          "runtime": "rust/node",
+          "steps": 17,
+          "modelRequests": 9
+        }
+      ],
+      "recoveredLanes": [
+        {
+          "runtime": "rust/node",
+          "worker": {
+            "pid": 22144,
+            "before": "23f575d0-20cf-438a-833e-f71b3e80a5f9",
+            "after": "1598f7b8-1789-4e40-89b1-7f4606afe170"
+          },
+          "outage": {
+            "dependency": "redis",
+            "serverPids": [21887, 21895],
+            "claimTtlMs": 4107,
+            "stop": {
+              "pid": 21614,
+              "code": null,
+              "signal": "SIGKILL",
+              "port": 56206
+            },
+            "offlineReadiness": [
+              {
+                "http": 503,
+                "database": "ready",
+                "coordination": "unavailable"
+              },
+              {
+                "http": 503,
+                "database": "ready",
+                "coordination": "unavailable"
+              }
+            ],
+            "releasedObservations": [true],
+            "offlineState": {
+              "task_state": "complete",
+              "original_lane_state": "active",
+              "cycle_projected_at": null,
+              "queue_revision": 1,
+              "notified_revision": 1
+            },
+            "outcomeReadiness": [
+              {
+                "http": 503,
+                "database": "ready",
+                "coordination": "unavailable"
+              },
+              {
+                "http": 503,
+                "database": "ready",
+                "coordination": "unavailable"
+              }
+            ],
+            "offlineMs": 4610,
+            "restart": {
+              "pid": 29507,
+              "port": 56206
+            },
+            "recoveredReadiness": [
+              {
+                "http": 200,
+                "database": "ready",
+                "coordination": "ready"
+              },
+              {
+                "http": 200,
+                "database": "ready",
+                "coordination": "ready"
+              }
+            ]
+          },
+          "receipt": {
+            "deliveryId": "22f85cad-43e4-4c0d-92a5-4e150ef4d9b7",
+            "turnId": "01a1cd0e-ff2f-7b00-8fb4-f9cc6143f914",
+            "httpStatus": 200,
+            "committedDeliveries": 1,
+            "commitToProjectionMs": 12940
+          },
+          "queue": {
+            "beforeReceipt": 1,
+            "afterReceipt": 1,
+            "afterSettlement": 1,
+            "acknowledged": 1
+          },
+          "originalLaneState": "suspended",
+          "peerReplacement": null
+        }
+      ]
+    },
+    {
+      "name": "repaired-redis-node-rust",
+      "serverPair": "node/rust",
+      "database": "postgres",
+      "report": {
+        "path": "autonomous-goal-dependency/repaired-redis-node-rust/product.json",
+        "bytes": 1013523,
+        "sha256": "c6504b1d8b980e5b478f818c22d7025d4db2907987ce295f5e8995c01e5d60ac"
+      },
+      "log": {
+        "path": "autonomous-goal-dependency/repaired-redis-node-rust/product.log",
+        "bytes": 825,
+        "sha256": "b4109a89c15058fabb937768799af47e140bbfbc6a682833da281a1115844a4e"
+      },
+      "workerOutcomeTraces": [
+        {
+          "path": "autonomous-goal-dependency/repaired-redis-node-rust/37788.jsonl",
+          "bytes": 2196,
+          "sha256": "9fe245ab1c35b1f80033b5f4ba93dbc3f5404a9aeac5e926255942fbdd347a8d"
+        },
+        {
+          "path": "autonomous-goal-dependency/repaired-redis-node-rust/41564.jsonl",
+          "bytes": 851,
+          "sha256": "770232c5dacaf3c559a1caaccd39c831b1ac5a6c19c8982f0d649705861991bf"
+        },
+        {
+          "path": "autonomous-goal-dependency/repaired-redis-node-rust/43850.jsonl",
+          "bytes": 449,
+          "sha256": "b2c619a215af4b984e8ec5ecee29548797d588156c514ce1e8ac3f7da2115a3c"
+        }
+      ],
+      "workerObservationTraces": [],
+      "runs": [
+        {
+          "runtime": "node/rust",
+          "steps": 17,
+          "modelRequests": 9
+        }
+      ],
+      "recoveredLanes": [
+        {
+          "runtime": "node/rust",
+          "worker": {
+            "pid": 37788,
+            "before": "6cc5cabe-22a1-4dbb-8d4b-6668d7ef922c",
+            "after": "8a1a894f-65b3-41be-b561-6d76fb259723"
+          },
+          "outage": {
+            "dependency": "redis",
+            "serverPids": [37767, 37777],
+            "claimTtlMs": 3941,
+            "stop": {
+              "pid": 33084,
+              "code": null,
+              "signal": "SIGKILL",
+              "port": 57199
+            },
+            "offlineReadiness": [
+              {
+                "http": 503,
+                "database": "ready",
+                "coordination": "unavailable"
+              },
+              {
+                "http": 503,
+                "database": "ready",
+                "coordination": "unavailable"
+              }
+            ],
+            "releasedObservations": [true],
+            "offlineState": {
+              "task_state": "complete",
+              "original_lane_state": "suspended",
+              "cycle_projected_at": "2026-11-12T00:02:17.286Z",
+              "queue_revision": 3,
+              "notified_revision": 2
+            },
+            "outcomeReadiness": [
+              {
+                "http": 503,
+                "database": "ready",
+                "coordination": "unavailable"
+              },
+              {
+                "http": 503,
+                "database": "ready",
+                "coordination": "unavailable"
+              }
+            ],
+            "offlineMs": 4444,
+            "restart": {
+              "pid": 41179,
+              "port": 57199
+            },
+            "recoveredReadiness": [
+              {
+                "http": 200,
+                "database": "ready",
+                "coordination": "ready"
+              },
+              {
+                "http": 200,
+                "database": "ready",
+                "coordination": "ready"
+              }
+            ]
+          },
+          "receipt": {
+            "deliveryId": "f684353e-9f07-42bd-b338-3dfef9ecd77c",
+            "turnId": "01a1cd0f-eee6-7ca3-b41d-95a478afc8f5",
+            "httpStatus": 200,
+            "committedDeliveries": 1,
+            "commitToProjectionMs": 204
+          },
+          "queue": {
+            "beforeReceipt": 1,
+            "afterReceipt": 3,
+            "afterSettlement": 3,
+            "acknowledged": 3
+          },
+          "originalLaneState": "suspended",
+          "peerReplacement": null
+        }
+      ]
+    },
+    {
+      "name": "repaired-redis-rust-rust",
+      "serverPair": "rust/rust",
+      "database": "postgres",
+      "report": {
+        "path": "autonomous-goal-dependency/repaired-redis-rust-rust/product.json",
+        "bytes": 813160,
+        "sha256": "893b89b3d8e34153bd7ea6420aebcfa0195f2c80f99a0223284e8b966e972489"
+      },
+      "log": {
+        "path": "autonomous-goal-dependency/repaired-redis-rust-rust/product.log",
+        "bytes": 640,
+        "sha256": "b2978ba199fd4157ee806e03b8ad0aea227f946c1259ea012b37d3d50be08060"
+      },
+      "workerOutcomeTraces": [
+        {
+          "path": "autonomous-goal-dependency/repaired-redis-rust-rust/37646.jsonl",
+          "bytes": 2196,
+          "sha256": "0f78471824e02689f2ca96dfeb24fe120968ae911da3ff0edc3909048ba48b76"
+        },
+        {
+          "path": "autonomous-goal-dependency/repaired-redis-rust-rust/41203.jsonl",
+          "bytes": 851,
+          "sha256": "fc916999f22ada9ea819e02bf09e639bd20751648961b15889f44f42fcf33b2b"
+        },
+        {
+          "path": "autonomous-goal-dependency/repaired-redis-rust-rust/42800.jsonl",
+          "bytes": 449,
+          "sha256": "2f6c4c85254637d9412982cbce75100aa67e2b7ec1414386ae7edb6cd99a0402"
+        }
+      ],
+      "workerObservationTraces": [],
+      "runs": [
+        {
+          "runtime": "rust/rust",
+          "steps": 17,
+          "modelRequests": 9
+        }
+      ],
+      "recoveredLanes": [
+        {
+          "runtime": "rust/rust",
+          "worker": {
+            "pid": 37646,
+            "before": "f0046103-7ff6-4f9d-8a90-8f7c9d0b4ee1",
+            "after": "3069a973-8f5a-4060-a43d-ee477e10d629"
+          },
+          "outage": {
+            "dependency": "redis",
+            "serverPids": [37628, 37635],
+            "claimTtlMs": 4966,
+            "stop": {
+              "pid": 33077,
+              "code": null,
+              "signal": "SIGKILL",
+              "port": 57196
+            },
+            "offlineReadiness": [
+              {
+                "http": 503,
+                "database": "ready",
+                "coordination": "unavailable"
+              },
+              {
+                "http": 503,
+                "database": "ready",
+                "coordination": "unavailable"
+              }
+            ],
+            "releasedObservations": [true, true, true],
+            "offlineState": {
+              "task_state": "complete",
+              "original_lane_state": "active",
+              "cycle_projected_at": null,
+              "queue_revision": 2,
+              "notified_revision": -1
+            },
+            "outcomeReadiness": [
+              {
+                "http": 503,
+                "database": "ready",
+                "coordination": "unavailable"
+              },
+              {
+                "http": 503,
+                "database": "ready",
+                "coordination": "unavailable"
+              }
+            ],
+            "offlineMs": 5468,
+            "restart": {
+              "pid": 41141,
+              "port": 57196
+            },
+            "recoveredReadiness": [
+              {
+                "http": 200,
+                "database": "ready",
+                "coordination": "ready"
+              },
+              {
+                "http": 200,
+                "database": "ready",
+                "coordination": "ready"
+              }
+            ]
+          },
+          "receipt": {
+            "deliveryId": "ccde11e6-79fd-40c0-be06-64b8107ad7c5",
+            "turnId": "01a1cd0f-e0e3-7fe3-bcbd-b776bf2cb3c4",
+            "httpStatus": 200,
+            "committedDeliveries": 1,
+            "commitToProjectionMs": 6230
+          },
+          "queue": {
+            "beforeReceipt": 1,
+            "afterReceipt": 2,
+            "afterSettlement": 2,
+            "acknowledged": 2
+          },
+          "originalLaneState": "suspended",
+          "peerReplacement": null
+        }
+      ]
+    },
+    {
+      "name": "repaired-postgres-rust-rust",
+      "serverPair": "rust/rust",
+      "database": "postgres",
+      "report": {
+        "path": "autonomous-goal-dependency/repaired-postgres-rust-rust/product.json",
+        "bytes": 854855,
+        "sha256": "03874dc54547699b3ca08738f139341e0b1792db8456173154267cc4d4b522e8"
+      },
+      "log": {
+        "path": "autonomous-goal-dependency/repaired-postgres-rust-rust/product.log",
+        "bytes": 876,
+        "sha256": "cc2c1754c91a23d8740ae613b5b7803dfaed4f4a1692d9d52f9d4a8c8beef19c"
+      },
+      "workerOutcomeTraces": [
+        {
+          "path": "autonomous-goal-dependency/repaired-postgres-rust-rust/21875.jsonl",
+          "bytes": 2196,
+          "sha256": "327d10b92f7831f88928d11e7f21c30b963047a44e25ad727252453efe56ac50"
+        },
+        {
+          "path": "autonomous-goal-dependency/repaired-postgres-rust-rust/27029.jsonl",
+          "bytes": 851,
+          "sha256": "56668d78f21e760b1d862f709c2bc22312c04dd28d891877695c9dc85c36613d"
+        },
+        {
+          "path": "autonomous-goal-dependency/repaired-postgres-rust-rust/30750.jsonl",
+          "bytes": 449,
+          "sha256": "a0e6959732034165fc16bf0d679fa7cdc3ca5a18c04491b2f8cd4a75ed3e3e25"
+        }
+      ],
+      "workerObservationTraces": [],
+      "runs": [
+        {
+          "runtime": "rust/rust",
+          "steps": 17,
+          "modelRequests": 9
+        }
+      ],
+      "recoveredLanes": [
+        {
+          "runtime": "rust/rust",
+          "worker": {
+            "pid": 21875,
+            "before": "da2cc5ea-cd17-44e5-b9dc-b45a4a39b449",
+            "after": "da2cc5ea-cd17-44e5-b9dc-b45a4a39b449"
+          },
+          "outage": {
+            "dependency": "postgres",
+            "serverPids": [21857, 21864],
+            "stop": {
+              "pid": 21588,
+              "port": 56179,
+              "requestedSignal": "SIGQUIT",
+              "code": 0,
+              "signal": null
+            },
+            "offlineReadiness": [
+              {
+                "http": 503,
+                "database": "unavailable",
+                "coordination": "unavailable"
+              },
+              {
+                "http": 503,
+                "database": "unavailable",
+                "coordination": "unavailable"
+              }
+            ],
+            "redisDuringOutage": "PONG",
+            "releasedObservations": [true],
+            "retryingPeerPids": [21857, 21864],
+            "outcomeReadiness": [
+              {
+                "http": 503,
+                "database": "unavailable",
+                "coordination": "unavailable"
+              },
+              {
+                "http": 503,
+                "database": "unavailable",
+                "coordination": "unavailable"
+              }
+            ],
+            "offlineMs": 75,
+            "restart": {
+              "pid": 24117,
+              "port": 56179
+            },
+            "recoveredReadiness": [
+              {
+                "http": 200,
+                "database": "ready",
+                "coordination": "ready"
+              },
+              {
+                "http": 200,
+                "database": "ready",
+                "coordination": "ready"
+              }
+            ]
+          },
+          "receipt": {
+            "deliveryId": "ae225bc4-c17e-4d6d-9671-53da8751ef78",
+            "turnId": "01a1cd0e-cfd3-77f0-a3d6-dde5764281f8",
+            "httpStatus": 200,
+            "committedDeliveries": 1,
+            "commitToProjectionMs": 1315
+          },
+          "queue": {
+            "beforeReceipt": 1,
+            "afterReceipt": 2,
+            "afterSettlement": 2,
+            "acknowledged": 2
+          },
+          "originalLaneState": "suspended",
+          "peerReplacement": null
+        }
+      ]
+    },
+    {
+      "name": "repaired-owner-loss",
+      "serverPair": "rust/rust",
+      "database": "postgres",
+      "report": {
+        "path": "autonomous-goal-dependency/repaired-owner-loss/product.json",
+        "bytes": 818721,
+        "sha256": "96a2f7980fceb8335ec01e0caff627dc465e8ec0e32a77f069abdc1eb661b737"
+      },
+      "log": {
+        "path": "autonomous-goal-dependency/repaired-owner-loss/product.log",
+        "bytes": 425,
+        "sha256": "ff5e5330fb67559d02c9ecaaa71ff4b89fe9565581320ad76381dfb3c517a6c8"
+      },
+      "workerOutcomeTraces": [
+        {
+          "path": "autonomous-goal-dependency/repaired-owner-loss/43826.jsonl",
+          "bytes": 2196,
+          "sha256": "38ce6893df3de601424f4bfa39525d387ddc07c6aa7e2981493e6830452c93b4"
+        },
+        {
+          "path": "autonomous-goal-dependency/repaired-owner-loss/46241.jsonl",
+          "bytes": 851,
+          "sha256": "8e09746a4214a557f2c22d037323556cb5d6fc067a3c621ed36277a2ea8bcffc"
+        },
+        {
+          "path": "autonomous-goal-dependency/repaired-owner-loss/47345.jsonl",
+          "bytes": 449,
+          "sha256": "351cf5e3d54520629c2a849543bafd475efaf562fdd3190985770e0e683eeb5b"
+        }
+      ],
+      "workerObservationTraces": [],
+      "runs": [
+        {
+          "runtime": "rust/rust",
+          "steps": 17,
+          "modelRequests": 9
+        }
+      ],
+      "recoveredLanes": [
+        {
+          "runtime": "rust/rust",
+          "worker": {
+            "pid": 43826,
+            "before": "ad2c4f55-8b4f-4999-83aa-0213c599f4c9",
+            "after": "75d362b2-1e80-44af-ae92-c91972304300"
+          },
+          "outage": null,
+          "receipt": {
+            "deliveryId": "156128d3-9287-4def-ade4-38e76ac82106",
+            "turnId": "01a1cd10-66a6-74a3-8693-c19a3f225475",
+            "httpStatus": 200,
+            "committedDeliveries": 1,
+            "commitToProjectionMs": 6855
+          },
+          "queue": {
+            "beforeReceipt": 1,
+            "afterReceipt": 2,
+            "afterSettlement": 2,
+            "acknowledged": 2
+          },
+          "originalLaneState": "suspended",
+          "peerReplacement": {
+            "peer": 1,
+            "before": {
+              "kind": "rust",
+              "instanceId": "6ed89559-e3d6-4813-bb29-294b89255ce2",
+              "pid": 43815
+            },
+            "after": {
+              "kind": "rust",
+              "instanceId": "89777325-22c9-4743-bee9-09516e764b38",
+              "pid": 46137
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "repaired-pglite",
+      "serverPair": null,
+      "database": "pglite",
+      "report": {
+        "path": "autonomous-goal-dependency/repaired-pglite/product.json",
+        "bytes": 743803,
+        "sha256": "98e7d8ed9edb7b216c19725a8fe29ceff6e400d6b1c7aaa2664bc5040bf48b06"
+      },
+      "log": {
+        "path": "autonomous-goal-dependency/repaired-pglite/product.log",
+        "bytes": 504,
+        "sha256": "a231f6dc3bef185738e1717e92db036d95a5511bfa655c4de4adcb84cbc2891d"
+      },
+      "workerOutcomeTraces": [
+        {
+          "path": "autonomous-goal-dependency/repaired-pglite/22346.jsonl",
+          "bytes": 2196,
+          "sha256": "827a76b1fc03a1c4a96f43ca26f4b84ff9a9aebacf2f8f17422e2422fc0eb457"
+        },
+        {
+          "path": "autonomous-goal-dependency/repaired-pglite/29735.jsonl",
+          "bytes": 851,
+          "sha256": "1410e8dd364bb0c9fe30b8b658ae60b267013c4cf8c4e03a6c649ba0ac9ad8cd"
+        },
+        {
+          "path": "autonomous-goal-dependency/repaired-pglite/33390.jsonl",
+          "bytes": 449,
+          "sha256": "7c63b0f944e8654a0db22f696f9079bb3331c6d4a64e1983a1e62f3934e964d0"
+        }
+      ],
+      "workerObservationTraces": [],
+      "runs": [
+        {
+          "runtime": "rust",
+          "steps": 15,
+          "modelRequests": 9
+        }
+      ],
+      "recoveredLanes": []
+    },
+    {
+      "name": "repaired-bundled-postgres",
+      "serverPair": null,
+      "database": "bundled-postgres",
+      "report": {
+        "path": "autonomous-goal-dependency/repaired-bundled-postgres/product.json",
+        "bytes": 781152,
+        "sha256": "df9bc4c2a12346159da4658e23e25485fc547ecc50fdae435e76d6939406a9bf"
+      },
+      "log": {
+        "path": "autonomous-goal-dependency/repaired-bundled-postgres/product.log",
+        "bytes": 557,
+        "sha256": "2f155ed20da4df456ced862a7d419c57a39a1ae1ce1ce7503078fdce1b6dc039"
+      },
+      "workerOutcomeTraces": [
+        {
+          "path": "autonomous-goal-dependency/repaired-bundled-postgres/22372.jsonl",
+          "bytes": 2196,
+          "sha256": "8a0cc6c9c8c332554c63d9c679b1196e8ba092a896b44e99edf53629bfa088f3"
+        },
+        {
+          "path": "autonomous-goal-dependency/repaired-bundled-postgres/30361.jsonl",
+          "bytes": 851,
+          "sha256": "ae83ba5e713b1adb68e6cbaf7c9edc4bd5dff9e5c2a0eeb1b059b241e7cd7661"
+        },
+        {
+          "path": "autonomous-goal-dependency/repaired-bundled-postgres/35740.jsonl",
+          "bytes": 449,
+          "sha256": "7d4a1b5b3a397d3c4133581067b9b727204101797671c2950b983925bda1f5d4"
+        }
+      ],
+      "workerObservationTraces": [],
+      "runs": [
+        {
+          "runtime": "rust",
+          "steps": 15,
+          "modelRequests": 9
+        }
+      ],
+      "recoveredLanes": []
+    }
+  ],
+  "bundledPostgresAdmission": {
+    "retainedFailure": {
+      "path": "goal-lane-settlement/bundled-preterminal-diagnosis.json",
+      "bytes": 1333,
+      "sha256": "980f396c6328a11fffb7c7bca11952ab2229bb382ef38305f6ebaecbebd8fc23"
+    },
+    "tracedReruns": [
+      {
+        "name": "traced-bundled-current",
+        "serverPair": null,
+        "database": "bundled-postgres",
+        "report": {
+          "path": "autonomous-goal-dependency/traced-bundled-current/product.json",
+          "bytes": 678358,
+          "sha256": "cb3756a492d8fdd97d9830f7ba7e30878c5e886e46c20a93152ecdd662a2dc15"
+        },
+        "log": {
+          "path": "autonomous-goal-dependency/traced-bundled-current/product.log",
+          "bytes": 428,
+          "sha256": "150521f56531843ee64d3bbea6c766dc95fbc3acd4b1e889425b1d84c7345f42"
+        },
+        "workerOutcomeTraces": [
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-current/12472.jsonl",
+            "bytes": 2196,
+            "sha256": "a046dd804d53c053e21aaf0161cf19cea49d31363462f87318d3666a33a91a31"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-current/14032.jsonl",
+            "bytes": 851,
+            "sha256": "589415f009eb49761f46380f2b7214aad99cd5d214ea5a1400bbd52f9ae01eb6"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-current/15098.jsonl",
+            "bytes": 449,
+            "sha256": "a9b8ac0d117789a404cbc706388c9a37f14d88ea496075c3af0af829c92e50d9"
+          }
+        ],
+        "workerObservationTraces": [],
+        "runs": [
+          {
+            "runtime": "rust",
+            "steps": 15,
+            "modelRequests": 9
+          }
+        ],
+        "recoveredLanes": [],
+        "rustVersion": "1.1.2864",
+        "coreAndAuthorityTraces": [
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-current/admission-12472.jsonl",
+            "bytes": 8309,
+            "sha256": "84fd67da34e141ecc96c9da03b6fec2e6bd51ea34b4e12950a6f11a35a5a52c0"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-current/admission-14032.jsonl",
+            "bytes": 4102,
+            "sha256": "dc416d8d34fc6971975daf952905ff4efc34ad27526d77c75f5deca9f0efa271"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-current/admission-15098.jsonl",
+            "bytes": 2099,
+            "sha256": "f5d3edb4504e65268d93e780e3ab6dcafe5f1211942032ec99101788edbf3cfa"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-current/core-12472.jsonl",
+            "bytes": 12151,
+            "sha256": "6163f96c9eb91a517e28ff8b5dcf6d7ddd4e6ee039ac6bb7d5c39b6dfc207d43"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-current/core-14032.jsonl",
+            "bytes": 4974,
+            "sha256": "1b196890cc32a4156081a7802f6a81adf097a568cacb5208887843dafbf07b61"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-current/core-15098.jsonl",
+            "bytes": 2484,
+            "sha256": "06b3ad53422c3095474df980c3fc725e1772597a3db7cecae8ba32fedcbeff46"
+          }
+        ],
+        "gateObservations": [
+          {
+            "kind": "goal",
+            "turnId": "01a1ccf3-a9fa-7a22-b38f-e747a73c52fc",
+            "attemptId": "f365fa96-2593-4236-8d02-d4c098799e59",
+            "coreClaimAck": "2026-11-11T23:31:23.262Z",
+            "coreAllowAck": "2026-11-11T23:31:23.281Z",
+            "dispatchStatuses": [200],
+            "outcomeStatus": 200
+          },
+          {
+            "kind": "goal-cycle",
+            "turnId": "01a1ccf3-aa27-7fb1-8686-a1c7196a18ab",
+            "attemptId": "f24d6220-6b34-4242-95c3-09201decf1b1",
+            "coreClaimAck": "2026-11-11T23:31:23.326Z",
+            "coreAllowAck": "2026-11-11T23:31:23.399Z",
+            "dispatchStatuses": [],
+            "outcomeStatus": 200
+          }
+        ]
+      },
+      {
+        "name": "traced-bundled-2862-both",
+        "serverPair": null,
+        "database": "bundled-postgres",
+        "report": {
+          "path": "autonomous-goal-dependency/traced-bundled-2862-both/product.json",
+          "bytes": 1629621,
+          "sha256": "458ba2cdd6f9f24a30e7155f4585c6e79d0e1b4fb76594eca3c8af2fbd075788"
+        },
+        "log": {
+          "path": "autonomous-goal-dependency/traced-bundled-2862-both/product.log",
+          "bytes": 1031,
+          "sha256": "06341835267751ad9ac31f2fd3994f5b4f36acdf2da47fb477c593d03bfde220"
+        },
+        "workerOutcomeTraces": [
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-2862-both/52231.jsonl",
+            "bytes": 2196,
+            "sha256": "ae642b5ca174a84fb13b39cfd4fb6940a77ffbbd062977c683590005fb8ce5ec"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-2862-both/57358.jsonl",
+            "bytes": 851,
+            "sha256": "b4864efb4314e5584c46e4789afefd01a0ff399fefc0acefa006aefee086f8be"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-2862-both/58647.jsonl",
+            "bytes": 449,
+            "sha256": "3b75440df4ad69be2f9880b3c2532827e22380e3d2cbe100f4e21de196ffce5b"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-2862-both/61003.jsonl",
+            "bytes": 2196,
+            "sha256": "732d7a6c161c15b038420feada423f121661f910b3d5297f6519bdb25bf10bf3"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-2862-both/63541.jsonl",
+            "bytes": 851,
+            "sha256": "3201d76971c4b9f7451e4d263b152fd6518624038e55e5defc3eb85e2c616a08"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-2862-both/65091.jsonl",
+            "bytes": 449,
+            "sha256": "1baebcaf1fc13a60f21ac7848943be99f2a7a0668cf3ac9b29bfd975e61d9db6"
+          }
+        ],
+        "workerObservationTraces": [],
+        "runs": [
+          {
+            "runtime": "node",
+            "steps": 15,
+            "modelRequests": 9
+          },
+          {
+            "runtime": "rust",
+            "steps": 15,
+            "modelRequests": 9
+          }
+        ],
+        "recoveredLanes": [],
+        "rustVersion": "1.1.2862",
+        "coreAndAuthorityTraces": [
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-2862-both/admission-52231.jsonl",
+            "bytes": 8309,
+            "sha256": "3911f56f2bad2ae30cbd3311312207469b14981217d1552d55a6f8a33a65ef69"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-2862-both/admission-57358.jsonl",
+            "bytes": 4102,
+            "sha256": "d6c3427ab9d734db746f91db2b29515987cb6a509375159064345782bb771b46"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-2862-both/admission-58647.jsonl",
+            "bytes": 2099,
+            "sha256": "3f87c4dfbef9afdd9f788385605bb0370a8b5e7391f1ce6a65dbeb02eddce343"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-2862-both/admission-61003.jsonl",
+            "bytes": 8309,
+            "sha256": "b7f62eb4f04996839bee179fc13838974a8ff10fef3f0cb32c985dbca95ffa32"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-2862-both/admission-63541.jsonl",
+            "bytes": 4102,
+            "sha256": "259d1e9b825279ded1cb92e1665adf13fa843eb6f8d91864833e602ba0e2df55"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-2862-both/admission-65091.jsonl",
+            "bytes": 2099,
+            "sha256": "6a03b43bae2806f33deabf936490185e5004b1cb6e376d34554252fb7af798bd"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-2862-both/core-52231.jsonl",
+            "bytes": 12151,
+            "sha256": "a35261dfcad587292cc8454b1eb54da1d1f13a4ec0f3ffcd2336f4873744616b"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-2862-both/core-57358.jsonl",
+            "bytes": 4974,
+            "sha256": "d689ec275f901a8aef012d8d959ec2ef27faa2df47b8578b43a36dd343534758"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-2862-both/core-58647.jsonl",
+            "bytes": 2484,
+            "sha256": "7e21c73974f5b9310cd42e8901da561808a0298ed6e68a3e31ed0b377af4e396"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-2862-both/core-61003.jsonl",
+            "bytes": 12151,
+            "sha256": "c72fc067c45ca753acccd60d0bb02415b99eb10944559d24360bd64ba2fe221b"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-2862-both/core-63541.jsonl",
+            "bytes": 4974,
+            "sha256": "41de6603917a9d3dde0ab53f099f750e4e99c6abf887814cb8d2ee36c9b09f8c"
+          },
+          {
+            "path": "autonomous-goal-dependency/traced-bundled-2862-both/core-65091.jsonl",
+            "bytes": 2484,
+            "sha256": "9990f1ccc2f36f4b2e2b293c74885ae6c91349b028386ebf4cfb0ef980a443ff"
+          }
+        ],
+        "gateObservations": [
+          {
+            "kind": "goal",
+            "turnId": "01a1ccfc-b0f7-71d3-921e-13a247ca73e1",
+            "attemptId": "74912d2c-56ff-43cc-aeae-0207abb2e825",
+            "coreClaimAck": "2026-11-11T23:41:14.876Z",
+            "coreAllowAck": "2026-11-11T23:41:14.900Z",
+            "dispatchStatuses": [200],
+            "outcomeStatus": 200
+          },
+          {
+            "kind": "goal-cycle",
+            "turnId": "01a1ccfc-b12b-70d1-a33d-44a81da35b7c",
+            "attemptId": "062f1da0-3d42-425a-a127-b1aa848a9b25",
+            "coreClaimAck": "2026-11-11T23:41:14.951Z",
+            "coreAllowAck": "2026-11-11T23:41:15.023Z",
+            "dispatchStatuses": [],
+            "outcomeStatus": 200
+          },
+          {
+            "kind": "goal",
+            "turnId": "01a1ccfd-5483-7d71-a1f2-853a48951605",
+            "attemptId": "2924d9c9-d040-4059-829e-4b4c6bbb58d8",
+            "coreClaimAck": "2026-11-11T23:41:56.743Z",
+            "coreAllowAck": "2026-11-11T23:41:56.759Z",
+            "dispatchStatuses": [200],
+            "outcomeStatus": 200
+          },
+          {
+            "kind": "goal-cycle",
+            "turnId": "01a1ccfd-54ae-7302-93c1-93feb0ea604a",
+            "attemptId": "e94ac293-5f4a-4bab-bc24-50d6cc024a03",
+            "coreClaimAck": "2026-11-11T23:41:56.795Z",
+            "coreAllowAck": "2026-11-11T23:41:56.865Z",
+            "dispatchStatuses": [],
+            "outcomeStatus": 200
+          }
+        ]
+      },
+      {
+        "name": "repaired-bundled-postgres",
+        "serverPair": null,
+        "database": "bundled-postgres",
+        "report": {
+          "path": "autonomous-goal-dependency/repaired-bundled-postgres/product.json",
+          "bytes": 781152,
+          "sha256": "df9bc4c2a12346159da4658e23e25485fc547ecc50fdae435e76d6939406a9bf"
+        },
+        "log": {
+          "path": "autonomous-goal-dependency/repaired-bundled-postgres/product.log",
+          "bytes": 557,
+          "sha256": "2f155ed20da4df456ced862a7d419c57a39a1ae1ce1ce7503078fdce1b6dc039"
+        },
+        "workerOutcomeTraces": [
+          {
+            "path": "autonomous-goal-dependency/repaired-bundled-postgres/22372.jsonl",
+            "bytes": 2196,
+            "sha256": "8a0cc6c9c8c332554c63d9c679b1196e8ba092a896b44e99edf53629bfa088f3"
+          },
+          {
+            "path": "autonomous-goal-dependency/repaired-bundled-postgres/30361.jsonl",
+            "bytes": 851,
+            "sha256": "ae83ba5e713b1adb68e6cbaf7c9edc4bd5dff9e5c2a0eeb1b059b241e7cd7661"
+          },
+          {
+            "path": "autonomous-goal-dependency/repaired-bundled-postgres/35740.jsonl",
+            "bytes": 449,
+            "sha256": "7d4a1b5b3a397d3c4133581067b9b727204101797671c2950b983925bda1f5d4"
+          }
+        ],
+        "workerObservationTraces": [],
+        "runs": [
+          {
+            "runtime": "rust",
+            "steps": 15,
+            "modelRequests": 9
+          }
+        ],
+        "recoveredLanes": [],
+        "rustVersion": "1.1.2866",
+        "coreAndAuthorityTraces": [
+          {
+            "path": "autonomous-goal-dependency/repaired-bundled-postgres/admission-22372.jsonl",
+            "bytes": 8309,
+            "sha256": "c339308252821c7cc2728540c11cb3f70c294b9b071f7186ca66a656c0d9e800"
+          },
+          {
+            "path": "autonomous-goal-dependency/repaired-bundled-postgres/admission-30361.jsonl",
+            "bytes": 4102,
+            "sha256": "eae9a8518b939357ed36a7658fa6fc5f3af04b91b732c284062ca3e7ac819e0f"
+          },
+          {
+            "path": "autonomous-goal-dependency/repaired-bundled-postgres/admission-35740.jsonl",
+            "bytes": 2099,
+            "sha256": "c44cb86f9bf29f7bfba275a48d331c80936af9ab1fc7c7c656ba3ae778b4c0b7"
+          },
+          {
+            "path": "autonomous-goal-dependency/repaired-bundled-postgres/core-22372.jsonl",
+            "bytes": 12151,
+            "sha256": "91b490e6a420ea4eff6e42c2e79b912b25348dd9b7505b553823e248e98cfbd8"
+          },
+          {
+            "path": "autonomous-goal-dependency/repaired-bundled-postgres/core-30361.jsonl",
+            "bytes": 4974,
+            "sha256": "647d80ffa3e2477a59a2415f6a65cf18a832ee7a7c989f02a18c13a7ab3f9191"
+          },
+          {
+            "path": "autonomous-goal-dependency/repaired-bundled-postgres/core-35740.jsonl",
+            "bytes": 2484,
+            "sha256": "81020db5aaaf96eb9a6c93bbf3fd812b318bca7cf61d8e3794b0fdba4272bfba"
+          }
+        ],
+        "gateObservations": [
+          {
+            "kind": "goal",
+            "turnId": "01a1cd0f-1349-7c63-aa14-e1e2c4b0a666",
+            "attemptId": "0b17ecc1-9b70-421d-975a-883698cb9de2",
+            "coreClaimAck": "2026-11-12T00:01:19.702Z",
+            "coreAllowAck": "2026-11-12T00:01:19.744Z",
+            "dispatchStatuses": [200],
+            "outcomeStatus": 200
+          },
+          {
+            "kind": "goal-cycle",
+            "turnId": "01a1cd0f-13af-79b0-8e86-75940990bf2c",
+            "attemptId": "a4bbe198-e1f1-4ee0-92a3-57d3d5e0ee20",
+            "coreClaimAck": "2026-11-12T00:01:19.876Z",
+            "coreAllowAck": "2026-11-12T00:01:20.042Z",
+            "dispatchStatuses": [],
+            "outcomeStatus": 200
+          }
+        ]
+      }
+    ],
+    "failureReproduced": false
+  },
+  "localValidation": {
+    "rustLibraryPassed": 87,
+    "referenceNodeVersion": "v24.22.2",
+    "rustLibrary": {
+      "path": "autonomous-goal-dependency/rust-library-final.log",
+      "bytes": 9218,
+      "sha256": "0221aacbf1619027e3d0bf5e42538299385505ea12526f9603af0429742e38a1"
+    },
+    "rustClippy": {
+      "path": "autonomous-goal-dependency/clippy-final.log",
+      "bytes": 164,
+      "sha256": "270c7726b6c758f4009668b6122a76d716b28e87cbbb9e38561fc9a8c46da239"
+    },
+    "olderNodeDateOracleFailure": {
+      "path": "autonomous-goal-dependency/rust-library.log",
+      "bytes": 10796,
+      "sha256": "7ccff823a7d9241cf8d157ab16bcd97421da88327ea20ee713c9cf0c8ed6053a"
+    }
+  },
+  "remaining": [
+    "Find the cause of the intermittent bundled PostgreSQL Goal stall before model forwarding.",
+    "Qualify mixed Node/Rust PostgreSQL recovery with the reference readiness timeout.",
+    "Complete the supported-platform and final shipping matrix."
+  ]
+}

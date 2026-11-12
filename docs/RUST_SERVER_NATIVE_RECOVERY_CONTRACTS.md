@@ -296,11 +296,65 @@ results. The bundled PostgreSQL failure is a separate admission case.
 The worker recorded the start of the native Goal turn, the model
 received no Goal request and the server received no terminal receipt.
 A traced rerun completed the flow. The original admission stall and
-final platform and dependency interruption coverage remain open.
+final platform coverage remain open.
 
 ```sh
 node --import tsx scripts/server-rust/actual-folder-client.mjs \
   --tasks --task-goal-autonomous --task-goal-lane-owner-loss \
   --production-server --database postgres --server-pair rust/rust \
   --report /absolute/path/autonomous-goal-owner-loss.json
+```
+
+## Autonomous Goal projection during shared dependency interruption
+
+The same browser Recovery action reactivates the Goal's original lane.
+The full worker commits the autonomous outcome over HTTP. The fixture
+holds the worker's real execution observation response, interrupts the
+selected dependency and releases the original response while the service
+is down. The database witness reads the exact receipt, lane and revision.
+
+In the retained Redis run the browser used a Rust peer and the worker
+was connected to a Node peer. After Redis returned, the Task was complete
+and the original lane was still active. The read-only inspection of the
+stopped database found an acknowledged queue revision and a committed
+terminal marker without its projection timestamp.
+
+The Rust queue sweep now also selects current, unprojected autonomous
+outcomes whose shared notification revision was already acknowledged.
+It still uses the original worker observation and transaction fences.
+That delivery only projects the terminal marker. The previous queue
+acknowledgment remains valid, and the server sends no extra queue notice.
+The retry delay is scoped to that acknowledged revision. The worker
+observation has a ten-second deadline so a response lost during an
+outage can be retried from the committed marker.
+
+The optimized macOS ARM64 `1.1.2866` package settled the mixed Redis
+case 12.9 seconds after the original commit. The offline snapshot still
+showed an acknowledged revision and an unprojected receipt. A fresh
+observation from the original worker projected that receipt, suspended
+the same lane and left the revision unchanged. The browser verified
+the encrypted transcript after restart. The paired Rust PostgreSQL
+outage also passed. Both servers reported unavailable, the Rust sweep
+recorded a database retry, and recovery completed with the same worker
+and server processes.
+
+Seven browser runs passed 115 steps. The Redis cases cover both mixed
+peer orientations and two Rust peers. The PostgreSQL and worker-owner
+loss cases use two Rust peers. Each interruption case delivered its
+original terminal receipt once. The standalone PGlite and bundled
+PostgreSQL runs preserved the encrypted answers through restart.
+
+The [local evidence](security/rust-server-autonomous-goal-dependency-acceptance.json)
+retains the baseline and intermediate failures, the exact package
+and the current comparison runs. The separate mixed PostgreSQL
+readiness timeout remains open. All traced bundled PostgreSQL runs
+reached the model. The original pre-model stall remains unexplained.
+
+Run the same case with `redis` or `postgres` and a selected peer pairing.
+
+```sh
+node --import tsx scripts/server-rust/actual-folder-client.mjs \
+  --tasks --task-goal-autonomous --task-goal-lane-dependency redis \
+  --production-server --database postgres --server-pair rust/node \
+  --report /absolute/path/autonomous-goal-redis.json
 ```

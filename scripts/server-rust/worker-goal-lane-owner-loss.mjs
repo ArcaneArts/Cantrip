@@ -1,6 +1,6 @@
-// Hold the native observation response on the old worker WebSocket after an
-// actual Goal outcome commit. A replacement connection is left unmodified.
-import { renameSync, writeFileSync } from "node:fs";
+// Hold a native observation response after a real Goal commit. The peer-loss
+// case drops it on disconnect. Dependency cases release it while the service is down.
+import { existsSync, renameSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
 const file = process.env.CANTRIP_TEST_GOAL_LANE_OWNER_LOSS;
@@ -13,11 +13,24 @@ if (
   const send = WebSocket.prototype.send;
   const fetch = globalThis.fetch;
   const requests = new Map();
-  let receipt, oldSocket, interrupted;
+  const held = [];
+  const dependency = process.env.CANTRIP_TEST_GOAL_LANE_DEPENDENCY;
+  let receipt, oldSocket, interrupted, resumeTimer;
   function report() {
     const temporary = file + ".tmp";
     writeFileSync(temporary, JSON.stringify(receipt) + "\n");
     renameSync(temporary, file);
+  }
+  function releaseDuringOutage() {
+    if (!existsSync(file + ".resume")) return;
+    clearInterval(resumeTimer);
+    interrupted = true;
+    receipt.releasedObservations = held.map(({ socket, data, args }) => {
+      if (socket.readyState !== WebSocket.OPEN) return false;
+      send.call(socket, data, ...args);
+      return true;
+    });
+    report();
   }
   WebSocket.prototype.emit = function (event, ...args) {
     if (
@@ -53,6 +66,10 @@ if (
           observeExecution: requests.get(frame.requestId),
         });
         report();
+        if (dependency) {
+          held.push({ socket: this, data, args });
+          resumeTimer ??= setInterval(releaseDuringOutage, 25).unref();
+        }
         return;
       }
     }

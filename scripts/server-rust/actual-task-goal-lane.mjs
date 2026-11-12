@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { eventually } from "./full-worker.mjs";
+import { interruptGoalLaneDependency } from "./goal-lane-dependency-outage.mjs";
 
 const postgres = createRequire(
   new URL("../../tests/reference-node-server/package.json", import.meta.url),
@@ -43,17 +44,7 @@ function goalLaneDatabase(fixture, chatId) {
   };
 }
 
-async function interruptObservation(
-  fixture,
-  worker,
-  workerId,
-  chatId,
-  file,
-  db,
-  evidence,
-) {
-  const before = await fixture.assertRemoteWorker(workerId);
-  const workerPid = worker.child.pid;
+async function observeCommittedBeforeLoss(chatId, file, db, evidence) {
   evidence.beforeLoss = await eventually(
     () =>
       readFile(file, "utf8").then(JSON.parse, (error) => {
@@ -75,6 +66,9 @@ async function interruptObservation(
   );
   assert.ok(evidence.committedState.cycle_observed_at);
   assert.equal(evidence.committedState.cycle_projected_at, null);
+}
+
+async function interruptOwner(fixture, workerId, before, evidence) {
   evidence.peerReplacement = await fixture.replacePeer(
     1,
     fixture.peers[1].kind,
@@ -93,14 +87,7 @@ async function interruptObservation(
       assert.deepEqual(claim.continuityIdentity, before.continuityIdentity);
     },
   );
-  assert.equal(worker.child.pid, workerPid);
-  assert.equal(worker.child.exitCode, null);
-  assert.equal(worker.child.signalCode, null);
-  evidence.worker = {
-    pid: workerPid,
-    before: before.connectionId,
-    after: after.connectionId,
-  };
+  return after;
 }
 
 export async function activateRecoveredGoalLane({
@@ -111,6 +98,8 @@ export async function activateRecoveredGoalLane({
   worker,
   workerId,
   faultFile,
+  dependency,
+  cluster,
   result,
 }) {
   const db = goalLaneDatabase(fixture, chatId);
@@ -144,16 +133,31 @@ export async function activateRecoveredGoalLane({
       assert.equal(state.thread_id, evidence.beforeRecovery.thread_id);
     });
     completeGoal.release();
-    if (faultFile)
-      await interruptObservation(
-        fixture,
-        worker,
-        workerId,
-        chatId,
-        faultFile,
-        db,
-        evidence,
-      );
+    if (faultFile) {
+      const before = await fixture.assertRemoteWorker(workerId);
+      const workerPid = worker.child.pid;
+      await observeCommittedBeforeLoss(chatId, faultFile, db, evidence);
+      const after = dependency
+        ? await interruptGoalLaneDependency({
+            fixture,
+            workerId,
+            before,
+            dependency,
+            cluster,
+            faultFile,
+            db,
+            evidence,
+          })
+        : await interruptOwner(fixture, workerId, before, evidence);
+      assert.equal(worker.child.pid, workerPid);
+      assert.equal(worker.child.exitCode, null);
+      assert.equal(worker.child.signalCode, null);
+      evidence.worker = {
+        pid: workerPid,
+        before: before.connectionId,
+        after: after.connectionId,
+      };
+    }
   } catch (error) {
     evidence.failureState = await db.read();
     throw error;
@@ -185,19 +189,29 @@ export async function observeSettledGoalLane(fixture, chatId, result) {
             (reply) => reply.observeExecution,
           ),
         );
-        assert.ok(
-          evidence.committedState.queue_revision >
-            evidence.recovered.queue_revision,
-        );
+        if (fixture.workerFixture.kind === "rust") {
+          assert.ok(
+            evidence.committedState.queue_revision >
+              evidence.recovered.queue_revision,
+            "a Rust receipt must advance its durable notification revision",
+          );
+        }
       }
     });
     result.steps.push(
       "the committed autonomous Goal projects and suspends the exact recovered lane",
     );
-    if (evidence.beforeLoss)
+    if (evidence.dependencyOutage)
+      result.steps.push(
+        "the committed Goal is settled after dependency recovery with the original worker and server processes",
+      );
+    else if (evidence.beforeLoss)
       result.steps.push(
         "the replacement peer projects the committed receipt through the original worker connection continuity",
       );
+  } catch (error) {
+    evidence.failureState = await db.read();
+    throw error;
   } finally {
     await db.close();
   }

@@ -43,6 +43,9 @@ impl Backend for Native {
         self.repository.pending_notifications(None).boxed()
     }
     fn publish(&self, entry: &Value) -> Result<()> {
+        if entry["taskGoalOutcomeOnly"] == true {
+            return Ok(());
+        }
         (self.publish)(text(&entry["ownerId"])?, text(&entry["chatId"])?)
     }
     fn request(&self, entry: Value) -> BoxFuture<'_, Result<()>> {
@@ -53,6 +56,9 @@ impl Backend for Native {
             if !deferred_outcome && let Some(source) = entry.get("taskGoalOutcome") {
                 let recover = self.recover_goal.as_ref().context("Task Goal outcome projection is unavailable.")?;
                 recover(text(&entry["ownerId"])?, text(&entry["chatId"])?, source.clone()).await?;
+            }
+            if entry["taskGoalOutcomeOnly"] == true {
+                return Ok(());
             }
             let command=json!({"type":"chat.queue.changed","chatId":entry["chatId"],"revision":entry["revision"]});
             let task_pause = self.chats.task_pause_intent(&text(&entry["ownerId"])?, &text(&entry["chatId"])?).await?;
@@ -91,6 +97,9 @@ impl Backend for Native {
     }
     fn acknowledge(&self, entry: Value) -> BoxFuture<'_, Result<()>> {
         async move {
+            if entry["taskGoalOutcomeOnly"] == true {
+                return self.defer(entry).await;
+            }
             self.repository
                 .acknowledge_notification(
                     &text(&entry["chatId"])?,
@@ -104,9 +113,19 @@ impl Backend for Native {
     }
     fn defer(&self, entry: Value) -> BoxFuture<'_, Result<()>> {
         async move {
-            self.repository
-                .defer_notification(&text(&entry["chatId"])?)
-                .await
+            let chat = text(&entry["chatId"])?;
+            if entry["taskGoalOutcomeOnly"] == true {
+                let revision = i32::try_from(
+                    entry["revision"]
+                        .as_i64()
+                        .context("Queue notification revision")?,
+                )?;
+                return self
+                    .repository
+                    .defer_acknowledged_goal_outcome(&chat, revision)
+                    .await;
+            }
+            self.repository.defer_notification(&chat).await
         }
         .boxed()
     }

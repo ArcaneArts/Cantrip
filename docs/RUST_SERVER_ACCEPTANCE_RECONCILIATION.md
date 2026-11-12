@@ -59,6 +59,12 @@ outcome commits. If the worker-owning server is killed before receiving
 the observation, a replacement resumes the durable work with the same
 worker process and preserves the two encrypted answers across restart.
 
+The [shared dependency comparison](RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md#autonomous-goal-projection-during-shared-dependency-interruption)
+repairs a mixed Redis outage that left an acknowledged Goal outcome
+with its recovered lane still active. The Rust peer retries the worker
+observation from the terminal marker and settles the original lane.
+The PostgreSQL interruption case also passes on two Rust peers.
+
 The packaged macOS ARM64 `1.1.2845` server and signed desktop worker passed
 the current Task and Agent product matrix against the Node reference. All
 six suites cover real native execution across PGlite, bundled PostgreSQL

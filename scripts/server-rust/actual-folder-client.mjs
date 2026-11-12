@@ -132,6 +132,7 @@ const option = (name) => {
 const databaseMode = option("--database") ?? "pglite";
 const sharedPair = option("--server-pair");
 const postgresOutage = option("--inflight-peer") === "postgres";
+const goalLaneDependency = option("--task-goal-lane-dependency");
 const cantripOsRun = process.argv.includes("--cantrip-os-run");
 const cantripOsSurfaces = process.argv.includes("--cantrip-os-surfaces");
 const fakeHostDesktopInventory = process.argv.includes(
@@ -274,9 +275,10 @@ async function flow(
         ),
       }
     : undefined;
-  const goalLaneOwnerLoss = process.argv.includes("--task-goal-lane-owner-loss")
-    ? path.join(root, fixture.kind, "goal-lane-owner-loss.json")
-    : undefined;
+  const goalLaneFault =
+    goalLaneDependency || process.argv.includes("--task-goal-lane-owner-loss")
+      ? path.join(root, fixture.kind, "goal-lane-observation.json")
+      : undefined;
   const errors = [],
     requests = [];
   result.requests = requests;
@@ -393,9 +395,12 @@ async function flow(
                   .join(" "),
               }
             : {}),
-          ...(goalLaneOwnerLoss
+          ...(goalLaneFault
             ? {
-                CANTRIP_TEST_GOAL_LANE_OWNER_LOSS: goalLaneOwnerLoss,
+                CANTRIP_TEST_GOAL_LANE_OWNER_LOSS: goalLaneFault,
+                ...(goalLaneDependency
+                  ? { CANTRIP_TEST_GOAL_LANE_DEPENDENCY: goalLaneDependency }
+                  : {}),
                 CANTRIP_TEST_GOAL_LANE_WORKER_ENTRY: path.resolve(
                   process.env.CANTRIP_TEST_WORKER_PACKAGE ??
                     path.join(repositoryRoot, "cantrip_worker"),
@@ -1404,9 +1409,12 @@ async function flow(
         requests,
         taskOutcomeOrder,
         goalLaneScenario:
-          goalLaneOwnerLoss ||
-          process.argv.includes("--task-goal-recovered-lane")
-            ? { faultFile: goalLaneOwnerLoss }
+          goalLaneFault || process.argv.includes("--task-goal-recovered-lane")
+            ? {
+                faultFile: goalLaneFault,
+                dependency: goalLaneDependency,
+                cluster: postgres?.cluster,
+              }
             : undefined,
       });
     if (
@@ -1670,7 +1678,7 @@ try {
   browser = await chromium.launch({ headless: true });
   if (databaseMode !== "pglite")
     postgres = await postgresFixture(path.join(root, "postgres"), {
-      restartable: postgresOutage,
+      restartable: postgresOutage || goalLaneDependency === "postgres",
     });
   for (const kinds of runtimeCases) {
     const kind = kinds[0];
