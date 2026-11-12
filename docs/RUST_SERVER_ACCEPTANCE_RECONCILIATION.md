@@ -35,6 +35,10 @@ installed bundles against the signed archive.
 The Windows x64 `1.1.2881` standalone distribution passed all three stores,
 including migration, SQL export, hosted reopening and retained writes.
 [Windows x64 standalone record](security/rust-server-2881-win32-x64-standalone.json)
+The rebuilt Windows x64 `1.1.2881` desktop installer matched 14,092
+installed files. All three stores passed first start and persisted-profile
+reopening, real worker replies, accepted writes and clean tray shutdown.
+[Windows x64 installed desktop record](security/rust-server-2881-win32-x64-desktop.json)
 The earlier signed desktop update to `1.1.2869` verified 14,089 installed
 files and passed tray shutdown and reopening with the retained PGlite
 profile. The installed app passed first start, persisted-profile reopening,

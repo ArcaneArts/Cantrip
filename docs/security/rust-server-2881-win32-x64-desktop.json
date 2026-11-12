@@ -1,0 +1,191 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.2881",
+  "serverSourceCommit": "ccafd3cd4baea444ab43c1b84471ab3225f718e3",
+  "desktopSourceCommit": "d10ea65f4aff394086d5cc13fa7447afd81cd3e6",
+  "completeReplacement": false,
+  "platform": "Windows 11 x64 under local QEMU software emulation",
+  "scope": "Actual installed Cantrip desktop through NSIS, bundled Rust server and unchanged Node worker, real native tray and WebView onboarding. The installer used a disposable QA updater signing key.",
+  "artifacts": {
+    "installer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/desktop-server-readiness-fix/patched-installer/Cantrip_1.1.2881_x64-setup.exe",
+      "bytes": 256761578,
+      "sha256": "d7ceb1035f672bcc5b3d2f0ffa9b58400ee5acfa1f5f570cbc3f541408e72c30"
+    },
+    "installedManifestVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/desktop-server-readiness-fix/patched-installer/installed-payload-verification.json",
+      "bytes": 428,
+      "sha256": "bd5e2fc3b11bc92a822838201c42652cd04801b2174dde319415d084926ea62d"
+    },
+    "installedFilesVerified": 14092,
+    "installedComponents": {
+      "app": {
+        "bytes": 24865280,
+        "sha256": "9dd6cb5971a1e670919efefe073e8540e206c0cab9f58be00a04cd330ac3e6c4"
+      },
+      "server": {
+        "bytes": 110975779,
+        "sha256": "f2706ce0c0f0e49f0c96fadc725b6c4d398b4c661df570cbbb94fd0ff49ebf68"
+      },
+      "worker": {
+        "bytes": 391601,
+        "sha256": "c632631c9a6d250d2e56d938441b5d39dc972d1b03a6b521d4ddf6c85569e4a9"
+      }
+    },
+    "installerUpdaterSignatureVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/desktop-server-readiness-fix/patched-installer/minisign-verification.log",
+      "bytes": 115,
+      "sha256": "a9ce175da0e01531a5db234263cc4cf1a51214ce3f16fed0a53fc75124c3eb1c"
+    },
+    "guestSerial": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/desktop-server-readiness-fix/patched-installer/installed-matrix-guest-serial.jsonl",
+      "bytes": 15838,
+      "sha256": "cb2ae1cfc001278505a5b132802521996d8de30813c1660c46d2234a6ffefdfc"
+    },
+    "trayObserver": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/desktop-server-readiness-fix/patched-installer/fresh-installed-retry-observer.log",
+      "bytes": 7196,
+      "sha256": "a5f29ab3bbafa368c7a67facaa5c5b603a8488e9e9b20d55187f005ccf53e4c6"
+    }
+  },
+  "scenarios": [
+    {
+      "store": "pglite",
+      "sameServerIdentityAndAcceptedSetting": true,
+      "actualWorkerReplies": 2,
+      "cleanTrayShutdowns": 2,
+      "initial": {
+        "receipt": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/desktop-server-readiness-fix/patched-installer/verified-desktop-receipts/readiness-nsis-2881-pglite.json",
+          "bytes": 987,
+          "sha256": "c24b5ec9698f51d3bc6cbea4d7315179787d0b39e164d39f144e0f523bfbd932"
+        },
+        "trayMenu": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-x64-guest/readiness-nsis-installed-matrix-ui/pglite-initial-1856-tray-menu.png",
+          "bytes": 53552,
+          "sha256": "541b5194abc7749de63c56e4d9028950ca270dfe357190bc93514f455c69079a"
+        },
+        "quitConfirmation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-x64-guest/readiness-nsis-installed-matrix-ui/pglite-initial-1856-quit-confirmation.png",
+          "bytes": 62385,
+          "sha256": "1a46ae864a638769cca853a7db9540d08434a1819d6bbbd0bfb6434ea3f4ad1b"
+        },
+        "recoveryConfirmation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-x64-guest/readiness-nsis-installed-matrix-ui/pglite-initial-1856-anonymous-recovery-confirmation.png",
+          "bytes": 60776,
+          "sha256": "4995fc833e4038c88d0b2558b8e33b1837ed25c214c122a407b71fff7fca6142"
+        }
+      },
+      "reopen": {
+        "receipt": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/desktop-server-readiness-fix/patched-installer/verified-desktop-receipts/readiness-nsis-2881-pglite-reopen.json",
+          "bytes": 973,
+          "sha256": "d280c6f61ba9fe9c3a41730bfbfab2c1b70c43bd4777383340935aefbfa753e0"
+        },
+        "trayMenu": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-x64-guest/readiness-nsis-installed-matrix-ui/pglite-reopen-6376-tray-menu.png",
+          "bytes": 53463,
+          "sha256": "0b1f7f7cec74c0d97edf554fc316eaf40e090e9ee90f5e9ff34282a0b7009898"
+        },
+        "quitConfirmation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-x64-guest/readiness-nsis-installed-matrix-ui/pglite-reopen-6376-quit-confirmation.png",
+          "bytes": 62287,
+          "sha256": "bfe88442e8b40ded5ab44315365acade987a7f443250d9c0d633789517c539ba"
+        }
+      }
+    },
+    {
+      "store": "bundled-postgres",
+      "sameServerIdentityAndAcceptedSetting": true,
+      "actualWorkerReplies": 2,
+      "cleanTrayShutdowns": 2,
+      "initial": {
+        "receipt": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/desktop-server-readiness-fix/patched-installer/verified-desktop-receipts/readiness-nsis-2881-bundled-postgres.json",
+          "bytes": 1294,
+          "sha256": "68b7be3c9f064fadcdf7eb4008131168b761c649842bba503ac6cc42f27d4bcf"
+        },
+        "trayMenu": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-x64-guest/readiness-nsis-installed-matrix-ui/bundled-postgres-initial-7308-tray-menu.png",
+          "bytes": 53585,
+          "sha256": "c13a3f62fc38e27d210ed37dc6396abc9ed4768cc765e01dd4079b3bc0422721"
+        },
+        "quitConfirmation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-x64-guest/readiness-nsis-installed-matrix-ui/bundled-postgres-initial-7308-quit-confirmation.png",
+          "bytes": 62420,
+          "sha256": "39aa13aaa5ace7a56dcd3e7f58271d39c10a277f8d077627941a05bdd0047234"
+        },
+        "recoveryConfirmation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-x64-guest/readiness-nsis-installed-matrix-ui/bundled-postgres-initial-7308-anonymous-recovery-confirmation.png",
+          "bytes": 59759,
+          "sha256": "bb6ff2a84b5e978f2fb02043f4708ebb9828de3ff2353ba90cfd77cedc663d59"
+        }
+      },
+      "reopen": {
+        "receipt": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/desktop-server-readiness-fix/patched-installer/verified-desktop-receipts/readiness-nsis-2881-bundled-postgres-reopen.json",
+          "bytes": 1280,
+          "sha256": "0036716698053010b8ae82eee84c4e8e816795f099856377a9cf5273267763d5"
+        },
+        "trayMenu": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-x64-guest/readiness-nsis-installed-matrix-ui/bundled-postgres-reopen-3184-tray-menu.png",
+          "bytes": 53611,
+          "sha256": "0d2c36048798e452ac9eb0f7c0f088bde8a457665f42954d0cbd26e71c858c64"
+        },
+        "quitConfirmation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-x64-guest/readiness-nsis-installed-matrix-ui/bundled-postgres-reopen-3184-quit-confirmation.png",
+          "bytes": 62446,
+          "sha256": "f65f7325f761d4daea69c59664d322b02dcbfb96b6c3ff7a277a5d47a6fa95f0"
+        }
+      }
+    },
+    {
+      "store": "postgres",
+      "sameServerIdentityAndAcceptedSetting": true,
+      "actualWorkerReplies": 2,
+      "cleanTrayShutdowns": 2,
+      "initial": {
+        "receipt": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/desktop-server-readiness-fix/patched-installer/verified-desktop-receipts/readiness-nsis-2881-postgres.json",
+          "bytes": 1039,
+          "sha256": "6159c186fa6a42771394784d4cdc34934a505bdbc2aa031027343a12671ba430"
+        },
+        "trayMenu": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-x64-guest/readiness-nsis-installed-matrix-ui/postgres-initial-7720-tray-menu.png",
+          "bytes": 53626,
+          "sha256": "02412ac66f2c6618485d5a79080d7cc3bb10dd97779469187e19d9d601a12dcf"
+        },
+        "quitConfirmation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-x64-guest/readiness-nsis-installed-matrix-ui/postgres-initial-7720-quit-confirmation.png",
+          "bytes": 75458,
+          "sha256": "b888908838b28e79f1e404e3f7b2f3dea42f1530ee94fa0bbc321180a743a166"
+        },
+        "recoveryConfirmation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-x64-guest/readiness-nsis-installed-matrix-ui/postgres-initial-7720-anonymous-recovery-confirmation.png",
+          "bytes": 59824,
+          "sha256": "316073d22ef8ce26d7a0d383eef3bb92d1a5cf8333a889f9c032a9549d25b870"
+        }
+      },
+      "reopen": {
+        "receipt": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/desktop-server-readiness-fix/patched-installer/verified-desktop-receipts/readiness-nsis-2881-postgres-reopen.json",
+          "bytes": 1025,
+          "sha256": "15582120fc801078b0119eef042807f9a9b52cea8744100759dac6d99ffcdfec"
+        },
+        "trayMenu": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-x64-guest/readiness-nsis-installed-matrix-ui/postgres-reopen-7248-tray-menu.png",
+          "bytes": 53469,
+          "sha256": "c5b35586bce902416b64edbe07ee49588cceec47eb0028d0735dccb0f1d34112"
+        },
+        "quitConfirmation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-x64-guest/readiness-nsis-installed-matrix-ui/postgres-reopen-7248-quit-confirmation.png",
+          "bytes": 62295,
+          "sha256": "1572cf4e11a4d83339044a9810603d043a305093634d52130a1712a60c984a9b"
+        }
+      }
+    }
+  ],
+  "remaining": [
+    "Signed in-place update to this exact installer on the historical Windows profile"
+  ]
+}

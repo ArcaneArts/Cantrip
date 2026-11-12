@@ -16,6 +16,29 @@ the same verified package, and the host matched both receipts to the
 guest serial output.
 [Windows 1.1.2881 standalone record](security/rust-server-2881-win32-x64-standalone.json)
 
+## Windows x64 installed database modes on `1.1.2881`
+
+The rebuilt NSIS installer passed first start and reopening on PGlite,
+bundled PostgreSQL, and external PostgreSQL in the Windows 11 x64 guest.
+A read-only disk snapshot matched all 14,092 files to the installer.
+The first starts completed anonymous recovery setup and wrote a setting.
+Each reopen read back the same setting and server identity using its
+persisted database selection.
+
+Each run received a reply from the bundled Node worker, exited zero
+through the native tray, reaped the worker and Rust server, and logged
+orderly Rust shutdown. Managed PostgreSQL stopped with the app.
+External PostgreSQL observed the app connection and stayed running
+after app shutdown. The independent disk receipts matched the guest
+serial output for all six runs.
+
+The previous package gave up while PGlite was still running migrations
+under QEMU software emulation. The rebuilt desktop supervisor allowed
+those migrations to finish. The installer carries a disposable QA
+updater signature. The signed in-place upgrade to this exact installer
+has separate acceptance.
+[Windows 1.1.2881 installed desktop record](security/rust-server-2881-win32-x64-desktop.json)
+
 ## Windows x64 standalone `1.1.2869`
 
 The Windows 11 x64 QEMU guest packaged the Rust server from
