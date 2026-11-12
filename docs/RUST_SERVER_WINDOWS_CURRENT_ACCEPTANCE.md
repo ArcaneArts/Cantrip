@@ -29,6 +29,13 @@ timer. The corrected fixture verified all six worker exits inside that
 deadline and confirmed that every observed descendant was gone.
 [Windows Task transfer record](security/rust-server-task-inference-route-acceptance.json#rebuiltWindowsArtifact)
 
+The same executable passed a deterministic Task route read on external
+PostgreSQL. The test observed the HTTP query waiting on a real database
+lock, then committed the phase and revision together. Both the waiting
+read and a subsequent read returned completed at revision 4. The guest
+disk report matched serial, and the server shut down cleanly.
+[Windows settlement read](security/rust-server-task-inference-route-acceptance.json#currentWindowsSettlementRead)
+
 ## Windows x64 standalone `1.1.2881`
 
 The Windows 11 x64 QEMU guest packaged the `1.1.2881` Rust executable and

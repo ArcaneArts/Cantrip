@@ -723,10 +723,21 @@ rejection after dispatch passed with all three stores. Migration, SQL export,
 restart, and hosted reopening passed on each store. Its native
 archive matched all 2,546 manifest entries. The rebuilt ARM64 image passed
 the same three-store tests and deterministic read during settlement. Its
-native archive matched all 2,546 manifest entries. The Windows x64 package
-rebuilt at `01928fcff` passed queued transfer and replacement-worker
-settlement on all three stores. Windows rejection after active dispatch
-and the deterministic read during settlement remain open.
+native archive matched all 2,546 manifest entries.
+
+Both Linux images rebuilt at `01928fcff` passed queued transfer and active
+dispatch rejection on all three stores. Each browser run held the model
+response, received HTTP 409 with `stale-lease`, and completed the original
+Task with the durable state preserved. Both images also returned the complete
+revision 4 snapshot when the external PostgreSQL read crossed settlement.
+The browser and packaged worker ran on macOS. The x64 server image ran
+through Rosetta in Docker Desktop.
+
+The Windows x64 package rebuilt at `01928fcff` passed queued transfer and
+replacement-worker settlement on all three stores. On external PostgreSQL,
+the Windows server also returned the complete revision 4 snapshot across a
+deliberately held settlement lock. Windows rejection after active dispatch
+while a model response is held remains open.
 [Task provider transfer record](security/rust-server-task-inference-route-acceptance.json)
 
 ## Current implementation and evidence
