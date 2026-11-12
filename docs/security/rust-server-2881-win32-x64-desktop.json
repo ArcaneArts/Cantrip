@@ -185,7 +185,73 @@
       }
     }
   ],
-  "remaining": [
-    "Signed in-place update to this exact installer on the historical Windows profile"
-  ]
+  "remaining": [],
+  "signedUpdate": {
+    "scope": "In-place update of the registered Windows x64 Cantrip installation in a local QEMU guest. The app downloaded the exact QA-signed NSIS installer over a local HTTPS fixture. The historical Rust desktop used its retained PGlite profile. The package used a disposable updater key and a local QA TLS root.",
+    "fromVersion": "1.1.2869",
+    "toVersion": "1.1.2881",
+    "store": "pglite",
+    "rejectedTamperedUpdate": "update_signature_invalid",
+    "registeredVersion": "1.1.2881",
+    "automaticallyRelaunched": true,
+    "retainedServerIdentity": true,
+    "retainedWrittenSetting": true,
+    "realWorkerRpcVersion": "1.1.2881",
+    "verifiedInstalledFiles": 14092,
+    "nativeTrayQuit": true,
+    "cleanRustShutdown": true,
+    "appServerAndWorkerProcessesExited": true,
+    "artifacts": {
+      "observerDriver": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/desktop-server-readiness-fix/patched-installer/guest-media/observe-windows-signed-update.mjs",
+        "bytes": 9412,
+        "sha256": "76dcb274189ca24a045e925fe6424b656d04e127ff0e7e4f64789bfcc0fac406"
+      },
+      "guestLauncher": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/desktop-server-readiness-fix/patched-installer/guest-media/run-signed.ps1",
+        "bytes": 5519,
+        "sha256": "b3b0518b7f29067488facac90a3d483020a14043939424b486baf6b46a755859"
+      },
+      "observation": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/desktop-server-readiness-fix/patched-installer/signed-guest/signed-update-observation-20261112131358.json",
+        "bytes": 1718,
+        "sha256": "259317071df0da51a51c1095bb7e90fec8676ba4c16d94c50c561a552bd526ac"
+      },
+      "httpsTransport": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/desktop-server-readiness-fix/patched-installer/signed-guest/transport.log",
+        "bytes": 248,
+        "sha256": "70dbca063cf4d72c41ea61b5ed75d3fc7492edebc6f3b9417e6dff4cef8b4ede"
+      },
+      "registry": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/desktop-server-readiness-fix/patched-installer/signed-registered-relaunch-registry.json",
+        "bytes": 733,
+        "sha256": "d93f823fc21d67cce1fac0b761df42c5a58a81b30ffc3f3601dece3970706a99"
+      },
+      "installedPayloadVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/desktop-server-readiness-fix/patched-installer/signed-installed-payload-verification.json",
+        "bytes": 428,
+        "sha256": "bd5e2fc3b11bc92a822838201c42652cd04801b2174dde319415d084926ea62d"
+      },
+      "trayMenu": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-x64-guest/readiness-nsis-signed-update-ui/signed-updated-7492-tray-menu.png",
+        "bytes": 210595,
+        "sha256": "830ee43b1a606fbaacd4d217323d2c6f1429c24627be0d6dc7c66e9e690323c1"
+      },
+      "quitConfirmation": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-x64-guest/readiness-nsis-signed-update-ui/signed-updated-7492-quit-confirmation.png",
+        "bytes": 46983,
+        "sha256": "9af7fe1a79d73e17ba2bf3908af57521738a07a247926ba60a0590ba8eed8ad4"
+      },
+      "postQuitServiceEvents": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/desktop-server-readiness-fix/patched-installer/signed-registered-post-quit-service-events.jsonl",
+        "bytes": 20559,
+        "sha256": "f432d6eecadb786a97a4313ce87a9cae186d73c7bc9a0eb9e0157fa74323dd4e"
+      },
+      "postQuitProcessList": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/desktop-server-readiness-fix/patched-installer/signed-registered-post-quit-process-list.json",
+        "bytes": 860,
+        "sha256": "73df3831412ef52ec8d6c5436da1bd1ebd44ba5d2c8463307fb7b810fca40618"
+      }
+    }
+  }
 }
