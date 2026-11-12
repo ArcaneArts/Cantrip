@@ -120,6 +120,25 @@ observation. The repeated PGlite throughput series above has its own earlier
 artifact versions.
 [Production package acceptance](security/rust-server-2869-production-packages.json)
 
+## Packaged `1.1.2881` comparison
+
+The macOS ARM64 package and same-source Node reference each streamed
+64 MiB on PGlite, bundled PostgreSQL and external PostgreSQL. Every run
+matched the payload hash, closed its stalled consumer with code 1013,
+stopped that lease exactly once, and recovered the same server identity
+and accepted write after SIGKILL. The reconnected worker completed a
+new command and stream.
+
+| Database            | Node MiB/s | Rust MiB/s | Node recovery | Rust recovery |
+| ------------------- | ---------: | ---------: | ------------: | ------------: |
+| PGlite              |     198.96 |     206.31 |       29.19 s |       27.55 s |
+| Bundled PostgreSQL  |     204.62 |     203.58 |       26.05 s |       26.65 s |
+| External PostgreSQL |     202.32 |     204.86 |       25.81 s |       27.75 s |
+
+Each pair is one observation. Recovery time includes the worker's
+reconnect backoff.
+[Current runtime and stream measurements](security/rust-server-2881-performance-acceptance.json)
+
 ## Reproduce
 
 Build the current Node reference and worker/protocol dependencies, and package

@@ -48,6 +48,11 @@ a distinct scope from the release-app encryption qualification.
 Final supported-platform shipping and requirement-by-requirement reconciliation
 remain open.
 
+The macOS ARM64 `1.1.2881` package passed the same-source local PGlite
+runtime benchmark. The worker-log comparison passed 64 MiB streams,
+slow-consumer closure, and restart recovery on all three stores.
+[Current runtime and stream measurements](security/rust-server-2881-performance-acceptance.json)
+
 The [packaged replica qualification](RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md#packaged-replica-lifecycle-and-shared-peers)
 compares the current local Git attach and detach flow on all three stores.
 With shared PostgreSQL and Redis, all four Node and Rust pairings preserve two

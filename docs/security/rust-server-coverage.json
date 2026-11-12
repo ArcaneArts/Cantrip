@@ -29210,6 +29210,7 @@
     },
     "currentSmallProfilePerformance": {
       "status": "partial",
+      "candidateAcceptance": "docs/security/rust-server-2881-performance-acceptance.json",
       "scope": "Compiled Node production reference and optimized Rust 1.1.2845 at 2e60d2042 on macOS ARM64. Isolated PGlite profiles, five warmups and 20 measured runs per runtime; all 50 passed with retained identities and writes. Same workload measures readiness, process-tree RSS, HTTP reads and durable writes, eight-client throughput, App Live pings and enrollment publication, paused-client catch-up and SIGTERM. The median complete workload passed the regression guard at 1515 ms versus 3770 ms.",
       "currentReport": "docs/security/rust-server-darwin-arm64-acceptance.json#currentStandalone",
       "evidence": [
@@ -29261,6 +29262,7 @@
     },
     "currentWorkerLogStreamingPerformance": {
       "status": "partial",
+      "candidateAcceptance": "docs/security/rust-server-2881-performance-acceptance.json",
       "scope": "Production-entry controlled worker-log JSON on macOS arm64. PGlite: five warmups and 20 measured 256 MiB runs for original Rust, optimized Rust and Node; all 75 pass with exact payload and wire bytes. All three stores: each production peer passes 64 MiB, slow-consumer 1013/one lease stop and SIGKILL/reconnect with retained identity/write and post-recovery command/stream. Final native package passes all3 local/hosted, embedded fallback, exports/restart/SIGTERM, 1762 file hashes, no Node PATH and denied Homebrew reads/artifact writes.",
       "evidence": [
         "docs/RUST_SERVER_STREAMING_PERFORMANCE.md",
