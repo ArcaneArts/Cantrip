@@ -149,6 +149,9 @@ const cantripOsSourceBackup = process.argv.includes(
   "--cantrip-os-source-backup",
 );
 const workerLinkRenewal = process.argv.includes("--worker-link-renewal");
+const taskGoalProviderTransfer = process.argv.includes(
+  "--task-goal-provider-transfer",
+);
 const providerAuth = process.argv.includes("--provider-auth");
 const taskLabel = process.argv.includes("--task-label");
 const inlineChatLabels = process.argv.includes("--inline-chat-labels");
@@ -347,6 +350,7 @@ async function flow(
   ) => {
     const isolateHome =
       workerLinkRenewal ||
+      taskGoalProviderTransfer ||
       providerAuth ||
       taskLabel ||
       inlineChatLabels ||
@@ -1429,7 +1433,11 @@ async function flow(
         result,
       });
     }
-    if (process.argv.includes("--tasks") || taskGoalFirstInputOrder)
+    if (
+      process.argv.includes("--tasks") ||
+      taskGoalFirstInputOrder ||
+      taskGoalProviderTransfer
+    )
       await actualTaskClient({
         page,
         fixture,
@@ -1441,6 +1449,9 @@ async function flow(
         requests,
         taskOutcomeOrder,
         taskGoalFirstInputOrder,
+        taskGoalTransferWorkerData: taskGoalProviderTransfer
+          ? dataDirectory
+          : undefined,
         goalLaneScenario:
           goalLaneFault || process.argv.includes("--task-goal-recovered-lane")
             ? {

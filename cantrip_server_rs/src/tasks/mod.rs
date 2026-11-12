@@ -35,7 +35,9 @@ pub(crate) use goal_cycle_recovery::{
 };
 pub use reads::find_operation_round;
 use rows::*;
-pub(crate) use rows::{summary as opaque_summary, task_columns as opaque_columns};
+pub(crate) use rows::{
+    lock_user as lock_task_owner, summary as opaque_summary, task_columns as opaque_columns,
+};
 use std::sync::Arc;
 
 #[derive(Clone)]

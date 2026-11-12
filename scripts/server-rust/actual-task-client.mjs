@@ -7,6 +7,7 @@ import { taskModelProvider } from "./task-model-provider.mjs";
 import { actualTaskRecovery } from "./actual-task-recovery.mjs";
 import { captureTaskRuntimeState } from "./task-runtime-snapshot.mjs";
 import { browserFixtureSql } from "./browser-fixture-sql.mjs";
+import { transferQueuedTaskGoal } from "./actual-task-goal-provider-transfer.mjs";
 import {
   activateRecoveredGoalLane,
   observeSettledGoalLane,
@@ -79,16 +80,20 @@ export async function actualTaskClient({
   requests,
   taskOutcomeOrder,
   taskGoalFirstInputOrder,
+  taskGoalTransferWorkerData,
   goalLaneScenario,
 }) {
   const model = await taskModelProvider();
+  const destination = taskGoalTransferWorkerData
+    ? await taskModelProvider()
+    : null;
   const brief = "Private full-worker direct Task brief 🍄";
   const answer = "Private full-worker direct Task answer 🌲";
   try {
     await page.evaluate(() => window.folderLive.start());
     const worker = await startWorker();
-    await page.evaluate(
-      async ({ workerId, baseUrl, nativeModel }) => {
+    const sourceModel = await page.evaluate(
+      async ({ workerId, baseUrl, nativeModel, transfer }) => {
         const models = await import("/src/lib/api/models.ts");
         const settings = await import("/src/lib/api/settings.ts");
         const workers = await import("/src/lib/api/worker-wire.ts");
@@ -98,6 +103,7 @@ export async function actualTaskClient({
           kind: "openai-compatible",
           baseUrl,
           apiKey: null,
+          ...(transfer ? { maxConcurrentInference: 1 } : {}),
         });
         const profile = await models.createModelProfile({
           name: "Disposable Task model",
@@ -110,13 +116,29 @@ export async function actualTaskClient({
           autoNameTasks: false,
           autoNameChats: false,
         });
-        await encryption.ensureTaskWorkerEncryption({
-          worker: (await workers.getWorkers()).find(
-            (worker) => worker.workerId === workerId,
-          ),
-        });
+        const worker = (await workers.getWorkers()).find(
+          (worker) => worker.workerId === workerId,
+        );
+        await encryption.ensureTaskWorkerEncryption({ worker });
+        if (transfer) {
+          await (
+            await import("/src/lib/chat-worker-encryption.ts")
+          ).ensureChatWorkerEncryption({ worker });
+          await (
+            await import("/src/lib/private-label-worker-encryption.ts")
+          ).ensurePrivateLabelWorkerEncryption({ worker });
+          await (
+            await import("/src/lib/surface-private-state-worker-encryption.ts")
+          ).ensureSurfacePrivateStateWorkerEncryption({ worker });
+        }
+        return { providerId: provider.id, modelId: profile.id };
       },
-      { workerId, baseUrl: model.baseUrl, nativeModel: model.model },
+      {
+        workerId,
+        baseUrl: model.baseUrl,
+        nativeModel: model.model,
+        transfer: Boolean(destination),
+      },
     );
     const created = await page.evaluate(
       async ({ projectId, brief }) => {
@@ -248,31 +270,34 @@ export async function actualTaskClient({
     assert.equal(review.planMarkdown, planText);
     assert.equal(review.planningRound, 1);
     const objective = "Private full-worker implementation objective 🌙";
-    model.reply({
+    const finalizer = model.reply({
       text: JSON.stringify({
         finalPlanMarkdown: planText,
         goalPrompt: objective,
       }),
+      hold: Boolean(destination),
     });
+    const goalModel = destination ?? model;
     const initialGoalAnswer = "Private initial Task Goal turn 🍄";
     const implementationAnswer = "Private full-worker implementation result 🌤";
     const firstTurn =
       goalLaneScenario ||
+      destination ||
       forceGoalOrder ||
       taskGoalFirstInputOrder ||
       process.argv.includes("--task-goal-autonomous")
-        ? model.reply({ text: initialGoalAnswer, hold: forceGoalOrder })
+        ? goalModel.reply({ text: initialGoalAnswer, hold: forceGoalOrder })
         : null;
-    const completeGoal = model.reply({
+    const completeGoal = goalModel.reply({
       calls: [{ name: "update_goal", arguments: { status: "complete" } }],
       hold: Boolean(goalLaneScenario),
     });
-    const implementation = model.reply({
+    const implementation = goalModel.reply({
       text: implementationAnswer,
     });
     // Goal activation attempts an idle turn. The saved encrypted Task control
     // can arrive first and make that automatic turn unnecessary.
-    model.reply({
+    goalModel.reply({
       text: implementationAnswer,
       onlyFor: (request) => JSON.stringify(request.input).includes(objective),
     });
@@ -284,6 +309,21 @@ export async function actualTaskClient({
         ),
       { chatId: planned.chat.id, rowVersion: review.rowVersion },
     );
+    if (destination)
+      await transferQueuedTaskGoal({
+        page,
+        projectId,
+        chatId: planned.chat.id,
+        workerId,
+        workerData: taskGoalTransferWorkerData,
+        source: model,
+        sourceModel,
+        destination,
+        finalizer,
+        firstTurn,
+        objective,
+        result,
+      });
     if (forceGoalOrder)
       await verifyOutcomeOrdering(
         () => readChatMessages(planned.chat.id),
@@ -401,11 +441,16 @@ export async function actualTaskClient({
     assert.equal(goalDashboard.goal.status, "complete");
     assert.equal(goalDashboard.goal.objective, openedGoal.goal.objective);
     assert.equal(goalDashboard.placement.kind, "folder");
-    const goalMessages = await page.evaluate(
-      async (chat) => (await import("/src/lib/api/chats.ts")).getMessages(chat),
-      planned.chat.id,
+    const goalMessages = await eventually(
+      () =>
+        page.evaluate(
+          async (chat) =>
+            (await import("/src/lib/api/chats.ts")).getMessages(chat),
+          planned.chat.id,
+        ),
+      (messages) =>
+        assert.ok(JSON.stringify(messages).includes(implementationAnswer)),
     );
-    assert.ok(JSON.stringify(goalMessages).includes(implementationAnswer));
     if (forceGoalOrder) {
       assertFinalAnswer(
         goalMessages,
@@ -429,12 +474,17 @@ export async function actualTaskClient({
       );
     }
     assert.deepEqual(model.failures, []);
+    assert.deepEqual(destination?.failures ?? [], []);
     result.steps.push(
       "the existing Task APIs plan, review and finalize through real Codex; its native Goal tool completes implementation and the browser decrypts the objective and transcript",
     );
     await stopWorker();
     const inferenceBeforeRestart = structuredClone(
       model.requests.filter((request) => request.method === "POST"),
+    );
+    const transferredInferenceBeforeRestart = structuredClone(
+      destination?.requests.filter((request) => request.method === "POST") ??
+        [],
     );
     assert.ok(
       inferenceBeforeRestart.every((request) => request.completed),
@@ -455,6 +505,12 @@ export async function actualTaskClient({
       model.requests.filter((request) => request.method === "POST"),
       inferenceBeforeRestart,
       "restart does not repeat completed Task inference",
+    );
+    assert.deepEqual(
+      destination?.requests.filter((request) => request.method === "POST") ??
+        [],
+      transferredInferenceBeforeRestart,
+      "restart does not repeat transferred Goal inference",
     );
     await page.evaluate(async (workerId) => {
       const workers = await import("/src/lib/api/worker-wire.ts");
@@ -565,9 +621,9 @@ export async function actualTaskClient({
     }
     throw error;
   } finally {
-    result.taskModel = {
-      failures: model.failures,
-      requests: model.requests.map(({ method, path, completed, input }) => ({
+    const describeModel = ({ failures, requests }) => ({
+      failures,
+      requests: requests.map(({ method, path, completed, input }) => ({
         method,
         path,
         completed,
@@ -577,8 +633,11 @@ export async function actualTaskClient({
           (item) => item.type === "function_call_output",
         ),
       })),
-    };
+    });
+    result.taskModel = describeModel(model);
+    if (destination) result.taskGoalTransferModel = describeModel(destination);
     await stopWorker();
     await model.close();
+    await destination?.close();
   }
 }

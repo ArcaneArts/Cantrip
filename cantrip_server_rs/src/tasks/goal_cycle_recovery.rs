@@ -240,6 +240,7 @@ impl Repository {
             let source = parse("taskGoalCycleSuspensionSourceSchema", &input["goalCycleSource"])?;
             let note = &input["notification"];
             let chat = text(&source["parent"]["chatId"])?;
+            lock_user(tx, &owner).await?;
             crate::native_commands::context::lock_chat(tx, &owner, &chat).await?;
             let cycle = one(Executor::Transaction(tx), "SELECT to_jsonb(c)::text FROM task_dispatch_cycles c WHERE c.id=$1 AND c.owner_id=$2 AND c.chat_id=$3 FOR UPDATE", &[&text(&source["cycle"]["cycleId"])?,&owner,&chat]).await?;
             let Some(cycle) = cycle else { return Ok(json!({"committed":false,"retiredReason":"goal-cycle-replaced"})); };

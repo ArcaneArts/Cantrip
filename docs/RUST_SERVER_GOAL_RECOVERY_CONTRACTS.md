@@ -82,6 +82,43 @@ raw state within each runtime.
 The same build passed 165 paired HTTP observations and 54 state reopens
 across all nine database and authentication combinations. The Task source
 capture exercises actual worker transport, encrypted binding, and database
-rollback with controlled native replies. Actual Core provider transfer
-remains open.
+rollback with controlled native replies.
 [Current Goal acceptance record](security/rust-server-2869-goal-publication-acceptance.json)
+
+## Queued first Task Goal input during a provider transfer
+
+A browser test runs the packaged worker and Codex Core against an isolated
+Rust server on macOS ARM64. A second Agent holds the source provider's only
+inference slot while the first Task Goal input waits. The test matches that
+input to the keeper's durable queue entry, captures it through the browser,
+and starts a transfer to a second provider. The destination receives the
+original input while the source slot is still occupied. The test verifies the
+worker's export digest, imported native history and Goal epoch, then reopens
+the same Goal and transcript after restarting the server and worker.
+
+The original Rust server failed during withdrawal because PostgreSQL inferred
+the pause timestamp as text. After the parameter was typed, the existing
+eligibility constraint rejected the scheduler's `provider-transfer-pending`
+status. Migration 0288 permits that status and retains the other allowed
+values. A populated PGlite upgrade preserved the existing rows apart from
+the local user's routine `updated_at` refresh.
+
+PostgreSQL also reported deadlocks between Task outcome handling and native
+command writes. The Task owner lock now serializes Task writers while allowing
+foreign-key checks. Goal outcome retirement takes the owner and cycle locks
+before the project and chat locks, matching the input outcome transaction.
+
+The local historical profile test applies migrations 0287 and 0288 to a
+populated copy of the Node `1.1.2733` profile. It compares all 137 tables
+and four sequences and verifies encrypted writes across the Rust upgrade,
+Node rollback, and return to Rust on all three databases. The original
+profile stays read-only throughout the test.
+
+The rebuilt local server passed 16 product steps on each database with the
+packaged `1.1.2869` worker and Codex Core `0.166.0`. The worker's durable
+receipts record the destination Goal cycle outcome on every store. The frozen
+Node reference also transferred the original input on PGlite. Its Task
+remained in `implementing`, and the trace showed no later Goal cycle dispatch.
+Transfer cancellation, interruption recovery and shipping platform runs remain
+open.
+[Queued Task Goal transfer acceptance record](security/rust-server-task-goal-provider-transfer-acceptance.json)

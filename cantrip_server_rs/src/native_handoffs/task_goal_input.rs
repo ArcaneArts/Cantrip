@@ -42,7 +42,7 @@ pub(super) async fn confirm(
     let paused = row["chat"]["automation_paused"] == true
         || row["project"]["task_scheduling_paused"] == true
         || row["task"]["state"] == "paused";
-    tx.query("UPDATE task_dispatch_cycles SET goal_input=$1::text::jsonb,state=$2,lease_owner=NULL,lease_expires_at=NULL,last_heartbeat_at=NULL,fencing_token=fencing_token+1,claimed_at=NULL,started_at=NULL,completed_at=NULL,paused_at=CASE WHEN $2='paused' THEN $3 ELSE NULL END,eligibility_code='provider-transfer-pending',updated_at=$3 WHERE id=$4",
+    tx.query("UPDATE task_dispatch_cycles SET goal_input=$1::text::jsonb,state=$2,lease_owner=NULL,lease_expires_at=NULL,last_heartbeat_at=NULL,fencing_token=fencing_token+1,claimed_at=NULL,started_at=NULL,completed_at=NULL,paused_at=CASE WHEN $2='paused' THEN $3::timestamptz ELSE NULL END,eligibility_code='provider-transfer-pending',updated_at=$3 WHERE id=$4",
         &[&input.stringify(),&if paused {"paused"}else{"queued"},&now,&text(&row["cycle"]["id"])?]).await?;
     Ok(())
 }

@@ -52,11 +52,7 @@ async fn mutate_in(
         )
         .await?;
     }
-    tx.query(
-        "SELECT id FROM users WHERE id=$1 LIMIT 1 FOR UPDATE",
-        &[&owner],
-    )
-    .await?;
+    lock_user(tx, owner).await?;
     let row=one(Executor::Transaction(tx),"SELECT json_build_object('task',to_jsonb(t),'chat',to_jsonb(c),'project',to_jsonb(p))::text FROM tasks t JOIN chats c ON c.id=t.chat_id JOIN projects p ON p.id=c.project_id WHERE t.chat_id=$1 AND c.owner_id=$2 AND c.archived_at IS NULL LIMIT 1 FOR UPDATE",&[&chat,&owner]).await?;
     let Some(row) = row else {
         return if fence.is_some() {

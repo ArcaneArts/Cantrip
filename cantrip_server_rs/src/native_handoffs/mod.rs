@@ -74,8 +74,7 @@ fn reject<T>(code: &str) -> Result<T> {
 // Task input writers lock owner -> cycle -> chat. Serialize these short
 // handoff transactions with that owner before taking project/chat locks.
 async fn lock_handoff_chat(tx: &Transaction<'_>, owner: &str, chat: &str) -> Result<()> {
-    tx.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", &[&owner])
-        .await?;
+    crate::tasks::lock_task_owner(tx, owner).await?;
     context::lock_chat(tx, owner, chat).await
 }
 fn active(row: &Value) -> bool {

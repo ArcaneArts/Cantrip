@@ -1,4 +1,5 @@
 use super::*;
+pub(super) use crate::tasks::lock_task_owner as lock_owner;
 pub(super) fn parse(name: &str, value: &Value) -> Result<Value> {
     crate::settings::parse_response(name, Some(value))
 }
@@ -29,15 +30,6 @@ pub(super) fn summaries(rows: &[Value]) -> Result<Value> {
         "taskDispatchCycleListSchema",
         &Value::Array(rows.iter().map(summary).collect::<Result<Vec<_>>>()?),
     )
-}
-pub(super) async fn lock_owner(tx: &Transaction<'_>, owner: &str) -> Result<bool> {
-    Ok(!tx
-        .query(
-            "SELECT id FROM users WHERE id=$1 LIMIT 1 FOR UPDATE",
-            &[&owner],
-        )
-        .await?
-        .is_empty())
 }
 pub(super) fn number_next(value: &Value) -> Result<Value> {
     Ok(json!(value.as_f64().context("Task counter")? + 1.0))

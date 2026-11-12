@@ -2017,6 +2017,13 @@
       "when": 1794437252033,
       "tag": "0287_task_output_finalization",
       "breakpoints": true
+    },
+    {
+      "idx": 288,
+      "version": "7",
+      "when": 1794457027747,
+      "tag": "0288_task_provider_transfer_eligibility",
+      "breakpoints": true
     }
   ]
 }
