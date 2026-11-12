@@ -108,5 +108,65 @@
     }
   },
   "evidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112",
-  "scope": "Local Linux x64 production container and Ubuntu systemd/Caddy rehearsal with x64 emulation on an ARM64 Linux host. The external PostgreSQL rollback uses the retained Linux x64 Node image."
+  "scope": "Local Linux x64 production container and Ubuntu systemd/Caddy rehearsal with x64 emulation on an ARM64 Linux host. The external PostgreSQL rollback uses the retained Linux x64 Node image.",
+  "rebuiltWinterhold": {
+    "sourceCommit": "ff6a4b060c60ee1f391b70161fdffd0c933c38c7",
+    "version": "1.1.2881",
+    "imageDigest": "sha256:da8090ab4346ba0dd42507095fa857523858862c3b5be975f27d2cba85a697c3",
+    "nativeArchive": {
+      "path": "rebuilt-ff6a4b060/cantrip-server-1.1.2881-ff6a4b060-linux-x64.native.tar.gz",
+      "bytes": 156292394,
+      "sha256": "39d385169d664928e190255314ba65512799efc8d42434b81e062da5fa14d78f"
+    },
+    "nativeExecutableSha256": "cb02d8daafcf8153bca74f90605378d9607034f17e379e067a941e536df27fe8",
+    "report": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64/report.json",
+      "bytes": 1092887,
+      "sha256": "ec7c82fee138b9a7f3d5f2bc15ea637261e00801074e2596570298b19785b0a4"
+    },
+    "localDriver": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64/retained-artifact-acceptance.mjs",
+      "bytes": 23302,
+      "sha256": "c511d68e34fd92e5b77c5c4f5be4ac775e236a00f960ee702d8ba11ee9d2d7ff"
+    },
+    "systemdHost": {
+      "id": "sha256:1a4719cffced31ab606bf1b4ccd0625d218a2d885708708435f66a7da36c6b92",
+      "architecture": "arm64"
+    },
+    "releaseStorage": "tmpfs",
+    "profileStorage": "container writable filesystem",
+    "installerCalls": 18,
+    "recoveredInstallerFailures": 6,
+    "runningExecutableHashesCompared": 10,
+    "rebuiltExecutableHashesCompared": 6,
+    "rollbackRuntimes": {
+      "pglite": "rust",
+      "bundled-postgres": "rust",
+      "postgres": "node"
+    },
+    "sessionsAndAcceptedWritesRetainedAcrossRollback": true,
+    "verifiedCaddyHttpsAndAppLive": true,
+    "retainedProfiles": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64/retained-systemd-profiles.tar.zst",
+      "bytes": 13354534,
+      "sha256": "e45cecb741ffd53f8dcd54a29cc178a88f059cc02e6010fb796701749852659c"
+    },
+    "retainedPostgresDump": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64/retained-external-postgres.dump",
+      "bytes": 677181,
+      "sha256": "c90f86960e00d5135d7bf808cd85dc464e2aed5667e958649a86bd647d44dcf7"
+    },
+    "externalPostgresTlsConnections": 6,
+    "tlsConnectionWitness": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64/external-postgres-tls-connections.txt",
+      "bytes": 2,
+      "sha256": "06e9d52c1720fca412803e3b07c4b228ff113e303f4c7ab94665319d832bbfb7"
+    },
+    "cleanServiceStopWitness": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64/post-rehearsal-stop.txt",
+      "bytes": 32,
+      "sha256": "2e53c1060c795356d29fa8abee67dad2afd83357dbe4f719dc4ad7b0150f690c"
+    },
+    "productionDeployment": false
+  }
 }
