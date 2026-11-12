@@ -625,7 +625,19 @@ resumed. The Linux ARM64 and x64 containers also passed queued settlement and
 active-dispatch rejection with external PostgreSQL and the packaged macOS
 worker. Both browser runs completed the original Task, a planned Goal, a retry,
 and recovery from paused admission. The x64 container ran under Rosetta.
-Windows and the two Linux local stores remain open for these cases.
+The earlier Linux images also passed both cases with bundled PostgreSQL and
+with PGlite on ARM64. The x64 PGlite run exposed a read that combined a
+completed transfer with revision 3. The Rust route now reads both fields
+from one database snapshot. The rebuilt x64 package settled the queued
+PGlite transfer at revision 4 with fence 9 and the original encrypted input.
+A separate external PostgreSQL run forced a read across settlement and
+returned the complete revision 4 snapshot.
+The rebuilt x64 PGlite package also rejected transfer after dispatch and
+completed the original Task. On the rebuilt x64 image, queued settlement and
+rejection after dispatch passed with all three stores. Migration, SQL export,
+restart, and hosted reopening passed on each store. Its native
+archive matched all 2,546 manifest entries. Windows and the rebuilt Linux
+ARM64 package remain open for these Task cases.
 [Task provider transfer record](security/rust-server-task-inference-route-acceptance.json)
 
 ## Current implementation and evidence
