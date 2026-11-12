@@ -830,22 +830,36 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
             "subsystem": "desktop-runtime"
         })),
     );
-    if let Err(error) = wait_for_server(&mut server, port) {
-        service_logs.runtime_event(
-            "error",
-            "Bundled Cantrip Server failed readiness",
-            Some(json!({
-                "durationMs": runtime_started_at.elapsed().as_millis(),
-                "event": "desktop.child.readiness.failed",
-                "operation": "wait-ready",
-                "reasonCode": "readiness-timeout",
-                "service": "server",
-                "status": "failed",
-                "subsystem": "desktop-runtime"
-            })),
-        );
-        terminate_child(&mut server);
-        return Err(error);
+    match wait_for_server(&mut server, port, || {
+        app.state::<DesktopExitState>()
+            .approved
+            .load(Ordering::SeqCst)
+    }) {
+        Ok(true) => {}
+        Ok(false) => {
+            return Ok(ManagedRuntime {
+                children: Mutex::new(Vec::new()),
+                local_worker: None,
+                server_url,
+            });
+        }
+        Err(error) => {
+            service_logs.runtime_event(
+                "error",
+                "Bundled Cantrip Server failed readiness",
+                Some(json!({
+                    "durationMs": runtime_started_at.elapsed().as_millis(),
+                    "event": "desktop.child.readiness.failed",
+                    "operation": "wait-ready",
+                    "reasonCode": "readiness-timeout",
+                    "service": "server",
+                    "status": "failed",
+                    "subsystem": "desktop-runtime"
+                })),
+            );
+            terminate_child(&mut server);
+            return Err(error);
+        }
     }
     service_logs.runtime_event(
         "info",

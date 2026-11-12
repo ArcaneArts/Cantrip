@@ -2,7 +2,7 @@
 //! explicit package configuration; spawning reports actual executable errors.
 use std::{
     fs,
-    net::TcpStream,
+    net::{SocketAddr, TcpStream},
     path::Path,
     process::{Child, Command, Stdio},
     thread,
@@ -255,10 +255,22 @@ pub fn worker_environment(
     ]
 }
 
-pub fn wait_for_server(child: &mut Child, port: u16) -> Result<(), String> {
-    for _ in 0..100 {
-        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            return Ok(());
+pub fn wait_for_server(
+    child: &mut Child,
+    port: u16,
+    mut cancelled: impl FnMut() -> bool,
+) -> Result<bool, String> {
+    // First-run migrations can take minutes on slower machines. Bound the
+    // total wait and each connection attempt independently.
+    const STARTUP_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+    const POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+    let address = SocketAddr::from(([127, 0, 0, 1], port));
+    let deadline = Instant::now() + STARTUP_TIMEOUT;
+    loop {
+        if cancelled() {
+            terminate_child(child);
+            return Ok(false);
         }
         if let Some(status) = child
             .try_wait()
@@ -268,9 +280,22 @@ pub fn wait_for_server(child: &mut Child, port: u16) -> Result<(), String> {
                 "The bundled Cantrip Server exited during startup ({status})."
             ));
         }
-        thread::sleep(Duration::from_millis(100));
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(format!(
+                "The bundled Cantrip Server did not become ready within {} seconds.",
+                STARTUP_TIMEOUT.as_secs()
+            ));
+        }
+        if TcpStream::connect_timeout(&address, remaining.min(POLL_INTERVAL)).is_ok() {
+            return Ok(true);
+        }
+        thread::sleep(
+            deadline
+                .saturating_duration_since(Instant::now())
+                .min(POLL_INTERVAL),
+        );
     }
-    Err("The bundled Cantrip Server did not become ready within 10 seconds.".into())
 }
 
 #[cfg(test)]
@@ -289,6 +314,43 @@ mod tests {
         terminate_child(&mut child);
         assert!(child.wait().unwrap().success());
         assert!(began.elapsed() < Duration::from_secs(3));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn startup_waits_for_a_listener_after_the_previous_deadline() {
+        use std::net::TcpListener;
+
+        let reservation = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let address = reservation.local_addr().unwrap();
+        let mut child = Command::new("/bin/sh")
+            .args(["-c", "read unused"])
+            .stdin(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let listener = thread::spawn(move || {
+            drop(reservation);
+            thread::sleep(Duration::from_secs(11));
+            let listener = TcpListener::bind(address).unwrap();
+            // Keep the listener alive while the supervisor observes it.
+            listener.accept().unwrap();
+        });
+        let result = wait_for_server(&mut child, address.port(), || false);
+        terminate_child(&mut child);
+        assert_eq!(result, Ok(true));
+        listener.join().unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cancelling_startup_reaps_the_server() {
+        let mut child = Command::new("/bin/sh")
+            .args(["-c", "read unused"])
+            .stdin(Stdio::piped())
+            .spawn()
+            .unwrap();
+        assert_eq!(wait_for_server(&mut child, 0, || true), Ok(false));
+        assert!(child.try_wait().unwrap().is_some());
     }
 
     #[test]
