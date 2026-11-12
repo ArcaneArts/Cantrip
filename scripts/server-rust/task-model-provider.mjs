@@ -4,6 +4,16 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
 
+export function modelFunctions(tools, namespace) {
+  return (tools ?? []).flatMap((tool) =>
+    tool.type === "namespace"
+      ? modelFunctions(tool.tools, tool.name)
+      : tool.type === "function"
+        ? [{ name: tool.name, namespace }]
+        : [],
+  );
+}
+
 export async function taskModelProvider({
   allowMcpDiscoveryProbe = false,
   observeStreams = false,

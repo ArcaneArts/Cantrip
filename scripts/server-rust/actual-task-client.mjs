@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { eventually } from "./full-worker.mjs";
 import { taskModelProvider } from "./task-model-provider.mjs";
+import { pauseTransferredTaskGoal } from "./actual-task-goal-transfer-pause.mjs";
+import { suspensionChat } from "./durable-suspension-browser.mjs";
 import { actualTaskRecovery } from "./actual-task-recovery.mjs";
 import { captureTaskRuntimeState } from "./task-runtime-snapshot.mjs";
 import { browserFixtureSql } from "./browser-fixture-sql.mjs";
@@ -85,6 +87,7 @@ export async function actualTaskClient({
   taskGoalFirstInputOrder,
   taskGoalTransferWorkerData,
   taskGoalAutonomousTransfer,
+  taskGoalTransferredPause,
   taskGoalTransferFault,
   goalLaneScenario,
 }) {
@@ -286,19 +289,26 @@ export async function actualTaskClient({
     const goalModel = restoreSource ? model : (destination ?? model);
     const initialGoalAnswer = "Private initial Task Goal turn 🍄";
     const implementationAnswer = "Private full-worker implementation result 🌤";
+    const queueFirstTurn = () =>
+      goalLaneScenario ||
+      destination ||
+      forceGoalOrder ||
+      taskGoalFirstInputOrder ||
+      process.argv.includes("--task-goal-autonomous")
+        ? (taskGoalAutonomousTransfer ? model : goalModel).reply({
+            text: initialGoalAnswer,
+            hold: forceGoalOrder || taskGoalAutonomousTransfer,
+          })
+        : null;
     const queueGoalReplies = () => {
-      const firstTurn =
-        goalLaneScenario ||
-        destination ||
-        forceGoalOrder ||
-        taskGoalFirstInputOrder ||
-        process.argv.includes("--task-goal-autonomous")
-          ? (taskGoalAutonomousTransfer ? model : goalModel).reply({
-              text: initialGoalAnswer,
-              hold: forceGoalOrder || taskGoalAutonomousTransfer,
-            })
-          : null;
+      const pauseTool = taskGoalTransferredPause
+        ? goalModel.reply({ hold: true })
+        : null;
+      const pauseBoundary = taskGoalTransferredPause
+        ? goalModel.reply({ hold: true })
+        : null;
       const completeGoal = goalModel.reply({
+        responseId: "task-goal-completion",
         calls: [{ name: "update_goal", arguments: { status: "complete" } }],
         hold: Boolean(goalLaneScenario),
       });
@@ -309,8 +319,10 @@ export async function actualTaskClient({
         text: implementationAnswer,
         onlyFor: (request) => JSON.stringify(request.input).includes(objective),
       });
-      return { firstTurn, completeGoal, implementation };
+      return { pauseTool, pauseBoundary, completeGoal, implementation };
     };
+    let firstTurn =
+      restoreSource && !taskGoalAutonomousTransfer ? null : queueFirstTurn();
     let goalReplies = restoreSource ? null : queueGoalReplies();
     await page.evaluate(
       async ({ chatId, rowVersion }) =>
@@ -330,21 +342,39 @@ export async function actualTaskClient({
         source: model,
         sourceModel,
         destination,
-        heldSource: taskGoalAutonomousTransfer
-          ? goalReplies.firstTurn
-          : finalizer,
+        heldSource: taskGoalAutonomousTransfer ? firstTurn : finalizer,
         firstDestinationTurn: taskGoalAutonomousTransfer
-          ? goalReplies.completeGoal
-          : goalReplies?.firstTurn,
+          ? (goalReplies?.pauseTool ?? goalReplies?.completeGoal)
+          : firstTurn,
         autonomous: taskGoalAutonomousTransfer,
         queueRestoredReplies: restoreSource
-          ? () => (goalReplies = queueGoalReplies()).firstTurn
+          ? () => {
+              if (!taskGoalAutonomousTransfer) firstTurn = queueFirstTurn();
+              goalReplies = queueGoalReplies();
+              return taskGoalAutonomousTransfer
+                ? (goalReplies.pauseTool ?? goalReplies.completeGoal)
+                : firstTurn;
+            }
           : undefined,
         fault: taskGoalTransferFault,
         objective,
         result,
       });
-    const { firstTurn, completeGoal, implementation } = goalReplies;
+    const { pauseTool, pauseBoundary, completeGoal, implementation } =
+      goalReplies;
+    if (pauseTool)
+      await pauseTransferredTaskGoal({
+        page,
+        projectId,
+        chatId: planned.chat.id,
+        model: goalModel,
+        tool: pauseTool,
+        boundary: pauseBoundary,
+        continued: completeGoal,
+        startWorker,
+        stopWorker,
+        result,
+      });
     if (forceGoalOrder)
       await verifyOutcomeOrdering(
         () => readChatMessages(planned.chat.id),
@@ -414,12 +444,16 @@ export async function actualTaskClient({
     assert.ok(goalTask.goalPrompt.endsWith(objective));
     if (firstTurn) assert.equal(firstTurn.request?.completed, true);
     assert.equal(implementation.request.completed, true);
-    const nativeGoal = implementation.request.input.input
-      .filter((item) => item.type === "function_call_output")
-      .map((item) => JSON.parse(item.output))
-      .find((item) => item.goal?.status === "complete");
-    assert.ok(
-      nativeGoal,
+    const completionResult = implementation.request.input.input.find(
+      (item) =>
+        item.type === "function_call_output" &&
+        item.call_id === `${completeGoal.responseId}-call-0`,
+    );
+    assert.ok(completionResult, "the native Goal tool returns its result");
+    const nativeGoal = JSON.parse(completionResult.output);
+    assert.equal(
+      nativeGoal.goal?.status,
+      "complete",
       "the actual Codex Goal tool completes the implementation Goal",
     );
     const useGoalQueryRetry =
@@ -451,6 +485,21 @@ export async function actualTaskClient({
     );
     if (useGoalQueryRetry) result.taskGoalLookupConflicts = lookupConflicts;
     assert.equal(openedGoal.goal.status, "complete");
+    if (pauseTool) {
+      const saved = result.transferredGoalPause;
+      const completed = await eventually(
+        () => suspensionChat(page, projectId, planned.chat.id),
+        (chat) => {
+          assert.equal(chat.nativeSuspension?.phase, "completed");
+          assert.equal(chat.nativeSuspension.resumable, false);
+          assert.deepEqual(chat.nativeSuspension.active, saved.paused.active);
+        },
+      );
+      saved.completed = completed.nativeSuspension;
+      result.steps.push(
+        "a transferred autonomous Goal pauses and resumes the same native turn after the worker restarts",
+      );
+    }
     assert.ok(nativeGoal.goal.objective.startsWith(goalTask.goalPrompt));
     assert.equal(openedGoal.goal.objective, nativeGoal.goal.objective);
     assert.ok(openedGoal.goal.objective.includes(objective));

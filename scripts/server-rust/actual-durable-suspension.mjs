@@ -20,7 +20,7 @@ import { chromium } from "playwright-core";
 import { buildRustServer, buildWorkerCli, repositoryRoot } from "./build.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { eventually, launchActualWorker } from "./full-worker.mjs";
-import { taskModelProvider } from "./task-model-provider.mjs";
+import { modelFunctions, taskModelProvider } from "./task-model-provider.mjs";
 import { prestartPreparationFixture } from "./prestart-preparation-fixture.mjs";
 import { qualifyTaskSuspension } from "./suspension-task-browser.mjs";
 import { stagePlan, startTaskStage } from "./suspension-task-stages.mjs";
@@ -100,16 +100,6 @@ const taskStage = process.argv.includes("--task-planning-origin")
     ? "finalize"
     : "direct";
 let browser, vite, failure;
-
-function modelFunctions(tools, namespace) {
-  return (tools ?? []).flatMap((tool) =>
-    tool.type === "namespace"
-      ? modelFunctions(tool.tools, tool.name)
-      : tool.type === "function"
-        ? [{ name: tool.name, namespace }]
-        : [],
-  );
-}
 
 async function flow(kind, executable, cliBinary) {
   const result = { kind, kills: [], stages: [] };

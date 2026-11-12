@@ -5,6 +5,7 @@ const {
   CANTRIP_TEST_TASK_GOAL_HANDOFF_FILE: file,
   CANTRIP_TEST_TASK_GOAL_HANDOFF_ACTION: action,
   CANTRIP_TEST_TASK_GOAL_HANDOFF_WORKER_ENTRY: entry,
+  CANTRIP_TEST_TASK_GOAL_HANDOFF_SOURCE: source,
 } = process.env;
 if (file && process.argv[1] === entry && !existsSync(file)) {
   const fetch = globalThis.fetch;
@@ -21,7 +22,14 @@ if (file && process.argv[1] === entry && !existsSync(file)) {
     )
       return response;
     const state = await response.clone().json();
-    if (intercepted || !state.queuedSource?.taskGoalInput) return response;
+    const queued = state.queuedSource;
+    if (
+      intercepted ||
+      (source === "autonomous"
+        ? !queued?.taskGoal?.identity.recovery?.taskGoalCycle
+        : !queued?.taskGoalInput)
+    )
+      return response;
     intercepted = true;
     const { signal } = options;
     if (!signal) throw new Error("Handoff request has no cancellation signal.");

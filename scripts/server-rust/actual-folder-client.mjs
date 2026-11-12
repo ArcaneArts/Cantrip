@@ -150,9 +150,12 @@ const cantripOsSourceBackup = process.argv.includes(
 );
 const workerLinkRenewal = process.argv.includes("--worker-link-renewal");
 const taskGoalTransferFaultMode = option("--task-goal-provider-transfer-fault");
-const taskGoalAutonomousTransfer = process.argv.includes(
-  "--task-goal-autonomous-provider-transfer",
+const taskGoalTransferredPause = process.argv.includes(
+  "--task-goal-transferred-pause",
 );
+const taskGoalAutonomousTransfer =
+  taskGoalTransferredPause ||
+  process.argv.includes("--task-goal-autonomous-provider-transfer");
 assert.ok(
   taskGoalTransferFaultMode === undefined ||
     ["cancel-prepared", "worker-after-commit"].includes(
@@ -491,6 +494,8 @@ async function flow(
           ...(taskGoalTransferFaultFile
             ? {
                 CANTRIP_TEST_TASK_GOAL_HANDOFF_FILE: taskGoalTransferFaultFile,
+                CANTRIP_TEST_TASK_GOAL_HANDOFF_SOURCE:
+                  taskGoalAutonomousTransfer ? "autonomous" : "first-input",
                 CANTRIP_TEST_TASK_GOAL_HANDOFF_ACTION:
                   taskGoalTransferFaultMode === "cancel-prepared"
                     ? "prepared"
@@ -1492,6 +1497,7 @@ async function flow(
           ? dataDirectory
           : undefined,
         taskGoalAutonomousTransfer,
+        taskGoalTransferredPause,
         taskGoalTransferFault: taskGoalTransferFaultFile
           ? {
               mode: taskGoalTransferFaultMode,

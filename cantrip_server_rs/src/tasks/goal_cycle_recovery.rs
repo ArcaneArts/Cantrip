@@ -198,6 +198,13 @@ impl Repository {
                     &json!({"expectedActivatedAt":lane["activatedAt"]}),
                 ).await?;
                 if !closed { return stale(); }
+            } else {
+                // The explicit input or a disconnect can already have released
+                // the parent lane. Settle the chat from the same terminal
+                // observation without acquiring or changing that lane.
+                let parent = &source["parent"];
+                tx.query("UPDATE chats c SET status=$3,updated_at=$4,has_unread_completion=true FROM chat_execution_lanes l WHERE c.id=$1 AND c.owner_id=$2 AND l.id=$5 AND l.chat_id=c.id AND l.state='suspended' AND l.worker_id=$6 AND l.worktree_id=$7 AND l.activated_at=$8::text::timestamptz AND (l.codex_thread_id IS NULL OR l.codex_thread_id=$9)",
+                    &[&chat,&owner,&status,&crate::auth::now(),&text(&parent["executionLaneId"])?,&text(&parent["workerId"])?,&text(&parent["worktreeId"])?,&text(&parent["executionLaneActivatedAt"])?,&text(&source["threadId"])?]).await?;
             }
             marker["suspension"]["terminal"]["projectedAt"] = now();
             write(tx,cycle,&marker,false).await?;

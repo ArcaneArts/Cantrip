@@ -4101,7 +4101,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           throw new Error(
             "Handoff phase changed during configuration resolution.",
           );
-        const options = fresh.configuration;
+        const options = {
+          ...fresh.configuration,
+          cwd: await routingRegistry.resolveToken(fresh.configuration.cwd),
+        };
         const provider = await openRuntimeProvider({
           provider: options.provider,
           service: workerEncryption,
@@ -6474,9 +6477,22 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 throw new Error(
                   "The saved Task continuation does not match its original operation.",
                 );
+              // Older Goal handoff observers could save the worker's routing
+              // token. Resolve it only after opening the scoped checkpoint;
+              // native restoration still requires the exact admitted path.
+              const continuation =
+                command.taskResumption!.goalCycle &&
+                opened.continuation.cwd !== command.cwd
+                  ? {
+                      ...opened.continuation,
+                      cwd: await routingRegistry.resolveToken(
+                        opened.continuation.cwd,
+                      ),
+                    }
+                  : opened.continuation;
               return {
                 ...opened,
-                continuation: opened.continuation,
+                continuation,
                 taskContinuation: opened.taskContinuation,
               };
             })()
