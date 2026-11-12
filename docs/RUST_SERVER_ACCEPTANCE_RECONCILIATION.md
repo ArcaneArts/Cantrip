@@ -32,8 +32,10 @@ The earlier signed update from `1.1.2831` to `1.1.2845` retained the
 authenticated client, server, worker and written setting, and verified the
 installed bundles against the signed archive.
 [Signed macOS desktop qualification](RUST_SERVER_DESKTOP_SIGNED_UPDATE.md#current-installed-app-and-signed-update)
-The Windows x64 `1.1.2869` standalone distribution passed all three stores.
-The signed desktop update to the same version verified 14,089 installed
+The Windows x64 `1.1.2881` standalone distribution passed all three stores,
+including migration, SQL export, hosted reopening and retained writes.
+[Windows x64 standalone record](security/rust-server-2881-win32-x64-standalone.json)
+The earlier signed desktop update to `1.1.2869` verified 14,089 installed
 files and passed tray shutdown and reopening with the retained PGlite
 profile. The installed app passed first start, persisted-profile reopening,
 worker replies, and tray shutdown across all three stores.

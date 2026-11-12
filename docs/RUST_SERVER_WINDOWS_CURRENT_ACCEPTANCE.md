@@ -1,5 +1,21 @@
 # Current Windows native server qualification
 
+## Windows x64 standalone `1.1.2881`
+
+The Windows 11 x64 QEMU guest packaged the `1.1.2881` Rust executable and
+verified 2,281 files. PGlite, bundled PostgreSQL, and external PostgreSQL
+each passed migration, SQL export, saved-setting and identity continuity,
+hosted reopening, and supervision through stdin close. Embedded PGlite
+runtime recovery and Windows launcher encoding passed. The server ran
+with a runtime PATH free of Node.
+
+The native packager completed before the original transfer failed. A
+replacement transfer disk recovered the archive. The evaluation guest
+shut down during an earlier standalone attempt. The completed rerun used
+the same verified package, and the host matched both receipts to the
+guest serial output.
+[Windows 1.1.2881 standalone record](security/rust-server-2881-win32-x64-standalone.json)
+
 ## Windows x64 standalone `1.1.2869`
 
 The Windows 11 x64 QEMU guest packaged the Rust server from
