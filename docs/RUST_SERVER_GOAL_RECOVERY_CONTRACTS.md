@@ -267,3 +267,25 @@ Run the browser fixture with `--database postgres --server-pair rust/rust`
 and `--task-goal-provider-transfer-fault client-peer-after-commit` or
 `--task-goal-provider-transfer-fault worker-peer-after-commit`.
 [Participating server acceptance record](security/rust-server-task-goal-peer-loss-acceptance.json)
+
+## Packaged 1.1.2881 post-commit recovery
+
+The macOS ARM64 server package built at `cb41197c6` passed the autonomous
+Goal transfer after worker loss on PGlite, bundled PostgreSQL, and external
+PostgreSQL. The existing browser captured the queued source and observed
+the committed handoff before the fixture killed the worker that held the
+commit response. A replacement worker finished the same operation, retired
+the old prepared runtime generation, and published the destination result.
+Reopening returned the same completed handoff and encrypted transcript.
+
+Four external PostgreSQL runs placed the browser and worker on separate
+Rust peers. PostgreSQL and Redis each went offline after commit. Two other
+runs killed and replaced the browser-facing or worker-facing peer. In each
+case the same worker finished the original handoff, the source stayed
+withdrawn, and the browser reopened the completed Goal. The Redis outage
+lasted longer than the original worker claim.
+
+The fixture now retains the server's actual loopback address for Task cases
+selected through individual Goal flags. The original worker enrollment can
+therefore reconnect after the fixture's initial server restart.
+[Packaged post-commit acceptance](security/rust-server-autonomous-task-goal-interruption-acceptance.json#currentPackagedPostCommit)

@@ -187,6 +187,10 @@ const taskGoalProviderTransfer =
   Boolean(taskGoalTransferFaultMode) ||
   taskGoalAutonomousTransfer ||
   process.argv.includes("--task-goal-provider-transfer");
+const runTaskProduct =
+  process.argv.includes("--tasks") ||
+  Boolean(taskGoalFirstInputPhase) ||
+  taskGoalProviderTransfer;
 const providerAuth = process.argv.includes("--provider-auth");
 const taskLabel = process.argv.includes("--task-label");
 const inlineChatLabels = process.argv.includes("--inline-chat-labels");
@@ -1177,7 +1181,7 @@ async function flow(
       process.argv.includes("--project-administration") ||
       process.argv.includes("--replicas") ||
       process.argv.includes("--github-conversion") ||
-      process.argv.includes("--tasks") ||
+      runTaskProduct ||
       singleProduct ||
       process.argv.includes("--project-chats") ||
       process.argv.includes("--chat-controls") ||
@@ -1500,11 +1504,7 @@ async function flow(
         result,
       });
     }
-    if (
-      process.argv.includes("--tasks") ||
-      taskGoalFirstInputOrder ||
-      taskGoalProviderTransfer
-    )
+    if (runTaskProduct)
       await actualTaskClient({
         page,
         fixture,
@@ -1774,6 +1774,7 @@ try {
   vite = await createServer({
     root: appRoot,
     configFile: path.join(appRoot, "vite.config.ts"),
+    cacheDir: path.join(root, "vite"),
     server: { host: "127.0.0.1", port: 0, strictPort: false },
     // These optional workspace imports otherwise trigger a Vite page reload
     // halfway through a cold acceptance run, discarding its real client state.
