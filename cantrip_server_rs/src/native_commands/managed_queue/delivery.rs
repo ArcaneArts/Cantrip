@@ -12,11 +12,48 @@ impl QueueRepository {
                 .lossy()
                 .into_owned()
         });
-        let rows=self.database.query(&format!("SELECT s.chat_id,s.revision,c.owner_id,s.goal_recovery::text,({NO_PERMISSION} AND {NO_HANDOFF}),(SELECT d.goal_cycle_recovery::text FROM task_dispatch_cycles d WHERE d.chat_id=c.id ORDER BY d.created_at DESC,d.id DESC LIMIT 1) FROM managed_queue_states s INNER JOIN chats c ON c.id=s.chat_id WHERE s.notified_revision<s.revision AND s.notification_due_at<=now() ORDER BY s.notification_due_at ASC LIMIT $1::text::bigint"),&[&limit]).await?;
+        // Older peers can acknowledge a queue notice without projecting a
+        // committed Goal outcome. Its terminal marker is the durable authority.
+        let rows = self.database.query(&format!(
+            "SELECT s.chat_id,s.revision,c.owner_id,s.goal_recovery::text,({NO_PERMISSION} AND {NO_HANDOFF}),
+                    d.goal_cycle_recovery::text,s.notified_revision>=s.revision
+             FROM managed_queue_states s INNER JOIN chats c ON c.id=s.chat_id
+             LEFT JOIN LATERAL (
+                 SELECT d.goal_cycle_recovery,d.goal_order_epoch,d.physical_worker_id,d.worktree_id
+                 FROM task_dispatch_cycles d WHERE d.chat_id=c.id AND d.owner_id=c.owner_id
+                 AND (s.notified_revision<s.revision OR (c.experience='task' AND c.archived_at IS NULL))
+                 ORDER BY d.created_at DESC,d.id DESC LIMIT 1
+             ) d ON true
+             WHERE s.notification_due_at<=now() AND (s.notified_revision<s.revision OR (
+                 c.experience='task' AND c.archived_at IS NULL
+                 AND c.active_worker_id=d.physical_worker_id AND c.active_worktree_id=d.worktree_id
+                 AND d.goal_cycle_recovery #>> '{{suspension,source,cycle,orderEpoch}}'=d.goal_order_epoch::text
+                 AND d.goal_cycle_recovery #>> '{{suspension,terminal,observedAt}}' IS NOT NULL
+                 AND d.goal_cycle_recovery #>> '{{suspension,terminal,projectedAt}}' IS NULL
+                 AND d.goal_cycle_recovery #>> '{{suspension,restoration,receipt,operationId}}' IS NULL
+                 AND {NO_PERMISSION} AND {NO_HANDOFF}
+             ))
+             ORDER BY s.notification_due_at ASC LIMIT $1::text::bigint"), &[&limit]).await?;
         let mut result = Vec::new();
         for row in rows {
             let chat = row.get::<String>(0)?;
             let owner = row.get::<String>(2)?;
+            let task_recovery: Option<Value> = row
+                .get::<Option<String>>(5)?
+                .map(|raw| serde_json::from_str(&raw))
+                .transpose()?;
+            if row.get::<bool>(6)? {
+                if let Some(source) = task_recovery
+                    .as_ref()
+                    .and_then(crate::tasks::committed_goal_cycle_source)
+                {
+                    result.push(json!({
+                        "ownerId":owner,"chatId":chat,"revision":row.get::<i32>(1)?,
+                        "taskGoalOutcome":source.clone(),"taskGoalOutcomeOnly":true
+                    }));
+                }
+                continue;
+            }
             let context = crate::chats::Repository::execution_context_with(
                 Executor::Database(&self.database),
                 &owner,
@@ -25,10 +62,6 @@ impl QueueRepository {
             .await?;
             let previous = self.database.query("SELECT DISTINCT worker_id FROM native_commands WHERE owner_id=$1 AND chat_id=$2 AND rejection_code='worker-inference-deferred'", &[&owner,&chat]).await?;
             let mut workers = Vec::new();
-            let task_recovery: Option<Value> = row
-                .get::<Option<String>>(5)?
-                .map(|raw| serde_json::from_str(&raw))
-                .transpose()?;
             if let Some(context) = &context {
                 workers.push(text(&context["workerId"])?);
             }
@@ -147,6 +180,18 @@ impl QueueRepository {
                 ],
             )
             .await?;
+        Ok(())
+    }
+    pub(crate) async fn defer_acknowledged_goal_outcome(
+        &self,
+        chat: &str,
+        revision: i32,
+    ) -> Result<()> {
+        self.database.query(
+            "UPDATE managed_queue_states SET notification_due_at=$1
+             WHERE chat_id=$2 AND revision=$3 AND notified_revision>=revision AND notification_due_at<=now()",
+            &[&(crate::auth::now() + chrono::Duration::seconds(5)), &chat, &revision],
+        ).await?;
         Ok(())
     }
 }

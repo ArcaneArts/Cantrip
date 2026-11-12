@@ -75,9 +75,20 @@ impl Service {
             task_context["runtimeFailure"] = failure.clone();
         }
         command["taskContext"] = task_context;
-        let mut result = self
-            .request(&context["workerId"], command, "taskGoalWorkerResultSchema")
+        // The durable sweep must be able to retry a reply lost with its
+        // coordination channel. Interactive Goal commands keep their deadline.
+        let timeout = if options.cycle_outcome.is_some() {
+            RequestTimeout::After(std::time::Duration::from_secs(10))
+        } else {
+            RequestTimeout::Default
+        };
+        let response = self
+            .dependencies
+            .commands
+            .request_with_timeout(&text(&context["workerId"])?, command, timeout, None)
             .await?;
+        let mut result =
+            crate::settings::parse_response("taskGoalWorkerResultSchema", response.as_ref())?;
         if (truthy(result.get("goal"))
             && (result["goal"]["chatId"] != context["chatId"]
                 || result["goal"]["threadId"] != context["threadId"]))

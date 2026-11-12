@@ -9911,11 +9911,12 @@
           "scripts/server-rust/worker-task-round-order.mjs",
           "docs/security/rust-server-streamed-task-receipt-acceptance.json",
           "docs/security/rust-server-streamed-goal-receipt-acceptance.json",
-          "docs/security/rust-server-autonomous-goal-lane-acceptance.json"
+          "docs/security/rust-server-autonomous-goal-lane-acceptance.json",
+          "docs/security/rust-server-autonomous-goal-dependency-acceptance.json"
         ],
         "remaining": [
-          "Trace the separate bundled PostgreSQL Goal before model forwarding. Its native turn started, and no terminal receipt reached this route.",
-          "Qualify autonomous outcome observation through PostgreSQL or Redis loss and mixed peer interruption. The recovered lane and worker-owning Rust peer loss after the durable receipt are covered.",
+          "Find the cause of the intermittent bundled PostgreSQL Goal admission stall. Both traced builds forwarded the model requests and committed the receipts.",
+          "Reconcile the mixed Node/Rust PostgreSQL readiness timeout and qualify the remaining mixed interruption combinations.",
           "Repeat qualification on the final supported shipping artifacts."
         ]
       }
@@ -29845,8 +29846,23 @@
         "controlledStreamedAutonomousRootObservations": 87
       },
       "remaining": [
-        "Trace the separate pre-model Goal admission stall on bundled PostgreSQL.",
-        "Qualify autonomous observation through database and Redis interruption, mixed peers and the final supported shipping artifacts."
+        "Find the cause of the separate pre-model Goal admission stall on bundled PostgreSQL.",
+        "See currentAutonomousGoalDependencyAcceptance for shared dependency recovery and remaining mixed and shipping scopes."
+      ]
+    },
+    "currentAutonomousGoalDependencyAcceptance": {
+      "status": "partial",
+      "qualification": "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
+      "acceptance": "docs/security/rust-server-autonomous-goal-dependency-acceptance.json",
+      "counts": {
+        "packagedBrowserRuns": 7,
+        "completedProductSteps": 115,
+        "sharedRedisPeerPairings": 3,
+        "originalReceiptsAcrossInterruptionCases": 5
+      },
+      "remaining": [
+        "Reconcile the reference Node readiness timeout in the mixed PostgreSQL outage.",
+        "Repeat qualification on the final supported shipping artifacts."
       ]
     },
     "currentPackagedNativeAdmission": {
