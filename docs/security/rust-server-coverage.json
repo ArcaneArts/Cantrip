@@ -58,36 +58,38 @@
         "method": "POST",
         "path": "/api/auth/logout",
         "implementation": "cantrip_server_rs/src/http/sessions.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/auth-compatibility.mjs",
           "scripts/server-rust/live-compatibility.mjs",
           "scripts/server-rust/worker-link-http-compatibility.mjs",
           "scripts/server-rust/shared-runtime-http-compatibility.mjs",
           "docs/RUST_SERVER_WORKER_LINK_PRODUCTION.md",
-          "docs/RUST_SERVER_REDIS.md#packaged-linux-redis-tls"
+          "docs/RUST_SERVER_REDIS.md#packaged-linux-redis-tls",
+          "docs/security/rust-server-2881-shared-session-acceptance.json"
         ],
-        "scope": "The native account handler revokes App Live, direct attachments, WorkerLink and session sockets. The macOS ARM64 1.1.2845 standalone package closes the WorkerLink relay, sends one direct capability revoke, rejects the old cookie and preserves a second session of the same account on all three stores. Relay cleanup also completes after the HTTP caller disconnects. In all three Rust-containing shared HTTP account pairings, sign-out on one peer closes both relays and revokes a direct attachment issued by the other peer while a sibling session keeps its relays and renews.",
+        "scope": "Current 1.1.2881 macOS ARM64, Linux ARM64 and Linux x64 passed Rust/Rust, Node/Rust and Rust/Node on shared PostgreSQL and Redis. Single-session logout closed both WorkerLink relays, revoked one direct capability issued on another peer, and preserved the sibling session and its relays. The Linux containers used TLS-only Redis.",
         "remaining": [
-          "Reconcile the cross-peer macOS ARM64 and Linux container results with the final shipping artifacts."
+          "Windows native cross-peer acceptance and macOS Redis TLS with a trusted private CA."
         ]
       },
       {
         "method": "POST",
         "path": "/api/auth/logout-all",
         "implementation": "cantrip_server_rs/src/http/sessions.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/auth-compatibility.mjs",
           "scripts/server-rust/live-compatibility.mjs",
           "scripts/server-rust/worker-link-http-compatibility.mjs",
           "scripts/server-rust/shared-runtime-http-compatibility.mjs",
           "docs/RUST_SERVER_WORKER_LINK_PRODUCTION.md",
-          "docs/RUST_SERVER_REDIS.md#packaged-linux-redis-tls"
+          "docs/RUST_SERVER_REDIS.md#packaged-linux-redis-tls",
+          "docs/security/rust-server-2881-shared-session-acceptance.json"
         ],
-        "scope": "The macOS ARM64 1.1.2845 standalone package matches the Node reference on all three stores. Account-wide sign-out revokes two authenticated sessions, closes both relays and sends one direct revoke per capability. All four shared HTTP account pairings close four relays across two peers and send two direct capability revocations. In the three Rust-containing pairings, each peer issues one capability. In the Node/Node control, the sign-out peer issues both. All pairings preserve the other account’s authenticated access.",
+        "scope": "Current 1.1.2881 macOS ARM64, Linux ARM64 and Linux x64 passed Rust/Rust, Node/Rust and Rust/Node on shared PostgreSQL and Redis. Account-wide logout revoked two sessions, closed four WorkerLink relays and revoked two direct capabilities issued on opposite peers. The foreign account retained access. The Linux containers used TLS-only Redis.",
         "remaining": [
-          "Reconcile the cross-peer macOS ARM64 and Linux container results with the final shipping artifacts."
+          "Windows native cross-peer acceptance and macOS Redis TLS with a trusted private CA."
         ]
       },
       {

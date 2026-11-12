@@ -348,6 +348,32 @@ failover and network blackholes remain separate requirements.
 
 ## Packaged Linux Redis TLS
 
+### Cantrip 1.1.2881
+
+The Linux ARM64 and x64 containers passed Rust/Rust, Node/Rust and Rust/Node
+with external PostgreSQL 18 and authenticated TLS-only Redis 8.10.3. The macOS
+ARM64 package passed the same pairings with Redis on loopback TCP. Across the
+nine pairings, Redis process restarts preserved 18 worker connection claims
+and 36 App Live publications replayed with their original cursor and payload.
+
+Single-session logout closed both WorkerLink relays and revoked one direct
+capability on the other peer. The sibling session kept its relays and renewed.
+Account-wide logout revoked two sessions, closed four relays and revoked two
+direct capabilities issued on different peers. The foreign account retained
+access. Both servers exited cleanly in every pairing.
+
+The separate macOS HTTP comparison matched 1,083 observations across PGlite,
+bundled PostgreSQL and external PostgreSQL. With external PostgreSQL, Rust
+opened the database and sessions created by the Node reference, revoked the
+retained sessions, and the reopened reference observed the revocation.
+
+Both Linux architectures rejected the fixture certificate without its CA.
+On macOS, the native TLS stack rejected the private certificate when the
+fixture supplied only `SSL_CERT_FILE`. The macOS cross-peer run used loopback
+TCP. The report retains an initial Linux x64 Docker port observation failure
+and the passing rerun.
+[Current shared-session acceptance record](security/rust-server-2881-shared-session-acceptance.json)
+
 The Linux ARM64 `1.1.2869` production image passes Rust/Rust, Node/Rust,
 and Rust/Node on shared PostgreSQL and TLS-only Redis 8.10.3. Across 21
 scenario groups, the pairs preserve both worker claims after a Redis process
