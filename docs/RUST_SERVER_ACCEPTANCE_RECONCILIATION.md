@@ -13,9 +13,11 @@ their encrypted client bindings and accepted state. The rollback passed the
 137-table and four-sequence comparisons and preserved the original profile.
 [macOS package acceptance](security/rust-server-2881-macos-acceptance.json)
 
-The Linux x64 `1.1.2869` container and Winterhold installation and rollback
-passed all three stores through Rosetta on an ARM64 Linux host.
-[Linux x64 package acceptance](security/rust-server-2869-production-packages.json)
+The Linux x64 `1.1.2881` container and local Winterhold rehearsal passed all
+three stores on an ARM64 Linux host with x64 emulation. The installer
+recovered from six injected failures, and accepted writes survived
+rollback to the previous Rust or Node release and return to Rust.
+[Linux x64 package acceptance](security/rust-server-2881-linux-x64-acceptance.json)
 
 The native Linux ARM64 `1.1.2881` container and local Winterhold rehearsal
 passed all three stores. The production installer recovered from six
@@ -227,11 +229,11 @@ and accepted write. The two private stores and the external PostgreSQL
 connection are verified before and after installation.
 
 The [current Winterhold and Linux x64 qualification](RUST_SERVER_WINTERHOLD.md#current-linux-x64-qualification)
-uses the exact `1.1.2845` distribution and container across all three stores.
-The container passes 2,546 package hashes per store. All 18 installer cases
-pass with verified Caddy TLS, post-write rollback to a distinct older Rust or
-Node release, and ten running executable hashes. The local x64 runs use Rosetta
-on an ARM64 Linux host. Final desktop and multi-instance acceptance remain open.
+uses the exact `1.1.2881` distribution and container across all three stores.
+The container passed 2,546 package hashes per store. All 18 installer cases
+passed with verified Caddy TLS, post-write rollback, and ten running
+executable hashes. The local x64 runs use emulation on an ARM64 Linux host.
+Final desktop and multi-instance acceptance remain open.
 
 The [CantripOS source backup comparison](RUST_SERVER_OS_SOURCE_BACKUP.md)
 repairs public backup placement errors and qualifies physical restore and
