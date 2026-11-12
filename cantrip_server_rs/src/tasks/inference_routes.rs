@@ -67,40 +67,57 @@ impl Repository {
     }
 
     pub async fn inference_route_view(&self, owner: &str, chat: &str) -> Result<Option<Value>> {
-        let Some(task) = owned(Executor::Database(&self.database), owner, chat, false).await?
+        // Settlement changes the round and Task revision together. Read both
+        // from one snapshot so a client can use the returned revision to write.
+        let Some(snapshot) = one(
+            Executor::Database(&self.database),
+            "SELECT jsonb_build_object(
+                'revision', t.row_version,
+                'state', t.state,
+                'archived', c.owner_id IS DISTINCT FROM $1 OR c.archived_at IS NOT NULL,
+                'current', (
+                    SELECT r.inference_input FROM task_planning_rounds r
+                    WHERE r.chat_id=t.chat_id AND r.id=t.active_operation_id
+                        AND r.status='running' AND r.inference_input IS NOT NULL
+                ),
+                'latest', (
+                    SELECT r.inference_input->'routeChange' FROM task_planning_rounds r
+                    WHERE r.chat_id=t.chat_id AND r.inference_input ? 'routeChange'
+                    ORDER BY r.ordinal DESC LIMIT 1
+                )
+            )::text
+            FROM tasks t JOIN chats c ON c.id=t.chat_id JOIN projects p ON p.id=c.project_id
+            WHERE p.owner_id=$1 AND t.chat_id=$2 LIMIT 1",
+            &[&owner, &chat],
+        )
+        .await?
         else {
             return Ok(None);
         };
-        let current = if let Some(operation) = task["active_operation_id"].as_str() {
-            one(Executor::Database(&self.database), "SELECT inference_input::text FROM task_planning_rounds WHERE chat_id=$1 AND id=$2 AND status='running' AND inference_input IS NOT NULL", &[&chat,&operation]).await?
-        } else {
-            None
-        };
-        let latest=one(Executor::Database(&self.database),"SELECT (inference_input->'routeChange')::text FROM task_planning_rounds WHERE chat_id=$1 AND inference_input ? 'routeChange' ORDER BY ordinal DESC LIMIT 1", &[&chat]).await?;
-        let archived = self
-            .database
-            .query(
-                "SELECT id FROM chats WHERE id=$1 AND owner_id=$2 AND archived_at IS NULL",
-                &[&chat, &owner],
-            )
-            .await?
-            .is_empty();
-        let source = current
-            .as_ref()
-            .filter(|s| {
-                !archived
-                    && !matches!(task["state"].as_str(), Some("complete" | "failed"))
-                    && s["accepted"] == true
-                    && s["allAttemptsEnforced"] == true
-                    && !truthy(s["receipt"].get("kind"))
-                    && s["failedBeforeDispatch"] != true
-                    && s["firstDispatchedOperationId"].is_null()
-            })
-            .map(|s| s["receipt"].clone());
+        let current = &snapshot["current"];
+        let source = (!current.is_null()
+            && snapshot["archived"] == false
+            && !matches!(snapshot["state"].as_str(), Some("complete" | "failed"))
+            && current["accepted"] == true
+            && current["allAttemptsEnforced"] == true
+            && !truthy(current["receipt"].get("kind"))
+            && current["failedBeforeDispatch"] != true
+            && current["firstDispatchedOperationId"].is_null())
+        .then(|| current["receipt"].clone());
         let inventory = crate::native_handoffs::Repository::new(self.database.clone())
             .inventory(owner, chat)
             .await?;
-        parse("taskInferenceRouteViewSchema", &json!({"chatId":chat,"revision":task["row_version"],"source":source,"latest":latest,"providers":inventory.as_ref().map(|i|i["providers"].clone()).unwrap_or_else(||Value::Array(Vec::new()))})).map(Some)
+        parse(
+            "taskInferenceRouteViewSchema",
+            &json!({
+                "chatId":chat,
+                "revision":snapshot["revision"],
+                "source":source,
+                "latest":snapshot["latest"],
+                "providers":inventory.as_ref().map(|i|i["providers"].clone()).unwrap_or_else(||Value::Array(Vec::new()))
+            }),
+        )
+        .map(Some)
     }
 
     pub async fn pending_inference_routes(
