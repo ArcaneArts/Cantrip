@@ -7,7 +7,10 @@ import { taskModelProvider } from "./task-model-provider.mjs";
 import { actualTaskRecovery } from "./actual-task-recovery.mjs";
 import { captureTaskRuntimeState } from "./task-runtime-snapshot.mjs";
 import { browserFixtureSql } from "./browser-fixture-sql.mjs";
-import { transferQueuedTaskGoal } from "./actual-task-goal-provider-transfer.mjs";
+import {
+  readTaskGoalTransfer,
+  transferQueuedTaskGoal,
+} from "./actual-task-goal-provider-transfer.mjs";
 import {
   activateRecoveredGoalLane,
   observeSettledGoalLane,
@@ -81,6 +84,7 @@ export async function actualTaskClient({
   taskOutcomeOrder,
   taskGoalFirstInputOrder,
   taskGoalTransferWorkerData,
+  taskGoalTransferFault,
   goalLaneScenario,
 }) {
   const model = await taskModelProvider();
@@ -277,30 +281,33 @@ export async function actualTaskClient({
       }),
       hold: Boolean(destination),
     });
-    const goalModel = destination ?? model;
+    const restoreSource = taskGoalTransferFault?.mode === "cancel-prepared";
+    const goalModel = restoreSource ? model : (destination ?? model);
     const initialGoalAnswer = "Private initial Task Goal turn 🍄";
     const implementationAnswer = "Private full-worker implementation result 🌤";
-    const firstTurn =
-      goalLaneScenario ||
-      destination ||
-      forceGoalOrder ||
-      taskGoalFirstInputOrder ||
-      process.argv.includes("--task-goal-autonomous")
-        ? goalModel.reply({ text: initialGoalAnswer, hold: forceGoalOrder })
-        : null;
-    const completeGoal = goalModel.reply({
-      calls: [{ name: "update_goal", arguments: { status: "complete" } }],
-      hold: Boolean(goalLaneScenario),
-    });
-    const implementation = goalModel.reply({
-      text: implementationAnswer,
-    });
-    // Goal activation attempts an idle turn. The saved encrypted Task control
-    // can arrive first and make that automatic turn unnecessary.
-    goalModel.reply({
-      text: implementationAnswer,
-      onlyFor: (request) => JSON.stringify(request.input).includes(objective),
-    });
+    const queueGoalReplies = () => {
+      const firstTurn =
+        goalLaneScenario ||
+        destination ||
+        forceGoalOrder ||
+        taskGoalFirstInputOrder ||
+        process.argv.includes("--task-goal-autonomous")
+          ? goalModel.reply({ text: initialGoalAnswer, hold: forceGoalOrder })
+          : null;
+      const completeGoal = goalModel.reply({
+        calls: [{ name: "update_goal", arguments: { status: "complete" } }],
+        hold: Boolean(goalLaneScenario),
+      });
+      const implementation = goalModel.reply({ text: implementationAnswer });
+      // Goal activation attempts an idle turn. The saved encrypted Task control
+      // can arrive first and make that automatic turn unnecessary.
+      goalModel.reply({
+        text: implementationAnswer,
+        onlyFor: (request) => JSON.stringify(request.input).includes(objective),
+      });
+      return { firstTurn, completeGoal, implementation };
+    };
+    let goalReplies = restoreSource ? null : queueGoalReplies();
     await page.evaluate(
       async ({ chatId, rowVersion }) =>
         (await import("/src/lib/api/tasks.ts")).beginTaskImplementation(
@@ -320,10 +327,15 @@ export async function actualTaskClient({
         sourceModel,
         destination,
         finalizer,
-        firstTurn,
+        firstTurn: goalReplies?.firstTurn,
+        queueRestoredReplies: restoreSource
+          ? () => (goalReplies = queueGoalReplies()).firstTurn
+          : undefined,
+        fault: taskGoalTransferFault,
         objective,
         result,
       });
+    const { firstTurn, completeGoal, implementation } = goalReplies;
     if (forceGoalOrder)
       await verifyOutcomeOrdering(
         () => readChatMessages(planned.chat.id),
@@ -401,13 +413,14 @@ export async function actualTaskClient({
       nativeGoal,
       "the actual Codex Goal tool completes the implementation Goal",
     );
+    const useGoalQueryRetry = forceGoalOrder || Boolean(taskGoalTransferFault);
     const { openedGoal, lookupConflicts } = await page.evaluate(
-      async ({ chat, ordered }) => {
+      async ({ chat, useGoalQueryRetry }) => {
         const { getChatGoal } = await import("/src/lib/api/chats.ts");
-        if (!ordered)
+        if (!useGoalQueryRetry)
           return { openedGoal: await getChatGoal(chat), lookupConflicts: 0 };
-        // The normal browser Goal query retries twice. The forced receipt
-        // replay can overlap its passive native observation.
+        // Receipt replay and transfer recovery can overlap the passive
+        // observation. Use the browser Goal query's actual retry limit.
         const { chatGoalQueryOptions } =
           await import("/src/lib/chat-goal-query.ts");
         const { retry } = chatGoalQueryOptions(chat, "idle");
@@ -422,9 +435,9 @@ export async function actualTaskClient({
           }
         }
       },
-      { chat: planned.chat.id, ordered: forceGoalOrder },
+      { chat: planned.chat.id, useGoalQueryRetry },
     );
-    if (forceGoalOrder) result.taskGoalLookupConflicts = lookupConflicts;
+    if (useGoalQueryRetry) result.taskGoalLookupConflicts = lookupConflicts;
     assert.equal(openedGoal.goal.status, "complete");
     assert.ok(nativeGoal.goal.objective.startsWith(goalTask.goalPrompt));
     assert.equal(openedGoal.goal.objective, nativeGoal.goal.objective);
@@ -512,6 +525,15 @@ export async function actualTaskClient({
       transferredInferenceBeforeRestart,
       "restart does not repeat transferred Goal inference",
     );
+    if (taskGoalTransferFault) {
+      const before = result.taskGoalProviderTransfer.latest;
+      const after = await readTaskGoalTransfer(page, planned.chat.id);
+      assert.equal(after.operationId, before.operationId);
+      assert.equal(after.phase, before.phase);
+      assert.equal(after.binding.threadId, before.binding.threadId);
+      assert.equal(after.binding.modelRouteId, before.binding.modelRouteId);
+      result.taskGoalProviderTransfer.reopened = after;
+    }
     await page.evaluate(async (workerId) => {
       const workers = await import("/src/lib/api/worker-wire.ts");
       await (

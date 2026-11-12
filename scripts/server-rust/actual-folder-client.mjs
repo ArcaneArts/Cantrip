@@ -149,9 +149,17 @@ const cantripOsSourceBackup = process.argv.includes(
   "--cantrip-os-source-backup",
 );
 const workerLinkRenewal = process.argv.includes("--worker-link-renewal");
-const taskGoalProviderTransfer = process.argv.includes(
-  "--task-goal-provider-transfer",
+const taskGoalTransferFaultMode = option("--task-goal-provider-transfer-fault");
+assert.ok(
+  taskGoalTransferFaultMode === undefined ||
+    ["cancel-prepared", "worker-after-commit"].includes(
+      taskGoalTransferFaultMode,
+    ),
+  "Task Goal provider transfer fault expects cancel-prepared or worker-after-commit",
 );
+const taskGoalProviderTransfer =
+  Boolean(taskGoalTransferFaultMode) ||
+  process.argv.includes("--task-goal-provider-transfer");
 const providerAuth = process.argv.includes("--provider-auth");
 const taskLabel = process.argv.includes("--task-label");
 const inlineChatLabels = process.argv.includes("--inline-chat-labels");
@@ -290,6 +298,9 @@ async function flow(
       : undefined;
   const taskGoalFirstInputOrder = taskGoalFirstInputPhase
     ? path.join(root, fixture.kind, "task-goal-first-input-order.json")
+    : undefined;
+  const taskGoalTransferFaultFile = taskGoalTransferFaultMode
+    ? path.join(root, fixture.kind, "task-goal-handoff-fault.json")
     : undefined;
   const errors = [],
     requests = [];
@@ -466,6 +477,30 @@ async function flow(
                   "--import=" +
                     new URL(
                       "./worker-task-goal-first-input-order.mjs",
+                      import.meta.url,
+                    ).href,
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              }
+            : {}),
+          ...(taskGoalTransferFaultFile
+            ? {
+                CANTRIP_TEST_TASK_GOAL_HANDOFF_FILE: taskGoalTransferFaultFile,
+                CANTRIP_TEST_TASK_GOAL_HANDOFF_ACTION:
+                  taskGoalTransferFaultMode === "cancel-prepared"
+                    ? "prepared"
+                    : "commit",
+                CANTRIP_TEST_TASK_GOAL_HANDOFF_WORKER_ENTRY: path.resolve(
+                  process.env.CANTRIP_TEST_WORKER_PACKAGE ??
+                    path.join(repositoryRoot, "cantrip_worker"),
+                  "dist/index.js",
+                ),
+                NODE_OPTIONS: [
+                  process.env.NODE_OPTIONS,
+                  "--import=" +
+                    new URL(
+                      "./worker-task-goal-handoff-fault.mjs",
                       import.meta.url,
                     ).href,
                 ]
@@ -1451,6 +1486,17 @@ async function flow(
         taskGoalFirstInputOrder,
         taskGoalTransferWorkerData: taskGoalProviderTransfer
           ? dataDirectory
+          : undefined,
+        taskGoalTransferFault: taskGoalTransferFaultFile
+          ? {
+              mode: taskGoalTransferFaultMode,
+              file: taskGoalTransferFaultFile,
+              restartWorker: async (previousPid) => {
+                assert.equal(worker.child.pid, previousPid);
+                await crashWorker();
+                return (await startWorker()).child.pid;
+              },
+            }
           : undefined,
         goalLaneScenario:
           goalLaneFault || process.argv.includes("--task-goal-recovered-lane")

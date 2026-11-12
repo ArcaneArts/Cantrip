@@ -50,6 +50,12 @@ enum Change {
     },
     Finish(String),
     Failure(String),
+    DispatchFailure {
+        phase: Value,
+        cancel_requested: Value,
+        updated_at: Value,
+        error_code: Value,
+    },
 }
 fn text(value: &Value) -> Result<String> {
     Ok(value
@@ -235,6 +241,15 @@ impl Repository {
                 Change::Recover{side,expected,value}=>recover::apply(tx,&owner,&worker,row,&side,&expected,value).boxed().await?,
                 Change::Finish(outcome)=>commit::finish(tx,row,&outcome).await?,
                 Change::Failure(error)=>if active(&row){update(tx,&row,json!({"errorCode":error})).await?}else{row},
+                Change::DispatchFailure{phase,cancel_requested,updated_at,error_code}=>{
+                    // A superseded command cannot change the configuration
+                    // revision observed by its cancellation or recovery.
+                    if active(&row) && row["phase"]==phase && row["cancel_requested"]==cancel_requested
+                        && receipt::iso(&row["updated_at"])?==updated_at && row["error_code"]==error_code
+                        && row["error_code"]!="handoff-worker-unavailable" {
+                        update(tx,&row,json!({"errorCode":"handoff-worker-unavailable"})).await?
+                    }else{row}
+                },
             };
             wire(&changed)
         })).await
@@ -362,5 +377,21 @@ impl Repository {
         }
         self.mutate(owner, worker, operation, Change::Failure(error.into()))
             .await
+    }
+
+    async fn dispatch_failure(&self, owner: &str, state: &Value) -> Result<()> {
+        self.mutate(
+            owner,
+            &text(&state["workerId"])?,
+            &text(&state["operationId"])?,
+            Change::DispatchFailure {
+                phase: state["phase"].clone(),
+                cancel_requested: state["cancelRequested"].clone(),
+                updated_at: state["updatedAt"].clone(),
+                error_code: state["errorCode"].clone(),
+            },
+        )
+        .await?;
+        Ok(())
     }
 }

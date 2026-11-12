@@ -5444,7 +5444,7 @@
         ],
         "scope": "Local 1.1.2869 HTTP fixtures compare source capture, encrypted binding and rollback across all three databases and authentication modes using controlled native replies. An existing browser, packaged worker and Core also capture and transfer the exact unused first Task Goal input through the Rust server on all three stores, then reopen the same Goal and transcript after restart.",
         "remaining": [
-          "Qualify capture of an autonomous private Goal scope, transfer cancellation and interruption recovery, and the supported shipping platforms."
+          "Qualify capture of an autonomous private Goal scope and the supported shipping platforms."
         ]
       },
       {
@@ -9377,8 +9377,10 @@
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "docs/security/rust-server-transport-inference-acceptance.json",
-          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md"
+          "docs/RUST_SERVER_TRANSPORT_INFERENCE_CONTRACTS.md",
+          "docs/security/rust-server-task-goal-transfer-recovery-acceptance.json"
         ],
+        "scope": "An existing browser and packaged worker restore the original queued Task Goal after cancellation at prepared, and the browser receives the expected conflict after durable commit.",
         "remaining": [
           "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision."
         ]
@@ -29929,17 +29931,18 @@
       "packagedAcceptance": "docs/security/rust-server-2869-production-packages.json",
       "verifiedScope": "Real browser, full worker and Core. Force an early native Goal begin across actual first input claim or dispatch. Verify the unused begin is denied and ends, the explicit turn binds the original Task receipt, and later autonomous completion survives restart. The exact macOS ARM64 1.1.2869 server and worker pass the forced dispatch case on all three stores.",
       "remaining": [
-        "Qualify transfer cancellation, interruption cases and final supported shipping platforms."
+        "Qualify the remaining dependency interruption cases and final supported shipping platforms."
       ]
     },
     "currentTaskGoalProviderTransfer": {
       "status": "implemented-with-scoped-local-qualification",
       "qualification": "docs/RUST_SERVER_GOAL_RECOVERY_CONTRACTS.md#queued-first-task-goal-input-during-a-provider-transfer",
       "acceptance": "docs/security/rust-server-task-goal-provider-transfer-acceptance.json",
+      "recoveryAcceptance": "docs/security/rust-server-task-goal-transfer-recovery-acceptance.json",
       "databaseModes": ["pglite", "bundled-postgres", "postgres"],
       "scope": "On macOS ARM64, the existing browser and packaged worker with Core reserve and transfer the same unused encrypted first Task Goal input while the source provider is occupied. The browser reopens the completed Goal and transcript after restart. A populated historical profile upgrades and rolls back with the new eligibility migration.",
       "remaining": [
-        "Exercise cancellation, interrupted transfer recovery, and the final supported shipping artifacts."
+        "Exercise loss at other transfer boundaries, shared dependency interruption and the final supported shipping artifacts."
       ]
     },
     "currentPackagedNativeAdmission": {

@@ -4135,19 +4135,27 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               : options.task.computerUseEnabled,
           ),
         };
+        const queued = state.queuedSource;
+        const firstInput =
+          queued?.withdrawn && queued.taskGoalInput
+            ? (queued.taskGoal?.identity.recovery?.taskInput ?? undefined)
+            : undefined;
         const prepared: HandoffRuntime = {
           runtime,
           home: runtime.managedHistoryHome,
           configuration: task
-            ? runtime.taskGoalHandoffConfiguration({
-                ...configuration,
-                threadId: state.source.threadId,
-                chatId: task.chatId,
-                projectId: task.projectId,
-                taskOwned: true,
-                taskGoalCycleId: task.cycleId,
-                taskGoalOrderEpoch: task.orderEpoch,
-              })
+            ? runtime.taskGoalHandoffConfiguration(
+                {
+                  ...configuration,
+                  threadId: state.source.threadId,
+                  chatId: task.chatId,
+                  projectId: task.projectId,
+                  taskOwned: true,
+                  taskGoalCycleId: task.cycleId,
+                  taskGoalOrderEpoch: task.orderEpoch,
+                },
+                firstInput,
+              )
             : configuration,
         };
         handoffConfigurations.set(prepared, options);

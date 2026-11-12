@@ -88,6 +88,12 @@ operations also pass 72 paired cases across the same stores, including
 cancellation, exact usage, worker loss and retained restart.
 [Current product evidence](security/rust-server-current-native-product.json)
 
+The [Task Goal provider transfer qualification](RUST_SERVER_GOAL_RECOVERY_CONTRACTS.md#cancelling-a-prepared-transfer-and-recovering-a-committed-transfer)
+uses the existing browser and locally rebuilt worker to cancel a prepared
+transfer and recover a committed transfer after worker loss. Both paths keep
+the original conversation, send its queued input once and reopen the finished
+Goal on all three database modes.
+
 The local source and server boundary audits verify all 17 generated contract
 graphs and maps, the current route inventory, real Rust authentication after
 restart and current HTTP authority boundaries.

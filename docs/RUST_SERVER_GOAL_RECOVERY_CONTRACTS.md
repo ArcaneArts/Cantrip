@@ -119,6 +119,48 @@ packaged `1.1.2869` worker and Codex Core `0.166.0`. The worker's durable
 receipts record the destination Goal cycle outcome on every store. The frozen
 Node reference also transferred the original input on PGlite. Its Task
 remained in `implementing`, and the trace showed no later Goal cycle dispatch.
-Transfer cancellation, interruption recovery and shipping platform runs remain
-open.
+
 [Queued Task Goal transfer acceptance record](security/rust-server-task-goal-provider-transfer-acceptance.json)
+
+## Cancelling a prepared transfer and recovering a committed transfer
+
+The cancellation case holds the worker's actual preparation acknowledgement.
+The browser cancels the durable reservation while the worker has a staged
+destination. The worker restores the source route and thread. The destination
+stays unpublished and receives zero inference requests. Once the competing
+Agent releases the source provider's slot, that provider receives the
+original Goal input.
+
+The interruption case holds the acknowledgement after the server commits the
+transfer. The browser receives HTTP 409 when it tries to cancel. The test
+kills the actual worker at that boundary. Its replacement reconnects with
+the retained worker profile, reopens the imported thread, and completes the
+same transfer with a fresh runtime generation. The destination receives the
+original Goal input and the server retires the lost runtime generation.
+
+Both PostgreSQL modes reproduced a race in the previous Rust server. The
+failure of the superseded continue command changed the stored revision while
+the worker resolved the cancellation's source configuration. The server now
+records an unavailable-worker diagnostic only when the dispatch still owns
+the state it was issued against. The cancellation and recovery paths retain
+their ordinary wire contracts.
+
+On committed recovery, Core can queue an autonomous turn while resuming
+the destination thread. Restoring the Goal can advance its epoch before the
+original input is delivered. The worker guards that input before resume and
+claims the exact pending turn under the native root hold. Core acknowledges
+the denial and settles the unused turn before the worker sends the original
+input. The browser verifies that each encrypted turn appears once and the
+completed Goal survives another restart.
+
+One direct Goal read on bundled PostgreSQL returned HTTP 409 after both
+turns committed. The acceptance fixture uses the existing browser query's
+bounded retry for this read and still requires the completed Goal and exact
+transcript before and after restart. The original 409 is retained in the
+acceptance evidence.
+
+Run the browser fixture with `--task-goal-provider-transfer-fault
+cancel-prepared` or `--task-goal-provider-transfer-fault worker-after-commit`.
+Use `--database pglite`, `--database bundled-postgres`, or `--database postgres`
+with the same packaged worker and Core inputs as the normal transfer case.
+[Transfer cancellation and recovery acceptance record](security/rust-server-task-goal-transfer-recovery-acceptance.json)
