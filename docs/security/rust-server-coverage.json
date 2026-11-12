@@ -3120,11 +3120,11 @@
         "evidence": [
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/scratch-root-repository-compatibility.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs",
+          "Browser, current Rust artifact and full-worker filesystem and offline-archive comparison on all three stores in crossCutting.standaloneChatScratchProduct."
         ],
         "remaining": [
-          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "Supported-platform installed operation, shared coordination, managed-share failure, and additional lock and interruption scenarios remain required."
         ]
       },
       {
@@ -3135,11 +3135,11 @@
         "evidence": [
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/scratch-root-repository-compatibility.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs",
+          "Browser, current Rust artifact and full-worker filesystem and offline-archive comparison on all three stores in crossCutting.standaloneChatScratchProduct."
         ],
         "remaining": [
-          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "Supported-platform installed operation, shared coordination, managed-share failure, and additional lock and interruption scenarios remain required."
         ]
       },
       {
@@ -3150,11 +3150,11 @@
         "evidence": [
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/scratch-root-repository-compatibility.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs",
+          "Browser, current Rust artifact and full-worker filesystem and offline-archive comparison on all three stores in crossCutting.standaloneChatScratchProduct."
         ],
         "remaining": [
-          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "Supported-platform installed operation, shared coordination, managed-share failure, and additional lock and interruption scenarios remain required."
         ]
       },
       {
@@ -3166,11 +3166,11 @@
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/chat-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/chat-lifecycle-http-cases.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs",
+          "Browser, current Rust artifact and full-worker filesystem and offline-archive comparison on all three stores in crossCutting.standaloneChatScratchProduct."
         ],
         "remaining": [
-          "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
+          "Supported-platform installed operation, shared coordination, managed-share failure, and additional lock and interruption scenarios remain required."
         ]
       },
       {
@@ -3214,11 +3214,11 @@
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/chat-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/chat-lifecycle-http-cases.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs",
+          "Browser, current Rust artifact and full-worker filesystem and offline-archive comparison on all three stores in crossCutting.standaloneChatScratchProduct."
         ],
         "remaining": [
-          "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
+          "Supported-platform installed operation, shared coordination, managed-share failure, and additional lock and interruption scenarios remain required."
         ]
       },
       {
@@ -3230,11 +3230,11 @@
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/chat-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/chat-lifecycle-http-cases.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs",
+          "Browser, current Rust artifact and full-worker filesystem and offline-archive comparison on all three stores in crossCutting.standaloneChatScratchProduct."
         ],
         "remaining": [
-          "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
+          "Supported-platform installed operation, shared coordination, managed-share failure, and additional lock and interruption scenarios remain required."
         ]
       },
       {
@@ -3310,11 +3310,12 @@
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/chat-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/chat-lifecycle-http-cases.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs",
+          "Browser, current Rust artifact and full-worker filesystem and offline-archive comparison on all three stores in crossCutting.standaloneChatScratchProduct."
         ],
         "remaining": [
-          "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
+          "Supported-platform installed operation, shared coordination, managed-share failure, and additional lock and interruption scenarios remain required.",
+          "Additional protected media, download and reference cases remain open."
         ]
       },
       {
@@ -3326,11 +3327,12 @@
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/chat-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/chat-lifecycle-http-cases.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs",
+          "Browser, current Rust artifact and full-worker filesystem and offline-archive comparison on all three stores in crossCutting.standaloneChatScratchProduct."
         ],
         "remaining": [
-          "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
+          "Supported-platform installed operation, shared coordination, managed-share failure, and additional lock and interruption scenarios remain required.",
+          "Additional protected media, download and reference cases remain open."
         ]
       },
       {
@@ -10429,11 +10431,11 @@
         "evidence": [
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/scratch-root-repository-compatibility.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs",
+          "Browser, current Rust artifact and full-worker filesystem and offline-archive comparison on all three stores in crossCutting.standaloneChatScratchProduct."
         ],
         "remaining": [
-          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "Additional lease timing, dispatch interruption and shared coordination with packaged clients on supported platforms remain required."
         ]
       },
       {
@@ -10443,11 +10445,11 @@
         "evidence": [
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/scratch-root-repository-compatibility.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs",
+          "Browser, current Rust artifact and full-worker filesystem and offline-archive comparison on all three stores in crossCutting.standaloneChatScratchProduct."
         ],
         "remaining": [
-          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "Additional lease timing, dispatch interruption and shared coordination with packaged clients on supported platforms remain required."
         ]
       },
       {
@@ -10457,11 +10459,11 @@
         "evidence": [
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/scratch-root-repository-compatibility.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs",
+          "Browser, current Rust artifact and full-worker filesystem and offline-archive comparison on all three stores in crossCutting.standaloneChatScratchProduct."
         ],
         "remaining": [
-          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "Additional lease timing, dispatch interruption and shared coordination with packaged clients on supported platforms remain required."
         ]
       },
       {
@@ -10472,11 +10474,11 @@
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/chat-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/chat-lifecycle-http-cases.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs",
+          "Browser, current Rust artifact and full-worker filesystem and offline-archive comparison on all three stores in crossCutting.standaloneChatScratchProduct."
         ],
         "remaining": [
-          "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
+          "Additional lease timing, dispatch interruption and shared coordination with packaged clients on supported platforms remain required."
         ]
       },
       {
@@ -10487,11 +10489,11 @@
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/chat-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/chat-lifecycle-http-cases.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs",
+          "Browser, current Rust artifact and full-worker filesystem and offline-archive comparison on all three stores in crossCutting.standaloneChatScratchProduct."
         ],
         "remaining": [
-          "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
+          "Additional lease timing, dispatch interruption and shared coordination with packaged clients on supported platforms remain required."
         ]
       },
       {
@@ -10502,11 +10504,12 @@
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/chat-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/chat-lifecycle-http-cases.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs",
+          "Browser, current Rust artifact and full-worker filesystem and offline-archive comparison on all three stores in crossCutting.standaloneChatScratchProduct."
         ],
         "remaining": [
-          "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
+          "Additional lease timing, dispatch interruption and shared coordination with packaged clients on supported platforms remain required.",
+          "Additional protected file operations and reference variants remain open."
         ]
       },
       {
@@ -10517,11 +10520,12 @@
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/chat-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/chat-lifecycle-http-cases.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs",
+          "Browser, current Rust artifact and full-worker filesystem and offline-archive comparison on all three stores in crossCutting.standaloneChatScratchProduct."
         ],
         "remaining": [
-          "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
+          "Additional lease timing, dispatch interruption and shared coordination with packaged clients on supported platforms remain required.",
+          "Additional protected file operations and reference variants remain open."
         ]
       },
       {
@@ -15606,11 +15610,11 @@
         "evidence": [
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/scratch-root-repository-compatibility.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs",
+          "Browser, current Rust artifact and full-worker filesystem and offline-archive comparison on all three stores in crossCutting.standaloneChatScratchProduct."
         ],
         "remaining": [
-          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "Shared lease timing and process interruption, supported platforms, and packaged operation remain required."
         ]
       },
       {
@@ -15624,11 +15628,11 @@
         "evidence": [
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/scratch-root-repository-compatibility.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs",
+          "Browser, current Rust artifact and full-worker filesystem and offline-archive comparison on all three stores in crossCutting.standaloneChatScratchProduct."
         ],
         "remaining": [
-          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "Shared lease timing and process interruption, supported platforms, and packaged operation remain required."
         ]
       },
       {
@@ -23250,7 +23254,8 @@
           "scripts/server-rust/chat-relocation-recovery-fence.mjs",
           "docs/RUST_SERVER_CHAT_RELOCATIONS.md",
           "docs/RUST_SERVER_AUTOMATION_RESUME_CONTRACTS.md",
-          "docs/security/rust-server-automation-resume-acceptance.json"
+          "docs/security/rust-server-automation-resume-acceptance.json",
+          "Browser, current Rust artifact and full-worker filesystem and offline-archive comparison on all three stores in crossCutting.standaloneChatScratchProduct."
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
@@ -23265,11 +23270,11 @@
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/chat-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/chat-lifecycle-http-cases.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs",
+          "Browser, current Rust artifact and full-worker filesystem and offline-archive comparison on all three stores in crossCutting.standaloneChatScratchProduct."
         ],
         "remaining": [
-          "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
+          "Supported-platform installed operation and shared coordination remain required."
         ]
       },
       {
@@ -30081,6 +30086,64 @@
         "passiveGoalObservationsAfterCommit": 18,
         "intermittentPgliteOutcomeHttpErrors": 3
       }
+    },
+    "standaloneChatScratchProduct": {
+      "scope": "Chromium with the existing client API and AppLiveClient, real HTTP and WebSockets, and the unchanged packaged worker entrypoint on macOS ARM64",
+      "clientAndReferenceSourceCommit": "29c0064b527c4e921a28a6304be9230e3b4451c8",
+      "rustArtifactSourceCommit": "ff6a4b060c60ee1f391b70161fdffd0c933c38c7",
+      "version": "1.1.2881",
+      "rustArtifact": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/cantrip-server-darwin-arm64/bin/cantrip-server",
+        "bytes": 94174128,
+        "sha256": "9390204ce8869552f44f8eb11324e760b9791836c6d6a481f620ccbee38951ab"
+      },
+      "workerEntry": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/cantrip-worker-darwin-arm64/dist/index.js",
+        "bytes": 391601,
+        "sha256": "c632631c9a6d250d2e56d938441b5d39dc972d1b03a6b521d4ddf6c85569e4a9"
+      },
+      "workerNode": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/macos-desktop-runtime/node",
+        "bytes": 121833248,
+        "sha256": "1cb5ac15fcf30a715e4a220e08a17dd31f6c05855e9fe27c7714b608b3d00bf8"
+      },
+      "driver": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/actual-scratch-product/offline-archive/acceptance.mjs",
+        "bytes": 18418,
+        "sha256": "2b1fc6ffb0ebef83d7c2a7ba155d10b6534251d9ffbbf2377f7154fee04e4735"
+      },
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+      "reports": {
+        "pglite": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/actual-scratch-product/offline-archive/pglite.json",
+          "bytes": 2521,
+          "sha256": "3851baf6f7bd03ee536c332245ed4b06353328a046064710242ad34ff79100bb"
+        },
+        "bundled-postgres": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/actual-scratch-product/offline-archive/bundled-postgres.json",
+          "bytes": 2541,
+          "sha256": "a1f5f924f7f934fe531acd4d5f75bf2e477abfa18501791703a5b516df23d98f"
+        },
+        "postgres": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-ff6a4b060/actual-scratch-product/offline-archive/postgres.json",
+          "bytes": 2525,
+          "sha256": "a4e1b523e99ce8a45512296d5b4f056e9e1b635dfbe95ef71e3c0f5faa1e1bda"
+        }
+      },
+      "referencePostgresForBundledComparison": true,
+      "pairedCheckGroups": 18,
+      "httpRequestsAndResponsesCheckedForPlaintext": 114,
+      "assertions": [
+        "worker physically provisions and registers the actual standalone chat",
+        "encrypted listing, read, references and versioned write execute against the worker filesystem",
+        "archive and worker restart retain registry, root identity and saved file; restore reopens it",
+        "archive commits with worker offline and the next connection reconciles the physical root and retention deadline",
+        "protected file removal and permanent chat deletion remove the registered root on the actual worker",
+        "all captured chat requests and responses keep title, paths and file contents opaque"
+      ],
+      "remaining": [
+        "Production lease expiration and process interruption around scratch work, additional encrypted file operation variants, supported platform installation and shared coordination."
+      ]
     }
   },
   "remainingAcceptance": [
