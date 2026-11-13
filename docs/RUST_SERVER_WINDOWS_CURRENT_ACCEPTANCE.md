@@ -537,6 +537,19 @@ duration, so the interruption driver now uses the native fixture's snapshot.
 The original full-worker failure and its controls remain
 separate from the passing server-only run.
 
+## Windows x64 signed update to `1.1.2976`
+
+The installed NSIS app updated from `1.1.2938` over a local HTTPS fixture.
+The updater rejected the modified installer and preserved the baseline
+binary. It then installed the signed copy and relaunched with the retained
+PGlite profile, server identity, worker enrollment and setting written
+before the update. The installed executable hashes matched the package
+inputs. Tray quit returned zero, reaped the worker and Rust server, and
+recorded a complete server shutdown. The guest disk receipts matched the
+serial transcript. The test ran in the local Windows x64 QEMU guest using
+a disposable updater key and HTTPS root.
+[Windows 1.1.2976 signed update evidence](security/rust-server-2976-win32-x64-packages.json#signedUpdate)
+
 ## Retained evidence and remaining work
 
 Reports and source scripts are retained under

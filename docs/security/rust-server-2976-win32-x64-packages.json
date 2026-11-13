@@ -154,6 +154,60 @@
         "bytes": 7205,
         "sha256": "dc8fdc1c28f6c3f174ccec337295e355b38c596974c8964585d54a1cca0179f9"
       }
+    },
+    "signedUpdate": {
+      "baselineVersion": "1.1.2938",
+      "candidateVersion": "1.1.2976",
+      "databaseMode": "pglite",
+      "scope": "Installed NSIS QA updater over loopback HTTPS in the same local Windows x64 QEMU guest. The updater key and HTTPS root were disposable QA credentials.",
+      "baselineInstaller": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/desktop-server-drain-tests/windows/signed-media/Cantrip_1.1.2938_x64-setup.exe",
+        "bytes": 256747320,
+        "sha256": "508cc4fc20ae9b63caa1cd7f3d157dd5e7083495f0bcbeab65369a35691caaa9"
+      },
+      "tamperedInstallerRejected": true,
+      "baselineExecutablePreservedAfterRejection": true,
+      "signedInstallerAcceptedAndRelaunched": true,
+      "retainedServerIdentityAndWorkerEnrollment": true,
+      "retainedSettingWrittenBeforeUpdate": true,
+      "verifiedInstalledWorkerFiles": {
+        "dist/index.js": "dbe9866bec05f69098695957e183aa9c5c0a95daa9504b31a3e17f461cc89a39",
+        "bin/codex.exe": "f0db8df766e7b928f9f3f867140e7c3637ca2ef288827a9209aaf0f0d4e39138",
+        "node_modules/@zavora-ai/computer-use-mcp/computer-use-napi.win32-x64.node": "56a0e9f48bb29841fcc5c63fcb0a38454ad194f31c6f63ea6445e21d115960fb",
+        "node_modules/@zavora-ai/computer-use-mcp/vcruntime140.dll": "eb1ee979bf02324712346e5bdbfc59c785388bc50d18cc2688aae4b0734915a0"
+      },
+      "trayQuitExitCode": 0,
+      "servicesReapedAndServerShutdownCompleted": true,
+      "guestTerminalReceipt": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/signed-update-2976-acceptance/guest-terminal-receipt.json",
+        "bytes": 2290,
+        "sha256": "d3b820f44e7be7a0a50f6b15a7024250240ef09e3613471bcb18b9f8263a4b16"
+      },
+      "guestUpdaterObservation": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/signed-update-2976-acceptance/guest-updater-observation.json",
+        "bytes": 1719,
+        "sha256": "4d003d5d1fb2086fb8c50ff1a093ea21c91a64adfd28a8c1665a93255137307b"
+      },
+      "guestHttpsRequests": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/signed-update-2976-acceptance/guest-https-requests.jsonl",
+        "bytes": 248,
+        "sha256": "0b5b7ecae14f2f11e4400f2ed861acf8cbcb99279f3e068a709e0a90b0cf3646"
+      },
+      "serialObservation": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/signed-update-2976-acceptance/serial.jsonl",
+        "bytes": 3089,
+        "sha256": "b693d89a6348a076221b24e414e92284d2158b7115d3affeb542f010e85971b2"
+      },
+      "observerMonitorContention": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/desktop-server-drain-tests/windows/signed-observer.log",
+        "bytes": 2297,
+        "sha256": "52117a69fef84a452e7fed29701a2ff95d4140eced24311814c79cf8d78a5581"
+      },
+      "resumedObserver": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/desktop-server-drain-tests/windows/signed-resumed-observer.log",
+        "bytes": 2559,
+        "sha256": "34ff0f17b266afb8489ed82e6315e96050460a008741a79230cba3effc636dac"
+      }
     }
   }
 }
