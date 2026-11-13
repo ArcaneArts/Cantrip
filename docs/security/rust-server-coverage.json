@@ -25229,6 +25229,30 @@
           "cantrip_server_rs/contracts/resource-usage.json"
         ],
         "scope": "Goal observations are Chat-owned conversation storage, resolved through the owning project. Source manifest coverage fails before the classification and all four tests pass after it. All three local storage modes pass 48 paired repository cases, including one added observation increasing only its owning account row count/bytes and cleanup restoring the earlier measurement. Existing platform evidence predates this addition."
+      },
+      "currentStorageManifest": {
+        "tables": 135,
+        "newClassifications": 13,
+        "pairedRepositoryCasesPerStore": 59,
+        "platform": "darwin-arm64",
+        "reports": [
+          {
+            "database": "pglite",
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-storage-accounting/paired-pglite.json",
+            "sha256": "3fadd21b3a744572f6f9f683ce65089536f3ce45823f62713c1c408cf0ce4539"
+          },
+          {
+            "database": "bundled-postgres",
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-storage-accounting/paired-bundled-postgres.json",
+            "sha256": "e36bf6f629192a966ecbd188d6979a33a103af94b15ec8215e316e8260dadc66"
+          },
+          {
+            "database": "postgres",
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-storage-accounting/paired-postgres.json",
+            "sha256": "bbb07823c073a3c4cc65d97e9d37d4e566fbfa2362d636c93153e93273a3d507"
+          }
+        ],
+        "scope": "Local Node and Rust repository comparison with real databases. Inserts and measurements cover the eleven CantripOS tables, inference catalog revisions and pending resource revocations, including exact logical bytes and tenant attribution."
       }
     },
     "privatePostgresOwnership": {

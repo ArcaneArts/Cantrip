@@ -226,6 +226,12 @@ function ownerSql(resolution: StorageOwnerResolution): OwnerSql {
         joins:
           'inner join "cantrip_os_instances" instance on instance."id" = t."instance_id"',
       };
+    case "cantrip-os-workspace":
+      return {
+        expression: 'instance."owner_id"',
+        joins:
+          'inner join "cantrip_os_workspaces" workspace on workspace."id" = t."workspace_id" inner join "cantrip_os_instances" instance on instance."id" = workspace."instance_id"',
+      };
     case "cantrip-os-binding":
       return {
         expression: 'binding."owner_id"',

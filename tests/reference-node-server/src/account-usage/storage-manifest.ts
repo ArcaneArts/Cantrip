@@ -18,6 +18,7 @@ export type StorageOwnerResolution =
   | "attachment"
   | "cantrip-os-binding"
   | "cantrip-os-instance"
+  | "cantrip-os-workspace"
   | "chat"
   | "model-profile"
   | "native-command"
@@ -128,6 +129,7 @@ export const STORAGE_ACCOUNTING_MANIFEST: readonly StorageAccountingManifestEntr
     accountOwned(schema.auditEvents, "analytics"),
     accountOwned(schema.workerEnrollmentCodes, "account"),
     accountOwned(schema.modelProviders, "configuration"),
+    accountOwned(schema.providerInferenceCatalogs, "configuration"),
     accountOwned(schema.modelProviderAccounts, "configuration", "provider"),
     accountOwned(
       schema.modelProviderAccountWorkers,
@@ -190,6 +192,33 @@ export const STORAGE_ACCOUNTING_MANIFEST: readonly StorageAccountingManifestEntr
     accountOwned(schema.cantripOsWorkspaces, "projects", "cantrip-os-instance"),
     projectOwned(schema.cantripOsProjectSources, "projects", "source-identity"),
     accountOwned(schema.cantripOsSourceBindings, "projects"),
+    accountOwned(schema.cantripOsExistingSourceAdmissions, "projects"),
+    accountOwned(schema.cantripOsBackupOperations, "projects"),
+    accountOwned(schema.cantripOsWorkspaceOperations, "projects"),
+    accountOwned(schema.cantripOsPowerOperations, "projects"),
+    accountOwned(
+      schema.cantripOsPowerTargets,
+      "projects",
+      "cantrip-os-instance",
+    ),
+    accountOwned(schema.cantripOsDesktopOperations, "projects"),
+    accountOwned(
+      schema.cantripOsDesktopTargets,
+      "projects",
+      "cantrip-os-workspace",
+    ),
+    accountOwned(schema.cantripOsPackageOperations, "projects"),
+    accountOwned(
+      schema.cantripOsPackageTargets,
+      "projects",
+      "cantrip-os-instance",
+    ),
+    accountOwned(schema.cantripOsSystemOperations, "projects"),
+    accountOwned(
+      schema.cantripOsSystemTargets,
+      "projects",
+      "cantrip-os-instance",
+    ),
     accountOwned(
       schema.cantripOsProvisionAdmissions,
       "projects",
@@ -223,6 +252,7 @@ export const STORAGE_ACCOUNTING_MANIFEST: readonly StorageAccountingManifestEntr
     accountOwned(schema.managedChatPreparations, "conversations"),
     chatOwned(schema.cantripOsChatPlacements),
     accountOwned(schema.nativeCommands, "conversations"),
+    accountOwned(schema.inferenceResourceRevocations, "conversations"),
     chatOwned(schema.nativeCommandActivations),
     chatOwned(schema.nativeCommandTurns),
     chatOwned(schema.nativePendingRequests),
