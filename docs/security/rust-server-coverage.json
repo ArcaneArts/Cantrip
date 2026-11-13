@@ -23826,6 +23826,9 @@
   },
   "crossCutting": {
     "currentBroadWireCompatibility": {
+      "macos2964PackagedTransport": {
+        "record": "docs/security/rust-server-2964-darwin-arm64-standalone.json"
+      },
       "linux2954PackagedTransport": {
         "record": "docs/security/rust-server-2954-linux-json-wire.json"
       },
@@ -25149,6 +25152,9 @@
       }
     },
     "jsonTransportBoundary": {
+      "macos2964PackagedTransport": {
+        "record": "docs/security/rust-server-2964-darwin-arm64-standalone.json"
+      },
       "linux2954PackagedTransport": {
         "version": "1.1.2954",
         "platforms": ["linux-arm64", "linux-x64"],
@@ -26591,6 +26597,10 @@
       ]
     },
     "nativeCanonicalHistory": {
+      "stackSafeDigestQualification": {
+        "record": "docs/security/rust-server-2964-darwin-arm64-standalone.json",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"]
+      },
       "status": "implemented-pending-platform-acceptance",
       "implementation": [
         "cantrip_server_rs/src/native_history/",

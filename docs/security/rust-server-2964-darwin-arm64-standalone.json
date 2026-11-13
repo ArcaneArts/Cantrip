@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "ca8eb6e37136de6d9cdd27c20ee0e4a5a9c476f3",
+  "candidateVersion": "1.1.2964",
+  "platform": "darwin-arm64",
+  "completeReplacement": false,
+  "scope": "The macOS ARM64 standalone package ran all three database modes. The transport suite compared the packaged launcher with the Node reference over real sockets. Separate source-built history fixtures exercised persisted digests and HTTP publication behavior.",
+  "standaloneArchive": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/cantrip-server-1.1.2964-darwin-arm64.tar.gz",
+    "bytes": 66852113,
+    "sha256": "072d7a3d9940b73be208d6bc71fc3519fa3df1ec0f7f5ea11a23ae713343a08a"
+  },
+  "standaloneAcceptance": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/acceptance.json",
+    "bytes": 2930,
+    "sha256": "7af191e5cacce05f28177798b9a35697dca26c1170ffe8c6e07b218e9b73871b"
+  },
+  "verifiedFiles": 1762,
+  "serverRequiresNode": false,
+  "pairedHttpCases": 156,
+  "pairedWebSocketCases": 81,
+  "databaseModes": [
+    {
+      "databaseMode": "pglite",
+      "pairedHttpCases": 52,
+      "pairedWebSocketCases": 27,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/wire-pglite.json",
+        "bytes": 148194,
+        "sha256": "a69e7c4eb4464ddc89a3d55380c6f335d5ae741fe7bd38c6114628da86a15c4c"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "pairedHttpCases": 52,
+      "pairedWebSocketCases": 27,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/wire-bundled-postgres.json",
+        "bytes": 148204,
+        "sha256": "f27b6f45f152f82d6fde9830c6941c0199689ad5df8a52e45bb93e79931d3ec9"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "pairedHttpCases": 52,
+      "pairedWebSocketCases": 27,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/wire-postgres.json",
+        "bytes": 148196,
+        "sha256": "cc3442af94fc3da4bef0724f7e42281f6b313e1bc43c2f1223d296ffdf8895f4"
+      }
+    }
+  ],
+  "canonicalHistory": {
+    "ordinaryAndPrettyJsonRoundTrips": 69696,
+    "protocolValidationComparisons": 902008,
+    "nestedObjects": 12000,
+    "nestedArrays": 12000,
+    "digestUnitTestStackBytes": 262144,
+    "historyRepositoryAndHttp": [
+      {
+        "databaseMode": "pglite",
+        "pairedRepositoryCases": 233,
+        "retainedSqlSnapshots": 88,
+        "reopens": 1,
+        "concurrentCases": 0,
+        "repositoryReport": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/patched-pglite.json",
+          "bytes": 7940191,
+          "sha256": "5e8231d96f8c931bf869d1fc5bb1a0b102f56498ab6f0e27926eb71b4f9724db"
+        },
+        "httpReport": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/patched-history-http-pglite.json",
+          "bytes": 26022,
+          "sha256": "8fe5cf06ce91197e9d6ef1637d7d0210beca906af1777c3b1509107b1bac113d"
+        }
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "pairedRepositoryCases": 233,
+        "retainedSqlSnapshots": 88,
+        "reopens": 1,
+        "concurrentCases": 0,
+        "repositoryReport": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/patched-bundled-postgres.json",
+          "bytes": 7940201,
+          "sha256": "a475218b39ca06ec089b1573d6361a8c56653113444250ec8d451707feb89e0d"
+        },
+        "httpReport": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/patched-history-http-bundled-postgres.json",
+          "bytes": 26032,
+          "sha256": "152a58afdc11a73fe7f3d09fea058122b80af2ace1c9b470babf19e42b9ad2f0"
+        }
+      },
+      {
+        "databaseMode": "postgres",
+        "pairedRepositoryCases": 255,
+        "retainedSqlSnapshots": 99,
+        "reopens": 1,
+        "concurrentCases": 22,
+        "repositoryReport": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/patched-postgres.json",
+          "bytes": 10565981,
+          "sha256": "2ab020bff060e9cb73a2e93c2a6a20eb19e4f93f6cef623e56ba892c583784df"
+        },
+        "httpReport": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/patched-history-http-postgres.json",
+          "bytes": 26654,
+          "sha256": "f5bc007f88e46ce0b3c6e749207e434e4167833d05acd8e1d52d324f508eed8d"
+        }
+      }
+    ]
+  }
+}
