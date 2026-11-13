@@ -405,6 +405,14 @@ all 17 steps on rerun. A two-Node control recovered readiness and also
 hit the graceful shutdown deadline. The reports retain both failures.
 [Current dependency interruption record](security/rust-server-2881-goal-dependency-acceptance.json)
 
+The macOS ARM64 `1.1.2935` release package passed the worker-owner loss,
+Redis interruption and PostgreSQL interruption cases with two Rust peers.
+Each run passed 17 browser steps and projected the original committed
+receipt to the same recovered lane. The worker kept its process and
+continuity identity through each interruption. Its command connection was
+replaced during worker-owner loss and the Redis interruption.
+[macOS release evidence](security/rust-server-2935-macos-release-acceptance.json)
+
 ## Ordering the first encrypted Task Goal input
 
 The full worker could receive a native autonomous Goal begin while the

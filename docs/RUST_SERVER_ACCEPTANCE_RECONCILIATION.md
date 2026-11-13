@@ -803,6 +803,24 @@ while a model response is held remains open.
 
 ## Current implementation and evidence
 
+The macOS ARM64 standalone distribution `1.1.2935` passed migrations, settings
+writes, restart, hosted reopening, SQL export and graceful shutdown on PGlite,
+bundled PostgreSQL and external PostgreSQL. The runtime test removed Node from
+the server's PATH and denied Homebrew access and artifact writes. The retained
+archive matches all 1,762 manifest entries. The same release executable passed
+the CLI worktree continuation matrix and the two-Rust-peer Goal interruption
+cases with the rebuilt worker.
+
+The local signed macOS updater installed `1.1.2935` over `1.1.2869` on all
+three stores. Each installed app preserved its database mode, server identity,
+worker enrollment, written setting, device keys and account bindings. The
+PGlite case rejected a tampered download before stopping either child.
+All 13,571 candidate files and links matched the signed archive for each
+installation. The QA renderer used the existing generated version module
+`1.1.2845`. The shell, worker and server reported `1.1.2935`. This was a local
+Developer ID signed build using a disposable updater key.
+[macOS release evidence](security/rust-server-2935-macos-release-acceptance.json)
+
 | Area                          | Current evidence                                                                                                                                                                                                           | Remaining acceptance                                                                                                                        |
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Declared HTTP routes          | The computer-use milestone's production probe completes 584 requests per peer with zero generic fallback differences.                                                                                                      | Successful behavior, events and recovery across complete domains; invalid-input routing alone is insufficient.                              |
