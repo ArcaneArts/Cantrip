@@ -248,5 +248,79 @@
     }
   },
   "payloadSha256": "76466877cfb853ec22ade91618e06ca6c462aa18f6e5db49bf810fa9f5a97892",
-  "quotaFramesPerRun": 4079
+  "quotaFramesPerRun": 4079,
+  "repeatedPgliteRecovery": {
+    "driverCommit": "44dcdf50cb0d205d8bd4dd298caf590464147f52",
+    "scope": "Alternating runtime order in sequential pairs on macOS ARM64, with a fresh PGlite profile per invocation and the same local crash fixture. A Windows QEMU guest and a Linux Winterhold rehearsal ran concurrently.",
+    "warmupsPerRuntime": 5,
+    "measuredRunsPerRuntime": 20,
+    "passedInvocations": 50,
+    "loadAverageOneMinuteBeforeRun": {
+      "min": 12.24,
+      "max": 16.36
+    },
+    "forcedWaitMs": 0,
+    "percentileMethod": "Nearest rank p95.",
+    "measurements": {
+      "node": {
+        "version": "1.1.2964",
+        "initialReadinessMs": {
+          "median": 4474.14,
+          "p95": 7822.54,
+          "max": 8377.82
+        },
+        "restartReadinessMs": {
+          "median": 2080.76,
+          "p95": 3049.23,
+          "max": 3574.64
+        },
+        "crashToWorkerReconnectMs": {
+          "median": 3305.13,
+          "p95": 3906.05,
+          "max": 7170.05
+        },
+        "workerGraceExpirations": 0
+      },
+      "rust": {
+        "version": "1.1.2976",
+        "initialReadinessMs": {
+          "median": 1719.17,
+          "p95": 2686.51,
+          "max": 2873.89
+        },
+        "restartReadinessMs": {
+          "median": 412.1,
+          "p95": 606.69,
+          "max": 630.99
+        },
+        "crashToWorkerReconnectMs": {
+          "median": 935.91,
+          "p95": 1047.37,
+          "max": 1064.64
+        },
+        "workerGraceExpirations": 0
+      }
+    },
+    "interpretation": "Rust had lower median and p95 restart readiness and reconnect time in this series. No invocation crossed the worker transport grace period. The earlier 26.83-second Rust observation remains in cases, and the forced outage remains a separate test.",
+    "observations": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/pglite-recovery-timing/observations.jsonl",
+      "bytes": 66557,
+      "sha256": "ca016615bdad9f0b9942b55c1e9f2772828778cf5f424e79cca929d24031652e"
+    },
+    "timingDriver": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/pglite-recovery-timing/measure.mjs",
+      "bytes": 3051,
+      "sha256": "8892a69ee880a682ca0009fd19544e079a35f5b24db6670b94b8d876a5888491"
+    },
+    "environment": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/pglite-recovery-timing/environment.log",
+      "bytes": 911,
+      "sha256": "c758ea41bfbfef01ea0cef00c2534cdb892c8b9feaf583ad1d7aabc741e8bdcc"
+    },
+    "retainedRunArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/pglite-recovery-timing/runs.tar.zst",
+      "bytes": 327454951,
+      "sha256": "e4b2bada9c6721c827d2f6b2e7aac8d2edb307731efc218063d7f8bf94a37f40"
+    }
+  }
 }
