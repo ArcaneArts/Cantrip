@@ -24821,6 +24821,10 @@
       }
     },
     "desktopPackaging": {
+      "macos2964Qualification": {
+        "version": "1.1.2964",
+        "record": "docs/security/rust-server-2964-darwin-arm64-desktop-performance.json"
+      },
       "historicalStatus": "unported",
       "status": "implemented-with-scoped-local-qualification",
       "implementation": [
@@ -29418,6 +29422,10 @@
       ]
     },
     "currentPopulatedProfilePerformance": {
+      "macos2964Qualification": {
+        "version": "1.1.2964",
+        "record": "docs/security/rust-server-2964-darwin-arm64-desktop-performance.json"
+      },
       "currentPackagedServer": {
         "version": "1.1.2938",
         "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
