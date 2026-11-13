@@ -41,7 +41,7 @@ export async function actualCliWorktreeAcquire({
     phase: "source-turn",
   });
   const initial = model.reply({ text: initialText, hold: true });
-  model.reply({ text: continuationText });
+  const continuationReply = model.reply({ text: continuationText });
   try {
     const admitted = await read(
       "startTurn",
@@ -134,6 +134,15 @@ export async function actualCliWorktreeAcquire({
 
     proof.phase = "native-continuation";
     initial.release();
+    await eventually(
+      () => continuationReply.request,
+      (request) => assert.equal(request?.completed, true),
+      60_000,
+    );
+
+    // The archive can only finish after the destination model has responded.
+    // Give durable publication its own deadline, including on an emulated guest.
+    proof.phase = "canonical-history";
     const answers = (entries, text) =>
       entries.filter((message) =>
         message.content.some(

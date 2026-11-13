@@ -36,6 +36,7 @@ export async function actualProjectChatClient({
     objective = "Private actual Agent Goal objective 🌙",
     goalAnswer = "Private actual Agent Goal completed ☀";
   const observedMessageSnapshots = {};
+  let primaryFailure;
   const responseIdentity = (messages, text) => {
     const item = messages
       .flatMap((message) => message.content)
@@ -603,6 +604,7 @@ export async function actualProjectChatClient({
         boundary: providerBoundary,
       });
   } catch (error) {
+    primaryFailure = error;
     result.projectChatFailure = {
       message: error.message,
       stack: error.stack,
@@ -625,7 +627,22 @@ export async function actualProjectChatClient({
         ),
       })),
     };
-    await stopWorker();
-    await model.close();
+    let firstCleanupError;
+    for (const [resource, close] of [
+      ["worker", stopWorker],
+      ["model", () => model.close()],
+    ]) {
+      try {
+        await close();
+      } catch (error) {
+        firstCleanupError ??= error;
+        (result.projectChatCleanupFailures ??= []).push({
+          resource,
+          message: error.message,
+          stack: error.stack,
+        });
+      }
+    }
+    if (!primaryFailure && firstCleanupError) throw firstCleanupError;
   }
 }
