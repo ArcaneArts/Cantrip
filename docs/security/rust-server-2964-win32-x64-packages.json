@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceCommit": "ca8eb6e37136de6d9cdd27c20ee0e4a5a9c476f3",
+  "candidateVersion": "1.1.2964",
+  "target": "win32-x64",
+  "scope": "Verified standalone and NSIS package contents. In-guest runtime and updater qualification are tracked separately.",
+  "standalone": {
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/windows-integrated/cantrip-server-1.1.2964-win32-x64.tar.gz",
+      "bytes": 97887841,
+      "sha256": "f7358dd36c38a2a1b6d58ebc52d63b798ceed5d62e06d726038d1a46a0ddeb31"
+    },
+    "archiveVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/windows-integrated/standalone-archive-verification.json",
+      "bytes": 201,
+      "sha256": "d81dc263fd38a14c7cf26a8d21f2c461c918db128afac7111c2b6d44280757fc"
+    },
+    "verifiedManifestFiles": 2281,
+    "serverRequiresNode": false,
+    "executableSha256": "833ee3fd2fa5c254051726aa31dcfb5568f6172dc9b63cfde95d4f8898c67942",
+    "initialGuestStartupTimeout": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/windows-integrated/guest-acceptance.json",
+      "bytes": 2706,
+      "sha256": "a593f6e8706f23570d7a545c65413db1b8b79dbec7deffdc1782cb5c5efdecc8"
+    }
+  },
+  "desktop": {
+    "installer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/windows-integrated/desktop/Cantrip_1.1.2964_x64-setup.exe",
+      "bytes": 256876088,
+      "sha256": "68c2106de74077d2502dbad9438f32c6a33a9e1e1822109e2b7527f968f64907"
+    },
+    "updaterSignature": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/windows-integrated/desktop/Cantrip_1.1.2964_x64-setup.exe.sig",
+      "bytes": 420,
+      "sha256": "8bf1725aee66d943e7f203a8a8b1b2005298efadcf83a78cd3ed88df3ea87f52"
+    },
+    "signatureVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/windows-integrated/desktop/desktop-minisign-verification.log",
+      "bytes": 115,
+      "sha256": "4df521eae2f757b545b5c42c3d36d05f58ad0fc6cdf2ebe626be41f5b2e21f70"
+    },
+    "payloadManifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/windows-integrated/desktop/desktop-nsis-runtime-manifest.json",
+      "bytes": 2506190,
+      "sha256": "a689d0e64fd94f3cfe0e0114b198a84d6aae84462793960cb04a5f0767192e2c"
+    },
+    "verifiedPayloadFiles": 14092,
+    "bundledAppSha256": "c09f8fae38e669dba432a061387a9f6c9f17f32b1e5b60e3c9be8074d1a048dc",
+    "bundledServerSha256": "833ee3fd2fa5c254051726aa31dcfb5568f6172dc9b63cfde95d4f8898c67942",
+    "bundleTypeVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/windows-integrated/desktop/desktop-bundle-type-verification.json",
+      "bytes": 229,
+      "sha256": "40c1d9800df7a8029598320ef1be41dd60a4024d3988da8c738e79357ff6dad0"
+    },
+    "signingScope": "Tauri updater signature with the local QA key. Cross-built NSIS installer has no Authenticode signature."
+  }
+}
