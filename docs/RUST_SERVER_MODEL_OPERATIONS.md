@@ -71,6 +71,12 @@ its own receipt. Explicit cancellation and client disconnect still closed
 their original provider requests in the same runs.
 [Redis interruption evidence](security/rust-server-2976-darwin-arm64-model-operations.json#sharedRedisOutage)
 
+The macOS ARM64 1.1.3013 standalone archive repeated the full matrix with
+external PostgreSQL and the packaged Node worker. Its four runs retained
+the same readiness transitions, interrupted usage outcome, and replay
+behavior.
+[Packaged Redis interruption report](security/rust-server-3013-darwin-arm64-redis-outage.json)
+
 ## Product assertions
 
 `actual-folder-client.mjs --model-operations` uses production server executables
