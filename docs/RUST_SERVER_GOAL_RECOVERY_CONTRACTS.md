@@ -348,8 +348,21 @@ owner lock Rust uses. It still serializes Task writers and allows the
 foreign-key check to finish. Under the same contention, the command
 committed and source capture returned its normal stale-source response for
 the completed Goal. Both mixed Redis pairings subsequently passed all 16
-product steps and reopened the encrypted transcript. The earlier
-worker-facing rejection remains a separate observation.
+product steps and reopened the encrypted transcript.
+
+A later run with the worker connected to the Node peer reproduced the
+pre-commit rejection. PostgreSQL detected two deadlocks involving native
+command admission and the first Goal outcome. On a copy of that database,
+the Node Goal outcome repository locked the owner and waited for the
+project. The transaction holding the project needed to check the owner
+foreign key before it could insert a native command. The Goal outcome
+repository now uses Rust's `FOR NO KEY UPDATE` owner lock. The same
+replay committed the command and returned the expected empty result for
+the replaced input. Both mixed pairings then passed all 16 product
+steps with the same packaged Rust server and full worker. After the
+post-commit Redis outage, both peers regained readiness, the original
+worker finished the handoff, and the browser reopened the encrypted
+transcript with one copy of each answer.
 
 The Node reference's two opt-in native handoff tests now use the real
 managed execution runner. They passed with the packaged macOS ARM64 Codex
