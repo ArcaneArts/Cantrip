@@ -215,7 +215,9 @@ impl Repository {
         id: &str,
     ) -> Result<Value> {
         let rows=decode(ex.query("SELECT jsonb_build_object('binding',to_jsonb(b),'instance',to_jsonb(i),'workspace',to_jsonb(w),'sourceKind',COALESCE(s.source_kind,l.source_kind),'local',to_jsonb(s),'linux',to_jsonb(l),'worktree',to_jsonb(t))::text FROM cantrip_os_source_bindings b JOIN cantrip_os_workspaces w ON w.id=b.workspace_id JOIN cantrip_os_instances i ON i.id=w.instance_id JOIN workers a ON a.id=b.worker_id AND a.owner_id=$1 AND a.unlinked_at IS NULL JOIN project_worktrees t ON t.id=b.worktree_id LEFT JOIN project_sources s ON s.id=b.project_source_id LEFT JOIN cantrip_os_project_sources l ON l.id=b.project_source_id WHERE b.id=$2 AND b.owner_id=$1 AND b.project_id=$3 AND b.retired_at IS NULL", &[&owner,&id,&project]).await?)?;
-        let row = rows.first().context("Source binding not found.")?;
+        let row = rows
+            .first()
+            .context(PlacementError("Source binding not found."))?;
         let b = &row["binding"];
         let i = &row["instance"];
         let t = &row["worktree"];
