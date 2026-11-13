@@ -23,11 +23,15 @@ const { values } = parseArgs({
     "node-directory": { type: "string" },
     "payload-mib": { type: "string", default: "64" },
     "window-frames": { type: "string", default: "64" },
+    "server-outage-ms": { type: "string", default: "0" },
   },
 });
 assert.ok(["node", "rust"].includes(values.runtime));
 assert.ok(["pglite", "bundled-postgres", "postgres"].includes(values.database));
 assert.ok(["acceptance", "download", "echo"].includes(values.scenario));
+const serverOutageMs = Number(values["server-outage-ms"]);
+assert.ok(Number.isSafeInteger(serverOutageMs) && serverOutageMs >= 0);
+assert.ok(serverOutageMs === 0 || values.scenario === "acceptance");
 const run = path.resolve(
   values.root,
   values.database,
@@ -52,6 +56,7 @@ const report = {
   runtime: values.runtime,
   database: values.database,
   scenario: values.scenario,
+  serverOutageMs,
   root: run,
   status: "running",
   scope:
@@ -119,7 +124,7 @@ try {
   if (values.scenario === "acceptance") {
     report.pressure = await slowWorkerLinkConsumer(fixture);
     report.workerRestart = await restartWorkerLinkEndpoint(fixture);
-    report.serverCrash = await crashWorkerLinkServer(fixture);
+    report.serverCrash = await crashWorkerLinkServer(fixture, serverOutageMs);
     report.quota = await exhaustWorkerLinkQuota(fixture);
   }
   report.status = "passed";
