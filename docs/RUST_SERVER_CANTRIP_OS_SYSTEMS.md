@@ -6,6 +6,23 @@ production implementations are unchanged. The Rust server needs no Node server
 delegate for these operations; the existing Worker remains Node as required by
 the server replacement goal. Node remains the default server.
 
+## Packaged macOS ARM64 1.1.2938
+
+The current Rust standalone package and compiled Node reference passed
+all six root-system cells across PGlite, bundled PostgreSQL, and
+external PostgreSQL. All 41 normalized snapshots matched in each pair.
+Each cell verified five authenticated private outcomes, two actual
+server crashes, one actual worker crash, and the exact 21 Docker
+effects. The PGlite peers ran separately against the same guest image
+before comparing their snapshots.
+
+The guest image uses the recovered local Docker snapshot chain from the
+PGlite qualification. Rebuilding the shared protocol while the first
+bundled PostgreSQL run was active triggered a browser reload. The run
+failed and was retained. Both PostgreSQL pairs passed after that build
+finished.
+[Current packaged root-system record](security/rust-server-2938-darwin-arm64-root-system.json)
+
 ## Scenario and failure boundaries
 
 `actual-folder-client.mjs --cantrip-os-system` uses the same staged runtime,
