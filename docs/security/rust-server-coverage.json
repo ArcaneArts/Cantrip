@@ -29583,7 +29583,7 @@
       }
     },
     "currentWinterholdX64Qualification": {
-      "linux2964ArtifactIntegrity": {
+      "linux2964ContainerQualification": {
         "version": "1.1.2964",
         "record": "docs/security/rust-server-2964-linux-acceptance.json"
       },
@@ -29728,6 +29728,10 @@
       "scope": "Current production server processes and the full Node worker on macOS ARM64. Separate HTTP comparisons use controlled worker replies for exact CLI, removal and provisioning wire observations. Supported shipping artifacts and full replacement acceptance remain open."
     },
     "currentWindowsQualification": {
+      "windows2964Packages": {
+        "version": "1.1.2964",
+        "record": "docs/security/rust-server-2964-win32-x64-packages.json"
+      },
       "status": "implemented-with-scoped-local-qualification",
       "currentStandaloneAcceptance": "docs/security/rust-server-2881-win32-x64-standalone.json",
       "currentQueuedTaskTransfer": "docs/security/rust-server-task-inference-route-acceptance.json#rebuiltWindowsArtifact",

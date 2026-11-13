@@ -3,7 +3,7 @@
   "completeReplacement": false,
   "sourceCommit": "ca8eb6e37136de6d9cdd27c20ee0e4a5a9c476f3",
   "candidateVersion": "1.1.2964",
-  "scope": "Locally built Linux ARM64 and x64 distributions. ARM64 ran the container and Winterhold acceptance on the local ARM64 Docker host. The x64 archives are verified and their runtime acceptance is tracked separately.",
+  "scope": "Locally built Linux ARM64 and x64 distributions. Both passed container acceptance on the local ARM64 Docker host. ARM64 also passed the Winterhold rehearsal and packaged transport comparisons. The x64 service rehearsal and transport comparison are tracked separately.",
   "platforms": [
     {
       "target": "linux-arm64",
@@ -133,7 +133,52 @@
         "bytes": 655,
         "sha256": "298165d544870d8078efd351b4a43e0267c289ed2541ce6b91e016dfdf69efc6"
       },
-      "ociManifestDigest": "sha256:a1089a99c83ea66c0a0ab5d640bf49e847e5a865467bcec104f1adb106c52c15"
+      "ociManifestDigest": "sha256:a1089a99c83ea66c0a0ab5d640bf49e847e5a865467bcec104f1adb106c52c15",
+      "containerAcceptance": {
+        "scope": "Linux x64 executed under Rosetta on the ARM64 Docker host.",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/x64/retry/acceptance.json",
+          "bytes": 5418,
+          "sha256": "fa129d07899fbcfc91713ef59a72df85748c58453ef081ce4a1b40ff6808dca1"
+        },
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "migrationsSqlExportRetainedWritesAndSigterm": true,
+        "nonRootReadOnlyRootAndNoexecTmpfs": true,
+        "nodeAbsentFromRuntimePath": true,
+        "initialStartupTimeout": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/x64/acceptance-initial-timeout.json",
+          "bytes": 619,
+          "sha256": "5554491795f958e1cbc2a54db3357818f887443d76a297eae3af282a82aabf48"
+        },
+        "retryStartupTimeoutSeconds": 600,
+        "retryHarness": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/x64/retry/harness.diff",
+          "bytes": 1005,
+          "sha256": "14f5b6a74ba38ed73c19f5622f1568614ae55369d8e9ade675711a62ad63d733"
+        },
+        "fixtureVolumes": [
+          {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/x64/retry/container-volumes/cantrip-native-package-a9760138-bundled-postgres-data.tar.zst",
+            "bytes": 7232869,
+            "sha256": "2dcdd805aabf25dc3c232f0a5e0592d2accae7f216b3c5434577271fe96c5792"
+          },
+          {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/x64/retry/container-volumes/cantrip-native-package-a9760138-database-data.tar.zst",
+            "bytes": 8174633,
+            "sha256": "ecea870eefdb21d748d1f803922b085f1c8ba2526b0d21d1107b0d514abafba6"
+          },
+          {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/x64/retry/container-volumes/cantrip-native-package-a9760138-pglite-data.tar.zst",
+            "bytes": 6059797,
+            "sha256": "a8bc9430ae90d5f7d18d58a4618f5e8fa11ed4328faf26bb1297cbf184a1f7f2"
+          },
+          {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/x64/retry/container-volumes/cantrip-native-package-a9760138-postgres-data.tar.zst",
+            "bytes": 74255,
+            "sha256": "c1e913a5180ecb216a26614aedd443d5746bf023c25807581e5a059a85f034ab"
+          }
+        ]
+      }
     }
   ]
 }
