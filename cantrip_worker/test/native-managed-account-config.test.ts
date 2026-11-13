@@ -82,7 +82,7 @@ describe.skipIf(!binary)("native managed account configuration", () => {
         const provider = {
           id: "provider",
           name: "Local fixture",
-          kind: "openai" as const,
+          kind: "openai-compatible" as const,
           baseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}/v1`,
           apiKey: "fixture-not-a-real-key",
         };
