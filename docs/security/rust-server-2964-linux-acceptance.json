@@ -3,7 +3,7 @@
   "completeReplacement": false,
   "sourceCommit": "ca8eb6e37136de6d9cdd27c20ee0e4a5a9c476f3",
   "candidateVersion": "1.1.2964",
-  "scope": "Locally built Linux ARM64 and x64 distributions. Both passed container acceptance on the local ARM64 Docker host. ARM64 also passed the Winterhold rehearsal and packaged transport comparisons. The x64 service rehearsal and transport comparison are tracked separately.",
+  "scope": "Locally built Linux ARM64 and x64 distributions. Both passed container acceptance and packaged transport comparisons on the local ARM64 Docker host. ARM64 also passed the Winterhold rehearsal. Linux x64 service rehearsal results are recorded separately.",
   "platforms": [
     {
       "target": "linux-arm64",
@@ -178,6 +178,43 @@
             "sha256": "c1e913a5180ecb216a26614aedd443d5746bf023c25807581e5a059a85f034ab"
           }
         ]
+      },
+      "jsonTransport": {
+        "pairedHttpCases": 156,
+        "pairedWebSocketCases": 81,
+        "databaseModes": [
+          {
+            "databaseMode": "pglite",
+            "pairedHttpCases": 52,
+            "pairedWebSocketCases": 27,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/current-json-wire/retry-harness/amd64-usage-wait/pglite.json",
+              "bytes": 149949,
+              "sha256": "5a1ab65276f3cc79a175da83f5d6351bb1631b0c529ce84b21cb3f8be5f51b25"
+            }
+          },
+          {
+            "databaseMode": "bundled-postgres",
+            "pairedHttpCases": 52,
+            "pairedWebSocketCases": 27,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/current-json-wire/retry-harness/amd64-host-restart/bundled-postgres.json",
+              "bytes": 150003,
+              "sha256": "e7137286d5642d25e5e65de71a7411662b2267b94e15aa0b4112a757c382898b"
+            }
+          },
+          {
+            "databaseMode": "postgres",
+            "pairedHttpCases": 52,
+            "pairedWebSocketCases": 27,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/current-json-wire/retry-harness/amd64-usage-wait-postgres/postgres.json",
+              "bytes": 149951,
+              "sha256": "e58d00bd6e383a2f2e6e75711eac27534b4ba14a2da03e6f986f041e24c0f918"
+            }
+          }
+        ],
+        "usagePublicationFixture": "https://github.com/ArcaneArts/Cantrip/pull/2983"
       }
     }
   ]

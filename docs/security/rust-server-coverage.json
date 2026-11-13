@@ -28689,6 +28689,25 @@
       ]
     },
     "currentSourceDriftAudit": {
+      "rust2964Qualification": {
+        "observedSourceHead": "f257ba12e446ab9a0d748b4537b2f8fcc931e910",
+        "candidateSourceCommit": "ca8eb6e37136de6d9cdd27c20ee0e4a5a9c476f3",
+        "candidateVersion": "1.1.2964",
+        "generatedManifestsMatched": 17,
+        "inventoryRoutesPerRuntime": 584,
+        "unexpectedGenericRustFallbacks": 0,
+        "scope": "The packaged macOS ARM64 server and the test-only Node reference handled each declared inventory method and path on isolated local PGlite profiles. Missing identities and empty bodies exercise route discovery. The generated manifests compare tracked contracts with the current protocol build.",
+        "generatedContractAudit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/current-head-audit/source-drift.json",
+          "bytes": 4648,
+          "sha256": "1597aaf429678d5b46066f9614c45aef1369b8225ff073f7bc822cc12bc03b36"
+        },
+        "routeDiscoveryAudit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/current-head-audit/http-routes.json",
+          "bytes": 2448449,
+          "sha256": "188f2e10a425923c6922975ac4a0bd1aa958d1730e78d1459d2a4d96d630aa61"
+        }
+      },
       "status": "partial",
       "sourceBaseline": "8bc4c5d8100124136b4d77df387b69164f5e40da",
       "evidence": [
