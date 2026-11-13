@@ -29758,9 +29758,9 @@
         "version": "1.1.2938",
         "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
         "platform": "darwin-arm64",
-        "passedCells": 5,
+        "passedCells": 6,
         "possibleCells": 6,
-        "limitation": "The Node browser peer times out during later graceful shutdown after the original Goal settles and both peers recover readiness.",
+        "referenceFixPullRequest": 2965,
         "record": "docs/security/rust-server-2938-darwin-arm64-mixed-goal.json"
       },
       "macOS2938CantripOsRootSystem": {
@@ -30255,9 +30255,9 @@
         "version": "1.1.2938",
         "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
         "platform": "darwin-arm64",
-        "passedCells": 5,
+        "passedCells": 6,
         "possibleCells": 6,
-        "limitation": "The Node browser peer times out during later graceful shutdown after the original Goal settles and both peers recover readiness.",
+        "referenceFixPullRequest": 2965,
         "record": "docs/security/rust-server-2938-darwin-arm64-mixed-goal.json"
       },
       "status": "partial",
@@ -30280,9 +30280,9 @@
         "version": "1.1.2938",
         "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
         "platform": "darwin-arm64",
-        "passedCells": 5,
+        "passedCells": 6,
         "possibleCells": 6,
-        "limitation": "The Node browser peer times out during later graceful shutdown after the original Goal settles and both peers recover readiness.",
+        "referenceFixPullRequest": 2965,
         "record": "docs/security/rust-server-2938-darwin-arm64-mixed-goal.json"
       },
       "status": "partial",
