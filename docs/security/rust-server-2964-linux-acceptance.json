@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceCommit": "ca8eb6e37136de6d9cdd27c20ee0e4a5a9c476f3",
+  "candidateVersion": "1.1.2964",
+  "scope": "Locally built Linux ARM64 and x64 distributions. ARM64 ran the container and Winterhold acceptance on the local ARM64 Docker host. The x64 archives are verified and their runtime acceptance is tracked separately.",
+  "platforms": [
+    {
+      "target": "linux-arm64",
+      "candidateExecutable": {
+        "path": "bin/cantrip-server",
+        "bytes": 106424696,
+        "sha256": "069f79db1edb5f7be855b3809d9144c348fabc450184b88717ae1a6d224ddc48"
+      },
+      "verifiedPackageFiles": 2558,
+      "nativeArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/cantrip-server-1.1.2964-linux-arm64.tar.gz",
+        "bytes": 141833017,
+        "sha256": "d5d0fe32d1a5efeb0e68d74294026d7dfdbcee3be8791498ab410c1ab25f75ec"
+      },
+      "ociArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/standalone.oci.tar",
+        "bytes": 178426368,
+        "sha256": "6a91867ff68a3e8e0a7c67794f25436544e9cc5205aa195a90d4ebf32f3469fc"
+      },
+      "ociVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/oci-verification.json",
+        "bytes": 655,
+        "sha256": "0860feb09b80b5119b5f9fabb1636b8539323ac5220e507ae579cd884de16f7c"
+      },
+      "ociManifestDigest": "sha256:72b055e18f124f106b006249ba6f236f28b5c40c936a23a8f6fb8f5ddfcc4d00",
+      "containerAcceptance": {
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/acceptance.json",
+          "bytes": 5357,
+          "sha256": "8a0de2a7a5e8bc507a71b6a81cfddb63d99b294ebebe645e023706a8ed7032c4"
+        },
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "migrationsSqlExportRetainedWritesAndSigterm": true,
+        "nonRootReadOnlyRootAndNoexecTmpfs": true,
+        "nodeAbsentFromRuntimePath": true
+      },
+      "jsonTransport": {
+        "pairedHttpCases": 156,
+        "pairedWebSocketCases": 81,
+        "databaseModes": [
+          {
+            "databaseMode": "pglite",
+            "pairedHttpCases": 52,
+            "pairedWebSocketCases": 27,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/current-json-wire/arm64/pglite.json",
+              "bytes": 149907,
+              "sha256": "ccbfbd12d09cde9ce4f2070c68187be90bce8089cbc8960c0f21925eea823313"
+            }
+          },
+          {
+            "databaseMode": "bundled-postgres",
+            "pairedHttpCases": 52,
+            "pairedWebSocketCases": 27,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/current-json-wire/retry-harness/arm64-longer-startup/bundled-postgres.json",
+              "bytes": 150370,
+              "sha256": "b0ba3e2769617e0aaff1e05c7b6ce8d7117ad24b3396726bcd69514ba4f50c7a"
+            }
+          },
+          {
+            "databaseMode": "postgres",
+            "pairedHttpCases": 52,
+            "pairedWebSocketCases": 27,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/current-json-wire/retry-harness/arm64-longer-startup/postgres.json",
+              "bytes": 149909,
+              "sha256": "4f2786a69f14893f1d53c66bd4cbf3788f3649b6a7cbbde469252a5e6afb1de9"
+            }
+          }
+        ],
+        "retryStartupTimeoutSeconds": 180
+      },
+      "winterhold": {
+        "passed": true,
+        "installerCalls": 18,
+        "recoveredCliFailures": 6,
+        "runningExecutableHashesCompared": 10,
+        "startLimitRecoveryObserved": true,
+        "postWriteRollback": {
+          "pgliteAndBundledPostgres": "1.1.2954",
+          "externalPostgresRuntime": "node",
+          "externalPostgresRollbackImage": "sha256:e45a5bb676e4efec2ec75897dd24829fadfd23165a545de155fa1c5a7da5a9d8"
+        },
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/winterhold-arm64/acceptance.json",
+          "bytes": 1099472,
+          "sha256": "f52394ea2080e002734aefb49cb4937a0b14cbd594e3b5aa3c2591ed50e0bf64"
+        },
+        "journal": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/winterhold-arm64/journal.log",
+          "bytes": 818159,
+          "sha256": "0d761899cc75a60f63c2dfd43a1c32d4a25badd3955dcb1faffdd1edeb52a37b"
+        },
+        "profiles": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/winterhold-arm64/retained-systemd-profiles.tar.zst",
+          "bytes": 14231839,
+          "sha256": "a7c72bfc0e6326b46f79c7605ad859e793804205cd6e91a65b505e514fcf0c46"
+        },
+        "externalPostgresDump": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/winterhold-arm64/external-postgres.sql.zst",
+          "bytes": 75822,
+          "sha256": "775977256e495affc5b6363acf04df99f2787dc5c7a00e9c6c0f50e5cca4f3f8"
+        }
+      }
+    },
+    {
+      "target": "linux-x64",
+      "candidateExecutable": {
+        "path": "bin/cantrip-server",
+        "bytes": 111173248,
+        "sha256": "51c4e835cfc41c4a7b56bf055effb9b6d86d4c6755a5b35278eb51caccd79dfb"
+      },
+      "verifiedPackageFiles": 2558,
+      "nativeArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/x64/cantrip-server-1.1.2964-linux-x64.tar.gz",
+        "bytes": 146665946,
+        "sha256": "963322f1aceac099564b846a9ca5dc9ad098c80925ab0002ede75e5d3a0fd6dd"
+      },
+      "ociArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/x64/standalone.oci.tar",
+        "bytes": 181625344,
+        "sha256": "cbda137fd4d69ba20d61bb8490162d1678aa6080ad3f2df984b65fc397bf8fca"
+      },
+      "ociVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/x64/oci-verification.json",
+        "bytes": 655,
+        "sha256": "298165d544870d8078efd351b4a43e0267c289ed2541ce6b91e016dfdf69efc6"
+      },
+      "ociManifestDigest": "sha256:a1089a99c83ea66c0a0ab5d640bf49e847e5a865467bcec104f1adb106c52c15"
+    }
+  ]
+}
