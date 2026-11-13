@@ -110,6 +110,13 @@ from `1.1.2869` to `1.1.2881` on all three stores. Each installation matched
 the rebuilt signed archive and preserved its encrypted client bindings,
 accepted setting, server identity, and worker identity.
 [Rebuilt macOS signed update](RUST_SERVER_DESKTOP_SIGNED_UPDATE.md#rebuilt-server-and-desktop-shell-on-macos-arm64)
+The Windows x64 `1.1.2938` standalone package from `5015c89a4`
+matched 2,281 files and passed migration, SQL export, retained writes,
+hosted reopening and orderly shutdown on all three stores. The record
+includes the initial 60-second PGlite timeout and the subsequent timings
+under software emulation.
+[Windows x64 1.1.2938 standalone record](security/rust-server-2938-win32-x64-standalone.json)
+
 The Windows x64 `1.1.2881` standalone distribution passed all three stores,
 including migration, SQL export, hosted reopening and retained writes.
 [Windows x64 standalone record](security/rust-server-2881-win32-x64-standalone.json)
