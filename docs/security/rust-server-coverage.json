@@ -28858,13 +28858,13 @@
         "Timeout and worker SIGKILL retain failed versus unknown usage; original exported rows survive actual server/worker restart.",
         "Active server SIGKILL on macOS preserves one original usage record with no worker receipt or reported counters. The same worker reconnects and completes fresh inference without replaying the interrupted input, matching the Node reference in all three stores.",
         "With macOS external PostgreSQL offline for 45 seconds, the same server and worker retain an active provider request and settle one completed receipt after recovery. The original replay is rejected. Rust remains live and reports unready throughout the sampled outage.",
-        "A real Redis SIGKILL during an active embedding retains one unknown attempt and rejects replay without a new provider request across all four Node/Rust peer pairings using the macOS ARM64 1.1.3013 standalone archive.",
+        "A real Redis SIGKILL during an active embedding retains one unknown attempt and rejects replay without a new provider request across all four Node/Rust peer pairings using the macOS ARM64 1.1.3013 standalone archive and the Linux ARM64 1.1.3014 container.",
         "The Rust server persists the original validated receipt after a 60-second external PostgreSQL outage even when the browser and provider finish while the database is offline. Both baselines left the attempt running.",
         "Public aggregate totals and completeness match observed receipts; missing counters and worker receipts remain unknown."
       ],
       "baselineRepair": "Unmodified Node external/private PostgreSQL aggregate routes fail to bind Date parameters for a SQL CASE expression; four ISO timestamp bindings restore the range predicates. Node PGlite and native Rust already passed.",
       "remaining": [
-        "Windows model-operation package coverage, outages beyond the exercised durations, simultaneous server and database loss, packaged Linux Redis interruption and non-macOS server-process interruption remain unqualified.",
+        "Windows model-operation package coverage, outages beyond the exercised durations, simultaneous server and database loss, packaged Linux x64 Redis interruption and non-macOS server-process interruption remain unqualified.",
         "Configured OpenAI-compatible adapters and an owned local provider are exercised; this does not prove every provider-private adapter behavior.",
         "Default Rust cutover and production Node-server removal remain required."
       ]
@@ -30719,6 +30719,16 @@
   "macos3013StandaloneQualification": {
     "status": "passed",
     "report": "docs/security/rust-server-3013-darwin-arm64-standalone.json"
+  },
+  "linux3014StandaloneQualification": {
+    "sourceCommit": "0c1c343bd0dcc987fc618ca7e573b9ab1eb964a5",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "reports": {
+      "linuxArm64ContainerAndWinterhold": "docs/security/rust-server-3014-linux-arm64-acceptance.json",
+      "linuxX64ContainerAndWinterhold": "docs/security/rust-server-3014-linux-x64-acceptance.json",
+      "linuxArm64SharedRedisModelOperations": "docs/security/rust-server-3014-linux-arm64-acceptance.json"
+    },
+    "scope": "Local standalone images and representative Winterhold rehearsals with post-write rollback. The x64 server ran under emulation."
   },
   "remainingAcceptance": [
     "Finish canonical-history CLI and model-operation acceptance on Windows x64 with the signed installer containing the worker grant refresh from PR #3012.",

@@ -6,6 +6,25 @@ Node. The old server is an explicit development compatibility reference. See
 [default cutover](RUST_SERVER_DEFAULT_CUTOVER.md) and
 [production Node retirement](RUST_SERVER_NODE_RETIREMENT.md) for their qualification.
 
+## Cantrip 1.1.3014 Linux standalone
+
+The ARM64 and x64 images built from `0c1c343bd` passed standalone startup,
+migration, SQL export, retained writes, hosted reopening and graceful
+shutdown on all three stores. The server ran without Node in a non-root
+container with a read-only root and a noexec temporary filesystem. The
+local Winterhold rehearsals exercised systemd and Caddy HTTPS with App
+Live, migration and startup fault recovery, and post-write rollback.
+PGlite and bundled PostgreSQL reopened on Rust 1.1.2976. External PostgreSQL
+reopened on the historical Node server with TLS required. The x64 server
+ran through Rosetta on the ARM64 Linux host.
+[Linux ARM64 report](security/rust-server-3014-linux-arm64-acceptance.json),
+[Linux x64 report](security/rust-server-3014-linux-x64-acceptance.json)
+
+The ARM64 image also passed active Redis interruption across all four
+Node/Rust peer pairings with external PostgreSQL. The run verified 12 Rust
+container launches and clean exits, 56 model operations, and recovery
+without replaying the interrupted inference at the provider.
+
 ## Cantrip 1.1.3013 macOS standalone
 
 The macOS ARM64 standalone distribution built from `9069ae6ac` passed
@@ -78,7 +97,7 @@ below apply to the exact binaries and worker entries identified by their reports
   On macOS, Rust and the Node reference each kept an in-flight inference
   through a 45-second external PostgreSQL outage and recorded one usage
   receipt after recovery. Windows model operations and packaged Redis
-  interruption on Linux still need qualification.
+  interruption on Linux x64 still need qualification.
   [macOS model operations](security/rust-server-2976-darwin-arm64-model-operations.json),
   [macOS server loss](security/rust-server-2976-darwin-arm64-model-operation-server-loss.json),
   [Linux model operations](security/rust-server-2976-linux-model-operations.json),
