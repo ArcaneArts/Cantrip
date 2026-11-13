@@ -29784,6 +29784,19 @@
         ],
         "record": "docs/security/rust-server-2938-darwin-arm64-standalone.json"
       },
+      "macOS2938RollbackAndPerformance": {
+        "version": "1.1.2938",
+        "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+        "postWriteRollbackModes": [
+          "pglite",
+          "bundled-postgres",
+          "postgres"
+        ],
+        "smallPGliteRunsPerRuntime": 6,
+        "workerLogStreamPairs": 3,
+        "record": "docs/security/rust-server-2938-darwin-arm64-rollback-performance.json",
+        "scope": "Historical populated profile round trips on all three stores and scoped current macOS performance comparisons."
+      },
       "nativeBoundaryRecheck": {
         "runtimeSourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
         "target": "darwin-arm64",
