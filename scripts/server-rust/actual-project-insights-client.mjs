@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { repositoryRoot } from "./build.mjs";
 
 export async function actualProjectInsights({
@@ -135,7 +136,7 @@ export async function actualProjectInsights({
         workerId,
         brief,
         phase,
-        protocolUrl: `/@fs${repositoryRoot}/packages/protocol/src/index.ts`,
+        protocolUrl: `/@fs${pathToFileURL(path.join(repositoryRoot, "packages/protocol/src/index.ts")).pathname}`,
       },
     );
     assert.equal(value.stats.kind, "folder");

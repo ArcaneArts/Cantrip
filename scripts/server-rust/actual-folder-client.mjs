@@ -1113,7 +1113,7 @@ async function flow(
           projectId: created.id,
           workerId,
           origin: vite.resolvedUrls.local[0],
-          protocolUrl: `/@fs${repositoryRoot}/packages/protocol/src/index.ts`,
+          protocolUrl: `/@fs${pathToFileURL(path.join(repositoryRoot, "packages/protocol/src/index.ts")).pathname}`,
           result,
         })
       : undefined;
