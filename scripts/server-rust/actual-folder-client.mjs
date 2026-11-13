@@ -1249,7 +1249,7 @@ async function flow(
         workerId,
       });
     await fixture.start({ port: retainedPort });
-    const retained = await page.evaluate(
+    await page.evaluate(
       async ({ serverUrl, password }) => {
         const servers = await import("/src/lib/server-connections.ts");
         const account = await import("/src/lib/api/account.ts");
@@ -1282,25 +1282,38 @@ async function flow(
         });
         if (access.status !== "ready")
           throw new Error("Retained encryption was not ready");
-        const projects = await window.folderWire.getProjectWireList();
-        const { decodePrivateDisplayLabelForClient } =
-          await import("/src/lib/private-label-encryption.ts");
-        const labels = await Promise.all(
-          projects.map((project) =>
-            decodePrivateDisplayLabelForClient({
-              identity: window.folderIdentity,
-              opaque: project.nameProtection,
-              recordKind: "project",
-              rowId: project.id,
-            }),
-          ),
-        );
-        return { projects, labels };
       },
       { serverUrl: fixture.server.origin, password },
     );
-    assert.deepEqual(retained.projects, wire);
-    assert.deepEqual(retained.labels, names);
+    // The worker was stopped before restarting the server. Replica presence
+    // ages out of the heartbeat window while the persisted fields stay equal.
+    const offlineWire = wire.map((project) => ({
+      ...project,
+      replicas: project.replicas.map((replica) =>
+        replica.workerId === workerId
+          ? { ...replica, workerOnline: false }
+          : replica,
+      ),
+    }));
+    const retainedProjects = await eventually(
+      () => page.evaluate(() => window.folderWire.getProjectWireList()),
+      (projects) => assert.deepEqual(projects, offlineWire),
+    );
+    const retainedLabels = await page.evaluate(async (projects) => {
+      const { decodePrivateDisplayLabelForClient } =
+        await import("/src/lib/private-label-encryption.ts");
+      return Promise.all(
+        projects.map((project) =>
+          decodePrivateDisplayLabelForClient({
+            identity: window.folderIdentity,
+            opaque: project.nameProtection,
+            recordKind: "project",
+            rowId: project.id,
+          }),
+        ),
+      );
+    }, retainedProjects);
+    assert.deepEqual(retainedLabels, names);
     if (workspace) await retainedWorkspaceClient({ page, workspace, result });
     if (
       surface ||
@@ -1379,7 +1392,7 @@ async function flow(
         });
       await stopWorker();
     }
-    for (const project of retained.projects)
+    for (const project of retainedProjects)
       assert.equal((await job(project.id)).state, "succeeded");
     result.steps.push(
       "server restart retains identity, encrypted labels, source handles and all completed job states",
