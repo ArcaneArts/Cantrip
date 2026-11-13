@@ -9,7 +9,7 @@ Node. The old server is an explicit development compatibility reference. See
 ## Cantrip 1.1.2976 qualification
 
 The recorded packages use Rust server source `92ed534fa` and desktop shell
-source `f1201f3e2`. Through integrated commit `51c83a81b`, the only later
+source `f1201f3e2`. Through integrated commit `b114567f6`, the only later
 runtime source change in the server, deployment, renderer and worker inputs
 was the canonical-history worker fix in #3006. Package and product results
 below apply to the exact binaries and worker entries identified by their reports.
@@ -33,13 +33,16 @@ below apply to the exact binaries and worker entries identified by their reports
   [Linux x64](security/rust-server-2976-linux-x64-acceptance.json),
   [CLI worktree matrix](security/rust-server-2976-linux-cli-worktree-acceptance.json)
 - **Windows x64.** The earlier package passed all three standalone cases and
-  six installed first-launch and reopen cases. The local signed PGlite update
-  from `1.1.2938` also passed. The rebuilt installer with #3006 has a verified
-  14,091-entry payload and is undergoing installed acceptance. On the emulated
-  guest, the PGlite CLI worktree case completed both model requests and 10
-  product steps. Its canonical-history assertion observed `item/completed`
-  where it expected `native-history`. The teardown error obscured the original
-  assertion in the top-level report. The two PostgreSQL CLI cases remain open.
+  the local signed PGlite update from `1.1.2938`. The repack with #3006 passed
+  first launch, persisted-profile reopen and real tray shutdown on all three
+  stores in the Windows x64 VM. All six cases verified the installed hashes,
+  worker replies and child exit. The bundled database shut down with Cantrip,
+  and the external cluster stayed up through both application exits.
+  The earlier Windows CLI PGlite fixture timed out waiting for canonical
+  history. Its database retained both completed turns, and the final worker
+  acknowledgment arrived after the last browser poll. The revised fixture
+  from #3009 passed on macOS PGlite. The Windows CLI rerun and signed update
+  of the repack remain open.
   [Windows package report](security/rust-server-2976-win32-x64-packages.json)
 - **Model operations and WorkerLink.** The macOS and Linux reports cover native
   model operations on all three stores. Linux recorded 72 operations, 114

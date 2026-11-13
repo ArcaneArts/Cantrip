@@ -208,6 +208,86 @@
         "bytes": 2559,
         "sha256": "34ff0f17b266afb8489ed82e6315e96050460a008741a79230cba3effc636dac"
       }
+    },
+    "canonicalHistoryRepack": {
+      "workerFixCommit": "0fcb117267e8282d4a48ff20a33872e242796a1a",
+      "scope": "Installed the repacked NSIS candidate in a Windows x64 QEMU guest on ARM64 macOS and exercised first launch and persisted profile reopen through the desktop UI. The installer has a disposable Tauri QA updater signature.",
+      "installer": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-canonical-package/Cantrip_1.1.2976_x64-setup.exe",
+        "bytes": 256922235,
+        "sha256": "c9aad6b0695e048964d2b86f772f2ff8974ae169cf9e6dee1dddac68447a508f"
+      },
+      "updaterSignature": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-canonical-package/Cantrip_1.1.2976_x64-setup.exe.sig",
+        "bytes": 420,
+        "sha256": "09eccb18b7ee353618c382377b90a1ade73f2cfe1245dd7f4ee6e3c68de181eb"
+      },
+      "signatureVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-canonical-package/desktop-minisign-verification.log",
+        "bytes": 115,
+        "sha256": "42ffe158d1ed6c226a0cfaefbf4ef3d0fe8453d6f48a8829250d82d24233c3ba"
+      },
+      "payloadManifest": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-canonical-package/desktop-nsis-runtime-manifest.json",
+        "bytes": 2506064,
+        "sha256": "99b6561c7b3991c31ac152370250d26dd128146bf8cca66315d8b749bbb51b00"
+      },
+      "payloadVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-canonical-package/candidate-verification.json",
+        "bytes": 753,
+        "sha256": "1e8594e9d3d069a167bc5324d6eeb94fa77f3a59b21241b02afcfaa8a1c2ab83"
+      },
+      "verifiedPayloadFiles": 14091,
+      "changedPayloads": ["runtime/worker/dist/index.js"],
+      "bundledAppSha256": "8b823adccdc5897f919c445450e4ccacebdcbc49772b42ad6594f36cd67e6e25",
+      "bundledServerSha256": "d678aacfb2d0d063812f84c1ae47766dce222f25382183f85b8c7d7b3fee7168",
+      "bundledWorkerSha256": "3505b8913f656e5b6171948ecc8170b4134519ad0e2b3694ee533c4527b6d586",
+      "installedMatrix": {
+        "passedCases": 6,
+        "databaseModes": [
+          {
+            "mode": "pglite",
+            "firstLaunchAndPersistedProfileReopen": true,
+            "retainedIdentityAndSettingsWrite": true,
+            "packagedWorkerReply": true,
+            "trayShutdownAndChildReap": true
+          },
+          {
+            "mode": "bundled-postgres",
+            "firstLaunchAndPersistedProfileReopen": true,
+            "retainedIdentityAndSettingsWrite": true,
+            "packagedWorkerReply": true,
+            "trayShutdownAndChildReap": true,
+            "managedPostgresReaped": true
+          },
+          {
+            "mode": "postgres",
+            "firstLaunchAndPersistedProfileReopen": true,
+            "retainedIdentityAndSettingsWrite": true,
+            "packagedWorkerReply": true,
+            "trayShutdownAndChildReap": true,
+            "externalPostgresSurvivedBothShutdowns": true
+          }
+        ],
+        "serialObservation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-canonical-package/installed-candidate-serial.jsonl",
+          "bytes": 16212,
+          "sha256": "cfa1eab2f8ddf51305f366a42843a7d89641201c49fc0fd978bcda29d271d89a"
+        },
+        "terminalReceipts": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-canonical-package/installed-candidate-matrix.json",
+          "bytes": 8204,
+          "sha256": "ffe7fba5c86e318d9f0bd4fca20716dc1e6350af9584012f118cd2bd8453c6ae"
+        },
+        "hostUiObservation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-canonical-package/host-matrix-observer.log",
+          "bytes": 7361,
+          "sha256": "8cfd99de99969a481b9e37ffa5db41f70d82b0f11f1341394b6af6d2f3575f2f"
+        }
+      },
+      "remaining": [
+        "Signed upgrade with this repack and packaged Windows CLI and model-operation acceptance."
+      ]
     }
   }
 }

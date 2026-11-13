@@ -30620,7 +30620,7 @@
     "candidateVersion": "1.1.2976",
     "serverSourceCommit": "92ed534fa5b1bef8dfcf60a21b9784e159c6a655",
     "desktopSourceCommit": "f1201f3e2d6a947ecb59d784f067743708b22713",
-    "reviewedIntegratedCommit": "51c83a81beb30740757ceedc584df2c398166e34",
+    "reviewedIntegratedCommit": "b114567f67d8dcb4d760e9cd3069a9d6dba70ce6",
     "scope": "Current release evidence by tested artifact. Historical milestone entries keep their original scope and do not override this record.",
     "productionRuntime": {
       "defaultServer": "Rust",
@@ -30671,17 +30671,18 @@
         "reportSha256": "f0691c90896200571e4844539aa3140547a4b35813a4d0fb51e263fbad9f5e30"
       },
       "windowsX64RepackedInstaller": {
-        "result": "installed-executables-verified",
+        "result": "installed-first-launch-and-reopen-passed",
+        "passedCases": 6,
         "verifiedFiles": 14091,
         "onlyChangedEntry": "runtime/worker/dist/index.js",
         "installerSha256": "c9aad6b0695e048964d2b86f772f2ff8974ae169cf9e6dee1dddac68447a508f",
         "verificationReportSha256": "1e8594e9d3d069a167bc5324d6eeb94fa77f3a59b21241b02afcfaa8a1c2ab83",
-        "scope": "Local QA updater signature, NSIS payload and installed executable digests verified. The PGlite desktop process started. First launch and profile reopen acceptance are in progress."
+        "scope": "Local QA updater signature and NSIS payload verified. All three stores passed installed first launch, retained-profile reopen and clean tray shutdown in the Windows x64 guest."
       }
     }
   },
   "remainingAcceptance": [
-    "Finish canonical-history CLI and model-operation acceptance on Windows x64. Exercise the repacked desktop installer, retained profiles and signed update with the merged worker fix.",
+    "Finish canonical-history CLI and model-operation acceptance on Windows x64. Exercise the signed desktop update with the merged worker fix.",
     "Qualify active database and Redis interruption and prolonged outages during model operations, and reconcile the still-open background-service and product recovery comparisons.",
     "Complete the remaining inventory-level behavior evidence, including malformed, Unicode and deep-JSON inputs, serialization for authenticated metadata, encrypted boundaries and protocol ordering.",
     "Qualify installed iOS native QR and remaining physical-camera and distribution-signed mobile scenarios.",
