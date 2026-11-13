@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { eventually } from "./full-worker.mjs";
 import { modelOperationProvider } from "./model-operation-provider.mjs";
@@ -454,7 +456,7 @@ export async function actualModelOperationsClient({
         apiKey: provider.apiKey,
         workerId,
         marker,
-        protocolUrl: `/@fs${repositoryRoot}/packages/protocol/src/index.ts`,
+        protocolUrl: `/@fs${pathToFileURL(path.join(repositoryRoot, "packages/protocol/src/index.ts")).pathname}`,
       },
     );
     provider.reply("embedding");
