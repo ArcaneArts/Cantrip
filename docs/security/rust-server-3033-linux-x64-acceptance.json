@@ -130,5 +130,38 @@
         "bytes": 1028
       }
     ]
+  },
+  "externalPostgresOfflineSettlement": {
+    "harnessCommit": "d964d70f54aa5ecf26516f9e4c676da3995fedf1",
+    "scope": "A single Linux x64 Rust container through Rosetta with the existing browser and full Node worker and a private restartable PostgreSQL cluster on macOS.",
+    "productSteps": 20,
+    "operationCases": 14,
+    "providerRequests": 15,
+    "offlineMs": 60002,
+    "providerFinishedWhileOffline": true,
+    "providerSubmissionsForInterruptedOperation": 1,
+    "retainedReceiptStatus": "completed",
+    "observedRustContainerGenerations": 3,
+    "cleanRustContainerExits": 3,
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/redis-subscription-recovery/linux-x64/postgres-offline-settlement-retry/acceptance.json",
+      "bytes": 517573,
+      "sha256": "da2d3c8f8d14a0afda4a79e04108528eec6da969879ced1b1ec8c48790633525"
+    },
+    "generations": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/redis-subscription-recovery/linux-x64/postgres-offline-settlement-retry/generations.jsonl",
+      "bytes": 3012,
+      "sha256": "b9678c28990e72abe2ed462f79edaa2fc20a024406b81d6dc9a61693b83fcfbd"
+    },
+    "retainedFixture": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/redis-subscription-recovery/linux-x64/postgres-offline-settlement-retry/profile.tar.zst",
+      "bytes": 40204,
+      "sha256": "64648c50988ec67268a7f1c63bd160f86c3173b02684f2b47b50ef0828b7f1ca"
+    },
+    "initialFixtureStartupError": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/redis-subscription-recovery/linux-x64/postgres-offline-settlement/acceptance.json",
+      "bytes": 5640,
+      "sha256": "9b2f3d44e26485ffbb51d262054c83696be0599c6fb05c1c2e585e7b1c14db5e"
+    }
   }
 }

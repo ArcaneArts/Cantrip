@@ -41,6 +41,13 @@ for at least 45 seconds, each pair retained the original unknown attempt
 without issuing another provider request on replay. Each pair recovered
 the same worker claim and completed a fresh operation. The x64 server
 ran through Rosetta on the ARM64 Linux host.
+
+The same x64 package kept its server and worker connections through a
+60-second external PostgreSQL interruption. The provider and browser
+finished the active embedding while PostgreSQL was offline. The server
+reported unready and stayed live, then committed the original receipt
+after recovery. Replaying the original operation made no second provider
+request, and a fresh operation completed.
 [Linux x64 package and recovery report](security/rust-server-3033-linux-x64-acceptance.json)
 
 ## Cantrip 1.1.3013 macOS standalone
