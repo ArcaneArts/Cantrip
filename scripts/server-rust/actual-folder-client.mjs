@@ -303,7 +303,7 @@ const fakeCuaLauncher =
     : null;
 const appRoot = path.join(repositoryRoot, "cantrip_app");
 const appRequire = createRequire(path.join(appRoot, "package.json"));
-const { createServer } = await import(
+const { createServer, searchForWorkspaceRoot } = await import(
   pathToFileURL(appRequire.resolve("vite")).href
 );
 const report = {
@@ -1865,7 +1865,19 @@ try {
     root: appRoot,
     configFile: path.join(appRoot, "vite.config.ts"),
     cacheDir: path.join(root, "vite"),
-    server: { host: "127.0.0.1", port: 0, strictPort: false },
+    server: {
+      host: "127.0.0.1",
+      port: 0,
+      strictPort: false,
+      // Packaged QA fixtures can contain the workspace packages without the
+      // workspace marker that Vite normally uses to discover them.
+      fs: {
+        allow: [
+          searchForWorkspaceRoot(appRoot),
+          path.join(repositoryRoot, "packages/protocol"),
+        ],
+      },
+    },
     // These optional workspace imports otherwise trigger a Vite page reload
     // halfway through a cold acceptance run, discarding its real client state.
     optimizeDeps: {
