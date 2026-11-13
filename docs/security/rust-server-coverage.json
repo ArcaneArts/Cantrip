@@ -23823,6 +23823,15 @@
   },
   "crossCutting": {
     "currentBroadWireCompatibility": {
+      "currentPackagedTransport": {
+        "version": "1.1.2938",
+        "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+        "platform": "darwin-arm64",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "pairedHttpCases": 156,
+        "pairedWebSocketCases": 81,
+        "record": "docs/security/rust-server-2938-darwin-arm64-json-wire.json"
+      },
       "status": "implemented-pending-platform-acceptance",
       "candidateAcceptance": "docs/security/rust-server-2881-wire-acceptance.json",
       "evidence": [
@@ -25134,6 +25143,15 @@
       }
     },
     "jsonTransportBoundary": {
+      "currentPackagedTransport": {
+        "version": "1.1.2938",
+        "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+        "platform": "darwin-arm64",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "pairedHttpCases": 156,
+        "pairedWebSocketCases": 81,
+        "record": "docs/security/rust-server-2938-darwin-arm64-json-wire.json"
+      },
       "status": "partial",
       "evidence": [
         "cantrip_server_rs/tests/json_depth.rs",
@@ -29736,6 +29754,15 @@
       ]
     },
     "releaseArtifactQualification2938": {
+      "macOS2938JsonWire": {
+        "version": "1.1.2938",
+        "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+        "platform": "darwin-arm64",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "pairedHttpCases": 156,
+        "pairedWebSocketCases": 81,
+        "record": "docs/security/rust-server-2938-darwin-arm64-json-wire.json"
+      },
       "macOS2938GoalAndCantripOs": {
         "version": "1.1.2938",
         "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",

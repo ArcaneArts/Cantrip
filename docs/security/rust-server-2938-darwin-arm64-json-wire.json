@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+  "candidateVersion": "1.1.2938",
+  "platform": "darwin-arm64",
+  "completeReplacement": false,
+  "scope": "Production Rust standalone launcher with Node absent from the server PATH. Compiled shared protocol and current Node source reference use isolated processes and databases. Only actual App Live usage publications are normalized out of parser cursor comparisons.",
+  "standaloneArchive": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/cantrip-server-1.1.2938-darwin-arm64-5015c89a4.tar.gz",
+    "bytes": 66893960,
+    "sha256": "4c6fdf2072d0ddb3e1fd2d7785fe0a9838a67208855cbc92f909b9f261ba4668"
+  },
+  "pairedHttpCases": 156,
+  "pairedWebSocketCases": 81,
+  "databaseModes": [
+    {
+      "databaseMode": "pglite",
+      "pairedHttpCases": 52,
+      "pairedWebSocketCases": 27,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-json-wire/pglite.json",
+        "bytes": 148194,
+        "sha256": "85318b9dcb0f88ae83c150aa1a6d950c476656638c69cbc8190d2c287be5a35d"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "pairedHttpCases": 52,
+      "pairedWebSocketCases": 27,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-json-wire/bundled-postgres.json",
+        "bytes": 148204,
+        "sha256": "df6b79dc398e0a2e2d7f94fe8d8782d38f96f5a1e8e5cdd5dbecac99c06bae71"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "pairedHttpCases": 52,
+      "pairedWebSocketCases": 27,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-json-wire/postgres.json",
+        "bytes": 148196,
+        "sha256": "b5c63e4706fe6a2effa47706ff058fad3792f225653cf15e9b2084f786db6765"
+      }
+    }
+  ],
+  "driver": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-json-wire/packaged-json-compatibility.mjs",
+    "bytes": 10564,
+    "sha256": "539bdaa5a3f241d8070279d6881ff06ce8ce4ec5161bcc1857926d8de6dbddff"
+  },
+  "initialReferenceStartupFailure": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-json-wire/pglite-stale-protocol.json",
+    "bytes": 1386,
+    "sha256": "5c22218c627e511330c1bb5b57b7f26faeb342be1417275ff276a4e1f726ef7a"
+  },
+  "protocolRebuildLog": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-json-wire/protocol-build.log",
+    "bytes": 23,
+    "sha256": "29c5ee0f6b0b20dbb259b99d01276198c3d28190090706394608d4deda6d2c0b"
+  }
+}

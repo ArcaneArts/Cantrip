@@ -22,6 +22,21 @@ the path from the packaged manifest. The
 [candidate acceptance record](security/rust-server-2881-wire-acceptance.json)
 includes the source audit, exact artifacts and retained reports.
 
+## Packaged macOS ARM64 1.1.2938
+
+The standalone Rust package and current Node reference repeated the real
+HTTP and App Live comparison on all three stores. All 156 paired HTTP
+cases and 81 paired WebSocket cases passed. They cover malformed input,
+lone UTF-16 surrogates, nesting up to 20,000 levels, successful password
+round trips, and App Live error and cursor behavior. The native launcher
+used a server PATH without Node.
+
+The initial Node reference run failed at import because the local
+compiled protocol lacked a current export. Rebuilding the shared
+protocol from the checked-in source resolved that startup failure.
+The case corpus and assertions stayed the same.
+[Current packaged JSON wire record](security/rust-server-2938-darwin-arm64-json-wire.json)
+
 ## Current source coverage
 
 The initial audit found 65 missing fixture sets among 803 embedded security
