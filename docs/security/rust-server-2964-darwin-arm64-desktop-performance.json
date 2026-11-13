@@ -1,0 +1,465 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "target": "darwin-arm64",
+  "candidateVersion": "1.1.2964",
+  "serverSourceCommit": "ca8eb6e37136de6d9cdd27c20ee0e4a5a9c476f3",
+  "desktopAndBenchmarkDriverCommit": "bf05cf2091c9cd684b104445ddc55413c36ece1c",
+  "signedUpdater": {
+    "scope": "Local Developer ID signed macOS bundles and a disposable Tauri updater key over loopback HTTPS. The rehearsal used isolated profiles initialized by the 1.1.2938 runtime and retained them through the update. Apple notarization is outside this run.",
+    "previousVersion": "1.1.2938",
+    "retainedWorkerIdentityServerIdentityAndWrites": true,
+    "rejectedAlteredUpdate": "update_signature_invalid",
+    "cases": [
+      {
+        "mode": "pglite",
+        "database": {
+          "engine": "pglite",
+          "versionFile": "server-db/PG_VERSION",
+          "major": "17"
+        },
+        "deviceKeysRetained": 1,
+        "accountBindingsRetained": 1,
+        "oldChildrenReaped": 2,
+        "updatedChildrenReaped": 2
+      },
+      {
+        "mode": "bundled-postgres",
+        "database": {
+          "engine": "postgres",
+          "versionFile": "postgres/data/PG_VERSION",
+          "major": "18"
+        },
+        "deviceKeysRetained": 1,
+        "accountBindingsRetained": 2,
+        "oldChildrenReaped": 2,
+        "updatedChildrenReaped": 2
+      },
+      {
+        "mode": "postgres",
+        "database": {
+          "engine": "postgres",
+          "externalConnection": true
+        },
+        "deviceKeysRetained": 1,
+        "accountBindingsRetained": 3,
+        "oldChildrenReaped": 2,
+        "updatedChildrenReaped": 2
+      }
+    ],
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/desktop-update/rehearsal-after-host-restart/candidate/Cantrip Server Signed Update QA.app.tar.gz",
+      "bytes": 335689070,
+      "sha256": "c1b8cba6fd482408a0143bb7916753ba86286ecf0cf806777ab8fae710b98930"
+    },
+    "signature": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/desktop-update/rehearsal-after-host-restart/candidate/Cantrip Server Signed Update QA.app.tar.gz.sig",
+      "bytes": 436,
+      "sha256": "131b546032937a16fbf81f4e7b8879797a76f705cea984167bab6fc340709e4c"
+    },
+    "candidateAppSha256": "45fe611f88fe68f86ae35ce29172c025b2c13bb12281c8835452f1a0388071d3",
+    "candidateServerSha256": "a33b9fafd9d197d8b458598754860634689721f666e0bc2ce903935efe8b31a8",
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/desktop-update/rehearsal-after-host-restart/report.json",
+      "bytes": 12512,
+      "sha256": "a2beb7d160b9e55c21918850f2758ec823085049aa54830a675a03b4d4223aa9"
+    },
+    "driverLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/desktop-update/rehearsal-after-host-restart.log",
+      "bytes": 62836,
+      "sha256": "b5302e899f25e80cd4dcbf47f0dd31470da293ea4f0d2ac9fb4f642d8e9877be"
+    },
+    "initialTimestampFailures": [
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/desktop-update/rehearsal/report.json",
+        "bytes": 1600,
+        "sha256": "89ce0905bd0ef9766627803b55f8c771f449b5ad0e4ae0f533ff61e312ab8a35"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/desktop-update/rehearsal-retry/report.json",
+        "bytes": 1632,
+        "sha256": "52e482072bc3b355dd56a269674ad78b5adeae39e662913b1902c7c11f69d086"
+      }
+    ]
+  },
+  "populatedPerformance": {
+    "methodology": {
+      "pilotsPerCell": 1,
+      "warmupsPerCell": 5,
+      "measurementsPerCell": 20,
+      "completeWorkloadRegressionThresholdPct": 5,
+      "runOrder": [
+        "node-pglite",
+        "rust-pglite",
+        "node-postgres",
+        "rust-postgres",
+        "rust-bundled-postgres"
+      ],
+      "scope": "Sequential local production processes with the same dataset restored into each backend. The complete workload includes process startup, HTTP reads and writes, App Live and shutdown. Idle RSS sums only the server process tree. External PostgreSQL runs separately. The fixture does not measure fleet throughput or a deployment restart."
+    },
+    "ambientLoad": "Concurrent local VM and build activity increased timing variance. Treat the measured direction and reported tail samples as local observations.",
+    "dataset": {
+      "projects": 64,
+      "chats": 256,
+      "messages": 31624,
+      "busyMessages": 1024,
+      "settingsWrites": 20,
+      "temporaryWorkerEnrollments": 40
+    },
+    "cells": {
+      "node-pglite": {
+        "completeWorkloadMs": {
+          "median": 13015.147,
+          "p95": 23170.625
+        },
+        "readinessMs": {
+          "median": 3713.621,
+          "p95": 6362.501
+        },
+        "idleRssKiB": {
+          "median": 1334040.0,
+          "p95": 1342384.8
+        },
+        "projectListMs": {
+          "median": 24.602,
+          "p95": 46.257
+        },
+        "chatListMs": {
+          "median": 4.903,
+          "p95": 11.142
+        },
+        "historyPageMs": {
+          "median": 13.155,
+          "p95": 23.457
+        },
+        "fullHistoryMs": {
+          "median": 84.072,
+          "p95": 334.534
+        },
+        "mixedReadsPerSecond": {
+          "median": 87.963,
+          "p95": 157.145
+        },
+        "settingsWriteMs": {
+          "median": 12.757,
+          "p95": 24.51
+        },
+        "livePingMs": {
+          "median": 0.313,
+          "p95": 0.916
+        },
+        "enrollmentPublicationMs": {
+          "median": 15.616,
+          "p95": 24.796
+        },
+        "pausedConsumerCatchupMs": {
+          "median": 1.749,
+          "p95": 4.526
+        },
+        "shutdownMs": {
+          "median": 179.166,
+          "p95": 1297.658
+        },
+        "hostLoadAverage1m": {
+          "median": 36.111,
+          "p95": 56.933
+        }
+      },
+      "rust-pglite": {
+        "completeWorkloadMs": {
+          "median": 8858.428,
+          "p95": 14456.17
+        },
+        "readinessMs": {
+          "median": 378.151,
+          "p95": 520.416
+        },
+        "idleRssKiB": {
+          "median": 106240.0,
+          "p95": 107491.2
+        },
+        "projectListMs": {
+          "median": 18.441,
+          "p95": 25.756
+        },
+        "chatListMs": {
+          "median": 3.679,
+          "p95": 4.697
+        },
+        "historyPageMs": {
+          "median": 9.459,
+          "p95": 12.403
+        },
+        "fullHistoryMs": {
+          "median": 74.345,
+          "p95": 99.867
+        },
+        "mixedReadsPerSecond": {
+          "median": 118.387,
+          "p95": 297.329
+        },
+        "settingsWriteMs": {
+          "median": 7.09,
+          "p95": 10.012
+        },
+        "livePingMs": {
+          "median": 0.266,
+          "p95": 0.459
+        },
+        "enrollmentPublicationMs": {
+          "median": 8.221,
+          "p95": 19.553
+        },
+        "pausedConsumerCatchupMs": {
+          "median": 1.887,
+          "p95": 4.279
+        },
+        "shutdownMs": {
+          "median": 17.617,
+          "p95": 64.37
+        },
+        "hostLoadAverage1m": {
+          "median": 36.758,
+          "p95": 52.763
+        }
+      },
+      "node-postgres": {
+        "completeWorkloadMs": {
+          "median": 11283.855,
+          "p95": 18299.246
+        },
+        "readinessMs": {
+          "median": 3229.087,
+          "p95": 6460.109
+        },
+        "idleRssKiB": {
+          "median": 472152.0,
+          "p95": 476861.6
+        },
+        "projectListMs": {
+          "median": 13.488,
+          "p95": 18.539
+        },
+        "chatListMs": {
+          "median": 3.449,
+          "p95": 4.965
+        },
+        "historyPageMs": {
+          "median": 8.874,
+          "p95": 12.25
+        },
+        "fullHistoryMs": {
+          "median": 63.113,
+          "p95": 193.309
+        },
+        "mixedReadsPerSecond": {
+          "median": 195.705,
+          "p95": 372.919
+        },
+        "settingsWriteMs": {
+          "median": 7.342,
+          "p95": 13.398
+        },
+        "livePingMs": {
+          "median": 0.324,
+          "p95": 0.622
+        },
+        "enrollmentPublicationMs": {
+          "median": 12.777,
+          "p95": 23.17
+        },
+        "pausedConsumerCatchupMs": {
+          "median": 1.729,
+          "p95": 5.183
+        },
+        "shutdownMs": {
+          "median": 42.764,
+          "p95": 182.635
+        },
+        "hostLoadAverage1m": {
+          "median": 59.173,
+          "p95": 84.256
+        }
+      },
+      "rust-postgres": {
+        "completeWorkloadMs": {
+          "median": 4404.685,
+          "p95": 5642.461
+        },
+        "readinessMs": {
+          "median": 125.889,
+          "p95": 206.157
+        },
+        "idleRssKiB": {
+          "median": 67568.0,
+          "p95": 68048.8
+        },
+        "projectListMs": {
+          "median": 13.06,
+          "p95": 16.673
+        },
+        "chatListMs": {
+          "median": 2.336,
+          "p95": 2.999
+        },
+        "historyPageMs": {
+          "median": 6.347,
+          "p95": 7.895
+        },
+        "fullHistoryMs": {
+          "median": 54.029,
+          "p95": 81.017
+        },
+        "mixedReadsPerSecond": {
+          "median": 700.968,
+          "p95": 1068.158
+        },
+        "settingsWriteMs": {
+          "median": 3.551,
+          "p95": 8.806
+        },
+        "livePingMs": {
+          "median": 0.145,
+          "p95": 0.298
+        },
+        "enrollmentPublicationMs": {
+          "median": 6.407,
+          "p95": 10.957
+        },
+        "pausedConsumerCatchupMs": {
+          "median": 1.235,
+          "p95": 2.008
+        },
+        "shutdownMs": {
+          "median": 9.523,
+          "p95": 16.811
+        },
+        "hostLoadAverage1m": {
+          "median": 51.18,
+          "p95": 73.428
+        }
+      },
+      "rust-bundled-postgres": {
+        "completeWorkloadMs": {
+          "median": 2835.431,
+          "p95": 3901.602
+        },
+        "readinessMs": {
+          "median": 195.134,
+          "p95": 221.44
+        },
+        "idleRssKiB": {
+          "median": 391000.0,
+          "p95": 397167.2
+        },
+        "projectListMs": {
+          "median": 7.548,
+          "p95": 10.969
+        },
+        "chatListMs": {
+          "median": 1.271,
+          "p95": 1.924
+        },
+        "historyPageMs": {
+          "median": 3.485,
+          "p95": 5.19
+        },
+        "fullHistoryMs": {
+          "median": 34.191,
+          "p95": 46.517
+        },
+        "mixedReadsPerSecond": {
+          "median": 1254.308,
+          "p95": 1617.709
+        },
+        "settingsWriteMs": {
+          "median": 1.892,
+          "p95": 4.089
+        },
+        "livePingMs": {
+          "median": 0.076,
+          "p95": 0.136
+        },
+        "enrollmentPublicationMs": {
+          "median": 3.768,
+          "p95": 5.331
+        },
+        "pausedConsumerCatchupMs": {
+          "median": 0.826,
+          "p95": 1.258
+        },
+        "shutdownMs": {
+          "median": 19.139,
+          "p95": 40.368
+        },
+        "hostLoadAverage1m": {
+          "median": 33.902,
+          "p95": 39.118
+        }
+      }
+    },
+    "comparisons": {
+      "pglite": {
+        "guardExit": 0,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/populated-performance/measured/pglite-guard-comparison.md",
+          "bytes": 761,
+          "sha256": "f97a2c0ea036266513e8a3ce43a51edb551df9f549e72c605fbd3ffcc4aef510"
+        },
+        "medianChangePct": {
+          "completeWorkloadMs": -31.94,
+          "readinessMs": -89.82,
+          "idleRssKiB": -92.04,
+          "projectListMs": -25.04,
+          "chatListMs": -24.96,
+          "historyPageMs": -28.1,
+          "fullHistoryMs": -11.57,
+          "mixedReadsPerSecond": 34.59,
+          "settingsWriteMs": -44.42,
+          "livePingMs": -15.02,
+          "enrollmentPublicationMs": -47.36,
+          "pausedConsumerCatchupMs": 7.89,
+          "shutdownMs": -90.17,
+          "hostLoadAverage1m": 1.79
+        },
+        "metricsSlowerByMoreThan5Pct": ["pausedConsumerCatchupMs"]
+      },
+      "postgres": {
+        "guardExit": 0,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/populated-performance/measured/postgres-guard-comparison.md",
+          "bytes": 764,
+          "sha256": "abd81d901d156dc9fcb9c0381f5ac5180db36172e34fdf4fa40e323cd9e7afe0"
+        },
+        "medianChangePct": {
+          "completeWorkloadMs": -60.96,
+          "readinessMs": -96.1,
+          "idleRssKiB": -85.69,
+          "projectListMs": -3.17,
+          "chatListMs": -32.27,
+          "historyPageMs": -28.48,
+          "fullHistoryMs": -14.39,
+          "mixedReadsPerSecond": 258.18,
+          "settingsWriteMs": -51.63,
+          "livePingMs": -55.25,
+          "enrollmentPublicationMs": -49.86,
+          "pausedConsumerCatchupMs": -28.57,
+          "shutdownMs": -77.73,
+          "hostLoadAverage1m": -13.51
+        },
+        "metricsSlowerByMoreThan5Pct": []
+      }
+    },
+    "pglitePausedConsumerCatchup": "Median was 1.887 ms for Rust and 1.749 ms for Node. The p95 of the run medians was 4.279 ms and 4.526 ms respectively.",
+    "measurements": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/populated-performance/measured-run-receipts.json",
+      "bytes": 51422,
+      "sha256": "4fd246b0a31da446c608bdd91a1d5d825984900768bd88080cad581750c9295f"
+    },
+    "environment": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/populated-performance/environment.txt",
+      "bytes": 353,
+      "sha256": "1d5e52b0aa2f52592f9245023432e4d739c6fa145adcd730cc9708dd232e0e5b"
+    }
+  }
+}
