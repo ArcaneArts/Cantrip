@@ -117,6 +117,15 @@ includes the initial 60-second PGlite timeout and the subsequent timings
 under software emulation.
 [Windows x64 1.1.2938 standalone record](security/rust-server-2938-win32-x64-standalone.json)
 
+The Windows x64 `1.1.2938` NSIS installer passed a signed update from
+`1.1.2881` over local HTTPS. The updater rejected the tampered download
+before replacing the app. The relaunch reopened the retained PGlite profile,
+kept a setting written just before the update, and received a reply from the
+packaged worker. All 14,092 installed files matched the signed payload. The
+native tray quit returned exit zero and reaped the Rust server and Node worker.
+The fixture used a disposable updater key and local TLS root.
+[Windows x64 1.1.2938 signed desktop update record](security/rust-server-2938-win32-x64-desktop-update.json)
+
 The Windows x64 `1.1.2881` standalone distribution passed all three stores,
 including migration, SQL export, hosted reopening and retained writes.
 [Windows x64 standalone record](security/rust-server-2881-win32-x64-standalone.json)

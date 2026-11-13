@@ -29750,6 +29750,18 @@
         "record": "docs/security/rust-server-2938-win32-x64-standalone.json",
         "scope": "Local Windows 11 x64 under QEMU software emulation. The three-store runtime used a 240-second startup allowance and the existing 15-second shutdown assertion."
       },
+      "windowsX64SignedDesktopUpdate": {
+        "version": "1.1.2938",
+        "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+        "baselineVersion": "1.1.2881",
+        "databaseMode": "pglite",
+        "verifiedInstalledFiles": 14092,
+        "tamperedDownloadRejected": "update_signature_invalid",
+        "retainedWriteAndWorkerReply": true,
+        "cleanTrayShutdown": true,
+        "record": "docs/security/rust-server-2938-win32-x64-desktop-update.json",
+        "scope": "The desktop used a disposable updater key and local TLS root. The app was exercised in a local Windows 11 x64 guest under QEMU software emulation on Apple Silicon. The signed update used a retained PGlite profile. Windows Authenticode release signing and the installed three-store launch matrix are outside this update record."
+      },
       "nativeBoundaryRecheck": {
         "runtimeSourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
         "target": "darwin-arm64",
@@ -29762,7 +29774,7 @@
         "runner": "scripts/audit-server-boundaries.mjs"
       },
       "remaining": [
-        "Complete the Windows signed desktop update, installed three-store matrix and full-worker CLI worktree qualification on the current package.",
+        "Complete the Windows installed three-store launch/reopen matrix and full-worker CLI worktree qualification on the current package.",
         "Complete aligned macOS renderer packaging, current existing-profile rollback, outstanding product and dependency failure checks, and representative performance verification.",
         "Reconcile remaining domain contracts against passing behavior."
       ]
