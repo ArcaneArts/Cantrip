@@ -28847,10 +28847,10 @@
         "version": "1.1.2938",
         "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
         "platform": "darwin-arm64",
-        "databaseMode": "pglite",
-        "runtime": "rust",
-        "snapshots": 41,
-        "record": "docs/security/rust-server-2938-darwin-arm64-worker-recovery.json#cantripOsRootSystemPGlite"
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "productCells": 6,
+        "matchedSnapshotsAcrossPairs": 123,
+        "record": "docs/security/rust-server-2938-darwin-arm64-root-system.json"
       },
       "status": "implemented-pending-platform-acceptance",
       "sourceBaseline": "7c1433b3b455f179adee6cc3db01b5865c79d50b",
@@ -29754,6 +29754,12 @@
       ]
     },
     "releaseArtifactQualification2938": {
+      "macOS2938CantripOsRootSystem": {
+        "version": "1.1.2938",
+        "productCells": 6,
+        "matchedSnapshotsAcrossPairs": 123,
+        "record": "docs/security/rust-server-2938-darwin-arm64-root-system.json"
+      },
       "macOS2938JsonWire": {
         "version": "1.1.2938",
         "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
