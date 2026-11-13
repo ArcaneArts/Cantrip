@@ -516,6 +516,70 @@ describe("persistent worker encryption", () => {
     expect(fetcher).toHaveBeenCalledOnce();
   });
 
+  it("refreshes again when an in-flight heartbeat predates the requested grant", async () => {
+    const workerId = "worker-grant-refresh";
+    const service = await WorkerEncryptionService.open({
+      dataDirectory: await directory(),
+      serverUrl: "https://cantrip.test",
+      workerId,
+    });
+    const approved = principal(service, workerId);
+    const component = "private-surface-metadata";
+    const componentKey = deriveComponentKey({
+      accountMasterKey: generateAccountMasterKey(),
+      ownerId,
+      component,
+      keyRevision: 1,
+    });
+    const readyGrant = grant(
+      approved.id,
+      await wrapComponentKeyForWorker({
+        ownerId,
+        workerId,
+        component,
+        componentKey,
+        keyRevision: 1,
+        workerPublicKey: approved.publicKey,
+      }),
+      "44444444-4444-4444-8444-444444444444",
+    );
+    const old = deferred<Response>();
+    const fetcher = vi.fn(
+      fetchSequence(
+        old.promise,
+        Promise.resolve(
+          Response.json({
+            serverId,
+            ownerId,
+            principal: approved,
+            grants: [readyGrant],
+          }),
+        ),
+      ),
+    );
+    const input = { credential: "worker-credential", fetch: fetcher };
+    const heartbeat = service.refresh(input);
+    const command = {
+      ...input,
+      requestedGrant: { component, keyRevision: 1 },
+    } as const;
+    const explicit = service.refresh(command);
+    const concurrent = service.refresh(command);
+    old.resolve(
+      Response.json({ serverId, ownerId, principal: approved, grants: [] }),
+    );
+    await expect(heartbeat).resolves.toMatchObject({ grants: [] });
+    for (const refresh of [explicit, concurrent])
+      await expect(refresh).resolves.toMatchObject({
+        state: "ready",
+        grants: [{ component, keyRevision: 1 }],
+      });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(bytesEqual(service.componentKey(component).key, componentKey)).toBe(
+      true,
+    );
+  });
+
   it("reconnects a restored remote worker after server and account IDs change", async () => {
     const dataDirectory = await directory();
     const pathname = workerEncryptionKeyPath(dataDirectory);

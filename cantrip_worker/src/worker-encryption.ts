@@ -31,6 +31,7 @@ import {
   type EncryptionPublicKey,
   type WorkerEncryptionBootstrapResult,
   type WorkerEncryptionComponentScope,
+  type WorkerEncryptionRefreshRequest,
   type WorkerEncryptionStatus,
 } from "@cantrip/protocol/encryption";
 
@@ -494,6 +495,7 @@ export class WorkerEncryptionService {
   refresh(input: {
     credential: string;
     fetch?: typeof fetch;
+    requestedGrant?: WorkerEncryptionRefreshRequest;
   }): Promise<WorkerEncryptionStatus> {
     const fetcher = input.fetch ?? fetch;
     const existing = this.#refreshInFlight;
@@ -503,6 +505,33 @@ export class WorkerEncryptionService {
       existing.credential === input.credential &&
       existing.fetcher === fetcher
     ) {
+      const requested = input.requestedGrant;
+      if (requested) {
+        // A heartbeat may have fetched its grant list before the browser
+        // committed the grant that prompted this explicit refresh.
+        return existing.promise.then((status) => {
+          if (
+            status.state === "ready" &&
+            status.grants.some(
+              ({ component, keyRevision }) =>
+                component === requested.component &&
+                keyRevision === requested.keyRevision,
+            )
+          )
+            return status;
+          if (existing.generation !== this.#bootstrapGeneration) {
+            const current = this.#refreshInFlight;
+            if (
+              current?.generation === this.#bootstrapGeneration &&
+              current.credential === input.credential &&
+              current.fetcher === fetcher
+            )
+              return current.promise;
+            return this.status();
+          }
+          return this.refresh({ credential: input.credential, fetch: fetcher });
+        });
+      }
       return existing.promise;
     }
     const generation = ++this.#bootstrapGeneration;
