@@ -101,5 +101,43 @@
       "bytes": 2095,
       "sha256": "f38b66c873f410967e223ef8de358f08e1dbe67aa697004b76ce8990e6111d6f"
     }
+  },
+  "historicalProductRollback": {
+    "legacyVersion": "1.1.2733",
+    "nativeVersion": "1.1.2976",
+    "nativeExecutableSha256": "eba01be07448e2505235dcaf8585e96ae7b9c797c0e2f9082abaae44f92d7af2",
+    "originalProfileUnchanged": true,
+    "originalSessionAndIdentityRetained": true,
+    "encryptedContentReadableAfterRoundTrip": true,
+    "baselineTables": 137,
+    "databaseModes": [
+      {
+        "mode": "pglite",
+        "migrationsApplied": 2,
+        "rustThenLegacyWritesRetained": true,
+        "reupgradeVerified": true,
+        "allTableAndSequenceEquality": true
+      },
+      {
+        "mode": "bundled-postgres",
+        "migrationsApplied": 2,
+        "rustThenLegacyWritesRetained": true,
+        "reupgradeVerified": true,
+        "allTableAndSequenceEquality": true
+      },
+      {
+        "mode": "postgres",
+        "migrationsApplied": 2,
+        "rustThenLegacyWritesRetained": true,
+        "reupgradeVerified": true,
+        "allTableAndSequenceEquality": true
+      }
+    ],
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/historical-product/report.json",
+      "bytes": 73329,
+      "sha256": "434a3390fbfe91a0bb196a32b63ae9435348b64a0e5c886144348110c8a3e3e6"
+    },
+    "scope": "A populated copy of the historical Node profile used the packaged native server and bounded offline converter. The old server accepted further writes after rollback, then the native server reopened those writes. The original historical directory was read-only during the test."
   }
 }
