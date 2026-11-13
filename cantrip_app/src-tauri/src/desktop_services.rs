@@ -166,13 +166,23 @@ pub fn wait_for_preparation(
 }
 
 pub fn terminate_child(child: &mut Child) {
+    terminate_with_stdin_grace(child, Duration::from_secs(10));
+}
+
+pub fn terminate_server(child: &mut Child) {
+    // Bundled PostgreSQL can spend 30 seconds stopping after the server has
+    // drained requests and closed its database connections.
+    terminate_with_stdin_grace(child, Duration::from_secs(60));
+}
+
+fn terminate_with_stdin_grace(child: &mut Child, grace: Duration) {
     if child.try_wait().ok().flatten().is_some() {
         return;
     }
     // Native servers own this pipe. Closing it also works on Windows, where
     // TerminateProcess cannot request an orderly database/service shutdown.
     if child.stdin.take().is_some() {
-        let deadline = Instant::now() + Duration::from_secs(10);
+        let deadline = Instant::now() + grace;
         while Instant::now() < deadline {
             if child.try_wait().ok().flatten().is_some() {
                 return;
@@ -269,7 +279,7 @@ pub fn wait_for_server(
     let deadline = Instant::now() + STARTUP_TIMEOUT;
     loop {
         if cancelled() {
-            terminate_child(child);
+            terminate_server(child);
             return Ok(false);
         }
         if let Some(status) = child
@@ -314,6 +324,20 @@ mod tests {
         terminate_child(&mut child);
         assert!(child.wait().unwrap().success());
         assert!(began.elapsed() < Duration::from_secs(3));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn server_can_finish_draining_after_the_generic_child_deadline() {
+        let mut child = Command::new("/bin/sh")
+            .args(["-c", "read unused; sleep 11; exit 0"])
+            .stdin(Stdio::piped())
+            .spawn()
+            .unwrap();
+
+        terminate_server(&mut child);
+
+        assert!(child.wait().unwrap().success());
     }
 
     #[cfg(unix)]
