@@ -1,4 +1,4 @@
-use super::{Repository, checked, decode, text, uuid};
+use super::{PlacementError, Repository, checked, decode, text, uuid};
 use anyhow::{Context, Result, ensure};
 use postgres_types::Json;
 use serde_json::{Value, json};
@@ -118,18 +118,23 @@ impl Repository {
             control.cloned(),
         );
         self.database.transaction(|tx| Box::pin(async move {
-            if let Some(control) = &control {
+            let (attachment, target) = if let Some(control) = &control {
                 let rows = decode(tx.query(OWNED, &[&owner, &instance]).await?)?;
-                let i = rows.first().context(crate::cantrip_os::PlacementError("Owned OS attachment not found."))?;
-                ensure!(i["attachment_generation"] == control["attachmentGeneration"], "The original package attachment changed; no continuation was dispatched.");
-            }
-            let rows = decode(tx.query("SELECT to_jsonb(o)::text FROM cantrip_os_package_operations o WHERE owner_id=$1 AND instance_id=$2 AND operation_id=$3", &[&owner,&instance,&id]).await?)?;
-            let row = rows.first().context(crate::cantrip_os::PlacementError("Package operation not found."))?;
-            if let Some(control) = control {
-                ensure!(row["attachment_generation"] == control["attachmentGeneration"] && row["target_generation"] == control["targetGeneration"], "Package operation not found for the original target.");
-            }
-            let saved = decode(tx.query("UPDATE cantrip_os_package_operations SET revision=revision+1 WHERE owner_id=$1 AND instance_id=$2 AND operation_id=$3 RETURNING to_jsonb(cantrip_os_package_operations)::text", &[&owner,&instance,&id]).await?)?;
-            Ok(saved.first().context(crate::cantrip_os::PlacementError("Package operation not found."))?.clone())
+                let i = rows.first().context(PlacementError("Owned OS attachment not found."))?;
+                let attachment = text(control, "attachmentGeneration")?;
+                ensure!(i["attachment_generation"] == attachment, PlacementError("The original package attachment changed; no continuation was dispatched."));
+                (Some(attachment), Some(text(control, "targetGeneration")?))
+            } else {
+                (None, None)
+            };
+            let rows = decode(tx.query(
+                "UPDATE cantrip_os_package_operations SET revision=revision+1
+                 WHERE owner_id=$1 AND instance_id=$2 AND operation_id=$3
+                 AND ($4::text IS NULL OR (attachment_generation=$4 AND target_generation=$5::text))
+                 RETURNING to_jsonb(cantrip_os_package_operations)::text",
+                &[&owner, &instance, &id, &attachment, &target],
+            ).await?)?;
+            rows.into_iter().next().context(PlacementError("Package operation not found for the original target."))
         })).await
     }
     pub async fn package_record(&self, owner: &str, original: &Value, raw: Value) -> Result<Value> {

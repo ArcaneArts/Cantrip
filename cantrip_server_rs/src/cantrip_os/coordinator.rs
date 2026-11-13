@@ -385,7 +385,7 @@ impl Coordinator {
             .repository
             .admission(owner, project, id)
             .await?
-            .context("This source has no provisioning admission.")?;
+            .context(PlacementError("This source has no provisioning admission."))?;
         let result=self.request(text(&context["instance"],"workerId")?,json!({"type":"cantrip-os.operation.inspect","scope":core_scope(&admission["scope"]),"operationId":admission["operation_id"]}),"cantripOsOperationResultSchema").await?;
         self.apply(owner, project, id, result).await
     }

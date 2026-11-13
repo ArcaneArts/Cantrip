@@ -2,24 +2,23 @@
 use super::{
     body, json_response,
     middleware::{self, Context},
-    settings::parse,
 };
 use crate::{
     agent_alerts,
     auth::service::AuthService,
     chats, project_alerts,
-    wire::{Value, value::json},
+    wire::{self, ValidationError, Value, value::json},
     workers::credentials,
 };
 use anyhow::{Context as _, Result};
 use axum::{
     Extension, Router,
-    extract::{Query, Request, State},
-    http::{HeaderMap, StatusCode},
+    extract::{Request, State},
+    http::{HeaderMap, StatusCode, Uri},
     response::Response,
     routing::{get, post},
 };
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 pub(super) fn failure(status: u16, code: &str, message: &str) -> Response {
     json_response(
         StatusCode::from_u16(status).unwrap(),
@@ -44,14 +43,20 @@ async fn authenticate(
 async fn capabilities(
     State(service): State<Arc<AuthService>>,
     Extension(ctx): Extension<Arc<Context>>,
-    Query(query): Query<HashMap<String, String>>,
+    uri: Uri,
     headers: HeaderMap,
 ) -> Response {
     let result: Result<Response> = async {
-        let query = Value::from_serialize(&json!(query));
-        let query = match parse("workerCantripMcpCapabilitiesQuerySchema", Some(&query))? {
-            Ok(v) => v,
-            Err(r) => return Ok(r),
+        let query = super::account::query(&uri);
+        let query = match wire::parse("workerCantripMcpCapabilitiesQuerySchema", Some(&query)) {
+            Ok(query) => query,
+            Err(ValidationError::Invalid(issues)) => {
+                return Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({"code":"invalid","error":"Invalid request body","issues":issues}),
+                ));
+            }
+            Err(ValidationError::Operation) => anyhow::bail!("MCP capability query parsing failed"),
         };
         let worker = query["workerId"].as_str().context("Worker identity")?;
         let authorization = middleware::value(&headers, "authorization");

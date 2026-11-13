@@ -331,6 +331,17 @@ async fn package_http_recovers_original_admission_without_an_executor_and_preser
         "{operations}/{}/continue",
         continued["operationId"].as_str().unwrap()
     );
+    let before = commands.lock().unwrap().len();
+    let mut wrong_target = control.clone();
+    wrong_target["targetGeneration"] = json!(id());
+    assert_eq!(
+        post(&client, &running.base, &continuation, &wrong_target).await?,
+        (
+            409,
+            json!({"error":"Package operation not found for the original target."}),
+        ),
+    );
+    assert_eq!(commands.lock().unwrap().len(), before);
     assert_eq!(
         post(&client, &running.base, &continuation, &control)
             .await?

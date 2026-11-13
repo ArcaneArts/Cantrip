@@ -33,6 +33,30 @@ const report = {
   exits: [],
 };
 const identity = "99999999-9999-4999-8999-999999999999";
+const errorContracts = [
+  ["GET", "/api/internal/agent-operations/capabilities", 400],
+  [
+    "POST",
+    "/api/cantrip-os/:instanceId/package-operations/:operationId/observe",
+    409,
+  ],
+  [
+    "POST",
+    "/api/projects/:projectId/cantrip-os/bindings/:bindingId/recover",
+    409,
+  ],
+  [
+    "POST",
+    "/api/projects/:projectId/cantrip-os/bindings/:bindingId/verify",
+    409,
+  ],
+];
+const capabilityQueryCases = [
+  ["?workerId=", 400],
+  ["?workerId=worker&workerId=other", 400],
+  ["?workerId=worker&%GG=1", 400],
+  ["?workerId=worker", 401],
+];
 let server, failure;
 try {
   for (const kind of ["node", "rust"]) {
@@ -106,6 +130,16 @@ try {
         });
       }
     }
+    const capabilityQueries = [];
+    report.responses.at(-1).capabilityQueries = capabilityQueries;
+    for (const [query, status] of capabilityQueryCases) {
+      const response = await fetch(
+        server.origin + "/api/internal/agent-operations/capabilities" + query,
+        { signal: AbortSignal.timeout(5000) },
+      );
+      assert.equal(response.status, status, kind + " capabilities " + query);
+      capabilityQueries.push({ query, status, body: await response.json() });
+    }
     await server.close();
     report.exits.push({
       kind,
@@ -131,6 +165,18 @@ try {
     ),
     "Every HTTP request must complete; errors are retained in the report",
   );
+  const [node, rust] = report.responses;
+  for (const [method, path, status] of errorContracts) {
+    const expected = node.rows.find(
+      (r) => r.method === method && r.path === path,
+    );
+    const actual = rust.rows.find(
+      (r) => r.method === method && r.path === path,
+    );
+    assert.equal(expected?.status, status, "Reference " + method + " " + path);
+    assert.deepEqual(actual, expected, method + " " + path);
+  }
+  assert.deepEqual(rust.capabilityQueries, node.capabilityQueries);
 } catch (error) {
   failure = error;
   report.failure = { message: error.message, stack: error.stack };
