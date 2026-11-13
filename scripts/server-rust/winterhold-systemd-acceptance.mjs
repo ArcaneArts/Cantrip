@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import https from "node:https";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -542,24 +542,22 @@ try {
     // argument at the named boundary. The successful migration path is real.
     for (const phase of ["migration", "startup"]) {
       const broken = path.join(evidence, mode + "-bad-" + phase);
+      const brokenRelease = id(mode + phase);
+      const faultArgument = `--fixture-invalid-${phase}-${mode}`;
       await mkdir(broken);
-      for (const [file, executable, arg] of [
-        [
-          "migrate.sh",
-          "migrate.sh",
-          phase === "migration" ? " --fixture-invalid-migration" : "",
-        ],
-        [
-          "start.sh",
-          "start.sh",
-          phase === "startup" ? " --fixture-invalid-startup" : "",
-        ],
-      ])
+      for (const [file, arg] of [
+        ["migrate.sh", phase === "migration" ? faultArgument : ""],
+        ["start.sh", phase === "startup" ? faultArgument : ""],
+      ]) {
+        const launcher = path.join(broken, file);
         await writeFile(
-          path.join(broken, file),
-          `#!/bin/sh\nexec /opt/cantrip/releases/${upgraded}/${executable}${arg} "$@"\n`,
-          { mode: 0o755 },
+          launcher,
+          `#!/bin/sh\nexec /opt/cantrip/releases/${upgraded}/${file} ${arg} "$@"\n`,
         );
+        // The evidence directory may be created under a restrictive umask.
+        // The installed launchers must also execute as the service account.
+        await chmod(launcher, 0o755);
+      }
       const archive = broken + ".tar.gz";
       createProductionServerArchive(broken, archive);
       const changed = {
@@ -584,15 +582,28 @@ try {
         await runHost("systemctl", "daemon-reload");
         await runHost("systemctl", "reset-failed", "cantrip-server.service");
       }
-      steps.push(
-        await install(
-          archive,
-          id(mode + phase),
-          changed,
-          mode + "-fault-" + phase,
-          true,
-        ),
+      const failedInstall = await install(
+        archive,
+        brokenRelease,
+        changed,
+        mode + "-fault-" + phase,
+        true,
       );
+      const faultUnit =
+        phase === "migration"
+          ? `cantrip-migrate@${brokenRelease}.service`
+          : "cantrip-server.service";
+      const faultMessage = `unexpected argument '${faultArgument}' found`;
+      const faultJournal = await runHost(
+        "journalctl",
+        "--unit",
+        faultUnit,
+        "--output=cat",
+        "--no-pager",
+        `--grep=${faultMessage}`,
+      );
+      assert.ok(faultJournal.includes(faultMessage));
+      steps.push({ ...failedInstall, faultUnit, faultMessage });
       if (exhaustStartLimit) {
         assert.match(
           await runHost(
