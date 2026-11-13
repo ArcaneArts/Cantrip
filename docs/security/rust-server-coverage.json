@@ -28841,11 +28841,12 @@
         "Explicit cancellation, SDK abort and HTTP disconnect close the original provider connection, retain one receipt and never replay inference.",
         "Timeout and worker SIGKILL retain failed versus unknown usage; original exported rows survive actual server/worker restart.",
         "Active server SIGKILL on macOS preserves one original usage record with no worker receipt or reported counters. The same worker reconnects and completes fresh inference without replaying the interrupted input, matching the Node reference in all three stores.",
+        "With macOS external PostgreSQL offline for 45 seconds, the same server and worker retain an active provider request and settle one completed receipt after recovery. The original replay is rejected. Rust remains live and reports unready throughout the sampled outage.",
         "Public aggregate totals and completeness match observed receipts; missing counters and worker receipts remain unknown."
       ],
       "baselineRepair": "Unmodified Node external/private PostgreSQL aggregate routes fail to bind Date parameters for a SQL CASE expression; four ISO timestamp bindings restore the range predicates. Node PGlite and native Rust already passed.",
       "remaining": [
-        "Windows package coverage, active-operation database and Redis interruption, long outages, and non-macOS server-process interruption remain unqualified.",
+        "Windows package coverage, active Redis interruption, receipt settlement while PostgreSQL is unavailable, longer outages, and non-macOS server-process interruption remain unqualified.",
         "Configured OpenAI-compatible adapters and an owned local provider are exercised; this does not prove every provider-private adapter behavior.",
         "Default Rust cutover and production Node-server removal remain required."
       ]
