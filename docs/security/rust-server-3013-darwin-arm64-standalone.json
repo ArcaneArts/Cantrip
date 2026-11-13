@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "target": "darwin-arm64",
+  "version": "1.1.3013",
+  "sourceCommit": "9069ae6acc0a4456e077582abe1b4867576942cf",
+  "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+  "artifact": {
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/cantrip-server-1.1.3013-darwin-arm64.tar.gz",
+      "bytes": 66918839,
+      "sha256": "c2720aa5de0a8c54b8ffb4afd0382242a1f2fba492e022f27e66cfd8950f5bda"
+    },
+    "nativeManifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/qualified-candidate/native-server.json",
+      "bytes": 325804,
+      "sha256": "f093d3f77ff1954eca7ba0dd7ffbd1dbd42da0bdeea09bf33bf6e8d1ee810a6d"
+    },
+    "executableSha256": "6e2c81304db71bc9f77d879b449c973aa8c21c6f5bb0cc11b969d7fa9fe27293",
+    "verifiedManifestFiles": 1762,
+    "verifiedArchiveHardLinks": 257
+  },
+  "checks": {
+    "packagedAndRelocatedArchivePassed": true,
+    "migrationsExportRetainedWritesAndSigterm": true,
+    "hostedReopen": true,
+    "configurationPrecedence": true,
+    "embeddedRuntimeFallback": true,
+    "runtimePathHasNoNode": true,
+    "homebrewAccessDenied": true,
+    "artifactWritesDenied": true,
+    "runningVersionAndHttpInstanceId": true
+  },
+  "evidence": {
+    "build.log": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/build.log",
+      "bytes": 175,
+      "sha256": "10582cef250fdcae0535f3ee8c3bcefa3465a35376c3f5a47b24ed7792a9f513"
+    },
+    "standalone-acceptance.json": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/standalone-acceptance.json",
+      "bytes": 3011,
+      "sha256": "ce71494554699c1aed782498ae248e9bfcf0f9c4213a1d5cd1dedc639a3104e4"
+    },
+    "archive-acceptance.json": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/archive-acceptance.json",
+      "bytes": 3027,
+      "sha256": "e90919d7782fe72c6d68c3b9fe5e20995fa0f2dee65ce2c80ff210c6122023a3"
+    },
+    "running-package.json": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/running-package.json",
+      "bytes": 250,
+      "sha256": "03fd138e671970db3db5f4cd5f5f69b0fead80a5d449d4be89ab414d43590d9d"
+    },
+    "archive-verification.json": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/archive-verification.json",
+      "bytes": 308,
+      "sha256": "a6d7a207ffcaaea349a9cbb257a9fc8d35a5928afc415c6d42b392db3734f5ad"
+    }
+  },
+  "scope": "Local macOS ARM64 standalone qualification of the rebuilt 1.1.3013 server distribution and a fresh archive extraction. Desktop signing, historical profile migration and post-write rollback, Windows and Linux release artifacts, and Winterhold deployment are outside this record."
+}
