@@ -115,6 +115,45 @@
     },
     "bundledAppSha256": "8b823adccdc5897f919c445450e4ccacebdcbc49772b42ad6594f36cd67e6e25",
     "bundledServerSha256": "d678aacfb2d0d063812f84c1ae47766dce222f25382183f85b8c7d7b3fee7168",
-    "scope": "Verified installer contents and local Tauri QA updater signature. Installed desktop and signed update behavior are tracked separately."
+    "scope": "Verified NSIS contents and the local Tauri QA updater signature. Installed first launch and reopen were exercised in a local Windows x64 QEMU guest on an ARM64 macOS host.",
+    "installedMatrix": {
+      "passedCases": 6,
+      "bundledWorkerSha256": "dbe9866bec05f69098695957e183aa9c5c0a95daa9504b31a3e17f461cc89a39",
+      "databaseModes": [
+        {
+          "mode": "pglite",
+          "firstLaunchAndPersistedProfileReopen": true,
+          "retainedIdentityAndSettingsWrite": true,
+          "packagedWorkerReply": true,
+          "trayShutdownAndChildReap": true
+        },
+        {
+          "mode": "bundled-postgres",
+          "firstLaunchAndPersistedProfileReopen": true,
+          "retainedIdentityAndSettingsWrite": true,
+          "packagedWorkerReply": true,
+          "trayShutdownAndChildReap": true,
+          "managedPostgresReaped": true
+        },
+        {
+          "mode": "postgres",
+          "firstLaunchAndPersistedProfileReopen": true,
+          "retainedIdentityAndSettingsWrite": true,
+          "packagedWorkerReply": true,
+          "trayShutdownAndChildReap": true,
+          "externalPostgresSurvivedBothShutdowns": true
+        }
+      ],
+      "serialObservation": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/installed-desktop-2976-acceptance/installed-desktop.jsonl",
+        "bytes": 17368,
+        "sha256": "0ff2050e2fc01924f5dc28c104642112ae5ac53b62d355f9692850b81c49d867"
+      },
+      "terminalReceipts": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/installed-desktop-2976-acceptance/terminal-receipts.json",
+        "bytes": 7205,
+        "sha256": "dc8fdc1c28f6c3f174ccec337295e355b38c596974c8964585d54a1cca0179f9"
+      }
+    }
   }
 }
