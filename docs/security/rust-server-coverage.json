@@ -6599,10 +6599,11 @@
           "docs/RUST_SERVER_MODEL_OPERATIONS.md",
           "scripts/server-rust/actual-model-operations-client.mjs",
           "scripts/server-rust/model-operation-provider.mjs",
-          "docs/security/rust-server-2976-darwin-arm64-model-operations.json"
+          "docs/security/rust-server-2976-darwin-arm64-model-operations.json",
+          "docs/security/rust-server-2976-linux-model-operations.json"
         ],
         "remaining": [
-          "Current Windows and Linux package coverage, active-operation server or dependency interruption, and long-outage product qualification remain required."
+          "Current Windows package coverage, active-operation server or dependency interruption, and long-outage product qualification remain required."
         ]
       },
       {
@@ -6616,10 +6617,11 @@
           "docs/RUST_SERVER_MODEL_OPERATIONS.md",
           "scripts/server-rust/actual-model-operations-client.mjs",
           "scripts/server-rust/model-operation-provider.mjs",
-          "docs/security/rust-server-2976-darwin-arm64-model-operations.json"
+          "docs/security/rust-server-2976-darwin-arm64-model-operations.json",
+          "docs/security/rust-server-2976-linux-model-operations.json"
         ],
         "remaining": [
-          "Current Windows and Linux package coverage, active-operation server or dependency interruption, and long-outage product qualification remain required."
+          "Current Windows package coverage, active-operation server or dependency interruption, and long-outage product qualification remain required."
         ]
       },
       {
@@ -6633,10 +6635,11 @@
           "docs/RUST_SERVER_MODEL_OPERATIONS.md",
           "scripts/server-rust/actual-model-operations-client.mjs",
           "scripts/server-rust/model-operation-provider.mjs",
-          "docs/security/rust-server-2976-darwin-arm64-model-operations.json"
+          "docs/security/rust-server-2976-darwin-arm64-model-operations.json",
+          "docs/security/rust-server-2976-linux-model-operations.json"
         ],
         "remaining": [
-          "Current Windows and Linux package coverage, active-operation server or dependency interruption, and long-outage product qualification remain required."
+          "Current Windows package coverage, active-operation server or dependency interruption, and long-outage product qualification remain required."
         ]
       },
       {
@@ -6650,10 +6653,11 @@
           "docs/RUST_SERVER_MODEL_OPERATIONS.md",
           "scripts/server-rust/actual-model-operations-client.mjs",
           "scripts/server-rust/model-operation-provider.mjs",
-          "docs/security/rust-server-2976-darwin-arm64-model-operations.json"
+          "docs/security/rust-server-2976-darwin-arm64-model-operations.json",
+          "docs/security/rust-server-2976-linux-model-operations.json"
         ],
         "remaining": [
-          "Current Windows and Linux package coverage, active-operation server or dependency interruption, and long-outage product qualification remain required."
+          "Current Windows package coverage, active-operation server or dependency interruption, and long-outage product qualification remain required."
         ]
       },
       {
@@ -28808,6 +28812,7 @@
       ]
     },
     "fullWorkerModelOperations": {
+      "linux2976Qualification": "docs/security/rust-server-2976-linux-model-operations.json",
       "macos2976Qualification": "docs/security/rust-server-2976-darwin-arm64-model-operations.json",
       "status": "implemented-pending-platform-acceptance",
       "sourceBaseline": "bb7af5ccc7322e5b18c1a23cd31abb198ad1608c",
