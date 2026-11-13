@@ -5350,8 +5350,7 @@
           "cantrip_server_rs/tests/mcp_run_bindings.rs"
         ],
         "remaining": [
-          "All55 canonical Source MCP operations are advertised. Nine worker-owned help/web operations retain the unchanged worker implementation; native server authority and direct errors match Source. Legacy CLI transport, including worktree.acquire, and native product/platform/full replacement acceptance remain unfinished.",
-          "Current native and supported-platform product/packaging, coordination and full replacement acceptance."
+          "Full-worker product coverage for the remaining MCP operations, shared coordination, and supported-platform acceptance. The separate CLI route has worktree acquire evidence under legacyWorkerCli."
         ]
       },
       {
@@ -5381,8 +5380,7 @@
           "cantrip_server_rs/tests/mcp_run_bindings.rs"
         ],
         "remaining": [
-          "All55 canonical Source MCP operations are advertised. Nine worker-owned help/web operations retain the unchanged worker implementation; native server authority and direct errors match Source. Legacy CLI transport, including worktree.acquire, and native product/platform/full replacement acceptance remain unfinished.",
-          "Current native and supported-platform product/packaging, coordination and full replacement acceptance."
+          "Full-worker product coverage for the remaining MCP operations, shared coordination, and supported-platform acceptance. The separate CLI route has worktree acquire evidence under legacyWorkerCli."
         ]
       },
       {
@@ -5440,7 +5438,14 @@
           "scripts/server-rust/cli-http-recovery.mjs",
           "scripts/server-rust/cli-context-oracle.mjs",
           "cantrip_server_rs/src/cli/tests.rs",
-          "docs/RUST_SERVER_CLI.md"
+          "docs/RUST_SERVER_CLI.md",
+          "docs/security/rust-server-cli-http-contract-matrix.json",
+          "docs/security/rust-server-2976-darwin-arm64-acceptance.json#cliWorktreeContinuation",
+          "docs/security/rust-server-2936-linux-cli-worktree-acceptance.json"
+        ],
+        "scope": "All 35 legacy CLI commands use native server services. The paired HTTP matrix covers all three stores and authentication modes. The full-worker create-and-switch flow passed all three stores with the 1.1.2976 macOS package and the earlier Linux ARM64 and x64 containers.",
+        "remaining": [
+          "Qualify the full-worker CLI worktree continuation with the current Windows package."
         ]
       },
       {
@@ -28055,9 +28060,7 @@
       "validatedSubset": "Twelve native Run MCP operations retain Source arguments/defaults, exact dispatched source/worker binding, Primary mutation prevalidation, durable project serialization, lifecycle/secret receipts, opaque output and Source success/rejection audit actions/resource IDs. Restart fences old execution claims before controlled fresh execution replays existing receipts. Public Run service response/error paths retain their previous interfaces. Only actual MCP worktree query failures receive captured Source SQL/original UTF16 parameter diagnostics; old target query statements remain unchanged. Empty worker-join reconciliation requests are retained independently of MCP call timing after verifying there are no active controlled worker runtimes; nonempty requests remain in command assertions.",
       "localEvidence": "Local qualification on 839d712f7/base485014de8 passes2617 Source Run wire comparisons,2432 compatible binding comparisons,1824 authority/readiness pairs and strict all-target Clippy. All3stores x3auth modes pass113 MCP HTTP/audit cases per peer/profile:1017 pairs/2034 calls and audit rows,18 actual server restarts,36 endpoint-decrypted outputs. Public Git/Run regression passes1089 paired observations/2178 calls across the same nine profiles. Actual second-worker dispatch and held-read Primary movement retain exact binding; UTF16/NUL failure context retains captured SQL and original parameters. Protocol1114/Source server49/worker18 focused tests pass; inherited server8/worker7/app2 type errors remain separately reproduced and are not green. Integration on9a6be65e9 keeps the base manifest byte-identical at626 roots/10545 nodes and isolates eleven Run roots in a453-node self-contained graph, composed natively with relocated references. Source oracle comparisons at three base graph sizes cover unrelated graph growth. Reviewed inventory records540 routes/298 worker commands/116 tables/367 repository methods with existing content classifications unchanged. Seven additive runtime exports and inference.revoke are explicitly reviewed; legacy fingerprints remain unchanged. Current integrated qualification and historical frozen matrix evidence are retained in milestone receipts.",
       "remaining": [
-        "Other MCP explorer/terminal/web/browser/client operations, legacy CLI transport and actual full-worker native product acceptance. The six MCP worktree verbs are covered by agentWorktreeMcp; CLI-only worktree.acquire is not advertised by MCP.",
-        "Latest native runtime/platform artifacts, mixed/Redis coordination and operation recovery at full product failure boundaries.",
-        "Existing-data upgrades and post-write rollback, performance acceptance, packaged desktop/Winterhold rehearsal, default server cutover and production Node server removal."
+        "Complete full-worker Run acceptance on the supported packages, including mixed/Redis coordination and operation recovery during product failures."
       ]
     },
     "sourceTaskGoalIntegration": {
@@ -28135,9 +28138,7 @@
       "scope": "Six MCP worktree verbs reuse native owned worktree, project coordinator, lane and Run-retirement services. Registry34 at delivery; the surface milestone brings the current registry to46 of canonical Source55; worktree.acquire is legacy CLI only and remains forbidden by MCP even when the binding grants it. Source validation order, capability/readonly/stale guards, lease visibility/paging/status truncation, structured mutation errors, exact worker inventory result, transaction rollback and SQL diagnostics retain Source behavior.",
       "localEvidence": "Local integrated 20001aa43 qualification passes102 exact MCP response/worker-command/durable-snapshot cases per peer across all3stores x3auth modes:918 pairs,1836 responses,18 actual socket disconnects,1854 matching audit rows and18 real server restarts. NUL-purpose writes, including unpaired UTF16 and literal replacement-character variants, fail actual SQL and roll back the earlier lane suspension; full Source query text and original parameters match. Both peers capture all8 Task tables over live HTTP using the required result alias. Fifty Rust library tests and five focused OS/MCP contract/binding tests pass; fresh base and independent Run manifests equal current Source. All633 base roots have valid samples (2121 samples); all643 existing fixture arrays retain identical serialized JSON, with5 samples added only for the missing OS recovery result root. Production WorkerConnection carries controlled Git replies; full native product/platform acceptance is not established.",
       "remaining": [
-        "Current-head supported-platform and full-worker native product acceptance, additional multi-worker/retirement/interruption cases, and full replacement requirements remain active.",
-        "Nine other canonical MCP operations and legacy CLI transport/acquire remain required. Actual native worker product, additional multi-worker/retirement/interruption acceptance and supported-platform packaging remain separate.",
-        "Full replacement requirements, coordination, existing-data migrations/post-write rollback, performance, desktop/Winterhold rehearsal, default cutover and production Node server removal remain active."
+        "Complete supported-platform qualification for the six MCP worktree operations and full-worker multi-worker, retirement and interruption cases. The separate CLI worktree acquire has packaged product evidence under legacyWorkerCli."
       ],
       "currentSourceIntegration": {
         "base": "50e2760be",
@@ -28275,9 +28276,7 @@
         }
       },
       "remaining": [
-        "Current-head full worker/native product, platform and packaged acceptance.",
-        "Nine other canonical MCP operations, legacy CLI transport and worktree.acquire remain required.",
-        "Shared coordination, existing-data migration and post-write rollback, container/desktop/Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; the worker remains Node."
+        "Complete packaged full-worker product coverage and shared coordination for these twelve surface operations on the supported platforms."
       ],
       "localChecks": {
         "strictAllTargetClippy": "pass",
@@ -28343,14 +28342,15 @@
         "allTargetsClippy": "PASS -Dwarnings on integrated3dd;251.02189591620117seconds. Frozen6aa also passed333seconds."
       },
       "remaining": [
-        "Actual full worker and native browser/product flows across supported platforms.",
-        "Legacy CLI transport, migration/post-write rollback, coordination, packaging/default cutover and complete replacement acceptance."
+        "Complete full-worker native browser/product flows across supported platforms and verify shared coordination for the worker-owned operations."
       ]
     },
     "legacyWorkerCli": {
       "status": "partial",
       "currentHttpQualification": "docs/security/rust-server-cli-http-contract-matrix.json",
       "worktreeContinuationProduct": "docs/security/rust-server-cli-worktree-product.json",
+      "macosPackagedWorktreeContinuation": "docs/security/rust-server-2976-darwin-arm64-acceptance.json#cliWorktreeContinuation",
+      "linuxContainerWorktreeContinuation": "docs/security/rust-server-2936-linux-cli-worktree-acceptance.json",
       "implementation": [
         "cantrip_server_rs/src/cli",
         "cantrip_server_rs/src/http/cli.rs",
@@ -28396,8 +28396,8 @@
         "unicodeWorkerIdentity": "Actual before/after HTTP proof: after SQL UTF8 replacement, status returns stored workerId; connection predicate retains original lookup identity."
       },
       "remaining": [
-        "Repeat the actual CLI worktree continuation with final release-packaged artifacts and supported platforms. The paired CLI HTTP matrix retains controlled endpoint replies for its other operations.",
-        "Full replacement migration/post-write rollback, coordination, performance, packaging/Winterhold rehearsal, default Rust cutover and production Node server removal."
+        "Complete the Windows full-worker CLI worktree continuation with the current package. The Linux container runs used a macOS worker and CLI.",
+        "The paired CLI HTTP matrix uses controlled endpoint replies for its other operations. Full-worker and shared recovery evidence for those operations remains scoped separately."
       ]
     },
     "externalChatImportExecution": {
@@ -29815,6 +29815,9 @@
       "currentTaskActiveDispatch": "docs/security/rust-server-task-inference-route-acceptance.json#currentWindowsActiveDispatch"
     },
     "currentLinuxArm64Qualification": {
+      "linux2976Arm64Qualification": {
+        "record": "docs/security/rust-server-2976-linux-arm64-acceptance.json"
+      },
       "linux2964Arm64Qualification": {
         "version": "1.1.2964",
         "record": "docs/security/rust-server-2964-linux-acceptance.json"
