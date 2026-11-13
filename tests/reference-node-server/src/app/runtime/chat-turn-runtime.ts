@@ -308,12 +308,12 @@ export function createChatTurnRuntime({
         ),
       );
     }
-    // Capture the selected standalone route before its input receipt. Leave a
-    // fresh native thread unbound until actual dispatch so the worker can seed
-    // the existing protected conversation history exactly once.
+    // Capture the selected route before the input receipt. A new worktree has
+    // neither a route nor a thread. Leave its thread unbound until dispatch.
     if (
-      context.contextKind === "standalone" &&
-      context.experience === "agent"
+      context.experience === "agent" &&
+      (context.contextKind === "standalone" ||
+        (context.threadId === null && context.modelRouteId === null))
     ) {
       const runtime = runtimes[0];
       if (!runtime)

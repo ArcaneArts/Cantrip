@@ -162,8 +162,10 @@ impl Bootstrap {
         let mut turn = self
             .preflight(owner, context, input, options, started_at, observer)
             .await?;
-        if turn.execution["contextKind"] == "standalone"
-            && turn.execution["experience"] == "agent"
+        if turn.execution["experience"] == "agent"
+            && (turn.execution["contextKind"] == "standalone"
+                || (turn.execution["threadId"].is_null()
+                    && turn.execution["modelRouteId"].is_null()))
         {
             let runtime = turn.route_pairs.first()
                 .context("No provider route is currently available.")?["root"]["runtime"].clone();

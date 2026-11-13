@@ -1,0 +1,319 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceBaseline": "bed2fa3bb44fbf4bb12421f21df1811d9026688b",
+  "platform": "darwin-arm64",
+  "scope": "Real browser SDK, bundled CLI, full worker, native Codex, local Git checkout and production server entrypoints. The Rust candidate is a local debug executable. The worker uses rebuilt TypeScript with its previously packaged dependencies and native binaries. Fixture input supplies the repository catalog classification and local model responses. Optional plugin synchronization is disabled.",
+  "artifact": {
+    "rustServer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/cantrip-server-local",
+      "bytes": 179762528,
+      "sha256": "5dc61fd9a76b1ead53583bde080ee4958c8d1b3e38f631c2dad63a04a425ec81"
+    },
+    "workerDist": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/candidate-worker-dist.tar.gz",
+      "bytes": 2759788,
+      "sha256": "ad282fac7780cc2c561f8152a72f342c8495490f8c4d6015a434faa9403dd085"
+    },
+    "nodeReferenceDist": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/node-reference-cli-worktree-dist.tar.gz",
+      "bytes": 2231106,
+      "sha256": "eca3bf884b80ef1b0ee2e7bb75820219b92a9db14c4212e1dc668e822296a3a8"
+    },
+    "cli": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/cantrip-worker-darwin-arm64/bin/cantrip",
+      "bytes": 1332160,
+      "sha256": "7825db54c7c8cfbcac6c5c45fc0c3b19b860d137813764cfa946a17050458236"
+    },
+    "codex": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/cantrip-worker-darwin-arm64/bin/codex",
+      "bytes": 281161744,
+      "sha256": "159efa081468910fbe00493d12d3cb18fbb9e3a091e2ea63745432d35fccbecc"
+    },
+    "launcher": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/run-local.sh",
+      "bytes": 1378,
+      "sha256": "e2670634ad4cccbfeb26b60daa635e13c33f145cfec8ac6326e047b1d9860223"
+    }
+  },
+  "observedFailures": [
+    {
+      "result": "The running linked console rejected the requested switch.",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-rust-first.json",
+        "bytes": 216168,
+        "sha256": "2c1d9215710e1af90a26b89267c5840d6e0ae732a49b8d1e4b89a8f29f87314e"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-rust-first.log",
+        "bytes": 2978,
+        "sha256": "aaadcb09211f83e01eb63fc35d2e019b7cb3b144a0faa6299534bcc115bab555"
+      },
+      "archiveVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-rust-first.fixture-archive.json",
+        "bytes": 444,
+        "sha256": "8d2d3307c3d358f416df322dcba44d53e4ba7835c484566d25ed62c38427d1b4"
+      }
+    },
+    {
+      "result": "The shared worker reused a managed runner bound to the original thread.",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-rust-native-continuation.json",
+        "bytes": 373762,
+        "sha256": "338546414d5f856a916802711298808daa1fd7b900a5b33d847505f7ae0b3969"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-rust-native-continuation.log",
+        "bytes": 2573,
+        "sha256": "3e63d27e28e45c3119b390d4e204a1639e022f0e96244b88d0c2c48f6548f5b0"
+      },
+      "archiveVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-rust-native-continuation.fixture-archive.json",
+        "bytes": 460,
+        "sha256": "ce932908d5120d8b823b7c447aedec8c98e9550c98922c1c86a933ffc1d8edbb"
+      }
+    },
+    {
+      "result": "The same runner error reproduced against the Node reference.",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-node-native-continuation.json",
+        "bytes": 365189,
+        "sha256": "d124dc9f2409e07e8b2eb163bb252946513f58be770c17d09125fc84145218e2"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-node-native-continuation.log",
+        "bytes": 2616,
+        "sha256": "a0640a76a469bd9496d3cffa75989b803d5acae25c91fc87e9518b421f7676ea"
+      },
+      "archiveVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-node-native-continuation.fixture-archive.json",
+        "bytes": 460,
+        "sha256": "e70f4c4c2dbfafe6aac36841adf062b1dd816e5806e7904c893160b277105b17"
+      }
+    },
+    {
+      "result": "The second native thread started. The accepted input receipt still held a null model route and bind-preparation returned stale-session.",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-rust-placement-runner.json",
+        "bytes": 380578,
+        "sha256": "9e63f1bed757c02bc729de1ea75d12c3b957a00e77f54bd5270112a21dc0ade1"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-rust-placement-runner.log",
+        "bytes": 2573,
+        "sha256": "b0613a3a94eac54113e819b96ef23f7e968f160d4f471aceba4754f7d8012d3c"
+      },
+      "archiveVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-rust-placement-runner.fixture-archive.json",
+        "bytes": 457,
+        "sha256": "432926778312653b70a0c98b1db05632fbc2a407f76c3f6fe680c9ec28316b93"
+      }
+    },
+    {
+      "result": "Both turns executed, then history projection rejected the system continuation input.",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-node-placement-and-route.json",
+        "bytes": 359187,
+        "sha256": "d9a918a678c8218725cf8ba49f46cdf7ac0ec90b640456aab600dc63dc030870"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-node-placement-and-route.log",
+        "bytes": 2757,
+        "sha256": "466185681ecc4d393a4b4faa26b42c18a20828756cde548580d7dbae5cbd9c01"
+      },
+      "archiveVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-node-placement-and-route.fixture-archive.json",
+        "bytes": 460,
+        "sha256": "853d5b5ef702911a227dded1d7e8135bef1f3a4273092d5c439ec2340d794eb0"
+      }
+    },
+    {
+      "result": "Both turns executed, then history projection rejected the system continuation input.",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-rust-placement-and-route.json",
+        "bytes": 362542,
+        "sha256": "72d33a7206e5cc850850dd0aed41d24c34279d55b9e0865c7fbdbad20f85e6f4"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-rust-placement-and-route.log",
+        "bytes": 2757,
+        "sha256": "2fde67dc5b6f9fde31197c245421bb3c1b3e43963af4b3a36bc26e87c99d05ab"
+      },
+      "archiveVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-rust-placement-and-route.fixture-archive.json",
+        "bytes": 460,
+        "sha256": "6dd7dbc780c3294b372f4740767220530ec16d24ed7ae8009f9d59ce57038d98"
+      }
+    }
+  ],
+  "receiptRouteMismatch": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-rust-destination-binding.txt",
+    "bytes": 1354,
+    "sha256": "628c1daf528c1861a4b28a9c0a31f2380dfda59e24ca22510b1bba74b0dbffb6"
+  },
+  "cases": [
+    {
+      "server": "rust",
+      "store": "postgres",
+      "steps": 12,
+      "modelPosts": 2,
+      "transcriptMessages": 12,
+      "retainedNativeThreads": 2,
+      "cleanServerExits": 4,
+      "cleanWorkerExits": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-rust-history-alias.json",
+        "bytes": 375318,
+        "sha256": "ea1a07e9085307efb090674f0be3c2d18d410849b2bad7be3324e7d9ac8efb37"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-rust-history-alias.log",
+        "bytes": 528,
+        "sha256": "2694b81c0cce0ffdb98681fe1761e03491532483aecdb8db03da0b39480b85c7"
+      },
+      "archiveVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-rust-history-alias.archive-input.fixture-archive.json",
+        "bytes": 466,
+        "sha256": "436b90ed6adc469da82efc154d48c71566462abe6f3fcedd629bbe27d1c4f452"
+      }
+    },
+    {
+      "server": "rust",
+      "store": "bundled-postgres",
+      "steps": 12,
+      "modelPosts": 2,
+      "transcriptMessages": 12,
+      "retainedNativeThreads": 2,
+      "cleanServerExits": 4,
+      "cleanWorkerExits": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/bundled-rust-history-alias.json",
+        "bytes": 377170,
+        "sha256": "892a2cbe5d3fbfec06223cdba1ea1fc39f59cc9e83a36edd0b59032c90d71482"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/bundled-rust-history-alias.log",
+        "bytes": 536,
+        "sha256": "78f45eb333f7c231c3e299e78c2e38eb5287f4f6bd4d9dadda45645efcd49ecc"
+      },
+      "archiveVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/bundled-rust-history-alias.archive-input.fixture-archive.json",
+        "bytes": 465,
+        "sha256": "ca080c16fef5acb64b88ca47c02f0ce60e70c98cf092b06ea1f5853921079cd8"
+      }
+    },
+    {
+      "server": "rust",
+      "store": "pglite",
+      "steps": 12,
+      "modelPosts": 2,
+      "transcriptMessages": 12,
+      "retainedNativeThreads": 2,
+      "cleanServerExits": 4,
+      "cleanWorkerExits": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/pglite-rust-history-alias.json",
+        "bytes": 372832,
+        "sha256": "811d1724204c825a05037d3ae393cc2e4358ebdcb7297098a2c6f3a54dfbcda4"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/pglite-rust-history-alias.log",
+        "bytes": 526,
+        "sha256": "8f120960648883f8d7b2fc65323af0d82ba0cef7350db4a61a6bf2b9cc2f4941"
+      },
+      "archiveVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/pglite-rust-history-alias.archive-input.fixture-archive.json",
+        "bytes": 464,
+        "sha256": "d5aaaef989ee130e8cc9ce35c6391dd93c6db2437d77a16bd27e4bd12e7e04f5"
+      }
+    },
+    {
+      "server": "node",
+      "store": "postgres",
+      "steps": 12,
+      "modelPosts": 2,
+      "transcriptMessages": 12,
+      "retainedNativeThreads": 2,
+      "cleanServerExits": 4,
+      "cleanWorkerExits": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-node-history-alias.json",
+        "bytes": 383675,
+        "sha256": "c0c4a37f7f3682ba1cb5a19af34328e8e94090733d0332843aff35e6a4efc029"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-node-history-alias.log",
+        "bytes": 799,
+        "sha256": "689fda5f867f5981694d559bab961701042fd4f1b06064f5e8b4dc5408c7b75b"
+      },
+      "archiveVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/postgres-node-history-alias.archive-input.fixture-archive.json",
+        "bytes": 468,
+        "sha256": "e060c0de5a0162a61e028f00ab3f79efb6b077f1a58e0d209868f9974db76581"
+      }
+    }
+  ],
+  "localTests": {
+    "rustLibrary": {
+      "passed": 87,
+      "oracleNodeVersion": "24.22.2",
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/rust-library-tests-supported-toolchain.log",
+        "bytes": 8864,
+        "sha256": "104937fc8c69d47fa63489c0c87bea8a3aefb8e80b18f7e758120085bb582a1c"
+      },
+      "initialLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/rust-library-tests.log",
+        "bytes": 11645,
+        "sha256": "d142f99e450e53ef6708f43cf49e9176a12528ae16763edeac02b5748116725a"
+      }
+    },
+    "nodeNativeAdmissionAndHistory": {
+      "passed": 130,
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/reference-native-validation.log",
+        "bytes": 27989,
+        "sha256": "a453f6f84f1b9ff8fd2c0b880feb9fff9c5711ebac0fdb97221a96b3569efba3"
+      }
+    },
+    "appWorktrees": {
+      "passed": 56,
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/app-worktree-validation.log",
+        "bytes": 246,
+        "sha256": "d30988be52887df191d339da87f6141664f204350fea9f6f80571ed4378e9855"
+      }
+    },
+    "workerWorktreesAndRuntime": {
+      "passed": 140,
+      "baselineFailure": "Filesystem watcher debounce test also fails in Primary.",
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/worker-worktree-validation.log",
+        "bytes": 6131,
+        "sha256": "503610fccd51c8c3de1f5928b60e33605ecddf10e6b77cf94aeece236e525f91"
+      },
+      "baseline": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/worker-worktrees-baseline.log",
+        "bytes": 982,
+        "sha256": "600567220194dbd85d1f9470522f958975c5e24b529eebb8df22bee5973041fa"
+      }
+    },
+    "nodeWorktreeAndPlacement": {
+      "passed": 127,
+      "baselineFailure": "Standalone Chat fixture expects started and receives queued on the baseline and candidate.",
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/reference-worktree-validation.log",
+        "bytes": 14653,
+        "sha256": "03e0219daad76bb67b0225b4eaaa76f92b1a2cd7350643101802f14e47c23dde"
+      },
+      "baseline": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/legacy-cli-worktree-product/reference-worktree-baseline.log",
+        "bytes": 2455,
+        "sha256": "bf641b4de1290d1c5a04f41e9a8e5470d2b008d3a243a4e4f0acce9bd02ff118"
+      }
+    }
+  },
+  "remaining": [
+    "Repeat with the final release-packaged worker and Rust server artifacts on supported platforms."
+  ]
+}

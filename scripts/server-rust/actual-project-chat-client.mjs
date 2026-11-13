@@ -10,6 +10,7 @@ import { actualMcpSettingsClient } from "./actual-mcp-settings-client.mjs";
 import { actualProviderTestClient } from "./actual-provider-test-client.mjs";
 import { actualAgentTaskClient } from "./actual-agent-task-client.mjs";
 import { actualChatControls } from "./actual-chat-controls.mjs";
+import { actualCliWorktreeAcquire } from "./actual-cli-worktree-acquire.mjs";
 
 export async function actualProjectChatClient({
   page,
@@ -24,6 +25,7 @@ export async function actualProjectChatClient({
   requests,
   providerBoundary,
   interruptNativeStream,
+  cliWorktreeAcquire,
 }) {
   const model = await taskModelProvider({
     allowMcpDiscoveryProbe: process.argv.includes("--mcp-settings"),
@@ -155,6 +157,23 @@ export async function actualProjectChatClient({
     }, chat.id);
     assert.equal(usage.used.applied, true);
     assert.equal(usage.page.items[0].id, chat.id);
+    if (cliWorktreeAcquire) {
+      await actualCliWorktreeAcquire({
+        page,
+        fixture,
+        projectId,
+        projectRoot,
+        workerDataDirectory,
+        chat,
+        configuration,
+        model,
+        cliBinary: cliWorktreeAcquire,
+        startWorker,
+        stopWorker,
+        result,
+      });
+      return;
+    }
     const reply = model.reply({
       text: answer,
       hold: Boolean(interruptNativeStream),

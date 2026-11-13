@@ -84,11 +84,11 @@ export async function acquireChatTurnExecution({
             clientMessageId: protectedAdmissionInput!.id,
             expectedInputRevision:
               options.expectedInputRevision ?? context.managedInputRevision,
-            ...(context.contextKind === "standalone"
+            ...(context.experience === "agent" && context.modelRouteId
               ? {
-                  standaloneRuntime: {
+                  guiRuntime: {
                     threadId: context.threadId,
-                    modelRouteId: context.modelRouteId!,
+                    modelRouteId: context.modelRouteId,
                     providerAccountId: context.providerAccountId,
                   },
                 }

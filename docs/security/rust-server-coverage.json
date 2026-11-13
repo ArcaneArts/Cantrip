@@ -28258,6 +28258,7 @@
     "legacyWorkerCli": {
       "status": "partial",
       "currentHttpQualification": "docs/security/rust-server-cli-http-contract-matrix.json",
+      "worktreeContinuationProduct": "docs/security/rust-server-cli-worktree-product.json",
       "implementation": [
         "cantrip_server_rs/src/cli",
         "cantrip_server_rs/src/http/cli.rs",
@@ -28303,7 +28304,7 @@
         "unicodeWorkerIdentity": "Actual before/after HTTP proof: after SQL UTF8 replacement, status returns stored workerId; connection predicate retains original lookup identity."
       },
       "remaining": [
-        "Current integrated Main and supported-platform/product acceptance. Controlled endpoint/Git/Run replies do not prove full native-turn execution.",
+        "Repeat the actual CLI worktree continuation with final release-packaged artifacts and supported platforms. The paired CLI HTTP matrix retains controlled endpoint replies for its other operations.",
         "Full replacement migration/post-write rollback, coordination, performance, packaging/Winterhold rehearsal, default Rust cutover and production Node server removal."
       ]
     },

@@ -125,13 +125,9 @@ impl Admission<'_> {
         {
             return reject("path-scope-mismatch");
         }
-        let standalone = self
-            .options
-            .get("standaloneRuntime")
-            .filter(|v| !v.is_null());
-        if standalone.is_some()
-            && (self.context["contextKind"] != "standalone"
-                || self.context["experience"] != "agent"
+        let gui_runtime = self.options.get("guiRuntime").filter(|v| !v.is_null());
+        if gui_runtime.is_some()
+            && (self.context["experience"] != "agent"
                 || input["origin"] != "gui"
                 || method != "turn/start"
                 || !self.starts)
@@ -139,7 +135,14 @@ impl Admission<'_> {
             return reject("managed-session-ineligible");
         }
         let mut intended = self.context.clone();
-        if let Some(route) = standalone {
+        let route_change = gui_runtime
+            .filter(|_| {
+                self.context["contextKind"] == "standalone"
+                    || (self.context["threadId"].is_null()
+                        && self.context["modelRouteId"].is_null())
+            })
+            .cloned();
+        if let Some(route) = &route_change {
             for key in ["threadId", "modelRouteId", "providerAccountId"] {
                 intended[key] = route[key].clone();
             }
@@ -187,14 +190,14 @@ impl Admission<'_> {
             if !truthy(self.context.get("executionLaneId")) {
                 return reject("execution-unavailable");
             }
-            if let Some(route) = standalone {
+            if let Some(route) = &route_change {
                 crate::chats::update_runtime_in_transaction(
                     tx,
                     crate::chats::RuntimeUpdate {
                         chat: chat.clone(),
                         worker: text(&self.context["workerId"])?,
-                        worktree: None,
-                        scratch_root: Some(text(&self.context["scratchRootId"])?),
+                        worktree: optional(&self.context["worktreeId"])?,
+                        scratch_root: optional(&self.context["scratchRootId"])?,
                         thread: optional(&route["threadId"])?,
                         route: text(&route["modelRouteId"])?,
                         status: "ready".into(),
