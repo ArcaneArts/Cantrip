@@ -30689,6 +30689,17 @@
         "scope": "Software-emulated Windows x64 with a fixture-only 120-second MCP startup budget. The remaining PostgreSQL cases did not start.",
         "reportSha256": "f0691c90896200571e4844539aa3140547a4b35813a4d0fb51e263fbad9f5e30"
       },
+      "windowsX64GrantRefreshInstaller": {
+        "workerFixCommit": "f5329dc3ec941035cd2afcd55b7bfe578d24990a",
+        "verifiedPayloadFiles": 14091,
+        "changedPayloads": [
+          "runtime/worker/dist/index.js",
+          "runtime/worker/dist/worker-encryption.js"
+        ],
+        "installerSha256": "2d68d24bb3ce69603c9cf698a8fcc2388b6f86dd59564edec6fcbdd66f7139c8",
+        "signedPgliteUpdate": "passed from 1.1.2938 with tampering rejected, retained identity and setting, and clean tray shutdown",
+        "terminalReceiptSha256": "f94df7e4bd038ffaba00d5feea6ae4a972c140b704e1ec0cb430d1272736f965"
+      },
       "windowsX64RepackedInstaller": {
         "result": "installed-first-launch-and-reopen-passed",
         "passedCases": 6,
@@ -30702,7 +30713,7 @@
     }
   },
   "remainingAcceptance": [
-    "Finish canonical-history CLI and model-operation acceptance on Windows x64. Qualify the later worker grant refresh from PR #3012 in the Windows package.",
+    "Finish canonical-history CLI and model-operation acceptance on Windows x64 with the signed installer containing the worker grant refresh from PR #3012.",
     "Qualify packaged cross-platform dependency interruptions and longer outages. Reconcile the still-open background-service and product recovery comparisons.",
     "Complete the remaining inventory-level behavior evidence, including malformed, Unicode and deep-JSON inputs, serialization for authenticated metadata, encrypted boundaries and protocol ordering.",
     "Qualify installed iOS native QR, physical-camera runs and the remaining distribution-signed Android scenario.",

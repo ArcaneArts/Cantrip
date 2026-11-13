@@ -238,7 +238,9 @@
         "sha256": "1e8594e9d3d069a167bc5324d6eeb94fa77f3a59b21241b02afcfaa8a1c2ab83"
       },
       "verifiedPayloadFiles": 14091,
-      "changedPayloads": ["runtime/worker/dist/index.js"],
+      "changedPayloads": [
+        "runtime/worker/dist/index.js"
+      ],
       "bundledAppSha256": "8b823adccdc5897f919c445450e4ccacebdcbc49772b42ad6594f36cd67e6e25",
       "bundledServerSha256": "d678aacfb2d0d063812f84c1ae47766dce222f25382183f85b8c7d7b3fee7168",
       "bundledWorkerSha256": "3505b8913f656e5b6171948ecc8170b4134519ad0e2b3694ee533c4527b6d586",
@@ -286,7 +288,7 @@
         }
       },
       "remaining": [
-        "Packaged Windows CLI and model-operation acceptance and qualification of the later worker grant refresh from PR #3012."
+        "Packaged Windows CLI and model-operation acceptance. The later grant refresh repack has separate signed-update evidence."
       ],
       "signedUpdate": {
         "scope": "The installed Windows x64 desktop was updated over disposable loopback HTTPS using the same QA-signed installer as the six installed cases.",
@@ -337,6 +339,80 @@
           "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-canonical-package/host-signed-repack-observer.log",
           "bytes": 3266,
           "sha256": "18882b045e0dee82d8e1a08bae003010d8074868bc1f13050ed19c6285ef5de0"
+        }
+      }
+    },
+    "grantRefreshRepack": {
+      "workerFixCommit": "f5329dc3ec941035cd2afcd55b7bfe578d24990a",
+      "scope": "Local QA-signed NSIS x64 package based on the canonical-history repack. All 14091 payload files were checked. The Windows x64 guest installed the signed package over loopback HTTPS using a disposable test root. This rehearsal used PGlite.",
+      "installer": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-grant-package/Cantrip_1.1.2976_x64-setup.exe",
+        "bytes": 256923733,
+        "sha256": "2d68d24bb3ce69603c9cf698a8fcc2388b6f86dd59564edec6fcbdd66f7139c8"
+      },
+      "updaterSignature": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-grant-package/Cantrip_1.1.2976_x64-setup.exe.sig",
+        "bytes": 420,
+        "sha256": "0968cd47dd253988ac7df1838b4fb931ca6df1e53ebd8bbf17af78b27b6f6571"
+      },
+      "signatureVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-grant-package/desktop-minisign-verification.log",
+        "bytes": 115,
+        "sha256": "cc2eb0a62c1bb7a0dc085b3f3ca301367815e13697eacdb18582b8368664b631"
+      },
+      "payloadManifest": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-grant-package/desktop-nsis-runtime-manifest.json",
+        "bytes": 2506064,
+        "sha256": "a95b9004e06435d76e089e5069eed157022889791d29c7026c03d1dc73f2a2ae"
+      },
+      "payloadVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-grant-package/desktop-nsis-verified.json",
+        "bytes": 182,
+        "sha256": "d20f91bd89fe0bcbf8e5c846836bb7c904faded2347a75266ee1e9e1587cf223"
+      },
+      "verifiedPayloadFiles": 14091,
+      "changedPayloads": [
+        "runtime/worker/dist/index.js",
+        "runtime/worker/dist/worker-encryption.js"
+      ],
+      "signedUpdate": {
+        "baselineVersion": "1.1.2938",
+        "candidateVersion": "1.1.2976",
+        "databaseMode": "pglite",
+        "tamperedInstallerRejected": true,
+        "signedInstallerAcceptedAndRelaunched": true,
+        "retainedServerIdentityWorkerEnrollmentAndSetting": true,
+        "installedAppSha256": "8b823adccdc5897f919c445450e4ccacebdcbc49772b42ad6594f36cd67e6e25",
+        "installedServerSha256": "d678aacfb2d0d063812f84c1ae47766dce222f25382183f85b8c7d7b3fee7168",
+        "verifiedInstalledWorkerFiles": {
+          "dist/index.js": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c",
+          "dist/worker-encryption.js": "01288d5fc14c7e7455fc137ccb9325afbad8e5f68edff0398f2b9629ee0eb3d0",
+          "bin/codex.exe": "f0db8df766e7b928f9f3f867140e7c3637ca2ef288827a9209aaf0f0d4e39138",
+          "node_modules/@zavora-ai/computer-use-mcp/computer-use-napi.win32-x64.node": "56a0e9f48bb29841fcc5c63fcb0a38454ad194f31c6f63ea6445e21d115960fb",
+          "node_modules/@zavora-ai/computer-use-mcp/vcruntime140.dll": "eb1ee979bf02324712346e5bdbfc59c785388bc50d18cc2688aae4b0734915a0"
+        },
+        "trayQuitExitCode": 0,
+        "servicesReapedAndServerShutdownCompleted": true,
+        "serverShutdownCompleted": "2026-11-14T03:57:51.722Z",
+        "guestTerminalReceipt": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-grant-package/signed-grant-terminal-receipt.json",
+          "bytes": 2375,
+          "sha256": "f94df7e4bd038ffaba00d5feea6ae4a972c140b704e1ec0cb430d1272736f965"
+        },
+        "guestUpdaterObservation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-grant-package/guest-observation-live.json",
+          "bytes": 1820,
+          "sha256": "4990dca64122375314dc1ace46bd72695fe4c7e2db3b23b213456ec36c37fa2e"
+        },
+        "guestSerialObservation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-grant-package/signed-grant-serial.jsonl",
+          "bytes": 3148,
+          "sha256": "0f0f40ccc939c928ae9ab137d216c2334cb6e780bf4a5e582b9841dca312c893"
+        },
+        "temporaryRootRemovalConfirmation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-grant-package/readiness-nsis-signed-update-ui/qa-root-removal-confirmation.png",
+          "bytes": 726982,
+          "sha256": "b90064846b91653892789163811fc9f21cc53ccc81c9363204e8e638d9450e0b"
         }
       }
     }
