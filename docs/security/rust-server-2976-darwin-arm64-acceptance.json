@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.2976",
+  "target": "darwin-arm64",
+  "serverSourceCommit": "92ed534fa5b1bef8dfcf60a21b9784e159c6a655",
+  "desktopSourceCommit": "f1201f3e2d6a947ecb59d784f067743708b22713",
+  "standalone": {
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-server-1.1.2976-darwin-arm64.tar.gz",
+      "bytes": 66913645,
+      "sha256": "fc1a92caa50377e3bd457eb15f57bf359d9d43215af275359939abb418663322"
+    },
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/acceptance.json",
+      "bytes": 2952,
+      "sha256": "9b7aae96d225288661a696bb758f594aa66a18c83f5ff6967786206217320834"
+    },
+    "verifiedFiles": 1762,
+    "serverRequiresNode": false,
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"]
+  },
+  "transport": {
+    "pairedJsonAndWebSocket": [
+      {
+        "mode": "pglite",
+        "httpCases": 52,
+        "webSocketCases": 27,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/json-wire-pglite.json",
+          "bytes": 148194,
+          "sha256": "216983929db29c3d9d15346415dbd1f880a3d21d0e1d67d82500f148529ba60a"
+        }
+      },
+      {
+        "mode": "bundled-postgres",
+        "httpCases": 52,
+        "webSocketCases": 27,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/json-wire-bundled-postgres.json",
+          "bytes": 148204,
+          "sha256": "41c7b08862531e3227e19aac90711f8af424bba3cd7158d167e1bcd2bcdae30c"
+        }
+      },
+      {
+        "mode": "postgres",
+        "httpCases": 52,
+        "webSocketCases": 27,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/json-wire-postgres.json",
+          "bytes": 148196,
+          "sha256": "306c718120c58f6da64c51b1306e2e7f0fd75bb6695e1d46a43f60670017ad30"
+        }
+      }
+    ],
+    "httpInventory": {
+      "routesPerPeer": 584,
+      "rustFallbacks": 0,
+      "matchedErrorResponses": 4,
+      "matchedMcpCapabilityQueryCases": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/http-parity.json",
+        "bytes": 2451902,
+        "sha256": "4e1eb8e1212035c805f883f3f5c9e01f7f6db52145b6097d018861fdba548c31"
+      }
+    }
+  },
+  "signedDesktop": {
+    "baselineVersion": "1.1.2938",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "tamperedPackageRejected": true,
+    "appAndWorkerContinuity": true,
+    "serverAndDatabaseContinuity": true,
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-drain/rehearsal/candidate/Cantrip Server Signed Update QA.app.tar.gz",
+      "bytes": 335684629,
+      "sha256": "7c8953d75ed233a2e2bf4d6dabcbb480b9ab674a62bd46907174572655d23424"
+    },
+    "updaterSignature": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-drain/rehearsal/candidate/Cantrip Server Signed Update QA.app.tar.gz.sig",
+      "bytes": 436,
+      "sha256": "642750097420c01e68abde02196389f238d6cffd2e958b26622dfc89a0a46a57"
+    },
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-drain/report.json",
+      "bytes": 12404,
+      "sha256": "067f3e6d949d12f5e1ad3d908f9dde78579477a1adf14ab846f8c6c0a8b99b2c"
+    },
+    "scope": "Local Developer ID and QA updater signing. The fixture ran a signed upgrade and verified persisted client and server state. Apple notarization was outside this run."
+  },
+  "sourceAndBoundaryAudit": {
+    "generatedContractsMatch": true,
+    "generatedContractFilesCompared": 17,
+    "sourceReport": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/merged-f1201f3e2-audit/source-drift.json",
+      "bytes": 4648,
+      "sha256": "e888043a68bdffb016e8fe3a0a502f169636fbcc723dff36185c14a361bdf18d"
+    },
+    "boundaryLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/merged-f1201f3e2-audit/audits.log",
+      "bytes": 2095,
+      "sha256": "f38b66c873f410967e223ef8de358f08e1dbe67aa697004b76ce8990e6111d6f"
+    }
+  }
+}
