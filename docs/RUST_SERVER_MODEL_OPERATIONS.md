@@ -46,6 +46,22 @@ from readiness while the Node reference exceeded the five-second readiness
 probe deadline. Both returned HTTP 200 from liveness. The provider replied
 after database recovery, so receipt settlement during an outage is still open.
 
+## Active Redis interruption
+
+A real 45-second Redis process outage interrupted a protected embedding
+with the browser and full worker connected to opposite server peers.
+Both peers reported unready throughout the sampled outage while PostgreSQL
+stayed available. The original provider request remained open. Redis
+recovery restored readiness and the original worker continuity identity.
+
+All four Node and Rust pairings passed 56 operation cases and observed
+60 provider requests in total. The interrupted embedding returned HTTP 502
+with one unknown usage attempt and no receipt. Replaying it was rejected
+without another provider request. A fresh decision completed and recorded
+its own receipt. Explicit cancellation and client disconnect still closed
+their original provider requests in the same runs.
+[Redis interruption evidence](security/rust-server-2976-darwin-arm64-model-operations.json#sharedRedisOutage)
+
 ## Product assertions
 
 `actual-folder-client.mjs --model-operations` uses production server executables
