@@ -777,6 +777,15 @@ same browser scanner and completed the real exchange. The
 [current browser acceptance record](security/rust-server-2881-browser-mobile-sign-in.json)
 binds the reports to the built client and server artifacts.
 
+The `1.1.2976` renderer and macOS ARM64 Rust package repeated the
+three-store browser matrix with the compiled Node reference. The runs
+completed six QR exchanges and nine clean server shutdowns. Both accounts
+survived server switching, and the Rust identity and session survived
+restart. The initial PGlite pairing stalled while scanning the Node QR
+with the static feed. The rotating feed passed with the same scanner and
+session assertions.
+[Browser 1.1.2976 evidence](security/rust-server-2976-browser-mobile-sign-in.json)
+
 ## Installed mobile sessions and Android QR sign-in
 
 The installed `1.1.2867` clients ran against the packaged macOS ARM64
