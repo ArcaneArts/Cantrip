@@ -30616,11 +30616,77 @@
       ]
     }
   },
+  "currentReleaseAcceptance": {
+    "candidateVersion": "1.1.2976",
+    "serverSourceCommit": "92ed534fa5b1bef8dfcf60a21b9784e159c6a655",
+    "desktopSourceCommit": "f1201f3e2d6a947ecb59d784f067743708b22713",
+    "reviewedIntegratedCommit": "51c83a81beb30740757ceedc584df2c398166e34",
+    "scope": "Current release evidence by tested artifact. Historical milestone entries keep their original scope and do not override this record.",
+    "productionRuntime": {
+      "defaultServer": "Rust",
+      "productionNodeServerRemoved": true,
+      "nodeServerReference": "tests/reference-node-server",
+      "worker": "Node.js",
+      "documentation": [
+        "docs/RUST_SERVER_DEFAULT_CUTOVER.md",
+        "docs/RUST_SERVER_NODE_RETIREMENT.md"
+      ]
+    },
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "reports": {
+      "macosStandaloneSignedDesktopMigrationAndRollback": "docs/security/rust-server-2976-darwin-arm64-acceptance.json",
+      "windowsStandaloneInstalledDesktopAndSignedUpdate": "docs/security/rust-server-2976-win32-x64-packages.json",
+      "linuxArm64ContainerAndWinterhold": "docs/security/rust-server-2976-linux-arm64-acceptance.json",
+      "linuxX64ContainerAndWinterhold": "docs/security/rust-server-2976-linux-x64-acceptance.json",
+      "linuxCliWorktree": "docs/security/rust-server-2976-linux-cli-worktree-acceptance.json",
+      "macosWorkerLink": "docs/security/rust-server-2976-darwin-arm64-workerlink.json",
+      "macosModelOperations": "docs/security/rust-server-2976-darwin-arm64-model-operations.json",
+      "macosModelOperationServerLoss": "docs/security/rust-server-2976-darwin-arm64-model-operation-server-loss.json",
+      "linuxModelOperations": "docs/security/rust-server-2976-linux-model-operations.json",
+      "browserSignIn": "docs/security/rust-server-2976-browser-mobile-sign-in.json",
+      "installedMobile": "docs/security/rust-server-2976-installed-mobile.json",
+      "macosPopulatedPerformance": "docs/security/rust-server-2976-darwin-arm64-populated-performance.json"
+    },
+    "canonicalHistoryWorkerFollowup": {
+      "workerFixCommit": "0fcb117267e8282d4a48ff20a33872e242796a1a",
+      "macosArm64CliWorktree": {
+        "result": "passed",
+        "stepsPerStore": 12,
+        "modelPostsPerStore": 2,
+        "answersPerCheckoutAfterReopen": 1,
+        "reportSha256ByStore": {
+          "pglite": "cc0119b24cbf7c61271258452355a20be6db15bf1d66efcbe09c6458c1f748d3",
+          "bundled-postgres": "cceb052fbff90f6250353970c9c00ad261625b0703669ca0962c8aae1ac75261",
+          "postgres": "059e12bf7219d8528ef6561b820f64158f2e8b07fffc875c95e188ff6144f251"
+        }
+      },
+      "windowsX64CliWorktree": {
+        "result": "failed",
+        "mode": "pglite",
+        "productSteps": 10,
+        "completedModelPosts": 2,
+        "assertion": "The continuation transcript reported item/completed where the test expected native-history.",
+        "teardownError": "Could not identify the owned worker tree.",
+        "scope": "Software-emulated Windows x64 with a fixture-only 120-second MCP startup budget. The remaining PostgreSQL cases did not start.",
+        "reportSha256": "f0691c90896200571e4844539aa3140547a4b35813a4d0fb51e263fbad9f5e30"
+      },
+      "windowsX64RepackedInstaller": {
+        "result": "installed-executables-verified",
+        "verifiedFiles": 14091,
+        "onlyChangedEntry": "runtime/worker/dist/index.js",
+        "installerSha256": "c9aad6b0695e048964d2b86f772f2ff8974ae169cf9e6dee1dddac68447a508f",
+        "verificationReportSha256": "1e8594e9d3d069a167bc5324d6eeb94fa77f3a59b21241b02afcfaa8a1c2ab83",
+        "scope": "Local QA updater signature, NSIS payload and installed executable digests verified. The PGlite desktop process started. First launch and profile reopen acceptance are in progress."
+      }
+    }
+  },
   "remainingAcceptance": [
-    "Complete all inventory categories, background services and behavioral contracts.",
-    "Complete malformed/Unicode/deep-JSON parsing and serialization parity across the entire server, including authenticated metadata and hashes.",
-    "Exercise the full supported product, deployment, database and platform matrix.",
-    "Produce and exercise native/container/desktop artifacts and existing-data conversion with post-write rollback."
+    "Finish canonical-history CLI and model-operation acceptance on Windows x64. Exercise the repacked desktop installer, retained profiles and signed update with the merged worker fix.",
+    "Qualify active database and Redis interruption and prolonged outages during model operations, and reconcile the still-open background-service and product recovery comparisons.",
+    "Complete the remaining inventory-level behavior evidence, including malformed, Unicode and deep-JSON inputs, serialization for authenticated metadata, encrypted boundaries and protocol ordering.",
+    "Qualify installed iOS native QR and remaining physical-camera and distribution-signed mobile scenarios.",
+    "Complete residual performance coverage for sustained backpressure, interruption recovery and representative Windows and Linux runtimes.",
+    "Reconcile exact release artifacts, migration and rollback evidence and remaining platform limits before marking full replacement complete."
   ],
   "milestonePlatformAcceptance": [
     {
