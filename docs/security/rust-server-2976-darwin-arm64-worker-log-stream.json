@@ -1,0 +1,244 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "target": "darwin-arm64",
+  "candidateVersion": "1.1.2976",
+  "referenceVersion": "1.1.2964",
+  "harnessBaseCommit": "d6738482b4ad28f719dadc42c6b7a139f37e2380",
+  "referenceSourceTree": "3b67d65df364e06ddd97e949564046e269101831",
+  "scope": "Local macOS ARM64 standalone package and the Node reference, using real HTTP and WebSocket connections and WorkerConnection with controlled log records. One sequential observation per runtime and mode on a shared host with Windows QA active. Node used a fixture-owned external PostgreSQL 18.6 cluster in the bundled PostgreSQL comparison. Rust launched its own bundled database in that mode. RSS sums the server process tree and excludes external database processes. Recovery includes the worker reconnect schedule.",
+  "assertions": {
+    "payloadBytesPerCase": 16777216,
+    "framesPerCase": 256,
+    "payloadSha256": "a06c26cbac8b80704f420222dae5658b88ff2da96702d12ef7a4223e9361f7c1",
+    "slowConsumerCloseCode": 1013,
+    "slowConsumerCloseReason": "Worker log stream consumer is too slow",
+    "recovery": "Kill the server process, reopen the same profile on the same port, confirm identity and a settings write, reconnect the worker, and observe a fresh ordered batch."
+  },
+  "artifact": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-server-1.1.2976-darwin-arm64.tar.gz",
+    "bytes": 66913645,
+    "sha256": "fc1a92caa50377e3bd457eb15f57bf359d9d43215af275359939abb418663322"
+  },
+  "nativeServer": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone/bin/cantrip-server",
+    "bytes": 94259472,
+    "sha256": "eba01be07448e2505235dcaf8585e96ae7b9c797c0e2f9082abaae44f92d7af2"
+  },
+  "nativeManifest": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone/native-server.json",
+    "bytes": 325804,
+    "sha256": "3d118787c7c7f927708df06727ee754f02e50fbea4d845553fd666ae069a5a01"
+  },
+  "environment": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/environment.txt",
+    "bytes": 1382,
+    "sha256": "20f4136df18f9eeb3fbe39c9e33e987d5dc49601e564ba72e596708530e13f2f"
+  },
+  "cases": [
+    {
+      "databaseMode": "pglite",
+      "runtime": "node",
+      "version": "1.1.2964",
+      "payloadMiBPerSecond": 195.95,
+      "serverTreeRssDuringStreamKiB": 1362256,
+      "slowConsumerLeaseStopMs": 21.88,
+      "slowConsumerCloseCode": 1013,
+      "crashRecoveryMs": 26594.81,
+      "restartReadyMs": 1458.37,
+      "retainedIdentityAndWrite": true,
+      "streamLeasesStartedAndStopped": 3,
+      "gracefulExitCode": 0,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/pglite/node/runs/1794599654955-51125/report.json",
+        "bytes": 3175,
+        "sha256": "617b01968fa0543be0404e7a3b60caad2158180cb58889ebe6891dbcb5c5cc29"
+      },
+      "initialProcessLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/pglite/node/runs/1794599654955-51125/initial/process.log",
+        "bytes": 4752,
+        "sha256": "c66e1ccd673557da0b895ae43f6645949d07e90a2572b573c848fc6fb1a33e4d"
+      },
+      "recoveryProcessLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/pglite/node/runs/1794599654955-51125/recovery/process.log",
+        "bytes": 5809,
+        "sha256": "31e680d330c81a256fcd1868a032ded35e9a6d6393996361aa318e3b21d1aebb"
+      },
+      "driverLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/pglite-node.log",
+        "bytes": 4315,
+        "sha256": "1964f484682bf00917d2ae98a8df3ebd4e4be1bdf8c0e33948465ffae22316b8"
+      }
+    },
+    {
+      "databaseMode": "pglite",
+      "runtime": "rust",
+      "version": "1.1.2976",
+      "payloadMiBPerSecond": 187.28,
+      "serverTreeRssDuringStreamKiB": 130816,
+      "slowConsumerLeaseStopMs": 22.7,
+      "slowConsumerCloseCode": 1013,
+      "crashRecoveryMs": 26984.62,
+      "restartReadyMs": 380.83,
+      "retainedIdentityAndWrite": true,
+      "streamLeasesStartedAndStopped": 3,
+      "gracefulExitCode": 0,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/pglite/rust/runs/1794599686172-52000/report.json",
+        "bytes": 3170,
+        "sha256": "d12f1de2c993763bc83e90e177927116cde4ebe28a6d7aaa3fab8a36837a28ca"
+      },
+      "initialProcessLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/pglite/rust/runs/1794599686172-52000/initial/process.log",
+        "bytes": 4465,
+        "sha256": "55ec4cefadb2d54308e066738b0913ca7912d75d3f3ccb29ebdde99247c7feeb"
+      },
+      "recoveryProcessLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/pglite/rust/runs/1794599686172-52000/recovery/process.log",
+        "bytes": 11474,
+        "sha256": "fc42269b047200828c6a75d7623ea1323dc6c27c0344f1947212ba50efc68c96"
+      },
+      "driverLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/pglite-rust.log",
+        "bytes": 4315,
+        "sha256": "9d9410089687c4f510e2bcb6b7e39ddf36da65274e18ddcd995b89d934dd722c"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "runtime": "node",
+      "version": "1.1.2964",
+      "payloadMiBPerSecond": 200.54,
+      "serverTreeRssDuringStreamKiB": 501712,
+      "slowConsumerLeaseStopMs": 22.23,
+      "slowConsumerCloseCode": 1013,
+      "crashRecoveryMs": 25325.52,
+      "restartReadyMs": 1027.07,
+      "retainedIdentityAndWrite": true,
+      "streamLeasesStartedAndStopped": 3,
+      "gracefulExitCode": 0,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/bundled-postgres/node/runs/1794599715777-52700/report.json",
+        "bytes": 3181,
+        "sha256": "3094b9d04cc31f5fe83c2d70bf6b43f571ac8acba3b2ef76d55a1724fd14c68c"
+      },
+      "initialProcessLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/bundled-postgres/node/runs/1794599715777-52700/initial/process.log",
+        "bytes": 36103,
+        "sha256": "5919930c0ed144a189270fff40937eea5ed2600fd9e72a9901b44592fe6d719d"
+      },
+      "recoveryProcessLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/bundled-postgres/node/runs/1794599715777-52700/recovery/process.log",
+        "bytes": 6247,
+        "sha256": "b093e1e9b28c16aaded2b99341bd77f2213d8fc97f696e70d13617920962d8e1"
+      },
+      "driverLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/bundled-postgres-node.log",
+        "bytes": 4315,
+        "sha256": "489c4012a6943fd27626ce2e3ec8e2b378cacd3026e330a1a1872af85bdf86c1"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "runtime": "rust",
+      "version": "1.1.2976",
+      "payloadMiBPerSecond": 198.75,
+      "serverTreeRssDuringStreamKiB": 332416,
+      "slowConsumerLeaseStopMs": 30.02,
+      "slowConsumerCloseCode": 1013,
+      "crashRecoveryMs": 27271.16,
+      "restartReadyMs": 171.76,
+      "retainedIdentityAndWrite": true,
+      "streamLeasesStartedAndStopped": 3,
+      "gracefulExitCode": 0,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/bundled-postgres/rust/runs/1794599744746-53422/report.json",
+        "bytes": 6230,
+        "sha256": "cbbb222cfbf9ee7078b365250f0b78ed98dd4eef22cb5fd5e10741c403bed3d9"
+      },
+      "initialProcessLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/bundled-postgres/rust/runs/1794599744746-53422/initial/process.log",
+        "bytes": 4444,
+        "sha256": "fd1e0244da5b40981cd12edd2747927fe26b7b31e8620e620d1245e0bd0c0941"
+      },
+      "recoveryProcessLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/bundled-postgres/rust/runs/1794599744746-53422/recovery/process.log",
+        "bytes": 11594,
+        "sha256": "e70839cee24ac8d2282b90cbd0b1083024371f4918f782727d878158c12267b7"
+      },
+      "driverLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/bundled-postgres-rust.log",
+        "bytes": 4315,
+        "sha256": "3a6b3b5055f3ac32ed6c6c6ef25b09db3481539c63820356daf9c73e1a410e00"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "runtime": "node",
+      "version": "1.1.2964",
+      "payloadMiBPerSecond": 191.41,
+      "serverTreeRssDuringStreamKiB": 506032,
+      "slowConsumerLeaseStopMs": 22.88,
+      "slowConsumerCloseCode": 1013,
+      "crashRecoveryMs": 27068.01,
+      "restartReadyMs": 1006.01,
+      "retainedIdentityAndWrite": true,
+      "streamLeasesStartedAndStopped": 3,
+      "gracefulExitCode": 0,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/postgres/node/runs/1794599774254-54160/report.json",
+        "bytes": 3178,
+        "sha256": "f624b455e9bb4c05300e2fa8f664c8517704d3ea03b909146eed5c391a22cf76"
+      },
+      "initialProcessLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/postgres/node/runs/1794599774254-54160/initial/process.log",
+        "bytes": 36103,
+        "sha256": "83aff0de8805b582bcf46126f2f1b92b5321132b3f608c99ec71b977797d68cf"
+      },
+      "recoveryProcessLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/postgres/node/runs/1794599774254-54160/recovery/process.log",
+        "bytes": 6247,
+        "sha256": "bd8672855ece5e92790ba3e51066130b768847554f74b728ae62d7dbf315cd11"
+      },
+      "driverLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/postgres-node.log",
+        "bytes": 4315,
+        "sha256": "9ea753f203ca820cd9878acd1257f2ce8d5b1cc5edab222edcc35a88b4f85809"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "runtime": "rust",
+      "version": "1.1.2976",
+      "payloadMiBPerSecond": 182.6,
+      "serverTreeRssDuringStreamKiB": 72048,
+      "slowConsumerLeaseStopMs": 22.51,
+      "slowConsumerCloseCode": 1013,
+      "crashRecoveryMs": 28293.67,
+      "restartReadyMs": 67.08,
+      "retainedIdentityAndWrite": true,
+      "streamLeasesStartedAndStopped": 3,
+      "gracefulExitCode": 0,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/postgres/rust/runs/1794599804950-54899/report.json",
+        "bytes": 3165,
+        "sha256": "c5f891b8b91985c8cc6241e47c9b2fccbf00419a71d03ce4f093ba7863982cee"
+      },
+      "initialProcessLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/postgres/rust/runs/1794599804950-54899/initial/process.log",
+        "bytes": 4441,
+        "sha256": "7574ecc96882ae2b001876983845d7915bd1074aadbdfc82667ea0fb98f92099"
+      },
+      "recoveryProcessLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/postgres/rust/runs/1794599804950-54899/recovery/process.log",
+        "bytes": 11413,
+        "sha256": "e086b70ab66967daf23c7cd125007f56f1e7ab2646520ebc1c8d8da8a3c50b15"
+      },
+      "driverLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/stream-performance-2976/postgres-rust.log",
+        "bytes": 4315,
+        "sha256": "e5b34311976ee18657d9ffd75c7a12629deada2fb01096296f45074fbb447b57"
+      }
+    }
+  ]
+}
