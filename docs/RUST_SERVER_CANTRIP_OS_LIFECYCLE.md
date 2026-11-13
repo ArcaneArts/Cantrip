@@ -69,6 +69,21 @@ encrypted nonce/ciphertext bytes are normalized. Actual package outcome
 authentication, ciphertext retention and within-peer identity checks are separate
 assertions. No public operation or history field is omitted from comparison.
 
+## Packaged macOS ARM64 1.1.2938
+
+The current standalone Rust server and compiled Node reference
+completed the lifecycle on PGlite, bundled PostgreSQL, and external
+PostgreSQL. Each pair matched all 44 normalized snapshots. All six
+cells passed workspace creation after server loss, real desktop and
+power transitions, and package upgrade and repair. Two authenticated
+package outcomes and the retained history were checked in each cell.
+
+The guest used the same local image as the packaged PGlite root-system
+recovery run. Its runtime configuration and filesystem entries match
+the archived foundation. The separate snapshot chain resolves the
+local Docker storage failure recorded in the recovery evidence.
+[Current packaged lifecycle record](security/rust-server-2938-darwin-arm64-goal-cantripos.json#cantripOsLifecycle)
+
 ## Local matrix and artifacts
 
 Source baseline: `e21a9e2736e6feaf2e6c62b719e8340c4541e062`.

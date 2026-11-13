@@ -453,3 +453,12 @@ node --import tsx scripts/server-rust/actual-folder-client.mjs \
 
 Use `claim` to force the earlier order. The existing worker and package
 environment options select the runtime artifacts.
+
+The macOS ARM64 `1.1.2938` package and compiled Node reference passed
+both held phases on all three database configurations. Across 12
+cells, the early autonomous begin ended before the explicit first
+input, Core bound that input to a separate turn, and the later
+autonomous turn completed. The browser decrypted the retained
+transcript after restart. The bundled PostgreSQL cases use isolated
+external PostgreSQL for Node and the private database process for Rust.
+[Current packaged ordering record](security/rust-server-2938-darwin-arm64-goal-cantripos.json#taskGoalFirstInputOrdering)
