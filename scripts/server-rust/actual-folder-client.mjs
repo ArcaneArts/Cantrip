@@ -1896,6 +1896,9 @@ try {
       liveSqlFixture: liveTaskDiagnostics,
       environment: {
         CANTRIP_AUTH_MODE: "accounts",
+        // Retained-session product flows use the normal server lifetime. The
+        // short HTTP fixture lifetime can expire during an emulated restart.
+        CANTRIP_SESSION_TTL_SECONDS: String(30 * 24 * 60 * 60),
         ...(process.argv.includes("--operational-status")
           ? { CANTRIP_METRICS_TOKEN: operationalProductToken }
           : {}),
