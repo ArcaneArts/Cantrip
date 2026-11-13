@@ -350,4 +350,11 @@ committed and source capture returned its normal stale-source response for
 the completed Goal. Both mixed Redis pairings subsequently passed all 16
 product steps and reopened the encrypted transcript. The earlier
 worker-facing rejection remains a separate observation.
+
+The Node reference's two opt-in native handoff tests now use the real
+managed execution runner. They passed with the packaged macOS ARM64 Codex
+binary, including recovery after a lost commit response, attached CLI
+retargeting, a return transfer, and release of the native hold after
+cancellation. The combined handoff and Task input authority suites passed
+all 84 tests with no skips.
 [Mixed post-commit evidence](security/rust-server-autonomous-task-goal-interruption-acceptance.json#mixedPostCommit)
