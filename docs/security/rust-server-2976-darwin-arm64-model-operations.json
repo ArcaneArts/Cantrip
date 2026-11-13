@@ -272,8 +272,116 @@
       "sha256": "0a98a04f19b6062db70bdbd23829b9b2124f5549e1bcf7180f5bd25b147b324f"
     }
   },
+  "sharedRedisOutage": {
+    "scope": "A real Redis process is killed while the unchanged packaged Node worker is waiting for the provider to finish a protected embedding. The browser connects to the opposite server peer. External PostgreSQL remains available. All four Node and Rust peer pairings are exercised on macOS ARM64.",
+    "rustServer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-redis-outage/cantrip-server-model-unavailable-cancel",
+      "bytes": 179713264,
+      "sha256": "64cd242b032183ee53c6695ba3d2d1d8bf01614246e9b148b0fe03575808f0b4"
+    },
+    "rustModelOperationsSourceSha256": "4e40d96d93192ca6777ba5a195ab0698f2e576d468e711c74a2aae0f1359b73e",
+    "nodeReferenceSourceTree": "3b67d65df364e06ddd97e949564046e269101831",
+    "redisVersion": "8.10.3",
+    "redis": {
+      "path": "rust-redis-coordination-local-11b8ad27a-20261106-v1/.qa/rust-redis/redis-source/src/redis-server",
+      "bytes": 3482208,
+      "sha256": "a18144d2e5d0f1792b4af8cff9524a376c1ebd7271d1981ffcf1c4a330ad51ee"
+    },
+    "workerIndex": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/macos-canonical-continuation/worker/dist/index.js",
+      "bytes": 391638,
+      "sha256": "3505b8913f656e5b6171948ecc8170b4134519ad0e2b3694ee533c4527b6d586"
+    },
+    "cells": [
+      {
+        "pairing": "node/node",
+        "productSteps": 20,
+        "operationCases": 14,
+        "providerHttpRequests": 15,
+        "offlineMs": 45002,
+        "providerClosedOnReconnect": false,
+        "initialReadiness": [503, 503],
+        "prolongedReadiness": [503, 503],
+        "recoveredReadiness": [200, 200],
+        "interruptedHttpStatus": 502,
+        "interruptedAttemptStatus": "unknown",
+        "transportAfterRejectedReplay": "replied",
+        "cleanPeerExits": 6,
+        "cleanWorkerExits": 4
+      },
+      {
+        "pairing": "node/rust",
+        "productSteps": 20,
+        "operationCases": 14,
+        "providerHttpRequests": 15,
+        "offlineMs": 45002,
+        "providerClosedOnReconnect": false,
+        "initialReadiness": [503, 503],
+        "prolongedReadiness": [503, 503],
+        "recoveredReadiness": [200, 200],
+        "interruptedHttpStatus": 502,
+        "interruptedAttemptStatus": "unknown",
+        "transportAfterRejectedReplay": "replied",
+        "cleanPeerExits": 6,
+        "cleanWorkerExits": 4
+      },
+      {
+        "pairing": "rust/node",
+        "productSteps": 20,
+        "operationCases": 14,
+        "providerHttpRequests": 15,
+        "offlineMs": 45004,
+        "providerClosedOnReconnect": false,
+        "initialReadiness": [503, 503],
+        "prolongedReadiness": [503, 503],
+        "recoveredReadiness": [200, 200],
+        "interruptedHttpStatus": 502,
+        "interruptedAttemptStatus": "unknown",
+        "transportAfterRejectedReplay": "replied",
+        "cleanPeerExits": 6,
+        "cleanWorkerExits": 4
+      },
+      {
+        "pairing": "rust/rust",
+        "productSteps": 20,
+        "operationCases": 14,
+        "providerHttpRequests": 15,
+        "offlineMs": 45004,
+        "providerClosedOnReconnect": false,
+        "initialReadiness": [503, 503],
+        "prolongedReadiness": [503, 503],
+        "recoveredReadiness": [200, 200],
+        "interruptedHttpStatus": 502,
+        "interruptedAttemptStatus": "unknown",
+        "transportAfterRejectedReplay": "replied",
+        "cleanPeerExits": 6,
+        "cleanWorkerExits": 4
+      }
+    ],
+    "assertions": [
+      "Both peers report unready while PostgreSQL remains healthy. The original provider response stays open and the browser request stays unsettled throughout the outage.",
+      "After Redis restarts the same worker process and continuity identity return. The interrupted response is HTTP 502 and retains one unknown usage attempt with no receipt.",
+      "Replaying the operation produces a protected rejection without another provider request or a usage receipt. A fresh decision completes with its own receipt, and earlier rows remain identical.",
+      "The other model cases still exercise explicit cancellation, SDK abort, raw HTTP disconnect, worker SIGKILL, timeout and a new operation after restart."
+    ],
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-redis-outage/all-redis-outage-unavailable-cancel.json",
+      "bytes": 1939715,
+      "sha256": "326edd550244081bbd9aae1515d341f99ddbc5970d927de64f78c827cc097c20"
+    },
+    "log": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-redis-outage/all-redis-outage-unavailable-cancel.log",
+      "bytes": 7367,
+      "sha256": "16cd03080cde7e710e6db39a738d064c1742f0d91697dc00e8b2040c26d90d6e"
+    },
+    "priorReproduction": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-redis-outage/all-redis-outage-after-reconnect.json",
+      "bytes": 1390909,
+      "sha256": "43ab34c868c5ca414f00713baadf985ca1828eb25bb5b6407636613e015e1bc9"
+    }
+  },
   "remaining": [
     "Windows package model-operation acceptance and active server-process interruption outside macOS.",
-    "Active Redis interruption, settlement while external PostgreSQL is unavailable, and database outages longer than the exercised 45 seconds."
+    "Receipt settlement while external PostgreSQL is unavailable, longer dependency outages and packaged cross-platform Redis interruption."
   ]
 }

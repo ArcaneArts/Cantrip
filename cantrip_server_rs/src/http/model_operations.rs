@@ -9,7 +9,10 @@ use crate::{
     operations::logging::{self, LogCall},
     settings::{self, repository::SettingsRepository},
     wire::{self, ValidationError, Value, value::json},
-    workers::{command_bus::RequestTimeout, repository::WorkerRepository},
+    workers::{
+        command_bus::{CommandFailure, RequestTimeout},
+        repository::WorkerRepository,
+    },
 };
 use anyhow::{Context as _, Result};
 use axum::{
@@ -184,7 +187,16 @@ async fn execute(
             output(200, "protectedEmbeddingResponseSchema", &response)
         })
         .await;
-    if result.is_ok() {
+    let worker_unavailable = result
+        .as_ref()
+        .err()
+        .and_then(|error| error.downcast_ref::<CommandFailure>())
+        .is_some_and(
+            |failure| matches!(failure, CommandFailure::Bridge(error) if error.unavailable),
+        );
+    // The unavailable result ends this relay. A new cancellation could reach
+    // a worker that has already reattached, after the original relay closed.
+    if result.is_ok() || worker_unavailable {
         cancellation.command = None;
     }
     result

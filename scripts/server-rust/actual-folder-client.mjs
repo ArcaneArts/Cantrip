@@ -144,6 +144,9 @@ const postgresOutage = option("--inflight-peer") === "postgres";
 const modelPostgresOutage = process.argv.includes(
   "--model-operation-postgres-outage",
 );
+const modelRedisOutage = process.argv.includes(
+  "--model-operation-redis-outage",
+);
 const modelServerLoss = process.argv.includes("--model-operation-server-loss");
 assert.ok(
   !modelPostgresOutage ||
@@ -151,6 +154,15 @@ assert.ok(
       databaseMode === "postgres" &&
       !modelServerLoss),
   "Model-operation PostgreSQL interruption requires --model-operations --database postgres and runs separately from server loss",
+);
+assert.ok(
+  !modelRedisOutage ||
+    (process.argv.includes("--model-operations") &&
+      sharedPair &&
+      databaseMode === "postgres" &&
+      !modelServerLoss &&
+      !modelPostgresOutage),
+  "Model-operation Redis interruption requires --model-operations --database postgres --server-pair and runs separately from other faults",
 );
 const goalLaneDependency = option("--task-goal-lane-dependency");
 const taskGoalFirstInputPhase = option("--task-goal-first-input-order");
@@ -1700,10 +1712,11 @@ async function flow(
         stopWorker,
         crashWorker,
         workerProcessForInterruption:
-          modelServerLoss || modelPostgresOutage
+          modelServerLoss || modelPostgresOutage || modelRedisOutage
             ? () => worker?.child
             : undefined,
         postgresOutage: modelPostgresOutage ? postgres.cluster : undefined,
+        redisOutage: modelRedisOutage,
         requests,
         result,
       });
