@@ -30,11 +30,16 @@ control, holds the original native turn open, invokes `cantrip worktree create
 verifies two distinct native threads, one canonical answer per lane, and exact
 transcript retention after server and worker restart. The Rust debug executable
 passed on PGlite, bundled PostgreSQL, and external PostgreSQL. The rebuilt Node
-reference passed on external PostgreSQL. The worker ran rebuilt JavaScript with
-the bundled CLI, Codex binary, and dependencies. The fixture supplies the local
-repository's catalog classification and scripted model responses. Final
-release-packaged platform runs remain open.
+reference passed on external PostgreSQL. The optimized macOS ARM64 package
+`1.1.2935` repeated the same flow on all three stores. Each run passed 12
+product steps, issued two model requests and reopened the exact transcript
+after four clean server exits and four clean worker exits. The worker ran
+rebuilt JavaScript with the previously packaged Node runtime, dependencies,
+CLI and Codex. The fixture supplies the local repository's catalog
+classification and scripted model responses. Linux and Windows release
+package runs of this flow remain open.
 [Worktree continuation evidence](security/rust-server-cli-worktree-product.json)
+[macOS release evidence](security/rust-server-2935-macos-release-acceptance.json)
 
 ## Preserved behavior
 
