@@ -1679,6 +1679,10 @@ async function flow(
       });
     }
     if (process.argv.includes("--model-operations")) {
+      const interruptServer = process.argv.includes(
+        "--model-operation-server-loss",
+      );
+      if (interruptServer) assert.ok(fixture instanceof SingleProductFixture);
       if (!worker) await startWorker();
       await actualModelOperationsClient({
         page,
@@ -1687,6 +1691,9 @@ async function flow(
         startWorker,
         stopWorker,
         crashWorker,
+        workerProcessForInterruption: interruptServer
+          ? () => worker?.child
+          : undefined,
         requests,
         result,
       });
