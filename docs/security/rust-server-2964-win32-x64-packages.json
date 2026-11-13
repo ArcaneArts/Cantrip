@@ -4,7 +4,7 @@
   "sourceCommit": "ca8eb6e37136de6d9cdd27c20ee0e4a5a9c476f3",
   "candidateVersion": "1.1.2964",
   "target": "win32-x64",
-  "scope": "Verified standalone and NSIS package contents. In-guest runtime and updater qualification are tracked separately.",
+  "scope": "Verified standalone and NSIS package contents and exercised the standalone server in a local Windows 11 x64 QEMU guest. Installed desktop and updater qualification are tracked separately.",
   "standalone": {
     "archive": {
       "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/windows-integrated/cantrip-server-1.1.2964-win32-x64.tar.gz",
@@ -23,6 +23,72 @@
       "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/windows-integrated/guest-acceptance.json",
       "bytes": 2706,
       "sha256": "a593f6e8706f23570d7a545c65413db1b8b79dbec7deffdc1782cb5c5efdecc8"
+    },
+    "guestAcceptance": {
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/windows-integrated/standalone-verified-acceptance.json",
+        "bytes": 2740,
+        "sha256": "f7907e6b2e4dc8b5d904bdd5c35a289a5a98b4dc66e6897cf2e322c9fc3808b8"
+      },
+      "serialReceipt": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/windows-integrated/standalone-verified-serial.json",
+        "bytes": 322,
+        "sha256": "fa6f4abf9b911004ccb7050f235dd832176af87b303dcf8739c298c494b239a1"
+      },
+      "fixtureDiff": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/windows-integrated/standalone-retry-harness.diff",
+        "bytes": 781,
+        "sha256": "31007213d32c9f7325866683fb89c816a018d794eafb63a066ec5d213d1f53ff"
+      },
+      "fixtureStartupTimeoutSeconds": 600,
+      "verifiedFiles": 2281,
+      "serverRuntimePathHasNoNode": true,
+      "embeddedRuntimeFallback": true,
+      "windowsLauncherEncodingVerified": true,
+      "modes": [
+        {
+          "mode": "pglite",
+          "engine": "pglite",
+          "settingsWriteAndRestart": true,
+          "migrationLauncher": true,
+          "hostedReopen": true,
+          "supervisionStdinClose": true,
+          "dotenvAndProcessAndCliPrecedence": true,
+          "sqlExport": {
+            "format": "postgresql-sql",
+            "bytes": 493314,
+            "sha256": "f6c29b04e8aee5936c940429b5d47ca5efdf8fec44937c293faeeedc9aaf3e33"
+          }
+        },
+        {
+          "mode": "bundled-postgres",
+          "engine": "postgres",
+          "settingsWriteAndRestart": true,
+          "migrationLauncher": true,
+          "hostedReopen": true,
+          "supervisionStdinClose": true,
+          "dotenvAndProcessAndCliPrecedence": true,
+          "sqlExport": {
+            "format": "postgresql-sql",
+            "bytes": 493546,
+            "sha256": "3e0a44ef975b8e27243215fb22c028015d968e39ab749c1c156140a0b6d8a5eb"
+          }
+        },
+        {
+          "mode": "postgres",
+          "engine": "postgres",
+          "settingsWriteAndRestart": true,
+          "migrationLauncher": true,
+          "hostedReopen": true,
+          "supervisionStdinClose": true,
+          "dotenvAndProcessAndCliPrecedence": true,
+          "sqlExport": {
+            "format": "postgresql-sql",
+            "bytes": 493542,
+            "sha256": "e1b3e9fce3f4915823fed54b08744c0fffaacc3fa12d67a70f70d416b58d1cb0"
+          }
+        }
+      ]
     }
   },
   "desktop": {
