@@ -76,6 +76,15 @@ below apply to the exact binaries and worker entries identified by their reports
   The report documents the local tradeoff alongside improvements in paged
   reads, writes, mixed-read throughput and startup.
   [Performance report](security/rust-server-2976-darwin-arm64-populated-performance.json)
+- **Worker log streaming.** Packaged macOS ARM64 and Linux ARM64 and x64
+  servers passed slow-consumer handling and worker reconnection after a
+  forced server exit on all three stores. The Linux x64 bundled PostgreSQL
+  measurement varied with payload size. Rust measured 58.88 MiB/s against
+  63.26 MiB/s for the historical Node image at 64 MiB, and 45.14 MiB/s
+  against 40.96 MiB/s at 256 MiB. The Node comparison used external
+  PostgreSQL. Each figure is a single observation on a shared host.
+  [macOS report](security/rust-server-2976-darwin-arm64-worker-log-stream.json),
+  [Linux report](security/rust-server-2976-linux-worker-log-stream.json)
 
 ## Historical qualification
 

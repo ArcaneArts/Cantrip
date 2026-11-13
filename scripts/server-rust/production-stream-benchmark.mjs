@@ -14,12 +14,15 @@ import { managementWorker } from "./worker-management-http-worker.mjs";
 import { LogProbe } from "./worker-log-stream-probe.mjs";
 import { eventually } from "./full-worker.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
+import { productionStreamContainer } from "./production-stream-container.mjs";
 const { values } = parseArgs({
   options: {
     runtime: { type: "string" },
     root: { type: "string" },
     artifact: { type: "string" },
     "node-directory": { type: "string" },
+    image: { type: "string" },
+    "postgres-image": { type: "string", default: "postgres:18" },
     database: { type: "string", default: "pglite" },
     "payload-mib": { type: "string", default: "16" },
     pressure: { type: "boolean", default: false },
@@ -32,33 +35,52 @@ const root = path.resolve(values.root),
   runtime = values.runtime,
   run = path.join(root, runtime, "runs", `${Date.now()}-${process.pid}`);
 await mkdir(run, { recursive: true });
-const artifact = path.resolve(
-    values.artifact ?? process.env.CANTRIP_BENCH_NATIVE_ARTIFACT,
-  ),
-  nodeDirectory = path.resolve(
-    values["node-directory"] ?? process.env.CANTRIP_BENCH_NODE_DIRECTORY,
-  );
+const artifact = values.image
+  ? undefined
+  : path.resolve(values.artifact ?? process.env.CANTRIP_BENCH_NATIVE_ARTIFACT);
+const nodeDirectory = values.image
+  ? undefined
+  : path.resolve(
+      values["node-directory"] ?? process.env.CANTRIP_BENCH_NODE_DIRECTORY,
+    );
 const payloadMiB = Number(values["payload-mib"]);
 assert.ok(
   Number.isSafeInteger(payloadMiB * 1024 * 1024) && payloadMiB > 0,
   "--payload-mib must describe a positive integer byte count",
 );
 const profile = path.join(run, "profile");
-const manifest = JSON.parse(
-  await readFile(path.join(artifact, "native-server.json"), "utf8"),
-);
+const manifest = artifact
+  ? JSON.parse(
+      await readFile(path.join(artifact, "native-server.json"), "utf8"),
+    )
+  : undefined;
 const report = {
   runtime,
   database: values.database,
   artifact,
-  nativeArtifactVersion: manifest.version.version,
+  nativeArtifactVersion: manifest?.version.version,
   nodeDirectory,
   payloadMiB,
   status: "running",
   scope:
     "Production server entries and actual WorkerConnection; log production is controlled. No test-only server endpoints. Bulk worker-log JSON stream and slow consumer; not opaque WorkerLink binary throughput.",
 };
-let server, worker, probe, pg, databaseUrl;
+let server, worker, probe, pg, databaseUrl, container;
+async function start(port, directory) {
+  const logs = path.join(run, directory);
+  return container
+    ? container.start({ port, logs })
+    : productionProcess({
+        runtime,
+        artifact,
+        nodeDirectory,
+        profile,
+        database: values.database,
+        databaseUrl,
+        port,
+        logs,
+      });
+}
 const state = { commands: [], background: [], disconnects: 0 };
 const handlers = Object.fromEntries(
   ["start", "renew", "stop"].map((kind) => [
@@ -110,25 +132,35 @@ async function open(f) {
   return ready;
 }
 try {
-  if (
+  if (values.image) {
+    container = await productionStreamContainer({
+      image: values.image,
+      runtime,
+      database: values.database,
+      postgresImage: values["postgres-image"],
+    });
+    report.container = {
+      image: values.image,
+      imageId: container.imageId,
+      architecture: container.architecture,
+      externalDatabase: container.databaseIdentity,
+    };
+  } else if (
     values.database === "postgres" ||
     (runtime === "node" && values.database === "bundled-postgres")
   ) {
     pg = await postgresFixture(path.join(run, "external-postgres"));
     databaseUrl = await pg.database();
   }
-  server = await productionProcess({
-    runtime,
-    artifact,
-    nodeDirectory,
-    profile,
-    database: values.database,
-    databaseUrl,
-    logs: path.join(run, "initial"),
-  });
+  server = await start(undefined, "initial");
+  report.initialStartupMs = server.startupMs;
+  if (container) {
+    report.container.initial = server.identity;
+    report.nativeArtifactVersion = server.identity.artifactVersion?.version;
+  }
   await writeFile(
     path.join(run, "running.json"),
-    JSON.stringify({ pid: server.child.pid, profile, origin: server.origin }) +
+    JSON.stringify({ pid: server.child?.pid, profile, origin: server.origin }) +
       "\n",
   );
   let f = productionClient(server);
@@ -255,16 +287,16 @@ try {
       () => worker.connected,
       (v) => assert.equal(v, false),
     );
-    server = await productionProcess({
-      runtime,
-      artifact,
-      nodeDirectory,
-      profile,
-      port,
-      database: values.database,
-      databaseUrl,
-      logs: path.join(run, "recovery"),
-    });
+    server = await start(port, "recovery");
+    if (container) {
+      report.container.restarted = server.identity;
+      if (runtime === "rust")
+        assert.equal(
+          server.identity.sha256,
+          report.container.initial.sha256,
+          "recovery uses the same packaged executable",
+        );
+    }
     f = productionClient(server);
     await f.visit("recovered session", "GET", "/api/auth/session");
     assert.equal(
@@ -328,6 +360,14 @@ try {
       report.databaseShutdownFailure = e.message;
       process.exitCode = 1;
     }
+  if (container)
+    try {
+      await container.close();
+    } catch (e) {
+      report.status = "failed";
+      report.containerCleanupFailure = String(e.errors ?? e);
+      process.exitCode = 1;
+    }
   report.commands = state.commands;
   report.disconnects = state.disconnects;
   await writeFile(
@@ -339,6 +379,7 @@ if (report.status !== "passed")
   throw new Error(
     report.failure?.message ??
       report.shutdownFailure ??
-      report.databaseShutdownFailure,
+      report.databaseShutdownFailure ??
+      report.containerCleanupFailure,
   );
 console.log("stream benchmark complete");
