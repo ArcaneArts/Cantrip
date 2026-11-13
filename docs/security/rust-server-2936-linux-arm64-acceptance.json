@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceCommit": "e97cf3e8e3a474f4f303eda754088cf1072234ae",
+  "version": "1.1.2936",
+  "target": "linux-arm64",
+  "databaseModes": [
+    "pglite",
+    "bundled-postgres",
+    "postgres"
+  ],
+  "verifiedPackageFiles": 2558,
+  "candidateExecutable": {
+    "path": "bin/cantrip-server",
+    "bytes": 106465360,
+    "sha256": "8aab6935a4b1abd51174545e73563dc6e957419c8aabe8e4005103955eff36c2",
+    "elfMachine": 183
+  },
+  "standaloneArchive": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/arm64/winterhold/native.tar.gz",
+    "bytes": 138624659,
+    "sha256": "3f2678b26fb69caaf0a6ffdc3ba79d470552aa73b7a7960fbeb06cd08a207dc8"
+  },
+  "standaloneVerification": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/arm64/native-archive-verification.json",
+    "bytes": 297,
+    "sha256": "1530bab64eacab71b89799943b267b093f9761d9bb061d69826f49e0060ebd29"
+  },
+  "container": {
+    "image": "cantrip-server-rust:local-2936-e97cf3e8e-linux-arm64",
+    "imageId": "sha256:24615254e37a2736022b8a3d16ae34104b447746f53eadb1c0bf47e811df3472",
+    "architecture": "arm64",
+    "ociArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/cantrip-server-1.1.2936-linux-arm64.oci.tar",
+      "bytes": 178428928,
+      "sha256": "a39747e6705a68fcff2e74bb1910020fb33a3b0a3369d949e7279c6b98a5a718"
+    },
+    "ociVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/arm64/oci-verification.json",
+      "bytes": 412,
+      "sha256": "b379c3d3ae1975c0b52374392887ba1cf65380e7c34ce58c42c7be8754578b53"
+    },
+    "buildLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/runtime-build.log",
+      "bytes": 26292,
+      "sha256": "2293a301d85b5d268a936687672fc8727dda6ad70b7c153314b2d786b26cd37a"
+    },
+    "distributionBuildLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/arm64/distribution-build.log",
+      "bytes": 6440,
+      "sha256": "f62602c8714d50d0f5f15f53b78f0d78af9099f2fbdcb254ee63fcb6d62b942d"
+    },
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/arm64/container-acceptance.json",
+      "bytes": 5356,
+      "sha256": "253ffaba8d1f803096ff0a689a2c9bb20a27d985eedc7e381abff04eee14d25c"
+    },
+    "fixtureVolumes": [
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/arm64/container-volumes/cantrip-native-package-c4af2e6d-database-data.tar.zst",
+        "bytes": 7983054,
+        "sha256": "ba0ac7fa4693be5ed3c05eb9d93ca07ed471f399a30e55c03fbb20031a8bdfe4"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/arm64/container-volumes/cantrip-native-package-c4af2e6d-pglite-data.tar.zst",
+        "bytes": 6055046,
+        "sha256": "b52727ec4794f704bf2f8276cb44c635c775e4f50909f30f9bb2e80952221428"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/arm64/container-volumes/cantrip-native-package-c4af2e6d-bundled-postgres-data.tar.zst",
+        "bytes": 7211565,
+        "sha256": "944b7461b12798b86d160ae2f55aa64cbdc7476188ffdacddde561bc502f8a5c"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/arm64/container-volumes/cantrip-native-package-c4af2e6d-postgres-data.tar.zst",
+        "bytes": 73822,
+        "sha256": "0f0e917fd528d2d337d69af6cf6d5ddc185f303ebf2887b0589cb047c5c25861"
+      }
+    ],
+    "nodeAbsentFromRuntimePath": true,
+    "nonRootReadOnlyRoot": true,
+    "noexecTemporaryMountMiB": 256
+  },
+  "winterhold": {
+    "scope": "Local Ubuntu ARM64 systemd with the production installer and Caddy configuration and a fixture TLS CA. The current Rust service and local-store rollback run as ARM64. The external PostgreSQL rollback runs the archived Linux x64 Node distribution through emulation.",
+    "systemdImage": {
+      "id": "sha256:1a4719cffced31ab606bf1b4ccd0625d218a2d885708708435f66a7da36c6b92",
+      "architecture": "arm64"
+    },
+    "installerCalls": 18,
+    "recoveredInstallerFailures": 6,
+    "runningNativeExecutableHashesCompared": 10,
+    "startLimitRecoveryObserved": true,
+    "postWriteRollback": {
+      "pgliteAndBundledPostgres": "1.1.2869",
+      "externalPostgres": "1.1.2739",
+      "externalPostgresRollbackArchitecture": "amd64"
+    },
+    "observedPostgresTlsConnections": 6,
+    "tlsObservation": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/arm64/winterhold/retained-postgres-tls.txt",
+      "bytes": 4,
+      "sha256": "c6a4dcbd0b5f57d17ee7fc7336b7e0475709ac680bc26d75e2063727a53f8766"
+    },
+    "readOnlyServiceNamespace": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/arm64/winterhold/runtime-namespace-write.log",
+      "bytes": 85,
+      "sha256": "fee89d2be11519c62bc29cd226724c23851f95852f49bb531c4ef0512f1a7605"
+    },
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/arm64/winterhold/acceptance.json",
+      "bytes": 1095775,
+      "sha256": "bc52e1e4642ff23991c03659eb3d12e319e7f6f51e6b2f47407cb77bcc1fdd1d"
+    },
+    "journal": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/arm64/winterhold/journal.log",
+      "bytes": 692134,
+      "sha256": "9abdf3fd5c6b4489756a880ff0febbd1e572d1212561851f4eb1560cf5fb91f6"
+    },
+    "profiles": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/arm64/winterhold/retained-systemd-profiles.tar.zst",
+      "bytes": 13330400,
+      "sha256": "38b7611be1a79b50fd460462730441caa799018f615497c43823078e8835eba3"
+    },
+    "externalPostgresDump": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/arm64/winterhold/retained-external-postgres.dump",
+      "bytes": 677170,
+      "sha256": "8d1982f5234d4073ab4856484315015f71a987b2c86d4439a8445755b81825db"
+    },
+    "previousRustArtifact": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/arm64/winterhold/previousNative.tar.gz",
+      "bytes": 138421886,
+      "sha256": "298c4c4a3332251e28adc8c2590d7dcf55d9d1189808a1c3e7ff728d1cd79b30"
+    },
+    "previousNodeArtifact": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/arm64/winterhold/node.tar.gz",
+      "bytes": 66930804,
+      "sha256": "405ff517c4d59e9f2ed20b5d70fa14e06eaedf176b33c8f1c80a04d06912c404"
+    }
+  },
+  "localFixtureArchiveRetry": {
+    "scope": "Docker Desktop reported an I/O error when creating an archive helper after both acceptance suites had passed. All four isolated container volumes were subsequently archived and validated.",
+    "guestLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/arm64/docker-guest-archive-io.log",
+      "bytes": 2445,
+      "sha256": "78d1f4425501c0cfb0cd707eb0be919f79c2857665ce807812bcd762cb996d04"
+    }
+  },
+  "compilerCacheCleanup": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/arm64/target-cache-cleanup.log",
+    "bytes": 129,
+    "sha256": "69777ba3896400b5f34bddf0584ae60c8de609a080fab4c5abc32c6057777582"
+  }
+}
