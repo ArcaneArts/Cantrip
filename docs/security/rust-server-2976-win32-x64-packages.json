@@ -286,8 +286,59 @@
         }
       },
       "remaining": [
-        "Signed upgrade with this repack and packaged Windows CLI and model-operation acceptance."
-      ]
+        "Packaged Windows CLI and model-operation acceptance and qualification of the later worker grant refresh from PR #3012."
+      ],
+      "signedUpdate": {
+        "scope": "The installed Windows x64 desktop was updated over disposable loopback HTTPS using the same QA-signed installer as the six installed cases.",
+        "baselineVersion": "1.1.2938",
+        "candidateVersion": "1.1.2976",
+        "databaseMode": "pglite",
+        "installerSha256": "c9aad6b0695e048964d2b86f772f2ff8974ae169cf9e6dee1dddac68447a508f",
+        "baselineInstaller": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/desktop-server-drain-tests/windows/signed-media/Cantrip_1.1.2938_x64-setup.exe",
+          "bytes": 256747320,
+          "sha256": "508cc4fc20ae9b63caa1cd7f3d157dd5e7083495f0bcbeab65369a35691caaa9"
+        },
+        "tamperedInstallerRejected": true,
+        "baselineExecutablePreservedAfterRejection": true,
+        "signedInstallerAcceptedAndRelaunched": true,
+        "retainedServerIdentityAndWorkerEnrollment": true,
+        "retainedSettingWrittenBeforeUpdate": true,
+        "verifiedInstalledWorkerFiles": {
+          "dist/index.js": "3505b8913f656e5b6171948ecc8170b4134519ad0e2b3694ee533c4527b6d586",
+          "bin/codex.exe": "f0db8df766e7b928f9f3f867140e7c3637ca2ef288827a9209aaf0f0d4e39138",
+          "node_modules/@zavora-ai/computer-use-mcp/computer-use-napi.win32-x64.node": "56a0e9f48bb29841fcc5c63fcb0a38454ad194f31c6f63ea6445e21d115960fb",
+          "node_modules/@zavora-ai/computer-use-mcp/vcruntime140.dll": "eb1ee979bf02324712346e5bdbfc59c785388bc50d18cc2688aae4b0734915a0"
+        },
+        "trayQuitExitCode": 0,
+        "servicesReapedAndServerShutdownCompleted": true,
+        "serverShutdownCompleted": "2026-11-14T02:32:53.981Z",
+        "guestTerminalReceipt": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-canonical-package/signed-repack-terminal-receipt.json",
+          "bytes": 2284,
+          "sha256": "1e1d60fce65254ea7c15b41bac4a6268ee180516d749a17f706eb0da0f5e8a77"
+        },
+        "guestUpdaterObservation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-canonical-package/signed-repack-updater-observation.json",
+          "bytes": 1719,
+          "sha256": "07d5e2f5ca332b7c8bac0adbe9b2e91dce901bf7695db1a34f35e3cc8949a849"
+        },
+        "guestHttpsRequests": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-canonical-package/signed-repack-https-requests.jsonl",
+          "bytes": 248,
+          "sha256": "9b95e987cdd8a8460ff163e04155e6962268096b42cb3b862b7b0456c4736384"
+        },
+        "serialObservation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-canonical-package/signed-repack-serial.jsonl",
+          "bytes": 3053,
+          "sha256": "6003d2945ef9dfb2da68cd294046d3c18aa56706ebc362a56a6461422bdffaf0"
+        },
+        "hostUiObservation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-canonical-package/host-signed-repack-observer.log",
+          "bytes": 3266,
+          "sha256": "18882b045e0dee82d8e1a08bae003010d8074868bc1f13050ed19c6285ef5de0"
+        }
+      }
     }
   }
 }
