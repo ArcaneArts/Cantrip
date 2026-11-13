@@ -413,6 +413,24 @@ continuity identity through each interruption. Its command connection was
 replaced during worker-owner loss and the Redis interruption.
 [macOS release evidence](security/rust-server-2935-macos-release-acceptance.json)
 
+### Packaged 1.1.2938 dependency recovery
+
+The macOS ARM64 Rust package and current compiled Node reference repeated
+the external PostgreSQL and Redis process interruptions with two Rust
+peers and both mixed pairings. Five cells completed all 17 product steps.
+The original Goal receipt settled on the same turn, the worker process
+survived, both peers returned ready, and the retained encrypted transcript
+reopened after restart.
+
+The PostgreSQL case with Node serving the browser reached 14 steps.
+Both peers recovered readiness and the original Goal settled. During a
+later planned restart, Node logged completion of its shutdown handlers,
+but its process stayed alive beyond the existing 30-second deadline and
+the harness killed it. The earlier compiled reference and the rebuild
+from current source both reproduce this failure. The current test
+records five passing cells out of six.
+[Current dependency recovery record](security/rust-server-2938-darwin-arm64-mixed-goal.json)
+
 ## Ordering the first encrypted Task Goal input
 
 The full worker could receive a native autonomous Goal begin while the
