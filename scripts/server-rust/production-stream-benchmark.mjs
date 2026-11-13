@@ -154,6 +154,7 @@ try {
   }
   server = await start(undefined, "initial");
   report.initialStartupMs = server.startupMs;
+  report.initialRuntime = server.identity;
   if (container) {
     report.container.initial = server.identity;
     report.nativeArtifactVersion = server.identity.artifactVersion?.version;
@@ -282,12 +283,23 @@ try {
     const port = server.port,
       recoveryAt = performance.now();
     report.crashExit = await server.stop("SIGKILL");
+    // Windows terminates the native process with an exit code. Node's child
+    // process API can report that termination through its signal field.
+    assert.ok(
+      report.crashExit.signal === "SIGKILL" ||
+        (process.platform === "win32" &&
+          report.crashExit.code !== null &&
+          report.crashExit.code !== 0),
+      "The running server must actually terminate at the interruption boundary",
+    );
     server = undefined;
     await eventually(
       () => worker.connected,
       (v) => assert.equal(v, false),
     );
     server = await start(port, "recovery");
+    report.restartedRuntime = server.identity;
+    assert.deepEqual(report.restartedRuntime, report.initialRuntime);
     if (container) {
       report.container.restarted = server.identity;
       if (runtime === "rust")

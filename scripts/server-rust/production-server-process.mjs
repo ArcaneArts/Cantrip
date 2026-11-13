@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
@@ -7,7 +9,43 @@ import { performance } from "node:perf_hooks";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { fixtureEnvironment } from "./process.mjs";
+import { ownedWindowsWorkerProcesses } from "./windows-worker-tree.mjs";
 const execute = promisify(execFile);
+
+async function sha256(pathname) {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(pathname)) hash.update(chunk);
+  return hash.digest("hex");
+}
+
+async function windowsWorkingSet(pid) {
+  const script = `
+$ErrorActionPreference = 'Stop'
+$processes = @(Get-CimInstance Win32_Process | ForEach-Object {
+  [PSCustomObject]@{
+    id = [int]$_.ProcessId
+    parent = [int]$_.ParentProcessId
+    created = if ($_.CreationDate) { $_.CreationDate.ToUniversalTime().Ticks.ToString() } else { '' }
+    rssKiB = [double]$_.WorkingSetSize / 1024
+  }
+})
+ConvertTo-Json -InputObject $processes -Compress
+`;
+  const { stdout } = await execute(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-EncodedCommand",
+      Buffer.from(script, "utf16le").toString("base64"),
+    ],
+    { timeout: 30000, windowsHide: true },
+  );
+  return ownedWindowsWorkerProcesses(JSON.parse(stdout), pid).map(
+    ({ id, parent, rssKiB }) => ({ pid: id, ppid: parent, rssKiB }),
+  );
+}
+
 export async function productionProcess({
   runtime,
   artifact,
@@ -41,12 +79,54 @@ export async function productionProcess({
   delete env.CANTRIP_WORKER_TOKEN;
   delete env.PGLITE_RUNTIME_DIR;
   if (databaseUrl) env.DATABASE_URL = databaseUrl;
+  const windows = process.platform === "win32";
   const command =
-    runtime === "node" ? process.execPath : path.join(artifact, "start.sh");
+    runtime === "node"
+      ? process.execPath
+      : path.join(artifact, windows ? "bin/cantrip-server.exe" : "start.sh");
+  const entry =
+    runtime === "node"
+      ? path.join(nodeDirectory, "dist/index.js")
+      : path.join(
+          artifact,
+          windows ? "bin/cantrip-server.exe" : "bin/cantrip-server",
+        );
+  const executableSha256 = await sha256(
+    runtime === "node" ? process.execPath : entry,
+  );
+  const identity = {
+    platform: process.platform,
+    architecture: process.arch,
+    nodeVersion: process.version,
+    executableSha256,
+    entrySha256: runtime === "node" ? await sha256(entry) : executableSha256,
+  };
   const args =
     runtime === "node"
-      ? [path.join(nodeDirectory, "dist/index.js")]
-      : ["--port", String(port), "--database", database];
+      ? [
+          ...(windows
+            ? [
+                "--import",
+                new URL("./legacy-node-shutdown.mjs", import.meta.url).href,
+              ]
+            : []),
+          entry,
+        ]
+      : [
+          ...(windows
+            ? [
+                "--shutdown-on-stdin-close",
+                "--env-file-if-exists=.env",
+                "--bundled-pglite-runtime-dir=" + path.join(artifact, "pglite"),
+                "--bundled-postgres-bin-dir=" +
+                  path.join(artifact, "postgres/bin"),
+              ]
+            : []),
+          "--port",
+          String(port),
+          "--database",
+          database,
+        ];
   const startedAt = performance.now();
   const child = spawn(command, args, {
     cwd: runtime === "node" ? nodeDirectory : artifact,
@@ -71,12 +151,15 @@ export async function productionProcess({
     origin,
     port,
     logs,
+    identity,
     startupMs: null,
     diagnostics: () => output,
     async stop(signal = "SIGTERM") {
       const t = performance.now();
-      if (child.exitCode === null && child.signalCode === null)
-        child.kill(signal);
+      if (child.exitCode === null && child.signalCode === null) {
+        if (windows && signal === "SIGTERM") child.stdin.end();
+        else child.kill(signal);
+      }
       const timer = setTimeout(() => child.kill("SIGKILL"), 30000);
       try {
         const exit = await completion;
@@ -96,6 +179,13 @@ export async function productionProcess({
       }
     },
     async rss() {
+      if (windows) {
+        const processes = await windowsWorkingSet(child.pid);
+        return {
+          totalKiB: processes.reduce((total, row) => total + row.rssKiB, 0),
+          processes,
+        };
+      }
       const { stdout } = await execute("ps", ["-axo", "pid=,ppid=,rss="]);
       const rows = stdout
           .trim()
