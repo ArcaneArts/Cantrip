@@ -1426,6 +1426,33 @@
           "sha256": "904138e06e7d69152f0570c40f4139b3707791b732baf6129314c54db42cd8bf"
         }
       }
+    },
+    "nativeHandoffFixtureRepair": {
+      "sourceBaseline": "8771c6826c8b76ed9d77a019fd20ff872419b1d7",
+      "fixtureSource": {
+        "path": "tests/reference-node-server/test/native-handoff-executor-fixture.ts",
+        "sha256": "9fdf6fea66dce37063906ceaa8379f8781d8c397a0cfd49b9310297d15dd1f7b"
+      },
+      "platform": "darwin-arm64",
+      "nativeVersion": "0.166.0",
+      "nativeBinary": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/cantrip-worker-darwin-arm64/bin/codex",
+        "bytes": 281161744,
+        "sha256": "159efa081468910fbe00493d12d3cb18fbb9e3a091e2ea63745432d35fccbecc"
+      },
+      "baselineFailure": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/goal-source-lock-native-tests-baseline.log",
+        "bytes": 7277,
+        "sha256": "7e1a38c9fa08c03820ea434467fad3ee58c7902dea918efed8d49b27411c9c47"
+      },
+      "localReport": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/native-handoff-runner-full.log",
+        "bytes": 14158,
+        "sha256": "1b45024df1b38f6418d52908c0fdba0ecf89218911ae33008a2631a2c84bdc33"
+      },
+      "passed": 84,
+      "skipped": 0,
+      "scope": "The Node reference suite uses actual native Core and TUI with the managed runner. It exercises a lost canonical commit response, cold destination recovery, attached CLI retargeting, a return transfer and cancellation with native hold release. Provider traffic is isolated to the scripted fixture."
     }
   }
 }

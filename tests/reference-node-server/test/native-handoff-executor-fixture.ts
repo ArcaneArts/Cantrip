@@ -25,6 +25,7 @@ import { resolveModelRoutePairs } from "../src/models/subagent-routing.js";
 import { installInternalNativeRuntimeHandoffRoutes } from "../src/app/routes/internal-native-runtime-handoffs.js";
 import { NativeRuntimeHandoffClient } from "../../../cantrip_worker/src/native-runtime-handoff-client.js";
 import { CodexAppServer } from "../../../cantrip_worker/src/codex/app-server.js";
+import { ManagedExecutionRunner } from "../../../cantrip_worker/src/codex/managed-execution-runner.js";
 import { discoverCodexRuntime } from "../../../cantrip_worker/src/codex/discovery.js";
 import {
   ManagedRuntimeHandoffCoordinator,
@@ -184,6 +185,10 @@ export async function exerciseNativeHandoff(
       entries.push(entry);
       return entry;
     };
+    const runners = new Map<
+      HandoffRuntime["runtime"],
+      ManagedExecutionRunner
+    >();
     const reloadCore = async (
       runtime: CodexAppServer,
       model: HandoffRuntime["configuration"]["model"],
@@ -238,6 +243,9 @@ export async function exerciseNativeHandoff(
         await closed;
       }
       await runtime.releaseRelocationThread(threadId, model, provider);
+      // Reloading the native thread discards its gate even on the same socket.
+      runners.get(runtime)?.revoke();
+      runners.delete(runtime);
     };
     let source = await createRuntime(path.join(root, "source"));
     const byHome = new Map([[source.runtime.managedHistoryHome, source]]);
@@ -515,6 +523,7 @@ export async function exerciseNativeHandoff(
     const namespaces = new ManagedRuntimeNamespaces(root);
     let destination: Awaited<ReturnType<typeof createRuntime>> | undefined;
     const resolutions: string[] = [];
+    const unexpectedExecution: unknown[] = [];
     let publications = 0;
     const coordinator = () =>
       new ManagedRuntimeHandoffCoordinator({
@@ -522,6 +531,17 @@ export async function exerciseNativeHandoff(
         scope,
         namespaces,
         journal: new ManagedRuntimeHandoffJournal(root, scope),
+        holdSource: async (state, source, signal) => {
+          signal.throwIfAborted();
+          const runner = runners.get(source.runtime)!;
+          await runner.holdForProviderTransfer(
+            state.operationId,
+            runner.configuration.runnerGeneration,
+            state.source.threadId,
+            (state.binding ?? state.source).runtimeGeneration,
+          );
+          signal.throwIfAborted();
+        },
         resolve: async (state, side) => {
           resolutions.push(side);
           const { configuration } = await client.configuration({
@@ -548,6 +568,21 @@ export async function exerciseNativeHandoff(
           }
           if (side === "destination") destination = entry;
           const runtime = entry.runtime;
+          let runner = runners.get(runtime);
+          if (!runner?.belongsToCurrentTransport()) {
+            runner = new ManagedExecutionRunner(runtime, initial.threadId, {
+              requested: async (attempt) => {
+                unexpectedExecution.push(attempt);
+                await runtime.resolveManagedExecution(
+                  { ...attempt, operationGeneration: null, allow: false },
+                  runtime.transportGeneration!,
+                );
+              },
+              declined: () => {},
+              failed: (error) => unexpectedExecution.push(error),
+            });
+            runners.set(runtime, runner);
+          }
           expect(configuration.provider.protectedApiKey).toBeNull();
           return {
             runtime,
@@ -559,6 +594,7 @@ export async function exerciseNativeHandoff(
               mcpServers: [],
               executionProfile: "ide",
               canonicalHistory: true,
+              executionGate: runner.configuration,
             },
           };
         },
@@ -583,6 +619,26 @@ export async function exerciseNativeHandoff(
             throw new Error("fixture source publication failed");
           await verifyRetained(runtime);
           restorations++;
+        },
+        cancelled: async (state) => {
+          const runtime = sourceForCancel.runtime;
+          const runner = runners.get(runtime)!;
+          const threadId = state.source.threadId;
+          const transport = state.binding!.runtimeGeneration;
+          await runner.resumeAfterProviderTransfer(
+            state.operationId,
+            threadId,
+            transport,
+          );
+          const root = await runtime.controlManagedRootProducer(
+            {
+              threadId,
+              runnerGeneration: runner.configuration.runnerGeneration,
+              action: "read",
+            },
+            transport,
+          );
+          expect(root.heldBy).toBeNull();
         },
         publish: async (state, runtime) => {
           expect(state.phase).toBe("committed");
@@ -774,10 +830,15 @@ export async function exerciseNativeHandoff(
       cancelJob.operationId,
       new AbortController().signal,
     );
+    await Promise.race([
+      preparedForCancellation,
+      active.then(() => {
+        throw new Error("Handoff finished before cancellation was requested.");
+      }),
+    ]);
     const interrupted = expect(active).rejects.toThrow(
       "Handoff cancellation requested",
     );
-    await preparedForCancellation;
     await f.repository.nativeRuntimeHandoffs.requestCancellation(
       owner,
       f.chatId,
@@ -825,6 +886,7 @@ export async function exerciseNativeHandoff(
       returning.operationId,
     );
     expect(calls).toEqual([]);
+    expect(unexpectedExecution).toEqual([]);
     if (accountId)
       expect(
         await readFile(path.join(accountHome, "config.toml"), "utf8"),
