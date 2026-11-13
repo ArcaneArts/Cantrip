@@ -64,8 +64,13 @@ pub(super) async fn command_input(
         &[&id, &chat],
     )
     .await?;
+    // A server-started continuation supplies a protected system message
+    // through the same admitted native input path as a user prompt.
     let Some(message) = message.filter(|m| {
-        m["role"] == "user"
+        (m["role"] == "user"
+            || (m["role"] == "system"
+                && command["origin"] == "gui"
+                && command["method"] == "turn/start"))
             && truthy(m.get("protected_content"))
             && truthy(m.get("idempotency_key"))
     }) else {

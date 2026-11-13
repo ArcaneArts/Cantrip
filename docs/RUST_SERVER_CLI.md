@@ -15,6 +15,27 @@ The [current CLI matrix](security/rust-server-cli-http-contract-matrix.json)
 repeats the paired HTTP, worker-client, disconnect and restart checks
 against the `1.1.2881` Rust source.
 
+## Native CLI worktree continuation
+
+The packaged CLI now completes create-and-switch with a full worker and real
+native turns. The worker keeps a separate managed execution runner for each
+Chat placement. The server commits the selected model route with the new lane's
+accepted input receipt, then binds the native thread when the worker starts it.
+Canonical history reuses the exact protected system continuation message and
+preserves its lane and worktree attribution.
+
+The local browser test closes the linked console through the existing client
+control, holds the original native turn open, invokes `cantrip worktree create
+--switch`, and checks the real Git checkout before releasing the turn. It
+verifies two distinct native threads, one canonical answer per lane, and exact
+transcript retention after server and worker restart. The Rust debug executable
+passed on PGlite, bundled PostgreSQL, and external PostgreSQL. The rebuilt Node
+reference passed on external PostgreSQL. The worker ran rebuilt JavaScript with
+the bundled CLI, Codex binary, and dependencies. The fixture supplies the local
+repository's catalog classification and scripted model responses. Final
+release-packaged platform runs remain open.
+[Worktree continuation evidence](security/rust-server-cli-worktree-product.json)
+
 ## Preserved behavior
 
 CLI context can come from an explicit Chat lane, Codex thread, Terminal, or

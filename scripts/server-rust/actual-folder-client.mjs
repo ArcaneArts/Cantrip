@@ -3,6 +3,8 @@ import {
   replicaProductJobEvents,
 } from "./actual-project-replicas.mjs";
 import { actualProjectWorktrees } from "./actual-project-worktrees.mjs";
+import { repositoryFixture } from "./repository-fixture.mjs";
+import { literal } from "./project-target-state.mjs";
 import { actualProjectAdministration } from "./actual-project-administration.mjs";
 import {
   assertOfflineRemoteSurface,
@@ -200,7 +202,11 @@ const computerUseProduct = process.argv.includes("--computer-use");
 const fakeComputerUse = process.argv.includes("--computer-use-fake-capture");
 assert.ok(!fakeComputerUse || computerUseProduct);
 assert.ok(!workerLinkRenewal || !sharedPair);
+const cliWorktreeAcquire = process.argv.includes("--cli-worktree-acquire");
+const gitProjectChat =
+  cliWorktreeAcquire || process.argv.includes("--chat-controls");
 const singleProduct =
+  cliWorktreeAcquire ||
   cantripOsRun ||
   cantripOsSurfaces ||
   cantripOsSourceBackup ||
@@ -258,7 +264,7 @@ const fullServerLogs =
   remoteSurfaces ||
   computerUseProduct ||
   process.argv.includes("--project-administration") ||
-  process.argv.includes("--chat-controls");
+  gitProjectChat;
 const surfaceFixtureRequests = [];
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-actual-folder-"));
 const fakeCuaLauncher =
@@ -278,6 +284,9 @@ const report = {
   scope:
     "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Optional --worktrees exercises actual local Git create/lock/unlock/reconcile/remove/prune, retained identity and real Run process retirement before deletion, with only disposable catalog classification seeded. Optional --replicas uses two full workers for direct local Git attachment, replay, restart and detach; --github-replicas adds real public gh clone/fetch and managed checkout deletion. Optional --github-conversion uses the existing encrypted APIs and full worker to link matching public history in a fresh managed folder, preserve dirty bytes and identities, and restart without SQL seeding or command substitutions. Optional --tasks uses existing encrypted Task APIs, the full production worker and bundled Codex for direct execution, planning, native Goal completion, failure/retry, paused admissions and retained restart; only public model HTTP responses are controlled. Optional --project-chats exercises retained Agent creation and usage, real managed native preparation, encrypted turns, completed canonical history, native Goal tools, exact restart retention and Goal clear; only public model HTTP responses are controlled. Optional --chat-controls adds real native compaction and continuation, dirty Git worktree/lane release, encrypted system-message replay and exact committed restart retention to the existing Agent/worktree flows. Optional --chat-customizations adds actual skills, extra roots, MCP and bound permission configuration with native restart recovery. Optional --skill-settings adds actual project/account skill files, audiences, encrypted recovery deletion and retained restart. Optional --mcp-settings uses an acceptance-only owned worker home and the existing encrypted browser SDK for MCP CRUD, full discovery, copy, native resource access and restart. Shared --server-pair runs exercise production peers on private shared PostgreSQL/Redis with the browser and full worker on opposite peers; --rolling-servers replaces application and worker-owner peers without restarting that worker. Optional --native-shared-agent-recovery interrupts actual Agent/Goal execution on the selected --agent-crash-peer while retaining native authority and the original full worker. Full UI, packaged/platform, worker/native-process loss, long-outage/Redis TLS and whole replacement acceptance remain separate.",
   runtimes: [],
+  cliWorktreeAcquireScope: cliWorktreeAcquire
+    ? "Packaged CLI, full worker and native Agent turn on an attached local Git checkout. Only project catalog classification and local model replies are supplied by the fixture."
+    : null,
   operationalStatusScope: process.argv.includes("--operational-status")
     ? "Existing browser getSystemHealth, authenticated Prometheus and full worker/Live before and after retained server restart. Shared peers additionally exercise actual Redis stop/restart, readiness and cached coordination collectors without replacing the worker. Active-job failover, TLS deployment and supported-platform/package acceptance remain separate."
     : null,
@@ -649,7 +658,7 @@ async function flow(
     if (
       process.argv.includes("--project-surfaces") ||
       process.argv.includes("--worktrees") ||
-      process.argv.includes("--chat-controls") ||
+      gitProjectChat ||
       process.argv.includes("--replicas") ||
       process.argv.includes("--project-administration")
     ) {
@@ -890,7 +899,7 @@ async function flow(
       normalizeProjectSourcePath(await realpath(existingPath)),
       process.argv.includes("--project-surfaces") ||
         process.argv.includes("--worktrees") ||
-        process.argv.includes("--chat-controls") ||
+        gitProjectChat ||
         process.argv.includes("--replicas") ||
         process.argv.includes("--project-administration")
         ? "git"
@@ -1184,7 +1193,7 @@ async function flow(
       runTaskProduct ||
       singleProduct ||
       process.argv.includes("--project-chats") ||
-      process.argv.includes("--chat-controls") ||
+      gitProjectChat ||
       process.argv.includes("--operational-status") ||
       process.argv.includes("--worker-logs") ||
       process.argv.includes("--project-insights") ||
@@ -1565,9 +1574,31 @@ async function flow(
               }
             : undefined,
       });
+    if (cliWorktreeAcquire) {
+      if (worker) await stopWorker();
+      const port = Number(new URL(fixture.server.origin).port);
+      await fixture.close();
+      const repository = await repositoryFixture({
+        kind: fixture.kind,
+        root: path.join(root, fixture.name),
+        executable: surfaceRepositoryBinary,
+        databaseMode: fixture.databaseMode,
+        databaseUrl: fixture.environment.DATABASE_URL,
+      });
+      try {
+        // The browser attached a real local Git checkout. Seed only the
+        // catalog classification used by existing worktree acceptance.
+        await repository.seed(
+          `UPDATE projects SET origin_kind='github',folder_management=NULL,git_capability=true,github_capability=true,worktree_policy='agent-managed',github_repository_blind_index='actual-cli-worktree-fixture' WHERE id=${literal(attached.id)}`,
+        );
+      } finally {
+        await repository.close();
+      }
+      await fixture.start({ port });
+    }
     if (
       process.argv.includes("--project-chats") ||
-      process.argv.includes("--chat-controls") ||
+      gitProjectChat ||
       process.argv.includes("--native-single-agent-recovery") ||
       process.argv.includes("--native-shared-agent-recovery")
     ) {
@@ -1575,12 +1606,9 @@ async function flow(
       await actualProjectChatClient({
         page,
         fixture,
-        projectId: process.argv.includes("--chat-controls")
-          ? attached.id
-          : first.id,
-        projectRoot: process.argv.includes("--chat-controls")
-          ? opened.source.path
-          : first.source.path,
+        projectId: gitProjectChat ? attached.id : first.id,
+        projectRoot: gitProjectChat ? opened.source.path : first.source.path,
+        ...(cliWorktreeAcquire ? { cliWorktreeAcquire: cliBinary } : {}),
         workerDataDirectory: dataDirectory,
         workerId,
         startWorker,
@@ -1754,7 +1782,7 @@ try {
     process.argv.includes("--tunnels") ||
     process.argv.includes("--project-shares") ||
     process.argv.includes("--worktrees") ||
-    process.argv.includes("--chat-controls") ||
+    gitProjectChat ||
     process.argv.includes("--project-administration")
   )
     surfaceRepositoryBinary = !usesNative

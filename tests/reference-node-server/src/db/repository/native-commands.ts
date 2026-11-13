@@ -410,7 +410,7 @@ export class NativeCommandRepository {
       queueClaim?: { id: string; promptRevision: number };
       expectedInputRevision?: number;
       /** Server-selected route, committed only after this input owns its lane. */
-      standaloneRuntime?: {
+      guiRuntime?: {
         threadId: string | null;
         modelRouteId: string;
         providerAccountId: string | null;
@@ -778,19 +778,21 @@ export class NativeCommandRepository {
         )
           throw new NativeCommandError("path-scope-mismatch");
 
-        const standaloneRuntime = executionOptions.standaloneRuntime;
+        const guiRuntime = executionOptions.guiRuntime;
         if (
-          standaloneRuntime &&
-          (context.contextKind !== "standalone" ||
-            context.experience !== "agent" ||
+          guiRuntime &&
+          (context.experience !== "agent" ||
             input.origin !== "gui" ||
             input.method !== "turn/start" ||
             !starts)
         )
           throw new NativeCommandError("managed-session-ineligible");
-        const intended = standaloneRuntime
-          ? { ...context, ...standaloneRuntime }
-          : context;
+        const routeChange =
+          context.contextKind === "standalone" ||
+          (context.threadId === null && context.modelRouteId === null)
+            ? guiRuntime
+            : undefined;
+        const intended = routeChange ? { ...context, ...routeChange } : context;
         if (
           intended.threadId !== input.session.threadId ||
           (!input.session.threadId &&
@@ -819,15 +821,15 @@ export class NativeCommandRepository {
             );
           if (!context?.executionLaneId)
             throw new NativeCommandError("execution-unavailable");
-          if (standaloneRuntime) {
+          if (routeChange) {
             await this.transactionRepository(tx).updateChatRuntime(
               context.chatId,
               context.workerId,
-              null,
-              standaloneRuntime.threadId,
-              standaloneRuntime.modelRouteId,
+              context.worktreeId,
+              routeChange.threadId,
+              routeChange.modelRouteId,
               "ready",
-              standaloneRuntime.providerAccountId,
+              routeChange.providerAccountId,
               context.scratchRootId,
             );
             context = await nativeCommandContext(tx, ownerId, context.chatId);

@@ -2531,6 +2531,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         ? session.worktreeId
         : session.scratchRootId,
   });
+  // A provider runtime can host multiple native threads for one Chat.
+  const managedRunnerKey = (chatId: string, placementId: string) =>
+    JSON.stringify([chatId, placementId]);
+  const managedRunnerForPlacement = (
+    runtime: CodexAppServer,
+    identity: { chatId: string; placementId: string },
+  ) =>
+    managedExecutionRunners
+      .get(runtime)
+      ?.get(managedRunnerKey(identity.chatId, identity.placementId));
   const managedGuiPreparations = new ManagedGuiPreparationRegistry();
   const managedExecutionRunnerFor = (
     runtime: CodexAppServer,
@@ -2550,7 +2560,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       runners = new Map();
       managedExecutionRunners.set(runtime, runners);
     }
-    const key = session.chatId;
+    const identity = managedSessionIdentity(session);
+    const key = managedRunnerKey(identity.chatId, identity.placementId);
     const previous = runners.get(key);
     const preceding = previous
       ? managedRunnerConfigurations.get(previous)
@@ -2584,7 +2595,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             ...options,
             threadId: attempt.threadId,
           });
-          const identity = managedSessionIdentity(session);
           const attemptSignal = AbortSignal.any([signal, ownerSignal]);
           await entry.adapter.awaitGoalMutationSettled(attemptSignal);
           const queueSnapshot = await nativeQueueClient.read(
@@ -2879,9 +2889,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           transition.effectiveId,
         );
         options.permissionProfileId = transition.effectiveId;
-        const runner = managedExecutionRunners
-          .get(runtime)
-          ?.get(session.chatId);
+        const runner = managedRunnerForPlacement(runtime, identity);
         const configuration = runner
           ? managedRunnerConfigurations.get(runner)
           : undefined;
@@ -2916,9 +2924,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       },
       encryption: workerEncryption,
       beforeNativeDispatch: async (method, commandSession, intent) => {
-        const runner = managedExecutionRunners
-          .get(runtime)
-          ?.get(session.chatId);
+        const runner = managedRunnerForPlacement(runtime, identity);
         if (
           runner &&
           commandSession.threadId &&
@@ -3197,9 +3203,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       client: nativeQueueClient,
       encryption: workerEncryption,
       runnerGeneration: () => {
-        const runner = managedExecutionRunners
-          .get(runtime)
-          ?.get(session.chatId);
+        const runner = managedRunnerForPlacement(runtime, identity);
         if (!runner)
           throw new Error("The native queue has no managed execution owner.");
         return runner.configuration.runnerGeneration;
@@ -3267,8 +3271,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         runtime,
         threadId: options.threadId,
         runtimeGeneration: generation,
-        runner: managedExecutionRunners.get(runtime)?.get(session.chatId)
-          ?.configuration,
+        runner: managedRunnerForPlacement(runtime, identity)?.configuration,
       });
     };
     runtime.setManagedQueueResume(options.threadId, resumeQueue);
@@ -3783,14 +3786,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           // Release only this transfer hold, including when the canonical queue
           // is paused. Actual Stop/Pause invalidation remains closed; ordinary
           // admission still reads current queue/Goal eligibility before a turn.
-          await managedExecutionRunners
-            .get(runtime)
-            ?.get(state.chatId)
-            ?.resumeAfterProviderTransfer(
-              state.operationId,
-              state.source.threadId,
-              runtime.transportGeneration!,
-            );
+          await managedRunnerForPlacement(
+            runtime,
+            state.source,
+          )?.resumeAfterProviderTransfer(
+            state.operationId,
+            state.source.threadId,
+            runtime.transportGeneration!,
+          );
         }
         await entry.wakeQueue();
       },
@@ -3888,7 +3891,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           return;
         }
         const runner =
-          runtime && managedExecutionRunners.get(runtime)?.get(state.chatId);
+          runtime && managedRunnerForPlacement(runtime, state.source);
         if (
           !runtime ||
           !runner ||
@@ -3914,7 +3917,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           );
         const runtime = handoffRuntimes.get(prepared);
         const runner =
-          runtime && managedExecutionRunners.get(runtime)?.get(state.chatId);
+          runtime && managedRunnerForPlacement(runtime, state.source);
         const binding = state.binding ?? state.source;
         if (
           !runtime ||
@@ -4027,9 +4030,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             proof = recovered;
           }
           if (queued.autonomousAttempt) {
-            const runner = managedExecutionRunners
-              .get(runtime)
-              ?.get(state.chatId);
+            const runner = managedRunnerForPlacement(runtime, state.source);
             if (!runner)
               throw new Error("The queued Goal has no owning native runner.");
             // Do not persist withdrawal.json until the root hold acknowledges.
@@ -4451,7 +4452,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             chatIds.add(entry.chatId);
             entry.adapter.revoke();
             entry.queueScope.revoke();
-            managedExecutionRunners.get(runtime)?.get(entry.chatId)?.revoke();
+            managedRunnerForPlacement(
+              runtime,
+              entry.queueScope.identity,
+            )?.revoke();
             if (entry.gateway)
               void entry.gateway
                 .then(async (gateway) => {
@@ -8266,9 +8270,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               },
             };
           }
-          const runner = managedExecutionRunners
-            .get(runtime)
-            ?.get(command.chatId);
+          const runner = managedRunnerForPlacement(
+            runtime,
+            entry.queueScope.identity,
+          );
           if (!runner)
             throw new Error("Goal claim recovery has no native runner.");
           const observation = new AbortController();
@@ -8448,9 +8453,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             return ineligible("not-active", goal.nativeEpoch);
           const existing = entry.adapter.goalRecoveryAdmission(command.source);
           if (existing) return admitted(existing);
-          const runner = managedExecutionRunners
-            .get(runtime)
-            ?.get(command.chatId);
+          const runner = managedRunnerForPlacement(
+            runtime,
+            entry.queueScope.identity,
+          );
           if (!runner) throw new Error("Goal recovery has no native runner.");
           const observation = new AbortController();
           const wait = entry.adapter.waitForGoalRecoveryAdmission(

@@ -136,7 +136,12 @@ async function commandInput(
     );
   if (
     !message ||
-    message.role !== "user" ||
+    (message.role !== "user" &&
+      !(
+        message.role === "system" &&
+        command.origin === "gui" &&
+        command.method === "turn/start"
+      )) ||
     !message.protectedContent ||
     !message.idempotencyKey
   )
