@@ -77,6 +77,16 @@ the same readiness transitions, interrupted usage outcome, and replay
 behavior.
 [Packaged Redis interruption report](security/rust-server-3013-darwin-arm64-redis-outage.json)
 
+## Installed Windows x64
+
+The Windows 1.1.2976 installer with the worker grant refresh passed 12
+model-operation cases per database mode using Edge and the installed
+server. The run covered worker process loss, restart and usage retention.
+The external PostgreSQL rerun used a QA process snapshot that skips
+entries confirmed to have exited during enumeration. All three reports
+matched the digests emitted by the guest.
+[Windows model operations](security/rust-server-2976-win32-x64-model-operations.json)
+
 ## Product assertions
 
 `actual-folder-client.mjs --model-operations` uses production server executables

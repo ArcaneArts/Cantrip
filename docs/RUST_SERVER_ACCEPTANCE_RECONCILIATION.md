@@ -86,9 +86,11 @@ below apply to the exact binaries and worker entries identified by their reports
   from #3009 passed on macOS PGlite. The Windows CLI rerun exposed a separate
   worker grant refresh race. The signed package with #3012 passed the
   PGlite update from `1.1.2938`, retained the saved theme and worker
-  enrollment, and exited cleanly. The CLI and model-operation matrices
-  with that worker remain open.
+  enrollment, and exited cleanly. The signed package also passed all 36
+  model-operation cases across the three stores in the Windows guest.
+  The CLI continuation matrix with that worker remains open.
   [Windows package report](security/rust-server-2976-win32-x64-packages.json)
+  [Windows model operations](security/rust-server-2976-win32-x64-model-operations.json)
 - **Model operations and WorkerLink.** The macOS and Linux reports cover native
   model operations on all three stores. Linux recorded 72 operations, 114
   product steps and 18 clean server exits. The macOS server-loss matrix covered
@@ -96,8 +98,9 @@ below apply to the exact binaries and worker entries identified by their reports
   report includes shared routing, forced loss and repeated PGlite recovery.
   On macOS, Rust and the Node reference each kept an in-flight inference
   through a 45-second external PostgreSQL outage and recorded one usage
-  receipt after recovery. Windows model operations and packaged Redis
-  interruption on Linux x64 still need qualification.
+  receipt after recovery. Active server and dependency interruption still
+  need qualification on Windows. Packaged Redis interruption on Linux x64
+  also remains open.
   [macOS model operations](security/rust-server-2976-darwin-arm64-model-operations.json),
   [macOS server loss](security/rust-server-2976-darwin-arm64-model-operation-server-loss.json),
   [Linux model operations](security/rust-server-2976-linux-model-operations.json),
