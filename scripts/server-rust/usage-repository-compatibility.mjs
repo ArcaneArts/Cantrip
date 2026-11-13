@@ -245,6 +245,56 @@ try {
     conversationRow(goalBaseline, other),
   );
   await verifyGuestStorage({ owners: [owner, other], seed, compare, literal });
+  const beforeOwnedRows = await compare(
+    "storage before inference catalog and revocation rows",
+    { op: "measure" },
+  );
+  await seed(
+    `INSERT INTO provider_inference_catalogs(owner_id) VALUES(${literal(owner)});`,
+  );
+  await seed(
+    `INSERT INTO inference_resource_revocations(id,owner_id,worker_id,target) VALUES('usage-revocation',${literal(owner)},${literal("usage-goal-" + owner)},'{}');`,
+  );
+  const ownedRows = await compare(
+    "inference catalog and revocation storage remains tenant scoped",
+    { op: "measure" },
+  );
+  for (const [category, table] of [
+    ["configuration", "provider_inference_catalogs"],
+    ["conversations", "inference_resource_revocations"],
+  ]) {
+    const row = (rows) =>
+      rows.find(
+        (entry) =>
+          entry.ownerId === owner &&
+          entry.category === category &&
+          entry.storageClass === "server",
+      );
+    const expectedBytes = await compare(category + " inference row bytes", {
+      op: "query-json",
+      sql: `SELECT jsonb_build_object('bytes', pg_column_size(t.*)::text) result FROM ${table} t WHERE owner_id=${literal(owner)}`,
+    });
+    assert.equal(
+      BigInt(row(ownedRows).rowCount) -
+        BigInt(row(beforeOwnedRows)?.rowCount ?? 0),
+      1n,
+    );
+    assert.equal(
+      BigInt(row(ownedRows).logicalBytes) -
+        BigInt(row(beforeOwnedRows)?.logicalBytes ?? 0),
+      BigInt(expectedBytes.bytes),
+    );
+  }
+  assert.deepEqual(
+    ownedRows.filter((entry) => entry.ownerId === other),
+    beforeOwnedRows.filter((entry) => entry.ownerId === other),
+  );
+  await seed(
+    `DELETE FROM provider_inference_catalogs WHERE owner_id=${literal(owner)};`,
+  );
+  await seed(
+    "DELETE FROM inference_resource_revocations WHERE id='usage-revocation';",
+  );
   for (const principal of [owner, other]) {
     await seed(
       `DELETE FROM chats WHERE id=${literal("usage-goal-" + principal)};`,
