@@ -25191,6 +25191,14 @@
       }
     },
     "jsonTransportBoundary": {
+      "macos2976PackagedTransport": {
+        "version": "1.1.2976",
+        "platform": "darwin-arm64",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "pairedHttpCases": 156,
+        "pairedWebSocketCases": 81,
+        "record": "docs/security/rust-server-2976-darwin-arm64-json-wire.json"
+      },
       "linux2964Arm64Qualification": {
         "version": "1.1.2964",
         "record": "docs/security/rust-server-2964-linux-acceptance.json"
