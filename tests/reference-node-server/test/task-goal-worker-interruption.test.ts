@@ -95,6 +95,9 @@ describe("Task Goal worker interruption", () => {
         applicationOwnerId: () => "owner",
         bridge: { request },
         repository: {
+          nativeRuntimeHandoffs: {
+            queuedStandaloneTransfer: vi.fn().mockResolvedValue(null),
+          },
           policies: {
             resolveEffective: vi.fn().mockResolvedValue({ policies: [] }),
           },
@@ -212,7 +215,7 @@ describe("Task Goal worker interruption", () => {
     },
   );
 
-  it("retains a scheduled implementation as resumable without requiring the offline worker", async () => {
+  it("does not project a scheduled Goal without its durable terminal receipt", async () => {
     const pause = vi.fn();
     const settle = vi.fn();
     const request = vi.fn();
@@ -244,7 +247,7 @@ describe("Task Goal worker interruption", () => {
       .fn()
       .mockResolvedValueOnce(null)
       .mockResolvedValue(receipt);
-    const pauseInput = vi.fn();
+    const terminal = vi.fn().mockResolvedValue(null);
     const deps = {
       applicationOwnerId: () => "owner",
       bridge: { request },
@@ -254,7 +257,7 @@ describe("Task Goal worker interruption", () => {
           .mockResolvedValue({ ...context, automationPaused: true }),
         tasks: {
           get: vi.fn().mockResolvedValue({}),
-          inferenceInputs: { goals: { receiptForTurn, pause: pauseInput } },
+          inferenceInputs: { goals: { receiptForTurn, terminal } },
         },
         taskDispatch: { pause, settle },
       },
@@ -268,7 +271,7 @@ describe("Task Goal worker interruption", () => {
         error: new WorkerUnavailableError("Worker disconnected."),
         userMessage,
       });
-      expect(pauseInput).not.toHaveBeenCalled();
+      expect(terminal).not.toHaveBeenCalled();
       await runtime.scheduledTaskGoalTurnOptions(lease).afterTurnFailed({
         execution: context,
         error: new WorkerUnavailableError("Worker disconnected."),
@@ -284,10 +287,10 @@ describe("Task Goal worker interruption", () => {
           executionLaneActivatedAt: context.executionLaneActivatedAt,
         },
       );
-      expect(pauseInput).toHaveBeenCalledExactlyOnceWith(
+      expect(terminal).toHaveBeenCalledExactlyOnceWith(
         "owner",
+        context.chatId,
         receipt,
-        "native-thread",
       );
       expect(pause).not.toHaveBeenCalled();
       expect(settle).not.toHaveBeenCalled();

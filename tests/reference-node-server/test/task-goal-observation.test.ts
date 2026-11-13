@@ -115,11 +115,32 @@ function fixture() {
     if (command.type === "task.message.protect") return userMessage;
     return { goal, task: opaque, message: null };
   });
+  const observationFence = {
+    target: {
+      workerId: context.workerId,
+      worktreeId: context.worktreeId,
+      threadId: context.threadId,
+      modelRouteId: context.modelRouteId,
+      providerAccountId: context.providerAccountId,
+    },
+    fingerprint: JSON.stringify({ taskRowVersion: task.rowVersion }),
+  };
   const repository = {
+    listEffectiveMcpServers: vi.fn(async () => []),
     getChatExecutionContext: vi.fn(async () => context),
     updateChatRuntime: vi.fn(async () => {}),
     getPendingChatWorktreeTransition: vi.fn(async () => null as unknown),
     tasks: {
+      goalObservations: {
+        capture: vi.fn(async () => observationFence),
+        validate: vi.fn(async () => {}),
+        afterProjection: vi.fn(
+          (fence: typeof observationFence, rowVersion: number) => ({
+            ...fence,
+            fingerprint: JSON.stringify({ taskRowVersion: rowVersion }),
+          }),
+        ),
+      },
       inferenceInputs: {
         goals: {
           launchGuard: vi.fn(async () => launchGuard),
@@ -169,6 +190,7 @@ function fixture() {
     beginTurn,
     sourceGoal,
     launchGuard,
+    observationFence,
   };
 }
 
@@ -203,6 +225,7 @@ describe("encrypted Task Goal observation and handoff", () => {
       "chat",
       { rowVersion: 1, task: failed },
       undefined,
+      f.observationFence,
     );
   });
   it("accepts an absent Goal without synchronizing or inventing completion", async () => {
@@ -216,21 +239,54 @@ describe("encrypted Task Goal observation and handoff", () => {
       expect(
         await f.goals.readEncryptedTaskGoal(f.context, f.task),
       ).toMatchObject({ goal: null, task: f.task });
+      expect(
+        f.repository.tasks.goalObservations.validate,
+      ).toHaveBeenCalledExactlyOnceWith("owner", "chat", f.observationFence);
       expect(f.repository.tasks.syncImplementationState).not.toHaveBeenCalled();
       expect(f.repository.taskDispatch.settle).not.toHaveBeenCalled();
     } finally {
       f.goals.close();
     }
   });
-  it("does not turn a successful observation into an error when a parallel status read wins the Task CAS", async () => {
+  it("keeps the successful Goal observation paired with its committed Task revision", async () => {
     const f = fixture();
-    f.repository.tasks.syncImplementationState.mockRejectedValueOnce(
-      new TaskConflictError("race", "stale-version"),
-    );
+    f.repository.tasks.syncImplementationState.mockResolvedValueOnce({
+      ...f.task,
+      rowVersion: 2,
+    });
     try {
+      const observed = await f.goals.readEncryptedTaskGoal(f.context, f.task);
+      expect(observed.goal?.status).toBe("active");
+      expect(observed.task.rowVersion).toBe(2);
+      expect(observed.observationFence).toEqual({
+        ...f.observationFence,
+        fingerprint: JSON.stringify({ taskRowVersion: 2 }),
+      });
       expect(
-        (await f.goals.readEncryptedTaskGoal(f.context, f.task)).goal?.status,
-      ).toBe("active");
+        f.repository.tasks.goalObservations.capture,
+      ).toHaveBeenCalledOnce();
+      expect(f.repository.tasks.get).not.toHaveBeenCalled();
+    } finally {
+      f.goals.close();
+    }
+  });
+
+  it("rejects the stale observation when a parallel Task write wins the CAS", async () => {
+    const f = fixture();
+    const conflict = new TaskConflictError("race", "stale-version");
+    f.repository.tasks.syncImplementationState.mockRejectedValueOnce(conflict);
+    try {
+      await expect(
+        f.goals.readEncryptedTaskGoal(f.context, f.task),
+      ).rejects.toBe(conflict);
+      expect(
+        f.repository.tasks.goalObservations.capture,
+      ).toHaveBeenCalledOnce();
+      expect(
+        f.repository.tasks.goalObservations.afterProjection,
+      ).not.toHaveBeenCalled();
+      expect(f.repository.tasks.get).not.toHaveBeenCalled();
+      expect(f.repository.taskDispatch.settle).not.toHaveBeenCalled();
     } finally {
       f.goals.close();
     }
