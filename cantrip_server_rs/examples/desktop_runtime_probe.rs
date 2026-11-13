@@ -106,7 +106,7 @@ fn main() -> Result<()> {
     if let Some(worker) = worker.as_mut() {
         terminate_child(&mut worker.0);
     }
-    terminate_child(&mut server.0);
+    terminate_server(&mut server.0);
     let status = server.0.wait()?;
     println!(
         "{}",

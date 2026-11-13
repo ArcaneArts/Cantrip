@@ -47,8 +47,8 @@ mod tunnel_ssh;
 
 pub(crate) use desktop_services::terminate_child;
 use desktop_services::{
-    node_service_command, server_command, server_environment, spawn_service, wait_for_server,
-    worker_environment,
+    node_service_command, server_command, server_environment, spawn_service, terminate_server,
+    wait_for_server, worker_environment,
 };
 use project_share::ProjectShareMounts;
 use tunnel_forward::TunnelForwards;
@@ -138,7 +138,11 @@ pub(crate) fn shutdown_owned_runtime(app: &tauri::AppHandle) -> bool {
                         "subsystem": "desktop-runtime"
                     })),
                 );
-                terminate_child(&mut child.child);
+                if child.service == "server" {
+                    terminate_server(&mut child.child);
+                } else {
+                    terminate_child(&mut child.child);
+                }
             }
             children.clear();
         };
@@ -857,7 +861,7 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
                     "subsystem": "desktop-runtime"
                 })),
             );
-            terminate_child(&mut server);
+            terminate_server(&mut server);
             return Err(error);
         }
     }
@@ -882,7 +886,7 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
     ) {
         Ok(worker) => worker,
         Err(error) => {
-            terminate_child(&mut server);
+            terminate_server(&mut server);
             return Err(error);
         }
     };
