@@ -23833,6 +23833,9 @@
   },
   "crossCutting": {
     "currentBroadWireCompatibility": {
+      "windows2976PackagedQualification": {
+        "record": "docs/security/rust-server-2976-win32-x64-packages.json"
+      },
       "macos2976PackagedQualification": {
         "record": "docs/security/rust-server-2976-darwin-arm64-acceptance.json"
       },

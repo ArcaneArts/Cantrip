@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.2976",
+  "target": "win32-x64",
+  "serverSourceCommit": "92ed534fa5b1bef8dfcf60a21b9784e159c6a655",
+  "desktopSourceCommit": "f1201f3e2d6a947ecb59d784f067743708b22713",
+  "standalone": {
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cantrip-server-1.1.2976-win32-x64.tar.gz",
+      "bytes": 97907957,
+      "sha256": "be958993a1133a408513b55cc0b8ebdb3eb6fb33e5eeb8644fe073a6fb2c6297"
+    },
+    "archiveVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-archive-verification.json",
+      "bytes": 179,
+      "sha256": "fc4d4c87a90323b5cb1fb11b88b524d25479ab6ec771a4c257b0895b3b888914"
+    },
+    "nativeExecutableSha256": "d678aacfb2d0d063812f84c1ae47766dce222f25382183f85b8c7d7b3fee7168",
+    "verifiedFiles": 2281,
+    "serverRequiresNode": false,
+    "databaseModes": [
+      {
+        "mode": "pglite",
+        "engine": "pglite",
+        "settingsWriteAndRestart": true,
+        "migrationLauncher": true,
+        "supervisionStdinClose": true,
+        "hostedReopen": true,
+        "dotenvAndProcessAndCliPrecedence": true,
+        "sqlExport": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/retry-final-pglite-export.sql",
+          "bytes": 493305,
+          "sha256": "5de8abc1326159643ab7de3bf26468aa1ff36e4071dd0537d85ebab1af56fc4f"
+        }
+      },
+      {
+        "mode": "bundled-postgres",
+        "engine": "postgres",
+        "settingsWriteAndRestart": true,
+        "migrationLauncher": true,
+        "supervisionStdinClose": true,
+        "hostedReopen": true,
+        "dotenvAndProcessAndCliPrecedence": true,
+        "sqlExport": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/retry-final-bundled-postgres-export.sql",
+          "bytes": 493542,
+          "sha256": "9576ff1f29cee690e72e14443bb7a3c58333307f8c8bcc794c7d4e6267cd6998"
+        }
+      },
+      {
+        "mode": "postgres",
+        "engine": "postgres",
+        "settingsWriteAndRestart": true,
+        "migrationLauncher": true,
+        "supervisionStdinClose": true,
+        "hostedReopen": true,
+        "dotenvAndProcessAndCliPrecedence": true,
+        "sqlExport": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/retry-final-postgres-export.sql",
+          "bytes": 493544,
+          "sha256": "e09bf07da0dd92f1ddd6941a7882bd418ccb5cd04166f38233c3278bdd54c20d"
+        }
+      }
+    ],
+    "runtimeReport": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/retry-final-acceptance.json",
+      "bytes": 2741,
+      "sha256": "1bbd67465056836c782cc88be755dbb4ba48f6daa9f1fc7a48e9524c4ae1dc38"
+    },
+    "independentStdoutCopy": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/retry-final-acceptance.stdout",
+      "bytes": 2081,
+      "sha256": "e85b938c75042e0e34f9682bf41c51d85d45bba18b2ff289c6cf7486ee0fd88c"
+    },
+    "wrapperObservation": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-serial-observation.json",
+      "bytes": 855,
+      "sha256": "d60ebbe0298fd0eb1e455a5abebaea63f626574212b393b6154f2b3cf443cfa4"
+    },
+    "firstStartupTimeout": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/first-acceptance.json",
+      "bytes": 1532,
+      "sha256": "25bb8df389ee89060901457c3e78d4fc0669c2d5742a8b646abc8b739b8a7846"
+    },
+    "retryHarnessDiff": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/retry-harness.diff",
+      "bytes": 791,
+      "sha256": "2a7f1f3f5cee2e2a981b642a6d578a891a4d70d7ecfec99ec60c71c4a754464d"
+    },
+    "retryStartupTimeoutSeconds": 600,
+    "scope": "The guest-side driver completed and produced matching JSON in the report and on stdout. Stderr was empty. The PowerShell wrapper failed to capture a process exit code and emitted a failure receipt. The initial run used a 60-second test startup deadline and timed out during PGlite initialization."
+  },
+  "desktop": {
+    "installer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/desktop-server-drain-tests/windows/Cantrip_1.1.2976_x64-setup.exe",
+      "bytes": 256970843,
+      "sha256": "ed72f94b8e3bd20bb9820b6715bb0f37da553fee51720e027e939a829352ce9d"
+    },
+    "updaterSignature": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/desktop-server-drain-tests/windows/Cantrip_1.1.2976_x64-setup.exe.sig",
+      "bytes": 420,
+      "sha256": "aa0917d0d6b9d19e4747b8c3e181661dd3ce10ffe05f7d8d9f27811d8ea21791"
+    },
+    "signatureVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/desktop-server-drain-tests/windows/desktop-minisign-verification.log",
+      "bytes": 115,
+      "sha256": "a81452b4c30c8f5e76ffe66df34244790ab9fe0790fee2cb2872683b279a76bd"
+    },
+    "verifiedPayloadFiles": 14091,
+    "payloadManifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/desktop-server-drain-tests/windows/desktop-nsis-runtime-manifest.json",
+      "bytes": 2506064,
+      "sha256": "33fb797d4f2eeaa182b3e8796190ee47d9b65625de9b82ef988e874fbe0ac094"
+    },
+    "bundledAppSha256": "8b823adccdc5897f919c445450e4ccacebdcbc49772b42ad6594f36cd67e6e25",
+    "bundledServerSha256": "d678aacfb2d0d063812f84c1ae47766dce222f25382183f85b8c7d7b3fee7168",
+    "scope": "Verified installer contents and local Tauri QA updater signature. Installed desktop and signed update behavior are tracked separately."
+  }
+}
