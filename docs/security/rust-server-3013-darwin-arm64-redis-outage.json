@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "target": "darwin-arm64",
+  "version": "1.1.3013",
+  "sourceCommit": "9069ae6acc0a4456e077582abe1b4867576942cf",
+  "harnessCommit": "0c1c343bd0dcc987fc618ca7e573b9ab1eb964a5",
+  "databaseMode": "postgres",
+  "harnessSha256": "56f82828e3b9f8d101dc39959661633cce056b2204e2b4dc4e859c04c726d9d6",
+  "artifact": {
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/cantrip-server-1.1.3013-darwin-arm64.tar.gz",
+      "bytes": 66918839,
+      "sha256": "c2720aa5de0a8c54b8ffb4afd0382242a1f2fba492e022f27e66cfd8950f5bda"
+    },
+    "runningExecutable": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/qualified-candidate/bin/cantrip-server",
+      "bytes": 94240368,
+      "sha256": "6e2c81304db71bc9f77d879b449c973aa8c21c6f5bb0cc11b969d7fa9fe27293"
+    }
+  },
+  "nodeReferenceSourceTree": "3b67d65df364e06ddd97e949564046e269101831",
+  "worker": {
+    "index": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-grant-refresh/worker-overlay/dist/index.js",
+      "bytes": 391720,
+      "sha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c"
+    },
+    "description": "Packaged Node worker with the merged worker grant refresh update."
+  },
+  "redis": {
+    "path": "rust-redis-coordination-local-11b8ad27a-20261106-v1/.qa/rust-redis/redis-source/src/redis-server",
+    "bytes": 3482208,
+    "sha256": "a18144d2e5d0f1792b4af8cff9524a376c1ebd7271d1981ffcf1c4a330ad51ee"
+  },
+  "cells": [
+    {
+      "pairing": "node/node",
+      "productSteps": 20,
+      "operationCases": 14,
+      "providerHttpRequests": 15,
+      "offlineMs": 45005,
+      "initialReadiness": [503, 503],
+      "prolongedReadiness": [503, 503],
+      "recoveredReadiness": [200, 200],
+      "interruptedHttpStatus": 502,
+      "interruptedAttemptStatus": "unknown",
+      "transportAfterRejectedReplay": "unavailable",
+      "cleanPeerExits": 6,
+      "cleanWorkerExits": 4
+    },
+    {
+      "pairing": "node/rust",
+      "productSteps": 20,
+      "operationCases": 14,
+      "providerHttpRequests": 15,
+      "offlineMs": 45007,
+      "initialReadiness": [503, 503],
+      "prolongedReadiness": [503, 503],
+      "recoveredReadiness": [200, 200],
+      "interruptedHttpStatus": 502,
+      "interruptedAttemptStatus": "unknown",
+      "transportAfterRejectedReplay": "replied",
+      "cleanPeerExits": 6,
+      "cleanWorkerExits": 4
+    },
+    {
+      "pairing": "rust/node",
+      "productSteps": 20,
+      "operationCases": 14,
+      "providerHttpRequests": 15,
+      "offlineMs": 45007,
+      "initialReadiness": [503, 503],
+      "prolongedReadiness": [503, 503],
+      "recoveredReadiness": [200, 200],
+      "interruptedHttpStatus": 502,
+      "interruptedAttemptStatus": "unknown",
+      "transportAfterRejectedReplay": "replied",
+      "cleanPeerExits": 6,
+      "cleanWorkerExits": 4
+    },
+    {
+      "pairing": "rust/rust",
+      "productSteps": 20,
+      "operationCases": 14,
+      "providerHttpRequests": 15,
+      "offlineMs": 45003,
+      "initialReadiness": [503, 503],
+      "prolongedReadiness": [503, 503],
+      "recoveredReadiness": [200, 200],
+      "interruptedHttpStatus": 502,
+      "interruptedAttemptStatus": "unknown",
+      "transportAfterRejectedReplay": "replied",
+      "cleanPeerExits": 6,
+      "cleanWorkerExits": 4
+    }
+  ],
+  "assertions": [
+    "A real Redis SIGKILL occurred during protected embedding while external PostgreSQL remained available.",
+    "Both server peers reported unready throughout the measured outage and recovered after Redis restarted. The original worker continuity identity was preserved.",
+    "The interrupted request returned HTTP 502 with one unknown usage attempt and no receipt. Replay was rejected without another provider call. A fresh decision completed."
+  ],
+  "evidence": {
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/redis-outage/acceptance.json",
+      "bytes": 1952240,
+      "sha256": "9638dd790076975a4bc2fe690f5e882475b426dd3a786270e70bf2bed8a885cf"
+    },
+    "log": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/redis-outage/acceptance-retry.log",
+      "bytes": 7367,
+      "sha256": "c30ebad3fbcba6f2bb52faf7436ef5be808c7eeaa9aef795945e754ca94c2869"
+    },
+    "inputs": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/redis-outage/inputs.sha256",
+      "bytes": 1766,
+      "sha256": "415c6c15bffada49d7d0d3f81030d1bd5e2072d278a88d4bf0ef60e508111e7b"
+    }
+  },
+  "scope": "Local qualification of the exact macOS ARM64 standalone Rust executable with external PostgreSQL and the production Node worker. The browser and worker connect to opposite server peers. The provider HTTP responses are controlled by the fixture."
+}

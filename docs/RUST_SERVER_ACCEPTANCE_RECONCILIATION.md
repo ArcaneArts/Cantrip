@@ -17,6 +17,14 @@ matched. The running server reported `1.1.3013` and the same process instance
 ID in health and live traffic. This record covers the standalone archive.
 [macOS standalone report](security/rust-server-3013-darwin-arm64-standalone.json)
 
+The same standalone executable passed active Redis interruption with external
+PostgreSQL and the packaged Node worker. Each of the four Node/Rust peer
+pairings completed 14 model operations, including a 45-second Redis outage
+during a protected embedding. The interrupted request returned HTTP 502
+with one unknown usage attempt. Replay made no further provider request,
+and a fresh decision completed after readiness recovered.
+[macOS Redis interruption report](security/rust-server-3013-darwin-arm64-redis-outage.json)
+
 ## Cantrip 1.1.2976 qualification
 
 The recorded packages use Rust server source `92ed534fa` and desktop shell
@@ -69,8 +77,8 @@ below apply to the exact binaries and worker entries identified by their reports
   report includes shared routing, forced loss and repeated PGlite recovery.
   On macOS, Rust and the Node reference each kept an in-flight inference
   through a 45-second external PostgreSQL outage and recorded one usage
-  receipt after recovery. Windows model operations and active Redis
-  interruption during inference still need qualification.
+  receipt after recovery. Windows model operations and packaged Redis
+  interruption on Linux still need qualification.
   [macOS model operations](security/rust-server-2976-darwin-arm64-model-operations.json),
   [macOS server loss](security/rust-server-2976-darwin-arm64-model-operation-server-loss.json),
   [Linux model operations](security/rust-server-2976-linux-model-operations.json),
