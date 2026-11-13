@@ -120,6 +120,25 @@ interrupted product flows, multi-instance coordination and performance.
 
 ## Current Linux x64 qualification
 
+The Winterhold Dockerfile built Linux x64 `1.1.2936` from the same
+runtime source as the ARM64 package. The container and native archive
+matched all 2,558 manifest files and the observed x64 executable.
+PGlite, bundled PostgreSQL and external PostgreSQL passed migration,
+SQL export, settings write and restart, hosted reopening and graceful
+shutdown. The container ran without Node, as a non-root user, with a
+read-only root and a 256 MiB noexec temporary mount.
+
+The local systemd and Caddy rehearsal passed 18 installer calls,
+including six injected migration and startup failures. Sessions, server
+identity and accepted writes survived rollback to Rust `1.1.2869` on the
+two local stores and to Node `1.1.2739` on external PostgreSQL. All three
+stores then reopened in Rust `1.1.2936`. The x64 binaries ran under
+emulation on a local Ubuntu ARM64 host. Read-only fixture archives and
+tmpfs release directories kept the rehearsal within local disk space.
+[Release acceptance record](security/rust-server-2936-linux-x64-acceptance.json)
+
+### Linux x64 candidate `1.1.2881`
+
 The production Dockerfile built the `1.1.2881` Linux x64 runtime image
 and standalone distribution from `ccafd3cd4baea444ab43c1b84471ab3225f718e3`.
 All three database modes passed migrations, SQL export, retained settings

@@ -36,10 +36,17 @@ product steps, issued two model requests and reopened the exact transcript
 after four clean server exits and four clean worker exits. The worker ran
 rebuilt JavaScript with the previously packaged Node runtime, dependencies,
 CLI and Codex. The fixture supplies the local repository's catalog
-classification and scripted model responses. Linux and Windows release
-package runs of this flow remain open.
+classification and scripted model responses.
+
+The Linux ARM64 and x64 `1.1.2936` container images also passed on all
+three stores. The browser, worker, CLI and Codex ran on macOS ARM64,
+with the x64 server container running under emulation. Across six runs,
+the harness verified 72 product steps, 24 clean server exits and 24 clean
+worker exits. Each run verified two distinct native threads and one
+canonical answer per lane. The Windows release package run remains open.
 [Worktree continuation evidence](security/rust-server-cli-worktree-product.json)
 [macOS release evidence](security/rust-server-2935-macos-release-acceptance.json)
+[Linux container evidence](security/rust-server-2936-linux-cli-worktree-acceptance.json)
 
 ## Preserved behavior
 
