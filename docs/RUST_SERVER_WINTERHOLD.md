@@ -120,6 +120,26 @@ interrupted product flows, multi-instance coordination and performance.
 
 ## Current Linux x64 qualification
 
+The Winterhold Dockerfile built Linux x64 `1.1.2954` from
+`f21824cc883343819d581dafcc5fc93e20591a8b`. The container and standalone
+archive matched all 2,558 manifest files and the observed x64 executable.
+All three database modes passed migration, SQL export, settings write and
+restart, hosted reopening and graceful shutdown. The container ran without
+Node, as a non-root user, with a read-only root and a 256 MiB noexec
+temporary mount.
+
+The local systemd and Caddy rehearsal passed 18 installer calls. The
+journal confirmed that the Rust CLI rejected the injected migration and
+startup arguments in each database mode. The installer recovered from all
+six failures, including exhaustion of the systemd start budget on PGlite.
+Sessions, server identity and accepted writes survived rollback to Rust
+`1.1.2936` on the two local stores and to Node `1.1.2739` on external
+PostgreSQL. All three stores then reopened in Rust `1.1.2954`. The x64
+executables ran under Rosetta on a local Ubuntu ARM64 systemd host.
+[Release acceptance record](security/rust-server-2954-linux-x64-acceptance.json)
+
+### Linux x64 candidate `1.1.2936`
+
 The Winterhold Dockerfile built Linux x64 `1.1.2936` from the same
 runtime source as the ARM64 package. The container and native archive
 matched all 2,558 manifest files and the observed x64 executable.
