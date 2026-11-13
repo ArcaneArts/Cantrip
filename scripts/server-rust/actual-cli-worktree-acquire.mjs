@@ -53,6 +53,9 @@ export async function actualCliWorktreeAcquire({
     await eventually(
       () => initial.request,
       (request) => assert.ok(request),
+      // The installed Windows worker can take longer to start its native
+      // runtime and reach the first provider request on an emulated host.
+      process.platform === "win32" ? 120_000 : undefined,
     );
     const source = await eventually(lanes, (entries) => {
       const lane = entries.find((entry) => entry.state === "active");
