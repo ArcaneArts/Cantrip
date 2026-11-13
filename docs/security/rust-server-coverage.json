@@ -28816,6 +28816,15 @@
       ]
     },
     "fullWorkerCantripOsSystems": {
+      "currentPackagedServer": {
+        "version": "1.1.2938",
+        "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+        "platform": "darwin-arm64",
+        "databaseMode": "pglite",
+        "runtime": "rust",
+        "snapshots": 41,
+        "record": "docs/security/rust-server-2938-darwin-arm64-worker-recovery.json#cantripOsRootSystemPGlite"
+      },
       "status": "implemented-pending-platform-acceptance",
       "sourceBaseline": "7c1433b3b455f179adee6cc3db01b5865c79d50b",
       "evidence": [
@@ -29570,6 +29579,15 @@
       "scope": "Current optimized server and signed desktop worker. Five actual dependency process interruptions keep one dispatch attempt, one model request and the original worker continuity per Task."
     },
     "currentWorkerLinkLeaseRecovery": {
+      "currentPackagedServer": {
+        "version": "1.1.2938",
+        "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+        "platform": "darwin-arm64",
+        "productCells": 6,
+        "peerRenewals": 18,
+        "directRenewals": 18,
+        "record": "docs/security/rust-server-2938-darwin-arm64-worker-recovery.json#fullWorkerLinkLeaseRecovery"
+      },
       "status": "implemented-with-scoped-local-qualification",
       "evidence": [
         "docs/RUST_SERVER_WORKER_LINK_LEASE_RECOVERY.md",
@@ -29696,6 +29714,13 @@
       ]
     },
     "releaseArtifactQualification2938": {
+      "macOS2938FullWorkerRecovery": {
+        "version": "1.1.2938",
+        "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+        "workerLinkLeaseRecoveryCells": 6,
+        "cantripOsRootSystemModes": ["pglite"],
+        "record": "docs/security/rust-server-2938-darwin-arm64-worker-recovery.json"
+      },
       "status": "implemented-with-scoped-local-qualification",
       "databaseModes": ["pglite", "bundled-postgres", "postgres"],
       "linuxWinterholdAndContainers": [
