@@ -68,7 +68,10 @@ export class LiveCursorObserver {
   async waitForPublication() {
     this.collect();
     if (!this.publications.length) {
-      await this.probe.message((frame) => frame.type === "event");
+      // A previous automatic flush can defer this publication until the
+      // next default 60-second meter interval. Ready and pong keep their
+      // ordinary socket deadlines.
+      await this.probe.message((frame) => frame.type === "event", 75_000);
       this.collect();
     }
     assert.ok(

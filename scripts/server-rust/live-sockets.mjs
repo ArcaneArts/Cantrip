@@ -18,14 +18,14 @@ export const initialize = (resume = null) => ({
   },
   resume,
 });
-export function deadline(promise, label) {
+export function deadline(promise, label, timeoutMs = 15000) {
   let timer;
   return Promise.race([
     promise,
     new Promise((_, reject) => {
       timer = setTimeout(
         () => reject(new Error(`Live socket timed out: ${label}`)),
-        15000,
+        timeoutMs,
       );
     }),
   ]).finally(() => clearTimeout(timer));
@@ -119,7 +119,7 @@ export class LiveProbe {
     );
     return this;
   }
-  async message(matches = () => true) {
+  async message(matches = () => true, timeoutMs) {
     const index = this.frames.findIndex(matches);
     if (index >= 0) return this.frames.splice(index, 1)[0];
     if (this.closeResult)
@@ -134,6 +134,7 @@ export class LiveProbe {
           this.waiters.push(waiter);
         }),
         "message",
+        timeoutMs,
       );
     } finally {
       const index = this.waiters.indexOf(waiter);
