@@ -23826,6 +23826,9 @@
   },
   "crossCutting": {
     "currentBroadWireCompatibility": {
+      "linux2954PackagedTransport": {
+        "record": "docs/security/rust-server-2954-linux-json-wire.json"
+      },
       "currentPackagedTransport": {
         "version": "1.1.2938",
         "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
@@ -25146,6 +25149,14 @@
       }
     },
     "jsonTransportBoundary": {
+      "linux2954PackagedTransport": {
+        "version": "1.1.2954",
+        "platforms": ["linux-arm64", "linux-x64"],
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "pairedHttpCases": 312,
+        "pairedWebSocketCases": 162,
+        "record": "docs/security/rust-server-2954-linux-json-wire.json"
+      },
       "currentPackagedTransport": {
         "version": "1.1.2938",
         "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
@@ -25165,7 +25176,7 @@
       "scope": "A baseline 4 KiB, 2,048-array request aborted native HTTP and App Live processes with a stack overflow while Node remained healthy. Native JSON syntax is validated once and its tree constructed iteratively; clone, comparison, serialization, drop and HTTP poison scanning are iterative. Authentication validates shared wire values before explicit UTF-8 storage/hashing boundaries, retaining UTF-16 issue keys and messages. Existing transport byte limits and schema decisions remain in force. The JSON socket suite verifies ready/pong cursors against a real retained publication stream per process, including the minimum cursor observed before sending each request. It retains raw cursors, counts and publication bodies, permits only separately scheduled account-resource-usage invalidations, and deliberately awaits an actual reference usage publication before later ready messages. This is parser/metadata evidence, not usage-domain parity.",
       "verifiedLocally": "macOS arm64: 52 HTTP and 27 WebSocket cases against actual Node/Rust processes on each of PGlite, private PostgreSQL and external PostgreSQL; HTTP status/body/security headers/cookies and Live responses match, with subsequent health/initialization/ping/close checks. The 37,396 existing schema cases, 69,647 JSON round trips and 412 auth request-schema cases also pass.",
       "remaining": [
-        "Observe this changed implementation on supported CI platforms.",
+        "Run the JSON transport suite against the current Windows shipping artifact. The current Linux OCI images and prior packaged macOS ARM64 artifact have separate local results.",
         "Complete remaining domain schemas, coercions, hashes and real product/deployment acceptance; no complete-server claim."
       ],
       "platformHistory": [
