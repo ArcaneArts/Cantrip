@@ -140,6 +140,19 @@ migrations, SQL export, settings persistence, hosted reopening and clean
 SIGTERM on all three database modes with Node absent from the server PATH.
 [macOS ARM64 1.1.2938 standalone record](security/rust-server-2938-darwin-arm64-standalone.json)
 
+The same macOS artifact passed upgrade, post-write return to Node
+`1.1.2733`, and return to Rust across all three stores. The populated
+profile retained encrypted Chat, draft, file document and Task writes
+through the round trip. The original profile stayed byte-identical.
+
+The small PGlite comparison used six runs per implementation. Median
+readiness was 1,315 ms for Node and 68 ms for Rust. Median process-tree RSS
+was 1,361,064 KiB and 101,560 KiB, respectively. On each of the three stores,
+the 16 MiB worker-log stream matched payload hashes, rejected a stalled
+consumer with the expected close code, and recovered the accepted write
+and identity after restart. Each stream result is a single sample.
+[macOS ARM64 1.1.2938 rollback and performance record](security/rust-server-2938-darwin-arm64-rollback-performance.json)
+
 The Windows x64 `1.1.2881` standalone distribution passed all three stores,
 including migration, SQL export, hosted reopening and retained writes.
 [Windows x64 standalone record](security/rust-server-2881-win32-x64-standalone.json)
