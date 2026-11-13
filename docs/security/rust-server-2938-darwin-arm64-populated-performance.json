@@ -1,0 +1,462 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+  "driverCheckout": "b72e32d0e5ba9e4a24b12b11323cd4bf9a6dac84",
+  "candidateVersion": "1.1.2938",
+  "target": "darwin-arm64",
+  "completeReplacement": false,
+  "methodology": {
+    "pilotsPerCell": 1,
+    "warmupsPerCell": 5,
+    "measurementsPerCell": 20,
+    "completeWorkloadRegressionThresholdPct": 5,
+    "runOrder": [
+      "node-pglite",
+      "rust-pglite",
+      "node-postgres",
+      "rust-postgres",
+      "rust-bundled-postgres"
+    ],
+    "scope": "Sequential local production processes with the same dataset restored into each backend. The complete workload includes process startup, HTTP reads and writes, App Live and shutdown. Idle RSS sums only the server process tree. External PostgreSQL runs separately. The fixture does not measure fleet throughput or a deployment restart. Application payload digests match across every invocation."
+  },
+  "evidence": {
+    "suite": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-populated-performance/measured/suite-status.json",
+      "bytes": 4582,
+      "sha256": "66b8f2516432dc7569154e444e5d3e2d9aa88235ff4218d35cbe2d1c49702d41"
+    },
+    "environment": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-populated-performance/measured-environment.txt",
+      "bytes": 437,
+      "sha256": "a7574c03dd1108a1fbf1e91e25da02ebe44e8e0bc865f0d55ef17499ea705ae7"
+    },
+    "driver": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-populated-performance/run-populated-benchmark.mjs",
+      "bytes": 13258,
+      "sha256": "1dd8eb81238a1711c7ec3411d59773f49fe9d6eea38140e88d241c96b77d8aa8"
+    },
+    "orchestrator": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-populated-performance/run-populated-suite.mjs",
+      "bytes": 5881,
+      "sha256": "2bb4df6493e6ecbe2b3ee87132c0249fb88724f8999caa9921703f3a1616357e"
+    },
+    "artifactInputs": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-populated-performance/inputs.sha256",
+      "bytes": 767,
+      "sha256": "15fb55f0fc702f2d5f61a532d14d5715a82b3fbc5c8f81861ae97717dad93d84"
+    },
+    "measuredRuns": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-populated-performance/measured-run-receipts.json",
+      "bytes": 32512,
+      "sha256": "5c2b4e540f330c705f800b474b323bf01c82f803c3376de68c6afe3f08c769e4"
+    }
+  },
+  "cells": {
+    "node-pglite": {
+      "timing": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-populated-performance/measured/node-pglite-capture.json",
+        "bytes": 1661,
+        "sha256": "a9b2cd1a1fd69bece21102d00f6d7c15ee5dbe538904555732f152cf47a2a273"
+      },
+      "metrics": {
+        "completeWorkloadMs": {
+          "median": 5262.34,
+          "p95": 5473.295
+        },
+        "readinessMs": {
+          "median": 1400.619,
+          "p95": 1570.492
+        },
+        "idleRssKiB": {
+          "median": 1344896.0,
+          "p95": 1350598.4
+        },
+        "projectListMs": {
+          "median": 8.505,
+          "p95": 8.909
+        },
+        "chatListMs": {
+          "median": 1.767,
+          "p95": 1.879
+        },
+        "historyPageMs": {
+          "median": 4.717,
+          "p95": 4.95
+        },
+        "fullHistoryMs": {
+          "median": 36.297,
+          "p95": 38.622
+        },
+        "mixedReadsPerSecond": {
+          "median": 271.305,
+          "p95": 281.112
+        },
+        "settingsWriteMs": {
+          "median": 4.696,
+          "p95": 5.35
+        },
+        "livePingMs": {
+          "median": 0.096,
+          "p95": 0.118
+        },
+        "enrollmentPublicationMs": {
+          "median": 4.695,
+          "p95": 5.384
+        },
+        "pausedConsumerCatchupMs": {
+          "median": 0.804,
+          "p95": 0.925
+        },
+        "shutdownMs": {
+          "median": 42.221,
+          "p95": 46.755
+        },
+        "hostLoadAverage1m": {
+          "median": 11.18,
+          "p95": 12.915
+        }
+      },
+      "measuredRuns": 20
+    },
+    "rust-pglite": {
+      "timing": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-populated-performance/measured/rust-pglite-capture.json",
+        "bytes": 1662,
+        "sha256": "00bf08ad60dc04dc5e602e5fe76a89eec855e6f9441e2d1cab983785b93abeaa"
+      },
+      "metrics": {
+        "completeWorkloadMs": {
+          "median": 2737.026,
+          "p95": 3020.35
+        },
+        "readinessMs": {
+          "median": 158.32,
+          "p95": 209.512
+        },
+        "idleRssKiB": {
+          "median": 102616.0,
+          "p95": 103940.8
+        },
+        "projectListMs": {
+          "median": 6.085,
+          "p95": 7.157
+        },
+        "chatListMs": {
+          "median": 1.054,
+          "p95": 1.257
+        },
+        "historyPageMs": {
+          "median": 2.807,
+          "p95": 3.361
+        },
+        "fullHistoryMs": {
+          "median": 29.936,
+          "p95": 37.182
+        },
+        "mixedReadsPerSecond": {
+          "median": 459.484,
+          "p95": 503.479
+        },
+        "settingsWriteMs": {
+          "median": 1.504,
+          "p95": 1.834
+        },
+        "livePingMs": {
+          "median": 0.075,
+          "p95": 0.091
+        },
+        "enrollmentPublicationMs": {
+          "median": 1.988,
+          "p95": 2.204
+        },
+        "pausedConsumerCatchupMs": {
+          "median": 0.678,
+          "p95": 0.775
+        },
+        "shutdownMs": {
+          "median": 6.933,
+          "p95": 8.367
+        },
+        "hostLoadAverage1m": {
+          "median": 9.894,
+          "p95": 11.258
+        }
+      },
+      "measuredRuns": 20
+    },
+    "node-postgres": {
+      "timing": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-populated-performance/measured/node-postgres-capture.json",
+        "bytes": 1669,
+        "sha256": "3829b258f0c2e6a25c1f3903dff47ffb9b2a8c684bc80f4ef7f715eeec23c620"
+      },
+      "metrics": {
+        "completeWorkloadMs": {
+          "median": 3624.702,
+          "p95": 3784.331
+        },
+        "readinessMs": {
+          "median": 1056.025,
+          "p95": 1109.029
+        },
+        "idleRssKiB": {
+          "median": 473208.0,
+          "p95": 476490.4
+        },
+        "projectListMs": {
+          "median": 4.855,
+          "p95": 5.472
+        },
+        "chatListMs": {
+          "median": 1.17,
+          "p95": 1.359
+        },
+        "historyPageMs": {
+          "median": 3.132,
+          "p95": 3.497
+        },
+        "fullHistoryMs": {
+          "median": 25.126,
+          "p95": 30.884
+        },
+        "mixedReadsPerSecond": {
+          "median": 639.889,
+          "p95": 681.067
+        },
+        "settingsWriteMs": {
+          "median": 2.087,
+          "p95": 2.798
+        },
+        "livePingMs": {
+          "median": 0.069,
+          "p95": 0.087
+        },
+        "enrollmentPublicationMs": {
+          "median": 3.466,
+          "p95": 4.729
+        },
+        "pausedConsumerCatchupMs": {
+          "median": 0.735,
+          "p95": 0.886
+        },
+        "shutdownMs": {
+          "median": 27.668,
+          "p95": 38.881
+        },
+        "hostLoadAverage1m": {
+          "median": 9.72,
+          "p95": 10.257
+        }
+      },
+      "measuredRuns": 20
+    },
+    "rust-postgres": {
+      "timing": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-populated-performance/measured/rust-postgres-capture.json",
+        "bytes": 1657,
+        "sha256": "e3ec34dd611c1d8b31e3ff505124560f430816d8af70a22ac4e03c2db2536d2e"
+      },
+      "metrics": {
+        "completeWorkloadMs": {
+          "median": 2073.662,
+          "p95": 2212.741
+        },
+        "readinessMs": {
+          "median": 62.662,
+          "p95": 85.761
+        },
+        "idleRssKiB": {
+          "median": 67288.0,
+          "p95": 67588.8
+        },
+        "projectListMs": {
+          "median": 6.085,
+          "p95": 6.433
+        },
+        "chatListMs": {
+          "median": 0.974,
+          "p95": 1.074
+        },
+        "historyPageMs": {
+          "median": 2.856,
+          "p95": 3.016
+        },
+        "fullHistoryMs": {
+          "median": 30.334,
+          "p95": 32.631
+        },
+        "mixedReadsPerSecond": {
+          "median": 1841.551,
+          "p95": 2038.221
+        },
+        "settingsWriteMs": {
+          "median": 1.244,
+          "p95": 1.397
+        },
+        "livePingMs": {
+          "median": 0.048,
+          "p95": 0.067
+        },
+        "enrollmentPublicationMs": {
+          "median": 2.18,
+          "p95": 2.704
+        },
+        "pausedConsumerCatchupMs": {
+          "median": 0.672,
+          "p95": 0.788
+        },
+        "shutdownMs": {
+          "median": 4.629,
+          "p95": 6.614
+        },
+        "hostLoadAverage1m": {
+          "median": 10.067,
+          "p95": 11.109
+        }
+      },
+      "measuredRuns": 20
+    },
+    "rust-bundled-postgres": {
+      "timing": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-populated-performance/measured/rust-bundled-postgres-capture.json",
+        "bytes": 1674,
+        "sha256": "78970941666a296807fdd9aef8f3940087e8bbadc0d54e6f3bb1d5241c3700e7"
+      },
+      "metrics": {
+        "completeWorkloadMs": {
+          "median": 2166.003,
+          "p95": 2959.304
+        },
+        "readinessMs": {
+          "median": 176.156,
+          "p95": 207.604
+        },
+        "idleRssKiB": {
+          "median": 390576.0,
+          "p95": 395874.4
+        },
+        "projectListMs": {
+          "median": 6.011,
+          "p95": 7.113
+        },
+        "chatListMs": {
+          "median": 0.918,
+          "p95": 1.215
+        },
+        "historyPageMs": {
+          "median": 2.803,
+          "p95": 3.295
+        },
+        "fullHistoryMs": {
+          "median": 28.888,
+          "p95": 32.0
+        },
+        "mixedReadsPerSecond": {
+          "median": 1869.408,
+          "p95": 2026.153
+        },
+        "settingsWriteMs": {
+          "median": 1.104,
+          "p95": 1.584
+        },
+        "livePingMs": {
+          "median": 0.046,
+          "p95": 0.083
+        },
+        "enrollmentPublicationMs": {
+          "median": 2.135,
+          "p95": 3.196
+        },
+        "pausedConsumerCatchupMs": {
+          "median": 0.615,
+          "p95": 0.987
+        },
+        "shutdownMs": {
+          "median": 16.379,
+          "p95": 21.42
+        },
+        "hostLoadAverage1m": {
+          "median": 11.619,
+          "p95": 12.331
+        }
+      },
+      "measuredRuns": 20
+    }
+  },
+  "comparisons": {
+    "pglite": {
+      "guardExit": 0,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-populated-performance/measured/pglite-guard-comparison.md",
+        "bytes": 694,
+        "sha256": "b8502694b457aff727c9faa7d4c522ca47c0091a778d17e8ee957d9f19ecc927"
+      },
+      "medianChangePct": {
+        "completeWorkloadMs": -47.99,
+        "readinessMs": -88.7,
+        "idleRssKiB": -92.37,
+        "projectListMs": -28.45,
+        "chatListMs": -40.35,
+        "historyPageMs": -40.49,
+        "fullHistoryMs": -17.52,
+        "mixedReadsPerSecond": 69.36,
+        "settingsWriteMs": -67.97,
+        "livePingMs": -21.88,
+        "enrollmentPublicationMs": -57.66,
+        "pausedConsumerCatchupMs": -15.67,
+        "shutdownMs": -83.58,
+        "hostLoadAverage1m": -11.5
+      },
+      "metricsSlowerByMoreThan5Pct": []
+    },
+    "postgres": {
+      "guardExit": 0,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-populated-performance/measured/postgres-guard-comparison.md",
+        "bytes": 698,
+        "sha256": "cb4d7371930da9dd5dd7337d2bf8849579897714bb1cd95adf42b28cedf88094"
+      },
+      "medianChangePct": {
+        "completeWorkloadMs": -42.79,
+        "readinessMs": -94.07,
+        "idleRssKiB": -85.78,
+        "projectListMs": 25.33,
+        "chatListMs": -16.75,
+        "historyPageMs": -8.81,
+        "fullHistoryMs": 20.73,
+        "mixedReadsPerSecond": 187.79,
+        "settingsWriteMs": -40.39,
+        "livePingMs": -30.43,
+        "enrollmentPublicationMs": -37.1,
+        "pausedConsumerCatchupMs": -8.57,
+        "shutdownMs": -83.27,
+        "hostLoadAverage1m": 3.57
+      },
+      "metricsSlowerByMoreThan5Pct": ["projectListMs", "fullHistoryMs"],
+      "tradeoff": "The 1.23 ms project-list and 5.21 ms full-history median increases persist in this local test. Full history is a 3.14 MB response, and the 50-message page median improves by 0.28 ms. Eight-client throughput nearly triples and the complete workload drops 43 percent. These results support a local aggregate performance pass with the two read-latency regressions recorded explicitly."
+    }
+  },
+  "dataset": {
+    "projects": 64,
+    "chats": 256,
+    "messages": 31624,
+    "busyMessages": 1024,
+    "settingsWrites": 20,
+    "temporaryWorkerEnrollments": 40
+  },
+  "matchingPayloads": {
+    "projects": "9850c5de7b83289b4f7fa34ddbfed907a0d5305dfc81e70e6c1141d632ce0e07",
+    "chats": "62df5cc37c1b9d7d9972c5726086ad733091335e2513dcad5352efc52d5c20a7",
+    "page": "cd0658d74b72c040e53a7477d08965155e60ef3b723b8e33d7b599e9255063be",
+    "history": "71c4b38659199ecb8f31c0d6e9eebae147fa54413ae573bb0a9eacb1892e3dab",
+    "historyBytes": 3142470
+  },
+  "referenceNodeVersion": "v24.22.1",
+  "completeInvocations": 130,
+  "measuredInvocations": 100,
+  "standaloneArchive": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/cantrip-server-1.1.2938-darwin-arm64-5015c89a4.tar.gz",
+    "bytes": 66893960,
+    "sha256": "4c6fdf2072d0ddb3e1fd2d7785fe0a9838a67208855cbc92f909b9f261ba4668"
+  }
+}
