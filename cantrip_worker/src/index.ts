@@ -7456,6 +7456,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                     executionProfile: executionProfile,
                     subagentDefaults,
                     mcpServers: resolvedMcpServers,
+                    canonicalHistory: session.contextKind === "project",
                     planMode: command.planMode,
                     intent: standalone ? "configure" : "preserve",
                     ...(runner ? { executionGate: runner.configuration } : {}),
