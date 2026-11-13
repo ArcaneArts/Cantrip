@@ -1,9 +1,9 @@
-// Test-only TCP fault injection: hold the real EVAL after GET has completed,
-// replace its Redis key through a separate connection, then forward the EVAL.
-// Redis still executes every ownership check and Lua operation itself.
+// Test-only TCP fault injection. Hold Redis commands at their actual network
+// boundary while independent clients continue using the real server.
 import assert from "node:assert/strict";
 import { createServer, createConnection } from "node:net";
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 
 function frame(bytes) {
   const end = bytes.indexOf("\r\n");
@@ -31,6 +31,7 @@ function frame(bytes) {
 async function proxy(port) {
   const sockets = new Set();
   let gate;
+  let subscriber;
   const server = createServer((downstream) => {
     const upstream = createConnection({ host: "127.0.0.1", port });
     sockets.add(downstream);
@@ -42,6 +43,7 @@ async function proxy(port) {
       });
       socket.on("close", () => {
         sockets.delete(socket);
+        if (subscriber === downstream) subscriber = undefined;
         downstream.destroy();
         upstream.destroy();
       });
@@ -54,11 +56,8 @@ async function proxy(port) {
         const command = frame(bytes);
         if (!command) return;
         bytes = command.rest;
-        if (
-          gate &&
-          command.args[0].toString() === "EVAL" &&
-          command.args[3]?.toString() === gate.key
-        ) {
+        if (command.args[0].toString() === "SUBSCRIBE") subscriber = downstream;
+        if (gate?.matches(command.args)) {
           const held = gate;
           gate = undefined;
           paused = true;
@@ -81,13 +80,17 @@ async function proxy(port) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   return {
     url: `redis://127.0.0.1:${server.address().port}`,
-    arm(key) {
+    disconnectSubscriber() {
+      assert.ok(subscriber, "the Redis subscription is connected");
+      subscriber.destroy();
+    },
+    arm(matches) {
       assert.equal(gate, undefined);
       let resolve;
       const reached = new Promise((r) => {
         resolve = r;
       });
-      const held = { key, resolve, release: null };
+      const held = { matches, resolve, release: null };
       gate = held;
       return {
         async reached() {
@@ -152,7 +155,9 @@ export async function compareAndSetFaults({
     });
     const observed = [];
     async function replaceBetweenReadAndEval(key, op, fields) {
-      held = wire.arm(key);
+      held = wire.arm(
+        (args) => args[0].toString() === "EVAL" && args[3]?.toString() === key,
+      );
       const pending = peer.call(op, fields);
       pending.catch(() => {});
       await held.reached();
@@ -204,6 +209,71 @@ export async function compareAndSetFaults({
     return observed;
   } finally {
     held?.release();
+    try {
+      await peer?.stop();
+    } finally {
+      await wire.close();
+    }
+  }
+}
+
+export async function verifyDelayedSubscription({
+  port,
+  control,
+  fixture,
+  options,
+}) {
+  const wire = await proxy(port);
+  const channel = options.keyPrefix + ":messages";
+  const observer = control.duplicate();
+  observer.on("error", () => {});
+  let peer;
+  try {
+    await observer.connect();
+    const publications = [];
+    await observer.subscribe(channel, (message) => {
+      const envelope = JSON.parse(message);
+      if (envelope.kind === "worker-command-request")
+        publications.push(envelope.requestId);
+    });
+    peer = fixture("rust", "delayed-subscriber");
+    await peer.call("init", {
+      options: { ...options, url: wire.url, maximumInstances: 100 },
+    });
+    assert.equal(await peer.call("health"), true);
+    const isSubscribe = (args) => args[0].toString() === "SUBSCRIBE";
+    const stalled = wire.arm(isSubscribe);
+    wire.disconnectSubscriber();
+    await stalled.reached();
+    assert.equal(await control.ping(), "PONG");
+    assert.equal(await peer.call("health"), false);
+    await assert.rejects(
+      peer.call("publish", {
+        payload: { kind: "worker-command-request", requestId: "during-gap" },
+      }),
+      /Redis coordination is unavailable/,
+    );
+
+    // Keep the first SUBSCRIBE unacknowledged and observe a second attempt.
+    const retry = wire.arm(isSubscribe);
+    await retry.reached();
+    assert.equal(await peer.call("health"), false);
+    retry.release();
+    const deadline = Date.now() + 5000;
+    while (!(await peer.call("health"))) {
+      assert.ok(Date.now() < deadline, "subscription did not recover");
+      await delay(20);
+    }
+    await peer.call("publish", {
+      payload: { kind: "worker-command-request", requestId: "after-recovery" },
+    });
+    while (!publications.includes("after-recovery")) {
+      assert.ok(Date.now() < deadline, "recovered request was not published");
+      await delay(20);
+    }
+    assert.deepEqual(publications, ["after-recovery"]);
+  } finally {
+    if (observer.isOpen) observer.destroy();
     try {
       await peer?.stop();
     } finally {
