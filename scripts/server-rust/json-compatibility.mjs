@@ -1,7 +1,9 @@
 // Exercise the actual parsers, validators, responses and process lifetimes.
 // Unknown nested fields are intentionally within existing transport byte caps.
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
@@ -18,12 +20,23 @@ const option = (name) => {
 };
 const databaseMode = option("--database") ?? "pglite";
 assert.ok(["pglite", "bundled-postgres", "postgres"].includes(databaseMode));
-const executable = await buildRustServer();
+const packagedExecutable = process.env.CANTRIP_TEST_SERVER_BINARY;
+const executable = packagedExecutable
+  ? path.resolve(packagedExecutable)
+  : await buildRustServer();
+const executableHash = createHash("sha256");
+for await (const chunk of createReadStream(executable))
+  executableHash.update(chunk);
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-json-http-"));
 const report = {
   suite: "json-http-websocket",
   databaseMode,
   completeReplacement: false,
+  rustExecutable: {
+    source: packagedExecutable ? "supplied" : "cargo",
+    bytes: (await stat(executable)).size,
+    sha256: executableHash.digest("hex"),
+  },
   cursorScope:
     "Ready and pong cursors are verified against actual retained usage publications per process. Raw cursors and events remain in the report. Dedicated usage suites separately verify accounting and observer feedback; this suite verifies parser and cursor behavior.",
   profiles: [],
