@@ -151,3 +151,21 @@ Docker Desktop ran on an ARM64 host and used Rosetta for Linux x64.
 Windows package coverage, active-operation server and dependency interruption,
 and long outages retain separate acceptance.
 [Linux package acceptance record](security/rust-server-2976-linux-model-operations.json)
+
+## macOS 1.1.2976 server interruption
+
+Run `actual-folder-client.mjs --model-operations --model-operation-server-loss`
+against a single server to exercise an active request across SIGKILL. The
+browser observes one durable running usage record before the test kills the
+server. The original request fails and its held provider response closes.
+The replacement binds the same origin and retains the server identity and all
+usage records. The interrupted record retains its last observed running state
+with no terminal receipt or reported counters. The same worker process
+reconnects and handles a new decision. Each operation makes one provider request.
+
+All six macOS ARM64 cells passed across PGlite, bundled PostgreSQL and external
+PostgreSQL, with matching Node and Rust outcomes. The six cells ran 84 operation
+cases, including six active server interruptions and six post-reconnect decisions.
+The results establish recovery from a single abrupt server exit. Active database
+and Redis interruptions and long outages remain open.
+[Server interruption evidence](security/rust-server-2976-darwin-arm64-model-operation-server-loss.json)

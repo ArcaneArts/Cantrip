@@ -28814,6 +28814,7 @@
     "fullWorkerModelOperations": {
       "linux2976Qualification": "docs/security/rust-server-2976-linux-model-operations.json",
       "macos2976Qualification": "docs/security/rust-server-2976-darwin-arm64-model-operations.json",
+      "macos2976ActiveServerInterruption": "docs/security/rust-server-2976-darwin-arm64-model-operation-server-loss.json",
       "status": "implemented-pending-platform-acceptance",
       "sourceBaseline": "bb7af5ccc7322e5b18c1a23cd31abb198ad1608c",
       "evidence": [
@@ -28839,11 +28840,12 @@
         "Actual browser encryption and full-worker direct admission preserve batched vectors, pinned space, typed decisions and operation identities.",
         "Explicit cancellation, SDK abort and HTTP disconnect close the original provider connection, retain one receipt and never replay inference.",
         "Timeout and worker SIGKILL retain failed versus unknown usage; original exported rows survive actual server/worker restart.",
+        "Active server SIGKILL on macOS preserves one original usage record with no worker receipt or reported counters. The same worker reconnects and completes fresh inference without replaying the interrupted input, matching the Node reference in all three stores.",
         "Public aggregate totals and completeness match observed receipts; missing counters and worker receipts remain unknown."
       ],
       "baselineRepair": "Unmodified Node external/private PostgreSQL aggregate routes fail to bind Date parameters for a SQL CASE expression; four ISO timestamp bindings restore the range predicates. Node PGlite and native Rust already passed.",
       "remaining": [
-        "Windows and Linux package coverage, active-operation server or dependency interruption, and long-outage qualification remain required.",
+        "Windows package coverage, active-operation database and Redis interruption, long outages, and non-macOS server-process interruption remain unqualified.",
         "Configured OpenAI-compatible adapters and an owned local provider are exercised; this does not prove every provider-private adapter behavior.",
         "Default Rust cutover and production Node-server removal remain required."
       ]

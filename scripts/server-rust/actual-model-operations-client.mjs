@@ -11,6 +11,7 @@ export async function actualModelOperationsClient({
   startWorker,
   stopWorker,
   crashWorker,
+  workerProcessForInterruption,
   requests,
   result,
 }) {
@@ -599,6 +600,87 @@ export async function actualModelOperationsClient({
     result.steps.push(
       "direct operation usage survives server and worker restart exactly, and the retained provider and model route execute again",
     );
+    if (workerProcessForInterruption) {
+      const name = "server-crash";
+      const plan = provider.reply("embedding", { hold: true });
+      await begin(name, "embedding", { timeout: 8_000 });
+      await eventually(
+        () => plan.entered,
+        (entered) => assert.equal(entered, true),
+      );
+      const { operationId } = JSON.parse(requestFor("embedding").body);
+      const retainedIdentity = await page.evaluate(
+        () => window.folderIdentity.serverId,
+      );
+      const priorRows = await eventually(rows, (current) => {
+        const active = current.filter(
+          (row) => row.executionAttemptId === operationId,
+        );
+        assert.equal(active.length, 1);
+        assert.equal(active[0].attemptStatus, "running");
+        assert.equal(active[0].modelOperationUsage.transportStatus, "running");
+        assert.equal(active[0].reportedTotalTokens, null);
+        assert.equal(active[0].modelOperationUsage.receipt, null);
+      });
+      const workerProcess = workerProcessForInterruption();
+      assert.ok(workerProcess?.pid);
+      assert.equal(
+        plan.entry.closed,
+        false,
+        "provider must still be active at server interruption",
+      );
+      const interruptedAt = performance.now();
+      report.serverInterruption = {
+        ...(await fixture.restart({ crash: true })),
+        workerPid: workerProcess.pid,
+      };
+      const original = await finish(name, "embedding", 1);
+      assert.equal(original.ok, false);
+      await eventually(
+        () => plan.entry.closed,
+        (closed) => assert.equal(closed, true),
+        12_000,
+      );
+      assert.equal(plan.entry.completed, false);
+      report.serverInterruption.providerClosedObservedAfterMs = Math.round(
+        performance.now() - interruptedAt,
+      );
+      await eventually(
+        () => page.evaluate(() => window.folderWorkers.getWorkers()),
+        (workers) =>
+          assert.equal(
+            workers.find((w) => w.workerId === workerId)?.online,
+            true,
+          ),
+      );
+      assert.equal(
+        await page.evaluate(async () => {
+          const { getClientSession } =
+            await import("/src/lib/client-session.ts");
+          return getClientSession().serverId;
+        }),
+        retainedIdentity,
+      );
+      const restored = await rows();
+      assert.deepEqual(restored, priorRows);
+      report.cases.find((c) => c.name === name).usage = restored.find(
+        (row) => row.executionAttemptId === operationId,
+      );
+      provider.reply("decision");
+      await begin("after-server-crash", "decision");
+      assert.equal(
+        (await finish("after-server-crash", "decision", 1)).ok,
+        true,
+      );
+      await receipt("after-server-crash", { status: "completed" });
+      assert.equal(workerProcessForInterruption(), workerProcess);
+      assert.equal(workerProcess.exitCode, null);
+      assert.equal(workerProcess.signalCode, null);
+      assert.equal((await rows()).length, report.cases.length);
+      result.steps.push(
+        "server SIGKILL interrupts an active operation, preserves one unreported usage record and reconnects the same worker without replay",
+      );
+    }
     assert.deepEqual(provider.failures, []);
     for (const request of provider.requests) {
       assert.equal(request.authenticated, true);
