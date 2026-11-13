@@ -895,6 +895,11 @@ reopened the existing encrypted account with its native key. The
 [installed mobile record](security/rust-server-2976-installed-mobile.json)
 contains the exact app and server artifacts and the remaining mobile checks.
 
+Xcode exported the ARM64 iOS 1.1.2976 archive locally with App Store
+distribution signing. The exported IPA passed signature and provisioning
+verification and contained the same 195 renderer files as the installed
+simulator build. Physical iOS camera sign-in remains open.
+
 The installed `1.1.2881` iOS simulator app passed sign-in on PGlite, bundled
 PostgreSQL and external PostgreSQL against the packaged macOS ARM64 Rust server.
 It retained its account bindings and native installation key across app relaunch
