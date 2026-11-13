@@ -38,6 +38,14 @@ rebuilt JavaScript with the previously packaged Node runtime, dependencies,
 CLI and Codex. The fixture supplies the local repository's catalog
 classification and scripted model responses.
 
+The macOS ARM64 `1.1.2976` standalone distribution repeated the three-store
+matrix using the worker, Node runtime, CLI and Codex from the desktop
+packaging inputs. All 36 product steps passed, and the server and worker
+each completed 12 clean exits. The suite verified the original and
+continuation lanes had distinct native threads, one answer each, and an
+unchanged transcript after restart.
+[macOS 1.1.2976 evidence](security/rust-server-2976-darwin-arm64-acceptance.json#cliWorktreeContinuation)
+
 The Linux ARM64 and x64 `1.1.2936` container images also passed on all
 three stores. The browser, worker, CLI and Codex ran on macOS ARM64,
 with the x64 server container running under emulation. Across six runs,

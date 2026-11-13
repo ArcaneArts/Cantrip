@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceCommit": "92ed534fa5b1bef8dfcf60a21b9784e159c6a655",
+  "candidateVersion": "1.1.2976",
+  "target": "linux-arm64",
+  "scope": "Local Docker image and native ARM64 systemd and Caddy rehearsal. The external PostgreSQL rollback ran the historical amd64 Node server under emulation. The fixture HTTPS observation timeout was 30 seconds.",
+  "artifact": {
+    "nativeArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/arm64/cantrip-server-1.1.2976-linux-arm64.tar.gz",
+      "bytes": 141795406,
+      "sha256": "ce64f287a69a29a4b67794f1e2e16e699077e7e1ae444cab532baeb449758f0e"
+    },
+    "ociArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/arm64/standalone.oci.tar",
+      "bytes": 178393600,
+      "sha256": "0c11c34b555418842200884fc40f92ef5aaf91622deac75d464ee7e1c7ef1926"
+    },
+    "ociManifestDigest": "sha256:22fdbe9949a4df66e3b348c8c0f9dddfadeab8d5822a5c0238df894df7de6097",
+    "verifiedLayers": 4,
+    "verifiedPackageFiles": 2558,
+    "nativeExecutableSha256": "6ff8f8de7e4ab0fd5f267f3ecac9c74ce3de0537fd5ceb0e91ec7f7ed8b2d3bd",
+    "verification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/arm64/oci-verification.json",
+      "bytes": 672,
+      "sha256": "00a4d1146127a8fb8e99ee882454a5e73ef8ca269540bbf5d915d2b840f073b1"
+    }
+  },
+  "container": {
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "migrationsSqlExportRetainedWritesAndSigterm": true,
+    "nonRootReadOnlyRootAndNoexecTmpfs": true,
+    "nodeAbsentFromRuntimePath": true,
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/arm64/acceptance.json",
+      "bytes": 5357,
+      "sha256": "95e424b8750525ae67a23e22945e7f81d60248395a483a4e5b6bdceb87cf9092"
+    }
+  },
+  "winterhold": {
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "installerCalls": 18,
+    "recoveredInstallerFailures": 6,
+    "runningExecutableHashesCompared": 10,
+    "startLimitRecoveryObserved": true,
+    "caddyHttpsAndAppLive": true,
+    "externalPostgresTls": "required",
+    "postWriteRollback": {
+      "pgliteAndBundledPostgres": "1.1.2964",
+      "externalPostgresRuntime": "node",
+      "externalPostgresRollbackImage": "sha256:e45a5bb676e4efec2ec75897dd24829fadfd23165a545de155fa1c5a7da5a9d8"
+    },
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/arm64/winterhold/acceptance.json",
+      "bytes": 1099499,
+      "sha256": "febda05e835483cdc0a608d285b1fc0451c2215e8fed4946be66fbd93f704297"
+    },
+    "journal": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/arm64/winterhold/journal.log",
+      "bytes": 836641,
+      "sha256": "6cbb74d247ca09637ae5621680bcf5fd3bb19c749a8bd3ff2a5fbe5289cdbfdf"
+    },
+    "profiles": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/arm64/winterhold/profile-final.tar.zst",
+      "bytes": 13359266,
+      "sha256": "ee698c62456117131776ba0fca140c595ee919524ca48179a5ff5d126c700398"
+    },
+    "externalPostgresDump": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/arm64/winterhold/external-postgres-final.dump",
+      "bytes": 677155,
+      "sha256": "0d352801993ed7f03e6555ed47e0dd8ec38f28b6419bccc18a7879631bfd6503"
+    },
+    "fixtureDiff": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/winterhold-driver.diff",
+      "bytes": 1574,
+      "sha256": "81e59a8e022f28939897aa861c89cffe10474f3659edc1a3f4ef125b5edb412a"
+    }
+  }
+}
