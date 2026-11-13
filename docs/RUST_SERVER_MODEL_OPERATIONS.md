@@ -136,3 +136,18 @@ worker-private behavior. Earlier malformed/auth/ownership boundary comparisons
 remain separate evidence. Current catalog and CantripOS product qualification,
 final platform/deployment/migration/performance acceptance, default Rust cutover
 and production Node-server removal remain required.
+
+## Linux 1.1.2976 package qualification
+
+The production Linux ARM64 and x64 standalone containers passed 72
+model-operation cases across PGlite, bundled PostgreSQL and external PostgreSQL.
+Each of the six cells exercised the Chromium client, the packaged Node worker
+on macOS, and a scripted local provider. The cases covered embedding, decision,
+usage receipts, cancellation, disconnect, timeout, worker crash and a successful
+operation after worker restart. The actual executable and packaged files were
+verified inside every server generation. All 18 server exits were clean.
+
+Docker Desktop ran on an ARM64 host and used Rosetta for Linux x64.
+Windows package coverage, active-operation server and dependency interruption,
+and long outages retain separate acceptance.
+[Linux package acceptance record](security/rust-server-2976-linux-model-operations.json)
