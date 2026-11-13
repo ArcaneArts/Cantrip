@@ -59,6 +59,7 @@ import {
   type NativeGoalClaimRecoveryReceipt,
 } from "@cantrip/protocol";
 import { lstat, mkdtemp, realpath, rm, readFile } from "node:fs/promises";
+import type { WorkerEncryptionRefreshRequest } from "@cantrip/protocol/encryption";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -755,9 +756,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       workerLinkGateway.handleFrame(header, payload, respond),
     (respond) => workerLinkGateway.disconnectResponder(respond),
   );
-  const refreshWorkerEncryption = async () => {
+  const refreshWorkerEncryption = async (
+    requestedGrant?: WorkerEncryptionRefreshRequest,
+  ) => {
     try {
-      return await workerEncryption.refresh({ credential: config.token });
+      return await workerEncryption.refresh({
+        credential: config.token,
+        requestedGrant,
+      });
     } finally {
       // A transient refresh failure retains the prior in-memory key and keeps
       // existing routes valid. Authoritative revocation, malformed bootstrap,
@@ -4608,7 +4614,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         scheduleWorkerRuntimeRestart(requestRuntimeRestart);
         return workerRestartAcknowledgementSchema.parse({ restarting: true });
       case "worker.encryption.refresh": {
-        const status = await refreshWorkerEncryption();
+        const status = await refreshWorkerEncryption(command);
         return workerEncryptionRefreshResultSchema.parse({
           component: command.component,
           keyRevision: command.keyRevision,
