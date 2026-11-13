@@ -431,6 +431,21 @@ from current source both reproduce this failure. The current test
 records five passing cells out of six.
 [Current dependency recovery record](security/rust-server-2938-darwin-arm64-mixed-goal.json)
 
+The follow-up instrumented the Node reference process after SIGTERM.
+At 28.5 seconds, two postgres.js sockets to the restarted database
+and a driver lifetime timer were still live. The socket creation
+stacks came from reconnect timers. The reference dependency patch
+cancels outstanding reconnects during connection termination, closes a
+socket returned after termination, and stops the pool from taking
+queued work after forced destruction. The regression test reproduces
+a late socket that remains open with the original driver.
+
+The patched reference repeated the PostgreSQL case with Node serving
+the browser and Rust serving the full worker. It completed all 17
+steps with four clean final shutdown receipts. The original committed
+Goal settled through the PostgreSQL restart. The historical record
+above retains the forced exit observed before the patch.
+
 ## Ordering the first encrypted Task Goal input
 
 The full worker could receive a native autonomous Goal begin while the
