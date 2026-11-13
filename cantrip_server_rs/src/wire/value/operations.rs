@@ -1,6 +1,6 @@
 //! Tree operations must remain stack-safe even when a schema strips or rejects
 //! a deeply nested unknown field. The transport already supplies byte limits.
-use super::{JsString, Value};
+use super::{JsString, Object, Value};
 use std::{fmt, mem};
 
 impl Value {
@@ -57,6 +57,23 @@ impl Value {
         output
     }
     pub fn stringify(&self) -> String {
+        self.stringify_with_entries(crate::wire::coercion::entries)
+    }
+
+    /// Serialize with keys sorted by UTF-16 code units, including array-index
+    /// keys. Native history uses this ordering for digests persisted by Node.
+    pub(crate) fn stringify_canonical(&self) -> String {
+        self.stringify_with_entries(|object| {
+            let mut entries: Vec<_> = object.iter().collect();
+            entries.sort_unstable_by(|(a, _), (b, _)| a.units().cmp(b.units()));
+            entries
+        })
+    }
+
+    fn stringify_with_entries(
+        &self,
+        entries: impl Fn(&Object) -> Vec<(&JsString, &Value)>,
+    ) -> String {
         enum Part<'a> {
             Value(&'a Value),
             Key(&'a JsString),
@@ -92,11 +109,7 @@ impl Value {
                     Self::Object(object) => {
                         output.push('{');
                         stack.push(Part::Text("}"));
-                        for (i, (key, value)) in crate::wire::coercion::entries(object)
-                            .into_iter()
-                            .enumerate()
-                            .rev()
-                        {
+                        for (i, (key, value)) in entries(object).into_iter().enumerate().rev() {
                             stack.push(Part::Value(value));
                             stack.push(Part::Text(":"));
                             stack.push(Part::Key(key));
