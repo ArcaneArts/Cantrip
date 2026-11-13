@@ -5528,16 +5528,19 @@
         "method": "GET",
         "path": "/api/cantrip-os/:instanceId/power-operations/:operationId",
         "implementation": "cantrip_server_rs/src/http/cantrip_os_power.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "cantrip_server_rs/src/http/cantrip_os_power.rs",
           "tests/reference-node-server/src/app/routes/cantrip-os-power.ts",
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
-          "docs/RUST_SERVER_READ_METHODS.md"
+          "docs/RUST_SERVER_READ_METHODS.md",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "docs/security/rust-server-2954-darwin-arm64-cantrip-os-power-read.json"
         ],
+        "scope": "The macOS ARM64 browser and full-worker lifecycle run compares stop, start, lost-response restart and missing-operation GETs between packaged Rust and the Node reference on all three server storage modes. Reads return exact persisted summaries and preserve Docker container identity and lifecycle timestamps.",
         "remaining": [
-          "Source-reviewed registration only; no compilation, HTTP compatibility, worker/native execution or supported-platform acceptance was run for this reconciliation."
+          "Qualify this product path on the remaining supported shipping platforms."
         ]
       },
       {

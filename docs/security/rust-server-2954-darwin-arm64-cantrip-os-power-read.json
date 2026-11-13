@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "version": "1.1.2954",
+  "sourceCommit": "f7042337d5c08b01f174fd7161e93bcad3f153de",
+  "productSourceBaseline": "3c96090955ac7612b1cd990f71d7113be7782acc",
+  "target": "darwin-arm64",
+  "scope": "Current browser client and full packaged Node worker against the relocated Rust artifact and the development Node reference. The bundled PostgreSQL Node comparison uses its own isolated external PostgreSQL database.",
+  "guestImageId": "sha256:2310a9cf3d6c6a59dead96664dfac559df3539e4ce8c2eae133558c8b31c14c4",
+  "standaloneArchive": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-storage-accounting/cantrip-server-darwin-arm64-f7042337d.tar.gz",
+    "bytes": 66804159,
+    "sha256": "e1887a15b893d6fc7ba7bebd6177cc1f28cfeaf63a156f9fa0df2137dcd37e9d"
+  },
+  "rustExecutable": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-storage-accounting/archive-extracted/standalone-current/bin/cantrip-server",
+    "bytes": 94303760,
+    "sha256": "7926b17ef8dab1b4414b0c8719e7bdaa4fcac92b843ce3a5e2f75aa95d9cd2cf"
+  },
+  "verifiedRequests": [
+    "Stop receipt",
+    "Start receipt",
+    "Restart receipt after a lost create response",
+    "Missing operation conflict"
+  ],
+  "containerStateReadOnly": true,
+  "pairedCases": [
+    {
+      "databaseMode": "pglite",
+      "matchedLifecycleSnapshots": 48,
+      "readsPerRuntime": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2954-cantrip-os-power-read/pglite.json",
+        "bytes": 597752,
+        "sha256": "ecd55a8d2ae0013afb6fa432d8f2bbd226637b1f03d58bbbbda8785c1d0d43cf"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2954-cantrip-os-power-read/pglite.log",
+        "bytes": 6502,
+        "sha256": "2443626d9f2c7143fbe0a55e75c318b9a9988ac5d30483de42be8f8717e86fa0"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "matchedLifecycleSnapshots": 48,
+      "readsPerRuntime": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2954-cantrip-os-power-read/bundled-postgres.json",
+        "bytes": 668887,
+        "sha256": "6ab2a5812cf169139a6888d869601332da6504b9d6716e7c789fe5007b8cd9af"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2954-cantrip-os-power-read/bundled-postgres.log",
+        "bytes": 6784,
+        "sha256": "1ef1f69a352de921e68cdea32322976448c8ed841a019f9fcaf9d2775bc608b0"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "matchedLifecycleSnapshots": 48,
+      "readsPerRuntime": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2954-cantrip-os-power-read/postgres.json",
+        "bytes": 669035,
+        "sha256": "c484c109e0aae0ef3a9f25daa769222436520df00d54091be57cc37f17863c4f"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2954-cantrip-os-power-read/postgres.log",
+        "bytes": 6775,
+        "sha256": "f5ffae13b4d39cb97a0aeac7161ebea5b27c7872ff4f110f638b307be6fe5b78"
+      }
+    }
+  ]
+}
