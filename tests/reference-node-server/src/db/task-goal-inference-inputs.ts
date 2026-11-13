@@ -301,11 +301,12 @@ export class TaskGoalInferenceInputRepository {
     chat: string,
     id?: string,
   ) {
+    // Keep Goal writers serialized while allowing native command foreign-key checks.
     const [user] = await tx
       .select({ id: schema.users.id })
       .from(schema.users)
       .where(eq(schema.users.id, owner))
-      .for("update")
+      .for("no key update")
       .limit(1);
     if (!user) return null;
     const [latest] = await tx

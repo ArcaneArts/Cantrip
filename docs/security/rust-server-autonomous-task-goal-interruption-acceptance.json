@@ -1453,6 +1453,180 @@
       "passed": 84,
       "skipped": 0,
       "scope": "The Node reference suite uses actual native Core and TUI with the managed runner. It exercises a lost canonical commit response, cold destination recovery, attached CLI retargeting, a return transfer and cancellation with native hold release. Provider traffic is isolated to the scripted fixture."
+    },
+    "workerFacingGoalOutcomeLock": {
+      "sourceBaseline": "ab6391a999c6e4f0d6a46ff5ecb4da085ea912b0",
+      "scope": "The Node reference Goal outcome transaction waited on a project lock while holding the owner row. A command insert in the project-lock holder needed the owner foreign key. Replay used independent copies of the failed PostgreSQL fixture and the real outcome repository. A replaced input took the historical lookup path without changing its receipt.",
+      "referenceSource": {
+        "path": "tests/reference-node-server/src/db/task-goal-inference-inputs.ts",
+        "sha256": "ed860e1d4ab1025831c825c132af4189653f1b32b752978e5170ab3a74d9fbcd"
+      },
+      "referenceBuild": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/goal-outcome-owner-lock-reference-dist.tar.gz",
+        "bytes": 2230307,
+        "sha256": "33ea7a0f062ef9e575bc0bb8f79e43e687ee5741f55b79823b05474bc636c3a1"
+      },
+      "reproducer": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/exercise-goal-outcome-owner-lock.mjs",
+        "bytes": 3960,
+        "sha256": "588e341852f608b3790d47db34710ea55a3935aa092586298c3370c1be415489"
+      },
+      "replayLauncher": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/run-goal-outcome-owner-lock.sh",
+        "bytes": 1571,
+        "sha256": "ebcc465f76f44502e4e498da453686a3a6e41b835de0bcb4ae377de3db0598d0"
+      },
+      "productBefore": {
+        "pair": "rust/node",
+        "stage": "before Redis interruption",
+        "postgresDeadlocks": 2,
+        "nodeEndpoints": [
+          "/api/internal/native-commands/admit",
+          "/api/internal/native-commands/task-goal-outcome"
+        ],
+        "workerHandoffError": "handoff-native-operation-pending",
+        "nodePeerLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-redis-after-commit.worker-facing-diagnostic-2.node-peer.stderr.log",
+          "bytes": 2328,
+          "sha256": "8fbf51de3d05e276f2def43730efe78c6786d07ba7ecfcfdb92ade94a55b8d33"
+        },
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-redis-after-commit.worker-facing-diagnostic-2.json",
+          "bytes": 264961,
+          "sha256": "97e725997cb7d4b4a996b10e8d9adb4b523a58de63afce73428be43be3cbd77b"
+        },
+        "log": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-redis-after-commit.worker-facing-diagnostic-2.log",
+          "bytes": 2927,
+          "sha256": "75ea004c1c4b2a869759b9c3f7b1d0b271d3c3829ab344e51d48c1ac9cdadd43"
+        },
+        "postgresLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-redis-after-commit.worker-facing-diagnostic-2.postgres.log",
+          "bytes": 7506,
+          "sha256": "443b4a4e8f021fb0673e0dfb3d9d3bffee998b2c2716e1a8ff08fd85af12a315"
+        },
+        "archiveVerification": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-redis-after-commit.worker-facing-diagnostic-2.fixture-archive.json",
+          "bytes": 492,
+          "sha256": "8957e95f802df121c9860ce2ca446d288c906eb172e96a7729d921ef07cd8822"
+        }
+      },
+      "before": {
+        "outcomeSqlstate": "40P01",
+        "nativeCommandRows": 1,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/goal-outcome-owner-lock.before.json",
+          "bytes": 1126,
+          "sha256": "04172e16ec66b593cd3b37a5791aa3cb81c81b189cf620ffb930955e4260b9a3"
+        },
+        "postgresLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/goal-outcome-owner-lock.before.postgres.log",
+          "bytes": 4098,
+          "sha256": "4f29ef5a2be1fdcc89bf4b9e42b2e4e2449577a80023bf46f1910332f3819f3b"
+        }
+      },
+      "after": {
+        "outcomeResult": null,
+        "nativeCommandRows": 1,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/goal-outcome-owner-lock.after.json",
+          "bytes": 1095,
+          "sha256": "a6bc52f8a6ae89907b105e43a1be28afe0879cb6f3b3408b15241e5f9b39c0b1"
+        },
+        "postgresLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/goal-outcome-owner-lock.after.postgres.log",
+          "bytes": 2438,
+          "sha256": "12a98ff90e754c1ebc1e08dd15ef86cd1d2862eacc57bc49a0b6dcb9da485d3b"
+        }
+      },
+      "productAfter": [
+        {
+          "pair": "rust/node",
+          "productSteps": 16,
+          "sameWorkerContinuity": true,
+          "readyPeersAfterOutage": 2,
+          "initialAnswerOccurrences": 1,
+          "destinationAnswerOccurrences": 1,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-redis-after-commit.outcome-lock-fixed.json",
+            "bytes": 923037,
+            "sha256": "4770a96a8416e3d8e3377dff221e789dba0198a3ca1637b1ad11d2839121580a"
+          },
+          "log": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-redis-after-commit.outcome-lock-fixed.log",
+            "bytes": 839,
+            "sha256": "744b79ae7138d8eed13661858ec6964e9c7dc986d151abd6f69ed5f20ef7ff59"
+          },
+          "postgresLog": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-redis-after-commit.outcome-lock-fixed.postgres.log",
+            "bytes": 1649,
+            "sha256": "98ea95e7f054f52211ad7061789bceecfcc266e977cffb41cc04ac7147df95ec"
+          },
+          "archiveVerification": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/rust-node-redis-after-commit.outcome-lock-fixed.archive-input.fixture-archive.json",
+            "bytes": 498,
+            "sha256": "36ced2f785f522a287e6ae17b2385773c0f580931c13263c30213c546ffa81da"
+          }
+        },
+        {
+          "pair": "node/rust",
+          "productSteps": 16,
+          "sameWorkerContinuity": true,
+          "readyPeersAfterOutage": 2,
+          "initialAnswerOccurrences": 1,
+          "destinationAnswerOccurrences": 1,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-redis-after-commit.outcome-lock-fixed.json",
+            "bytes": 1114555,
+            "sha256": "6d76c8f80b3600a9588a96e662698b7b31f44185d327ee8d7bf17ca3a72e7e7b"
+          },
+          "log": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-redis-after-commit.outcome-lock-fixed.log",
+            "bytes": 1067,
+            "sha256": "8f1a99a9484ad17e7a21143a878ff89ffa383e6809c15cf6a17c852278fffa4b"
+          },
+          "postgresLog": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-redis-after-commit.outcome-lock-fixed.postgres.log",
+            "bytes": 1649,
+            "sha256": "9d225ed7f1995a20a39344cd73182661ce22f261c6838071439eaa0768ce0e61"
+          },
+          "archiveVerification": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/node-rust-redis-after-commit.outcome-lock-fixed.archive-input.fixture-archive.json",
+            "bytes": 498,
+            "sha256": "a431aaddae6cd2264a89eefc41f2d3cfba8ab06a9ee0e4e0290a62fbdc6416d7"
+          }
+        }
+      ],
+      "localReferenceTests": {
+        "nativeAndAuthorityPassed": 84,
+        "nativeAndAuthorityLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/goal-outcome-owner-lock.native-and-authority-tests.log",
+          "bytes": 14730,
+          "sha256": "72805b603f273e0086da9e7aec7ee7c463f3df1f1a8b1e1acf73f52c23fb8c64"
+        },
+        "broaderPassed": 58,
+        "broaderFailedOnBoth": 9,
+        "baselineLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/goal-outcome-owner-lock.reference-tests-baseline.log",
+          "bytes": 7230,
+          "sha256": "631f51146bf419b51ce1c844aeddfdc29c70916c8e9c9d1b15ae30a683d1eec8"
+        },
+        "candidateLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/goal-outcome-owner-lock.reference-tests.log",
+          "bytes": 7230,
+          "sha256": "387e1892f4ba38bc5eb52f4a362e032fe5537c3394873e1d5fa5a3ee6cd3f21c"
+        },
+        "expandedNativeRun": {
+          "passed": 89,
+          "failed": 5,
+          "failure": "The additional native execution tests did not see the expected local provider request.",
+          "log": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/mixed-goal-transfer/goal-outcome-owner-lock.native-tests.log",
+            "bytes": 35474,
+            "sha256": "feee2f48b8a5ebefe72497625545d519e5bec26db29cb32348191548a452a131"
+          }
+        }
+      }
     }
   }
 }
