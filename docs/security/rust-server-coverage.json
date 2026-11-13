@@ -24353,6 +24353,7 @@
       },
       "currentBrowserMobileSignIn": "docs/security/rust-server-2976-browser-mobile-sign-in.json",
       "previousBrowserMobileSignIn": "docs/security/rust-server-2881-browser-mobile-sign-in.json",
+      "installedMobile2976Qualification": "docs/security/rust-server-2976-installed-mobile.json",
       "currentInstalledIosSignIn": "docs/security/rust-server-2881-ios-acceptance.json",
       "currentInstalledAndroidSignIn": "docs/security/rust-server-2881-android-acceptance.json",
       "installedMobileSignIn": {

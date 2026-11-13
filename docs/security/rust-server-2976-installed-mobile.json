@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.2976",
+  "sourceCommit": "92ed534fa5b1bef8dfcf60a21b9784e159c6a655",
+  "serverPlatform": "darwin-arm64",
+  "completeReplacement": false,
+  "serverArtifact": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone/bin/cantrip-server",
+    "bytes": 94259472,
+    "sha256": "eba01be07448e2505235dcaf8585e96ae7b9c797c0e2f9082abaae44f92d7af2"
+  },
+  "renderer": {
+    "version": "1.1.2976",
+    "verifiedFiles": 195,
+    "manifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/versioned-renderer-matched.json",
+      "bytes": 20153,
+      "sha256": "f7b7dbf7bd2b7851c5d61d8f019038d0c3598da0ca4b4c1ccfc86e3833739d69"
+    }
+  },
+  "scope": "Installed development mobile clients using disposable loopback TLS and the production standalone Rust package. Physical devices and distribution signatures retain separate acceptance.",
+  "android": {
+    "platform": "Android API 36 ARM64 emulator",
+    "artifact": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/Cantrip-1.1.2976-versioned-debug.apk",
+      "bytes": 39966336,
+      "sha256": "5ac6f01bbf8fb9bf4ed9981ab401e33627ab33ba6a783b1d764dea0f6d52b34d"
+    },
+    "instrumentationArtifact": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/Cantrip-1.1.2976-versioned-instrumentation.apk",
+      "bytes": 562563,
+      "sha256": "c43699d417267a3f6e246c06d9b25c2f06a186b2ab6f53c958661a55f03a44e7"
+    },
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "keystoreInstrumentationTestsPassed": 1,
+    "retainedNativeCatalog": {
+      "keyCount": 1,
+      "bindingCount": 3,
+      "sha256": "0de434582fc71aef83fb257bc99b713d7404eaaee73fc817655b989dff93604d"
+    },
+    "afterServerRestart": {
+      "pglite": {
+        "sessionHttpStatus": 200,
+        "appLiveHttpStatus": 101
+      },
+      "bundled-postgres": {
+        "sessionHttpStatus": 200,
+        "appLiveHttpStatus": 101
+      },
+      "postgres": {
+        "sessionHttpStatus": 200,
+        "appLiveHttpStatus": 101
+      }
+    },
+    "nativeQr": {
+      "status": "passed",
+      "database": "postgres",
+      "evidence": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/native-qr-observed-result.json",
+        "bytes": 292,
+        "sha256": "063523803be38ce6bf480530dd0548fe0323892c30a90f165f3667eec8023950"
+      },
+      "note": "The existing native binding reopened access after QR exchange. The first driver assumed a password prompt and timed out after successful sign-in. A separate observer confirmed the authenticated session, App Live, and three native bindings."
+    },
+    "evidence": {
+      "installed-sign-in.json": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/installed-sign-in.json",
+        "bytes": 741,
+        "sha256": "e699593586a8c5c23a0770d851bde91811eac3dd21fb7bb8ad04fa0de4ff5aa4"
+      },
+      "installed-retained.json": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/installed-retained.json",
+        "bytes": 734,
+        "sha256": "c9ac74eb129a760fe5dd934f71f1ed2e4c6aa4efe3c680a147e4be5b305ddee2"
+      },
+      "versioned-keystore-targeted.log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/versioned-keystore-targeted.log",
+        "bytes": 82,
+        "sha256": "03a7a46ce326e8a1a4cb24ae8cab5fb505aff0f442a573433efa7b91895a7fc3"
+      },
+      "android-versioned-build-retry.log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/android-versioned-build-retry.log",
+        "bytes": 20038,
+        "sha256": "2fdb5cf29807677b9d8f41c2f948652ce61737a7e13ecabbdfce0309f2b8a0e3"
+      }
+    }
+  },
+  "ios": {
+    "platform": "iOS 26.4 ARM64 simulator",
+    "artifact": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/Cantrip-1.1.2976-versioned-ios-simulator.zip",
+      "bytes": 6276624,
+      "sha256": "b621d6bfd00dbb2ad3779e5d90d9e01d20263af28e7b5058bb8408edc256f91e"
+    },
+    "executableSha256": "b78e372972c56467accbaa1ca6970439fd09fd314ae4259425585ff5df4ed956",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "passingUiTests": 3,
+    "finalNativeCatalog": {
+      "keys": 1,
+      "bindings": 3
+    },
+    "afterServerRestart": {
+      "pglite": {
+        "sessionHttpStatus": 200,
+        "appLiveHttpStatus": 101
+      },
+      "bundled-postgres": {
+        "sessionHttpStatus": 200,
+        "appLiveHttpStatus": 101
+      },
+      "postgres": {
+        "sessionHttpStatus": 200,
+        "appLiveHttpStatus": 101
+      }
+    },
+    "evidence": {
+      "ios-versioned-sign-in-recover-summary.json": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/ios-versioned-sign-in-recover-summary.json",
+        "bytes": 750,
+        "sha256": "440bbf54cf7e0169c7ac76dd47a12f30c8065382ea07473616b05d281e95d530"
+      },
+      "ios-versioned-pglite-recover-summary.json": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/ios-versioned-pglite-recover-summary.json",
+        "bytes": 750,
+        "sha256": "3e0c9a53f24d75c5fcb801ae276557a8be4de2f15ac43f44a5871c57a8c91a1a"
+      },
+      "ios-versioned-retained-summary.json": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/ios-versioned-retained-summary.json",
+        "bytes": 750,
+        "sha256": "5e5a0fa36a134373de856fa3621bd9d30b2543e4e22b27df8c1c48a1562fb504"
+      },
+      "ios-versioned-catalog-before.txt": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/ios-versioned-catalog-before.txt",
+        "bytes": 6,
+        "sha256": "cf2bdfd8676955f42fc6c4a1eeec5895459cb054c46e56fa188eebafb18df8bd"
+      },
+      "ios-versioned-catalog-after.txt": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/ios-versioned-catalog-after.txt",
+        "bytes": 6,
+        "sha256": "cf2bdfd8676955f42fc6c4a1eeec5895459cb054c46e56fa188eebafb18df8bd"
+      }
+    }
+  },
+  "remaining": [
+    "Installed iOS native QR sign-in on the current artifact.",
+    "Distribution-signed mobile packages and physical camera runs."
+  ],
+  "transportEvidence": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/mobile-transport-evidence.jsonl",
+    "bytes": 18808,
+    "sha256": "ac13f89a2ee400b758864fd3afafc8b9852d6f284a82f88090ccd179d9f945b5"
+  }
+}
