@@ -55,6 +55,7 @@ export async function productionProcess({
   databaseUrl,
   port = 0,
   logs,
+  startupTimeoutMs = 60_000,
 }) {
   await mkdir(logs, { recursive: true });
   if (!port) {
@@ -221,7 +222,13 @@ export async function productionProcess({
         await r.json();
         break;
       } catch (e) {
-        if (performance.now() - startedAt > 60000) throw e;
+        if (performance.now() - startedAt >= startupTimeoutMs) {
+          const cause = e.cause ?? e;
+          throw new Error(
+            `The ${runtime} ${database} server did not respond at ${origin}/readyz within ${startupTimeoutMs} ms: ${cause.message}\n${output.slice(-8000)}`,
+            { cause: e },
+          );
+        }
       }
       await delay(10);
     }

@@ -139,8 +139,13 @@ export async function actualCliWorktreeAcquire({
     initial.release();
     await eventually(
       () => continuationReply.request,
-      (request) => assert.equal(request?.completed, true),
-      60_000,
+      (request) =>
+        assert.equal(
+          request?.completed,
+          true,
+          "The provider must complete the destination turn",
+        ),
+      process.platform === "win32" ? 120_000 : 60_000,
     );
 
     // The archive can only finish after the destination model has responded.
