@@ -461,5 +461,227 @@
       "bytes": 353,
       "sha256": "1d5e52b0aa2f52592f9245023432e4d739c6fa145adcd730cc9708dd232e0e5b"
     }
+  },
+  "workerLogStreaming": {
+    "scope": "Production server entrypoints and the existing WorkerConnection with controlled log records. Both series ran on the same macOS ARM64 host while the local Windows and Linux rehearsals were active. The Node reference uses an isolated PostgreSQL fixture in the bundled PostgreSQL pair. Rust starts its packaged private process.",
+    "singleObservationPerRuntimeAndDatabase": {
+      "payloadMiB": 64,
+      "wireBytes": 67737908,
+      "cases": [
+        {
+          "databaseMode": "pglite",
+          "node": {
+            "payloadMiBPerSecond": 156.71,
+            "slowConsumerCloseCode": 1013,
+            "slowConsumerLeaseStopMs": 25.42,
+            "crashRecoveryMs": 29108.05,
+            "retainedIdentityAndWrite": true,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance/pglite/node/runs/1794565351519-29595/report.json",
+              "bytes": 3174,
+              "sha256": "c1c516792fa83ce0309d09bcf29b01476777e62bfb61bf4f215ee7f9e577277b"
+            }
+          },
+          "rust": {
+            "payloadMiBPerSecond": 205.31,
+            "slowConsumerCloseCode": 1013,
+            "slowConsumerLeaseStopMs": 23.31,
+            "crashRecoveryMs": 25143.02,
+            "retainedIdentityAndWrite": true,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance/pglite/rust/runs/1794565387042-30429/report.json",
+              "bytes": 3169,
+              "sha256": "e9ec7e04f19f82def9f6ed5074c8b392f2d4a51ed2ad0e16f2c6e218b5dd5704"
+            }
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "node": {
+            "payloadMiBPerSecond": 166.11,
+            "slowConsumerCloseCode": 1013,
+            "slowConsumerLeaseStopMs": 25.84,
+            "crashRecoveryMs": 25563.38,
+            "retainedIdentityAndWrite": true,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance/bundled-postgres/node/runs/1794565414794-31809/report.json",
+              "bytes": 3179,
+              "sha256": "b3eab0a29f16eab612a9b93b7e6130ce01aa6df2e90bb2f6a9d39ba7e4a27a87"
+            }
+          },
+          "rust": {
+            "payloadMiBPerSecond": 116.58,
+            "slowConsumerCloseCode": 1013,
+            "slowConsumerLeaseStopMs": 56.97,
+            "crashRecoveryMs": 28051.14,
+            "retainedIdentityAndWrite": true,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance/bundled-postgres/rust/runs/1794565536427-42422/report.json",
+              "bytes": 6227,
+              "sha256": "6a59c206da98b21e8f4ddb29ab6f2ec96d87e040e8730b1b86837bafca4380e1"
+            }
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "node": {
+            "payloadMiBPerSecond": 136.94,
+            "slowConsumerCloseCode": 1013,
+            "slowConsumerLeaseStopMs": 27.27,
+            "crashRecoveryMs": 25813.62,
+            "retainedIdentityAndWrite": true,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance/postgres/node/runs/1794565571011-43790/report.json",
+              "bytes": 3155,
+              "sha256": "80f02538101796b75f55213aba460dd7bd28ecd94f717bad5a66069f5b9b3e44"
+            }
+          },
+          "rust": {
+            "payloadMiBPerSecond": 187.41,
+            "slowConsumerCloseCode": 1013,
+            "slowConsumerLeaseStopMs": 24.38,
+            "crashRecoveryMs": 26159.91,
+            "retainedIdentityAndWrite": true,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance/postgres/rust/runs/1794565604787-44875/report.json",
+              "bytes": 3162,
+              "sha256": "e19ae64aa52aacba4a160068e65757add088ab6fa1863b0f740ed3caf256df18"
+            }
+          }
+        }
+      ],
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance/acceptance.log",
+        "bytes": 26300,
+        "sha256": "e83e6520c7193a6de745f415f704740a813aec9563ca9c0118788ddd8032af7f"
+      }
+    },
+    "bundledPostgresThroughputRepeat": {
+      "payloadMiB": 256,
+      "runsPerRuntime": 6,
+      "wireBytes": 270975888,
+      "pairOrdering": "Alternating runtime order in six sequential pairs.",
+      "interpretation": "Rust had a higher median in this repeat, with wide ranges on the loaded host. The earlier 64 MiB pair showed lower Rust throughput. These measurements establish correct payload delivery under the sampled loads and leave sustained throughput on a dedicated host open.",
+      "environment": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance-bundled-repeat/environment.txt",
+        "bytes": 423,
+        "sha256": "f9b42d7c70070c893849d38f8b7978c7d9cf6a6ace473dd3da25ee817c52c58d"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance-bundled-repeat/runs.log",
+        "bytes": 24928,
+        "sha256": "4317790adb6a25354d322779c82687b27ad2299d02f4100ac676c90420aff176"
+      },
+      "node": {
+        "medianPayloadMiBPerSecond": 197.21,
+        "minPayloadMiBPerSecond": 102.12,
+        "maxPayloadMiBPerSecond": 209.12,
+        "runs": [
+          {
+            "payloadMiBPerSecond": 195.77,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance-bundled-repeat/node/runs/1794569040589-54117/report.json",
+              "bytes": 1723,
+              "sha256": "669dadf48fecf19dbdc99a947771744ca12711f9a96fabbfd3c62e5e2c5252d8"
+            }
+          },
+          {
+            "payloadMiBPerSecond": 102.12,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance-bundled-repeat/node/runs/1794569064180-55727/report.json",
+              "bytes": 1715,
+              "sha256": "6b1fa3ff13b731915f7c43d8192706353d05a8f88c6146e4e98334948f815ef2"
+            }
+          },
+          {
+            "payloadMiBPerSecond": 156.36,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance-bundled-repeat/node/runs/1794569071883-56122/report.json",
+              "bytes": 1722,
+              "sha256": "7cae619f82ab1808df430ab4788c03daac63847698e47ccb7ed5c16c67ac0c6a"
+            }
+          },
+          {
+            "payloadMiBPerSecond": 209.12,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance-bundled-repeat/node/runs/1794569085032-56453/report.json",
+              "bytes": 1721,
+              "sha256": "454be81c8afe89b36ee468edc168ba3f9d8e01f1749680576d7fc0a9a041514e"
+            }
+          },
+          {
+            "payloadMiBPerSecond": 207.85,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance-bundled-repeat/node/runs/1794569089544-56533/report.json",
+              "bytes": 1722,
+              "sha256": "1f066dbe76682080653e755c66c3abbfd42e8c947ab4e7965bdfbedb337f794b"
+            }
+          },
+          {
+            "payloadMiBPerSecond": 198.65,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance-bundled-repeat/node/runs/1794569101011-56777/report.json",
+              "bytes": 1723,
+              "sha256": "5f229d42e0df87c369d3d8c27e0f35bc22a5df0068c72be6a0f43d3f6df0746e"
+            }
+          }
+        ]
+      },
+      "rust": {
+        "medianPayloadMiBPerSecond": 208.09,
+        "minPayloadMiBPerSecond": 51.22,
+        "maxPayloadMiBPerSecond": 212.9,
+        "runs": [
+          {
+            "payloadMiBPerSecond": 51.22,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance-bundled-repeat/rust/runs/1794569045864-54298/report.json",
+              "bytes": 3246,
+              "sha256": "5d9a7b3025f9c994947654820d2aa8b0d9e7e367aa4c0f847d225e4a8cbdfdc6"
+            }
+          },
+          {
+            "payloadMiBPerSecond": 85.47,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance-bundled-repeat/rust/runs/1794569055532-55199/report.json",
+              "bytes": 3239,
+              "sha256": "487f815bae0b6d50a529ac8a3b9587670da572e3a8aea6f2c65383f7bc6ba982"
+            }
+          },
+          {
+            "payloadMiBPerSecond": 212.9,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance-bundled-repeat/rust/runs/1794569078460-56292/report.json",
+              "bytes": 3240,
+              "sha256": "c541e53c02e340597f65960a93cd269a69f49013a48c7047662a723485822393"
+            }
+          },
+          {
+            "payloadMiBPerSecond": 212.86,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance-bundled-repeat/rust/runs/1794569081812-56364/report.json",
+              "bytes": 3247,
+              "sha256": "3e3c26c162766a608b41c9719493ea89f565946d3ae59eb7a6204e770ca409a8"
+            }
+          },
+          {
+            "payloadMiBPerSecond": 208.34,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance-bundled-repeat/rust/runs/1794569094057-56588/report.json",
+              "bytes": 3247,
+              "sha256": "ee91aed57b7b0f8b5e5ae67dea152ce6f4e96b6556903589e3983fc8c957db27"
+            }
+          },
+          {
+            "payloadMiBPerSecond": 207.85,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/macos-integrated/stream-performance-bundled-repeat/rust/runs/1794569097539-56669/report.json",
+              "bytes": 3247,
+              "sha256": "24be8f305496095dd482f6b96b8edb968e2701b69b26ca1a72c2955c37bfd56d"
+            }
+          }
+        ]
+      }
+    }
   }
 }
