@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "runtimeSourceCommit": "e97cf3e8e3a474f4f303eda754088cf1072234ae",
+  "checkoutCommit": "649b05ce766622901764cfede4d9f6e16016d5e3",
+  "version": "1.1.2936",
+  "target": "linux-x64",
+  "databaseModes": [
+    "pglite",
+    "bundled-postgres",
+    "postgres"
+  ],
+  "verifiedPackageFiles": 2558,
+  "candidateExecutable": {
+    "path": "bin/cantrip-server",
+    "bytes": 111187440,
+    "sha256": "67ceed17b242182c492d9674423c37a6935b3dc394e85f675dbbef2e7135c533",
+    "elfMachine": 62
+  },
+  "standaloneArchive": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/x64/archives/native.tar.gz",
+    "bytes": 146652469,
+    "sha256": "4258fe9e6310ed67655835cdac9f35ff9d210a55aef2c292f2a7a01dfd1358e0"
+  },
+  "container": {
+    "image": "cantrip-server-rust:local-2936-e97cf3e8e-linux-x64",
+    "imageId": "sha256:73756af36b9a92e73248db3a625c57b88706bd06ed71b082152e7a2a6d64cc84",
+    "architecture": "amd64",
+    "ociArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/cantrip-server-1.1.2936-linux-x64.oci.tar",
+      "bytes": 181587968,
+      "sha256": "8139c79eeb466459fe4c6e29ce9fe75cdb496f8e4bc6ad338aacd7e821e7d83d"
+    },
+    "ociVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/x64/oci-verification.json",
+      "bytes": 597,
+      "sha256": "47e7762d5eb5b6961a90f101dc8139db4fce2cb71d2879ab82c1689699434814"
+    },
+    "buildLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/x64/runtime-build.log",
+      "bytes": 25589,
+      "sha256": "cfc23ca8ba366e4c35a25c01552fbe346597e040d9760d92e42b7323769b10cb"
+    },
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/x64/container-acceptance.json",
+      "bytes": 5417,
+      "sha256": "a052aa335df6b00d4990f7570b356f41852967b411b0ba218d43a23f7fba7c73"
+    },
+    "fixtureVolumes": [
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/x64/container-volumes/cantrip-native-package-c8d42f42-database-data.tar.zst",
+        "bytes": 7983440,
+        "sha256": "752f18bd052168e41adda0743e4c95fc5d9d10910fdb791fe438b24f7bfc3e84"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/x64/container-volumes/cantrip-native-package-c8d42f42-pglite-data.tar.zst",
+        "bytes": 6059669,
+        "sha256": "e7477f9b098c89c5e40b1c6dadd297877918e464a70fa6864a7335be856808b2"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/x64/container-volumes/cantrip-native-package-c8d42f42-bundled-postgres-data.tar.zst",
+        "bytes": 7208546,
+        "sha256": "d3467d6085541393384788945490decd629b108938fc90956ddb0068dad043f2"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/x64/container-volumes/cantrip-native-package-c8d42f42-postgres-data.tar.zst",
+        "bytes": 73963,
+        "sha256": "681be985bf661277970cef63e6fe51ff32046f6ad9b93049cfbadf276d073734"
+      }
+    ],
+    "nodeAbsentFromRuntimePath": true,
+    "nonRootReadOnlyRoot": true,
+    "noexecTemporaryMountMiB": 256
+  },
+  "winterhold": {
+    "scope": "The local Ubuntu ARM64 systemd host runs the x64 candidate and rollback binaries through emulation. Read-only archived packages were mounted into the fixture and systemd release directories used an executable tmpfs. The production installer, service units and Caddy configuration exercised the same database and recovery assertions.",
+    "systemdImage": {
+      "id": "sha256:1a4719cffced31ab606bf1b4ccd0625d218a2d885708708435f66a7da36c6b92",
+      "architecture": "arm64"
+    },
+    "installerCalls": 18,
+    "recoveredInstallerFailures": 6,
+    "runningNativeExecutableHashesCompared": 10,
+    "startLimitRecoveryObserved": true,
+    "postWriteRollback": {
+      "pgliteAndBundledPostgres": "1.1.2869",
+      "externalPostgres": "1.1.2739"
+    },
+    "observedPostgresTlsConnections": 6,
+    "tlsObservation": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/x64/winterhold/retained-postgres-tls.txt",
+      "bytes": 4,
+      "sha256": "c6a4dcbd0b5f57d17ee7fc7336b7e0475709ac680bc26d75e2063727a53f8766"
+    },
+    "readOnlyServiceNamespace": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/x64/winterhold/runtime-namespace-write.log",
+      "bytes": 85,
+      "sha256": "fee89d2be11519c62bc29cd226724c23851f95852f49bb531c4ef0512f1a7605"
+    },
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/x64/winterhold/acceptance.json",
+      "bytes": 1095355,
+      "sha256": "c0b6b79af14457d77c11ba83042a3d743b8af16d87210c98982744aac29633a4"
+    },
+    "journal": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/x64/winterhold/journal.log",
+      "bytes": 772222,
+      "sha256": "8bc6345a7a07cf194b1323b21dc56aed14ce9f3caeb220c7b499c9bb4d83518f"
+    },
+    "profiles": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/x64/winterhold/retained-systemd-profiles.tar.zst",
+      "bytes": 13336007,
+      "sha256": "106a6b49954e0d66b439ff0f8ea83fd73ddd2d8dc2d7130559e5a8610383aa9d"
+    },
+    "externalPostgresDump": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/x64/winterhold/retained-external-postgres.dump",
+      "bytes": 677173,
+      "sha256": "672feb5ce7244d020e5f1c0ad617025d200aca30dec571cac6b08321d88981bc"
+    },
+    "previousRustArtifact": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/x64/archives/previousNative.tar.gz",
+      "bytes": 142600480,
+      "sha256": "fff0763eb703e13815be48f23312b73eee6c23f154ef3b26c8345166778921ef"
+    },
+    "previousNodeArtifact": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/x64/archives/node.tar.gz",
+      "bytes": 66930827,
+      "sha256": "c4e2a54a5c47f4afc3bcdf20366b9d88480062249c6460eeacd2a13c5d0046c1"
+    },
+    "archiveAdapter": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/x64/retained-archive-acceptance.mjs",
+      "bytes": 25086,
+      "sha256": "8b346fb7125f8907c1f4eeca22c395296be78df8c2cff7138e6d1969e7d365ce"
+    }
+  },
+  "compilerCacheCleanup": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/winterhold-release-e97cf3e8e/x64/target-cache-cleanup.log",
+    "bytes": 129,
+    "sha256": "31938af02ae58d1a6c195013c454b64c313c862f247d0ea91565eec90957168a"
+  }
+}
