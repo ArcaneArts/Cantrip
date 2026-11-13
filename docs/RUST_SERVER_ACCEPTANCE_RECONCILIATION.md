@@ -46,8 +46,10 @@ below apply to the exact binaries and worker entries identified by their reports
   history. Its database retained both completed turns, and the final worker
   acknowledgment arrived after the last browser poll. The revised fixture
   from #3009 passed on macOS PGlite. The Windows CLI rerun exposed a separate
-  worker grant refresh race. The fix merged in #3012 and needs Windows
-  qualification with the updated worker.
+  worker grant refresh race. The signed package with #3012 passed the
+  PGlite update from `1.1.2938`, retained the saved theme and worker
+  enrollment, and exited cleanly. The CLI and model-operation matrices
+  with that worker remain open.
   [Windows package report](security/rust-server-2976-win32-x64-packages.json)
 - **Model operations and WorkerLink.** The macOS and Linux reports cover native
   model operations on all three stores. Linux recorded 72 operations, 114
