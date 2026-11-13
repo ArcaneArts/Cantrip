@@ -1,5 +1,23 @@
 # Current Windows native server qualification
 
+## Windows x64 standalone `1.1.2938`
+
+The standalone server from `5015c89a4` passed PGlite, bundled PostgreSQL,
+and external PostgreSQL in the local Windows 11 x64 guest. Each store ran
+migrations, exported SQL, retained its server identity and saved setting
+across local and hosted reopening, and shut down through supervision
+stdin close. Windows launcher encoding and embedded PGlite recovery
+passed. The server runtime PATH excluded Node.
+
+The default 60-second harness deadline expired during the initial PGlite
+connection. The retry used the previously qualified 240-second guest
+deadline, with the same functional assertions and 15-second shutdown
+deadline. First readiness in the emulated guest took 101 seconds for
+PGlite, 118 seconds for bundled PostgreSQL, and 27 seconds for external
+PostgreSQL. The host independently matched all 2,281 archive files and the
+three SQL export digests to the guest receipts.
+[Windows x64 standalone record](security/rust-server-2938-win32-x64-standalone.json)
+
 ## Windows x64 desktop rebuild at `9e2dd5711`
 
 The `1.1.2881` desktop updater rejected a tampered download and installed
