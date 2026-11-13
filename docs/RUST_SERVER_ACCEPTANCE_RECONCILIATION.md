@@ -62,6 +62,24 @@ with one unknown usage attempt. Replay made no further provider request,
 and a fresh decision completed after readiness recovered.
 [macOS Redis interruption report](security/rust-server-3013-darwin-arm64-redis-outage.json)
 
+## Current wire and account protection evidence
+
+The macOS ARM64 1.1.3013 archive and Linux x64 1.1.3033 container each
+passed 156 paired HTTP cases and 81 paired App Live parser cases across
+the three stores. The requests cover malformed JSON, deep arrays and
+objects, lone UTF-16 surrogates, numeric overflow and cursor accounting
+against actual publications. The Linux x64 server ran through Rosetta.
+
+On macOS, the production entrypoints handled all 584 method/path
+discovery requests per runtime without a generic Rust route fallback.
+Four selected inventory errors and four capability query cases matched
+the reference. A separate account suite passed 1,161 paired HTTP cases.
+The endpoint client reopened its retained encrypted key wrapper after
+a password change and process restart. It rejected wrong-owner metadata
+and modified ciphertext. External PostgreSQL also retained the wrapper
+through Node → Rust → Node.
+[Wire and account protection report](security/rust-server-current-wire-acceptance.json)
+
 ## Cantrip 1.1.2976 qualification
 
 The recorded packages use Rust server source `92ed534fa` and desktop shell

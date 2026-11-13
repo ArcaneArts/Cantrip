@@ -30723,6 +30723,11 @@
     "status": "passed",
     "report": "docs/security/rust-server-3013-darwin-arm64-standalone.json"
   },
+  "currentWireAndAccountProtection": {
+    "status": "passed",
+    "report": "docs/security/rust-server-current-wire-acceptance.json",
+    "scope": "Packaged JSON transport on macOS ARM64 and Linux x64, macOS HTTP route discovery and encrypted account protection, and source-level JavaScript serialization and schema comparisons."
+  },
   "linux3014StandaloneQualification": {
     "sourceCommit": "0c1c343bd0dcc987fc618ca7e573b9ab1eb964a5",
     "databaseModes": ["pglite", "bundled-postgres", "postgres"],
@@ -30741,7 +30746,7 @@
   "remainingAcceptance": [
     "Finish canonical-history CLI acceptance on Windows x64 with the signed installer containing the worker grant refresh from PR #3012.",
     "Qualify packaged cross-platform dependency interruptions and longer outages. Reconcile the still-open background-service and product recovery comparisons.",
-    "Complete the remaining inventory-level behavior evidence, including malformed, Unicode and deep-JSON inputs, serialization for authenticated metadata, encrypted boundaries and protocol ordering.",
+    "Reconcile remaining route-specific successful and error behavior, authenticated metadata and encrypted boundaries beyond the account wrapper cases, and protocol ordering beyond the qualified App Live parser and cursor cases.",
     "Qualify installed iOS native QR, physical-camera runs and the remaining distribution-signed Android scenario.",
     "Complete residual Windows performance coverage for sustained backpressure and interruption recovery.",
     "Reconcile exact release artifacts, migration and rollback evidence and remaining platform limits before marking full replacement complete."
