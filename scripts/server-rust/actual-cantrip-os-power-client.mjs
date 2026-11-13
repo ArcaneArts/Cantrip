@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { eventually } from "./full-worker.mjs";
 
 export async function actualCantripOsPowerClient({
@@ -13,6 +14,19 @@ export async function actualCantripOsPowerClient({
 }) {
   const power = (method, ...args) =>
     call("api/cantrip-os-power", method, ...args);
+  const readOperation = (instanceId, operationId) =>
+    page.evaluate(
+      async ({ instanceId, operationId }) => {
+        const { requestResponse } = await import("/src/lib/api-client.ts");
+        const response = await requestResponse(
+          `/api/cantrip-os/${encodeURIComponent(instanceId)}/power-operations/${encodeURIComponent(operationId)}`,
+          undefined,
+          [409],
+        );
+        return { status: response.status, body: await response.json() };
+      },
+      { instanceId, operationId },
+    );
   const files = [
     "/etc/cantrip-rust-server-proof",
     `${selected.homeGuestPath}/retained-proof.bin`,
@@ -82,10 +96,19 @@ export async function actualCantripOsPowerClient({
       instance.id,
     );
     assert.deepEqual(saved, draft);
-    record(
+    const observed = record(
       `power-${action}-observed`,
       await power("observeCantripOsPowerDraft", saved),
     );
+    const read = record(
+      `power-${action}-read`,
+      await readOperation(instance.id, completed.operationId),
+    );
+    assert.deepEqual(read, { status: 200, body: observed });
+    const afterRead = (await guest.json("inspect", guest.id))[0];
+    assert.equal(afterRead.Id, after.Id);
+    assert.equal(afterRead.State.StartedAt, after.State.StartedAt);
+    assert.equal(afterRead.State.FinishedAt, after.State.FinishedAt);
     return completed;
   };
   const stopped = await transition("stop");
@@ -149,9 +172,16 @@ export async function actualCantripOsPowerClient({
     "ready",
   );
   assert.equal((await guest.json("inspect", guest.id))[0].State.Running, true);
+  assert.deepEqual(
+    record(
+      "power-read-missing",
+      await readOperation(instance.id, randomUUID()),
+    ),
+    { status: 409, body: { error: "Power operation not found." } },
+  );
   record("power-retained-files", before);
   result.steps.push(
-    "retained Docker stop/start/restart preserve root and workspace bytes/modes/ownership; lost HTTP acknowledgment and saved-request replay cannot repeat a power effect, and explicit recovery observes a new runtime",
+    "retained Docker stop/start/restart preserve root and workspace bytes/modes/ownership; lost HTTP acknowledgment and saved-request replay cannot repeat a power effect, and explicit recovery observes a new runtime; retained operation GETs return the saved receipts and the missing-operation conflict without changing Docker state",
   );
   return instance;
 }
