@@ -3482,7 +3482,7 @@
     {
       "boundary": "worker-control",
       "file": "tests/reference-node-server/src/app/routes/internal-native-commands.ts",
-      "line": 719,
+      "line": 727,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/admit",
@@ -3495,7 +3495,7 @@
     {
       "boundary": "worker-control",
       "file": "tests/reference-node-server/src/app/routes/internal-native-commands.ts",
-      "line": 719,
+      "line": 727,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/bind-preparation",
@@ -3508,7 +3508,7 @@
     {
       "boundary": "worker-control",
       "file": "tests/reference-node-server/src/app/routes/internal-native-commands.ts",
-      "line": 719,
+      "line": 727,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/continue",
@@ -3521,7 +3521,7 @@
     {
       "boundary": "worker-control",
       "file": "tests/reference-node-server/src/app/routes/internal-native-commands.ts",
-      "line": 719,
+      "line": 727,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/dispatch",
@@ -3534,7 +3534,7 @@
     {
       "boundary": "worker-control",
       "file": "tests/reference-node-server/src/app/routes/internal-native-commands.ts",
-      "line": 538,
+      "line": 546,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/events",
@@ -3547,7 +3547,7 @@
     {
       "boundary": "worker-control",
       "file": "tests/reference-node-server/src/app/routes/internal-native-commands.ts",
-      "line": 396,
+      "line": 404,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/goal-recovery-fence",
@@ -3560,7 +3560,7 @@
     {
       "boundary": "worker-control",
       "file": "tests/reference-node-server/src/app/routes/internal-native-commands.ts",
-      "line": 445,
+      "line": 453,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/inference-recovery",
@@ -3573,7 +3573,7 @@
     {
       "boundary": "worker-control",
       "file": "tests/reference-node-server/src/app/routes/internal-native-commands.ts",
-      "line": 77,
+      "line": 78,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/inference-resource-authorize",
@@ -3586,7 +3586,7 @@
     {
       "boundary": "worker-control",
       "file": "tests/reference-node-server/src/app/routes/internal-native-commands.ts",
-      "line": 680,
+      "line": 688,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/pending",
@@ -3599,7 +3599,7 @@
     {
       "boundary": "worker-control",
       "file": "tests/reference-node-server/src/app/routes/internal-native-commands.ts",
-      "line": 504,
+      "line": 512,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/permission-transition",
@@ -3612,7 +3612,7 @@
     {
       "boundary": "worker-control",
       "file": "tests/reference-node-server/src/app/routes/internal-native-commands.ts",
-      "line": 719,
+      "line": 727,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/receipt",
@@ -3625,7 +3625,7 @@
     {
       "boundary": "worker-control",
       "file": "tests/reference-node-server/src/app/routes/internal-native-commands.ts",
-      "line": 719,
+      "line": 727,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/settings-evidence",
@@ -3677,7 +3677,7 @@
     {
       "boundary": "worker-control",
       "file": "tests/reference-node-server/src/app/routes/internal-native-commands.ts",
-      "line": 346,
+      "line": 347,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/task-goal-cycle-dispatch",
@@ -3690,7 +3690,7 @@
     {
       "boundary": "worker-control",
       "file": "tests/reference-node-server/src/app/routes/internal-native-commands.ts",
-      "line": 154,
+      "line": 155,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/task-goal-outcome",
@@ -3703,7 +3703,7 @@
     {
       "boundary": "worker-control",
       "file": "tests/reference-node-server/src/app/routes/internal-native-commands.ts",
-      "line": 291,
+      "line": 292,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/task-input-dispatch",
