@@ -5,6 +5,7 @@ import { mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
+import { setTimeout as delay } from "node:timers/promises";
 import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
 import { WorkerLinkGateway } from "../../cantrip_worker/src/worker-link-gateway.ts";
 import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
@@ -242,13 +243,14 @@ export class ProductionWorkerLinkFixture {
     return probe;
   }
 
-  async crashAndRestart() {
+  async crashAndRestart(outageMs) {
     const identity = this.bootstrap.server.id;
     const port = this.server.port;
     const connections = this.connections;
     const startedAt = performance.now();
     const crash = await this.server.stop("SIGKILL");
     this.server = undefined;
+    if (outageMs) await delay(outageMs);
     await this.startServer("restarted", port);
     assert.equal(this.bootstrap.server.id, identity);
     await eventually(

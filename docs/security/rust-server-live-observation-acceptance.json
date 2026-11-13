@@ -675,5 +675,22 @@
       "log": ".qa/rust-live-observations/diff-v1.log",
       "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     }
-  ]
+  ],
+  "currentSourceHubRecheck": {
+    "sourceCommit": "a04002114cdc2504a1dc3caa274e10c9dead093d",
+    "cases": 46,
+    "steps": 704,
+    "serverResourceCases": 2,
+    "appLiveQueryTests": 31,
+    "hubReport": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-core/hub.json",
+      "bytes": 54626612,
+      "sha256": "bcfcf1d1fec4cdfb7fa079a6578060353c192f1e2bc2d4f6b4c86ebf1e28ee15"
+    },
+    "appLiveQueryLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-core/app-live-query.log",
+      "bytes": 299,
+      "sha256": "f04ea954dcfd3d0a21889b5ced44cd9781bd7a1a4a388772f8fcc68654d1fd25"
+    }
+  }
 }

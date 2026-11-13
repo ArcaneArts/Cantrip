@@ -268,6 +268,31 @@ Each cell is one local observation collected while the Windows QA VM ran.
 The archived profiles and six reports include their verified checksums.
 [macOS WorkerLink rebuild record](security/rust-server-2881-macos-acceptance.json#workerLinkRebuild)
 
+## Packaged relay and recovery at `1.1.2976`
+
+The macOS ARM64 package and the compiled Node `1.1.2964` reference passed the
+64 MiB download and echo, slow-consumer closure, scoped grant revocation,
+worker endpoint replacement and default quota on all three database modes.
+Every run retained the same identity, accepted setting and protected tunnel
+record across an actual server crash. Each quota case admitted 4,079 frames
+before rejecting the stream.
+
+After a short outage, the old grant is absent from the new session and the
+worker replies `unauthorized`. When the transport grace expires and the
+worker revokes the grant, the unchanged gateway replies `grant-revoked`.
+The driver checks the disconnect and revocation callbacks, the exact response
+and the absence of an opened endpoint. A deliberate 16-second server outage
+confirmed the revoked-grant behavior on both runtimes. The first Rust run
+crossed the grace period under load and failed the earlier short-outage
+assertion. Its report is retained with the passing cases.
+
+The throughput values are single observations on a Mac running the Windows
+guest and Linux build. The PGlite Rust restart took 26.83 seconds to reconnect
+the worker in the ordinary run, compared with 3.69 seconds for the Node
+reference. This loaded observation leaves controlled PGlite recovery timing
+open.
+[macOS 1.1.2976 relay and recovery evidence](security/rust-server-2976-darwin-arm64-workerlink.json)
+
 ## Scope and remaining replacement work
 
 These checks cover macOS arm64 and the `events`/`stream` lanes with controlled

@@ -1,0 +1,252 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "target": "darwin-arm64",
+  "rustSourceCommit": "92ed534fa5b1bef8dfcf60a21b9784e159c6a655",
+  "candidateVersion": "1.1.2976",
+  "referenceVersion": "1.1.2964",
+  "driverBaseCommit": "a04002114cdc2504a1dc3caa274e10c9dead093d",
+  "scope": "Local production server entrypoints, real WorkerConnection and WorkerLinkGateway, and controlled opaque endpoints. Throughput figures are individual observations during a concurrent Windows guest and Linux build. The fixture recreates worker transport and gateway objects in-process and exercises a real server process crash.",
+  "nativeServer": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone/bin/cantrip-server",
+    "bytes": 94259472,
+    "sha256": "eba01be07448e2505235dcaf8585e96ae7b9c797c0e2f9082abaae44f92d7af2"
+  },
+  "environment": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/environment.log",
+    "bytes": 721,
+    "sha256": "27555983c31a1290cdf7fc0b24cf42b3f1e8c543a680d67c9c7a4be50820ce5c"
+  },
+  "driverSourceDigests": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/source-check.json",
+    "bytes": 465,
+    "sha256": "503589daa26d218c6b9db1aefc5f222879d2dce31d39113dd3b51eaf957d592d"
+  },
+  "driverPatch": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/recovery-window.patch",
+    "bytes": 5296,
+    "sha256": "f21f4be8c119cfcb63edb410fab2908d102d60d25fd81a39f4cb388e07dfc5ca"
+  },
+  "cases": [
+    {
+      "runtime": "node",
+      "databaseMode": "pglite",
+      "version": "1.1.2964",
+      "downloadMiBPerSecond": 52.03,
+      "echoMiBPerSecond": 36.71,
+      "crashToWorkerReconnectMs": 3687.27,
+      "workerTransportExpired": false,
+      "staleGrantRejection": "unauthorized",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/corrected-cases/pglite/acceptance/node/runs/1794575422526-76326/report.json",
+        "bytes": 8166,
+        "sha256": "0bf009f088fb0cda101007ae6b836763d4613d459f56d6910ef01c2a05303bc9"
+      },
+      "initialServerLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/corrected-cases/pglite/acceptance/node/runs/1794575422526-76326/initial/process.log",
+        "bytes": 8551,
+        "sha256": "0c6ef5cadf7bab52d2cd158ed334b633b386a7bf29bf9873bfaa158a5051d08b"
+      },
+      "restartedServerLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/corrected-cases/pglite/acceptance/node/runs/1794575422526-76326/restarted/process.log",
+        "bytes": 6023,
+        "sha256": "07331b8b0f2e282a63f716ff016f73f2eaecce422bc6c90b917eec61797443e8"
+      }
+    },
+    {
+      "runtime": "rust",
+      "databaseMode": "pglite",
+      "version": "1.1.2976",
+      "downloadMiBPerSecond": 116.75,
+      "echoMiBPerSecond": 70.16,
+      "crashToWorkerReconnectMs": 26829.62,
+      "workerTransportExpired": true,
+      "staleGrantRejection": "grant-revoked",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/corrected-cases/pglite/acceptance/rust/runs/1794575462929-77886/report.json",
+        "bytes": 8144,
+        "sha256": "d30d35c97932c75227c7177a2b9b819cddd398c04bbe0290549df539aead76dd"
+      },
+      "initialServerLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/corrected-cases/pglite/acceptance/rust/runs/1794575462929-77886/initial/process.log",
+        "bytes": 8168,
+        "sha256": "e3207747f45a4b5c9cfbe4cfb590f04c4fe0b60ffce84dd2ce70862b8b3c27bf"
+      },
+      "restartedServerLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/corrected-cases/pglite/acceptance/rust/runs/1794575462929-77886/restarted/process.log",
+        "bytes": 11710,
+        "sha256": "ed01f8a0aa9ad8d5b6807be5b9026d3da4fa3463d637fdb18ea983fc578db30a"
+      }
+    },
+    {
+      "runtime": "node",
+      "databaseMode": "bundled-postgres",
+      "version": "1.1.2964",
+      "downloadMiBPerSecond": 113.87,
+      "echoMiBPerSecond": 70.1,
+      "crashToWorkerReconnectMs": 1861.01,
+      "workerTransportExpired": false,
+      "staleGrantRejection": "unauthorized",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/corrected-cases/bundled-postgres/acceptance/node/runs/1794575519963-79867/report.json",
+        "bytes": 8178,
+        "sha256": "9608eb512e3d711297c6204214001b44fb9747674ee6e3d1f0aa38a81cabed67"
+      },
+      "initialServerLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/corrected-cases/bundled-postgres/acceptance/node/runs/1794575519963-79867/initial/process.log",
+        "bytes": 39897,
+        "sha256": "9bde1f3bdf2d8f53d14eadf7c8e1657cd8c29fb397d3c8e47b951c7005882161"
+      },
+      "restartedServerLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/corrected-cases/bundled-postgres/acceptance/node/runs/1794575519963-79867/restarted/process.log",
+        "bytes": 6460,
+        "sha256": "eb12fd046e3ab920dc3d519d67b49c862b2360b03a4a9d2656006116748ec385"
+      }
+    },
+    {
+      "runtime": "rust",
+      "databaseMode": "bundled-postgres",
+      "version": "1.1.2976",
+      "downloadMiBPerSecond": 189.81,
+      "echoMiBPerSecond": 94.32,
+      "crashToWorkerReconnectMs": 872.95,
+      "workerTransportExpired": false,
+      "staleGrantRejection": "unauthorized",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/corrected-cases/bundled-postgres/acceptance/rust/runs/1794575553042-80897/report.json",
+        "bytes": 14273,
+        "sha256": "1c181262a1c3f7eb09d04787cb93b5d33b1eaac7c3694348259a0e37bbc8431f"
+      },
+      "initialServerLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/corrected-cases/bundled-postgres/acceptance/rust/runs/1794575553042-80897/initial/process.log",
+        "bytes": 8146,
+        "sha256": "23214a77d20c809064b0f5cc1f9691cebed11da8b958d0ffebfe21999e542154"
+      },
+      "restartedServerLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/corrected-cases/bundled-postgres/acceptance/rust/runs/1794575553042-80897/restarted/process.log",
+        "bytes": 11820,
+        "sha256": "79417f6e7ab3b7e27118b2ab85544d13fcdf9edb57269ecbda8409e4312bb5e2"
+      }
+    },
+    {
+      "runtime": "node",
+      "databaseMode": "postgres",
+      "version": "1.1.2964",
+      "downloadMiBPerSecond": 137.95,
+      "echoMiBPerSecond": 77.64,
+      "crashToWorkerReconnectMs": 1688.99,
+      "workerTransportExpired": false,
+      "staleGrantRejection": "unauthorized",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/corrected-cases/postgres/acceptance/node/runs/1794575580902-81816/report.json",
+        "bytes": 8159,
+        "sha256": "0c002c0f01fe73c4ee8e0976a09700258c14acf8beb5bcef553804360927af08"
+      },
+      "initialServerLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/corrected-cases/postgres/acceptance/node/runs/1794575580902-81816/initial/process.log",
+        "bytes": 39897,
+        "sha256": "c33879ff70cc36fd0406c64efbe4062aecaf42821e9281e89536142401bb5959"
+      },
+      "restartedServerLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/corrected-cases/postgres/acceptance/node/runs/1794575580902-81816/restarted/process.log",
+        "bytes": 6460,
+        "sha256": "ff4ca85bc8f6274c4d1dda78815b252baa9e15a0c8187c0a51ae398bc2d1f61c"
+      }
+    },
+    {
+      "runtime": "rust",
+      "databaseMode": "postgres",
+      "version": "1.1.2976",
+      "downloadMiBPerSecond": 150.36,
+      "echoMiBPerSecond": 84.69,
+      "crashToWorkerReconnectMs": 1008.08,
+      "workerTransportExpired": false,
+      "staleGrantRejection": "unauthorized",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/corrected-cases/postgres/acceptance/rust/runs/1794575612184-82931/report.json",
+        "bytes": 8152,
+        "sha256": "f94108dc8f56fa223ec2436eae7d552064c0b7587f869f938ff4542dece24c25"
+      },
+      "initialServerLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/corrected-cases/postgres/acceptance/rust/runs/1794575612184-82931/initial/process.log",
+        "bytes": 8148,
+        "sha256": "0f2ab311558943fb0818bd202806f84e2588e67025f8b736aa4fe1e24d1efc44"
+      },
+      "restartedServerLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/corrected-cases/postgres/acceptance/rust/runs/1794575612184-82931/restarted/process.log",
+        "bytes": 11641,
+        "sha256": "fe84931298068cd250cdab5f1e70aaded6cd91051a68dd9c225cf71fbd1a9450"
+      }
+    }
+  ],
+  "forcedOutage": {
+    "durationMs": 16000,
+    "cases": [
+      {
+        "runtime": "node",
+        "databaseMode": "pglite",
+        "version": "1.1.2964",
+        "downloadMiBPerSecond": 141.77,
+        "echoMiBPerSecond": 80.38,
+        "crashToWorkerReconnectMs": 27107.13,
+        "workerTransportExpired": true,
+        "staleGrantRejection": "grant-revoked",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/forced-grace-expiry/pglite/acceptance/node/runs/1794575641128-84062/report.json",
+          "bytes": 8172,
+          "sha256": "23a9c4a0c98753ca4ab97ac98dbdaf7a6c6465621feed835085afeccc15288b7"
+        },
+        "initialServerLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/forced-grace-expiry/pglite/acceptance/node/runs/1794575641128-84062/initial/process.log",
+          "bytes": 8546,
+          "sha256": "e938e4fbbb4b57054e3716cf6c14c64369c28e2b67ea44410d960d3ab7954e91"
+        },
+        "restartedServerLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/forced-grace-expiry/pglite/acceptance/node/runs/1794575641128-84062/restarted/process.log",
+          "bytes": 6021,
+          "sha256": "6b18e39ced613cb2d512adaf3bf92d2416477dbe61cf2f2d88872f8e3637ad36"
+        }
+      },
+      {
+        "runtime": "rust",
+        "databaseMode": "pglite",
+        "version": "1.1.2976",
+        "downloadMiBPerSecond": 145.0,
+        "echoMiBPerSecond": 83.19,
+        "crashToWorkerReconnectMs": 28908.85,
+        "workerTransportExpired": true,
+        "staleGrantRejection": "grant-revoked",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/forced-grace-expiry/pglite/acceptance/rust/runs/1794575699081-84060/report.json",
+          "bytes": 8166,
+          "sha256": "101e9cec25dea25d10e6955f601a9bd023227c5f8c8e2155674716b30cbd746c"
+        },
+        "initialServerLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/forced-grace-expiry/pglite/acceptance/rust/runs/1794575699081-84060/initial/process.log",
+          "bytes": 8167,
+          "sha256": "de7b034186266adf480a0eb1e4ab34acab698df2634d7d48e7553f4a7cef7e6c"
+        },
+        "restartedServerLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/forced-grace-expiry/pglite/acceptance/rust/runs/1794575699081-84060/restarted/process.log",
+          "bytes": 11699,
+          "sha256": "d3e9ddd9f83f465fe9880250f09114333c0cb0680008a530436634e3606eb73d"
+        }
+      }
+    ]
+  },
+  "initialFailure": {
+    "scope": "The initial Rust PGlite run crossed the worker transport grace period. The unchanged gateway returned grant-revoked, and the earlier assertion expected unauthorized.",
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/cases/pglite/acceptance/rust/runs/1794575193879-68093/report.json",
+      "bytes": 6067,
+      "sha256": "27755f112bff0b92eda98c8f79fa42a2897c0894cab0cfc841da75f68a103fe6"
+    },
+    "restartedServerLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workerlink-binary/cases/pglite/acceptance/rust/runs/1794575193879-68093/restarted/process.log",
+      "bytes": 11938,
+      "sha256": "e015518e3d9798b7da08a75971e000822dd76315f957ac81f658144f9e4e9e4d"
+    }
+  },
+  "payloadSha256": "76466877cfb853ec22ade91618e06ca6c462aa18f6e5db49bf810fa9f5a97892",
+  "quotaFramesPerRun": 4079
+}

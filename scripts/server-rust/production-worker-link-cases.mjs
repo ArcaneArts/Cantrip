@@ -316,7 +316,7 @@ export async function slowWorkerLinkConsumer(fixture) {
   };
 }
 
-export async function crashWorkerLinkServer(fixture) {
+export async function crashWorkerLinkServer(fixture, outageMs) {
   const identity = fixture.bootstrap.server.id;
   const old = await fixture.relay("crash-recovery");
   const channel = await fixture.tunnel(old);
@@ -326,7 +326,9 @@ export async function crashWorkerLinkServer(fixture) {
   });
   old.socket.pause();
   assert.equal(channel.endpoint.emit.data(payload(99), "raw"), true);
-  const restart = await fixture.crashAndRestart();
+  const disconnectsBeforeCrash = fixture.disconnects;
+  const revocationsBeforeCrash = fixture.adapterRevocations.length;
+  const restart = await fixture.crashAndRestart(outageMs);
   old.socket.resume();
   await eventually(
     () => old.closeResult,
@@ -374,7 +376,16 @@ export async function crashWorkerLinkServer(fixture) {
     (frame) =>
       frame.header.channel.channelId === rejected.identity.channel.channelId,
   );
-  assert.equal(rejection.header.code, "unauthorized");
+  const workerTransportExpired = fixture.disconnects > disconnectsBeforeCrash;
+  const staleGrantRevoked = fixture.adapterRevocations
+    .slice(revocationsBeforeCrash)
+    .includes(channel.grant.binding.grantId);
+  assert.equal(staleGrantRevoked, workerTransportExpired);
+  assert.equal(
+    rejection.header.code,
+    staleGrantRevoked ? "grant-revoked" : "unauthorized",
+  );
+  assert.equal(rejected.endpoint, undefined);
   const active = await fixture.observation(fresh);
   const recoveredStream = await transferWorkerLink({
     probe: fresh,
@@ -406,6 +417,8 @@ export async function crashWorkerLinkServer(fixture) {
     retainedProtectedTunnelRecord: true,
     staleSessionHttpStatus: 404,
     staleGrantRejection: rejection.header.code,
+    workerTransportExpired,
+    staleGrantRevoked,
     newServerGeneration: true,
     recoveredStream,
     workerGatewayAfterRelease: fixture.gateway.stats(),
