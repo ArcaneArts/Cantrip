@@ -233,6 +233,8 @@ async function ok(route, options) {
 }
 async function ready() {
   return retry(async () => {
+    port = Number((await docker("port", host, "443/tcp")).split(":").at(-1));
+    assert.ok(port > 0, "Docker published the fixture HTTPS port");
     certificateAuthority ??= await runHost(
       "cat",
       "/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt",
@@ -460,7 +462,6 @@ try {
     systemdImage.Id,
   );
   report.containers.push(host);
-  port = Number((await docker("port", host, "443/tcp")).split(":").at(-1));
   await retry(
     () => runHost("systemd-run", "--wait", "--pipe", "/bin/true"),
     "real systemd must execute services",
