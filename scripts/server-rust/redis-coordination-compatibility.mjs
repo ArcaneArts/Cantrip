@@ -14,7 +14,10 @@ import { setTimeout as delay } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { rustEnvironment, repositoryRoot } from "./cargo.mjs";
 import { workerLinkWireFixtures } from "./worker-link-wire-fixtures.mjs";
-import { compareAndSetFaults } from "./redis-cas-fault.mjs";
+import {
+  compareAndSetFaults,
+  verifyDelayedSubscription,
+} from "./redis-cas-fault.mjs";
 import { offlineDirectory } from "./redis-offline-directory.mjs";
 
 const { values } = parseArgs({
@@ -694,6 +697,17 @@ async function exercise(kinds) {
     step(
       "real EVAL races preserve intervening worker and WorkerLink renewal/release writes",
     );
+    if (kinds.every((kind) => kind === "rust")) {
+      await verifyDelayedSubscription({
+        port,
+        control,
+        fixture,
+        options: options("delayed-subscriber"),
+      });
+      step(
+        "an unacknowledged Redis subscription keeps readiness and remote dispatch unavailable until a fresh subscription succeeds",
+      );
+    }
     await redisStop();
     await delay(100);
     assert.equal(await a.call("health"), false);

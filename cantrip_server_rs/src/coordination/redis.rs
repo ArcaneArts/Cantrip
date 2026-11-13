@@ -8,6 +8,7 @@ use ::redis::Client;
 use anyhow::{Context, Result, anyhow, bail};
 use futures::{FutureExt, StreamExt};
 use std::{
+    sync::atomic::{AtomicBool, Ordering},
     sync::{Arc, Mutex, Weak},
     time::Duration,
 };
@@ -69,6 +70,7 @@ pub struct RedisCoordinator {
     channel: String,
     logger: Logger,
     connection: Mutex<Option<CommandConnection>>,
+    subscribed: AtomicBool,
     tasks: AsyncMutex<Option<Tasks>>,
 }
 impl RedisCoordinator {
@@ -85,6 +87,7 @@ impl RedisCoordinator {
             prefix: options.key_prefix,
             logger: options.logger,
             connection: Mutex::new(None),
+            subscribed: AtomicBool::new(false),
             tasks: AsyncMutex::new(None),
         }))
     }
@@ -191,6 +194,7 @@ impl RedisCoordinator {
         let result = async {
             let mut subscriber = self.client.get_async_pubsub().await?;
             subscriber.subscribe(&self.channel).await?;
+            self.subscribed.store(true, Ordering::Release);
             let owner = Arc::downgrade(self);
             let task = tokio::spawn(Self::receive_loop(
                 owner,
@@ -234,6 +238,7 @@ impl RedisCoordinator {
         .await;
         if let Err(error) = result {
             tasks.take();
+            self.subscribed.store(false, Ordering::Release);
             if let Some(command) = self.connection.lock().unwrap().take() {
                 command.close();
             }
@@ -278,18 +283,29 @@ impl RedisCoordinator {
                     tokio::spawn(delivery);
                 }
             }
-            let Some(owner) = owner.upgrade() else {
+            let Some(coordinator) = owner.upgrade() else {
                 return;
             };
-            owner.connection_error(true);
-            drop(owner);
+            coordinator.subscribed.store(false, Ordering::Release);
+            coordinator.connection_error(true);
+            drop(coordinator);
             let mut delay = 50;
             loop {
                 tokio::time::sleep(Duration::from_millis(delay)).await;
-                if let Ok(mut connection) = client.get_async_pubsub().await
-                    && connection.subscribe(&channel).await.is_ok()
+                // Bound the actual connection and subscription handshake. A
+                // half-open TCP connection must not stall the retry loop.
+                if let Ok(Ok(connection)) = tokio::time::timeout(Duration::from_secs(3), async {
+                    let mut connection = client.get_async_pubsub().await?;
+                    connection.subscribe(&channel).await?;
+                    Ok::<_, ::redis::RedisError>(connection)
+                })
+                .await
                 {
+                    let Some(owner) = owner.upgrade() else {
+                        return;
+                    };
                     subscriber = connection;
+                    owner.subscribed.store(true, Ordering::Release);
                     break;
                 }
                 delay = (delay * 2).min(2000);
@@ -363,6 +379,11 @@ impl RedisCoordinator {
         Ok(())
     }
     pub async fn publish(&self, payload: Value, ttl_ms: Option<f64>) -> Result<()> {
+        // The command connection can recover before the dedicated subscriber.
+        // Dispatching a request during that gap can lose its only reply.
+        if payload["kind"] == "worker-command-request" && !self.subscribed.load(Ordering::Acquire) {
+            bail!("Redis coordination is unavailable.");
+        }
         let envelope = self.core.envelope(payload, ttl_ms.unwrap_or(60_000.0))?;
         let mut command = self.ready_command()?;
         let result: ::redis::RedisResult<i64> = ::redis::cmd("PUBLISH")
@@ -560,6 +581,9 @@ impl RedisCoordinator {
         self.compare_set(&key, &raw, None).await
     }
     pub async fn health(&self) -> Result<bool> {
+        if !self.subscribed.load(Ordering::Acquire) {
+            return Ok(false);
+        }
         let Ok(mut connection) = self.ready_command() else {
             return Ok(false);
         };
@@ -588,7 +612,7 @@ impl RedisCoordinator {
                 None,
             ));
         }
-        Ok(healthy)
+        Ok(healthy && self.subscribed.load(Ordering::Acquire))
     }
     pub fn begin_shutdown(&self) {
         if let Some(command) = self.connection.lock().unwrap().as_ref() {
@@ -608,6 +632,7 @@ impl RedisCoordinator {
             Value::Null,
         );
         tasks.take();
+        self.subscribed.store(false, Ordering::Release);
         let command = self.connection.lock().unwrap().take();
         if let Some(mut command) = command {
             let result: Result<()> = async {
