@@ -29778,7 +29778,8 @@
       "windows2976Packages": {
         "version": "1.1.2976",
         "standalone": "docs/security/rust-server-2976-win32-x64-packages.json#standalone",
-        "installedDesktop": "docs/security/rust-server-2976-win32-x64-packages.json#desktop"
+        "installedDesktop": "docs/security/rust-server-2976-win32-x64-packages.json#desktop",
+        "signedUpdate": "docs/security/rust-server-2976-win32-x64-packages.json#signedUpdate"
       },
       "windows2964Packages": {
         "version": "1.1.2964",
@@ -29789,7 +29790,8 @@
       "currentQueuedTaskTransfer": "docs/security/rust-server-task-inference-route-acceptance.json#rebuiltWindowsArtifact",
       "currentTaskSettlementRead": "docs/security/rust-server-task-inference-route-acceptance.json#currentWindowsSettlementRead",
       "currentInstalledDesktopAcceptance": "docs/security/rust-server-2881-win32-x64-desktop.json#replicaRepairRebuild",
-      "currentSignedUpdaterAcceptance": "docs/security/rust-server-2881-win32-x64-desktop.json#replicaRepairRebuild",
+      "currentSignedUpdaterAcceptance": "docs/security/rust-server-2976-win32-x64-packages.json#signedUpdate",
+      "previousSignedUpdaterAcceptance": "docs/security/rust-server-2881-win32-x64-desktop.json#replicaRepairRebuild",
       "patchedInstalledDesktop": {
         "record": "docs/security/rust-server-2881-win32-x64-desktop.json#patchedInstaller",
         "serverSourceCommit": "deefa4204ce1f0eb0c76d84df854f1fb14130c47",
