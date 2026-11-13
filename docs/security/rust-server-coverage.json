@@ -23109,16 +23109,23 @@
         "resource": "project-tab-layout",
         "status": "partial",
         "implementation": [
-          "cantrip_server_rs/src/terminals/layout.rs",
-          "cantrip_server_rs/src/http/terminals.rs"
+          "cantrip_server_rs/src/http/pane_layouts.rs",
+          "cantrip_server_rs/src/http/project_surfaces.rs",
+          "cantrip_server_rs/src/http/terminals.rs",
+          "cantrip_server_rs/src/http/workspace_layouts.rs"
         ],
         "evidence": [
           "cantrip_server_rs/tests/terminal_contracts.rs",
           "scripts/server-rust/terminal-repository-compatibility.mjs",
-          "scripts/server-rust/terminal-http-compatibility.mjs"
+          "scripts/server-rust/terminal-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/workspace-http-compatibility.mjs",
+          "docs/RUST_SERVER_DESKTOP_WORKSPACE_ACCEPTANCE.md"
         ],
+        "scope": "Local Node and Rust socket comparisons cover ordered project and project-tab-layout invalidation after successful pane and tab-group mutations across all three database modes and all three authentication modes. The existing reference behavior for workspace-layout mutations uses command receipts without broad project invalidations. Project surface and terminal mutation coverage uses the corresponding resource suites. Native macOS window and editor recovery has separate all-store evidence.",
         "remaining": [
-          "Only terminal creation transactions and terminal mutation invalidations are implemented. Complete pane/window/workspace layout operations remain required."
+          "Reconcile the remaining layout publishers, verify shared replay and reconnect across server instances, and exercise the supported packaged desktop matrix."
         ]
       },
       {
