@@ -6598,10 +6598,11 @@
           "scripts/server-rust/model-operation-boundary-compatibility.mjs",
           "docs/RUST_SERVER_MODEL_OPERATIONS.md",
           "scripts/server-rust/actual-model-operations-client.mjs",
-          "scripts/server-rust/model-operation-provider.mjs"
+          "scripts/server-rust/model-operation-provider.mjs",
+          "docs/security/rust-server-2976-darwin-arm64-model-operations.json"
         ],
         "remaining": [
-          "Supported-platform, mixed-server, server-interruption and long-outage product qualification remain required; the selected local adapters and cases are documented explicitly."
+          "Current Windows and Linux package coverage, active-operation server or dependency interruption, and long-outage product qualification remain required."
         ]
       },
       {
@@ -6614,10 +6615,11 @@
           "scripts/server-rust/model-operation-boundary-compatibility.mjs",
           "docs/RUST_SERVER_MODEL_OPERATIONS.md",
           "scripts/server-rust/actual-model-operations-client.mjs",
-          "scripts/server-rust/model-operation-provider.mjs"
+          "scripts/server-rust/model-operation-provider.mjs",
+          "docs/security/rust-server-2976-darwin-arm64-model-operations.json"
         ],
         "remaining": [
-          "Supported-platform, mixed-server, server-interruption and long-outage product qualification remain required; the selected local adapters and cases are documented explicitly."
+          "Current Windows and Linux package coverage, active-operation server or dependency interruption, and long-outage product qualification remain required."
         ]
       },
       {
@@ -6630,10 +6632,11 @@
           "scripts/server-rust/model-operation-boundary-compatibility.mjs",
           "docs/RUST_SERVER_MODEL_OPERATIONS.md",
           "scripts/server-rust/actual-model-operations-client.mjs",
-          "scripts/server-rust/model-operation-provider.mjs"
+          "scripts/server-rust/model-operation-provider.mjs",
+          "docs/security/rust-server-2976-darwin-arm64-model-operations.json"
         ],
         "remaining": [
-          "Supported-platform, mixed-server, server-interruption and long-outage product qualification remain required; the selected local adapters and cases are documented explicitly."
+          "Current Windows and Linux package coverage, active-operation server or dependency interruption, and long-outage product qualification remain required."
         ]
       },
       {
@@ -6646,10 +6649,11 @@
           "scripts/server-rust/model-operation-boundary-compatibility.mjs",
           "docs/RUST_SERVER_MODEL_OPERATIONS.md",
           "scripts/server-rust/actual-model-operations-client.mjs",
-          "scripts/server-rust/model-operation-provider.mjs"
+          "scripts/server-rust/model-operation-provider.mjs",
+          "docs/security/rust-server-2976-darwin-arm64-model-operations.json"
         ],
         "remaining": [
-          "Supported-platform, mixed-server, server-interruption and long-outage product qualification remain required; the selected local adapters and cases are documented explicitly."
+          "Current Windows and Linux package coverage, active-operation server or dependency interruption, and long-outage product qualification remain required."
         ]
       },
       {
@@ -28803,6 +28807,7 @@
       ]
     },
     "fullWorkerModelOperations": {
+      "macos2976Qualification": "docs/security/rust-server-2976-darwin-arm64-model-operations.json",
       "status": "implemented-pending-platform-acceptance",
       "sourceBaseline": "bb7af5ccc7322e5b18c1a23cd31abb198ad1608c",
       "evidence": [
@@ -28832,7 +28837,7 @@
       ],
       "baselineRepair": "Unmodified Node external/private PostgreSQL aggregate routes fail to bind Date parameters for a SQL CASE expression; four ISO timestamp bindings restore the range predicates. Node PGlite and native Rust already passed.",
       "remaining": [
-        "Supported-platform artifact acceptance and mixed-server/server-interruption/long-outage qualification remain required.",
+        "Windows and Linux package coverage, active-operation server or dependency interruption, and long-outage qualification remain required.",
         "Configured OpenAI-compatible adapters and an owned local provider are exercised; this does not prove every provider-private adapter behavior.",
         "Default Rust cutover and production Node-server removal remain required."
       ]

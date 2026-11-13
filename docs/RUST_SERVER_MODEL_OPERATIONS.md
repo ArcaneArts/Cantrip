@@ -20,6 +20,18 @@ totals and all four receipt coverage counts. The existing cancellation,
 encrypted transport and retained restart assertions also passed.
 [Current product evidence](security/rust-server-current-native-product.json)
 
+## Packaged 1.1.2976 qualification
+
+The packaged macOS ARM64 Rust server and Node reference passed 72 cases
+across PGlite, bundled PostgreSQL and external PostgreSQL. Shared
+PostgreSQL and Redis added 48 cases across Node/Node, Node/Rust, Rust/Node
+and Rust/Rust. The browser and worker connected to opposite peers.
+All cases retained their original cancellation outcomes and usage receipts
+through the tested worker loss and orderly restart. Across both matrices,
+the runs observed 130 provider requests, 10 intentional worker losses and
+42 clean server exits.
+[1.1.2976 model-operation evidence](security/rust-server-2976-darwin-arm64-model-operations.json)
+
 ## Product assertions
 
 `actual-folder-client.mjs --model-operations` uses production server executables
