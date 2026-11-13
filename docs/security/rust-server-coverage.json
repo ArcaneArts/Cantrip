@@ -29335,6 +29335,19 @@
       ]
     },
     "currentPopulatedProfilePerformance": {
+      "currentPackagedServer": {
+        "version": "1.1.2938",
+        "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+        "platform": "darwin-arm64",
+        "completedInvocations": 130,
+        "measuredInvocations": 100,
+        "completeWorkloadMedianChangePct": {
+          "pglite": -47.99,
+          "postgres": -42.79
+        },
+        "externalPostgresReadTradeoff": "Project list and full-history median latency increased by 25.33 and 20.73 percent.",
+        "record": "docs/security/rust-server-2938-darwin-arm64-populated-performance.json"
+      },
       "status": "partial",
       "scope": "Standalone macOS ARM64, 64 projects, 256 chats and 31,624 encrypted messages. The latest optimized 1.1.2858 package, 1.1.2857 native baseline and compiled Node reference completed 208 invocations with exact Rust response bytes and equivalent decoded Node project, chat catalog, page and full-history payloads.",
       "evidence": [
@@ -29714,6 +29727,11 @@
       ]
     },
     "releaseArtifactQualification2938": {
+      "macOS2938PopulatedProfilePerformance": {
+        "version": "1.1.2938",
+        "measuredInvocations": 100,
+        "record": "docs/security/rust-server-2938-darwin-arm64-populated-performance.json"
+      },
       "macOS2938FullWorkerRecovery": {
         "version": "1.1.2938",
         "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",

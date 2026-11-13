@@ -390,6 +390,37 @@ noncanonical trailing bits, and stable map lookup after the caches fill.
 The exact `1.1.2858` standalone distribution passes the 1,762-file verification,
 all three backend restart and export cases, and Node-free shutdown.
 
+### Packaged macOS ARM64 1.1.2938
+
+The packaged Rust server and compiled Node reference repeated the
+populated-profile workload with 64 projects, 256 chats, and 31,624
+encrypted messages. Each of the five configurations completed a pilot,
+five warmups, and 20 measured runs. All 130 invocations matched the
+project, Chat catalog, 50-message page and 3.14 MB full-history payload
+digests. The complete-workload comparison passed the 5% regression
+threshold on both paired database modes.
+
+| Median across measured runs | Node PGlite | Rust PGlite | Node external PostgreSQL | Rust external PostgreSQL | Rust bundled PostgreSQL |
+| --------------------------- | ----------: | ----------: | -----------------------: | -----------------------: | ----------------------: |
+| Complete workload, ms       |       5,262 |       2,737 |                    3,625 |                    2,074 |                   2,166 |
+| Readiness, ms               |       1,401 |         158 |                    1,056 |                       63 |                     176 |
+| Idle server-tree RSS, MiB   |       1,313 |         100 |                      462 |                       66 |                     381 |
+| Project list, ms            |        8.51 |        6.09 |                     4.86 |                     6.09 |                    6.01 |
+| 50-message page, ms         |        4.72 |        2.81 |                     3.13 |                     2.86 |                    2.80 |
+| 1,024-message history, ms   |       36.30 |       29.94 |                    25.13 |                    30.33 |                   28.89 |
+| Eight-client reads, req/s   |         271 |         459 |                      640 |                    1,842 |                   1,869 |
+| App Live catch-up, ms       |        0.80 |        0.68 |                     0.74 |                     0.67 |                    0.62 |
+
+External PostgreSQL project-list and full-history medians increased by
+1.23 ms and 5.21 ms, respectively. The full-history p95 across run
+medians increased from 30.88 ms to 32.63 ms. The page median improved,
+mixed-read throughput nearly tripled, and complete workload latency
+fell by 43%. The local workload accepts that tradeoff and retains
+both individual read regressions in the record. Bundled PostgreSQL
+RSS includes the private database process. External PostgreSQL RSS
+covers the server tree, with the database running separately.
+[Packaged populated-profile record](security/rust-server-2938-darwin-arm64-populated-performance.json)
+
 ## Earlier local repository checks
 
 The current Node production build, scoped formatting, server-boundary inventory,
