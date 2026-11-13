@@ -167,6 +167,24 @@ recovery after server crash. The acceptance fixture restarts the worker
 transport and gateway, with the full worker evaluated separately.
 [macOS ARM64 1.1.2938 signed desktop and WorkerLink record](security/rust-server-2938-darwin-arm64-signed-workerlink.json)
 
+The macOS ARM64 `1.1.2938` standalone server also passed the WorkerLink
+lease recovery scenario with the full packaged worker and native broker.
+All six Node and Rust cells passed 18 peer renewals and 18 direct renewals,
+including recovery after actual server and worker process loss. During
+worker reconnect grace, renewals returned HTTP 503 while the mailbox
+remained readable. Restart invalidated the old authority, and explicit
+release closed the broker with code 1008.
+
+The same Rust package passed the CantripOS root-system scenario on PGlite
+with 41 snapshots, five authenticated private outcomes, and the expected
+21 Docker root effects. The run preserved checkpoint and mounted data
+through replay, root replacement, rollback, and process loss. Docker's
+original unpacked image contained an empty entrypoint after a local
+storage failure. The retry used a separate local QA image with matching
+runtime configuration and filesystem layers. Its first layer adds zero
+padding after the tar end to force a fresh Docker snapshot.
+[macOS ARM64 1.1.2938 full-worker recovery record](security/rust-server-2938-darwin-arm64-worker-recovery.json)
+
 The Windows x64 `1.1.2881` standalone distribution passed all three stores,
 including migration, SQL export, hosted reopening and retained writes.
 [Windows x64 standalone record](security/rust-server-2881-win32-x64-standalone.json)

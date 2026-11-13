@@ -1,0 +1,252 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+  "candidateVersion": "1.1.2938",
+  "platform": "darwin-arm64",
+  "completeReplacement": false,
+  "standaloneArchive": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/cantrip-server-1.1.2938-darwin-arm64-5015c89a4.tar.gz",
+    "bytes": 66893960,
+    "sha256": "4c6fdf2072d0ddb3e1fd2d7785fe0a9838a67208855cbc92f909b9f261ba4668"
+  },
+  "rustExecutableSha256": "a2284ce255add3f7e528e512ebb9584fc1def6108b5d48df96343b77c76db99f",
+  "retainedWorkerImplementationSource": "010a8295946ac70a880b6b843434248f1d5f9574",
+  "fullWorkerLinkLeaseRecovery": {
+    "result": "passed",
+    "scope": "Real browser SDK, packaged full Node worker and native desktop broker. Each runtime uses isolated state. Node uses its PGlite runtime or external PostgreSQL, including for the pairing with Rust bundled PostgreSQL.",
+    "productCells": 6,
+    "peerRenewals": 18,
+    "directRenewals": 18,
+    "workerCrashes": 6,
+    "serverCrashes": 6,
+    "runs": [
+      {
+        "databaseMode": "pglite",
+        "peers": [
+          {
+            "runtime": "node",
+            "realRenewalPhases": [
+              "initial",
+              "worker-restarted",
+              "server-restarted"
+            ],
+            "productSteps": 10,
+            "workerStops": 3,
+            "serverGracefulShutdowns": 2,
+            "workerReconnectGraceStatus": {
+              "session": 503,
+              "peer": 200,
+              "direct": 503
+            },
+            "staleAuthorityStatus": {
+              "session": 404,
+              "peer": 404,
+              "direct": 404
+            },
+            "releaseBrokerCloseCode": 1008
+          },
+          {
+            "runtime": "rust",
+            "realRenewalPhases": [
+              "initial",
+              "worker-restarted",
+              "server-restarted"
+            ],
+            "productSteps": 10,
+            "workerStops": 3,
+            "serverGracefulShutdowns": 2,
+            "workerReconnectGraceStatus": {
+              "session": 503,
+              "peer": 200,
+              "direct": 503
+            },
+            "staleAuthorityStatus": {
+              "session": 404,
+              "peer": 404,
+              "direct": 404
+            },
+            "releaseBrokerCloseCode": 1008
+          }
+        ],
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-full-worker-link-renewal/pglite.json",
+          "bytes": 464261,
+          "sha256": "3aa0fec3defbca87b0313162db6556723eb6b6f2d9291e917468c3628682cb60"
+        },
+        "log": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-full-worker-link-renewal/pglite.log",
+          "bytes": 7406,
+          "sha256": "3c33fa957b48b8601a3f7d2fa0f49f71157a18317898a09e0bacc751364c10d6"
+        }
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "peers": [
+          {
+            "runtime": "node",
+            "realRenewalPhases": [
+              "initial",
+              "worker-restarted",
+              "server-restarted"
+            ],
+            "productSteps": 10,
+            "workerStops": 3,
+            "serverGracefulShutdowns": 2,
+            "workerReconnectGraceStatus": {
+              "session": 503,
+              "peer": 200,
+              "direct": 503
+            },
+            "staleAuthorityStatus": {
+              "session": 404,
+              "peer": 404,
+              "direct": 404
+            },
+            "releaseBrokerCloseCode": 1008
+          },
+          {
+            "runtime": "rust",
+            "realRenewalPhases": [
+              "initial",
+              "worker-restarted",
+              "server-restarted"
+            ],
+            "productSteps": 10,
+            "workerStops": 3,
+            "serverGracefulShutdowns": 2,
+            "workerReconnectGraceStatus": {
+              "session": 503,
+              "peer": 200,
+              "direct": 503
+            },
+            "staleAuthorityStatus": {
+              "session": 404,
+              "peer": 404,
+              "direct": 404
+            },
+            "releaseBrokerCloseCode": 1008
+          }
+        ],
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-full-worker-link-renewal/bundled-postgres.json",
+          "bytes": 504568,
+          "sha256": "47e0784db1f25be46237b9f34dd1c505a12918e0ed6b8237e597749a1ded24e4"
+        },
+        "log": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-full-worker-link-renewal/bundled-postgres.log",
+          "bytes": 7416,
+          "sha256": "eda16b8a7ff6a12bf13ad2271363f8cdf4db058c04ffba3b995d9d875c36bd3b"
+        }
+      },
+      {
+        "databaseMode": "postgres",
+        "peers": [
+          {
+            "runtime": "node",
+            "realRenewalPhases": [
+              "initial",
+              "worker-restarted",
+              "server-restarted"
+            ],
+            "productSteps": 10,
+            "workerStops": 3,
+            "serverGracefulShutdowns": 2,
+            "workerReconnectGraceStatus": {
+              "session": 503,
+              "peer": 200,
+              "direct": 503
+            },
+            "staleAuthorityStatus": {
+              "session": 404,
+              "peer": 404,
+              "direct": 404
+            },
+            "releaseBrokerCloseCode": 1008
+          },
+          {
+            "runtime": "rust",
+            "realRenewalPhases": [
+              "initial",
+              "worker-restarted",
+              "server-restarted"
+            ],
+            "productSteps": 10,
+            "workerStops": 3,
+            "serverGracefulShutdowns": 2,
+            "workerReconnectGraceStatus": {
+              "session": 503,
+              "peer": 200,
+              "direct": 503
+            },
+            "staleAuthorityStatus": {
+              "session": 404,
+              "peer": 404,
+              "direct": 404
+            },
+            "releaseBrokerCloseCode": 1008
+          }
+        ],
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-full-worker-link-renewal/postgres.json",
+          "bytes": 505216,
+          "sha256": "f49d399f90eb1bde5e83eb9618506022e7a37a3a847bcdb28356d584dfb889fd"
+        },
+        "log": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-full-worker-link-renewal/postgres.log",
+          "bytes": 7427,
+          "sha256": "d146a90ff6867f0f7110477cd9e4833085b83f0e5da3701d5c673b4891107b6f"
+        }
+      }
+    ],
+    "executableHashes": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-full-worker-link-renewal/executables.sha256",
+      "bytes": 436,
+      "sha256": "3dbd3a3324955af1b4b0174acfdbffe03a6a0befba68c9641694e56261e98ccf"
+    }
+  },
+  "cantripOsRootSystemPGlite": {
+    "result": "passed",
+    "scope": "Rust standalone PGlite using the full packaged worker and actual ARM64 Docker guest. The local QA image uses the original foundation archive with 1,024 zero bytes appended after the first layer tar end. The other layers and runtime configuration are unchanged. It has its own image digest and unpacked snapshot chain.",
+    "originalFoundationImage": "sha256:0f167ee073c93b20e56a10742776b6487a9f66190124f98fb169fffd834692a4",
+    "localQaImage": "sha256:2310a9cf3d6c6a59dead96664dfac559df3539e4ce8c2eae133558c8b31c14c4",
+    "entrypointSha256": "9a1784bba3dc25637ae2ac2470f169ada957a76fdb2e795a36c2cb4430777b9d",
+    "productSteps": 16,
+    "snapshots": 41,
+    "authenticatedPrivateOutcomes": 5,
+    "intentionalServerCrashes": 2,
+    "intentionalWorkerCrashes": 1,
+    "physicalRootEffects": {
+      "commits": 1,
+      "creates": 2,
+      "renames": 8,
+      "starts": 5,
+      "stops": 5
+    },
+    "recoveredAfterArchiveLoad": true,
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/pglite-rust-rekeyed.json",
+      "bytes": 468800,
+      "sha256": "1b2b0c187d46e05c92e5c1326074fca1566cdab1b57eae81d236850f40079fba"
+    },
+    "log": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/pglite-rust-rekeyed.log",
+      "bytes": 3344,
+      "sha256": "cd668d150f3d90acc6cfe839c04322fdbbf9bf8d0d63b1bf480871f1abdb248f"
+    },
+    "guestOperations": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/tmp/cantrip-actual-folder-Vx7utO/rust/os-guest/guest.json",
+      "bytes": 236211,
+      "sha256": "5fbaea22ef568cc44a2a0004ee2ead554ab31da0e9cbbdc80efe15d27026cefe"
+    },
+    "originalImageBootFailure": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/pglite-rust.json",
+      "bytes": 410927,
+      "sha256": "ec1f203685adbeb65bf2c8a8372ffe893903ce9cc1c3282ee0ce930b0035fce8"
+    },
+    "recoveredImageProof": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/foundation-local-qa-proof.json",
+      "bytes": 2156,
+      "sha256": "f7d7ed3cfeeb956985c153596b98a5a906a7bfe7085a9be2686d1f3d5da8613d"
+    }
+  }
+}

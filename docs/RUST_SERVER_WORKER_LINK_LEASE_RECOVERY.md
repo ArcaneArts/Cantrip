@@ -52,3 +52,13 @@ node --import tsx scripts/server-rust/actual-folder-client.mjs \
 
 See the [acceptance record](security/rust-server-worker-link-lease-recovery.json)
 for executable hashes, the six product reports, and the fixture archive.
+
+## Packaged server 1.1.2938
+
+The macOS ARM64 standalone Rust server repeated the paired recovery
+matrix on PGlite, bundled PostgreSQL, and external PostgreSQL. All six
+cells used the full packaged Node worker, existing browser SDK, and
+native broker. The reports verify the Rust process hash and record
+18 peer renewals, 18 direct renewals, six worker crashes, and six
+server crashes.
+[Packaged server recovery record](security/rust-server-2938-darwin-arm64-worker-recovery.json#fullWorkerLinkLeaseRecovery)
