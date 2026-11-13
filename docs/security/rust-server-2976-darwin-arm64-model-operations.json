@@ -211,7 +211,69 @@
       "sha256": "ce3ca92ba03053926207ae021b52baa7419d099c42b31027d0f9780f85c4a4b3"
     }
   },
+  "externalPostgresOutage": {
+    "scope": "One local server and the full worker keep an already-dispatched embedding in flight while the fixture immediately stops external PostgreSQL and restarts the same cluster on the same port. The provider replies after readiness recovers.",
+    "rustServer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-drain/runtime/server/bin/cantrip-server",
+      "bytes": 94259472,
+      "sha256": "eba01be07448e2505235dcaf8585e96ae7b9c797c0e2f9082abaae44f92d7af2"
+    },
+    "workerIndex": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/macos-canonical-continuation/worker/dist/index.js",
+      "bytes": 391638,
+      "sha256": "3505b8913f656e5b6171948ecc8170b4134519ad0e2b3694ee533c4527b6d586"
+    },
+    "nodeReferenceSource": "58cd0ee43b94dd1a1c80191125e6d177e37aaa3a",
+    "cells": [
+      {
+        "runtime": "node",
+        "productSteps": 20,
+        "operationCases": 14,
+        "providerHttpRequests": 15,
+        "databaseUnavailableMs": 45002,
+        "initialReadinessStatus": 503,
+        "prolongedReadiness": {
+          "timeoutMs": 5000
+        },
+        "livenessStatus": 200,
+        "recoveredReadinessStatus": 200,
+        "cleanServerExits": 3,
+        "cleanWorkerExits": 4
+      },
+      {
+        "runtime": "rust",
+        "productSteps": 20,
+        "operationCases": 14,
+        "providerHttpRequests": 15,
+        "databaseUnavailableMs": 45002,
+        "initialReadinessStatus": 503,
+        "prolongedReadiness": {
+          "status": 503
+        },
+        "livenessStatus": 200,
+        "recoveredReadinessStatus": 200,
+        "cleanServerExits": 3,
+        "cleanWorkerExits": 4
+      }
+    ],
+    "sharedAssertions": [
+      "The same server and worker processes remain alive. The original provider connection stays open and sees exactly one embedding request.",
+      "The original attempt records one completed receipt after database recovery. Existing usage rows remain identical. Replaying the same operation is rejected without another provider request.",
+      "A fresh decision completes with its own receipt after recovery. The 14 normalized operation outcomes match across the two implementations."
+    ],
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-postgres-outage/paired-postgres-outage-liveness.json",
+      "bytes": 927541,
+      "sha256": "2af13949dc68f008f5cac16382cbd68167cad5b567fc9e83a9a279b843e5de15"
+    },
+    "log": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-postgres-outage/paired-postgres-outage-liveness.log",
+      "bytes": 3602,
+      "sha256": "0a98a04f19b6062db70bdbd23829b9b2124f5549e1bcf7180f5bd25b147b324f"
+    }
+  },
   "remaining": [
-    "Current installed Windows and Linux package coverage, active-operation server or dependency interruption, and long-outage acceptance."
+    "Windows package model-operation acceptance and active server-process interruption outside macOS.",
+    "Active Redis interruption, settlement while external PostgreSQL is unavailable, and database outages longer than the exercised 45 seconds."
   ]
 }

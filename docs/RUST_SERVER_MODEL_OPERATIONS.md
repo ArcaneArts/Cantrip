@@ -32,6 +32,20 @@ the runs observed 130 provider requests, 10 intentional worker losses and
 42 clean server exits.
 [1.1.2976 model-operation evidence](security/rust-server-2976-darwin-arm64-model-operations.json)
 
+The macOS ARM64 package also completed a protected embedding through a
+45-second external PostgreSQL outage. The original provider connection stayed
+open while the database was down. After PostgreSQL restarted on the same port,
+the worker completed the embedding, recorded one usage receipt, and executed a
+fresh decision. Replaying the original operation produced no additional
+provider request. The same server and worker processes stayed alive.
+
+Both Rust and the Node reference passed all 14 operation cases in this
+scenario. Both returned HTTP 503 immediately after PostgreSQL stopped and
+HTTP 200 after recovery. During the outage, Rust continued returning HTTP 503
+from readiness while the Node reference exceeded the five-second readiness
+probe deadline. Both returned HTTP 200 from liveness. The provider replied
+after database recovery, so receipt settlement during an outage is still open.
+
 ## Product assertions
 
 `actual-folder-client.mjs --model-operations` uses production server executables

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { eventually } from "./full-worker.mjs";
 import { modelOperationProvider } from "./model-operation-provider.mjs";
 import { repositoryRoot } from "./build.mjs";
@@ -12,6 +13,7 @@ export async function actualModelOperationsClient({
   stopWorker,
   crashWorker,
   workerProcessForInterruption,
+  postgresOutage,
   requests,
   result,
 }) {
@@ -274,6 +276,132 @@ export async function actualModelOperationsClient({
         (row) => row.executionAttemptId === wires.get(name).operationId,
       ),
       retained,
+    );
+  };
+  const exercisePostgresOutage = async () => {
+    const name = "active-postgres-outage";
+    const plan = provider.reply("embedding", { hold: true });
+    await begin(name, "embedding", { timeout: 120_000 });
+    await eventually(
+      () => plan.entered,
+      (entered) => assert.equal(entered, true),
+    );
+    const wire = JSON.parse(requestFor("embedding").body);
+    const before = await eventually(rows, (current) => {
+      const attempts = current.filter(
+        (row) => row.executionAttemptId === wire.operationId,
+      );
+      assert.equal(attempts.length, 1);
+      assert.equal(attempts[0].attemptStatus, "running");
+      assert.equal(attempts[0].modelOperationUsage.receipt, null);
+    });
+    const servers = (fixture.peers ?? [fixture]).map(({ server }) => server);
+    const child = workerProcessForInterruption();
+    assert.ok(child?.pid);
+    const workerStillRunning = () => {
+      assert.equal(workerProcessForInterruption(), child);
+      assert.equal(child.exitCode, null);
+      assert.equal(child.signalCode, null);
+    };
+    const probe = (pathname, timeout) =>
+      Promise.all(
+        servers.map(async ({ origin }) => {
+          try {
+            const response = await fetch(origin + pathname, {
+              signal: AbortSignal.timeout(timeout),
+            });
+            return { status: response.status, body: await response.json() };
+          } catch (error) {
+            if (error.name !== "TimeoutError") throw error;
+            return { timeoutMs: timeout };
+          }
+        }),
+      );
+    const assertDatabaseReadiness = (peer, status, code) => {
+      assert.equal(peer.status, code);
+      assert.equal(peer.body.database.engine, "postgres");
+      assert.equal(peer.body.database.status, status);
+    };
+    const outage = (report.postgresOutage = {
+      serverPids: servers.map(({ child }) => child.pid),
+      workerPid: child.pid,
+      operationId: wire.operationId,
+      before,
+    });
+    assert.equal(plan.entry.closed, false);
+    outage.stop = await postgresOutage.stop({ immediate: true });
+    assert.equal(outage.stop.requestedSignal, "SIGQUIT");
+    const stoppedAt = performance.now();
+    try {
+      outage.offline = await eventually(
+        () => probe("/readyz", 5_000),
+        (peers) =>
+          peers.forEach((peer) =>
+            assertDatabaseReadiness(peer, "unavailable", 503),
+          ),
+      );
+      await delay(Math.max(0, 40_000 - (performance.now() - stoppedAt)));
+      [outage.prolongedOffline, outage.liveness] = await Promise.all([
+        probe("/readyz", 5_000),
+        probe("/healthz", 5_000),
+      ]);
+      for (const peer of outage.liveness) {
+        assert.equal(peer.status, 200);
+        assert.equal(peer.body.status, "alive");
+      }
+      // The reference's PostgreSQL pool can still be backing off. Record that
+      // timeout explicitly and keep the Rust readiness contract mandatory.
+      outage.prolongedOffline.forEach((peer, index) => {
+        if (
+          (fixture.peers ?? [fixture])[index].kind === "node" &&
+          peer.timeoutMs
+        )
+          return;
+        assertDatabaseReadiness(peer, "unavailable", 503);
+      });
+      await delay(Math.max(0, 45_000 - (performance.now() - stoppedAt)));
+      assert.equal(plan.entry.closed, false);
+      assert.equal(plan.entry.completed, false);
+      assert.equal(provider.requests.length, report.cases.at(-1).before + 1);
+      workerStillRunning();
+    } finally {
+      outage.offlineMs = Math.round(performance.now() - stoppedAt);
+      outage.restart = await postgresOutage.start();
+    }
+    assert.notEqual(outage.stop.pid, outage.restart.pid);
+    assert.equal(outage.stop.port, outage.restart.port);
+    outage.recovered = await eventually(
+      () => probe("/readyz", 10_000),
+      (peers) =>
+        peers.forEach((peer) => assertDatabaseReadiness(peer, "ready", 200)),
+      45_000,
+    );
+    assert.equal(plan.entry.closed, false);
+    plan.release();
+    assert.equal((await finish(name, "embedding", 1)).ok, true);
+    await receipt(name, { status: "completed" });
+    assert.deepEqual(
+      (await rows()).filter(
+        (row) => row.executionAttemptId !== wire.operationId,
+      ),
+      before.filter((row) => row.executionAttemptId !== wire.operationId),
+    );
+    await replay(name, "embedding", "invalid-request");
+    provider.reply("decision");
+    await begin("after-postgres-outage", "decision");
+    assert.equal(
+      (await finish("after-postgres-outage", "decision", 1)).ok,
+      true,
+    );
+    await receipt("after-postgres-outage", { status: "completed" });
+    assert.equal((await rows()).length, report.cases.length);
+    for (const server of servers) {
+      assert.equal(server.child.exitCode, null);
+      assert.equal(server.child.signalCode, null);
+    }
+    workerStillRunning();
+    result.steps.push(
+      "the original inference survives prolonged external PostgreSQL loss, records one receipt and rejects replay after recovery",
     );
   };
   try {
@@ -600,7 +728,9 @@ export async function actualModelOperationsClient({
     result.steps.push(
       "direct operation usage survives server and worker restart exactly, and the retained provider and model route execute again",
     );
-    if (workerProcessForInterruption) {
+    if (postgresOutage) {
+      await exercisePostgresOutage();
+    } else if (workerProcessForInterruption) {
       const name = "server-crash";
       const plan = provider.reply("embedding", { hold: true });
       await begin(name, "embedding", { timeout: 8_000 });

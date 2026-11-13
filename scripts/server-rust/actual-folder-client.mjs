@@ -141,6 +141,17 @@ assert.ok(
   "Replica Redis interruption requires --server-pair and --replicas",
 );
 const postgresOutage = option("--inflight-peer") === "postgres";
+const modelPostgresOutage = process.argv.includes(
+  "--model-operation-postgres-outage",
+);
+const modelServerLoss = process.argv.includes("--model-operation-server-loss");
+assert.ok(
+  !modelPostgresOutage ||
+    (process.argv.includes("--model-operations") &&
+      databaseMode === "postgres" &&
+      !modelServerLoss),
+  "Model-operation PostgreSQL interruption requires --model-operations --database postgres and runs separately from server loss",
+);
 const goalLaneDependency = option("--task-goal-lane-dependency");
 const taskGoalFirstInputPhase = option("--task-goal-first-input-order");
 assert.ok(
@@ -1679,10 +1690,7 @@ async function flow(
       });
     }
     if (process.argv.includes("--model-operations")) {
-      const interruptServer = process.argv.includes(
-        "--model-operation-server-loss",
-      );
-      if (interruptServer) assert.ok(fixture instanceof SingleProductFixture);
+      if (modelServerLoss) assert.ok(fixture instanceof SingleProductFixture);
       if (!worker) await startWorker();
       await actualModelOperationsClient({
         page,
@@ -1691,9 +1699,11 @@ async function flow(
         startWorker,
         stopWorker,
         crashWorker,
-        workerProcessForInterruption: interruptServer
-          ? () => worker?.child
-          : undefined,
+        workerProcessForInterruption:
+          modelServerLoss || modelPostgresOutage
+            ? () => worker?.child
+            : undefined,
+        postgresOutage: modelPostgresOutage ? postgres.cluster : undefined,
         requests,
         result,
       });
@@ -1883,11 +1893,15 @@ try {
     ],
   });
   await vite.listen();
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({
+    headless: true,
+    executablePath: process.env.CANTRIP_TEST_BROWSER_BINARY || undefined,
+  });
   if (databaseMode !== "pglite")
     postgres = await postgresFixture(path.join(root, "postgres"), {
       restartable:
         postgresOutage ||
+        modelPostgresOutage ||
         goalLaneDependency === "postgres" ||
         Boolean(taskGoalTransferDependency),
     });
