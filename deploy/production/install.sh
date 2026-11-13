@@ -85,6 +85,19 @@ restart_server() {
   systemctl restart cantrip-server.service
 }
 
+wait_for_server() {
+  # Startup includes database recovery and loading persisted state. Give both
+  # the candidate and the restored release the same time to serve readiness.
+  local deadline=$((SECONDS + 120))
+  while ((SECONDS < deadline)); do
+    if curl --max-time 2 --fail --silent http://127.0.0.1:4310/readyz >/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 finish() {
   result=$?
   trap - EXIT INT TERM
@@ -115,15 +128,7 @@ finish() {
     fi
     if [[ $previous_server_active == true ]]; then
       restart_server
-      recovered=false
-      for _ in $(seq 1 30); do
-        if curl --max-time 2 --fail --silent http://127.0.0.1:4310/readyz >/dev/null; then
-          recovered=true
-          break
-        fi
-        sleep 1
-      done
-      if [[ $recovered == true ]]; then
+      if wait_for_server; then
         echo "Deployment failed; the previous release is ready with its restored configuration." >&2
       else
         echo "Deployment failed; restored the previous release and configuration, but readiness still fails." >&2
@@ -186,16 +191,8 @@ mv -Tf /opt/cantrip/current.next /opt/cantrip/current
 systemctl restart caddy.service
 restart_server
 
-ready=false
-for _ in $(seq 1 30); do
-  if curl --max-time 2 --fail --silent --show-error http://127.0.0.1:4310/readyz >/dev/null; then
-    ready=true
-    break
-  fi
-  sleep 1
-done
-
-if [[ $ready != true ]]; then
+if ! wait_for_server; then
+  echo "The candidate release did not serve readiness within 120 seconds." >&2
   journalctl --no-pager --lines=100 --unit cantrip-server.service >&2 || true
   exit 1
 fi
