@@ -148,7 +148,7 @@ an optimized Rust distribution. Then run from the repository root:
 node --import tsx scripts/server-rust/production-stream-benchmark.mjs \
   --runtime rust --database pglite \
   --artifact /absolute/path/to/native-server \
-  --node-directory /absolute/path/to/cantrip_server \
+  --node-directory /absolute/path/to/tests/reference-node-server \
   --root .qa/stream-comparison --payload-mib 64 --pressure --recovery
 ```
 
@@ -158,6 +158,10 @@ database-fixture executable and PostgreSQL fixture binaries through
 Every invocation gets a fresh profile under its runtime's `runs` directory;
 failed runs retain their reports. The driver requires Node/tsx for test control,
 while the native server runs its actual packaged executable.
+
+For a slow native test host, use `--startup-timeout-ms` with the same
+value for both runtimes. The report records the configured deadline, and
+the startup measurement ends when the real readiness request succeeds.
 
 ## Scope and remaining work
 

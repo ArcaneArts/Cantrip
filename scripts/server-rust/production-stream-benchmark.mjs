@@ -25,6 +25,7 @@ const { values } = parseArgs({
     "postgres-image": { type: "string", default: "postgres:18" },
     database: { type: "string", default: "pglite" },
     "payload-mib": { type: "string", default: "16" },
+    "startup-timeout-ms": { type: "string" },
     pressure: { type: "boolean", default: false },
     recovery: { type: "boolean", default: false },
   },
@@ -44,6 +45,17 @@ const nodeDirectory = values.image
       values["node-directory"] ?? process.env.CANTRIP_BENCH_NODE_DIRECTORY,
     );
 const payloadMiB = Number(values["payload-mib"]);
+const startupTimeoutMs =
+  values["startup-timeout-ms"] === undefined
+    ? undefined
+    : Number(values["startup-timeout-ms"]);
+if (startupTimeoutMs !== undefined) {
+  assert.ok(!values.image, "--startup-timeout-ms requires a native launch");
+  assert.ok(
+    Number.isSafeInteger(startupTimeoutMs) && startupTimeoutMs > 0,
+    "--startup-timeout-ms must be a positive integer",
+  );
+}
 assert.ok(
   Number.isSafeInteger(payloadMiB * 1024 * 1024) && payloadMiB > 0,
   "--payload-mib must describe a positive integer byte count",
@@ -61,6 +73,7 @@ const report = {
   nativeArtifactVersion: manifest?.version.version,
   nodeDirectory,
   payloadMiB,
+  startupTimeoutMs,
   status: "running",
   scope:
     "Production server entries and actual WorkerConnection; log production is controlled. No test-only server endpoints. Bulk worker-log JSON stream and slow consumer; not opaque WorkerLink binary throughput.",
@@ -79,6 +92,7 @@ async function start(port, directory) {
         databaseUrl,
         port,
         logs,
+        startupTimeoutMs,
       });
 }
 const state = { commands: [], background: [], disconnects: 0 };
