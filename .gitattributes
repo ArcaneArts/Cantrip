@@ -5,3 +5,6 @@ cantrip_codex/upstream/** -text -whitespace linguist-vendored
 # enable core.autocrlf; converting only the patches to CRLF makes them
 # impossible to apply to the byte-preserved upstream snapshot above.
 cantrip_codex/patches/*.patch -text -whitespace
+
+# Preserve postgres.js patch context and LF line endings across platforms.
+patches/postgres@3.4.9.patch -text -whitespace
