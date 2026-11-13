@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+  "candidateVersion": "1.1.2938",
+  "target": "win32-x64",
+  "completeReplacement": false,
+  "signedUpdate": {
+    "result": "passed",
+    "scope": "The desktop used a disposable updater key and local TLS root. The app was exercised in a local Windows 11 x64 guest under QEMU software emulation on Apple Silicon. The signed update used a retained PGlite profile. Windows Authenticode release signing and the installed three-store launch matrix are outside this update record.",
+    "databaseMode": "pglite",
+    "baselineVersion": "1.1.2881",
+    "baselineInstallerSha256": "3a28061856b63215df8508b970beea8127288284ffe3254a7897f4a09027cc5a",
+    "baselineAppSha256": "2afcde52e844ccd73f2b00587a325cdaa033704a31405801170423db612a3658",
+    "installer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/Cantrip_1.1.2938_x64-setup.exe",
+      "bytes": 256747320,
+      "sha256": "508cc4fc20ae9b63caa1cd7f3d157dd5e7083495f0bcbeab65369a35691caaa9"
+    },
+    "updaterSignature": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/Cantrip_1.1.2938_x64-setup.exe.sig",
+      "bytes": 420,
+      "sha256": "b659ba18deab48cc0269a57b1a27c5f9a85b2b5c211456b90253703b2d22a55b"
+    },
+    "updaterPublicKey": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/desktop-signed-updater.minipub",
+      "bytes": 114,
+      "sha256": "bbdb776273bfe955825f89a76f6d790f0575847a363ddfa053701939361d4809"
+    },
+    "tamperedDownloadRejected": "update_signature_invalid",
+    "verifiedInstalledFiles": 14092,
+    "installedAppSha256": "ed196f94a7fde4ffbe8eba4e7b2f350bc33a1a35eff0f99f2b8381698b506ad1",
+    "installedRustServerSha256": "e89b331fbfc5445c5a573e8782f0adbfd939ea5f52a7675f11af207b30726f4b",
+    "installedWorkerHashes": {
+      "dist/index.js": "dbe9866bec05f69098695957e183aa9c5c0a95daa9504b31a3e17f461cc89a39",
+      "bin/codex.exe": "f0db8df766e7b928f9f3f867140e7c3637ca2ef288827a9209aaf0f0d4e39138",
+      "node_modules/@zavora-ai/computer-use-mcp/computer-use-napi.win32-x64.node": "56a0e9f48bb29841fcc5c63fcb0a38454ad194f31c6f63ea6445e21d115960fb",
+      "node_modules/@zavora-ai/computer-use-mcp/vcruntime140.dll": "eb1ee979bf02324712346e5bdbfc59c785388bc50d18cc2688aae4b0734915a0"
+    },
+    "retainedServerIdentity": true,
+    "retainedWorkerIdentity": true,
+    "reopenedInterruptedProfile": true,
+    "retainedWrite": {
+      "setting": "theme",
+      "before": "dark",
+      "written": "light",
+      "reopened": "light"
+    },
+    "realWorkerReplyAfterRelaunch": "1.1.2938",
+    "shutdown": {
+      "nativeTrayQuit": true,
+      "appExit": 0,
+      "rustServerShutdownCompleted": true,
+      "rustServerAndNodeWorkerReaped": true
+    },
+    "evidence": {
+      "guestTerminalReceipt": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/desktop-signed-updater-terminal.json",
+        "bytes": 2804,
+        "sha256": "e6e1c8d77255c15d799b461ab56ee110b55e8b11b2c18c47f796a071ec8d0d11"
+      },
+      "installedPayloadVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/desktop-latest-payload-check.json",
+        "bytes": 480,
+        "sha256": "0c338a6b632a611b0dff2e92ba1662142f6e5058271ae0bcb579b5bc3181fd5a"
+      },
+      "guestObserver": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/desktop-signed-updater-observer.mjs",
+        "bytes": 9673,
+        "sha256": "ebec1c6af74287f19d9a573ab1cee036843fd65945c17a3f9ddeb48cf0b93c60"
+      },
+      "guestLauncher": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/desktop-signed-updater-launcher.ps1",
+        "bytes": 9733,
+        "sha256": "95a3772e9026dfeaaa692a9dc887921dcc0379822ad1aa663466a44641748eb6"
+      },
+      "trayMenu": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/desktop-host/readiness-nsis-signed-update-ui/signed-updated-4204-tray-menu.png",
+        "bytes": 61806,
+        "sha256": "2ba42ef2f639456ccc036bed7eb56745b0d2bf4fe35f1427b9d898cca21014d3"
+      },
+      "trayQuitConfirmation": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/desktop-host/readiness-nsis-signed-update-ui/signed-updated-4204-quit-confirmation.png",
+        "bytes": 69601,
+        "sha256": "ce7ea4f871653dc9ed5279c6053645902e5a46d022e531dcd5c9cd238ba532f3"
+      }
+    }
+  }
+}
