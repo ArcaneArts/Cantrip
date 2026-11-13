@@ -387,6 +387,13 @@ async fn run(
     if bundled_postgres_path {
         persisted_config.postgres_bin_directory = None;
     }
+    // Give the serving process one identity shared by coordination and HTTP.
+    let instance_id = (!arguments.migrate_only).then(|| {
+        config
+            .server_instance_id
+            .get_or_insert_with(|| uuid::Uuid::new_v4().to_string())
+            .clone()
+    });
     let config = Arc::new(config);
     let restore_sql = arguments
         .restore_sql
@@ -521,16 +528,10 @@ async fn run(
         owned_closed.context("close owned PostgreSQL after setup failure")?;
         return Err(error);
     }
-    if !arguments.migrate_only {
+    if let Some(instance_id) = instance_id {
         log_runtime::database_ready(database.engine(), startup_started);
         let coordination: Option<Arc<dyn RelayCoordinator>> = if let Some(url) = &config.redis_url {
-            let mut options = CoordinationOptions::new(
-                url.clone(),
-                config
-                    .server_instance_id
-                    .clone()
-                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
-            );
+            let mut options = CoordinationOptions::new(url.clone(), instance_id);
             options.maximum_instances = config.coordination_max_instances;
             options.presence_ttl_ms = config.coordination_presence_ttl_ms;
             options.logger = cantrip_server::operations::logging::server_logger();
