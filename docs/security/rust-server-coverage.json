@@ -30676,6 +30676,7 @@
         "passedCases": 6,
         "verifiedFiles": 14091,
         "onlyChangedEntry": "runtime/worker/dist/index.js",
+        "signedPgliteUpdate": "passed from 1.1.2938 with tampering rejected and clean tray shutdown",
         "installerSha256": "c9aad6b0695e048964d2b86f772f2ff8974ae169cf9e6dee1dddac68447a508f",
         "verificationReportSha256": "1e8594e9d3d069a167bc5324d6eeb94fa77f3a59b21241b02afcfaa8a1c2ab83",
         "scope": "Local QA updater signature and NSIS payload verified. All three stores passed installed first launch, retained-profile reopen and clean tray shutdown in the Windows x64 guest."
@@ -30683,8 +30684,8 @@
     }
   },
   "remainingAcceptance": [
-    "Finish canonical-history CLI and model-operation acceptance on Windows x64. Exercise the signed desktop update with the merged worker fix.",
-    "Qualify active database and Redis interruption and prolonged outages during model operations, and reconcile the still-open background-service and product recovery comparisons.",
+    "Finish canonical-history CLI and model-operation acceptance on Windows x64. Qualify the later worker grant refresh from PR #3012 in the Windows package.",
+    "Qualify active Redis interruption, receipt settlement while PostgreSQL is unavailable, and outages longer than the 45-second PostgreSQL rehearsal. Reconcile the still-open background-service and product recovery comparisons.",
     "Complete the remaining inventory-level behavior evidence, including malformed, Unicode and deep-JSON inputs, serialization for authenticated metadata, encrypted boundaries and protocol ordering.",
     "Qualify installed iOS native QR and remaining physical-camera and distribution-signed mobile scenarios.",
     "Complete residual performance coverage for sustained backpressure, interruption recovery and representative Windows and Linux runtimes.",

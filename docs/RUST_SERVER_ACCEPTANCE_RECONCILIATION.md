@@ -38,19 +38,26 @@ below apply to the exact binaries and worker entries identified by their reports
   stores in the Windows x64 VM. All six cases verified the installed hashes,
   worker replies and child exit. The bundled database shut down with Cantrip,
   and the external cluster stayed up through both application exits.
+  The same repack passed the signed PGlite upgrade from `1.1.2938`.
+  The updater rejected a modified download, installed the signed installer
+  and relaunched with the same server identity, worker enrollment and
+  pre-update theme. Tray quit exited zero and reaped both services.
   The earlier Windows CLI PGlite fixture timed out waiting for canonical
   history. Its database retained both completed turns, and the final worker
   acknowledgment arrived after the last browser poll. The revised fixture
-  from #3009 passed on macOS PGlite. The Windows CLI rerun and signed update
-  of the repack remain open.
+  from #3009 passed on macOS PGlite. The Windows CLI rerun exposed a separate
+  worker grant refresh race. The fix merged in #3012 and needs Windows
+  qualification with the updated worker.
   [Windows package report](security/rust-server-2976-win32-x64-packages.json)
 - **Model operations and WorkerLink.** The macOS and Linux reports cover native
   model operations on all three stores. Linux recorded 72 operations, 114
   product steps and 18 clean server exits. The macOS server-loss matrix covered
   all three store pairs and six forced server deaths. The macOS WorkerLink
   report includes shared routing, forced loss and repeated PGlite recovery.
-  Windows model operations and active database or Redis interruption during
-  inference still need qualification.
+  On macOS, Rust and the Node reference each kept an in-flight inference
+  through a 45-second external PostgreSQL outage and recorded one usage
+  receipt after recovery. Windows model operations and active Redis
+  interruption during inference still need qualification.
   [macOS model operations](security/rust-server-2976-darwin-arm64-model-operations.json),
   [macOS server loss](security/rust-server-2976-darwin-arm64-model-operation-server-loss.json),
   [Linux model operations](security/rust-server-2976-linux-model-operations.json),
