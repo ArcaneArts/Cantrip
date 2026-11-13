@@ -421,6 +421,35 @@ RSS includes the private database process. External PostgreSQL RSS
 covers the server tree, with the database running separately.
 [Packaged populated-profile record](security/rust-server-2938-darwin-arm64-populated-performance.json)
 
+### Packaged macOS ARM64 1.1.2976
+
+The current standalone Rust package and the compiled 1.1.2964 Node reference
+completed 130 invocations across five configurations, with one pilot, five
+warmups, and 20 measured runs per configuration. All runs matched the project,
+chat catalog, 50-message page, and 3.14 MB full-history payload digests. Both
+paired stores passed the 5% threshold on complete-workload median and p95.
+The five configurations ran sequentially on a shared Mac with variable QA
+load, which is recorded in the report.
+
+| Median across measured runs | Node PGlite | Rust PGlite | Node external PostgreSQL | Rust external PostgreSQL | Rust bundled PostgreSQL |
+| --------------------------- | ----------: | ----------: | -----------------------: | -----------------------: | ----------------------: |
+| Complete workload, ms       |       6,463 |       2,958 |                    4,488 |                    2,847 |                   3,942 |
+| Readiness, ms               |       1,807 |         167 |                    1,246 |                       89 |                     246 |
+| Idle server-tree RSS, MiB   |       1,302 |         103 |                      461 |                       66 |                     380 |
+| Project list, ms            |       10.76 |        6.67 |                     6.13 |                     7.80 |                   10.26 |
+| 50-message page, ms         |        6.12 |        3.15 |                     4.15 |                     3.86 |                    5.22 |
+| 1,024-message history, ms   |       42.92 |       31.27 |                    28.15 |                    35.09 |                   43.56 |
+| Eight-client reads, req/s   |         214 |         398 |                      473 |                    1,147 |                     764 |
+
+External PostgreSQL project-list and full-history medians increased by
+1.68 ms and 6.94 ms. Full-history p95 across run medians increased from
+34.61 ms to 40.93 ms. This workload accepts the tradeoff based on the
+faster paginated history and settings writes, 2.42× mixed-read throughput,
+and a 36.56% reduction in the complete-workload median. Bundled PostgreSQL
+RSS includes the private database process. External PostgreSQL ran as a
+separate process. This sample covers one local server per configuration.
+[Packaged 1.1.2976 performance record](security/rust-server-2976-darwin-arm64-populated-performance.json)
+
 ## Earlier local repository checks
 
 The current Node production build, scoped formatting, server-boundary inventory,

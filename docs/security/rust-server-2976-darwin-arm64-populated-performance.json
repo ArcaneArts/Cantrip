@@ -1,0 +1,976 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "92ed534fa5b1bef8dfcf60a21b9784e159c6a655",
+  "driverCheckout": "0270b780f098064cc7dcf44e2551bec153227646",
+  "candidateVersion": "1.1.2976",
+  "target": "darwin-arm64",
+  "completeReplacement": false,
+  "methodology": {
+    "pilotsPerCell": 1,
+    "warmupsPerCell": 5,
+    "measurementsPerCell": 20,
+    "completeWorkloadRegressionThresholdPct": 5,
+    "runOrder": [
+      "node-pglite",
+      "rust-pglite",
+      "node-postgres",
+      "rust-postgres",
+      "rust-bundled-postgres"
+    ],
+    "scope": "Sequential local production processes with the same dataset restored into each backend. The complete workload includes process startup, HTTP reads and writes, App Live and shutdown. Idle RSS sums only the server process tree. External PostgreSQL runs separately. The fixture does not measure fleet throughput or a deployment restart. Application payload digests match across all 130 invocations. Rust bundled PostgreSQL includes its private database processes in server-tree RSS and has no paired Node owner.",
+    "hostLoad": "Cells ran sequentially on a shared macOS host with variable load from local QA. Per-cell load measurements are included."
+  },
+  "evidence": {
+    "suite": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/suite-status.json",
+      "bytes": 4926,
+      "sha256": "04ec0e17d4c0e26bc83616c9ad8c2632616e43e99c230bfe5f9129b4c93478ca"
+    },
+    "environment": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/environment.txt",
+      "bytes": 567,
+      "sha256": "4d596f62586a474f6870cb397ed0b54ddd101044961fa0d81d55bb67ac0d4307"
+    },
+    "driver": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/run-populated-benchmark.mjs",
+      "bytes": 13258,
+      "sha256": "1dd8eb81238a1711c7ec3411d59773f49fe9d6eea38140e88d241c96b77d8aa8"
+    },
+    "orchestrator": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/run-populated-suite.mjs",
+      "bytes": 5900,
+      "sha256": "9b49d00ec9c76b73e5ac987e15371f15b2f9d11d462b0a742d13bc7c7e83ec8a"
+    },
+    "artifactInputs": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/inputs.sha256",
+      "bytes": 1305,
+      "sha256": "50ca89cfd8b256a3802b7c8488749982edfed5340c50ce7cdb37a7410f260e10"
+    }
+  },
+  "cells": {
+    "node-pglite": {
+      "timing": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/node-pglite-capture.json",
+        "bytes": 1810,
+        "sha256": "cfb12ce53c0143788188fd34cf0ce52f64dc144876d98b7385ec3ff97ba8cf54"
+      },
+      "measuredJsonFiles": [
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579393015-7133.json",
+          "bytes": 3580,
+          "sha256": "2dd12e8e85e52a09d783d68d05c502e0b7be6c4728a93cb945018c7abcdd8e9a"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579398410-7355.json",
+          "bytes": 3582,
+          "sha256": "4de8e5cacc8edd912878f788466bf5627ca83f4c4b8a91d89fa02c38f4268fd6"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579404313-7512.json",
+          "bytes": 3576,
+          "sha256": "5177c65e9aaf0f2c497f40a9188d90d501adf4e11661209edf5c6c8a958c7899"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579410314-7685.json",
+          "bytes": 3584,
+          "sha256": "2b1b68c827a527ebb618d0e94f055d245fb71f99237d2599a11ad968285a2309"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579418773-7894.json",
+          "bytes": 3551,
+          "sha256": "754591397486413c472105bebd664aaf3c24989b6ac8d75eaaf3469326959a97"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579425082-8176.json",
+          "bytes": 3563,
+          "sha256": "cc5a1732262e53bb1bcdd012ed3fdb7cf718b3de10337175b8a24d527b3fa7fc"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579430338-8357.json",
+          "bytes": 3582,
+          "sha256": "a5476c3dbba08236aecaa705833242fa7bf499f72f3603803e9569a05cdcb93f"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579435691-8577.json",
+          "bytes": 3582,
+          "sha256": "9604dceae4e6b7173ecd9c1d49af60496ddd78c7170b92ef670dc327aceab259"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579440938-8788.json",
+          "bytes": 3583,
+          "sha256": "0da54b890901f8f5247603ec66bda252d181124bd25038dac58e80e60c2b22b2"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579446205-8961.json",
+          "bytes": 3572,
+          "sha256": "d733d417edbdfab597fe9c19c4debf311d22f9e3685e72c356c277b522eb6147"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579451987-9127.json",
+          "bytes": 3584,
+          "sha256": "fd6b25e8231d8808d4629f80cc8171fafb9f7cba19f404b09a968039c6d8900e"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579458611-9382.json",
+          "bytes": 3583,
+          "sha256": "c6a6de1ad6409f6a9b051fa9a16d6f75c624b64862e096f48267036f327cbf46"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579466218-9576.json",
+          "bytes": 3577,
+          "sha256": "2ffa948f0a5a718c72f0b10d4d05ad5769e27d97aff543d73fdb13c60c32a2a6"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579474035-9774.json",
+          "bytes": 3578,
+          "sha256": "1b0ab6724d45cdf569b43350962d5fb7d669c3b2eb6915058f0f06d9422c4e53"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579481717-9961.json",
+          "bytes": 3591,
+          "sha256": "c24faa0e6fdc984fda932a5bb3c8b083f6008bcaab828f2eaf038b31ea803cd9"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579490380-10290.json",
+          "bytes": 3577,
+          "sha256": "59eb412833785ceeabebbfcb8ea75b81fa78443a3fd8ae3ee0e1899fe3c1cd99"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579498990-10582.json",
+          "bytes": 3591,
+          "sha256": "b5fe9bf995b7afb30c7262fc00c6195df6bd3f6489c63b3a9bf80ad37b6f9395"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579510271-10772.json",
+          "bytes": 3581,
+          "sha256": "514b54be444ea0fcc880c88884891b39d94d44c7016e88b215612ab0d94cd41a"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579531143-11165.json",
+          "bytes": 3574,
+          "sha256": "2bd53bdf4532a0e143952b791a1029ac978005e3636521d105450b1ec062c493"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-pglite/1794579550711-12253.json",
+          "bytes": 3584,
+          "sha256": "2b5991626f29a42a8f21d0c5eb835b6ce4995501d0cc157cf92aae2d7243a7b9"
+        }
+      ],
+      "metrics": {
+        "completeWorkloadMs": {
+          "median": 6462.87,
+          "p95": 19571.779
+        },
+        "readinessMs": {
+          "median": 1807.476,
+          "p95": 4871.592
+        },
+        "idleRssKiB": {
+          "median": 1333728.0,
+          "p95": 1343158.4
+        },
+        "projectListMs": {
+          "median": 10.759,
+          "p95": 17.205
+        },
+        "chatListMs": {
+          "median": 2.345,
+          "p95": 4.429
+        },
+        "historyPageMs": {
+          "median": 6.124,
+          "p95": 9.246
+        },
+        "fullHistoryMs": {
+          "median": 42.917,
+          "p95": 97.74
+        },
+        "mixedReadsPerSecond": {
+          "median": 213.973,
+          "p95": 278.064
+        },
+        "settingsWriteMs": {
+          "median": 6.143,
+          "p95": 11.692
+        },
+        "livePingMs": {
+          "median": 0.135,
+          "p95": 0.54
+        },
+        "enrollmentPublicationMs": {
+          "median": 6.751,
+          "p95": 11.318
+        },
+        "pausedConsumerCatchupMs": {
+          "median": 0.901,
+          "p95": 3.832
+        },
+        "shutdownMs": {
+          "median": 71.872,
+          "p95": 481.458
+        },
+        "hostLoadAverage1m": {
+          "median": 16.796,
+          "p95": 21.555
+        }
+      }
+    },
+    "rust-pglite": {
+      "timing": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/rust-pglite-capture.json",
+        "bytes": 1808,
+        "sha256": "37bfed6b888db1217763f0eeb7e63f4d7b145c93ca3812026ca4fa9c809ac635"
+      },
+      "measuredJsonFiles": [
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579602414-14740.json",
+          "bytes": 3591,
+          "sha256": "8c4d03bef570a437f2ed6c83680a7e21aeb8c24eaa3059f28dc259cde1c489ad"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579608290-14955.json",
+          "bytes": 3591,
+          "sha256": "197f609ea0e5730616892c7e0faa0ae03c08ff83217a3e7d9758de87914019c7"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579614216-15412.json",
+          "bytes": 3586,
+          "sha256": "80287ac0586e1279af1d28e3385ddd5e8c783eb84d0b0877aa7120f329796808"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579618989-15622.json",
+          "bytes": 3586,
+          "sha256": "4c40c749e58d38e0658cd489f9add38347c36ac869b4c65ecad89fd1445979bf"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579623084-15806.json",
+          "bytes": 3585,
+          "sha256": "e15654909727a924694cda5aaa08b79fcc63b1358794173cfec87a9e09e2c0ce"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579626793-15933.json",
+          "bytes": 3589,
+          "sha256": "8307f91d71835b779340e2d861cf96be6f6f4823b230ba647869e5cbb85375f6"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579630288-16062.json",
+          "bytes": 3591,
+          "sha256": "76f02674e836ed437c9612315422f6d79870f0b7af71d66998b4e40221e7e6bd"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579633672-16210.json",
+          "bytes": 3596,
+          "sha256": "e5702f22ad488aaf704ba6f110f6a27275dd6b6469a3a9463faa88dfcefa2b2c"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579636733-16326.json",
+          "bytes": 3577,
+          "sha256": "f26dee8fdf29b870de0b064869a6a31f31ec39081746a21d13ed1725359bc272"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579639658-16443.json",
+          "bytes": 3585,
+          "sha256": "fa98d01d7ac5d8c86c06a6a7214b68ea90e22b7c25d619a693f18b2bddb2245e"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579642650-16552.json",
+          "bytes": 3583,
+          "sha256": "44fb1fc72d14e9fbde7f3764b35f890535a10de75ad3d1eba7300ea7565ad0f5"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579645482-16675.json",
+          "bytes": 3595,
+          "sha256": "e4dd92b482fcd8f3e17c73e6188625aea61eadc3123178eb8bd6a9f0c10e6f7d"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579648296-16794.json",
+          "bytes": 3588,
+          "sha256": "b6809542f3ad5db376a9c287df3ff192fd979b7f82bd0626cba7ba5a2d7743c2"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579651144-16924.json",
+          "bytes": 3593,
+          "sha256": "a166a195592de7e5acd5f2fb9df3e50a6a2a0146e6ca1f91284a35bbe3a654f1"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579654055-17006.json",
+          "bytes": 3578,
+          "sha256": "ee9b165d54ab29a9d767d33d43e9319cd12b33de5da6cef229bc371182b4dd89"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579656869-17171.json",
+          "bytes": 3590,
+          "sha256": "4d979dd7c805960056ff779ef669941ae2ba1efbc55efd37773165980c23ada9"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579659746-17261.json",
+          "bytes": 3597,
+          "sha256": "c00e737a47b76ac2cc22cab262dfc18bd9b531a4b769678ec482a39d9a252129"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579662536-17467.json",
+          "bytes": 3594,
+          "sha256": "580f2826322caf9414dc2d427b16c90b3189e8fdd31d099fc6a58cb36d43dfbd"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579665398-17551.json",
+          "bytes": 3586,
+          "sha256": "e6922d5c49bdf008a7da5d5689396ed155e3f6278c75384c4e015e5281aaf12a"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-pglite/1794579668272-17649.json",
+          "bytes": 3590,
+          "sha256": "9dd7470796195d6edae9ffa5e0d0a1d1ce0f4007359e3566e6356d17f6f6379c"
+        }
+      ],
+      "metrics": {
+        "completeWorkloadMs": {
+          "median": 2958.324,
+          "p95": 5898.142
+        },
+        "readinessMs": {
+          "median": 166.864,
+          "p95": 282.403
+        },
+        "idleRssKiB": {
+          "median": 105800.0,
+          "p95": 106620.0
+        },
+        "projectListMs": {
+          "median": 6.669,
+          "p95": 12.087
+        },
+        "chatListMs": {
+          "median": 1.324,
+          "p95": 2.662
+        },
+        "historyPageMs": {
+          "median": 3.151,
+          "p95": 6.099
+        },
+        "fullHistoryMs": {
+          "median": 31.266,
+          "p95": 52.248
+        },
+        "mixedReadsPerSecond": {
+          "median": 398.423,
+          "p95": 426.556
+        },
+        "settingsWriteMs": {
+          "median": 2.011,
+          "p95": 4.335
+        },
+        "livePingMs": {
+          "median": 0.083,
+          "p95": 0.193
+        },
+        "enrollmentPublicationMs": {
+          "median": 2.585,
+          "p95": 5.031
+        },
+        "pausedConsumerCatchupMs": {
+          "median": 0.732,
+          "p95": 1.264
+        },
+        "shutdownMs": {
+          "median": 7.377,
+          "p95": 17.81
+        },
+        "hostLoadAverage1m": {
+          "median": 136.387,
+          "p95": 181.322
+        }
+      }
+    },
+    "node-postgres": {
+      "timing": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/node-postgres-capture.json",
+        "bytes": 1811,
+        "sha256": "28fecbd3138767874843060c24306d92b41d728b177ab5a81c56b8bb101d3225"
+      },
+      "measuredJsonFiles": [
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579692919-20140.json",
+          "bytes": 3597,
+          "sha256": "46c2abfdcbfde66964b510f7616f91d968702de3005eb138b38c475039e92e6c"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579697773-20844.json",
+          "bytes": 3589,
+          "sha256": "dfa8ba79401b27cdbb2774f1bb934b65be170624b5ecd61ef1ab0e7863a2ec63"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579702503-20993.json",
+          "bytes": 3585,
+          "sha256": "eaffbc887c2f6dc75c390760c37fe80755df786813c90fc32be18f89cc696df0"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579707232-21158.json",
+          "bytes": 3598,
+          "sha256": "832412cef6f655755f7fd0a51d053e32cac944fd453591335df0b3cab0ae7559"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579711872-21889.json",
+          "bytes": 3587,
+          "sha256": "db8d02964cd441543c92ba6f2edd62fa4e7b5db5c1fc41a73850ad055aa10b9a"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579716670-22276.json",
+          "bytes": 3587,
+          "sha256": "cca9e85c9fe1f5da0c1347b89762e8d9ee9710b8efeb32da4b36575bc052d4d1"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579721310-22569.json",
+          "bytes": 3592,
+          "sha256": "e4b55cefd1d443cd0413052c3cf096ae3cfd2c522975bf29f11e66b6ef9ee95f"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579725549-22785.json",
+          "bytes": 3594,
+          "sha256": "e418633fc2041b372a251a993490c878d03afc94df19ece9f79d39e0824c9c85"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579729937-22922.json",
+          "bytes": 3584,
+          "sha256": "cb64862ce30ea79f5b0b877865de02806ca5d316e229404374fbd273384e5f02"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579734434-23074.json",
+          "bytes": 3577,
+          "sha256": "3d8f9230effaf72833f6a2dfe7d984509e321045784c371619e152f6aaaafedd"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579738999-23219.json",
+          "bytes": 3583,
+          "sha256": "55b23cf45edb366f38307cb168055c90af86f0b1c71c0fe55e0f51b46d3eeee5"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579743217-23392.json",
+          "bytes": 3589,
+          "sha256": "1150b2182be005016fb78a7ac92d0bb865c1808d5e329285c815706966f8f0e0"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579748289-23535.json",
+          "bytes": 3586,
+          "sha256": "3789350760e9d3be5a0cc8c2caea633afe1c6d8416458c89a2810e76e673a6dc"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579752738-23690.json",
+          "bytes": 3579,
+          "sha256": "eecb19ddcd359cacdffa855119885ef320a8b754627710d3db01e4ea6c138129"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579757039-23883.json",
+          "bytes": 3580,
+          "sha256": "70e097e43d0de49bc254f5f2606ef32dc60f3c6092bd219f8fd3f4692b5c586e"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579761412-24046.json",
+          "bytes": 3580,
+          "sha256": "42e1e7bb00f1d898c649470a2d1cbba79ed0ec1521bf088000d40f67b4585018"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579765868-24233.json",
+          "bytes": 3593,
+          "sha256": "3ccdf01207980203363718d274f8d8d785cf77c943d58a94012a7e34e160c926"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579770342-24389.json",
+          "bytes": 3595,
+          "sha256": "c0a2c775f069c85d4bf3212d820cae5571524372168da2838a7437090709a5ee"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579774561-24533.json",
+          "bytes": 3602,
+          "sha256": "4f2ea7836f885406ada50363a3babbde62c9bfb403e56dad5dfa3c7ceac1bde2"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/node-postgres/1794579778952-24667.json",
+          "bytes": 3587,
+          "sha256": "5325528212c6c6f4943eb38f5d741dd1162e88b13c9393b41eb7493e993fe7c4"
+        }
+      ],
+      "metrics": {
+        "completeWorkloadMs": {
+          "median": 4487.862,
+          "p95": 5030.94
+        },
+        "readinessMs": {
+          "median": 1245.843,
+          "p95": 1455.302
+        },
+        "idleRssKiB": {
+          "median": 472112.0,
+          "p95": 475136.0
+        },
+        "projectListMs": {
+          "median": 6.125,
+          "p95": 7.468
+        },
+        "chatListMs": {
+          "median": 1.65,
+          "p95": 2.05
+        },
+        "historyPageMs": {
+          "median": 4.153,
+          "p95": 5.124
+        },
+        "fullHistoryMs": {
+          "median": 28.148,
+          "p95": 34.612
+        },
+        "mixedReadsPerSecond": {
+          "median": 473.195,
+          "p95": 518.922
+        },
+        "settingsWriteMs": {
+          "median": 3.456,
+          "p95": 4.24
+        },
+        "livePingMs": {
+          "median": 0.137,
+          "p95": 0.186
+        },
+        "enrollmentPublicationMs": {
+          "median": 5.944,
+          "p95": 7.537
+        },
+        "pausedConsumerCatchupMs": {
+          "median": 0.906,
+          "p95": 1.021
+        },
+        "shutdownMs": {
+          "median": 27.035,
+          "p95": 31.878
+        },
+        "hostLoadAverage1m": {
+          "median": 39.277,
+          "p95": 63.32
+        }
+      }
+    },
+    "rust-postgres": {
+      "timing": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/rust-postgres-capture.json",
+        "bytes": 1809,
+        "sha256": "1efd941ab325180ba17262a20030e4bac17819fddf923a7dc0f0f2914a8b3393"
+      },
+      "measuredJsonFiles": [
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579794317-25755.json",
+          "bytes": 3589,
+          "sha256": "99bbab9b5bca2f3137a92b9e7d7bda3563095457101a02ebe5b370038ec1e2e3"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579796784-25878.json",
+          "bytes": 3579,
+          "sha256": "f546e2afc17ae018ca3a0888f41b835a1f895c3d0ceaf0808a7873602fa47f15"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579799314-25966.json",
+          "bytes": 3590,
+          "sha256": "9f37868ff89c4e5d1342b8c93c190a9fe959cae778222026b0e8b5a5d9a2fae6"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579802144-26103.json",
+          "bytes": 3589,
+          "sha256": "c413c01b8000c0b5b844c074151bb8719ebf0c63102401a05410d3dc0c7e3066"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579804932-26253.json",
+          "bytes": 3586,
+          "sha256": "3cffa1304e695c48739faf89ee2915a7af68a546ef856ccab92c5265fe0b8b43"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579807578-26348.json",
+          "bytes": 3586,
+          "sha256": "33beb870e682fd482fcef8a458fd34982b0c418f209c5085cf7fe0fbe6e7d5a7"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579810493-26444.json",
+          "bytes": 3587,
+          "sha256": "5881fb6ce9eb3c1563f17a85753cc5c98e331a35ec80fbe1f0674a47b35f6dfd"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579813210-26619.json",
+          "bytes": 3590,
+          "sha256": "414c686dd62998fe647456e1d9524bbded042bb40af53a279eec4344e595bcb1"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579815810-26716.json",
+          "bytes": 3589,
+          "sha256": "0046c70224719b9c12c2945e519bb6dacf61776e2639aa01291da82f162cc87a"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579818572-26847.json",
+          "bytes": 3578,
+          "sha256": "c9c645d10bb4e2c9872ba7be78fb0f94094901e38637b3c2ac1796b0e2b6f634"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579821537-26944.json",
+          "bytes": 3586,
+          "sha256": "5681630e573d0145ad85cb0469f86a862f38d35dd745834c18d6b067820756ed"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579824649-27108.json",
+          "bytes": 3584,
+          "sha256": "2196543a7290bc3cabb6c0bba213eff545026fb20ffe600f289b4087e112b856"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579827561-27252.json",
+          "bytes": 3587,
+          "sha256": "20eebfb47be5a695c6d267e088d8a871961c9cd65be087a44ada1e927c28f6c7"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579831213-27345.json",
+          "bytes": 3589,
+          "sha256": "4bfc7d95b37c4e49b7064dc890bc907a178b2ab3acf2ac9730ee9511132afe2d"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579834364-27479.json",
+          "bytes": 3587,
+          "sha256": "cb7c589ed8b3b223a3c4857c32c84bc4f149430ed5d1306aeda9bff4537c6aa7"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579837314-27599.json",
+          "bytes": 3591,
+          "sha256": "279f42f9cfd74e710ce1a80f08d200410f9132d2e7bfe959cc03958427c48766"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579840176-27718.json",
+          "bytes": 3575,
+          "sha256": "5d09ea01d46d368d87d1fa21bbc530b05e557402f54b3acde2654c70e5f79b6a"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579842961-27884.json",
+          "bytes": 3588,
+          "sha256": "7b37fa182c7ef873c8212af237a1a14f9d3852bc81e11f2b40b67ffd7a8d379f"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579846040-28002.json",
+          "bytes": 3584,
+          "sha256": "c81392daff5088b0905286b020153928c375db64b16ecae831fe8c7eff73c8b1"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-postgres/1794579849023-28167.json",
+          "bytes": 3580,
+          "sha256": "2bdbe874a99391aeefe8042a76e0e7991c1581bbc7de653b2a0abf7e56b661e9"
+        }
+      ],
+      "metrics": {
+        "completeWorkloadMs": {
+          "median": 2846.888,
+          "p95": 3147.814
+        },
+        "readinessMs": {
+          "median": 89.457,
+          "p95": 117.933
+        },
+        "idleRssKiB": {
+          "median": 67288.0,
+          "p95": 67489.6
+        },
+        "projectListMs": {
+          "median": 7.802,
+          "p95": 9.177
+        },
+        "chatListMs": {
+          "median": 1.457,
+          "p95": 1.736
+        },
+        "historyPageMs": {
+          "median": 3.863,
+          "p95": 4.676
+        },
+        "fullHistoryMs": {
+          "median": 35.092,
+          "p95": 40.933
+        },
+        "mixedReadsPerSecond": {
+          "median": 1146.661,
+          "p95": 1432.219
+        },
+        "settingsWriteMs": {
+          "median": 2.213,
+          "p95": 3.391
+        },
+        "livePingMs": {
+          "median": 0.115,
+          "p95": 0.152
+        },
+        "enrollmentPublicationMs": {
+          "median": 4.09,
+          "p95": 5.24
+        },
+        "pausedConsumerCatchupMs": {
+          "median": 0.873,
+          "p95": 1.558
+        },
+        "shutdownMs": {
+          "median": 7.064,
+          "p95": 9.184
+        },
+        "hostLoadAverage1m": {
+          "median": 20.463,
+          "p95": 22.713
+        }
+      }
+    },
+    "rust-bundled-postgres": {
+      "timing": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/rust-bundled-postgres-capture.json",
+        "bytes": 1832,
+        "sha256": "dc33e58a47d69f5c33a573d85b9085074e933d20dc55aa12a311d5b3d33e6e41"
+      },
+      "measuredJsonFiles": [
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579868371-28944.json",
+          "bytes": 6175,
+          "sha256": "d6250743c10cd653921e305bf80887e59cca73b7c07039d47ba7727049e8b728"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579871593-29127.json",
+          "bytes": 6168,
+          "sha256": "f3992b9224c3e00ba3ce6aab67eb377c368f575c9f4de400208771f042686f9a"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579874728-29306.json",
+          "bytes": 6153,
+          "sha256": "7be3a5a56083ea454c40ca5a3e6cf26054c4a965fd7d2ff596b57b088d166157"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579877931-29506.json",
+          "bytes": 6171,
+          "sha256": "2acb032d966e0d2dcc4ba2b2559e50b744d2c67b14618fdd96c763681d543150"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579880921-29620.json",
+          "bytes": 6175,
+          "sha256": "7b06f7e656c1b3ee2abbdbc5c0cca9fa27028fcd7da4768a3afb98bbc9ae3baf"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579884011-29787.json",
+          "bytes": 6171,
+          "sha256": "2b2fa4b723199854889c94023ba425af09cf8371386e56ced3d5301b1847dd87"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579887058-29899.json",
+          "bytes": 6179,
+          "sha256": "5f6574dbb56ac8171516562515ec06f028fb611f073df8957fd5a729089a6d3c"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579890405-30077.json",
+          "bytes": 6173,
+          "sha256": "a5cea207ab20b633fd2b0b4cf008e98b5e3cedd57514b3292021e50f3b160dfd"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579893323-30227.json",
+          "bytes": 6174,
+          "sha256": "3c23298db054fb51b29963b55461545047caa0fec05e886648000227461f0421"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579896410-30332.json",
+          "bytes": 6178,
+          "sha256": "794be94cc5e4635d7c28e2131f79c5ade35c713cefd86b283c9263853b8ad979"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579900946-30478.json",
+          "bytes": 6178,
+          "sha256": "a8ba5494ca436b82aca9953d9e91d5ec8091f13a292c1146a6ac6da3b828c678"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579906145-30621.json",
+          "bytes": 6182,
+          "sha256": "b6beec398567cc0fa930487141ebba6759a653cff63ee243b83363e0c17440a0"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579911191-30797.json",
+          "bytes": 6159,
+          "sha256": "74285bc5283fcb0b609da5265d2e689c51ebaf0dc3178e3a7387b8d1fd5637ec"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579915871-30999.json",
+          "bytes": 6169,
+          "sha256": "efcda0af7c3f9770463c1a56b85829c0007a1241ba0220dde1751b9fd2452a6d"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579920905-31132.json",
+          "bytes": 6176,
+          "sha256": "1fb73f6d33455d8fae9dc7746b8a51e1788f8f43ffd0c926de85cf501b9afa31"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579925955-31315.json",
+          "bytes": 6169,
+          "sha256": "e7f07e5ca0e0be239148561f534451b4620b35ab726c3177a63c90e91f2dfc58"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579930668-31471.json",
+          "bytes": 6156,
+          "sha256": "fab4ba2738736aff2094b2932a33fb4616f440442ce986d8949b37e2ead1ac7a"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579935745-31689.json",
+          "bytes": 6172,
+          "sha256": "775cc30b1e053853b7ffdfa69d076e5e8d0d045bbd66d208d50e8915921da3bc"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579940321-31861.json",
+          "bytes": 6155,
+          "sha256": "63b4dac3195e06da6097c05e348faa6ad2f0b0db982c1218a1152a423bab7415"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/results/rust-bundled-postgres/1794579944969-32022.json",
+          "bytes": 6178,
+          "sha256": "31765ad25f4d8b8c0d7861813fb6991589b1a44420bc03988eba824cf798d193"
+        }
+      ],
+      "metrics": {
+        "completeWorkloadMs": {
+          "median": 3941.976,
+          "p95": 5075.156
+        },
+        "readinessMs": {
+          "median": 245.745,
+          "p95": 312.903
+        },
+        "idleRssKiB": {
+          "median": 389048.0,
+          "p95": 396268.8
+        },
+        "projectListMs": {
+          "median": 10.26,
+          "p95": 14.827
+        },
+        "chatListMs": {
+          "median": 1.946,
+          "p95": 3.411
+        },
+        "historyPageMs": {
+          "median": 5.217,
+          "p95": 7.951
+        },
+        "fullHistoryMs": {
+          "median": 43.563,
+          "p95": 54.358
+        },
+        "mixedReadsPerSecond": {
+          "median": 764.442,
+          "p95": 1131.092
+        },
+        "settingsWriteMs": {
+          "median": 3.293,
+          "p95": 5.17
+        },
+        "livePingMs": {
+          "median": 0.158,
+          "p95": 0.247
+        },
+        "enrollmentPublicationMs": {
+          "median": 6.471,
+          "p95": 10.069
+        },
+        "pausedConsumerCatchupMs": {
+          "median": 0.971,
+          "p95": 3.005
+        },
+        "shutdownMs": {
+          "median": 28.272,
+          "p95": 41.38
+        },
+        "hostLoadAverage1m": {
+          "median": 18.718,
+          "p95": 23.138
+        }
+      }
+    }
+  },
+  "comparisons": {
+    "pglite": {
+      "guardExit": 0,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/pglite-guard-comparison.md",
+        "bytes": 781,
+        "sha256": "c9aa6b7718ff94908ddab0c5c62577781cf6d20c75f6d3176cd96313b014bd7e"
+      },
+      "medianChangePct": {
+        "completeWorkloadMs": -54.23,
+        "readinessMs": -90.77,
+        "idleRssKiB": -92.07,
+        "projectListMs": -38.01,
+        "chatListMs": -43.54,
+        "historyPageMs": -48.55,
+        "fullHistoryMs": -27.15,
+        "mixedReadsPerSecond": 86.2,
+        "settingsWriteMs": -67.26,
+        "livePingMs": -38.52,
+        "enrollmentPublicationMs": -61.71,
+        "pausedConsumerCatchupMs": -18.76,
+        "shutdownMs": -89.74,
+        "hostLoadAverage1m": 712.02
+      },
+      "metricsSlowerByMoreThan5Pct": []
+    },
+    "postgres": {
+      "guardExit": 0,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/populated-performance/measured/postgres-guard-comparison.md",
+        "bytes": 784,
+        "sha256": "ae5015b72033ab91c06207d6fbd2c3bf923d6cbfac09b38cdead920f42723df8"
+      },
+      "medianChangePct": {
+        "completeWorkloadMs": -36.56,
+        "readinessMs": -92.82,
+        "idleRssKiB": -85.75,
+        "projectListMs": 27.38,
+        "chatListMs": -11.7,
+        "historyPageMs": -6.98,
+        "fullHistoryMs": 24.67,
+        "mixedReadsPerSecond": 142.32,
+        "settingsWriteMs": -35.97,
+        "livePingMs": -16.06,
+        "enrollmentPublicationMs": -31.19,
+        "pausedConsumerCatchupMs": -3.64,
+        "shutdownMs": -73.87,
+        "hostLoadAverage1m": -47.9
+      },
+      "metricsSlowerByMoreThan5Pct": ["projectListMs", "fullHistoryMs"]
+    }
+  },
+  "dataset": {
+    "projects": 64,
+    "chats": 256,
+    "messages": 31624,
+    "busyMessages": 1024,
+    "settingsWrites": 20,
+    "temporaryWorkerEnrollments": 40
+  },
+  "matchingPayloads": {
+    "projects": "9850c5de7b83289b4f7fa34ddbfed907a0d5305dfc81e70e6c1141d632ce0e07",
+    "chats": "62df5cc37c1b9d7d9972c5726086ad733091335e2513dcad5352efc52d5c20a7",
+    "page": "cd0658d74b72c040e53a7477d08965155e60ef3b723b8e33d7b599e9255063be",
+    "history": "71c4b38659199ecb8f31c0d6e9eebae147fa54413ae573bb0a9eacb1892e3dab",
+    "historyBytes": 3142470
+  },
+  "referenceNodeVersion": "v24.22.1",
+  "referenceServerVersion": "1.1.2964",
+  "completedInvocations": 130,
+  "measuredInvocations": 100,
+  "restoredSqlSha256": "c20fdad134e34ec8f0ad93e48dae4cddf9b75971959b833b9ba4f6b2da038fcd",
+  "candidateBinarySha256": "eba01be07448e2505235dcaf8585e96ae7b9c797c0e2f9082abaae44f92d7af2",
+  "referenceEntrySha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310",
+  "externalPostgresReadTradeoff": {
+    "projectListMedianMs": {
+      "node": 6.125,
+      "rust": 7.802
+    },
+    "fullHistoryMedianMs": {
+      "node": 28.148,
+      "rust": 35.092
+    },
+    "fullHistoryP95AcrossRunMediansMs": {
+      "node": 34.612,
+      "rust": 40.933
+    },
+    "interpretation": "Both individual reads remain slower. Accept this scoped populated local workload with the observed latency tradeoff: the 50-message page, durable writes, eight-client mixed-read throughput, startup and complete workload improved. The paired sample does not establish fleet performance."
+  }
+}

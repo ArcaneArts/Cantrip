@@ -29464,6 +29464,19 @@
       ]
     },
     "currentPopulatedProfilePerformance": {
+      "macos2976Qualification": {
+        "version": "1.1.2976",
+        "sourceCommit": "92ed534fa5b1bef8dfcf60a21b9784e159c6a655",
+        "platform": "darwin-arm64",
+        "completedInvocations": 130,
+        "measuredInvocations": 100,
+        "completeWorkloadMedianChangePct": {
+          "pglite": -54.23,
+          "postgres": -36.56
+        },
+        "externalPostgresReadTradeoff": "Project list and full-history median latency increased by 27.38 and 24.67 percent.",
+        "record": "docs/security/rust-server-2976-darwin-arm64-populated-performance.json"
+      },
       "macos2964Qualification": {
         "version": "1.1.2964",
         "record": "docs/security/rust-server-2964-darwin-arm64-desktop-performance.json"
