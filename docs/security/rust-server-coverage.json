@@ -28861,7 +28861,7 @@
         "With macOS external PostgreSQL offline for 45 seconds, the same server and worker retain an active provider request and settle one completed receipt after recovery. The original replay is rejected. Rust remains live and reports unready throughout the sampled outage.",
         "A real Redis SIGKILL during an active embedding retains one unknown attempt and rejects replay without a new provider request across all four Node/Rust peer pairings using macOS ARM64 1.1.3013, Linux ARM64 1.1.3014, and Linux x64 1.1.3033.",
         "The Windows x64 1.1.2976 installer with worker grant refresh passed 36 model-operation cases in Edge on the three supported stores, including worker loss and retained usage after restart.",
-        "The Rust server persists the original validated receipt after a 60-second external PostgreSQL outage even when the browser and provider finish while the database is offline. Both baselines left the attempt running.",
+        "The Rust server persists the original validated receipt after a 60-second external PostgreSQL outage even when the browser and provider finish while the database is offline. The macOS baselines left the attempt running. The rebuilt Linux x64 1.1.3033 container also passed the offline-settlement case with the browser, worker and private PostgreSQL on macOS.",
         "Public aggregate totals and completeness match observed receipts; missing counters and worker receipts remain unknown."
       ],
       "baselineRepair": "Unmodified Node external/private PostgreSQL aggregate routes fail to bind Date parameters for a SQL CASE expression; four ISO timestamp bindings restore the range predicates. Node PGlite and native Rust already passed.",
