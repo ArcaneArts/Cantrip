@@ -153,6 +153,20 @@ consumer with the expected close code, and recovered the accepted write
 and identity after restart. Each stream result is a single sample.
 [macOS ARM64 1.1.2938 rollback and performance record](security/rust-server-2938-darwin-arm64-rollback-performance.json)
 
+The local Developer ID signed desktop updated from `1.1.2935` to
+`1.1.2938` on all three stores with the `1.1.2938` renderer. The
+updated WebView retained its device keys, account bindings and saved
+setting. The real worker replied after relaunch and the app reaped both
+services on shutdown. Each installed bundle matched all 13,571 entries
+in the signed archive. The PGlite case rejected a tampered download.
+
+WorkerLink acceptance paired the Node reference and current Rust
+package on all three stores. Both passed exact opaque frame transfer,
+credit return, revocation, backpressure, quota enforcement and relay
+recovery after server crash. The acceptance fixture restarts the worker
+transport and gateway, with the full worker evaluated separately.
+[macOS ARM64 1.1.2938 signed desktop and WorkerLink record](security/rust-server-2938-darwin-arm64-signed-workerlink.json)
+
 The Windows x64 `1.1.2881` standalone distribution passed all three stores,
 including migration, SQL export, hosted reopening and retained writes.
 [Windows x64 standalone record](security/rust-server-2881-win32-x64-standalone.json)
