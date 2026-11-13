@@ -56,6 +56,12 @@ canonical answer per lane. The Windows release package run remains open.
 [macOS release evidence](security/rust-server-2935-macos-release-acceptance.json)
 [Linux container evidence](security/rust-server-2936-linux-cli-worktree-acceptance.json)
 
+Both Linux server architectures repeated the three-store matrix with
+`1.1.2976`. All 72 product steps passed, with 24 clean server exits and
+24 clean worker exits. Every restart reopened the same transcript. The
+browser, packaged worker, native CLI and native Codex ran on macOS ARM64.
+[Linux 1.1.2976 evidence](security/rust-server-2976-linux-cli-worktree-acceptance.json)
+
 ## Preserved behavior
 
 CLI context can come from an explicit Chat lane, Codex thread, Terminal, or
