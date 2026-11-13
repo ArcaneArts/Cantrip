@@ -205,7 +205,36 @@ export async function actualCliWorktreeAcquire({
         "Continue the user's request from this checkout.",
       ),
     );
-    assert.ok(JSON.stringify(posts[1].input).includes(checkout));
+    // Inspect the decoded model content so JSON escaping of Windows paths
+    // cannot hide the exact working directory sent by the native runtime.
+    const xmlCheckout = checkout.replace(
+      /[&<>"']/g,
+      (character) =>
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&apos;",
+        })[character],
+    );
+    const providerWorkingDirectories = posts[1].input.input
+      .flatMap((item) => (Array.isArray(item.content) ? item.content : []))
+      .filter(
+        ({ type, text }) => type === "input_text" && typeof text === "string",
+      )
+      .flatMap(({ text }) => [
+        ...text.matchAll(
+          /<environment_context>([\s\S]*?)<\/environment_context>/g,
+        ),
+      ])
+      .flatMap(([, context]) =>
+        [...context.matchAll(/<cwd>([^<]*)<\/cwd>/g)].map(([, cwd]) => cwd),
+      );
+    assert.ok(
+      providerWorkingDirectories.includes(xmlCheckout),
+      "The native continuation must send the exact new checkout as its working directory",
+    );
     assert.deepEqual(model.failures, []);
     result.steps.push(
       "the original turn settles and the native continuation runs in the new checkout with an attributed encrypted transcript",
