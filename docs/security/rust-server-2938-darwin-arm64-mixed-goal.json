@@ -10,20 +10,122 @@
     "sha256": "4c6fdf2072d0ddb3e1fd2d7785fe0a9838a67208855cbc92f909b9f261ba4668"
   },
   "scope": "Shared external PostgreSQL and Redis 8.10.3, macOS ARM64 production servers and full packaged worker. The browser and worker attach to opposite server peers. Actual dependency processes stop and restart while the original committed Goal observation is held.",
-  "passedCells": 5,
   "possibleCells": 6,
-  "productSteps": 85,
-  "referenceBuild": {
-    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-mixed-goal-recovery/reference-build.sha256",
-    "bytes": 246,
-    "sha256": "bfe710702b8bce08351cab40dac7ab81d98c0cb06b0a6267eda8e2d3788e0deb"
-  },
-  "referenceCheckout": "fcb32cb01ad51ed1a16de7f66e127b7021fa8e2f",
   "redisVersion": "Redis server v=8.10.3 sha=5a56d658:0 malloc=libc bits=64 build=e6ccec1f7cce9a95",
   "earlierNodeShutdownFailure": {
     "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-mixed-goal-recovery/postgres-node-rust-node-shutdown-failure.json",
     "bytes": 701132,
     "sha256": "55a47dfa0058fb558a1e6f5c5b37b6c6cf5c4d0df74b571a0b3ee76dc873d15c"
+  },
+  "currentNodeShutdownFailure": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-mixed-goal-recovery/postgres-node-rust.json",
+    "bytes": 621457,
+    "sha256": "985fc1f743d44f0736c9d2c8b908c5d8c994979edfa69c038eaaa4a61a490ef2"
+  },
+  "prePatchMatrix": {
+    "passedCells": 5,
+    "productSteps": 85,
+    "referenceBuild": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-mixed-goal-recovery/reference-build.sha256",
+      "bytes": 246,
+      "sha256": "bfe710702b8bce08351cab40dac7ab81d98c0cb06b0a6267eda8e2d3788e0deb"
+    },
+    "referenceCheckout": "fcb32cb01ad51ed1a16de7f66e127b7021fa8e2f",
+    "cases": [
+      {
+        "dependency": "redis",
+        "pair": "node/rust",
+        "productSteps": 17,
+        "cleanServerShutdowns": 4,
+        "dependencyOfflineMs": 5458,
+        "sameWorkerPid": 4019,
+        "workerConnectionReplaced": true,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-mixed-goal-recovery/redis-node-rust.json",
+          "bytes": 1017375,
+          "sha256": "28b27516a30020c8cd1b870fbcda5cccc4975caa46d3b91e4911916482fdef73"
+        }
+      },
+      {
+        "dependency": "redis",
+        "pair": "rust/node",
+        "productSteps": 17,
+        "cleanServerShutdowns": 4,
+        "dependencyOfflineMs": 5370,
+        "sameWorkerPid": 8978,
+        "workerConnectionReplaced": true,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-mixed-goal-recovery/redis-rust-node.json",
+          "bytes": 795658,
+          "sha256": "a60b4f589ada67f8f71317a1a4d6117ba3cacfc9c36234c9aca6d3b1a31e7743"
+        }
+      },
+      {
+        "dependency": "redis",
+        "pair": "rust/rust",
+        "productSteps": 17,
+        "cleanServerShutdowns": 4,
+        "dependencyOfflineMs": 5502,
+        "sameWorkerPid": 87134,
+        "workerConnectionReplaced": true,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-mixed-goal-recovery/redis-rust-rust.json",
+          "bytes": 818814,
+          "sha256": "d4bc8db7bd7b67a044a3f3ef820bcb29ce0a0f9a55e0f13ab1814e9c042c2a77"
+        }
+      },
+      {
+        "dependency": "postgres",
+        "pair": "rust/node",
+        "productSteps": 17,
+        "cleanServerShutdowns": 4,
+        "dependencyOfflineMs": 5305,
+        "sameWorkerPid": 13929,
+        "workerConnectionReplaced": false,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-mixed-goal-recovery/postgres-rust-node.json",
+          "bytes": 735712,
+          "sha256": "3a197002c6ade02aba91d25534342b092db7dadcdc17c7b189584110d0f268b9"
+        }
+      },
+      {
+        "dependency": "postgres",
+        "pair": "rust/rust",
+        "productSteps": 17,
+        "cleanServerShutdowns": 4,
+        "dependencyOfflineMs": 55,
+        "sameWorkerPid": 99149,
+        "workerConnectionReplaced": false,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-mixed-goal-recovery/postgres-rust-rust.json",
+          "bytes": 830178,
+          "sha256": "5dd36ba37063d1bb0f81020d1b61cb43d5b37ce0ad4b8ea9b4118686866094ad"
+        }
+      }
+    ]
+  },
+  "passedCells": 6,
+  "productSteps": 102,
+  "referenceBuild": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-postgres-reference-shutdown/reference-final-build.sha256",
+    "bytes": 1003,
+    "sha256": "73ed7683eedcfcdb0c77d2efa283f09e72d0bea495961bcf72d89b0bc7ef068d"
+  },
+  "referenceCheckout": "271b3cffd9f24979cdc5a2634872961ff5726c1f",
+  "referenceFixPullRequest": 2965,
+  "referenceFixMergeCommit": "5e2c538f7562d52dfd21683514c46d591e32c3f7",
+  "reproducedUnpatchedShutdown": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-postgres-reference-shutdown/postgres-node-rust-unpatched.json",
+    "bytes": 876502,
+    "sha256": "c3370aaaa1183e8fff1f96da6690a9f80a16b13fb52495d6869313c604c85ed4"
+  },
+  "nodeOnlyControl": {
+    "scope": "Node/Node control stopped before the outage when the original Goal projection was absent. All observed processes exited cleanly.",
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-postgres-reference-shutdown/postgres-node-node.json",
+      "bytes": 413812,
+      "sha256": "2d3173e8e83239995f210a2de6c1b08f950d74cb4eccc0b43c93c44864c3be07"
+    }
   },
   "cases": [
     {
@@ -31,13 +133,13 @@
       "pair": "node/rust",
       "productSteps": 17,
       "cleanServerShutdowns": 4,
-      "dependencyOfflineMs": 5458,
-      "sameWorkerPid": 4019,
+      "dependencyOfflineMs": 4072,
+      "sameWorkerPid": 78166,
       "workerConnectionReplaced": true,
       "report": {
-        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-mixed-goal-recovery/redis-node-rust.json",
-        "bytes": 1017375,
-        "sha256": "28b27516a30020c8cd1b870fbcda5cccc4975caa46d3b91e4911916482fdef73"
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-postgres-reference-shutdown/final-reports/redis-node-rust.json",
+        "bytes": 1123950,
+        "sha256": "31d65b85261942ca6a7583ddedf5f7eb923536275115e9c5f2915d178c127fc5"
       }
     },
     {
@@ -45,13 +147,13 @@
       "pair": "rust/node",
       "productSteps": 17,
       "cleanServerShutdowns": 4,
-      "dependencyOfflineMs": 5370,
-      "sameWorkerPid": 8978,
+      "dependencyOfflineMs": 4580,
+      "sameWorkerPid": 85013,
       "workerConnectionReplaced": true,
       "report": {
-        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-mixed-goal-recovery/redis-rust-node.json",
-        "bytes": 795658,
-        "sha256": "a60b4f589ada67f8f71317a1a4d6117ba3cacfc9c36234c9aca6d3b1a31e7743"
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-postgres-reference-shutdown/final-reports/redis-rust-node.json",
+        "bytes": 860677,
+        "sha256": "13aee019e4b3156847ae2765a86dc656c62f5edc1aa63e066d2783255ec01d5c"
       }
     },
     {
@@ -59,13 +161,27 @@
       "pair": "rust/rust",
       "productSteps": 17,
       "cleanServerShutdowns": 4,
-      "dependencyOfflineMs": 5502,
-      "sameWorkerPid": 87134,
+      "dependencyOfflineMs": 4845,
+      "sameWorkerPid": 98438,
       "workerConnectionReplaced": true,
       "report": {
-        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-mixed-goal-recovery/redis-rust-rust.json",
-        "bytes": 818814,
-        "sha256": "d4bc8db7bd7b67a044a3f3ef820bcb29ce0a0f9a55e0f13ab1814e9c042c2a77"
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-postgres-reference-shutdown/final-reports/redis-rust-rust.json",
+        "bytes": 847225,
+        "sha256": "e4b76d138aa1df1b4c34e07f4afa717ecde44a799fb9d3b32006e02cbcce2d12"
+      }
+    },
+    {
+      "dependency": "postgres",
+      "pair": "node/rust",
+      "productSteps": 17,
+      "cleanServerShutdowns": 4,
+      "dependencyOfflineMs": 5307,
+      "sameWorkerPid": 64205,
+      "workerConnectionReplaced": false,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-postgres-reference-shutdown/final-reports/postgres-node-rust.json",
+        "bytes": 1172492,
+        "sha256": "1ec200cae18cc2bea7bb52fbc696152ba86acc37dff3386d3644d7340aa99491"
       }
     },
     {
@@ -74,12 +190,12 @@
       "productSteps": 17,
       "cleanServerShutdowns": 4,
       "dependencyOfflineMs": 5305,
-      "sameWorkerPid": 13929,
+      "sameWorkerPid": 71268,
       "workerConnectionReplaced": false,
       "report": {
-        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-mixed-goal-recovery/postgres-rust-node.json",
-        "bytes": 735712,
-        "sha256": "3a197002c6ade02aba91d25534342b092db7dadcdc17c7b189584110d0f268b9"
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-postgres-reference-shutdown/final-reports/postgres-rust-node.json",
+        "bytes": 884072,
+        "sha256": "bb31a18ec0019c2a49a2179c4fbde577d5230dac237563548203f3e4eb978516"
       }
     },
     {
@@ -87,19 +203,14 @@
       "pair": "rust/rust",
       "productSteps": 17,
       "cleanServerShutdowns": 4,
-      "dependencyOfflineMs": 55,
-      "sameWorkerPid": 99149,
+      "dependencyOfflineMs": 59,
+      "sameWorkerPid": 91968,
       "workerConnectionReplaced": false,
       "report": {
-        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-mixed-goal-recovery/postgres-rust-rust.json",
-        "bytes": 830178,
-        "sha256": "5dd36ba37063d1bb0f81020d1b61cb43d5b37ce0ad4b8ea9b4118686866094ad"
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-postgres-reference-shutdown/final-reports/postgres-rust-rust.json",
+        "bytes": 836577,
+        "sha256": "8f0a7158ed12b1b57affc12e0efc9d4114237bf2d8d91e86dcf08bc6d2439a23"
       }
     }
-  ],
-  "currentNodeShutdownFailure": {
-    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-mixed-goal-recovery/postgres-node-rust.json",
-    "bytes": 621457,
-    "sha256": "985fc1f743d44f0736c9d2c8b908c5d8c994979edfa69c038eaaa4a61a490ef2"
-  }
+  ]
 }

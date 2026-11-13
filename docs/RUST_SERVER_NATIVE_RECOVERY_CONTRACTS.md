@@ -440,11 +440,13 @@ socket returned after termination, and stops the pool from taking
 queued work after forced destruction. The regression test reproduces
 a late socket that remains open with the original driver.
 
-The patched reference repeated the PostgreSQL case with Node serving
-the browser and Rust serving the full worker. It completed all 17
-steps with four clean final shutdown receipts. The original committed
-Goal settled through the PostgreSQL restart. The historical record
-above retains the forced exit observed before the patch.
+The patched reference and the same Rust package repeated all six
+dependency recovery cases. Each completed 17 product steps, retained
+the original committed Goal and encrypted transcript, and produced
+four clean final shutdown receipts. The Node-only control stopped
+before the interruption when the initial Goal projection was absent.
+All its observed processes exited cleanly. The record retains the
+pre-patch results and the Node-only control.
 
 ## Ordering the first encrypted Task Goal input
 
