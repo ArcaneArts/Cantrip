@@ -380,8 +380,59 @@
       "sha256": "43ab34c868c5ca414f00713baadf985ca1828eb25bb5b6407636613e015e1bc9"
     }
   },
+  "externalPostgresOfflineSettlement": {
+    "scope": "The full worker finishes the original protected embedding while a real external PostgreSQL cluster is stopped for 60 seconds. The browser receives the inference result before the cluster restarts. The Rust retry persists the worker receipt under the existing immutable source key after PostgreSQL recovers.",
+    "rustServer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-postgres-settlement/cantrip-server-postgres-settlement",
+      "bytes": 179746576,
+      "sha256": "13eb607db636569c6aa3b9b5f40eb8f6c3615bbb38862b9e2cb0d9cf251f67ef"
+    },
+    "retryWindowSeconds": 120,
+    "productSteps": 20,
+    "operationCases": 14,
+    "providerHttpRequests": 15,
+    "runs": [
+      {
+        "variant": "node-baseline",
+        "offlineMs": 60004,
+        "inferenceCompletedAfterStopMs": 32,
+        "statusAfterRecovery": "running",
+        "providerRequestsForInterruptedOperation": 1,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-postgres-settlement/node-baseline.json",
+          "bytes": 429165,
+          "sha256": "ef739c3f9fe28ec97848e10ac2f13cc8848e746f25b3553536dfe338e84ac4f5"
+        }
+      },
+      {
+        "variant": "rust-baseline",
+        "offlineMs": 60000,
+        "inferenceCompletedAfterStopMs": 10,
+        "statusAfterRecovery": "running",
+        "providerRequestsForInterruptedOperation": 1,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-postgres-settlement/rust-baseline.json",
+          "bytes": 432781,
+          "sha256": "aaac7e115713048475849fec2f7950146453732f1a145fa2d298c6a1cd029695"
+        }
+      },
+      {
+        "variant": "rust-retry",
+        "offlineMs": 60000,
+        "inferenceCompletedAfterStopMs": 9,
+        "statusAfterRecovery": "completed",
+        "providerRequestsForInterruptedOperation": 1,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-postgres-settlement/rust-retry.json",
+          "bytes": 471902,
+          "sha256": "279c591efd32d764c644c45d7db7965211e1fbf69565f81b92a34ef60c989e1f"
+        }
+      }
+    ],
+    "limits": "The receipt retry is owned by the live Rust process. Loss of the process before persistence and PostgreSQL outages beyond the retry window remain outside this result."
+  },
   "remaining": [
     "Windows package model-operation acceptance and active server-process interruption outside macOS.",
-    "Receipt settlement while external PostgreSQL is unavailable, longer dependency outages and packaged cross-platform Redis interruption."
+    "Dependency outages beyond the exercised durations, receipt durability across a simultaneous server process loss and database outage, and packaged cross-platform fault coverage."
   ]
 }

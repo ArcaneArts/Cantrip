@@ -44,7 +44,16 @@ scenario. Both returned HTTP 503 immediately after PostgreSQL stopped and
 HTTP 200 after recovery. During the outage, Rust continued returning HTTP 503
 from readiness while the Node reference exceeded the five-second readiness
 probe deadline. Both returned HTTP 200 from liveness. The provider replied
-after database recovery, so receipt settlement during an outage is still open.
+after database recovery.
+
+A separate run released the provider response during a 60-second external
+PostgreSQL outage. The browser received the completed embedding while the
+database was offline. Both baselines left the usage attempt running after
+the database recovered. The Rust server now retries transient PostgreSQL
+failures for a validated receipt using the original operation identity. The
+rerun settled one receipt, rejected replay without another provider request,
+and completed a fresh decision. The retry window is 120 seconds in the live
+server process.
 
 ## Active Redis interruption
 
