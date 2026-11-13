@@ -394,7 +394,7 @@ async function flow(
         path.join(root, fixture.kind, "provider-test-boundary"),
       )
     : undefined;
-  let worker, tunnel;
+  let worker, tunnel, productFailed;
   const startWorker = async (
     enrollmentCode,
     { providerTest = false, environment = {} } = {},
@@ -1736,24 +1736,48 @@ async function flow(
     }
     result.events = await page.evaluate(() => window.folderEvents);
     assert.deepEqual(errors, []);
+  } catch (error) {
+    productFailed = true;
+    throw error;
   } finally {
-    try {
-      await stopWorker();
-      await tunnel?.close();
-    } finally {
-      if (providerBoundary) {
-        result.providerBoundaryDiagnostics = {
-          failures: providerBoundary.failures,
-          requests: providerBoundary.requests,
-          tunnels: providerBoundary.tunnels,
-          blockedTunnels: providerBoundary.blockedTunnels,
-          discoveryProbes: providerBoundary.discoveryProbes,
-        };
-        await providerBoundary.close();
-      }
-      await page.evaluate(() => window.folderLive?.stop()).catch(() => {});
-      await context.close();
+    if (providerBoundary) {
+      result.providerBoundaryDiagnostics = {
+        failures: providerBoundary.failures,
+        requests: providerBoundary.requests,
+        tunnels: providerBoundary.tunnels,
+        blockedTunnels: providerBoundary.blockedTunnels,
+        discoveryProbes: providerBoundary.discoveryProbes,
+      };
     }
+    const cleanup = [
+      ["worker", stopWorker],
+      ["tunnel", () => tunnel?.close()],
+      ["provider boundary", () => providerBoundary?.close()],
+      [
+        "browser context",
+        async () => {
+          await page.evaluate(() => window.folderLive?.stop()).catch(() => {});
+          await context.close();
+        },
+      ],
+    ];
+    let firstCleanupError;
+    for (const [resource, close] of cleanup) {
+      try {
+        await close();
+      } catch (error) {
+        firstCleanupError ??= error;
+        (result.productCleanupFailures ??= []).push({
+          resource,
+          message: error.message,
+          stack: error.stack,
+          code: error.code,
+          signal: error.signal,
+          killed: error.killed,
+        });
+      }
+    }
+    if (!productFailed && firstCleanupError) throw firstCleanupError;
   }
 }
 try {
