@@ -20,6 +20,7 @@ import {
   productionClient,
   productionProcess,
 } from "./production-server-process.mjs";
+import { productionStreamContainer } from "./production-stream-container.mjs";
 import { heartbeat } from "./security-fixtures.mjs";
 import { tunnelRecord } from "./tunnel-record-fixture.mjs";
 
@@ -40,13 +41,21 @@ export class ProductionWorkerLinkFixture {
     this.relays = [];
     this.connections = 0;
     this.serverGenerations = [];
+    this.serverProcesses = [];
     this.disconnects = 0;
     this.adapterRevocations = [];
   }
 
   async start() {
     await mkdir(this.root, { recursive: true });
-    if (
+    if (this.image) {
+      this.container = await productionStreamContainer({
+        image: this.image,
+        postgresImage: this.postgresImage,
+        runtime: this.runtime,
+        database: this.database,
+      });
+    } else if (
       this.database === "postgres" ||
       (this.runtime === "node" && this.database === "bundled-postgres")
     ) {
@@ -210,17 +219,21 @@ export class ProductionWorkerLinkFixture {
     return this;
   }
 
-  async startServer(label, port = 0) {
-    this.server = await productionProcess({
-      runtime: this.runtime,
-      artifact: this.artifact,
-      nodeDirectory: this.nodeDirectory,
-      profile: path.join(this.root, "profile"),
-      database: this.database,
-      databaseUrl: this.databaseUrl,
-      logs: path.join(this.root, label),
-      port,
-    });
+  async startServer(label, port) {
+    const logs = path.join(this.root, label);
+    this.server = this.container
+      ? await this.container.start({ port, logs })
+      : await productionProcess({
+          runtime: this.runtime,
+          artifact: this.artifact,
+          nodeDirectory: this.nodeDirectory,
+          profile: path.join(this.root, "profile"),
+          database: this.database,
+          databaseUrl: this.databaseUrl,
+          logs,
+          port,
+        });
+    if (this.container) this.serverProcesses.push(this.server.identity);
     this.client = productionClient(this.server);
     await this.client.visit("session", "GET", "/api/auth/session");
     this.bootstrap = await this.client.visit(
@@ -334,11 +347,15 @@ export class ProductionWorkerLinkFixture {
       probe.socket?.resume();
       probe.socket?.terminate();
     }
-    await this.stopWorker();
     try {
-      if (this.server) this.exit = await this.server.stop();
+      try {
+        await this.stopWorker();
+      } finally {
+        if (this.server) this.exit = await this.server.stop();
+      }
     } finally {
-      await this.pg?.close();
+      if (this.container) await this.container.close();
+      else await this.pg?.close();
     }
   }
 }

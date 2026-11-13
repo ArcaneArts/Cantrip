@@ -29591,6 +29591,7 @@
       "status": "partial",
       "currentRebuildReport": "docs/security/rust-server-2881-macos-acceptance.json#workerLinkRebuild",
       "macos2976BinaryRelayAndRecovery": "docs/security/rust-server-2976-darwin-arm64-workerlink.json",
+      "linux2976BinaryRelayAndRecovery": "docs/security/rust-server-2976-linux-workerlink.json",
       "macos2976RepeatedPgliteRecovery": "docs/security/rust-server-2976-darwin-arm64-workerlink.json#repeatedPgliteRecovery",
       "currentReport": "docs/security/rust-server-darwin-arm64-acceptance.json#currentStandalone",
       "scope": "Current 1.1.2845 macOS ARM64 production Node/native entries with unchanged WorkerConnection/WorkerLinkGateway and real public HTTP-issued observation/tunnel grants. All six peer/store runs pass 64 MiB events download, 64 MiB stream echo, selective revocation preserving a sibling, paused TCP congestion with four lawful 8 MiB windows, endpoint transport/gateway shutdown/recreation with retained enrollment, actual server SIGKILL/reconnect retaining identity/settings/opaque tunnel record, generation/capability rejection and exact default-quota admission. All final endpoint shutdowns remove all worker authority.",
@@ -30659,6 +30660,7 @@
       "linuxX64ContainerAndWinterhold": "docs/security/rust-server-2976-linux-x64-acceptance.json",
       "linuxCliWorktree": "docs/security/rust-server-2976-linux-cli-worktree-acceptance.json",
       "macosWorkerLink": "docs/security/rust-server-2976-darwin-arm64-workerlink.json",
+      "linuxWorkerLink": "docs/security/rust-server-2976-linux-workerlink.json",
       "macosModelOperations": "docs/security/rust-server-2976-darwin-arm64-model-operations.json",
       "macosModelOperationServerLoss": "docs/security/rust-server-2976-darwin-arm64-model-operation-server-loss.json",
       "linuxModelOperations": "docs/security/rust-server-2976-linux-model-operations.json",
@@ -30719,7 +30721,7 @@
     "Qualify packaged cross-platform dependency interruptions and longer outages. Reconcile the still-open background-service and product recovery comparisons.",
     "Complete the remaining inventory-level behavior evidence, including malformed, Unicode and deep-JSON inputs, serialization for authenticated metadata, encrypted boundaries and protocol ordering.",
     "Qualify installed iOS native QR, physical-camera runs and the remaining distribution-signed Android scenario.",
-    "Complete residual performance coverage for sustained backpressure and interruption recovery on Windows and for Linux WorkerLink binary streams.",
+    "Complete residual Windows performance coverage for sustained backpressure and interruption recovery.",
     "Reconcile exact release artifacts, migration and rollback evidence and remaining platform limits before marking full replacement complete."
   ],
   "milestonePlatformAcceptance": [

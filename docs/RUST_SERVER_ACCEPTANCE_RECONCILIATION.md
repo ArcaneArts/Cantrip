@@ -63,7 +63,15 @@ below apply to the exact binaries and worker entries identified by their reports
   [macOS model operations](security/rust-server-2976-darwin-arm64-model-operations.json),
   [macOS server loss](security/rust-server-2976-darwin-arm64-model-operation-server-loss.json),
   [Linux model operations](security/rust-server-2976-linux-model-operations.json),
-  [WorkerLink](security/rust-server-2976-darwin-arm64-workerlink.json)
+  [macOS WorkerLink](security/rust-server-2976-darwin-arm64-workerlink.json)
+- **Linux WorkerLink binary streaming.** Packaged Linux ARM64 and x64 Rust
+  and the historical Linux x64 Node container passed nine cases across the
+  three store configurations. Each transferred 64 MiB in both the download
+  and tunnel echo cases with exact frame bytes. The driver verified selective
+  grant revocation, slow-consumer closure, recovery after a server crash,
+  bandwidth quota enforcement and gateway cleanup. The historical Node
+  bundled PostgreSQL comparison used an external PostgreSQL process.
+  [Linux WorkerLink](security/rust-server-2976-linux-workerlink.json)
 - **Browser and mobile.** Browser sign-in and installed Android and iOS
   simulator sessions passed against all three stores. Android also exercised
   the native QR entry point and Keystore. Installed iOS native QR, physical

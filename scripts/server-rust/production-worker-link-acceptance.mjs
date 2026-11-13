@@ -21,6 +21,8 @@ const { values } = parseArgs({
     root: { type: "string" },
     artifact: { type: "string" },
     "node-directory": { type: "string" },
+    image: { type: "string" },
+    "postgres-image": { type: "string", default: "postgres:18" },
     "payload-mib": { type: "string", default: "64" },
     "window-frames": { type: "string", default: "64" },
     "server-outage-ms": { type: "string", default: "0" },
@@ -45,12 +47,16 @@ const fixture = new ProductionWorkerLinkFixture({
   runtime: values.runtime,
   database: values.database,
   root: run,
-  artifact: path.resolve(
-    values.artifact ?? process.env.CANTRIP_BENCH_NATIVE_ARTIFACT,
-  ),
-  nodeDirectory: path.resolve(
-    values["node-directory"] ?? process.env.CANTRIP_BENCH_NODE_DIRECTORY,
-  ),
+  ...(values.image
+    ? { image: values.image, postgresImage: values["postgres-image"] }
+    : {
+        artifact: path.resolve(
+          values.artifact ?? process.env.CANTRIP_BENCH_NATIVE_ARTIFACT,
+        ),
+        nodeDirectory: path.resolve(
+          values["node-directory"] ?? process.env.CANTRIP_BENCH_NODE_DIRECTORY,
+        ),
+      }),
 });
 const report = {
   runtime: values.runtime,
@@ -155,6 +161,13 @@ try {
     process.exitCode = 1;
   }
   report.commands = fixture.commands;
+  if (fixture.container)
+    report.container = {
+      imageId: fixture.container.imageId,
+      architecture: fixture.container.architecture,
+      externalDatabase: fixture.container.databaseIdentity,
+      processes: fixture.serverProcesses,
+    };
   await writeFile(
     path.join(run, "report.json"),
     JSON.stringify(report, null, 2) + "\n",
