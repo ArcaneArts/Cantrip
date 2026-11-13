@@ -810,6 +810,19 @@ passed server switching and app relaunch both before and after the Rust
 process restarts. The local [acceptance record](security/rust-server-installed-mobile-acceptance.json)
 includes the artifacts and observed wire results.
 
+The installed `1.1.2976` Android APK signed in on all three database modes,
+switched servers, and retained the same Android Keystore key and three account
+bindings through app relaunch and Rust process restarts. The real Keystore
+instrumentation test passed. The installed `1.1.2976` iOS simulator app
+recovered encrypted access and retained all three account bindings across
+app relaunch and Rust process restarts. Both apps used the same verified
+1.1.2976 renderer. Authenticated session reads and App Live upgrades were
+observed over TLS for all six app and database pairings. The Android native
+scanner exchanged a fresh browser-issued QR over external PostgreSQL and
+reopened the existing encrypted account with its native key. The
+[installed mobile record](security/rust-server-2976-installed-mobile.json)
+contains the exact app and server artifacts and the remaining mobile checks.
+
 The installed `1.1.2881` iOS simulator app passed sign-in on PGlite, bundled
 PostgreSQL and external PostgreSQL against the packaged macOS ARM64 Rust server.
 It retained its account bindings and native installation key across app relaunch
