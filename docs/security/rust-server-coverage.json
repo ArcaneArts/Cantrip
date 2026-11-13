@@ -29827,6 +29827,20 @@
       "linuxWinterholdAndContainers": [
         {
           "target": "linux-arm64",
+          "version": "1.1.2954",
+          "sourceCommit": "f21824cc883343819d581dafcc5fc93e20591a8b",
+          "verifiedPackageFiles": 2558,
+          "installerCalls": 18,
+          "recoveredInstallerFailures": 6,
+          "postWriteRollback": {
+            "pgliteAndBundledPostgres": "1.1.2936",
+            "externalPostgres": "1.1.2739",
+            "externalPostgresRollbackArchitecture": "amd64"
+          },
+          "record": "docs/security/rust-server-2954-linux-arm64-acceptance.json"
+        },
+        {
+          "target": "linux-arm64",
           "version": "1.1.2936",
           "sourceCommit": "e97cf3e8e3a474f4f303eda754088cf1072234ae",
           "verifiedPackageFiles": 2558,

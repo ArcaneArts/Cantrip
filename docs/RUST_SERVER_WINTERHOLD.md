@@ -239,6 +239,30 @@ release tests passed.
 
 ## Current Linux ARM64 qualification
 
+The Winterhold Dockerfile built Linux ARM64 `1.1.2954` from
+`f21824cc883343819d581dafcc5fc93e20591a8b`, using the shipping patch
+from the preceding runtime commit. The standalone archive, OCI layers
+and running containers matched all 2,558 manifest files and the ARM64
+server executable. PGlite, bundled PostgreSQL and external PostgreSQL
+passed migration, SQL export, settings write and restart, hosted
+reopening and graceful shutdown. The runtime had no Node in its PATH
+and ran as a non-root user with a read-only root and a 256 MiB noexec
+temporary mount.
+
+The local ARM64 systemd and Caddy rehearsal passed 18 installer calls,
+including six injected migration and startup failures. HTTPS, App Live,
+sessions, server identity and accepted writes were verified across
+upgrade and rollback. PGlite and bundled PostgreSQL rolled back to
+ARM64 Rust `1.1.2936`, and external PostgreSQL rolled back to x64 Node
+`1.1.2739` under emulation. All three stores then reopened in Rust
+`1.1.2954`. The initial rehearsal exceeded the readiness polling
+window while starting the emulated Node baseline on external
+PostgreSQL. The installer restored the preceding Rust service, and
+the full rehearsal passed on retry with the same inputs.
+[Release acceptance record](security/rust-server-2954-linux-arm64-acceptance.json)
+
+### Linux ARM64 candidate `1.1.2936`
+
 The Winterhold Dockerfile built Linux ARM64 `1.1.2936` from
 `e97cf3e8e3a474f4f303eda754088cf1072234ae`. The runtime image and standalone
 archive contain the same server executable. All 2,558 manifest files
