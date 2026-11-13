@@ -29754,6 +29754,15 @@
       ]
     },
     "releaseArtifactQualification2938": {
+      "macOS2938GoalDependencyRecovery": {
+        "version": "1.1.2938",
+        "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+        "platform": "darwin-arm64",
+        "passedCells": 5,
+        "possibleCells": 6,
+        "limitation": "The Node browser peer times out during later graceful shutdown after the original Goal settles and both peers recover readiness.",
+        "record": "docs/security/rust-server-2938-darwin-arm64-mixed-goal.json"
+      },
       "macOS2938CantripOsRootSystem": {
         "version": "1.1.2938",
         "productCells": 6,
@@ -30242,6 +30251,15 @@
       ]
     },
     "currentAutonomousGoalDependencyAcceptance": {
+      "currentPackagedServer": {
+        "version": "1.1.2938",
+        "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+        "platform": "darwin-arm64",
+        "passedCells": 5,
+        "possibleCells": 6,
+        "limitation": "The Node browser peer times out during later graceful shutdown after the original Goal settles and both peers recover readiness.",
+        "record": "docs/security/rust-server-2938-darwin-arm64-mixed-goal.json"
+      },
       "status": "partial",
       "qualification": "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
       "acceptance": "docs/security/rust-server-autonomous-goal-dependency-acceptance.json",
@@ -30258,6 +30276,15 @@
       ]
     },
     "currentMixedPostgresGoalAcceptance": {
+      "currentPackagedServer": {
+        "version": "1.1.2938",
+        "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+        "platform": "darwin-arm64",
+        "passedCells": 5,
+        "possibleCells": 6,
+        "limitation": "The Node browser peer times out during later graceful shutdown after the original Goal settles and both peers recover readiness.",
+        "record": "docs/security/rust-server-2938-darwin-arm64-mixed-goal.json"
+      },
       "status": "partial",
       "qualification": "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md",
       "acceptance": "docs/security/rust-server-mixed-postgres-goal-acceptance.json",
