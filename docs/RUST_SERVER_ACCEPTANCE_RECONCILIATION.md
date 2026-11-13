@@ -126,6 +126,20 @@ native tray quit returned exit zero and reaped the Rust server and Node worker.
 The fixture used a disposable updater key and local TLS root.
 [Windows x64 1.1.2938 signed desktop update record](security/rust-server-2938-win32-x64-desktop-update.json)
 
+The same Windows installation passed a fresh launch and a reopen on each
+of PGlite, bundled PostgreSQL and external PostgreSQL. Each reopen used the
+saved database configuration and kept the server identity and setting.
+All six cases received a real worker reply and exited through the native
+tray. The managed PostgreSQL process and PID file were removed on both
+bundled PostgreSQL exits.
+[Windows x64 1.1.2938 installed matrix](security/rust-server-2938-win32-x64-installed-desktop.json)
+
+The macOS ARM64 `1.1.2938` standalone package from the same source matched
+all 1,762 archive manifest entries. The relocated executable passed
+migrations, SQL export, settings persistence, hosted reopening and clean
+SIGTERM on all three database modes with Node absent from the server PATH.
+[macOS ARM64 1.1.2938 standalone record](security/rust-server-2938-darwin-arm64-standalone.json)
+
 The Windows x64 `1.1.2881` standalone distribution passed all three stores,
 including migration, SQL export, hosted reopening and retained writes.
 [Windows x64 standalone record](security/rust-server-2881-win32-x64-standalone.json)
