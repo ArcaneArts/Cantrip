@@ -3,7 +3,7 @@
   "completeReplacement": false,
   "sourceCommit": "ca8eb6e37136de6d9cdd27c20ee0e4a5a9c476f3",
   "candidateVersion": "1.1.2964",
-  "scope": "Locally built Linux ARM64 and x64 distributions. Both passed container acceptance and packaged transport comparisons on the local ARM64 Docker host. ARM64 also passed the Winterhold rehearsal. Linux x64 service rehearsal results are recorded separately.",
+  "scope": "Locally built Linux ARM64 and x64 distributions passed container, packaged transport, and Winterhold systemd and Caddy checks on the ARM64 Docker host. The x64 rehearsal ran the packaged executable through Rosetta.",
   "platforms": [
     {
       "target": "linux-arm64",
@@ -215,6 +215,54 @@
           }
         ],
         "usagePublicationFixture": "https://github.com/ArcaneArts/Cantrip/pull/2983"
+      },
+      "winterhold": {
+        "passed": true,
+        "serviceArchitecture": "amd64",
+        "systemdHostArchitecture": "arm64",
+        "installerPullRequest": "https://github.com/ArcaneArts/Cantrip/pull/2985",
+        "installerSha256": "45ff0dbe6e3c86a2887d82f30558c2a629a2e0cf989c145a7beadbf5792d7fd3",
+        "installerCalls": 18,
+        "recoveredCliFailures": 6,
+        "runningExecutableHashesCompared": 10,
+        "startLimitRecoveryObserved": true,
+        "allModesRetainedSessionIdentityAndWrites": true,
+        "allModesReapedOwnedChildren": true,
+        "postWriteRollback": {
+          "pgliteAndBundledPostgres": "1.1.2954",
+          "externalPostgresRuntime": "node",
+          "externalPostgresRollbackImage": "sha256:e45a5bb676e4efec2ec75897dd24829fadfd23165a545de155fa1c5a7da5a9d8"
+        },
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/winterhold-x64-readiness/acceptance.json",
+          "bytes": 1099025,
+          "sha256": "78387b65f56561bdf2175834e39800d9a976074ebbe760f0f5f7a98a81f57165"
+        },
+        "journal": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/winterhold-x64-readiness/journal.log",
+          "bytes": 850780,
+          "sha256": "5b838f08d9a36a9f57d02040318ddb30759368239cb81fb5f822c88e0ff52d24"
+        },
+        "profiles": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/winterhold-x64-readiness/profile-final.tar.zst",
+          "bytes": 13904214,
+          "sha256": "81c2de671a84d09babe0ec8a8ab53eecced4cbf896d9745c89a2607c0fd1aec2"
+        },
+        "externalPostgresDump": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/winterhold-x64-readiness/external-postgres-final.dump",
+          "bytes": 677175,
+          "sha256": "193612829d08b86cf0fdf3e2b88c7fb9732c46d8d275f4f29a934cc2a3266850"
+        },
+        "httpsFixtureDiff": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/winterhold-x64-readiness/harness.diff",
+          "bytes": 2168,
+          "sha256": "2eaf2f2400180907af05651eb5771806ac1eebe1698cd4b5eb767440c46dab93"
+        },
+        "priorReadinessTimeout": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/linux-integrated/winterhold-x64-serial-retry/acceptance.json",
+          "bytes": 1161934,
+          "sha256": "37c868f429e8ec92f88ed8622770adea5ce9cdd2fd6a2a29a68d825ca39cbd1b"
+        }
       }
     }
   ]
