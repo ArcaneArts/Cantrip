@@ -16,6 +16,7 @@ export async function actualModelOperationsClient({
   crashWorker,
   workerProcessForInterruption,
   postgresOutage,
+  settleModelWhilePostgresOffline,
   redisOutage,
   requests,
   result,
@@ -335,6 +336,7 @@ export async function actualModelOperationsClient({
     outage.stop = await postgresOutage.stop({ immediate: true });
     assert.equal(outage.stop.requestedSignal, "SIGQUIT");
     const stoppedAt = performance.now();
+    const outageMs = settleModelWhilePostgresOffline ? 60_000 : 45_000;
     try {
       outage.offline = await eventually(
         () => probe("/readyz", 5_000),
@@ -343,7 +345,20 @@ export async function actualModelOperationsClient({
             assertDatabaseReadiness(peer, "unavailable", 503),
           ),
       );
-      await delay(Math.max(0, 40_000 - (performance.now() - stoppedAt)));
+      if (settleModelWhilePostgresOffline) {
+        plan.release();
+        const outcome = await finish(name, "embedding", 1);
+        outage.inferenceWhileOffline = {
+          providerCompleted: plan.entry.completed,
+          elapsedMs: Math.round(performance.now() - stoppedAt),
+          response: outcome,
+        };
+        assert.equal(outcome.ok, true);
+        assert.equal(plan.entry.completed, true);
+      }
+      await delay(
+        Math.max(0, outageMs - 5_000 - (performance.now() - stoppedAt)),
+      );
       [outage.prolongedOffline, outage.liveness] = await Promise.all([
         probe("/readyz", 5_000),
         probe("/healthz", 5_000),
@@ -362,9 +377,11 @@ export async function actualModelOperationsClient({
           return;
         assertDatabaseReadiness(peer, "unavailable", 503);
       });
-      await delay(Math.max(0, 45_000 - (performance.now() - stoppedAt)));
-      assert.equal(plan.entry.closed, false);
-      assert.equal(plan.entry.completed, false);
+      await delay(Math.max(0, outageMs - (performance.now() - stoppedAt)));
+      if (!settleModelWhilePostgresOffline) {
+        assert.equal(plan.entry.closed, false);
+        assert.equal(plan.entry.completed, false);
+      }
       assert.equal(provider.requests.length, report.cases.at(-1).before + 1);
       workerStillRunning();
     } finally {
@@ -379,9 +396,11 @@ export async function actualModelOperationsClient({
         peers.forEach((peer) => assertDatabaseReadiness(peer, "ready", 200)),
       45_000,
     );
-    assert.equal(plan.entry.closed, false);
-    plan.release();
-    assert.equal((await finish(name, "embedding", 1)).ok, true);
+    if (!settleModelWhilePostgresOffline) {
+      assert.equal(plan.entry.closed, false);
+      plan.release();
+      assert.equal((await finish(name, "embedding", 1)).ok, true);
+    }
     await receipt(name, { status: "completed" });
     assert.deepEqual(
       (await rows()).filter(

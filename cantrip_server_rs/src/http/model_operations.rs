@@ -21,7 +21,37 @@ use axum::{
     response::Response,
     routing::post,
 };
-use std::{sync::Arc, time::Duration};
+use std::{io, sync::Arc, time::Duration};
+use tokio::time::{Instant, sleep, timeout_at};
+
+const RECEIPT_RETRY_WINDOW: Duration = Duration::from_secs(120);
+const RECEIPT_RETRY_INTERVAL: Duration = Duration::from_secs(1);
+
+fn retryable_receipt_error(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        if let Some(error) = cause.downcast_ref::<tokio_postgres::Error>() {
+            return error.is_closed()
+                || error.code().is_some_and(|code| {
+                    code.code().starts_with("08")
+                        || matches!(code.code(), "57P01" | "57P02" | "57P03")
+                });
+        }
+        cause.downcast_ref::<io::Error>().is_some_and(|error| {
+            matches!(
+                error.kind(),
+                io::ErrorKind::ConnectionRefused
+                    | io::ErrorKind::ConnectionReset
+                    | io::ErrorKind::ConnectionAborted
+                    | io::ErrorKind::NotConnected
+                    | io::ErrorKind::BrokenPipe
+                    | io::ErrorKind::TimedOut
+                    | io::ErrorKind::UnexpectedEof
+                    | io::ErrorKind::HostUnreachable
+                    | io::ErrorKind::NetworkUnreachable
+            )
+        })
+    })
+}
 
 struct CancelOnDrop {
     service: Arc<AuthService>,
@@ -53,18 +83,36 @@ fn report_usage(
     let receipt = raw_receipt
         .and_then(|value| settings::parse_response("modelOperationUsageSchema", Some(value)).ok())
         .filter(|receipt| settings::model_operation_usage::receipt_fits(receipt, identity));
+    let retry_receipt = receipt.is_some() && service.repository.database.engine() == "postgres";
     let input = json!({"identity":identity,"transportStatus":status,"receipt":receipt});
     let repository = SettingsRepository::new(service.repository.database.clone());
     let jobs = service.scratch_roots.clone();
+    let mut shutdown = jobs.shutdown_signal();
     let owner = owner.to_owned();
     tokio::spawn(async move {
         // Reporting is tracked during shutdown but never gates inference or its
         // protected response. A missing receipt remains explicitly unknown.
         let result = jobs
             .owned(async move {
-                repository
-                    .record_model_operation_usage(&owner, &input)
-                    .await
+                let write = || repository.record_model_operation_usage(&owner, &input);
+                if !retry_receipt {
+                    return write().await;
+                }
+                let until = Instant::now() + RECEIPT_RETRY_WINDOW;
+                loop {
+                    let result = timeout_at(until, write())
+                        .await
+                        .context("Model operation usage retry window expired")?;
+                    if !result.as_ref().is_err_and(retryable_receipt_error) {
+                        return result;
+                    }
+                    // The receipt write is idempotent under the original source key.
+                    // A database interruption never repeats provider execution.
+                    tokio::select! {
+                        _ = shutdown.wait_for(|stopping| *stopping) => return result,
+                        _ = sleep(RECEIPT_RETRY_INTERVAL) => {}
+                    }
+                }
             })
             .await;
         if result.is_err() {

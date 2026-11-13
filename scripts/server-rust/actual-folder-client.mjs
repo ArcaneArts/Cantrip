@@ -144,6 +144,13 @@ const postgresOutage = option("--inflight-peer") === "postgres";
 const modelPostgresOutage = process.argv.includes(
   "--model-operation-postgres-outage",
 );
+const settleModelWhilePostgresOffline = process.argv.includes(
+  "--model-operation-postgres-offline-settlement",
+);
+assert.ok(
+  !settleModelWhilePostgresOffline || modelPostgresOutage,
+  "Offline settlement requires --model-operation-postgres-outage",
+);
 const modelRedisOutage = process.argv.includes(
   "--model-operation-redis-outage",
 );
@@ -1716,6 +1723,7 @@ async function flow(
             ? () => worker?.child
             : undefined,
         postgresOutage: modelPostgresOutage ? postgres.cluster : undefined,
+        settleModelWhilePostgresOffline,
         redisOutage: modelRedisOutage,
         requests,
         result,

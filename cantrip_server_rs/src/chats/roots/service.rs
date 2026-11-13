@@ -409,6 +409,10 @@ impl Service {
             json!({"level":"warn","event":event,"subsystem":"standalone-chat-scratch"}).stringify()
         );
     }
+    pub(crate) fn shutdown_signal(&self) -> watch::Receiver<bool> {
+        self.stop.subscribe()
+    }
+
     pub fn stop(&self) {
         self.state.lock().unwrap().stopping = true;
         self.stop.send_replace(true);
