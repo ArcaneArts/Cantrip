@@ -5,6 +5,68 @@ production Node workspace and entrypoints have been retired. The worker remains
 Node. The old server is an explicit development compatibility reference. See
 [default cutover](RUST_SERVER_DEFAULT_CUTOVER.md) and
 [production Node retirement](RUST_SERVER_NODE_RETIREMENT.md) for their qualification.
+
+## Cantrip 1.1.2976 qualification
+
+The recorded packages use Rust server source `92ed534fa` and desktop shell
+source `f1201f3e2`. Through integrated commit `51c83a81b`, the only later
+runtime source change in the server, deployment, renderer and worker inputs
+was the canonical-history worker fix in #3006. Package and product results
+below apply to the exact binaries and worker entries identified by their reports.
+
+- **macOS ARM64.** Standalone startup, migration, export and reopening passed
+  on PGlite, bundled PostgreSQL and external PostgreSQL with Node off the
+  server PATH. Signed desktop updates passed on all three stores. The populated
+  Node `1.1.2733` upgrade and post-write rollback preserved the original
+  profile and existing encrypted state, identity and session. The comparison
+  covered 137 tables and four sequences. The three CLI worktree continuation
+  cases passed again after #3006. Each completed 12 steps, two model requests
+  and one canonical answer per checkout, with the same transcript after
+  reopening. [macOS package report](security/rust-server-2976-darwin-arm64-acceptance.json)
+- **Linux ARM64 and x64.** The standalone containers passed all three stores
+  as a non-root user with a read-only root. Each local Winterhold rehearsal
+  exercised 18 installer calls, Caddy HTTPS, App Live and post-write rollback.
+  The hosted PostgreSQL case rolled back to the Node reference over required
+  TLS. The x64 result used emulation on an ARM64 Linux host. The CLI worktree
+  reports cover all six platform and storage combinations before #3006.
+  [Linux ARM64](security/rust-server-2976-linux-arm64-acceptance.json),
+  [Linux x64](security/rust-server-2976-linux-x64-acceptance.json),
+  [CLI worktree matrix](security/rust-server-2976-linux-cli-worktree-acceptance.json)
+- **Windows x64.** The earlier package passed all three standalone cases and
+  six installed first-launch and reopen cases. The local signed PGlite update
+  from `1.1.2938` also passed. The rebuilt installer with #3006 has a verified
+  14,091-entry payload and is undergoing installed acceptance. On the emulated
+  guest, the PGlite CLI worktree case completed both model requests and 10
+  product steps. Its canonical-history assertion observed `item/completed`
+  where it expected `native-history`. The teardown error obscured the original
+  assertion in the top-level report. The two PostgreSQL CLI cases remain open.
+  [Windows package report](security/rust-server-2976-win32-x64-packages.json)
+- **Model operations and WorkerLink.** The macOS and Linux reports cover native
+  model operations on all three stores. Linux recorded 72 operations, 114
+  product steps and 18 clean server exits. The macOS server-loss matrix covered
+  all three store pairs and six forced server deaths. The macOS WorkerLink
+  report includes shared routing, forced loss and repeated PGlite recovery.
+  Windows model operations and active database or Redis interruption during
+  inference still need qualification.
+  [macOS model operations](security/rust-server-2976-darwin-arm64-model-operations.json),
+  [macOS server loss](security/rust-server-2976-darwin-arm64-model-operation-server-loss.json),
+  [Linux model operations](security/rust-server-2976-linux-model-operations.json),
+  [WorkerLink](security/rust-server-2976-darwin-arm64-workerlink.json)
+- **Browser and mobile.** Browser sign-in and installed Android and iOS
+  simulator sessions passed against all three stores. Android also exercised
+  the native QR entry point and Keystore. Installed iOS native QR, physical
+  camera and distribution-signed mobile evidence remain open.
+  [Browser sign-in](security/rust-server-2976-browser-mobile-sign-in.json),
+  [Installed mobile](security/rust-server-2976-installed-mobile.json)
+- **Populated-profile performance.** The paired macOS suite retained 100
+  measured invocations. With external PostgreSQL, project-list median rose
+  from 6.125 ms to 7.802 ms and full-history median from 28.148 ms to 35.092 ms.
+  The report documents the local tradeoff alongside improvements in paged
+  reads, writes, mixed-read throughput and startup.
+  [Performance report](security/rust-server-2976-darwin-arm64-populated-performance.json)
+
+## Historical qualification
+
 Historical ledger entries describe their original milestones. The local macOS
 ARM64 `1.1.2881` server passed all three stores as a standalone distribution,
 in signed desktop updates from `1.1.2869`, and through the original Node
