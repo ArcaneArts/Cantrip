@@ -6,6 +6,17 @@ Node. The old server is an explicit development compatibility reference. See
 [default cutover](RUST_SERVER_DEFAULT_CUTOVER.md) and
 [production Node retirement](RUST_SERVER_NODE_RETIREMENT.md) for their qualification.
 
+## Cantrip 1.1.3013 macOS standalone
+
+The macOS ARM64 standalone distribution built from `9069ae6ac` passed
+startup, migrations, SQL export, retained writes, hosted reopening and graceful
+shutdown on PGlite, bundled PostgreSQL and external PostgreSQL. The test
+repeated those checks from a fresh archive extraction with Node off the server
+PATH and Homebrew and artifact writes denied. All 1,762 manifest entries
+matched. The running server reported `1.1.3013` and the same process instance
+ID in health and live traffic. This record covers the standalone archive.
+[macOS standalone report](security/rust-server-3013-darwin-arm64-standalone.json)
+
 ## Cantrip 1.1.2976 qualification
 
 The recorded packages use Rust server source `92ed534fa` and desktop shell

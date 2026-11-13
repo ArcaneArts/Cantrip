@@ -30716,6 +30716,10 @@
       }
     }
   },
+  "macos3013StandaloneQualification": {
+    "status": "passed",
+    "report": "docs/security/rust-server-3013-darwin-arm64-standalone.json"
+  },
   "remainingAcceptance": [
     "Finish canonical-history CLI and model-operation acceptance on Windows x64 with the signed installer containing the worker grant refresh from PR #3012.",
     "Qualify packaged cross-platform dependency interruptions and longer outages. Reconcile the still-open background-service and product recovery comparisons.",
