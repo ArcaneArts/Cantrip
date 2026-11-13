@@ -101,7 +101,8 @@
         "evidence": [
           "scripts/server-rust/auth-compatibility.mjs",
           "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md#browser-server-switching-and-mobile-qr-sign-in",
-          "docs/security/rust-server-installed-mobile-acceptance.json"
+          "docs/security/rust-server-installed-mobile-acceptance.json",
+          "docs/security/rust-server-2976-browser-mobile-sign-in.json"
         ],
         "remaining": []
       },
@@ -113,7 +114,8 @@
         "evidence": [
           "scripts/server-rust/auth-compatibility.mjs",
           "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md#browser-server-switching-and-mobile-qr-sign-in",
-          "docs/security/rust-server-installed-mobile-acceptance.json"
+          "docs/security/rust-server-installed-mobile-acceptance.json",
+          "docs/security/rust-server-2976-browser-mobile-sign-in.json"
         ],
         "remaining": []
       },
@@ -24345,7 +24347,8 @@
           "sha256": "b81b99cd27ea380b21ddf960af9375bb6f17ad73193052a4eed53ddc0a658885"
         }
       },
-      "currentBrowserMobileSignIn": "docs/security/rust-server-2881-browser-mobile-sign-in.json",
+      "currentBrowserMobileSignIn": "docs/security/rust-server-2976-browser-mobile-sign-in.json",
+      "previousBrowserMobileSignIn": "docs/security/rust-server-2881-browser-mobile-sign-in.json",
       "currentInstalledIosSignIn": "docs/security/rust-server-2881-ios-acceptance.json",
       "currentInstalledAndroidSignIn": "docs/security/rust-server-2881-android-acceptance.json",
       "installedMobileSignIn": {

@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.2976",
+  "serverSourceCommit": "92ed534fa5b1bef8dfcf60a21b9784e159c6a655",
+  "driverCommit": "e2945853eba7db35c6483317695ef2f856b102c1",
+  "platform": "darwin-arm64",
+  "chromiumVersion": "151.0.7922.34",
+  "scope": "Built Cantrip renderer in Chromium desktop and iPhone viewport layouts, packaged Rust server in hosted account mode behind local HTTPS, and compiled Node reference on external PostgreSQL. Chromium read the actual app-rendered QR through a virtual camera.",
+  "artifacts": {
+    "rustExecutable": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone/bin/cantrip-server",
+      "bytes": 94259472,
+      "sha256": "eba01be07448e2505235dcaf8585e96ae7b9c797c0e2f9082abaae44f92d7af2"
+    },
+    "appIndex": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-drain/rehearsal/frontend/index.html",
+      "bytes": 3083,
+      "sha256": "5ec4bd52d7382b43fa23b4ed83685b251052ff8ee8b4687fd14d64b525024f04"
+    },
+    "appDistribution": {
+      "fileCount": 197,
+      "treeSha256": "96f2235008b425497e83e46a794cb9aa7237da71f2ed7688e2be1ff9fa5d7ec3"
+    },
+    "rendererVersionInput": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-drain/version-input/packages/version/dist/version.json",
+      "bytes": 179,
+      "sha256": "6ff77c9b9098cd8dabc6e0ac03312bc9daa4c934e8bb6b2b35d313efe60662a4"
+    },
+    "compiledReferenceTree": {
+      "fileCount": 1605,
+      "treeSha256": "f69551699b7088c7e91a637bee0f4833dcef45d0cede087511e68ece7e33e674"
+    },
+    "staticCameraDriver": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/browser-mobile-qr/browser-mobile-sign-in-live-first.mjs",
+      "bytes": 26409,
+      "sha256": "f415185246e1496bba8a4bd913f2cffa4c8aba939b4d1adc9e9cc492ddad6fc8"
+    },
+    "movingCameraDriver": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/browser-mobile-qr/browser-mobile-sign-in-moving-camera.mjs",
+      "bytes": 26477,
+      "sha256": "3bc0c752834d1ef4c5804a1b9cff8a4d15fc3e80e7d91f179ed467bd9cec9afe"
+    },
+    "originalInputDigests": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/browser-mobile-qr/input-digests.txt",
+      "bytes": 1003,
+      "sha256": "5e17fb15ef187d1bcfdebdfc9d92f3a16aaf3635caeafd63fe48fc06d92b1624"
+    }
+  },
+  "verifiedBehavior": [
+    "Both desktop accounts kept their sessions through server switching.",
+    "Both mobile browser sessions recovered encrypted access, retained their independent Secure HttpOnly cookies across reload, and resubscribed to App Live.",
+    "Mobile sign-out preserved the issuing desktop session.",
+    "Rust restart preserved the server identity and original desktop session."
+  ],
+  "scenarios": [
+    {
+      "rustStore": "pglite",
+      "referenceStore": "postgres",
+      "cameraInput": "slightly rotating frames",
+      "scenarioSteps": 7,
+      "successfulExchanges": ["node", "rust"],
+      "cleanServerShutdowns": 3,
+      "browserPageErrors": 0,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/browser-mobile-qr/pglite-moving-camera.json",
+        "bytes": 4232,
+        "sha256": "7f4004daf267bf84b0cce545341824ef90bc01568dc64406fdd4b244fd0fcd64"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/browser-mobile-qr/pglite-moving-camera.log",
+        "bytes": 631,
+        "sha256": "ebdbd209b9b9d4307839d3ddfaa78bf619993407aab3c0b35634f52984f153ad"
+      }
+    },
+    {
+      "rustStore": "bundled-postgres",
+      "referenceStore": "postgres",
+      "cameraInput": "static frames",
+      "scenarioSteps": 7,
+      "successfulExchanges": ["node", "rust"],
+      "cleanServerShutdowns": 3,
+      "browserPageErrors": 0,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/browser-mobile-qr/bundled-postgres.json",
+        "bytes": 4432,
+        "sha256": "6fa94d76016eee340b99e2e9934113bc58436b8186cf335ff3265c3b680d7a9b"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/browser-mobile-qr/bundled-postgres.log",
+        "bytes": 631,
+        "sha256": "27adc7a898c65ff7715e67c5693f892acda429c8c28d9c6d1d446a48738c84fb"
+      }
+    },
+    {
+      "rustStore": "postgres",
+      "referenceStore": "postgres",
+      "cameraInput": "static frames",
+      "scenarioSteps": 7,
+      "successfulExchanges": ["node", "rust"],
+      "cleanServerShutdowns": 3,
+      "browserPageErrors": 0,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/browser-mobile-qr/postgres.json",
+        "bytes": 4235,
+        "sha256": "94be2efffaedc213bda2d55af22064e7cefd0a815ae7d6e9e2e3df63107d60b0"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/browser-mobile-qr/postgres.log",
+        "bytes": 631,
+        "sha256": "526fc05f82e656788ab6f1859a1902ebd40b51468247502011f3497a990512a2"
+      }
+    }
+  ],
+  "initialPglitePairing": {
+    "outcome": "The Node reference QR produced no exchange request with the static feed while its camera track was live. The slightly rotating feed passed with the same scan, exchange, encryption and session assertions.",
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/browser-mobile-qr/pglite.json",
+      "bytes": 4237,
+      "sha256": "e89719f732b46ca38ea34ebfdc24977e5f9d5d96e0b52def6225b663ed7b60f8"
+    },
+    "log": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/browser-mobile-qr/pglite.log",
+      "bytes": 4394,
+      "sha256": "3e78eb73315eaba2e6c97ed6e8d1c15533d8efe4eca858f6087715eacba8613e"
+    }
+  },
+  "remaining": [
+    "Repeat on current installed Android and iOS shipping packages with native scanners and physical cameras."
+  ]
+}
