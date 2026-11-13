@@ -1,0 +1,217 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.2976",
+  "referenceVersion": "1.1.2964",
+  "target": "darwin-arm64",
+  "serverSourceCommit": "92ed534fa5b1bef8dfcf60a21b9784e159c6a655",
+  "driverCommit": "b7aa8c2c3d70c424b5749f2ff944cd41d399af0e",
+  "scope": "Existing browser SDK in Chromium, full packaged Node worker and production server entrypoints on macOS ARM64. Only the local provider responses were scripted. In the bundled PostgreSQL case, Rust manages its own PostgreSQL and the Node reference uses the fixture PostgreSQL service.",
+  "rustExecutable": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone/bin/cantrip-server",
+    "bytes": 94259472,
+    "sha256": "eba01be07448e2505235dcaf8585e96ae7b9c797c0e2f9082abaae44f92d7af2"
+  },
+  "packagedInputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/inputs.sha256",
+    "bytes": 865,
+    "sha256": "deeda17f15ffc55cc75d33d02bdfe570f0230cc7b813ffec88e013b1cfd29562"
+  },
+  "aggregate": {
+    "totals": {
+      "inputTokens": 36,
+      "outputTokens": 9,
+      "totalTokens": 45,
+      "cachedInputTokens": 6,
+      "cacheWriteInputTokens": 3,
+      "reasoningOutputTokens": 3
+    },
+    "coverage": {
+      "attemptCount": 12,
+      "reportedAttemptCount": 11,
+      "observedRequestCount": 12,
+      "incompleteUsageCount": 7
+    }
+  },
+  "singleServerScenarios": [
+    {
+      "databaseMode": "pglite",
+      "cells": [
+        {
+          "peers": "node",
+          "productSteps": 19,
+          "operationCases": 12,
+          "providerHttpRequests": 13,
+          "workerSigkills": 1,
+          "cleanWorkerExits": 4,
+          "cleanServerExits": 3
+        },
+        {
+          "peers": "rust",
+          "productSteps": 19,
+          "operationCases": 12,
+          "providerHttpRequests": 13,
+          "workerSigkills": 1,
+          "cleanWorkerExits": 4,
+          "cleanServerExits": 3
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/pglite.json",
+        "bytes": 605212,
+        "sha256": "18f7b1bf3aa55ead62d8f06e3903a1b4e5a83a5175180489db32f7403a6119c8"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/pglite.log",
+        "bytes": 3065,
+        "sha256": "37f5d27f6e3c28b32fbdabfe86e4db9fc1cdb3c92d04ed8985db2ab27f84cef8"
+      },
+      "retainedFixture": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/pglite.archive-input.fixture.tar.zst",
+        "bytes": 268051554,
+        "sha256": "ee4e4601340e3d1aa7a72666713c09b6e99c1dd5c322d25ee4a9d5776db91ed5"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "cells": [
+        {
+          "peers": "node",
+          "productSteps": 19,
+          "operationCases": 12,
+          "providerHttpRequests": 13,
+          "workerSigkills": 1,
+          "cleanWorkerExits": 4,
+          "cleanServerExits": 3
+        },
+        {
+          "peers": "rust",
+          "productSteps": 19,
+          "operationCases": 12,
+          "providerHttpRequests": 13,
+          "workerSigkills": 1,
+          "cleanWorkerExits": 4,
+          "cleanServerExits": 3
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/bundled-postgres.json",
+        "bytes": 675217,
+        "sha256": "19a58b6d4963cf5373008326151cf0c4282329085d951b8cad6c448f68483026"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/bundled-postgres.log",
+        "bytes": 3075,
+        "sha256": "5059355651db2fc1aa369e273eaba0a0bb96313ac201a6462531a621fa305c59"
+      },
+      "retainedFixture": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/bundled-postgres.archive-input.fixture.tar.zst",
+        "bytes": 311784054,
+        "sha256": "b7438a835101ed5d17543b74e7d168a4855023dc231c87c85593ccd2312053ce"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "cells": [
+        {
+          "peers": "node",
+          "productSteps": 19,
+          "operationCases": 12,
+          "providerHttpRequests": 13,
+          "workerSigkills": 1,
+          "cleanWorkerExits": 4,
+          "cleanServerExits": 3
+        },
+        {
+          "peers": "rust",
+          "productSteps": 19,
+          "operationCases": 12,
+          "providerHttpRequests": 13,
+          "workerSigkills": 1,
+          "cleanWorkerExits": 4,
+          "cleanServerExits": 3
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/postgres.json",
+        "bytes": 673523,
+        "sha256": "9862305c5b305a07f4e62443669c4f0a38d30b06998942c514710979af6ad7f0"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/postgres.log",
+        "bytes": 3067,
+        "sha256": "7b8f0f27a8318d4a298ca8c7a1a86efd87921c4c9e1d0db716ac542ee2f8cf3b"
+      },
+      "retainedFixture": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/postgres.archive-input.fixture.tar.zst",
+        "bytes": 236968805,
+        "sha256": "05712d2aaee278d0b8d98e5c992c09686c7914b190790c3f5302d10cc5a8a1a8"
+      }
+    }
+  ],
+  "sharedPostgres": {
+    "scope": "The browser and full worker connected to opposite peers on the same disposable PostgreSQL database and Redis instance. Each pairing repeated the existing model-operation assertions and two orderly restarts of both peers.",
+    "redisVersion": "8.10.3",
+    "redisBinaryDigest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/redis.sha256",
+      "bytes": 198,
+      "sha256": "480a3b56a1b20baa144f231260b79bf812a39b0b21f764eb6b8ead4babbef240"
+    },
+    "cells": [
+      {
+        "peers": "node/node",
+        "productSteps": 19,
+        "operationCases": 12,
+        "providerHttpRequests": 13,
+        "workerSigkills": 1,
+        "cleanWorkerExits": 4,
+        "cleanServerExits": 6
+      },
+      {
+        "peers": "node/rust",
+        "productSteps": 19,
+        "operationCases": 12,
+        "providerHttpRequests": 13,
+        "workerSigkills": 1,
+        "cleanWorkerExits": 4,
+        "cleanServerExits": 6
+      },
+      {
+        "peers": "rust/node",
+        "productSteps": 19,
+        "operationCases": 12,
+        "providerHttpRequests": 13,
+        "workerSigkills": 1,
+        "cleanWorkerExits": 4,
+        "cleanServerExits": 6
+      },
+      {
+        "peers": "rust/rust",
+        "productSteps": 19,
+        "operationCases": 12,
+        "providerHttpRequests": 13,
+        "workerSigkills": 1,
+        "cleanWorkerExits": 4,
+        "cleanServerExits": 6
+      }
+    ],
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/shared-postgres.json",
+      "bytes": 1592897,
+      "sha256": "3a67471c8b92eb7975bf410d997666b946a45c51c6051dab44cbbfa3c69571cf"
+    },
+    "log": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/shared-postgres.log",
+      "bytes": 5915,
+      "sha256": "0a66f0b5497736a4e0f14df491f5c2ea9a4ef4f097392592622e3d0ea3f14419"
+    },
+    "retainedFixture": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/shared-postgres.archive-input.fixture.tar.zst",
+      "bytes": 598554982,
+      "sha256": "ce3ca92ba03053926207ae021b52baa7419d099c42b31027d0f9780f85c4a4b3"
+    }
+  },
+  "remaining": [
+    "Current installed Windows and Linux package coverage, active-operation server or dependency interruption, and long-outage acceptance."
+  ]
+}
