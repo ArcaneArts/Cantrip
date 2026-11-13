@@ -3,8 +3,9 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "ec3dcca773d4bd48334befa5125d5f39f8f7ded284a5aedc439188230ea41a3d",
+    "sha256": "6351c5eddb5f468274fc75d4de086535aba0e0dfc6d10a0c57a25866bc543293",
     "baselineCommit": "2e99d7ab00f100759003e0ebe08461f557acb599",
+    "sourceLocationRefreshCommit": "4caf43bdb78d1d5f8a83ca733edd7530cbebaa7e",
     "counts": {
       "routes": 584,
       "workerCommands": 323,
@@ -29692,6 +29693,78 @@
       ],
       "remaining": [
         "Complete final supported shipping and existing-client encrypted desktop/update acceptance; do not infer whole replacement completion from runtime selection. Production source retirement and its scoped isolation qualification are recorded separately in productionNodeRemoval."
+      ]
+    },
+    "releaseArtifactQualification2938": {
+      "status": "implemented-with-scoped-local-qualification",
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+      "linuxWinterholdAndContainers": [
+        {
+          "target": "linux-arm64",
+          "version": "1.1.2936",
+          "sourceCommit": "e97cf3e8e3a474f4f303eda754088cf1072234ae",
+          "verifiedPackageFiles": 2558,
+          "installerCalls": 18,
+          "recoveredInstallerFailures": 6,
+          "postWriteRollback": {
+            "pgliteAndBundledPostgres": "1.1.2869",
+            "externalPostgres": "1.1.2739",
+            "externalPostgresRollbackArchitecture": "amd64"
+          },
+          "record": "docs/security/rust-server-2936-linux-arm64-acceptance.json"
+        },
+        {
+          "target": "linux-x64",
+          "version": "1.1.2936",
+          "sourceCommit": "e97cf3e8e3a474f4f303eda754088cf1072234ae",
+          "verifiedPackageFiles": 2558,
+          "installerCalls": 18,
+          "recoveredInstallerFailures": 6,
+          "postWriteRollback": {
+            "pgliteAndBundledPostgres": "1.1.2869",
+            "externalPostgres": "1.1.2739"
+          },
+          "record": "docs/security/rust-server-2936-linux-x64-acceptance.json"
+        }
+      ],
+      "linuxCliWorktreeContinuations": {
+        "cells": 6,
+        "productStepsPerCell": 12,
+        "record": "docs/security/rust-server-2936-linux-cli-worktree-acceptance.json",
+        "scope": "The browser, full Node worker and native CLI ran on macOS. The Rust server ran in its Linux ARM64 and Linux x64 containers."
+      },
+      "macOSArm64": {
+        "version": "1.1.2935",
+        "sourceCommit": "010a8295946ac70a880b6b843434248f1d5f9574",
+        "verifiedStandalonePackageFiles": 1762,
+        "installedUpdateModes": ["pglite", "bundled-postgres", "postgres"],
+        "cliWorktreeCells": 3,
+        "autonomousGoalRecoveryCells": 3,
+        "record": "docs/security/rust-server-2935-macos-release-acceptance.json",
+        "scope": "Local Developer ID signed desktop with a disposable updater key and TLS root. The renderer version module was 1.1.2845. Release notarization was outside the rehearsal."
+      },
+      "windowsX64Standalone": {
+        "version": "1.1.2938",
+        "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+        "verifiedPackageFiles": 2281,
+        "record": "docs/security/rust-server-2938-win32-x64-standalone.json",
+        "scope": "Local Windows 11 x64 under QEMU software emulation. The three-store runtime used a 240-second startup allowance and the existing 15-second shutdown assertion."
+      },
+      "nativeBoundaryRecheck": {
+        "runtimeSourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+        "target": "darwin-arm64",
+        "testResults": [
+          "auth_repository::native_authentication_state_survives_process_restart",
+          "encryption_repository::native_registry_transactions_ownership_and_retained_state",
+          "http_security_boundaries::current_native_http_authority_isolated_from_reference_server"
+        ],
+        "passed": 3,
+        "runner": "scripts/audit-server-boundaries.mjs"
+      },
+      "remaining": [
+        "Complete the Windows signed desktop update, installed three-store matrix and full-worker CLI worktree qualification on the current package.",
+        "Complete aligned macOS renderer packaging, current existing-profile rollback, outstanding product and dependency failure checks, and representative performance verification.",
+        "Reconcile remaining domain contracts against passing behavior."
       ]
     },
     "finalReplacementAcceptance": {
