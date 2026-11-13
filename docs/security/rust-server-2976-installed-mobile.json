@@ -87,6 +87,33 @@
   },
   "ios": {
     "platform": "iOS 26.4 ARM64 simulator",
+    "appStoreExport": {
+      "scope": "Xcode 27.0 ARM64 device Release archive and local App Store Connect export. The exported app signature and embedded profile were verified. All 195 renderer files match the qualified simulator renderer. The export destination was local.",
+      "bundleId": "art.cantrip",
+      "version": "1.1.2976",
+      "build": "2976",
+      "rendererFilesVerified": 195,
+      "artifact": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/Cantrip-1.1.2976-app-store-local-export.ipa",
+        "bytes": 4157415,
+        "sha256": "bc1723ffdb03ffcdea95e40a5e0e14188b173f832c26580ee1d4a59aafc1f03d"
+      },
+      "verification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/ios-2976-app-store-export-verification.json",
+        "bytes": 358,
+        "sha256": "89def0cb2121df297b6f17928e38b0e37ca8cdcbf7f42cc559a202600cd0dcad"
+      },
+      "archiveLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/ios-2976-unsigned-archive.log",
+        "bytes": 697945,
+        "sha256": "9519acd4555edbf353c92aebe18838f5d2cf12b8a3a1d8e4f5c5c1a6d678337d"
+      },
+      "exportLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/ios-2976-local-app-store-auto-export.log",
+        "bytes": 358,
+        "sha256": "f5812f3caa362aacad7e84885b3c2990ab436e4fa256f91a22079ac52e3f62c6"
+      }
+    },
     "artifact": {
       "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/Cantrip-1.1.2976-versioned-ios-simulator.zip",
       "bytes": 6276624,
@@ -143,7 +170,7 @@
   },
   "remaining": [
     "Installed iOS native QR sign-in on the current artifact.",
-    "Distribution-signed mobile packages and physical camera runs."
+    "Distribution-signed Android package and physical camera runs."
   ],
   "transportEvidence": {
     "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/installed-mobile/mobile-transport-evidence.jsonl",
