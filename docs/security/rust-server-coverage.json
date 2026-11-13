@@ -30664,7 +30664,9 @@
       "linuxModelOperations": "docs/security/rust-server-2976-linux-model-operations.json",
       "browserSignIn": "docs/security/rust-server-2976-browser-mobile-sign-in.json",
       "installedMobile": "docs/security/rust-server-2976-installed-mobile.json",
-      "macosPopulatedPerformance": "docs/security/rust-server-2976-darwin-arm64-populated-performance.json"
+      "macosPopulatedPerformance": "docs/security/rust-server-2976-darwin-arm64-populated-performance.json",
+      "macosWorkerLogStream": "docs/security/rust-server-2976-darwin-arm64-worker-log-stream.json",
+      "linuxWorkerLogStream": "docs/security/rust-server-2976-linux-worker-log-stream.json"
     },
     "canonicalHistoryWorkerFollowup": {
       "workerFixCommit": "0fcb117267e8282d4a48ff20a33872e242796a1a",
@@ -30717,7 +30719,7 @@
     "Qualify packaged cross-platform dependency interruptions and longer outages. Reconcile the still-open background-service and product recovery comparisons.",
     "Complete the remaining inventory-level behavior evidence, including malformed, Unicode and deep-JSON inputs, serialization for authenticated metadata, encrypted boundaries and protocol ordering.",
     "Qualify installed iOS native QR, physical-camera runs and the remaining distribution-signed Android scenario.",
-    "Complete residual performance coverage for sustained backpressure, interruption recovery and representative Windows and Linux runtimes.",
+    "Complete residual performance coverage for sustained backpressure and interruption recovery on Windows and for Linux WorkerLink binary streams.",
     "Reconcile exact release artifacts, migration and rollback evidence and remaining platform limits before marking full replacement complete."
   ],
   "milestonePlatformAcceptance": [
