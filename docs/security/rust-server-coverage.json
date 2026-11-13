@@ -5441,7 +5441,8 @@
           "docs/RUST_SERVER_CLI.md",
           "docs/security/rust-server-cli-http-contract-matrix.json",
           "docs/security/rust-server-2976-darwin-arm64-acceptance.json#cliWorktreeContinuation",
-          "docs/security/rust-server-2936-linux-cli-worktree-acceptance.json"
+          "docs/security/rust-server-2936-linux-cli-worktree-acceptance.json",
+          "docs/security/rust-server-2976-linux-cli-worktree-acceptance.json"
         ],
         "scope": "All 35 legacy CLI commands use native server services. The paired HTTP matrix covers all three stores and authentication modes. The full-worker create-and-switch flow passed all three stores with the 1.1.2976 macOS package and the earlier Linux ARM64 and x64 containers.",
         "remaining": [
@@ -28351,6 +28352,7 @@
       "worktreeContinuationProduct": "docs/security/rust-server-cli-worktree-product.json",
       "macosPackagedWorktreeContinuation": "docs/security/rust-server-2976-darwin-arm64-acceptance.json#cliWorktreeContinuation",
       "linuxContainerWorktreeContinuation": "docs/security/rust-server-2936-linux-cli-worktree-acceptance.json",
+      "linux2976ContainerWorktreeContinuation": "docs/security/rust-server-2976-linux-cli-worktree-acceptance.json",
       "implementation": [
         "cantrip_server_rs/src/cli",
         "cantrip_server_rs/src/http/cli.rs",
