@@ -28770,6 +28770,15 @@
       ]
     },
     "fullWorkerCantripOsLifecycle": {
+      "currentPackagedServer": {
+        "version": "1.1.2938",
+        "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+        "platform": "darwin-arm64",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "productCells": 6,
+        "matchedSnapshotsPerPair": 44,
+        "record": "docs/security/rust-server-2938-darwin-arm64-goal-cantripos.json#cantripOsLifecycle"
+      },
       "status": "implemented-pending-platform-acceptance",
       "sourceBaseline": "e21a9e2736e6feaf2e6c62b719e8340c4541e062",
       "evidence": [
@@ -29727,6 +29736,14 @@
       ]
     },
     "releaseArtifactQualification2938": {
+      "macOS2938GoalAndCantripOs": {
+        "version": "1.1.2938",
+        "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+        "platform": "darwin-arm64",
+        "taskGoalFirstInputCells": 12,
+        "cantripOsLifecycleCells": 6,
+        "record": "docs/security/rust-server-2938-darwin-arm64-goal-cantripos.json"
+      },
       "macOS2938PopulatedProfilePerformance": {
         "version": "1.1.2938",
         "measuredInvocations": 100,
@@ -30235,6 +30252,15 @@
       "scope": "Actual repositories, HTTP and isolated databases on macOS ARM64. The repository suite verifies the Rust output seal and durable projection wake through replay, SQL rollback and restart. Native source capture replies are controlled."
     },
     "currentTaskGoalFirstInputOrdering": {
+      "currentPackagedServer": {
+        "version": "1.1.2938",
+        "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+        "platform": "darwin-arm64",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "heldPhases": ["claim", "dispatch"],
+        "productCells": 12,
+        "record": "docs/security/rust-server-2938-darwin-arm64-goal-cantripos.json#taskGoalFirstInputOrdering"
+      },
       "status": "partial",
       "qualification": "docs/RUST_SERVER_NATIVE_RECOVERY_CONTRACTS.md#ordering-the-first-encrypted-task-goal-input",
       "acceptance": "docs/security/rust-server-task-goal-first-input-acceptance.json",
