@@ -143,6 +143,38 @@
           "bytes": 357,
           "sha256": "fa953206faa27c4eca96c6f80ebe5106fbdc01037efb186a677936a988ed0dd0"
         }
+      },
+      "activePostgresOutage": {
+        "databaseMode": "postgres",
+        "harnessCommit": "1474205b745bcf88c098017fbeb72de8f7b9d94a",
+        "productSteps": 20,
+        "modelOperationCases": 14,
+        "providerRequests": 15,
+        "cleanServerExits": 3,
+        "offlineMs": 60000,
+        "operationCompletedWhileOffline": true,
+        "initialReadiness": 503,
+        "prolongedReadiness": 503,
+        "liveness": 200,
+        "recoveredReadiness": 200,
+        "postRecoveryReceipt": "completed",
+        "providerRequestsForOriginalOperation": 1,
+        "freshOperationCompleted": true,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/x64/postgres-offline-settlement-verified-input/acceptance.json",
+          "bytes": 509789,
+          "sha256": "2f5712f3d1655b84f03ad5bc8225d10e27703842da2ab41e7e0124f4190ee9a9"
+        },
+        "runtimeGenerations": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/x64/postgres-offline-settlement-verified-input/generations.jsonl",
+          "bytes": 3180,
+          "sha256": "27e216822c4c661206a3c6e74afd9a21e7bdd2497ea31ddb13e52ffd721d54c3"
+        },
+        "retainedFixtureChecksums": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/x64/postgres-offline-settlement-verified-input/retained.sha256",
+          "bytes": 413,
+          "sha256": "9f80334acf0dbefe420306df97db7a37f6573817e8c2220b63af202eaad36382"
+        }
       }
     }
   }
