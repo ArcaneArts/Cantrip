@@ -6,6 +6,47 @@ Node. The old server is an explicit development compatibility reference. See
 [default cutover](RUST_SERVER_DEFAULT_CUTOVER.md) and
 [production Node retirement](RUST_SERVER_NODE_RETIREMENT.md) for their qualification.
 
+## Cantrip 1.1.3059 packaged servers
+
+The relocated macOS ARM64 archive and both Linux OCI images passed migrations,
+SQL export, retained writes, hosted reopening and graceful shutdown on all
+three stores. The macOS run verified 1,762 manifest entries with Homebrew
+reads and artifact writes denied. The Linux verifiers matched 2,558 native
+package files and four OCI layers per architecture. Both Linux containers ran
+without Node, as a non-root user, with a read-only root and noexec temporary
+filesystem. Linux x64 ran through Rosetta on the ARM64 Linux host.
+
+Each local Winterhold rehearsal completed 18 installer operations under
+systemd and Caddy HTTPS. Six injected migration and startup failures
+restored the working service. PGlite and bundled PostgreSQL retained writes
+through rollback to Rust 1.1.3048. External PostgreSQL retained writes and
+the session through rollback to the historical Node server and return to Rust.
+Both Linux packages also passed all four Rust and Node caller/host pairings
+with two full workers, Chromium and shared PostgreSQL. Each pairing recovered
+the same replica on attempt two after Redis restarted.
+
+The macOS standalone package passed 20 browser and full-worker steps and
+14 model operations, including the eight-minute external PostgreSQL outage.
+Liveness stayed at HTTP 200, readiness returned HTTP 503 during the outage
+and HTTP 200 after recovery, and the original inference produced one durable
+receipt. The separate Windows x64 1.1.3057 executable passed the same 20
+steps and 14 model operations in the local guest with a 60-second outage.
+
+The macOS 64 MiB worker-log test measured 218 MiB/s for Rust and 177 MiB/s
+for Node in one run per runtime. Both delivered the same payload, closed the
+slow consumer with code 1013 and retained identity and writes after restart.
+The small-profile test measured a 205 ms Rust PGlite reopen and 94–102 MiB
+of idle process-tree RSS. Fresh Rust PGlite starts took 32.7 and 4.7 seconds,
+with the difference concentrated in migration time. Fresh startup needs
+further comparison before a performance conclusion.
+
+The signed macOS desktop update from 1.1.3043 passed all three database modes
+after the updater fixture adopted the production launcher configuration. It
+retained the server identity, worker enrollment, client encryption bindings
+and a settings write, and drained both desktop child processes. The PGlite
+case rejected a modified updater archive before applying the valid package.
+[Platform, artifact and performance evidence](security/rust-server-3059-platform-acceptance.json)
+
 ## macOS recovery tests through Cantrip 1.1.3059
 
 The macOS ARM64 development executable in PR #3071 completed 14 model
