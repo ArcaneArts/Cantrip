@@ -29648,6 +29648,7 @@
       "candidateAcceptance": "docs/security/rust-server-2881-performance-acceptance.json",
       "windows2976StreamAndRecovery": "docs/security/rust-server-2976-win32-x64-cli-and-streaming.json",
       "windows3033BundledPostgresCrashRecovery": "docs/security/rust-server-3033-win32-x64-bundled-postgres-recovery.json",
+      "windowsStreamComparison": "docs/security/rust-server-windows-stream-comparison.json",
       "scope": "Production-entry controlled worker-log JSON on macOS arm64. PGlite: five warmups and 20 measured 256 MiB runs for original Rust, optimized Rust and Node; all 75 pass with exact payload and wire bytes. All three stores: each production peer passes 64 MiB, slow-consumer 1013/one lease stop and SIGKILL/reconnect with retained identity/write and post-recovery command/stream. Final native package passes all3 local/hosted, embedded fallback, exports/restart/SIGTERM, 1762 file hashes, no Node PATH and denied Homebrew reads/artifact writes.",
       "evidence": [
         "docs/RUST_SERVER_STREAMING_PERFORMANCE.md",
@@ -30839,7 +30840,7 @@
     "Qualify packaged cross-platform dependency interruptions and longer outages. Reconcile the still-open background-service and product recovery comparisons.",
     "Reconcile remaining route-specific successful and error behavior, authenticated metadata and encrypted boundaries beyond the account wrapper cases, and protocol ordering beyond the qualified App Live parser and cursor cases.",
     "Qualify installed iOS native QR, physical-camera runs and the remaining distribution-signed Android scenario.",
-    "Complete the paired Windows performance comparison for sustained backpressure and interruption recovery. The Rust executable passed all three worker-log streaming cases.",
+    "Complete the Windows 1.1.3033 external PostgreSQL streaming repeat. The same-host Node reference passed all three stores, and the Rust follow-up passed PGlite and bundled PostgreSQL.",
     "Reconcile exact release artifacts, migration and rollback evidence and remaining platform limits before marking full replacement complete."
   ],
   "milestonePlatformAcceptance": [

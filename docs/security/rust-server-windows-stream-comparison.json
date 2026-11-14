@@ -1,0 +1,207 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "target": "win32-x64",
+  "scope": "Single 64 MiB worker-log stream samples from a local Windows 11 x64 QEMU guest on macOS ARM64. The two series use different Rust binaries. Node bundled PostgreSQL uses a separately managed fixture.",
+  "payloadBytes": 67108864,
+  "payloadSha256": "e20a69eca39368572e90b9135738a613838f954987a0b44b6220889c171cbb76",
+  "firstSeries": {
+    "receipt": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/v5-evidence/terminal-receipt.json",
+      "bytes": 11898,
+      "sha256": "eb527484ba6223e1624bdf3dc390c3ab5edbb0ebe4e2c340bea6bda5054daf69"
+    },
+    "referenceSource": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+    "nodeRuntimeVersion": "v24.22.2",
+    "referenceAddon": {
+      "bindingSha256": "cab1684df9e70d27e329a16f9caeb75e0b07e24e5da95962047be576f865046f",
+      "privateCrtSha256": "eb1ee979bf02324712346e5bdbfc59c785388bc50d18cc2688aae4b0734915a0",
+      "loaderBefore": {
+        "loaded": false,
+        "win32Error": 126,
+        "flags": 8
+      },
+      "loaderAfter": {
+        "loaded": true,
+        "win32Error": 0,
+        "flags": 8
+      },
+      "requireExit": 0
+    },
+    "runs": {
+      "pglite": {
+        "node": {
+          "status": "passed",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/v5-evidence/pglite-node-report.json",
+            "bytes": 3681,
+            "sha256": "858063bdc1d6cff3a8d8620060000e7a49a5e3a8e7aa9437f23dd5f154978494"
+          },
+          "version": "1.1.2938",
+          "entrySha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310",
+          "initialStartupMs": 276943.972,
+          "throughputMiBPerSecond": 5.4010435153637015,
+          "slowConsumerCloseCode": 1013,
+          "recoveryWithWorkerReconnectMs": 129717.946,
+          "retainedIdentity": true,
+          "retainedWrite": true,
+          "serverCleanExit": true
+        },
+        "rust": {
+          "status": "passed",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/v5-evidence/pglite-rust-report.json",
+            "bytes": 3684,
+            "sha256": "f78f24a62bc6e12a63e3b9ccb68142e2d34eef1162a657ed5125e0cd3a63c62c"
+          },
+          "version": "1.1.2976",
+          "entrySha256": "d678aacfb2d0d063812f84c1ae47766dce222f25382183f85b8c7d7b3fee7168",
+          "initialStartupMs": 200648.687,
+          "throughputMiBPerSecond": 5.47324170613601,
+          "slowConsumerCloseCode": 1013,
+          "recoveryWithWorkerReconnectMs": 57452.562999999995,
+          "retainedIdentity": true,
+          "retainedWrite": true,
+          "serverCleanExit": true
+        }
+      },
+      "bundled-postgres": {
+        "rust": {
+          "status": "failed",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/v5-evidence/bundled-postgres-rust-report.json",
+            "bytes": 19142,
+            "sha256": "a5f24f8e34514ff03762a20de58ceb69a8b9b07bc0aea73dfa6d041e0531ba8f"
+          },
+          "version": "1.1.2976",
+          "entrySha256": "d678aacfb2d0d063812f84c1ae47766dce222f25382183f85b8c7d7b3fee7168",
+          "initialStartupMs": 179615.38199999998,
+          "throughputMiBPerSecond": 4.237013223453454,
+          "slowConsumerCloseCode": 1013,
+          "serverCleanExit": false,
+          "failureStage": "Bundled PostgreSQL was still replaying WAL at the startup deadline after the server kill."
+        },
+        "node": {
+          "status": "passed",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/v5-evidence/bundled-postgres-node-report.json",
+            "bytes": 3693,
+            "sha256": "fc829a9d9cadf6529dea1117e9ec2d91abccc49a23cfaf5b6ee8dda812e60064"
+          },
+          "version": "1.1.2938",
+          "entrySha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310",
+          "initialStartupMs": 308344.42299999995,
+          "throughputMiBPerSecond": 1.2582674808889314,
+          "slowConsumerCloseCode": 1013,
+          "recoveryWithWorkerReconnectMs": 89161.35499999998,
+          "retainedIdentity": true,
+          "retainedWrite": true,
+          "serverCleanExit": true
+        }
+      },
+      "postgres": {
+        "node": {
+          "status": "passed",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/v5-evidence/postgres-node-report.json",
+            "bytes": 3684,
+            "sha256": "d89fc60f351b77b2cfeab071b7329f2d057dc25ec86db61c5670861bdd98d52c"
+          },
+          "version": "1.1.2938",
+          "entrySha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310",
+          "initialStartupMs": 109608.451,
+          "throughputMiBPerSecond": 5.097672601817842,
+          "slowConsumerCloseCode": 1013,
+          "recoveryWithWorkerReconnectMs": 107065.78800000003,
+          "retainedIdentity": true,
+          "retainedWrite": true,
+          "serverCleanExit": true
+        },
+        "rust": {
+          "status": "failed",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/v5-evidence/postgres-rust-report.json",
+            "bytes": 3796,
+            "sha256": "2a0bb94fe0415d79bca3fb48ef7b4809d3ea27e0b361e39c9e1bbbe08c94660b"
+          },
+          "version": "1.1.2976",
+          "entrySha256": "d678aacfb2d0d063812f84c1ae47766dce222f25382183f85b8c7d7b3fee7168",
+          "initialStartupMs": 57658.349,
+          "throughputMiBPerSecond": 5.5437668700507245,
+          "slowConsumerCloseCode": 1013,
+          "recoveryWithWorkerReconnectMs": 45261.04800000001,
+          "retainedIdentity": true,
+          "retainedWrite": true,
+          "serverCleanExit": true,
+          "failureStage": "The stream and Cantrip recovery passed. The independent PostgreSQL fixture owner exceeded its 15-second shutdown deadline."
+        }
+      }
+    }
+  },
+  "rust3033Followup": {
+    "sourceCommit": "5c297936524bdf8a46277c2695d14d87dc3287b9",
+    "serverSha256": "7db41db230cef76099edf4364e4b8d6386188168c6811d6c85e420cf2589b7eb",
+    "runs": {
+      "bundled-postgres": {
+        "status": "passed",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/v6-recovery-rerun/extracted/bundled-postgres.json",
+          "bytes": 3715,
+          "sha256": "7e16a383d44a06bd538593b95442ef42dce339b8513aabd7aa40e25584962f47"
+        },
+        "version": "1.1.3033",
+        "entrySha256": "7db41db230cef76099edf4364e4b8d6386188168c6811d6c85e420cf2589b7eb",
+        "initialStartupMs": 232959.481,
+        "throughputMiBPerSecond": 5.465002550619166,
+        "slowConsumerCloseCode": 1013,
+        "recoveryWithWorkerReconnectMs": 63144.66200000001,
+        "retainedIdentity": true,
+        "retainedWrite": true,
+        "serverCleanExit": true
+      },
+      "pglite": {
+        "status": "passed",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/v6-recovery-rerun/extracted/pglite.json",
+          "bytes": 3700,
+          "sha256": "92c379c8c01f97488ccaa7bb36a0aee70f6bca751db9578f64c6d564d8f8340d"
+        },
+        "version": "1.1.3033",
+        "entrySha256": "7db41db230cef76099edf4364e4b8d6386188168c6811d6c85e420cf2589b7eb",
+        "initialStartupMs": 149333.24,
+        "throughputMiBPerSecond": 7.229775831763117,
+        "slowConsumerCloseCode": 1013,
+        "recoveryWithWorkerReconnectMs": 54442.041,
+        "retainedIdentity": true,
+        "retainedWrite": true,
+        "serverCleanExit": true
+      },
+      "postgres": {
+        "status": "failed",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/v6-recovery-rerun/extracted/postgres.json",
+          "bytes": 1050,
+          "sha256": "f26f8a9468618aced4bcae21de02658165595df4b184ceeae3d6c11162decffc"
+        },
+        "serverCleanExit": false,
+        "failureStage": "The independent PostgreSQL fixture reached its 60-second startup deadline before Cantrip launched."
+      }
+    }
+  },
+  "externalPostgresStartupHarnessFix": "54355efdeccbc741b3e39da88d434cc4738e53a2",
+  "installedBundledPostgresModelServerLoss": {
+    "version": "1.1.2976",
+    "serverSha256": "d678aacfb2d0d063812f84c1ae47766dce222f25382183f85b8c7d7b3fee7168",
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-active-model-server-loss-postgres-retry/extracted/bundled-postgres.json",
+      "bytes": 363772,
+      "sha256": "e1f9fd0310511cef17fd4178de408601a3a6f049b72cf38671f50c8ba18ccce3"
+    },
+    "productSteps": 20,
+    "modelOperations": 14,
+    "serverSigkills": 1,
+    "cleanServerExits": 3,
+    "providerFailures": 0,
+    "scope": "Separate installed-package browser and full-worker run with a private Windows worker fixture overlay and controlled provider. Does not qualify a freshly signed installer or the external PostgreSQL case."
+  }
+}
