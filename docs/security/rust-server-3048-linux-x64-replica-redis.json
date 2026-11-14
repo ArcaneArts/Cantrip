@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3048",
+  "target": "linux-x64",
+  "scope": "Two Rust x64 standalone containers under Rosetta, a Chromium client and two full Node workers on macOS, and isolated external PostgreSQL and Redis. Real Git checkout attachment, retained restart, peer replacement and detach.",
+  "imageId": "sha256:950991f7cc58924f1fefcfa76dec8dfefb99f1f44d011aff5b3803485e04f6fc",
+  "nativeExecutableSha256": "25d9f10371b9aa63dea12cdf24daa30fce75764eef0e3db3d043663d03c355d2",
+  "harnessCommit": "d0a98993c7671fc08927d52ddb4479be1b886606",
+  "productSteps": 14,
+  "observedRustContainers": 7,
+  "cleanSupervisedExits": 6,
+  "intentionalBrowserPeerLauncherKills": 1,
+  "replacedContainerExitCode": 0,
+  "redisInterruption": {
+    "offlineReadiness": [503, 503],
+    "recoveredReadiness": [200, 200],
+    "originalPostgresLeaseRenewed": true,
+    "sameJobCompleted": true,
+    "completedAttempt": 2,
+    "completedRevision": 11
+  },
+  "recoveredPeer": {
+    "replayResource": "project-replica-job",
+    "retainedAttempt": 2,
+    "retainedRevision": 11
+  },
+  "report": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/x64/shared-replica-redis-retry/acceptance.json",
+    "bytes": 365169,
+    "sha256": "5b7204db1a3a73f7c83cfe5702c29052773ca07a50854baaab312a1cc650693e"
+  },
+  "runtimeGenerations": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/x64/shared-replica-redis-retry/generations.jsonl",
+    "bytes": 6828,
+    "sha256": "29fd3352bd3170fb0117bfc15f1b7c2c949b37ff8f587c89046deff5f5839867"
+  },
+  "retainedFixtureChecksums": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/x64/shared-replica-redis-retry/retained.sha256",
+    "bytes": 801,
+    "sha256": "765ccb717d62ccf5711044ff80b7bf9494fd5b9f94bd286488b03b1b95aa22ca"
+  },
+  "earlierAttempt": {
+    "scope": "Redis recovery passed. The later restart failed when an exited QA container held the port. The rerun requested Docker shutdown on supervised stdin close.",
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/x64/shared-replica-redis/acceptance.json",
+      "bytes": 197371,
+      "sha256": "aa3a018a89c6f82710208823a90b0287e8e06907c1641e684e472a97715aaa8a"
+    },
+    "shutdownLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/x64/shared-replica-redis/stopped-container.log",
+      "bytes": 12728,
+      "sha256": "7a3f6fe17cd5114f1a8792397d47fef6c214b384f7c4a634e82e3dec130bb215"
+    }
+  }
+}

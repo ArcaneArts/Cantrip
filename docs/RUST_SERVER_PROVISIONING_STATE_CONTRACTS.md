@@ -195,6 +195,15 @@ and the browser observes the same job succeed on its second attempt. The
 fixture checks the retained checkout, App Live revisions and admission replay.
 Qualification of the final shipping artifacts remains open.
 
+Two Linux x64 1.1.3048 containers repeated that interruption with the
+Chromium client and two full Node workers on macOS. Both servers reported
+HTTP 503 during Redis loss while PostgreSQL renewed the original job lease.
+After recovery, the same job succeeded on attempt two at revision 11. The
+browser-facing peer replacement replayed that revision while both workers
+stayed connected. A full restart retained the checkout and job. Detach
+preserved the user-owned Git files.
+[Linux x64 replica and Redis recovery report](security/rust-server-3048-linux-x64-replica-redis.json)
+
 Set the existing fixture variables to the packaged server, database assets,
 worker, CLI and Redis executables. With the workspace packages and Node
 reference built, run the browser comparison on each store and the shared
