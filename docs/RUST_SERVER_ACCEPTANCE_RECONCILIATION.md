@@ -147,7 +147,12 @@ below apply to the exact binaries and worker entries identified by their reports
   PGlite update from `1.1.2938`, retained the saved theme and worker
   enrollment, and exited cleanly. The signed package also passed all 36
   model-operation cases across the three stores in the Windows guest.
-  The CLI continuation matrix with that worker remains open.
+  The same installed server passed the full-worker CLI continuation on PGlite
+  and external PostgreSQL. Each run completed 12 product steps, two provider
+  requests and four clean server exits. Bundled PostgreSQL reached eight
+  product steps before the worker teardown deadline expired. The final
+  server cleanup timed out while stopping the bundled database.
+  [Windows CLI and streaming report](security/rust-server-2976-win32-x64-cli-and-streaming.json)
   [Windows package report](security/rust-server-2976-win32-x64-packages.json)
   [Windows model operations](security/rust-server-2976-win32-x64-model-operations.json)
 - **Model operations and WorkerLink.** The macOS and Linux reports cover native
@@ -195,6 +200,11 @@ below apply to the exact binaries and worker entries identified by their reports
   63.26 MiB/s for the historical Node image at 64 MiB, and 45.14 MiB/s
   against 40.96 MiB/s at 256 MiB. The Node comparison used external
   PostgreSQL. Each figure is a single observation on a shared host.
+  The Windows Rust package passed the 64 MiB stream, slow-consumer closure
+  and retained-write restart on PGlite and bundled PostgreSQL. The Windows
+  Node reference failed to load its Argon2 binding in both modes, leaving
+  the same-host comparison open.
+  [Windows CLI and streaming report](security/rust-server-2976-win32-x64-cli-and-streaming.json),
   [macOS report](security/rust-server-2976-darwin-arm64-worker-log-stream.json),
   [Linux report](security/rust-server-2976-linux-worker-log-stream.json)
 

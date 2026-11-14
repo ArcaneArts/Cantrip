@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "target": "win32-x64",
+  "version": "1.1.2976",
+  "serverSourceCommit": "92ed534fa5b1bef8dfcf60a21b9784e159c6a655",
+  "workerSourceCommit": "f5329dc3ec941035cd2afcd55b7bfe578d24990a",
+  "environment": "Local Windows 11 x64 guest under QEMU on macOS ARM64",
+  "verifiedInstalledRuntime": {
+    "installerSha256": "2d68d24bb3ce69603c9cf698a8fcc2388b6f86dd59564edec6fcbdd66f7139c8",
+    "appSha256": "8b823adccdc5897f919c445450e4ccacebdcbc49772b42ad6594f36cd67e6e25",
+    "serverSha256": "d678aacfb2d0d063812f84c1ae47766dce222f25382183f85b8c7d7b3fee7168",
+    "workerSha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c",
+    "workerEncryptionSha256": "01288d5fc14c7e7455fc137ccb9325afbad8e5f68edff0398f2b9629ee0eb3d0"
+  },
+  "cliContinuation": {
+    "databaseModes": {
+      "pglite": {
+        "status": "passed",
+        "guestSuite": "cantrip-2976-win32-x64-installed-grant-cli-context-v4",
+        "productSteps": 12,
+        "providerRequests": 2,
+        "canonicalMessages": 12,
+        "canonicalAnswersPerCheckout": 1,
+        "cleanServerExits": 4,
+        "reapedWorkerTrees": 4,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/guest-pglite-installed-grant-cli-context-v4.json",
+          "bytes": 412397,
+          "sha256": "9b21f0bcd6d61058ee255c7e663014bd013233266b905c43e73dd3c1f60b3e12"
+        }
+      },
+      "postgres": {
+        "status": "passed",
+        "guestSuite": "cantrip-2976-win32-x64-installed-grant-cli-context-v7",
+        "productSteps": 12,
+        "providerRequests": 2,
+        "canonicalMessages": 12,
+        "canonicalAnswersPerCheckout": 1,
+        "cleanServerExits": 4,
+        "reapedWorkerTrees": 4,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/guest-v7-postgres.json",
+          "bytes": 471747,
+          "sha256": "63c9181815202b045a7c6584226ba7f31c7d07c736051116be5078dbd2aa8170"
+        }
+      },
+      "bundled-postgres": {
+        "status": "failed",
+        "guestSuite": "cantrip-2976-win32-x64-installed-grant-cli-context-v7",
+        "productStepsCompleted": 8,
+        "failure": "The worker teardown exceeded the 30-second harness deadline before the continuation. Final cleanup hit the 15-second server observation deadline while the private PostgreSQL stop was in progress.",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/guest-v7-bundled-postgres.json",
+          "bytes": 138141,
+          "sha256": "5d9e4b026a55c40e8950ec3dc91d9326cf0d9cb639fac6b6e6b41ac25114c5b3"
+        }
+      }
+    },
+    "scope": "Existing Edge app APIs, actual CLI and packaged worker with an extended Codex MCP observation budget in the guest. Successful cases preserve source and destination canonical history through restart."
+  },
+  "workerLogStreaming": {
+    "guestSuite": "cantrip-2976-win32-x64-stream-performance-v4",
+    "rust": {
+      "pglite": {
+        "status": "passed",
+        "startupMs": 137258.374,
+        "payloadBytes": 67108864,
+        "payloadSha256": "e20a69eca39368572e90b9135738a613838f954987a0b44b6220889c171cbb76",
+        "throughputMiBPerSecond": 7.629291759733108,
+        "streamWorkingSetKiB": 112204,
+        "slowConsumerCloseCode": 1013,
+        "recoveryMs": 44064.098,
+        "retainedIdentityAndWrite": true,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/guest-v4-pglite-rust-report.json",
+          "bytes": 3671,
+          "sha256": "a345c7e18d8deb668b7e7dc081da828bd95bb92e8e4dbce24898487c584d0eb0"
+        }
+      },
+      "bundled-postgres": {
+        "status": "passed",
+        "startupMs": 111265.22899999999,
+        "payloadBytes": 67108864,
+        "payloadSha256": "e20a69eca39368572e90b9135738a613838f954987a0b44b6220889c171cbb76",
+        "throughputMiBPerSecond": 7.412030489850667,
+        "streamWorkingSetKiB": 58196,
+        "slowConsumerCloseCode": 1013,
+        "recoveryMs": 43365.008,
+        "retainedIdentityAndWrite": true,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/guest-v4-bundled-postgres-rust-report.json",
+          "bytes": 3689,
+          "sha256": "a786bf61fbf4581bac0956d29167723aefc54e9e2b8888eab4431b3024f2f2aa"
+        }
+      }
+    },
+    "scope": "Single guest measurements with a controlled log producer and the production worker transport. The stream working set is the process-tree sample taken after the 64 MiB transfer.",
+    "node": {
+      "pglite": {
+        "status": "failed",
+        "failure": "The Node reference did not reach readiness because its Windows Argon2 binding could not load.",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/guest-v4-pglite-node-report.json",
+          "bytes": 8518,
+          "sha256": "c3c7209d3cb227f58e31b59c07d2feda9ef2886e193a64165cc91874b8988d0b"
+        }
+      },
+      "bundled-postgres": {
+        "status": "failed",
+        "failure": "The Node reference did not reach readiness because its Windows Argon2 binding could not load.",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/guest-v4-bundled-postgres-node-report.json",
+          "bytes": 8528,
+          "sha256": "17d743879c3ddfff26643215048a4e1c361023c415c08a77d006c961188b777f"
+        }
+      }
+    }
+  }
+}
