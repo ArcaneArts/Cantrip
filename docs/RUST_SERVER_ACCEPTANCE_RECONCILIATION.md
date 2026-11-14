@@ -309,8 +309,8 @@ below apply to the exact binaries and worker entries identified by their reports
   The Windows Rust package passed the 64 MiB stream, slow-consumer closure
   and retained-write restart on all three stores. A subsequent same-host
   comparison repaired the Node reference's Argon2 load and passed all three
-  Node runs. The Rust follow-up passed PGlite and bundled PostgreSQL. The
-  external PostgreSQL fixture startup repeat remains open.
+  Node runs. The Rust 1.1.3033 follow-up passed all three stores, including
+  the external PostgreSQL repeat with the configured fixture startup budget.
   [Windows comparison](security/rust-server-windows-stream-comparison.json)
   [Windows CLI and streaming report](security/rust-server-2976-win32-x64-cli-and-streaming.json),
   [macOS report](security/rust-server-2976-darwin-arm64-worker-log-stream.json),
