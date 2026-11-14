@@ -53,6 +53,21 @@
         "sha256": "d73440557cdbf6876e7e56c2817d81345e0b4217e5e2baff2a3130f25d2f7beb"
       }
     },
+    "fullInstrumentationRetest": {
+      "platform": "Android API 36 ARM64 emulator",
+      "applicationApkSha256": "c702acdd33b4474e04ab167c73fa1bd556bdadd0175d0b95d9a13995c95177cb",
+      "testsPassed": 2,
+      "instrumentationApk": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/android-instrumentation-fix.leIY0MIY/Cantrip-1.1.3059-instrumentation.apk",
+        "bytes": 561889,
+        "sha256": "0bd78019b419a90fe099c19ac58141d0cdb86c6815e503ed79f4425bec5d818c"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/android-instrumentation-fix.leIY0MIY/instrumentation.log",
+        "bytes": 128,
+        "sha256": "5cc26614b8251c07cefcdce86f41067c136e9dfb775a88c7a3fec78b5ca3598b"
+      }
+    },
     "retainedNativeCatalog": {
       "keyCount": 1,
       "bindingCount": 3,
@@ -119,7 +134,37 @@
     },
     "bundleId": "art.cantrip",
     "build": "3059",
-    "verifiedRendererFiles": 195
+    "verifiedRendererFiles": 195,
+    "physicalDevelopmentInstall": {
+      "status": "installed",
+      "version": "1.1.3059",
+      "build": "3059",
+      "bundleId": "art.cantrip.qa",
+      "developmentAppArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/ios-device-3059.lJMDdCJU/Cantrip-1.1.3059-iPhone-QA.zip",
+        "bytes": 3806686,
+        "sha256": "17a5d24b7eb515e803fc68de7bd6b42b8d2ade3c3140d356ff889ad4d8df0e09"
+      },
+      "verifiedRendererFiles": 195,
+      "verification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/ios-device-3059.lJMDdCJU/device-verification.json",
+        "bytes": 609,
+        "sha256": "0cf3012943af7e0d370df2bfab4910c218ba6f04dba62a7c1310ee3600e544bb"
+      },
+      "installedVersion": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/ios-device-3059.lJMDdCJU/installed-version.json",
+        "bytes": 1488,
+        "sha256": "30fc1a3905dea54d93aad33e9624e8cd3777283a1237ef4dabf2d7a8f2610473"
+      },
+      "backgroundLaunch": {
+        "status": "device-locked",
+        "log": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/ios-device-3059.lJMDdCJU/background-launch.log",
+          "bytes": 1011,
+          "sha256": "0acf0744d2ab4d2fce4bc52bfa947bd8a9a2cf4e37346bced3a7b43e1cffa865"
+        }
+      }
+    }
   },
   "remainingAcceptance": [
     "Installed iOS native QR and physical-device camera runs",
