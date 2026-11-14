@@ -381,6 +381,7 @@ export async function actualCantripOsClient({
       guest,
       record,
       instance,
+      dataDirectory,
       result,
       report,
     });
@@ -437,7 +438,7 @@ export async function actualCantripOsClient({
         "openCantripOsPackageResult",
         retained,
       );
-      assert.equal(opened.record.state, "ready");
+      assert.equal(opened.record.state, original.state);
     }
     result.steps.push(
       "actual production server and full-worker restart preserve CantripOS attachment/runtime identity and exact workspace/desktop history",
