@@ -19,8 +19,11 @@ const option = (name) => {
 };
 const databaseMode = option("--database") ?? "pglite";
 assert.ok(["pglite", "bundled-postgres", "postgres"].includes(databaseMode));
-const executable = await buildRustServer(),
-  repositoryBinary = await buildRustExample("project-repository-fixture");
+const executable =
+  process.env.CANTRIP_TEST_SERVER_BINARY ?? (await buildRustServer());
+const repositoryBinary =
+  process.env.CANTRIP_TEST_PROJECT_REPOSITORY_BINARY ??
+  (await buildRustExample("project-repository-fixture"));
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-live-http-"));
 const hash = await hashPassword(password);
 const report = {
