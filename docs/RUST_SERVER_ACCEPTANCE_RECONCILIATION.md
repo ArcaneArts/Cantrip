@@ -109,6 +109,21 @@ Node/Rust peer pairings with external PostgreSQL. The run verified 12 Rust
 container launches and clean exits, 56 model operations, and recovery
 without replaying the interrupted inference at the provider.
 
+## Cantrip 1.1.3033 Windows x64 standalone
+
+The local Windows 11 x64 guest packaged the cross-built Rust executable and
+ran from a fresh extraction. PGlite, bundled PostgreSQL and external
+PostgreSQL passed startup, migrations, SQL export, retained writes, hosted
+reopening and shutdown through the supervisor's stdin pipe. The fixture
+also verified dotenv and CLI precedence, portable bundled PostgreSQL
+selection, and the embedded PGlite runtime fallback.
+
+Node was absent from the server's runtime PATH. All 2,281 packaged files
+matched the manifest both in the guest and in the independently verified
+host copy of the archive. The signed desktop and active database-outage
+runs have separate acceptance records.
+[Windows standalone archive and acceptance report](security/rust-server-3033-win32-x64-standalone.json)
+
 ## Cantrip 1.1.3033 Linux x64 standalone and Redis recovery
 
 The rebuilt x64 server includes the Redis relay subscriber recovery fix in
