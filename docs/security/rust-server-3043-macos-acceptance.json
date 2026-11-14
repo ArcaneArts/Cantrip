@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "target": "darwin-arm64",
+  "candidateVersion": "1.1.3043",
+  "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+  "serverSourceCommit": "54355efdeccbc741b3e39da88d434cc4738e53a2",
+  "harnessCommit": "73a34119e4a5327b2c42d7b5a407371c5c29764e",
+  "standalone": {
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-54355efde/cantrip-server-1.1.3043-darwin-arm64.tar.gz",
+      "bytes": 66941847,
+      "sha256": "b3070a27b1bc052ff49325247a5205a672c8d0890eecd570e663c952435e7fb7"
+    },
+    "executable": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-54355efde/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94323648,
+      "sha256": "a964f4677db156ae3118a8ef2a26ded63ae512f8cafa1048f7e2ef22a429ed93"
+    },
+    "verifiedFiles": 1762,
+    "runtimeNodeAbsent": true,
+    "homebrewReadsAndPackageWritesDenied": true,
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-54355efde/acceptance.json",
+      "bytes": 3021,
+      "sha256": "a308533ee887ad7b167f21c89945fe5acaeea07bd9e6dd85b3b2eef28b6aeb6b"
+    }
+  },
+  "signedDesktopUpdate": {
+    "previousVersion": "1.1.3032",
+    "version": "1.1.3043",
+    "scope": "Local Developer ID-signed rehearsal with a disposable updater key, HTTPS trust root, app identity and profiles. The production desktop packaging helper supplied bundled PostgreSQL configuration.",
+    "retainedServerWorkerAndClientIdentity": true,
+    "retainedSettingsWrite": true,
+    "oldAndNewChildProcessesDrained": true,
+    "tamperedPglitePackageRejected": true,
+    "signedServerSha256": "e6eb6b57061757e3b0a4053fbbc5f3187a861fc41ec92de7732ccdcda93fc721",
+    "candidateArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3043-configured/rehearsal/candidate/Cantrip Server Signed Update QA.app.tar.gz",
+      "bytes": 335682245,
+      "sha256": "11da0b2fa1d45fb9f874b23c1f07ba702e0185a262a86bb6bc3f0c15d8049052"
+    },
+    "candidateUpdaterSignature": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3043-configured/rehearsal/candidate/Cantrip Server Signed Update QA.app.tar.gz.sig",
+      "bytes": 436,
+      "sha256": "1fa570f409233ca2ece803e84e47aa52163222a9422c3a66903da0622c33ad77"
+    },
+    "strictCodeSigningVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3043-configured/archive-codesign.log",
+      "bytes": 743,
+      "sha256": "f0c7e96475af274ab8ca68453868f660a659a2c5b32ec7971285d5f3a9b3b711"
+    },
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3043-configured/acceptance.json",
+      "bytes": 12524,
+      "sha256": "f5e73b19aa6655256d5ccd34e93f8964c1935828e9fa1fd029b0ecf97ebe37e2"
+    }
+  },
+  "externalPostgresModelOperations": {
+    "activeServerLoss": {
+      "productSteps": 20,
+      "modelOperations": 14,
+      "providerRequests": 15,
+      "cleanServerExits": 3,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-server-loss-3043/acceptance.json",
+        "bytes": 413036,
+        "sha256": "d6b7c62233f5ec1e7e319b2ff7931126f323aa0b4a804b83d7a710506d02263e"
+      },
+      "forcedServerExits": 1,
+      "providerClosedObservedAfterMs": 907,
+      "sameWorkerReconnected": true,
+      "interruptedReceipt": "running-without-reported-usage",
+      "freshOperationSucceeded": true
+    },
+    "offlineSettlement": {
+      "productSteps": 20,
+      "modelOperations": 14,
+      "providerRequests": 15,
+      "cleanServerExits": 3,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-postgres-outage-3043-isolated/acceptance.json",
+        "bytes": 528546,
+        "sha256": "51c6a3c1464c8d92a306ff1aa4b90f8cf58581309bc75847a472a3fea4d210ad"
+      },
+      "postgresOfflineMs": 60000,
+      "readinessWhileOffline": 503,
+      "livenessWhileOffline": 200,
+      "readinessAfterRecovery": 200,
+      "providerAndBrowserCompletedWhileOffline": true,
+      "samePortAndNewPostmaster": true,
+      "durableReceiptAfterRecovery": true,
+      "replayDidNotRedispatch": true,
+      "freshOperationSucceeded": true
+    }
+  },
+  "windowsExternalPostgresOutageFollowup": {
+    "status": "failed",
+    "target": "win32-x64",
+    "candidateVersion": "1.1.2976",
+    "productSteps": 19,
+    "modelOperations": 13,
+    "postgresOfflineMs": 60175,
+    "firstOfflineReadiness": 503,
+    "prolongedOfflineReadinessTimeoutMs": 5000,
+    "livenessWhileOffline": 200,
+    "inferenceCompletedWhileOffline": true,
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-active-model-postgres-outage-recovery-budget/extracted/postgres.json",
+      "bytes": 445483,
+      "sha256": "2a4e8076da2b78ecea352be6757f33b1a309125722f65939be2f0091f0cb0148"
+    },
+    "terminalReceipt": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-active-model-postgres-outage-recovery-budget/extracted/terminal-receipt.json",
+      "bytes": 1378,
+      "sha256": "fc27fa4289d0540a04e5fcff51f3b1eacfb568fc5f5492bdd019528b15ef9f92"
+    }
+  },
+  "repositoryCheck": {
+    "status": "failed-at-format-check",
+    "sourceCommit": "73a34119e4a5327b2c42d7b5a407371c5c29764e",
+    "node": "24.22.1",
+    "vitestMaxWorkers": 2,
+    "appTestsPassed": 4597,
+    "workerTestsPassed": 2958,
+    "rustServerTestsPassed": 87,
+    "formatWarnings": 17,
+    "localVmDiskRejectedByPrettier": true,
+    "log": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-54355efde/repository-check-release-node-two-workers.log",
+      "bytes": 448127,
+      "sha256": "ee481aa6f6efa61693a63bad55d3d7b7ce22e72e44ffbae38b944501e1811684"
+    }
+  }
+}
