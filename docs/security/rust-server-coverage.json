@@ -29083,6 +29083,15 @@
     },
     "fullWorkerCantripOsSystems": {
       "currentPackagedServer": {
+        "version": "1.1.3059",
+        "sourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+        "platform": "darwin-arm64",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "productCells": 6,
+        "matchedSnapshotsAcrossPairs": 123,
+        "record": "docs/security/rust-server-3059-darwin-arm64-root-system.json"
+      },
+      "packaged2938Server": {
         "version": "1.1.2938",
         "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
         "platform": "darwin-arm64",
