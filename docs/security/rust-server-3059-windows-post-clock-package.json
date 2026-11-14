@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "target": "win32-x64",
+  "completeReplacement": false,
+  "serverSourceCommit": "cdba080907df32759458d6efed55c4d38f8236dc",
+  "serverSourceTree": "231eebb40ca362eb9bff23d0ce1e32420228f184",
+  "serverSha256": "290c60f27e15e5cd2c1110cad05ba413648904e84ffb8f5e7ffc72e0e79ac459",
+  "guest": "Windows 11 Enterprise Evaluation x64 under QEMU software emulation on macOS ARM64",
+  "standalone": {
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-871f62ae9-retry.gso8SAsC/extracted/cantrip-server-1.1.3059-win32-x64.tar.gz",
+      "bytes": 97803749,
+      "sha256": "13bbdc1e261029dd21a769edac88d30a27fd67e741b17477b1ddaf1b44673b46"
+    },
+    "manifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-871f62ae9-retry.gso8SAsC/extracted/native-server.json",
+      "bytes": 407860,
+      "sha256": "40152ba36c585be91e6bff8314ec1ab984787123a1086f58a129df386c05385b"
+    },
+    "acceptance": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-871f62ae9-retry.gso8SAsC/extracted/acceptance.json",
+      "bytes": 104994,
+      "sha256": "4ebdfe4f195abbd032b3763b296b26760a643d7c76db9f7a3efa232904ca2512"
+    },
+    "guestReceipt": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-871f62ae9-retry.gso8SAsC/extracted/receipt.json",
+      "bytes": 3569,
+      "sha256": "96cc2c9252df75f9d7ba3a8a6b5e131071e5547bd02ad069a12b5fe55cd31393"
+    },
+    "verifiedManifestFiles": 2281,
+    "serverRuntimePathHasNoNode": true,
+    "windowsLauncherEncodingVerified": true,
+    "shutdownMethod": "supervision-stdin-close",
+    "cleanSupervisionExits": 13,
+    "maximumShutdownMs": 6680,
+    "storageModes": [
+      {
+        "mode": "pglite",
+        "engine": "pglite",
+        "startupMs": [184884.445, 1899.598, 1646.002, 1668.858],
+        "sqlExport": {
+          "format": "postgresql-sql",
+          "databaseEngine": "pglite",
+          "bytes": 493335,
+          "sha256": "e2537bb57bb302f5189f33b683fb4c6daf0aa9474e2636f57c3e17e637a607b3",
+          "psqlGuardsRemoved": 2,
+          "portableTransactionTimeout": true
+        },
+        "verifiedBehavior": [
+          "configuration precedence",
+          "native migration launcher",
+          "native SQL export",
+          "settings persistence across restart",
+          "hosted reopen",
+          "supervision stdin shutdown"
+        ]
+      },
+      {
+        "mode": "bundled-postgres",
+        "engine": "postgres",
+        "startupMs": [
+          128029.381, 8118.043, 7894.984, 6808.028, 6475.014, 6651.458
+        ],
+        "sqlExport": {
+          "format": "postgresql-sql",
+          "databaseEngine": "postgres",
+          "bytes": 493560,
+          "sha256": "53b51fe26d771180e85ade7b253c073d58548b7fb1be14d504f5cdc396063741",
+          "psqlGuardsRemoved": 2,
+          "portableTransactionTimeout": true
+        },
+        "verifiedBehavior": [
+          "configuration precedence",
+          "native migration launcher",
+          "native SQL export",
+          "settings persistence across restart",
+          "hosted reopen",
+          "supervision stdin shutdown"
+        ]
+      },
+      {
+        "mode": "postgres",
+        "engine": "postgres",
+        "startupMs": [29066.599, 2715.669, 2712.062],
+        "sqlExport": {
+          "format": "postgresql-sql",
+          "databaseEngine": "postgres",
+          "bytes": 493560,
+          "sha256": "432cd6816db15b02bcfae7df252a3717350ac5b1f7c44c77a5f0371ed03b9da0",
+          "psqlGuardsRemoved": 2,
+          "portableTransactionTimeout": true
+        },
+        "verifiedBehavior": [
+          "configuration precedence",
+          "native migration launcher",
+          "native SQL export",
+          "settings persistence across restart",
+          "hosted reopen",
+          "supervision stdin shutdown"
+        ]
+      }
+    ]
+  },
+  "desktopPackage": {
+    "appBuildSourceCommit": "34d4b14ed492b02cde8c1d5108a6eb35ac7bc0a2",
+    "bundleSourceCommit": "b4ef18d63a8ea50d6b956d19d8721b54fca3a103",
+    "installer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/Cantrip_1.1.3059_x64-setup.exe",
+      "bytes": 256883449,
+      "sha256": "cf6e01dea29010e8f3071a292305241b56896d41fcdb0a80865d117dd3f05c56"
+    },
+    "localQaUpdaterSignature": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/Cantrip_1.1.3059_x64-setup.exe.sig",
+      "bytes": 420,
+      "sha256": "9d0c75e22f32e93d3cb685fe086f53467d1700d4b7ab6a05d53da73dae5bd96b"
+    },
+    "minisignVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/desktop-minisign-verification.log",
+      "bytes": 115,
+      "sha256": "7f8a6665048eab784bf9defabee1b7d59abcd9955797efcf33810ffc9075b98e"
+    },
+    "payloadManifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/desktop-nsis-runtime-manifest.json",
+      "bytes": 2505120,
+      "sha256": "17e35f507cc4c8d92d5041f61fc8a088d336ba0ccf664805734ec841a7a4bef9"
+    },
+    "executableMarkerVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/desktop-nsis-app-marker.json",
+      "bytes": 334,
+      "sha256": "c62a7f63becdfc7dbc1b3b8c61c29855960bf86e1c62d8ff4a507fe75a269522"
+    },
+    "verifiedPayloadFiles": 14085,
+    "appSha256": "d65a47949658ac5eee8ff80a35d064676216151758752554c836ad3db9ec367d",
+    "serverSha256": "290c60f27e15e5cd2c1110cad05ba413648904e84ffb8f5e7ffc72e0e79ac459",
+    "workerVersion": "1.1.3059",
+    "workerSha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c",
+    "scope": "All NSIS app and runtime bytes match the build inputs after applying the three-byte Tauri NSIS bundle marker to the expected app executable. The local QA updater signature verifies. Installed behavior for this exact artifact and release updater signing remain open."
+  }
+}

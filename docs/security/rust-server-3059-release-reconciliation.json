@@ -166,6 +166,7 @@
     "linuxShutdownWithRedisOffline": "docs/security/rust-server-3059-linux-redis-offline-shutdown.json",
     "macosAndLinuxLongPostgresOutage": "docs/security/rust-server-3059-postgres-long-outage.json",
     "windowsStandalone": "docs/security/rust-server-3059-windows-standalone-retry.json",
+    "windowsPostClockFixStandaloneAndDesktopPayload": "docs/security/rust-server-3059-windows-post-clock-package.json",
     "windowsDesktopPglite": {
       "checkedAppAndRuntimeFiles": 14085,
       "appBuildSourceCommit": "34d4b14ed492b02cde8c1d5108a6eb35ac7bc0a2",
