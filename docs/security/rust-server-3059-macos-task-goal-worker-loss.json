@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "platform": "darwin-arm64",
+  "completeReplacement": false,
+  "scope": "Production server processes, existing headless Chromium client, packaged Node worker and native Codex. The model HTTP responses were controlled. Rust manages PostgreSQL in the bundled case while the Node control connects to private external PostgreSQL. Each case uses a disposable profile.",
+  "serverSourceCommit": "e7f25540d48209e90748cafc09c6e9f483df8934",
+  "driverSourceCommit": "cdba080907df32759458d6efed55c4d38f8236dc",
+  "nativeServer": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-871f62ae9.6GH2nOLA/cantrip-server-darwin-arm64/bin/cantrip-server",
+    "bytes": 94198000,
+    "sha256": "14dea9680a1a3c82918bc8d80a0a540b3bdc9ced18cee1d7bd51044ca2073fb1"
+  },
+  "workerVersion": "1.1.3059",
+  "inputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-task-goal-worker-loss.9K2uysZu/inputs.sha256",
+    "bytes": 1427,
+    "sha256": "3bcce211e94d862993ba8959a6340f981e7359fde84fb3ae5eb1dfa8d30bcd68"
+  },
+  "criteria": [
+    "workerKilled",
+    "originalStreamClosedWithoutCompletion",
+    "credentialRetained",
+    "explicitRecoveryAccepted",
+    "originalTaskOperationRetained",
+    "nativeGoalCompleted",
+    "originalGoalIdentityRetained",
+    "originalUserMessagesRetained",
+    "singlePublishedAnswer",
+    "boundedModelPosts",
+    "historyRetainedAfterRestart"
+  ],
+  "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+  "cases": [
+    {
+      "databaseMode": "pglite",
+      "nodeDatabaseMode": "pglite",
+      "matchedRecovery": true,
+      "runtimes": [
+        {
+          "server": "node",
+          "workerKilled": 1,
+          "cleanWorkerExits": 4,
+          "cleanServerExits": 3,
+          "browserSteps": 10,
+          "modelPosts": 5,
+          "transientGoalLookupConflicts": 0
+        },
+        {
+          "server": "rust",
+          "workerKilled": 1,
+          "cleanWorkerExits": 4,
+          "cleanServerExits": 3,
+          "browserSteps": 10,
+          "modelPosts": 5,
+          "transientGoalLookupConflicts": 0
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-task-goal-worker-loss.9K2uysZu/pglite.json",
+        "bytes": 3971401,
+        "sha256": "e716feef141267a27a4a2ea525e8529417d6f0a27ede41d885e20c24688ea249"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "nodeDatabaseMode": "postgres",
+      "matchedRecovery": true,
+      "runtimes": [
+        {
+          "server": "node",
+          "workerKilled": 1,
+          "cleanWorkerExits": 4,
+          "cleanServerExits": 3,
+          "browserSteps": 10,
+          "modelPosts": 5,
+          "transientGoalLookupConflicts": 1
+        },
+        {
+          "server": "rust",
+          "workerKilled": 1,
+          "cleanWorkerExits": 4,
+          "cleanServerExits": 3,
+          "browserSteps": 10,
+          "modelPosts": 5,
+          "transientGoalLookupConflicts": 0
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-task-goal-worker-loss.9K2uysZu/bundled-postgres.json",
+        "bytes": 4049525,
+        "sha256": "5d175a06557fd26430b252502c24c1e3b8fc7808199314d0a5b18f0d83626758"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "nodeDatabaseMode": "postgres",
+      "matchedRecovery": true,
+      "runtimes": [
+        {
+          "server": "node",
+          "workerKilled": 1,
+          "cleanWorkerExits": 4,
+          "cleanServerExits": 3,
+          "browserSteps": 10,
+          "modelPosts": 5,
+          "transientGoalLookupConflicts": 1
+        },
+        {
+          "server": "rust",
+          "workerKilled": 1,
+          "cleanWorkerExits": 4,
+          "cleanServerExits": 3,
+          "browserSteps": 10,
+          "modelPosts": 5,
+          "transientGoalLookupConflicts": 1
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-task-goal-worker-loss.9K2uysZu/postgres.json",
+        "bytes": 3991827,
+        "sha256": "f0a951b99f4f7167eba5e85ab6a32778499e5deb42009681a1103cae4940c666"
+      }
+    }
+  ]
+}

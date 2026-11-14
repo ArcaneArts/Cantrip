@@ -106,6 +106,21 @@ which remained intact after replay and restart. The PGlite and external
 PostgreSQL Node controls passed the same browser steps.
 [macOS package refresh evidence](security/rust-server-3059-macos-package-refresh.json)
 
+### Task Goal recovery after worker loss on macOS
+
+The rebuilt 1.1.3059 server and the Node reference each passed ten browser
+steps per database with the packaged Node worker and native Codex. The test
+killed the worker during an active Task Goal stream. The replacement worker
+retained its enrollment and resumed through the existing recovery control.
+The original Task operation, Goal identity and encrypted user messages
+survived. Each run completed the native Goal tool, published one answer
+and retained the exact completed transcript after restarting both services.
+
+Both runtimes made five model requests per run. The Node control used
+external PostgreSQL for the bundled PostgreSQL comparison. Three transient
+Goal reads returned HTTP 409 across the six cases and succeeded on retry.
+[macOS Task Goal worker-loss evidence](security/rust-server-3059-macos-task-goal-worker-loss.json)
+
 ### Worktrees and managed Git replicas
 
 On macOS ARM64, the packaged Rust server and Node reference each passed 25

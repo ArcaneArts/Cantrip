@@ -154,6 +154,7 @@
   "artifactEvidence": {
     "macosStandaloneSignedDesktopAndPerformance": "docs/security/rust-server-3059-platform-acceptance.json",
     "macosPostClockFixPackageAndChatControls": "docs/security/rust-server-3059-macos-package-refresh.json",
+    "macosPostClockFixTaskGoalWorkerLoss": "docs/security/rust-server-3059-macos-task-goal-worker-loss.json",
     "macosSignedUpdateWithMatchingWorker": "docs/security/rust-server-3059-macos-worker-version-acceptance.json",
     "macosPreparedCantripOsCaptureAbandonment": "docs/security/rust-server-3059-macos-system-abandonment.json",
     "macosSharedReplicaRedisRecovery": "docs/security/rust-server-3059-macos-replica-redis.json",
