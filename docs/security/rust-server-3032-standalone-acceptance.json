@@ -110,6 +110,38 @@
         "bytes": 677213,
         "sha256": "7d784ba2c25c1904f89300f0d129246c47854cb6b38b093b8296246faa20656e"
       }
+    },
+    "externalPostgresOfflineSettlement": {
+      "harnessCommit": "cf3258a54cc9b9374469e8cd7016eff32e052feb",
+      "scope": "One Linux ARM64 container at a time with a retained profile volume, the existing browser and full Node worker on macOS, and a restartable private PostgreSQL cluster on macOS. Public model responses were controlled locally.",
+      "productSteps": 20,
+      "operationCases": 14,
+      "providerRequests": 15,
+      "offlineMs": 60001,
+      "readinessOffline": 503,
+      "livenessOffline": 200,
+      "readinessRecovered": 200,
+      "providerCompletedWhileOffline": true,
+      "originalAttemptSettledOnce": true,
+      "freshOperationCompleted": true,
+      "cleanRustContainerExits": 3,
+      "cleanWorkerExits": 4,
+      "intentionalWorkerTermination": 1,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-arm64-d91420eb9/postgres-offline-settlement/acceptance.json",
+        "bytes": 522536,
+        "sha256": "69423118280282bf065490bc841aaadd9469bcb6175eaf79bd7fbac6f1fbb394"
+      },
+      "generations": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-arm64-d91420eb9/postgres-offline-settlement/generations.jsonl",
+        "bytes": 2931,
+        "sha256": "aea1e2dd2b7c2223251d81269b2bcca48a1725b44660448d305322a6e2562796"
+      },
+      "profileArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-arm64-d91420eb9/postgres-offline-settlement/profile.tar.zst",
+        "bytes": 41435,
+        "sha256": "3ee52b47a49ec2debea2f36fb4ca44c501937efa2bd84254705b79033aecf647"
+      }
     }
   },
   "scope": "Local macOS ARM64 and Linux ARM64 standalone artifacts and a representative Linux systemd/Caddy Winterhold rehearsal. The historical amd64 Node rollback ran under emulation. The macOS Redis run used the existing full Node worker and a controlled local provider."

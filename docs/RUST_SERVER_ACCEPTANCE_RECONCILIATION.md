@@ -28,6 +28,13 @@ product steps and 14 model operations against shared PostgreSQL. A
 45-second Redis interruption left one unknown attempt for the interrupted
 embedding. Replaying it kept the same receipt, and a fresh operation
 completed after recovery.
+
+The same Linux ARM64 image completed 20 product steps and 14 model operations
+using the existing browser and full Node worker. The browser received the
+active embedding during a 60-second external PostgreSQL outage. The server
+stayed live and reported unready, then persisted one receipt for the original
+attempt after the database restarted. A fresh operation completed and all
+three Rust container generations exited cleanly.
 [ARM64 standalone and Winterhold report](security/rust-server-3032-standalone-acceptance.json)
 
 ## Cantrip 1.1.3014 Linux standalone
