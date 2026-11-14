@@ -20,6 +20,10 @@ pub trait RelayCoordinator: Send + Sync + 'static {
     fn publish(&self, payload: Value, ttl: Option<f64>) -> BoxFuture<'_, Result<()>>;
     fn claim_worker(&self, input: Value) -> BoxFuture<'_, Result<Option<Value>>>;
     fn find_worker<'a>(&'a self, worker: &'a JsString) -> BoxFuture<'a, Result<Option<Value>>>;
+    fn lookup_worker_claim<'a>(
+        &'a self,
+        worker: &'a JsString,
+    ) -> BoxFuture<'a, Result<Option<Value>>>;
     fn refresh_worker<'a>(
         &'a self,
         worker: &'a JsString,
@@ -81,6 +85,12 @@ impl RelayCoordinator for RedisCoordinator {
     }
     fn find_worker<'a>(&'a self, worker: &'a JsString) -> BoxFuture<'a, Result<Option<Value>>> {
         Box::pin(RedisCoordinator::find_worker(self, worker))
+    }
+    fn lookup_worker_claim<'a>(
+        &'a self,
+        worker: &'a JsString,
+    ) -> BoxFuture<'a, Result<Option<Value>>> {
+        Box::pin(RedisCoordinator::lookup_worker_claim(self, worker))
     }
     fn refresh_worker<'a>(
         &'a self,

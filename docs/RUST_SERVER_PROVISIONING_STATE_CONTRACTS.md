@@ -204,6 +204,17 @@ stayed connected. A full restart retained the checkout and job. Detach
 preserved the user-owned Git files.
 [Linux x64 replica and Redis recovery report](security/rust-server-3048-linux-x64-replica-redis.json)
 
+A macOS ARM64 mixed run put the browser on Rust and both full workers on
+the Node reference. After Redis restarted, the replica worker acquired a
+new connection claim on the same Node instance. Rust settled the old
+request on confirmation of the replacement claim and requeued the replica
+after committing its blocked transition. The original PostgreSQL lease
+renewed during the outage. The same job succeeded on attempt two at
+revision 11, and peer replacement replayed that revision. Restart and
+detach preserved the user-owned Git checkout. The bridge tests also
+confirmed that an out-of-date presence notice and a same-claim reconnect
+leave the admitted request pending.
+
 Set the existing fixture variables to the packaged server, database assets,
 worker, CLI and Redis executables. With the workspace packages and Node
 reference built, run the browser comparison on each store and the shared

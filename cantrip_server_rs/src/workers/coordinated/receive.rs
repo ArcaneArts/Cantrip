@@ -75,7 +75,9 @@ impl CoordinatedBridge {
                 )
             };
             let presence = if pending {
-                match self.coordinator.find_worker(&w.into()).await {
+                // A restarted Redis owner can reclaim this worker on the same
+                // instance. Confirm the claim independently of the notification.
+                match self.coordinator.lookup_worker_claim(&w.into()).await {
                     Ok(Some(p)) => p,
                     _ => return Ok(()),
                 }
@@ -88,7 +90,7 @@ impl CoordinatedBridge {
                     return Ok(());
                 }
             }
-            self.reject_remote(w, presence["instanceId"].as_str());
+            self.reject_remote(w, presence["connectionId"].as_str());
             if let Some(id) = text(&presence["connectionId"]) {
                 self.state.lock().unwrap().known.insert(w.into(), id);
             }
@@ -109,7 +111,7 @@ impl CoordinatedBridge {
                 }
             }
             if let Some(current) = current {
-                self.reject_remote(w, current["instanceId"].as_str());
+                self.reject_remote(w, current["connectionId"].as_str());
                 if let Some(id) = text(&current["connectionId"]) {
                     self.state.lock().unwrap().known.insert(w.into(), id);
                 }

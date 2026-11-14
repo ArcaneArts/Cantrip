@@ -150,6 +150,7 @@ impl CoordinatedBridge {
         let (delivery, mut events) = mpsc::unbounded_channel();
         let pending = Arc::new(Pending {
             instance: presence["instanceId"].as_str().unwrap_or("").into(),
+            connection_id: presence["connectionId"].as_str().unwrap_or("").into(),
             worker: worker.clone(),
             command: kind.clone(),
             started: at,

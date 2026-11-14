@@ -95,6 +95,7 @@ enum Delivery {
 type Outcome = std::result::Result<Option<Value>, CommandError>;
 struct Pending {
     instance: String,
+    connection_id: String,
     worker: String,
     command: String,
     started: f64,
@@ -339,13 +340,15 @@ impl CoordinatedBridge {
         self.reject_remote(worker, None);
         self.offline.deliver(worker);
     }
-    fn reject_remote(&self, worker: &str, retained: Option<&str>) {
+    fn reject_remote(&self, worker: &str, retained_connection: Option<&str>) {
         let pending = {
             let mut state = self.state.lock().unwrap();
             let ids = state
                 .pending
                 .iter()
-                .filter(|(_, p)| p.worker == worker && Some(p.instance.as_str()) != retained)
+                .filter(|(_, p)| {
+                    p.worker == worker && Some(p.connection_id.as_str()) != retained_connection
+                })
                 .map(|(id, _)| id.clone())
                 .collect::<Vec<_>>();
             ids.into_iter()
@@ -354,12 +357,11 @@ impl CoordinatedBridge {
         };
         for p in pending {
             p.stop_timer();
-            self.complete(
-                &p,
-                Err(CommandError::unavailable(format!(
-                    "Worker {worker} is unavailable."
-                ))),
-            );
+            let mut error = CommandError::unavailable(format!("Worker {worker} is unavailable."));
+            if retained_connection.is_some() {
+                error.code = Some("worker-relay-claim-replaced".into());
+            }
+            self.complete(&p, Err(error));
         }
     }
     fn complete(&self, pending: &Pending, result: Outcome) {
