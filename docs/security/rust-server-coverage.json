@@ -31154,6 +31154,13 @@
     "report": "docs/security/rust-server-3059-windows-standalone-retry.json",
     "scope": "Exact Windows x64 archive passed PGlite, bundled PostgreSQL and external PostgreSQL in the local emulated guest with 2,281 manifest matches, native SQL exports, retained writes, hosted reopen and 13 clean supervision exits. Earlier export and timeout failures remain in the record. Installed desktop and signed update qualification are separate."
   },
+  "windows3059PostClockFixPackageQualification": {
+    "status": "passed",
+    "candidateVersion": "1.1.3059",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "report": "docs/security/rust-server-3059-windows-post-clock-package.json",
+    "scope": "Exact post-clock-fix Windows x64 standalone archive with 2,281 verified files and 13 clean supervision exits in the local emulated guest. All three stores passed migration, native export, retained writes and hosted reopening. The NSIS installer with the same server passed byte-for-byte payload verification and local QA updater signature verification. Installed behavior for this installer and release updater signing remain open."
+  },
   "macos3059ProjectAutomationsQualification": {
     "status": "passed",
     "candidateVersion": "1.1.3059",

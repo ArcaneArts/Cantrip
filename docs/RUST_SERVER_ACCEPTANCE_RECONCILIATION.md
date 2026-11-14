@@ -31,6 +31,14 @@ PGlite shutdown exceeded 60 seconds, with 58.978 seconds spent closing the
 database. The Windows desktop and signed updater have separate acceptance.
 [Windows x64 standalone report](security/rust-server-3059-windows-standalone-retry.json)
 
+The Windows x64 archive rebuilt after the folder clock fix passed the same
+three-store matrix. The verified archive contains 2,281 manifest files, and
+all 13 native supervision exits completed within 6.7 seconds. The NSIS
+installer containing that exact Rust binary and the 1.1.3059 Node worker
+matched 14,085 expected payload files and passed local QA updater signature
+verification. Installed testing of this installer remains in progress.
+[Post-clock-fix Windows packages](security/rust-server-3059-windows-post-clock-package.json)
+
 The Windows x64 NSIS package with the 180-second server shutdown allowance
 and the 1.1.3059 Node worker passed first launch and retained-profile reopen
 on all three databases. The reopened app used the stored database selection
