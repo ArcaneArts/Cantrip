@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "driverSourceCommit": "16b4b0a4abe9aed5c9177f1d50f332c9aaeec66a",
+  "platform": "darwin-arm64",
+  "scope": "Real HTTP authentication, headers, session and mobile sign-in exchange comparison on the packaged Rust executable and same-version Node reference. Isolated database profiles.",
+  "inputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/auth-3059-packaged/inputs.sha256",
+    "bytes": 573,
+    "sha256": "62cd7e543c4b024cbf28fb47a7495d214cfbfd91d86fbbb465cc0dbb78d8076c"
+  },
+  "initialReferenceVersionMismatch": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/auth-3059-packaged/pglite.json",
+    "bytes": 2891,
+    "sha256": "9a46edfdc943f315a852b4ae77e76752be294d4b62fa2310a5fedab890666d4f"
+  },
+  "referenceVersion": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/auth-3059-packaged/version-aligned/reference-version.txt",
+    "bytes": 9,
+    "sha256": "bc24782ffbbcbcc53de490975fe15416cabfb0338e2f6e4de4663954647b6c30"
+  },
+  "modes": [
+    {
+      "mode": "pglite",
+      "profiles": [
+        {
+          "name": "none",
+          "httpComparisons": 21
+        },
+        {
+          "name": "password",
+          "httpComparisons": 49
+        },
+        {
+          "name": "accounts",
+          "httpComparisons": 53
+        },
+        {
+          "name": "partitioned-password",
+          "httpComparisons": 53
+        },
+        {
+          "name": "partitioned-accounts",
+          "httpComparisons": 57
+        },
+        {
+          "name": "licensed-accounts",
+          "httpComparisons": 50
+        },
+        {
+          "name": "trusted-password",
+          "httpComparisons": 60
+        },
+        {
+          "name": "rate-limit",
+          "httpComparisons": 18
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/auth-3059-packaged/version-aligned/pglite.json",
+        "bytes": 481337,
+        "sha256": "68eb7be5d5fcf24ec902bd25bb1b4ad1ff6ae5caf523ff072bea0ec20b1ed85e"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/auth-3059-packaged/version-aligned/pglite.log",
+        "bytes": 975,
+        "sha256": "5ad076932ff04eb0b68617f971c7bfe0a60906040d52a8e2ea9ba3671d941a6f"
+      }
+    },
+    {
+      "mode": "bundled-postgres",
+      "profiles": [
+        {
+          "name": "none",
+          "httpComparisons": 21
+        },
+        {
+          "name": "password",
+          "httpComparisons": 49
+        },
+        {
+          "name": "accounts",
+          "httpComparisons": 53
+        },
+        {
+          "name": "partitioned-password",
+          "httpComparisons": 53
+        },
+        {
+          "name": "partitioned-accounts",
+          "httpComparisons": 57
+        },
+        {
+          "name": "licensed-accounts",
+          "httpComparisons": 50
+        },
+        {
+          "name": "trusted-password",
+          "httpComparisons": 60
+        },
+        {
+          "name": "rate-limit",
+          "httpComparisons": 18
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/auth-3059-packaged/version-aligned/bundled-postgres.json",
+        "bytes": 481357,
+        "sha256": "3eacc8c9108b051e12a3d59e597a2414f42cc171b990aa815a8f61a70689825a"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/auth-3059-packaged/version-aligned/bundled-postgres.log",
+        "bytes": 975,
+        "sha256": "5ad076932ff04eb0b68617f971c7bfe0a60906040d52a8e2ea9ba3671d941a6f"
+      }
+    },
+    {
+      "mode": "postgres",
+      "profiles": [
+        {
+          "name": "none",
+          "httpComparisons": 21
+        },
+        {
+          "name": "password",
+          "httpComparisons": 49
+        },
+        {
+          "name": "accounts",
+          "httpComparisons": 53
+        },
+        {
+          "name": "partitioned-password",
+          "httpComparisons": 53
+        },
+        {
+          "name": "partitioned-accounts",
+          "httpComparisons": 57
+        },
+        {
+          "name": "licensed-accounts",
+          "httpComparisons": 50
+        },
+        {
+          "name": "trusted-password",
+          "httpComparisons": 60
+        },
+        {
+          "name": "rate-limit",
+          "httpComparisons": 18
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/auth-3059-packaged/version-aligned/postgres.json",
+        "bytes": 506650,
+        "sha256": "58e73747a59c675915c59396a614dcb30f993a9466278b41ee8a27514cb850ae"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/auth-3059-packaged/version-aligned/postgres.log",
+        "bytes": 975,
+        "sha256": "5ad076932ff04eb0b68617f971c7bfe0a60906040d52a8e2ea9ba3671d941a6f"
+      }
+    }
+  ]
+}

@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "driverSourceCommit": "16b4b0a4abe9aed5c9177f1d50f332c9aaeec66a",
+  "platform": "darwin-arm64",
+  "scope": "Real HTTP and App Live sockets on the packaged Rust executable and Node reference. Each uses its own database profile and a controlled production worker connection. External PostgreSQL also tests a blocked authorization query with live ping and close.",
+  "inputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3059-packaged/inputs.sha256",
+    "bytes": 769,
+    "sha256": "79626dd473447124da852c91a7222e9e46cb74344e1122e2703a7891e618bd08"
+  },
+  "modes": [
+    {
+      "mode": "pglite",
+      "profiles": [
+        {
+          "name": "development",
+          "httpComparisons": 1,
+          "upgradeRejections": 0,
+          "socketComparisons": 10
+        },
+        {
+          "name": "password",
+          "httpComparisons": 3,
+          "upgradeRejections": 1,
+          "socketComparisons": 8
+        },
+        {
+          "name": "accounts",
+          "httpComparisons": 3,
+          "upgradeRejections": 1,
+          "socketComparisons": 8
+        },
+        {
+          "name": "capacity",
+          "httpComparisons": 1,
+          "upgradeRejections": 0,
+          "socketComparisons": 7
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3059-packaged/pglite.json",
+        "bytes": 43232,
+        "sha256": "a885d6fd5c750aa1d873a7b62fe167022b28642c421b29f216a0174c9fc1fb1b"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3059-packaged/pglite.log",
+        "bytes": 518,
+        "sha256": "c212bd6438a9098b9c06ca1ec3cde07288e2147b9498ce9f7056bc7d2232b780"
+      }
+    },
+    {
+      "mode": "bundled-postgres",
+      "profiles": [
+        {
+          "name": "development",
+          "httpComparisons": 1,
+          "upgradeRejections": 0,
+          "socketComparisons": 10
+        },
+        {
+          "name": "password",
+          "httpComparisons": 3,
+          "upgradeRejections": 1,
+          "socketComparisons": 8
+        },
+        {
+          "name": "accounts",
+          "httpComparisons": 3,
+          "upgradeRejections": 1,
+          "socketComparisons": 8
+        },
+        {
+          "name": "capacity",
+          "httpComparisons": 1,
+          "upgradeRejections": 0,
+          "socketComparisons": 7
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3059-packaged/bundled-postgres.json",
+        "bytes": 43242,
+        "sha256": "fd557b259cd9d6293dd3f6e3a0880ce58e19f6ed18be6753cdf002b471210236"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3059-packaged/bundled-postgres.log",
+        "bytes": 528,
+        "sha256": "3590d69e3d6ba25344778b64ccd682f4b941235745037a6a9561cf009a578aa5"
+      }
+    },
+    {
+      "mode": "postgres",
+      "profiles": [
+        {
+          "name": "development",
+          "httpComparisons": 1,
+          "upgradeRejections": 0,
+          "socketComparisons": 11
+        },
+        {
+          "name": "password",
+          "httpComparisons": 3,
+          "upgradeRejections": 1,
+          "socketComparisons": 8
+        },
+        {
+          "name": "accounts",
+          "httpComparisons": 3,
+          "upgradeRejections": 1,
+          "socketComparisons": 8
+        },
+        {
+          "name": "capacity",
+          "httpComparisons": 1,
+          "upgradeRejections": 0,
+          "socketComparisons": 7
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3059-packaged/postgres.json",
+        "bytes": 44819,
+        "sha256": "e3f77469327afeebf756daaf9ba54fb72c37a1445077c2260627db818fb5bea6"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3059-packaged/postgres.log",
+        "bytes": 520,
+        "sha256": "a7da4544bc7df506edec7ad24fb69506333e94b6960a0dbfadc1f82df793d6a9"
+      }
+    }
+  ]
+}

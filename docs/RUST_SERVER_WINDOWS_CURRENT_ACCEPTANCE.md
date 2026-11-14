@@ -18,6 +18,16 @@ the relocated macOS ARM64 1.1.3059 archive on all three stores. Windows
 standalone runtime, installed desktop and updater results are still open.
 [Archive, installer and harness verification](security/rust-server-3059-windows-package-verification.json)
 
+Fresh and reopened installed PGlite cases passed in the same guest. The desktop
+launched its Rust server, saved and read back a setting, and received a
+version reply from its packaged 1.1.2976 worker. Reopening used the stored
+database selection and retained the server identity and setting. Both tray
+quits exited zero, reaped both children and recorded an orderly server
+shutdown. Fresh PGlite startup took 216.657 seconds under x64 emulation.
+Both guest disk receipts match the serial output. The PostgreSQL desktop
+cases remain in the running matrix.
+[Installed PGlite cases](security/rust-server-3059-windows-installed-pglite.json)
+
 ## Windows x64 standalone `1.1.2938`
 
 The standalone server from `5015c89a4` passed PGlite, bundled PostgreSQL,
