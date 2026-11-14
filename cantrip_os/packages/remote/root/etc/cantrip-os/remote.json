@@ -1,1 +1,4 @@
-{"state_dir":"/var/lib/cantrip-os-workspaces/integrations/remote","runtime_dir":"/run/cantrip-os-remote"}
+{
+  "state_dir": "/var/lib/cantrip-os-workspaces/integrations/remote",
+  "runtime_dir": "/run/cantrip-os-remote"
+}

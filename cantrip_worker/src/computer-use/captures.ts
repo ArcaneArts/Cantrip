@@ -38,9 +38,7 @@ const frameSchema = openedSchema.extend({
 });
 export interface RemoteCapture {
   readonly initial: z.infer<typeof openedSchema>;
-  frame(
-    signal?: AbortSignal,
-  ): Promise<{
+  frame(signal?: AbortSignal): Promise<{
     target: z.infer<typeof cuaTargetSchema>;
     png: Buffer;
     width: number;

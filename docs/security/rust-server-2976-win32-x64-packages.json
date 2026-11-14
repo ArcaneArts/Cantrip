@@ -238,9 +238,7 @@
         "sha256": "1e8594e9d3d069a167bc5324d6eeb94fa77f3a59b21241b02afcfaa8a1c2ab83"
       },
       "verifiedPayloadFiles": 14091,
-      "changedPayloads": [
-        "runtime/worker/dist/index.js"
-      ],
+      "changedPayloads": ["runtime/worker/dist/index.js"],
       "bundledAppSha256": "8b823adccdc5897f919c445450e4ccacebdcbc49772b42ad6594f36cd67e6e25",
       "bundledServerSha256": "d678aacfb2d0d063812f84c1ae47766dce222f25382183f85b8c7d7b3fee7168",
       "bundledWorkerSha256": "3505b8913f656e5b6171948ecc8170b4134519ad0e2b3694ee533c4527b6d586",
