@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "platform": "darwin-arm64",
+  "candidateVersion": "1.1.3059",
+  "workerReportedVersion": "1.1.3059",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "workerAndTestDriverSourceCommit": "d1c400fc40cb78453e5fc205c909f8143c8f8137",
+  "nodeVersion": "v24.22.1",
+  "server": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/cantrip-server-darwin-arm64/bin/cantrip-server",
+    "bytes": 94198000,
+    "sha256": "98158f98aa453ad802282bc6119cf37f66251923d77f53b6fe08fe55c14107a3"
+  },
+  "workspaceReset": {
+    "scope": "Browser SDK, a freshly built and deployed Node worker, and Linux ARM64 CantripOS guests. The bundled PostgreSQL reference uses an isolated external PostgreSQL cluster.",
+    "workerEntry": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/worker/dist/index.js",
+      "bytes": 391720,
+      "sha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c"
+    },
+    "workerVersionMetadata": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/worker/node_modules/@cantrip/version/dist/version.json",
+      "bytes": 179,
+      "sha256": "670e042a512cdeb01c97573139acd5f63589f9bf64f56c924e0363d2367376a9"
+    },
+    "guestImage": "sha256:2310a9cf3d6c6a59dead96664dfac559df3539e4ce8c2eae133558c8b31c14c4",
+    "productStepsPerPeer": 12,
+    "authenticatedReceiptsPerPeer": 5,
+    "intentionalWorkerKillsPerPeer": 2,
+    "cases": [
+      {
+        "databaseMode": "pglite",
+        "matchedSnapshots": 10,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/pglite.json",
+          "bytes": 750554,
+          "sha256": "7527c548084803113a99bb03d6c66386f8ee5c8b4ba1c13397412d3ef88b84e6"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/pglite.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "matchedSnapshots": 10,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/bundled-postgres.json",
+          "bytes": 813966,
+          "sha256": "7d191604c28793cfff6cc84b17e5f0537f2a7d1cf1e47dae12307203534007e3"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/bundled-postgres.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      {
+        "databaseMode": "postgres",
+        "matchedSnapshots": 10,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/postgres.json",
+          "bytes": 820128,
+          "sha256": "21e7126d8b96d294752d97f46439f9724223b13b65f7308a0c332e26313d9790"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/postgres.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      }
+    ]
+  },
+  "externalPostgresOutage": {
+    "scope": "Browser SDK and a copy of the previous packaged worker with regenerated version metadata. The worker entry matches the freshly built worker byte for byte.",
+    "actualOfflineMs": 300000,
+    "offlineReplyMs": 8,
+    "browserSteps": 20,
+    "modelCases": 14,
+    "workerReceipts": 13,
+    "settledUsageRows": 1,
+    "providerRequestsForInterruptedOperation": 1,
+    "readyStatusOffline": 503,
+    "liveStatusOffline": 200,
+    "readyStatusRecovered": 200,
+    "workerVersionMetadata": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-version-aligned-3059.KddB4qXY/worker/node_modules/@cantrip/version/dist/version.json",
+      "bytes": 179,
+      "sha256": "670e042a512cdeb01c97573139acd5f63589f9bf64f56c924e0363d2367376a9"
+    },
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-version-aligned-3059.KddB4qXY/outage.json",
+      "bytes": 536615,
+      "sha256": "0167b0aa2dbc2b1c35713ef3cef7491a4a888700a1f1bb7c47213bbcdae06eed"
+    },
+    "exit": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-version-aligned-3059.KddB4qXY/outage.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    }
+  },
+  "desktopStaging": {
+    "command": "node scripts/package-distributions.mjs desktop-runtime --from-artifacts --target darwin-arm64",
+    "scope": "Production staging command with previously built native inputs and the freshly deployed worker. The staged runtime passed the package workspace import and worker helper smoke checks.",
+    "workerImportVersion": "1.1.3059",
+    "hashes": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/desktop-staging/staged.sha256",
+      "bytes": 539,
+      "sha256": "d24a5ed2ac8c4f79bb9c5127b9ebbb4c7b1cf2f6d28648fe76160a0b24180e95"
+    },
+    "log": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/desktop-staging/staging.log",
+      "bytes": 1062,
+      "sha256": "ef92087296f645a9f2fd33f0974b61f62715053a5684cae52776468f2932fa4a"
+    }
+  }
+}

@@ -76,3 +76,9 @@ exact protected receipt and confirms that replay keeps the active home inode.
 Rollback restores the original home and leaves the later write in the
 displaced home. The browser reads the reset by ID and authenticates all five
 operations in history.
+
+A fresh worker build and production deploy reported version 1.1.3059 and
+matched ten browser snapshots per database mode against the Node reference.
+Both peers recovered the protected receipts after worker process loss and
+verified the reset rollback against the original and displaced guest homes.
+[Version-aligned macOS results](security/rust-server-3059-macos-worker-version-acceptance.json)

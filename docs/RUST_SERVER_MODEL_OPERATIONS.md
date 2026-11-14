@@ -77,6 +77,12 @@ row stayed `running` after PostgreSQL returned. The host-side worker in all
 three runs was the bundled Node worker reporting 1.1.2976.
 [1.1.3059 long PostgreSQL outage results](security/rust-server-3059-postgres-long-outage.json)
 
+A separate macOS ARM64 run repeated the five-minute interruption with worker
+version 1.1.3059. The browser received the protected embedding during the
+outage, the same worker settled a single usage receipt after recovery, and
+replay made no additional provider call.
+[Version-aligned macOS results](security/rust-server-3059-macos-worker-version-acceptance.json)
+
 ## Active Redis interruption
 
 A real 45-second Redis process outage interrupted a protected embedding
