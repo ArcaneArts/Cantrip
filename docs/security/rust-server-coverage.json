@@ -30852,6 +30852,12 @@
     "report": "docs/security/rust-server-3048-linux-acceptance.json",
     "scope": "Standalone images and representative Winterhold rehearsals across three stores on ARM64 and x64, including startup and migration fault recovery, post-write rollback, and a separate PostgreSQL readiness stall on each image. The x64 image also passed active inference settlement across a 60-second external PostgreSQL outage. The x64 executable ran through Rosetta on the ARM64 Linux host."
   },
+  "packaged3059Qualification": {
+    "status": "passed",
+    "candidateVersion": "1.1.3059",
+    "report": "docs/security/rust-server-3059-platform-acceptance.json",
+    "scope": "Three-store macOS ARM64 and Linux ARM64/x64 standalone tests, the signed macOS desktop update, both local Winterhold rehearsals with post-write rollback, and all four Redis recovery pairings on each Linux architecture. Separate packaged macOS and Windows guest external PostgreSQL outage results and scoped macOS performance measurements."
+  },
   "remainingAcceptance": [
     "Qualify packaged cross-platform dependency interruptions and longer outages. Reconcile the still-open background-service and product recovery comparisons.",
     "Reconcile remaining route-specific successful and error behavior, authenticated metadata and encrypted boundaries beyond the account wrapper cases, and protocol ordering beyond the qualified App Live parser and cursor cases.",
