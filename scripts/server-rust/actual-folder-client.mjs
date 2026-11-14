@@ -1959,6 +1959,7 @@ try {
   });
   if (databaseMode !== "pglite")
     postgres = await postgresFixture(path.join(root, "postgres"), {
+      startupTimeoutMs: serverStartupTimeoutMs,
       restartable:
         postgresOutage ||
         modelPostgresOutage ||

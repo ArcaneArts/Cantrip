@@ -15,7 +15,11 @@ const postgres = createRequire(
   new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 
-export async function restartablePostgres(root, bin) {
+export async function restartablePostgres(
+  root,
+  bin,
+  { startupTimeoutMs = 15_000 } = {},
+) {
   await mkdir(root, { recursive: true });
   const directory = path.join(root, "data");
   const listener = createServer();
@@ -112,8 +116,12 @@ export async function restartablePostgres(root, bin) {
           }
         },
         (result) =>
-          assert.equal(result, 1, "PostgreSQL must accept actual SQL"),
-        15_000,
+          assert.equal(
+            result,
+            1,
+            `PostgreSQL did not accept SQL within ${startupTimeoutMs}ms; see ${path.join(root, `postgres-${generation}.log`)}`,
+          ),
+        startupTimeoutMs,
       );
       return { pid: child.pid, port };
     } catch (error) {
