@@ -30899,6 +30899,16 @@
     },
     "scope": "Packaged Rust and Node reference comparison with the existing browser SDK, full Node worker, real PTY and Chromium. The same Rust executable upgrades a historical Node profile, preserves encrypted writes through Node rollback and retains subsequent writes when Rust returns."
   },
+  "macos3059AuthenticationAndLiveQualification": {
+    "status": "passed",
+    "candidateVersion": "1.1.3059",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "reports": {
+      "authentication": "docs/security/rust-server-3059-auth-compatibility.json",
+      "appLive": "docs/security/rust-server-3059-live-compatibility.json"
+    },
+    "scope": "Packaged Rust and Node reference comparisons for HTTP authentication, mobile code exchange, session continuity, App Live authorization, socket limits, reconnect replay and revocation. External PostgreSQL also exercised ping and close while an authorization query was blocked."
+  },
   "remainingAcceptance": [
     "Qualify packaged cross-platform dependency interruptions and longer outages. Reconcile the still-open background-service and product recovery comparisons.",
     "Reconcile remaining route-specific successful and error behavior, authenticated metadata and encrypted boundaries beyond the account wrapper cases, and protocol ordering beyond the qualified App Live parser and cursor cases.",

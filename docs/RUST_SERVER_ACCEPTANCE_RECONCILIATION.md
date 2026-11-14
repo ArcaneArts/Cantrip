@@ -109,6 +109,25 @@ matched throughout. The sandbox rejected an actual attempt to open the
 original secret-key file for writing.
 [Historical upgrade and rollback evidence](security/rust-server-3059-historical-profile.json)
 
+### Authentication and App Live on the packaged macOS server
+
+The Rust 1.1.3059 package and same-version Node reference matched 1,083 HTTP
+cases across eight profiles per store. The cases cover cookie and CSRF
+handling, CORS, trusted-proxy behavior, retained sessions, mobile grant
+exchange and replay, and creator revocation. The first attempt found stale
+1.1.3051 version metadata in the Node reference. Regenerating its metadata at
+1.1.3059 allowed the existing exact version assertion to pass.
+[Authentication comparison evidence](security/rust-server-3059-auth-compatibility.json)
+
+The Rust 1.1.3059 executable and Node reference matched 100 App Live
+socket cases, 24 HTTP observations and six unauthenticated upgrade
+rejections across PGlite, bundled PostgreSQL and external PostgreSQL.
+The cases cover real project and Chat authorization, replay of a
+committed worker invalidation, session revocation and socket capacity
+reuse. With external PostgreSQL holding an actual authorization query,
+the open socket still acknowledged ping and close.
+[App Live comparison evidence](security/rust-server-3059-live-compatibility.json)
+
 ## macOS recovery tests through Cantrip 1.1.3059
 
 The macOS ARM64 development executable in PR #3071 completed 14 model

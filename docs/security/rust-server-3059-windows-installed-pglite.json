@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "target": "win32-x64",
+  "scope": "Fresh and reopened installed PGlite profiles in the local Windows x64 QEMU guest on macOS ARM64.",
+  "receipt": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/guest-evidence/installed-3059-pglite.json",
+    "bytes": 912,
+    "sha256": "9653ff0735fb8d5a3add6234dbb611ac5a85643924e3be177d69e7db957e6265"
+  },
+  "lifecycle": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/guest-evidence/pglite-lifecycle.json",
+    "bytes": 1755,
+    "sha256": "2fd54e4b5f888c4712a00091e1e7ba7500d867828e48226adbf23121d7909496"
+  },
+  "ownedProcessesBeforeWorkerReady": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/worker-observation/owned-processes.jsonl",
+    "bytes": 1669,
+    "sha256": "25402e517cb315d2d19c99f376511341260ec4d975a73417bc9096231d904db6"
+  },
+  "emulatedStartupSeconds": 216.657,
+  "workerVersion": "1.1.2976",
+  "freshPglite": {
+    "savedAndReadSetting": true,
+    "ownedWorkerResponded": true,
+    "trayQuit": true,
+    "servicesReaped": true,
+    "serverShutdownLogged": true
+  },
+  "remaining": [
+    "Both PostgreSQL desktop modes, signed updater and standalone runtime retry."
+  ],
+  "reopenReceipt": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/guest-evidence/installed-3059-pglite-reopen.json",
+    "bytes": 898,
+    "sha256": "1aeefc93a13d9a19fadffbe3fd23c5be9900559f9a0e1f5069e0d36aad3a4d83"
+  },
+  "reopenedPglite": {
+    "persistedDatabaseSelection": true,
+    "identityAndSettingRetained": true,
+    "ownedWorkerResponded": true,
+    "trayQuit": true,
+    "servicesReaped": true,
+    "serverShutdownLogged": true
+  }
+}
