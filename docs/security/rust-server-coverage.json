@@ -25111,6 +25111,17 @@
         "Exercise whole app UI and full worker index/runtime across the supported packaging/deployment/platform matrix.",
         "Complete remaining schema, coercion/refinement and authenticated/hash boundaries across the server; the new parser socket cases do not prove all-domain parity."
       ],
+      "macos3013StandaloneAcceptance": {
+        "report": "docs/security/rust-server-3013-darwin-arm64-app-live.json",
+        "target": "darwin-arm64",
+        "version": "1.1.3013",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "matchingSocketCases": 100,
+        "matchingHttpCases": 24,
+        "matchingUnauthenticatedHandshakeCases": 6,
+        "matchingBrowserWorkerControlSteps": 42,
+        "matchingFullWorkerProviderCatalogSnapshots": 78
+      },
       "currentMacosArtifactAcceptance": {
         "sourceCommit": "ff6a4b060c60ee1f391b70161fdffd0c933c38c7",
         "target": "darwin-arm64",

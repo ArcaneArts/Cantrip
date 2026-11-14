@@ -61,6 +61,22 @@ matched. The running server reported `1.1.3013` and the same process instance
 ID in health and live traffic. This record covers the standalone archive.
 [macOS standalone report](security/rust-server-3013-darwin-arm64-standalone.json)
 
+The App Live harness compared that packaged executable with the Node reference
+server over HTTP and WebSocket connections. All four profiles passed on each
+store, with 100 paired socket cases, 24 paired HTTP cases and six rejected
+unauthenticated handshakes. The cases cover heartbeat, capacity, committed
+worker invalidations, replay and transport close behavior. The external
+PostgreSQL run also held an authorization query open while checking WebSocket
+ping and close handling. The harness accepts prebuilt server and repository
+fixture paths for archive qualification. Chromium also passed 14 paired
+browser and worker-control steps per store, including enrollment, credential
+rotation and reconnect. The rotation command used a controlled handler.
+A separate browser run used the full packaged Node worker with controlled
+local providers. Each store passed 16 paired product steps and matched 26
+catalog snapshots, including the 1,050-model paginated catalog, scoped
+availability and retained state after restart.
+[macOS App Live and browser worker report](security/rust-server-3013-darwin-arm64-app-live.json)
+
 The same standalone executable passed active Redis interruption with external
 PostgreSQL and the packaged Node worker. Each of the four Node/Rust peer
 pairings completed 14 model operations, including a 45-second Redis outage
