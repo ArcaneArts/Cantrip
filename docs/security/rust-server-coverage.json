@@ -30735,6 +30735,12 @@
       }
     }
   },
+  "currentMacosLinuxArm64StandaloneQualification": {
+    "status": "passed",
+    "candidateVersion": "1.1.3032",
+    "report": "docs/security/rust-server-3032-standalone-acceptance.json",
+    "scope": "The exact macOS ARM64 archive and Linux ARM64 image passed standalone acceptance across all three stores. The Linux ARM64 Winterhold rehearsal passed post-write rollback and the macOS archive passed active Redis recovery with two Rust peers."
+  },
   "macos3013StandaloneQualification": {
     "status": "passed",
     "report": "docs/security/rust-server-3013-darwin-arm64-standalone.json"

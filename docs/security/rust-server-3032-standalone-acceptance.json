@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3032",
+  "sourceCommit": "d91420eb9e0b4513f2b8b3928cfcde81dadd4c20",
+  "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+  "macosArm64": {
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-d91420eb9/cantrip-server-1.1.3032-darwin-arm64.tar.gz",
+      "bytes": 66941602,
+      "sha256": "dacdfeaadf9a4c1ed4ed828fb6fe09bcb54a5f8e8fd176fc6222cb64e6b58bff"
+    },
+    "executableSha256": "c422e441f9939610d6f8dc3804cf700c7d91d0cb1a5f9bc545fba77abb39d1e1",
+    "verifiedFiles": 1762,
+    "runtimeNodeAbsent": true,
+    "homebrewReadsAndPackageWritesDenied": true,
+    "acceptance": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-d91420eb9/acceptance.json",
+      "bytes": 3021,
+      "sha256": "9f67a7c27d2f558a8f13db3b8a3fad3e4f101327417f8ef7c228b62d4441683f"
+    },
+    "runningVersion": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-d91420eb9/running-version.json",
+      "bytes": 179,
+      "sha256": "5bba6b60736616815daf6a6bfcc7781decc81148c8a97ea50dadfca94c42e24e"
+    },
+    "redisOutage": {
+      "databaseMode": "postgres",
+      "peerPair": "rust/rust",
+      "productSteps": 20,
+      "modelOperations": 14,
+      "providerRequests": 15,
+      "redisOfflineMs": 45006,
+      "cleanServerExits": 6,
+      "receiptStatusAfterReplay": "unknown",
+      "freshOperationSucceeded": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-d91420eb9/redis-outage/acceptance.json",
+        "bytes": 570306,
+        "sha256": "a70239423f618955da40344bd24f6c3bdc3e4a2f5e9d84e8dd6da6eb26448b1d"
+      },
+      "inputs": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-d91420eb9/redis-outage/inputs.sha256",
+        "bytes": 1443,
+        "sha256": "4d656f5b95544a033d14335709e13adcbed5d3cc674c212a05f076109960a31a"
+      }
+    }
+  },
+  "linuxArm64": {
+    "nativeArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-arm64-d91420eb9/cantrip-server-1.1.3032-linux-arm64.tar.gz",
+      "bytes": 138416630,
+      "sha256": "b8c8a978ca144b9eebf976dbd106d2d353e84c6308d095156b96e29ee9590ef8"
+    },
+    "ociArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-arm64-d91420eb9/standalone.oci.tar",
+      "bytes": 178333696,
+      "sha256": "7fead96e7ce40132b64ca0118bc23c19da2972c1c6e2c67097e0aad85d479e0b"
+    },
+    "ociImageDigest": "sha256:dc7814a47f7f0882aeebacfe6eec7bedcde9ecc6b7608d0292d93335a9a7725c",
+    "verifiedOciLayers": 4,
+    "executableSha256": "c33fd5a58b3230632505aab2764f39247e3877e5a68ba9d7353f1c68734a9a96",
+    "verifiedPackageFiles": 2558,
+    "nonRootReadOnlyRootAndNoexecTmpfs": true,
+    "runtimeNodeAbsent": true,
+    "artifactVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-arm64-d91420eb9/artifact-verification.json",
+      "bytes": 366,
+      "sha256": "e34d4b8a28fb6d287612473f4e6089cc680eed17e1987489baa5753e65a726da"
+    },
+    "acceptance": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-arm64-d91420eb9/acceptance.json",
+      "bytes": 5342,
+      "sha256": "f9a4231c1d407e0e9728ab9d695b0b9a869caee3e4934990cfbf5823bf7b50fa"
+    },
+    "winterhold": {
+      "installOperations": 18,
+      "recoveredInstallerFailures": 6,
+      "startLimitRecoveryObserved": true,
+      "caddyHttpsAndAppLive": true,
+      "externalPostgresTls": "required",
+      "postWriteRollback": {
+        "pglite": "Rust 1.1.3014",
+        "bundled-postgres": "Rust 1.1.3014",
+        "postgres": "historical Node reference"
+      },
+      "archiveActuallyInstalled": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-arm64-d91420eb9/winterhold/native.tar.gz",
+        "bytes": 138522609,
+        "sha256": "09bc67f392684187c5af6b1bf076c36e47d0bfa288ae6985e2b128ad757fdb6e"
+      },
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-arm64-d91420eb9/winterhold/acceptance.json",
+        "bytes": 1099533,
+        "sha256": "cea084cfb5663abb9453d532a20744597d25633d39bbacc7dc7b005d4bd619f4"
+      },
+      "journal": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-arm64-d91420eb9/winterhold/service-final-journal.log",
+        "bytes": 344925,
+        "sha256": "95367e54e08337292c6ded55a14565ddb127d9bdada32e083b8954c1ba023707"
+      },
+      "retainedProfile": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-arm64-d91420eb9/winterhold/profile-final.tar.zst",
+        "bytes": 13356513,
+        "sha256": "723a691f51938336037952ff8385dc89af5032b899c38be44ebec2c7a6b3a220"
+      },
+      "externalPostgresDump": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-arm64-d91420eb9/winterhold/external-postgres-final.dump",
+        "bytes": 677213,
+        "sha256": "7d784ba2c25c1904f89300f0d129246c47854cb6b38b093b8296246faa20656e"
+      }
+    }
+  },
+  "scope": "Local macOS ARM64 and Linux ARM64 standalone artifacts and a representative Linux systemd/Caddy Winterhold rehearsal. The historical amd64 Node rollback ran under emulation. The macOS Redis run used the existing full Node worker and a controlled local provider."
+}

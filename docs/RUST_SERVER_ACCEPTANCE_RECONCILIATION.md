@@ -6,6 +6,30 @@ Node. The old server is an explicit development compatibility reference. See
 [default cutover](RUST_SERVER_DEFAULT_CUTOVER.md) and
 [production Node retirement](RUST_SERVER_NODE_RETIREMENT.md) for their qualification.
 
+## Cantrip 1.1.3032 macOS and Linux ARM64 standalone
+
+The macOS ARM64 archive and Linux ARM64 container built from `d91420eb9`
+passed startup, migration, SQL export, retained writes, hosted reopening
+and graceful shutdown on all three stores. The macOS archive ran with
+Node off its PATH and sandbox rules denying Homebrew reads and package
+writes. The Linux server ran as a non-root user with a read-only root and
+a noexec temporary filesystem. The OCI export and the native archive
+match the running Linux executable.
+
+The local Linux ARM64 Winterhold rehearsal exercised systemd, Caddy HTTPS
+and App Live across 18 installer operations, including six injected
+migration and startup failures. PGlite and bundled PostgreSQL preserved
+writes through rollback to Rust 1.1.3014. External PostgreSQL preserved
+writes and its session through rollback to the historical Node server
+over TLS and reopening on Rust.
+
+On macOS, two packaged Rust peers and the full Node worker completed 20
+product steps and 14 model operations against shared PostgreSQL. A
+45-second Redis interruption left one unknown attempt for the interrupted
+embedding. Replaying it kept the same receipt, and a fresh operation
+completed after recovery.
+[ARM64 standalone and Winterhold report](security/rust-server-3032-standalone-acceptance.json)
+
 ## Cantrip 1.1.3014 Linux standalone
 
 The ARM64 and x64 images built from `0c1c343bd` passed standalone startup,
