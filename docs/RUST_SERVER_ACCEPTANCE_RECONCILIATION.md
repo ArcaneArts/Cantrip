@@ -249,6 +249,27 @@ controlled worker callbacks and aligned the Node reference's version
 metadata to 1.1.3059 before comparing exact bootstrap responses.
 [Native queue wire evidence](security/rust-server-3059-macos-native-queue-wire.json)
 
+### Task and Agent restart on Linux
+
+The packaged Rust server and 1.1.3059 Node worker completed 18 browser
+product steps per database on ARM64 and x64. Across PGlite, bundled
+PostgreSQL and external PostgreSQL, the browser reopened encrypted project
+sources, Task plans and transcripts, and Agent history and Goals. A paused
+Task ran once after unpause, a quota-failed Task completed after explicit
+retry, and the reopened Agent synchronized and cleared its retained Goal.
+Each case used five verified Rust container generations with clean exits.
+
+The first x64 PostgreSQL run received HTTP 409 on the first passive Task
+Goal status read. The reruns used the browser's Goal query retry policy
+and all reads succeeded on the first attempt. The initial ARM64 PostgreSQL
+run left an existing-folder job queued. The rerun passed with the same
+image. On macOS, shifting the Rust server clock two seconds behind the
+database reproduced a stuck folder job. The patched executable passed all
+nine folder steps with the server clock two seconds behind and two seconds
+ahead. The patch also matched 56 repository cases and 33 snapshots per
+database mode and 157 HTTP observations on external PostgreSQL.
+[Linux packaged Task and Agent evidence](security/rust-server-3059-linux-full-product-restart.json)
+
 ### Linux background catalog refresh
 
 The Linux catalog job fired on the unmodified 15-minute schedule on

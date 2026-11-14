@@ -7,8 +7,16 @@ impl FolderRepository {
     pub async fn claim_next(&self) -> Result<Option<Value>> {
         let at = crate::auth::now();
         self.database.transaction(|tx|Box::pin(async move {
-            let rows=tx.query("SELECT to_jsonb(j)::text FROM project_folder_setup_jobs j INNER JOIN projects p ON p.id=j.project_id WHERE j.state='queued' AND j.available_at<=$1 ORDER BY j.available_at ASC,j.created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED",&[&at]).await?;
-            let Some(row)=rows.first() else{return Ok(None)};
+            // Fresh jobs use the database clock. Retries and lease recovery
+            // use the application clock. A wake must see work due on either.
+            let rows = tx.query(
+                "SELECT to_jsonb(j)::text FROM project_folder_setup_jobs j \
+                 INNER JOIN projects p ON p.id=j.project_id \
+                 WHERE j.state='queued' AND j.available_at<=GREATEST(now(), $1) \
+                 ORDER BY j.available_at ASC,j.created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED",
+                &[&at],
+            ).await?;
+            let Some(row) = rows.first() else { return Ok(None) };
             let candidate=raw(row)?;let id=text(&candidate["id"])?;let command=uuid::Uuid::new_v4().to_string();let version=candidate["state_revision"].stringify();let expires=at+chrono::Duration::minutes(2);
             let rows=tx.query("UPDATE project_folder_setup_jobs SET state='running',state_revision=state_revision+1,attempt=attempt+1,command_id=$2,lease_expires_at=$3,started_at=coalesce(started_at,$4),completed_at=NULL,last_error_code=NULL,error_retryable=NULL,updated_at=$4 WHERE id=$1 AND state='queued' AND state_revision=$5::text::integer RETURNING to_jsonb(project_folder_setup_jobs)::text",&[&id,&command,&expires,&at,&version]).await?;
             let Some(row)=rows.first() else{return Ok(None)};let row=raw(row)?;
