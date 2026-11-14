@@ -456,24 +456,17 @@ export async function actualTaskClient({
       "complete",
       "the actual Codex Goal tool completes the implementation Goal",
     );
-    const useGoalQueryRetry =
-      forceGoalOrder ||
-      taskGoalAutonomousTransfer ||
-      Boolean(taskGoalTransferFault);
     const { openedGoal, lookupConflicts } = await page.evaluate(
-      async ({ chat, useGoalQueryRetry }) => {
-        const { getChatGoal } = await import("/src/lib/api/chats.ts");
-        if (!useGoalQueryRetry)
-          return { openedGoal: await getChatGoal(chat), lookupConflicts: 0 };
-        // Receipt replay and transfer recovery can overlap the passive
-        // observation. Use the browser Goal query's actual retry limit.
+      async (chat) => {
+        // The browser can read during native Goal settlement. Apply its
+        // retry limit to that conflict and still require the decrypted Goal.
         const { chatGoalQueryOptions } =
           await import("/src/lib/chat-goal-query.ts");
-        const { retry } = chatGoalQueryOptions(chat, "idle");
+        const { queryFn, retry } = chatGoalQueryOptions(chat, "idle");
         let lookupConflicts = 0;
         for (;;) {
           try {
-            return { openedGoal: await getChatGoal(chat), lookupConflicts };
+            return { openedGoal: await queryFn(), lookupConflicts };
           } catch (error) {
             if (error.status !== 409 || lookupConflicts >= retry) throw error;
             const delay = 1000 * 2 ** lookupConflicts++;
@@ -481,9 +474,9 @@ export async function actualTaskClient({
           }
         }
       },
-      { chat: planned.chat.id, useGoalQueryRetry },
+      planned.chat.id,
     );
-    if (useGoalQueryRetry) result.taskGoalLookupConflicts = lookupConflicts;
+    result.taskGoalLookupConflicts = lookupConflicts;
     assert.equal(openedGoal.goal.status, "complete");
     if (pauseTool) {
       const saved = result.transferredGoalPause;

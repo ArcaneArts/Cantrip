@@ -142,6 +142,7 @@
     "macosPreparedCantripOsCaptureAbandonment": "docs/security/rust-server-3059-macos-system-abandonment.json",
     "macosSharedReplicaRedisRecovery": "docs/security/rust-server-3059-macos-replica-redis.json",
     "linuxArm64X64OciAndWinterhold": "docs/security/rust-server-3059-platform-acceptance.json",
+    "linuxFullProductRestart": "docs/security/rust-server-3059-linux-full-product-restart.json",
     "linuxCrossPeerRedisRecovery": "docs/security/rust-server-3059-linux-redis-outage.json",
     "linuxShutdownWithRedisOffline": "docs/security/rust-server-3059-linux-redis-offline-shutdown.json",
     "macosAndLinuxLongPostgresOutage": "docs/security/rust-server-3059-postgres-long-outage.json",
