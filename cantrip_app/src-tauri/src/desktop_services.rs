@@ -171,8 +171,14 @@ pub fn terminate_child(child: &mut Child) {
 
 pub fn terminate_server(child: &mut Child) {
     // Bundled PostgreSQL can spend 30 seconds stopping after the server has
-    // drained requests and closed its database connections.
-    terminate_with_stdin_grace(child, Duration::from_secs(60));
+    // drained requests and closed its database connections. On Windows, an
+    // embedded PGlite checkpoint alone nearly consumed the old 60-second
+    // allowance. Give the full Windows shutdown time to flush before taskkill.
+    #[cfg(windows)]
+    let grace = Duration::from_secs(180);
+    #[cfg(not(windows))]
+    let grace = Duration::from_secs(60);
+    terminate_with_stdin_grace(child, grace);
 }
 
 fn terminate_with_stdin_grace(child: &mut Child, grace: Duration) {
@@ -183,11 +189,15 @@ fn terminate_with_stdin_grace(child: &mut Child, grace: Duration) {
     // TerminateProcess cannot request an orderly database/service shutdown.
     if child.stdin.take().is_some() {
         let deadline = Instant::now() + grace;
-        while Instant::now() < deadline {
+        loop {
             if child.try_wait().ok().flatten().is_some() {
                 return;
             }
-            thread::sleep(Duration::from_millis(50));
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            thread::sleep(remaining.min(Duration::from_millis(50)));
         }
     }
     #[cfg(unix)]
@@ -352,8 +362,9 @@ mod tests {
             .stdin(Stdio::piped())
             .spawn()
             .unwrap();
+        // The readiness loop must only be able to reach the delayed listener.
+        drop(reservation);
         let listener = thread::spawn(move || {
-            drop(reservation);
             thread::sleep(Duration::from_secs(11));
             let listener = TcpListener::bind(address).unwrap();
             // Keep the listener alive while the supervisor observes it.
