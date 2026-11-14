@@ -1220,6 +1220,10 @@ async function flow(
         workerId,
         result,
         phase: "connected",
+        recoveringWorker:
+          fixture.redis && process.argv.includes("--operational-status")
+            ? worker.child
+            : undefined,
       });
     await stopWorker();
     if (legacySurface) {

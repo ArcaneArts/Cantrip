@@ -30951,6 +30951,19 @@
     "report": "docs/security/rust-server-3059-macos-operations-and-logs.json",
     "scope": "Packaged Rust and Node reference with the existing browser and full Node worker. Health, Prometheus, worker log pagination, WebSocket replay, disconnect and lease release passed before and after restart."
   },
+  "macos3059SharedRedisAndWorkerLogRecoveryQualification": {
+    "status": "passed",
+    "candidateVersion": "1.1.3059",
+    "databaseModes": ["postgres"],
+    "report": "docs/security/rust-server-3059-macos-shared-log-recovery.json",
+    "scope": "Packaged Rust and Node reference in all four two-peer pairings on macOS ARM64. Readiness, metrics, the existing worker log route and WebSocket replay recovered after a real Redis restart."
+  },
+  "windows3059StandaloneLauncherRetryQualification": {
+    "status": "partial",
+    "candidateVersion": "1.1.3059",
+    "report": "docs/security/rust-server-3059-windows-standalone-retry.json",
+    "scope": "Exact Windows x64 archive. PGlite completed. The launcher failed during bundled PostgreSQL SQL export. Two direct controls exported identical SQL from the same profile. The external PostgreSQL launcher case remains open."
+  },
   "macos3059ProjectAutomationsQualification": {
     "status": "passed",
     "candidateVersion": "1.1.3059",

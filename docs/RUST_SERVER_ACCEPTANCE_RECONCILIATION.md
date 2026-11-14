@@ -1565,6 +1565,16 @@ through the existing WebSocket parser. Both runtimes returned
 `worker-offline` and closed with code 1013 when the worker stopped.
 [Operational status and worker log evidence](security/rust-server-3059-macos-operations-and-logs.json)
 
+With external PostgreSQL and shared Redis, the same Rust server and Node
+reference passed 16 browser and full-worker steps in each of the four
+two-peer pairings. During the Redis outage both peers returned 503 from
+readiness while PostgreSQL stayed healthy. After Redis restarted, the
+browser log endpoint briefly returned 503 in every pairing, then served
+the original worker's logs within 0.96 seconds of the first request. The
+same run verified replay, disconnect and lease release before and after
+server restart.
+[Shared Redis and worker log recovery evidence](security/rust-server-3059-macos-shared-log-recovery.json)
+
 The same 1.1.3059 server and Node reference each passed 14 Agent and
 automation steps on every database. The full worker ran real script
 conditions, started one scheduled native turn, and skipped the other.

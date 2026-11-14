@@ -15,8 +15,13 @@ driver's 60-second deadline. Its guest script reported a longer budget
 without passing it to the driver. The driver now accepts an explicit
 deadline and reports the time to readiness. The updated driver passed
 the relocated macOS ARM64 1.1.3059 archive on all three stores. The Windows
-standalone runtime retry and signed updater remain open.
+retry passed PGlite and reached bundled PostgreSQL. The first bundled
+launch and migration completed, and the SQL export through `migrate.cmd`
+failed in `pg_dump`. Two follow-up calls to the same Rust executable on the
+same profile produced identical SQL, including a direct call to the bundled
+`pg_dump`. The full launcher matrix and signed updater remain open.
 [Archive, installer and harness verification](security/rust-server-3059-windows-package-verification.json)
+[Windows launcher retry and export controls](security/rust-server-3059-windows-standalone-retry.json)
 
 Fresh and reopened installed PGlite cases passed in the same guest. The desktop
 launched its Rust server, saved and read back a setting, and received a
