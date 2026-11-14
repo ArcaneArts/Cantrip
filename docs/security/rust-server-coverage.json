@@ -24822,6 +24822,16 @@
     },
     "fullPostWriteRollback": {
       "status": "partial",
+      "macos3032NativeExecutionQualification": {
+        "status": "passed",
+        "report": "docs/security/rust-server-3032-macos-profile-rollback.json",
+        "version": "1.1.3032",
+        "target": "darwin-arm64",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "samePostgresCodeOnlyRollback": true,
+        "productSteps": 80,
+        "profileTransfers": 8
+      },
       "limitedEvidence": "Native logical/profile reversal, automatic packaged legacy conversion and actual app post-write rollback have scoped historical local evidence. Populated Node 1.1.2733 -> native 1.1.2881 -> Node -> native round trips pass all three stores with exact comparisons of the two expected migrations, 137 tables and four sequences. Sessions, identities, credentials, crypto wrappers and encrypted product writes survive. Winterhold separately qualifies external PostgreSQL post-write code rollback over TLS. Full-client, current-platform, historical-profile and execution-replay rollback acceptance remain incomplete.",
       "historicalLimitedEvidence": "Existing auth/encryption/policy/workspace suites retain selected writes across Node/Rust/Node on external PostgreSQL. Native SQL export adds current/historical all-store database rollback after real password-authenticated Rust workspace/protection writes. Complete-profile CLI transfer now retains original keys/files/backend selection, compares all115tables4sequences and lets actualNode retain session/CSRF/serverUUID plus Rust workspace revision2 and write revision3 on all3stores. Packaged existing-profile activation and product-wide post-write rollback remain incomplete; see installationProfileTransfer.",
       "evidence": [
