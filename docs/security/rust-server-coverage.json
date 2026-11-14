@@ -30466,6 +30466,7 @@
         "Qualify replica behavior on the final supported shipping artifacts."
       ],
       "activeSharedRedisDispatch": "docs/security/rust-server-current-replica-acceptance.json#activeSharedRedisDispatch",
+      "linux3048X64ActiveSharedRedisDispatch": "docs/security/rust-server-3048-linux-x64-replica-redis.json",
       "optimizedMacosRebuild": "docs/security/rust-server-2881-macos-acceptance.json#replicaRepairRebuild"
     },
     "currentStreamedTaskReceiptAcceptance": {
