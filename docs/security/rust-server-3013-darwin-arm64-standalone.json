@@ -59,5 +59,151 @@
       "sha256": "a6d7a207ffcaaea349a9cbb257a9fc8d35a5928afc415c6d42b392db3734f5ad"
     }
   },
-  "scope": "Local macOS ARM64 standalone qualification of the rebuilt 1.1.3013 server distribution and a fresh archive extraction. Desktop signing, historical profile migration and post-write rollback, Windows and Linux release artifacts, and Winterhold deployment are outside this record."
+  "scope": "Local macOS ARM64 standalone qualification of the rebuilt 1.1.3013 server distribution and a fresh archive extraction. Desktop signing, historical profile migration and post-write rollback, Windows and Linux release artifacts, and Winterhold deployment are outside this record.",
+  "runtimePerformance": {
+    "status": "passed",
+    "databaseMode": "pglite",
+    "benchmarkSourceCommit": "87368ce3639b81d04e76bb6e19e9fccbe78ab2a3",
+    "nodeReference": {
+      "entry": "tests/reference-node-server/dist/index.js",
+      "entrySha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310",
+      "nodeVersion": "24.22.2"
+    },
+    "environment": "macOS 27.0.1 ARM64, with the local Windows x64 QA VM running during both workloads.",
+    "measuredRunsPerRuntime": 4,
+    "warmupsPerRuntime": 2,
+    "allRunsPassed": true,
+    "writesAndIdentityRetainedAcrossWarmRestarts": true,
+    "interpretation": "Small local PGlite workload. The summary contains all run-level median and p95 metrics. SettingsRunP95Ms is the median of the four per-run settings read p95s.",
+    "evidence": {
+      "inputs.txt": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/runtime-comparison/inputs.txt",
+        "bytes": 658,
+        "sha256": "e269ef6d812c270718454ea9f10857dcd040bb1fc6a2aa329a0235e5f6124d0f"
+      },
+      "exits.txt": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/runtime-comparison/exits.txt",
+        "bytes": 84,
+        "sha256": "105ac14e8044013361af62961f6b94337c4e554adcf47d303fe195b8dae83159"
+      },
+      "summary.json": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/runtime-comparison/summary.json",
+        "bytes": 6107,
+        "sha256": "500e8002c7fcde9d722b564619723411d5d79c15d97ada441f5015ea9cbdc69f"
+      },
+      "benchmarkHarness": {
+        "path": "scripts/server-rust/production-runtime-benchmark.mjs",
+        "sha256": "0adc1efe217f3b988d630379b30f053e3308d05943bf870f36a99fb17aac5c1c"
+      }
+    },
+    "runReports": {
+      "node": [
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/runtime-comparison/node/runs/1794620650113-45193.json",
+          "bytes": 2474,
+          "sha256": "a6b5cc7cc3d2602fbabeff840334bf532100859e596bf81f7fe83a66c09694d8"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/runtime-comparison/node/runs/1794620658863-45671.json",
+          "bytes": 2478,
+          "sha256": "dbe6a067a072915510b76358c52fc0e7eaa3f9cbb1ca914d3088907bf6af712f"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/runtime-comparison/node/runs/1794620662985-45793.json",
+          "bytes": 2505,
+          "sha256": "9a5b814fdc67690527f33c0b2844727613437c849f18245ede524291af22dd69"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/runtime-comparison/node/runs/1794620670667-46211.json",
+          "bytes": 2504,
+          "sha256": "db909d545eabd377cc7fba8ecd9f1da602abe7168923cb6d6213ceab4e85de78"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/runtime-comparison/node/runs/1794620674827-46373.json",
+          "bytes": 2506,
+          "sha256": "394d4a42a369da39edca8002c088e3cc213802613017c6ba6c044c0ef972d23b"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/runtime-comparison/node/runs/1794620682405-46771.json",
+          "bytes": 2514,
+          "sha256": "50503173fb25f6e55d20eae6dbf2c1f5f12e2cdd547b20b2827ae5a6707edde5"
+        }
+      ],
+      "rust": [
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/runtime-comparison/rust/runs/1794620653078-45393.json",
+          "bytes": 2463,
+          "sha256": "389fc44e333234c257ea54cb61f752ca7909fa861b9b687182f1e099828b1d86"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/runtime-comparison/rust/runs/1794620654789-45528.json",
+          "bytes": 2516,
+          "sha256": "34d58110579b7e80ed90529f85e0aa7eab91bad8805440cf624c49fd1aa48cdc"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/runtime-comparison/rust/runs/1794620664752-45936.json",
+          "bytes": 2513,
+          "sha256": "d97c26125a4905bb37e298428d4e4eddfd291b28e64bbbe3b5ed3232ccb18c22"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/runtime-comparison/rust/runs/1794620666465-46071.json",
+          "bytes": 2515,
+          "sha256": "40f4a6cc60ec3f10a44833a7506eb10a88ace6fe707c4a7171d212b87b0865a7"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/runtime-comparison/rust/runs/1794620676570-46527.json",
+          "bytes": 2513,
+          "sha256": "dd10f7c342be4cc9ebd1776732d3146207448eb40d9ad9b013e7ff2a50156517"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/runtime-comparison/rust/runs/1794620678302-46648.json",
+          "bytes": 2516,
+          "sha256": "ea21bba6746b51432b0cdb41c5c528ae01b1ff2f1b8229ef2640862067691708"
+        }
+      ]
+    },
+    "benchmarkOrderRepeatedThreeTimes": ["node", "rust", "rust", "node"],
+    "medianMetrics": {
+      "warmReadyMs": {
+        "node": 1408.077,
+        "rust": 87.575
+      },
+      "idleRssKiB": {
+        "node": 1353248,
+        "rust": 104744
+      },
+      "readRequestsPerSecond": {
+        "node": 682.57,
+        "rust": 2653.006
+      },
+      "settingsMedianMs": {
+        "node": 4.553,
+        "rust": 1.312
+      },
+      "settingsRunP95Ms": {
+        "node": 5.078,
+        "rust": 1.608
+      },
+      "settingsWriteMedianMs": {
+        "node": 4.908,
+        "rust": 1.719
+      },
+      "livePingMedianMs": {
+        "node": 0.1,
+        "rust": 0.086
+      },
+      "workerEnrollmentLiveMedianMs": {
+        "node": 4.69,
+        "rust": 2.053
+      },
+      "pausedConsumerCatchupMs": {
+        "node": 0.771,
+        "rust": 0.678
+      },
+      "shutdownMs": {
+        "node": 45.762,
+        "rust": 6.501
+      }
+    }
+  }
 }
