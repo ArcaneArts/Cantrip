@@ -7,6 +7,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import { promisify } from "node:util";
 import { parseArgs } from "node:util";
 import { fixtureEnvironment, startServer } from "./process.mjs";
@@ -81,6 +82,8 @@ const report = {
   driverArchitecture: process.arch,
   shutdownMethod: windows ? "supervision-stdin-close" : "SIGTERM",
   startupTimeoutMs,
+  shutdownTimeoutMs: 15_000,
+  shutdowns: [],
   modes: [],
 };
 const launcher = (name) =>
@@ -119,30 +122,44 @@ const startRuntime = (command, arguments_, options) =>
     ...runtimeCommand(command, arguments_),
     runtimeOptions(command, { ...options, startupTimeoutMs }),
   );
-async function stop(server) {
+async function stop(server, mode, phase) {
   if (server.child.exitCode !== null || server.child.signalCode !== null) {
     assert.fail(
       "server exited before the shutdown check: " + server.diagnostics(),
     );
   }
+  const started = performance.now();
+  const elapsed = () => Math.round(performance.now() - started);
+  const observation = { mode, phase, pid: server.child.pid, forced: false };
+  report.shutdowns.push(observation);
+  server.child.once("exit", (code, signal) => {
+    observation.exit = { code, signal, elapsedMs: elapsed() };
+  });
   const closed = new Promise((resolve) =>
     server.child.once("close", (code, signal) => resolve({ code, signal })),
   );
-  let forced = false;
   const deadline = setTimeout(() => {
-    forced = true;
+    observation.forced = true;
+    observation.deadlineElapsedMs = elapsed();
     server.child.kill("SIGKILL");
-  }, 15_000);
+  }, report.shutdownTimeoutMs);
   try {
     // Windows Node SIGTERM terminates a process; it cannot exercise the native
     // graceful signal handler. The desktop supervises this private stdin pipe.
     if (windows) server.child.stdin.end();
     else server.child.kill("SIGTERM");
     const result = await closed;
+    observation.close = { ...result, elapsedMs: elapsed() };
+    observation.serverStartedShutdown = server.events.some(
+      (event) => event.event === "server.shutdown.started",
+    );
+    observation.stages = server.events
+      .filter((event) => event.event === "server.shutdown.stage")
+      .map(({ stage, phase, durationMs }) => ({ stage, phase, durationMs }));
     assert.equal(
-      forced,
+      observation.forced,
       false,
-      `${report.shutdownMethod} must finish without forced termination`,
+      `${mode} ${phase}: ${report.shutdownMethod} must finish without forced termination`,
     );
     assert.equal(
       result.code,
@@ -153,6 +170,12 @@ async function stop(server) {
     clearTimeout(deadline);
   }
 }
+async function writeReport() {
+  if (!values.report) return;
+  await mkdir(path.dirname(values.report), { recursive: true });
+  await writeFile(values.report, JSON.stringify(report, null, 2) + "\n");
+}
+
 let postgresStarted = false,
   failure;
 const externalDirectory = path.join(root, "external");
@@ -310,7 +333,7 @@ try {
     try {
       identity = await visit(first, true);
     } finally {
-      await stop(first);
+      await stop(first, mode, "initial");
     }
     // The separate migration launcher must operate on the same existing data.
     await executeRuntime(launcher("migrate"), ["--port", "0"], {
@@ -346,7 +369,7 @@ try {
     try {
       assert.equal(await visit(reopened, false), identity);
     } finally {
-      await stop(reopened);
+      await stop(reopened, mode, "reopen");
     }
     // Hosted startup can use the same selected backend and identity.
     const key = {
@@ -376,7 +399,7 @@ try {
       assert.equal(body.server.deploymentMode, "hosted");
       assert.equal(body.server.bootstrapMode, "hosted");
     } finally {
-      await stop(hosted);
+      await stop(hosted, mode, "hosted");
     }
     if (mode === "pglite") {
       const emptyRuntime = path.join(root, "empty-configured-runtime");
@@ -399,7 +422,7 @@ try {
           "process configuration precedes the file and bundled PGlite fallback",
         );
       } finally {
-        await stop(configured);
+        await stop(configured, mode, "configured-runtime");
       }
       await writeFile(envFile, dotenv);
     }
@@ -430,7 +453,7 @@ try {
       try {
         assert.equal(await visit(portable, false), identity);
       } finally {
-        await stop(portable);
+        await stop(portable, mode, "portable-selection");
       }
       // A user's explicit binary selection is saved and must continue to win
       // over a different distribution fallback. Exercise the actual selection.
@@ -460,7 +483,7 @@ try {
           "stored database settings precede the distribution fallback",
         );
       } finally {
-        await stop(saved);
+        await stop(saved, mode, "saved-binary-selection");
       }
       await writeFile(
         path.join(artifact, ".env"),
@@ -475,7 +498,7 @@ try {
       try {
         assert.equal(await visit(explicit, false), identity);
       } finally {
-        await stop(explicit);
+        await stop(explicit, mode, "explicit-binary-selection");
       }
     }
     report.modes.push({
@@ -540,18 +563,28 @@ try {
     stack: error.stack,
   };
 } finally {
-  if (originalEnv) await writeFile(envFile, originalEnv);
-  else await rm(envFile, { force: true });
-  if (postgresStarted)
-    await executeRuntime(
-      path.join(pgBin, executableName("pg_ctl")),
-      ["-D", externalDirectory, "-m", "fast", "-w", "stop"],
-      { env: environment },
-    );
-  if (values.report) {
-    await mkdir(path.dirname(values.report), { recursive: true });
-    await writeFile(values.report, JSON.stringify(report, null, 2) + "\n");
+  // Keep the failing stage and shutdown observations even if fixture cleanup
+  // itself stalls or fails.
+  if (failure) await writeReport();
+  try {
+    if (originalEnv) await writeFile(envFile, originalEnv);
+    else await rm(envFile, { force: true });
+  } catch (error) {
+    report.environmentRestoreFailure = error.message;
+    failure ??= error;
   }
+  try {
+    if (postgresStarted)
+      await executeRuntime(
+        path.join(pgBin, executableName("pg_ctl")),
+        ["-D", externalDirectory, "-m", "fast", "-w", "stop"],
+        { env: environment },
+      );
+  } catch (error) {
+    report.externalPostgresShutdownFailure = error.message;
+    failure ??= error;
+  }
+  await writeReport();
 }
 if (failure) throw failure;
 console.log(JSON.stringify(report));

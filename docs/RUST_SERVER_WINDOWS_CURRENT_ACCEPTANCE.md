@@ -23,6 +23,13 @@ same profile produced identical SQL, including a direct call to the bundled
 [Archive, installer and harness verification](security/rust-server-3059-windows-package-verification.json)
 [Windows launcher retry and export controls](security/rust-server-3059-windows-standalone-retry.json)
 
+A second run with the exact archive completed PGlite again. The first
+bundled PostgreSQL launch served the settings write, then exceeded the
+driver's 15-second supervision shutdown deadline. It ended before the
+bundled export. The driver now records server shutdown stages and launcher
+exit and stream-close timing so a future timeout identifies where shutdown
+stopped.
+
 Fresh and reopened installed PGlite cases passed in the same guest. The desktop
 launched its Rust server, saved and read back a setting, and received a
 version reply from its packaged 1.1.2976 worker. Reopening used the stored

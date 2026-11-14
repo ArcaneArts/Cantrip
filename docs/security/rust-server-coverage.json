@@ -30962,7 +30962,7 @@
     "status": "partial",
     "candidateVersion": "1.1.3059",
     "report": "docs/security/rust-server-3059-windows-standalone-retry.json",
-    "scope": "Exact Windows x64 archive. PGlite completed. The launcher failed during bundled PostgreSQL SQL export. Two direct controls exported identical SQL from the same profile. The external PostgreSQL launcher case remains open."
+    "scope": "Exact Windows x64 archive. PGlite completed twice. Bundled PostgreSQL hit a SQL export failure in the first run and a supervision shutdown timeout in the second. Two direct controls exported identical SQL from the same profile. External PostgreSQL launcher acceptance remains open."
   },
   "macos3059ProjectAutomationsQualification": {
     "status": "passed",
