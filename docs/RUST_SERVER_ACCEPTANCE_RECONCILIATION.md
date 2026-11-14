@@ -47,6 +47,36 @@ and a settings write, and drained both desktop child processes. The PGlite
 case rejected a modified updater archive before applying the valid package.
 [Platform, artifact and performance evidence](security/rust-server-3059-platform-acceptance.json)
 
+### Worktrees and managed Git replicas
+
+On macOS ARM64, the packaged Rust server and Node reference each passed 25
+browser and full-worker steps on all three stores. The worker created a real
+Git worktree, locked and unlocked it, retained its identity across restarts
+and reconciled its inventory. Dirty removal preserved the file and restored
+the usable state. Run definition deletion and worktree removal both stopped
+the actual worker child. The requests kept paths, branches and lock reasons
+opaque to the server.
+
+Both runtimes also passed the 12-step packaged CLI worktree continuation on
+all three stores. A live native turn scheduled the switch, the continuation
+ran in the new checkout, and both answers retained their original worktree
+and lane attribution after reopening the server.
+
+The managed-replica test imported a public repository through the existing
+client and full workers. Rust passed on all three stores, including restoring
+the missing managed link and repeating repair without changing the checkout.
+It also synchronized the expected Git revision and refused to remove a checkout
+containing ignored user data. The first external PostgreSQL run timed out
+during worker shutdown. A fresh run passed with the same assertions.
+The Node reference reached repair on all three stores and returned HTTP 502.
+Its repair uses the project-level repository handle, which belongs to the
+primary worker. Rust uses the handle recorded by the owning replica worker.
+
+In four additional fresh-profile PGlite runs, Rust reached readiness in 1.22
+and 1.28 seconds and Node in 3.09 and 3.32 seconds. The earlier 32.7-second
+Rust migration did not recur in this series.
+[Worktree, replica and startup evidence](security/rust-server-3059-worktrees-and-replicas.json)
+
 ## macOS recovery tests through Cantrip 1.1.3059
 
 The macOS ARM64 development executable in PR #3071 completed 14 model
