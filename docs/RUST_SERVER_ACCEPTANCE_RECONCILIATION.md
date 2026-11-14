@@ -188,6 +188,13 @@ reuse. With external PostgreSQL holding an actual authorization query,
 the open socket still acknowledged ping and close.
 [App Live comparison evidence](security/rust-server-3059-live-compatibility.json)
 
+The packaged Linux ARM64 and x64 images matched the Node reference on
+312 JSON HTTP cases and 162 App Live WebSocket cases across PGlite,
+bundled PostgreSQL and external PostgreSQL. The matrix exercised JSON
+parser limits, non-ASCII password handling, error recovery and real
+publication cursors. All 12 Rust container processes exited cleanly.
+[Linux JSON transport evidence](security/rust-server-3059-linux-json-wire.json)
+
 ## Cantrip 1.1.3059 mobile clients
 
 The installed Android API 36 ARM64 emulator app signed into PGlite, bundled
