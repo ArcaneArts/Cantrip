@@ -125,6 +125,14 @@
         "bytes": 2,
         "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
       }
+    },
+    "linuxPackaged": {
+      "report": "docs/security/rust-server-3059-linux-background-compatibility.json",
+      "targets": ["linux-arm64", "linux-x64"],
+      "authMode": "accounts",
+      "database": "postgres",
+      "rustContainerExits": 10,
+      "scope": "Approval expiry, reconnect catalog, normal credential recovery and the actual capture deadline passed on both Linux images. The periodic Linux catalog run has a separate acceptance record."
     }
   },
   "artifactEvidence": {
