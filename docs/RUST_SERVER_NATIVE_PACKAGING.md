@@ -124,6 +124,11 @@ directory, including paths containing spaces and Unicode. Use a fresh directory
 for each run. The test driver may use Node; server and database children receive
 a runtime PATH without Node.
 
+For slow test hosts, `--startup-timeout-ms` overrides the driver's 60-second
+startup deadline. The JSON report records the configured override and the
+time to readiness for each successful launch. The shutdown deadline and
+production configuration stay the same.
+
 Windows server builds include a per-process UTF-8 manifest. Matching PGlite
 helpers receive that manifest before embedding, including during cross builds.
 The Windows packager also updates its copied native executables, including
