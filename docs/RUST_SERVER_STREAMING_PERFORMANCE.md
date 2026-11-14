@@ -198,8 +198,10 @@ failed runs retain their reports. The driver requires Node/tsx for test control,
 while the native server runs its actual packaged executable.
 
 For a slow native test host, use `--startup-timeout-ms` with the same
-value for both runtimes. The report records the configured deadline, and
-the startup measurement ends when the real readiness request succeeds.
+value for both runtimes. The deadline applies separately to launching the
+external PostgreSQL fixture and to each Cantrip server start. The report
+records the configured deadline, and the server startup measurement ends when
+the real readiness request succeeds.
 
 ## Scope and remaining work
 
