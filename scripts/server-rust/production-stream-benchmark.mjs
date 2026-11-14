@@ -180,7 +180,9 @@ try {
     values.database === "postgres" ||
     (runtime === "node" && values.database === "bundled-postgres")
   ) {
-    pg = await postgresFixture(path.join(run, "external-postgres"));
+    pg = await postgresFixture(path.join(run, "external-postgres"), {
+      startupTimeoutMs,
+    });
     databaseUrl = await pg.database();
   }
   server = await start(undefined, "initial");
