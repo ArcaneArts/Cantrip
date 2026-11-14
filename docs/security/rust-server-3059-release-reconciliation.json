@@ -175,6 +175,7 @@
       "scope": "Windows 11 x64 under QEMU software emulation on macOS ARM64. Initial installation and retained PGlite profile reopening, both with the 1.1.3059 worker. Separately pending Authenticode and runtime updater verification."
     },
     "historicalProfileUpgradeAndPostWriteRollback": "docs/security/rust-server-3059-historical-profile.json",
+    "macosNativeExecutionPostWriteRollback": "docs/security/rust-server-3059-macos-profile-rollback.json",
     "mobile": "docs/security/rust-server-3059-mobile-qualification.json",
     "existingFileChecksumsReverified": 33,
     "windowsDesktopCurrentWorker": {

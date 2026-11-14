@@ -24910,6 +24910,17 @@
     },
     "fullPostWriteRollback": {
       "status": "partial",
+      "macos3059NativeExecutionQualification": {
+        "status": "passed",
+        "report": "docs/security/rust-server-3059-macos-profile-rollback.json",
+        "version": "1.1.3059",
+        "target": "darwin-arm64",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "samePostgresCodeOnlyRollback": true,
+        "productSteps": 80,
+        "implementationSwitches": 8,
+        "logicalProfileImports": 6
+      },
       "macos3032NativeExecutionQualification": {
         "status": "passed",
         "report": "docs/security/rust-server-3032-macos-profile-rollback.json",
