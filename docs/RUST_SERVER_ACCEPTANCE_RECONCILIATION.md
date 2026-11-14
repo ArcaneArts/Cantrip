@@ -220,6 +220,15 @@ wrong-owner rejection and tampering rejection. All 56 Rust container
 processes exited cleanly.
 [Linux account protection evidence](security/rust-server-3059-linux-account-protection.json)
 
+The packaged macOS server also matched 915 native queue HTTP
+observations and 99 ordered App Live queue invalidations across all
+three stores and anonymous, password and account authentication.
+The unchanged worker SDK verified encrypted input, immutable replay,
+revision conflicts and native import acknowledgment. The suite used
+controlled worker callbacks and aligned the Node reference's version
+metadata to 1.1.3059 before comparing exact bootstrap responses.
+[Native queue wire evidence](security/rust-server-3059-macos-native-queue-wire.json)
+
 ## Cantrip 1.1.3059 mobile clients
 
 The installed Android API 36 ARM64 emulator app signed into PGlite, bundled
