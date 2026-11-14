@@ -30902,7 +30902,7 @@
     "status": "partial",
     "candidateVersion": "1.1.3059",
     "report": "docs/security/rust-server-3059-mobile-qualification.json",
-    "scope": "Installed Android emulator sign-in and retained native account keys on all three database modes, plus browser-issued native QR on external PostgreSQL and a verified local iOS App Store IPA. Installed iOS QR, physical-device runs and distribution-signed Android remain open."
+    "scope": "Installed Android emulator sign-in and retained native account keys on all three database modes, native QR on external PostgreSQL and both Android instrumentation tests. The local iOS App Store IPA and the side-by-side iPhone development installation were verified. Installed iOS QR, physical-device sign-in and distribution-signed Android remain open."
   },
   "macos3059ProductAndHistoricalProfileQualification": {
     "status": "passed",

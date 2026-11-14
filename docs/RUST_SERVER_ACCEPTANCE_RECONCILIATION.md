@@ -177,10 +177,13 @@ All six Rust server exits were clean.
 
 The iOS App Store export passed signature and embedded provisioning checks.
 The Android debug APK and the iOS IPA both contained all 195 renderer files.
-The Android Keystore instrumentation passed. Running both Android
-instrumentation tests also exposed a starter test that expects the old
-Capacitor template package name. The Android release AAB is unsigned. Installed
-iOS native QR and physical-device checks remain open. The
+Both Android instrumentation tests passed on the original debug APK after
+the package identity test was updated to check `art.cantrip`. The earlier
+run passed Keystore coverage and failed the starter package identity test.
+A separate development-signed app installed on the physical iPhone and
+reported version `1.1.3059` and build `3059`. The phone was locked when the
+background launch was attempted. Installed iOS native QR and physical-device
+sign-in remain open. The Android release AAB is unsigned. The
 [mobile qualification record](security/rust-server-3059-mobile-qualification.json)
 includes the exact artifacts and wire evidence.
 
