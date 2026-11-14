@@ -232,9 +232,12 @@ below apply to the exact binaries and worker entries identified by their reports
   recovery.
   On macOS, Rust and the Node reference each kept an in-flight inference
   through a 45-second external PostgreSQL outage and recorded one usage
-  receipt after recovery. Active server and dependency interruption still
-  need qualification on Windows. Linux x64 passed packaged Redis interruption
-  with the rebuilt 1.1.3033 server.
+  receipt after recovery. On Windows x64, the installed 1.1.2976 server with
+  bundled PostgreSQL passed 20 browser product steps and 14 model operations,
+  including one forced server exit and three clean exits. The external
+  PostgreSQL server-loss and database-outage runs are still open. Linux x64
+  passed packaged Redis interruption with the rebuilt 1.1.3033 server.
+  [Windows bundled PostgreSQL server-loss result](security/rust-server-windows-stream-comparison.json#installedBundledPostgresModelServerLoss)
   [macOS model operations](security/rust-server-2976-darwin-arm64-model-operations.json),
   [macOS server loss](security/rust-server-2976-darwin-arm64-model-operation-server-loss.json),
   [Linux model operations](security/rust-server-2976-linux-model-operations.json),
@@ -268,9 +271,11 @@ below apply to the exact binaries and worker entries identified by their reports
   against 40.96 MiB/s at 256 MiB. The Node comparison used external
   PostgreSQL. Each figure is a single observation on a shared host.
   The Windows Rust package passed the 64 MiB stream, slow-consumer closure
-  and retained-write restart on all three stores. The Windows Node reference
-  failed to load its Argon2 binding in all three runs, leaving the same-host
-  comparison open.
+  and retained-write restart on all three stores. A subsequent same-host
+  comparison repaired the Node reference's Argon2 load and passed all three
+  Node runs. The Rust follow-up passed PGlite and bundled PostgreSQL. The
+  external PostgreSQL fixture startup repeat remains open.
+  [Windows comparison](security/rust-server-windows-stream-comparison.json)
   [Windows CLI and streaming report](security/rust-server-2976-win32-x64-cli-and-streaming.json),
   [macOS report](security/rust-server-2976-darwin-arm64-worker-log-stream.json),
   [Linux report](security/rust-server-2976-linux-worker-log-stream.json)

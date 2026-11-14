@@ -177,6 +177,33 @@ consumer with code 1013. This run used a private copy of the installed server
 assets with the cross-built executable.
 [Windows bundled PostgreSQL recovery evidence](security/rust-server-3033-win32-x64-bundled-postgres-recovery.json)
 
+## Windows x64 comparison
+
+The Windows 11 x64 guest ran the Node 1.1.2938 reference and Rust 1.1.2976.
+Staging the required Visual C++ runtime DLL in the private reference fixture
+resolved the Argon2 load failure. The native loader returned error 126 before
+staging and both the native load and Node import succeeded afterwards.
+
+| Database            | Node MiB/s | Rust MiB/s | Node recovery |  Rust recovery |
+| ------------------- | ---------: | ---------: | ------------: | -------------: |
+| PGlite              |       5.40 |       5.47 |      129.72 s |        57.45 s |
+| Bundled PostgreSQL  |       1.26 |       4.24 |       89.16 s | Restart failed |
+| External PostgreSQL |       5.10 |       5.54 |      107.07 s |        45.26 s |
+
+All six runs streamed the exact 64 MiB payload and closed the slow consumer
+with code 1013. The Node reference passed all three cases. The Rust PGlite case
+passed. The bundled PostgreSQL restart failed during WAL recovery. The external
+PostgreSQL run recovered the accepted write and identity and exited Cantrip
+cleanly, then timed out shutting down the separate database fixture.
+
+The Rust 1.1.3033 follow-up passed the PGlite and bundled PostgreSQL cases
+with 7.23 and 5.47 MiB/s respectively. Its external PostgreSQL run stopped
+before Cantrip launched because the independent fixture used a 60-second
+startup default. The benchmark now passes the configured startup timeout to
+that fixture. These results cover single observations in emulation, and the
+Node bundled PostgreSQL control uses an independent database process.
+[Windows comparison and retained failures](security/rust-server-windows-stream-comparison.json)
+
 ## Reproduce
 
 Build the current Node reference and worker/protocol dependencies, and package
@@ -208,12 +235,12 @@ the real readiness request succeeds.
 This workload measures bulk worker-log JSON through production server entry
 points with controlled log generation. It does not qualify opaque WorkerLink
 binary throughput, large product datasets, all other storage-mode performance,
-all product failures, or the complete platform matrix. Current execution is on
-macOS arm64. No production Winterhold deployment or GitHub Actions run was used.
+all product failures, or the complete platform matrix. The measurements above
+include macOS ARM64 and emulated Windows x64. They ran locally.
 
-The root `pnpm check` still stops at the unchanged Node decomposition budgets:
-`build-app.ts` 1,539/1,500 and `chat-turn-runtime.ts` 2,329/1,999. Later aggregate
-checks are not claimed as passing. Focused native and compatibility results have
-their separate recorded scope. Node remains the default server and the worker
-remains Node. Full replacement, default cutover and production Node-server
-removal remain required.
+The historical aggregate check stopped at the former Node decomposition
+budgets. Focused native and compatibility results have their recorded scope.
+Rust is the default server. The old Node implementation serves as an explicit
+development reference, and the worker still runs on Node. See
+[current replacement acceptance](RUST_SERVER_ACCEPTANCE_RECONCILIATION.md)
+for the remaining shipping qualification.
