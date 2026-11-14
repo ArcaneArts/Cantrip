@@ -247,6 +247,17 @@ the three stores. The requests cover malformed JSON, deep arrays and
 objects, lone UTF-16 surrogates, numeric overflow and cursor accounting
 against actual publications. The Linux x64 server ran through Rosetta.
 
+The Linux ARM64 and x64 1.1.3048 standalone images each passed the same 156
+HTTP and 81 WebSocket comparisons across the three stores. All 12 Rust
+container generations ran the verified executables and exited cleanly.
+
+The macOS ARM64 1.1.3043 archive matched 366 HTTP responses from the Node
+reference across the three stores and anonymous, password and account
+authentication. The cases exercised embedding and decision admission and
+cancellation, including invalid payloads, CSRF, absent or foreign workers,
+and owned workers that were offline.
+[Linux wire and macOS model-operation boundary evidence](security/rust-server-3048-wire-and-model-boundaries.json)
+
 On macOS, the production entrypoints handled all 584 method/path
 discovery requests per runtime without a generic Rust route fallback.
 Four selected inventory errors and four capability query cases matched

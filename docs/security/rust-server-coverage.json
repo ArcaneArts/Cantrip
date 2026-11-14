@@ -30807,6 +30807,11 @@
     "report": "docs/security/rust-server-current-wire-acceptance.json",
     "scope": "Packaged JSON transport on macOS ARM64 and Linux x64, macOS HTTP route discovery and encrypted account protection, and source-level JavaScript serialization and schema comparisons."
   },
+  "linux3048WireAndMacosModelBoundaries": {
+    "status": "passed",
+    "report": "docs/security/rust-server-3048-wire-and-model-boundaries.json",
+    "scope": "JSON HTTP and App Live parser comparisons on both Linux 1.1.3048 images and model admission and cancellation HTTP boundaries on macOS 1.1.3043. Each artifact was exercised on all three stores."
+  },
   "linux3014StandaloneQualification": {
     "sourceCommit": "0c1c343bd0dcc987fc618ca7e573b9ab1eb964a5",
     "databaseModes": ["pglite", "bundled-postgres", "postgres"],
