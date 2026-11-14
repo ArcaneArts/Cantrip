@@ -159,9 +159,18 @@ const modelPostgresOutage = process.argv.includes(
 const settleModelWhilePostgresOffline = process.argv.includes(
   "--model-operation-postgres-offline-settlement",
 );
+const modelPostgresOutageDurationMs = startupTimeout(
+  "--model-operation-postgres-outage-duration-ms",
+);
 assert.ok(
   !settleModelWhilePostgresOffline || modelPostgresOutage,
   "Offline settlement requires --model-operation-postgres-outage",
+);
+assert.ok(
+  modelPostgresOutageDurationMs === undefined ||
+    (settleModelWhilePostgresOffline &&
+      modelPostgresOutageDurationMs >= 60_000),
+  "A custom PostgreSQL outage duration requires offline settlement and at least 60000 milliseconds",
 );
 const modelRedisOutage = process.argv.includes(
   "--model-operation-redis-outage",
@@ -1760,6 +1769,7 @@ async function flow(
             : undefined,
         postgresOutage: modelPostgresOutage ? postgres.cluster : undefined,
         settleModelWhilePostgresOffline,
+        modelPostgresOutageDurationMs,
         redisOutage: modelRedisOutage,
         requests,
         result,

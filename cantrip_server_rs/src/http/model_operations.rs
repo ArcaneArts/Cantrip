@@ -21,11 +21,13 @@ use axum::{
     response::Response,
     routing::post,
 };
-use std::{io, sync::Arc, time::Duration};
+use std::{future::Future, io, sync::Arc, time::Duration};
 use tokio::time::{Instant, sleep, timeout_at};
 
-const RECEIPT_RETRY_WINDOW: Duration = Duration::from_secs(120);
+// PostgreSQL can spend several minutes recovering its WAL before accepting writes.
+const RECEIPT_RETRY_WINDOW: Duration = Duration::from_secs(15 * 60);
 const RECEIPT_RETRY_INTERVAL: Duration = Duration::from_secs(1);
+const RECEIPT_WRITE_TIMEOUT: Duration = Duration::from_secs(120);
 
 fn retryable_receipt_error(error: &anyhow::Error) -> bool {
     error.chain().any(|cause| {
@@ -51,6 +53,32 @@ fn retryable_receipt_error(error: &anyhow::Error) -> bool {
             )
         })
     })
+}
+
+async fn settle_receipt<F>(
+    mut shutdown: tokio::sync::watch::Receiver<bool>,
+    write: impl Fn() -> F,
+) -> Result<()>
+where
+    F: Future<Output = Result<()>>,
+{
+    let until = Instant::now() + RECEIPT_RETRY_WINDOW;
+    loop {
+        // Preserve the bound on a single blocked write, including during shutdown.
+        let write_deadline = until.min(Instant::now() + RECEIPT_WRITE_TIMEOUT);
+        let result = timeout_at(write_deadline, write())
+            .await
+            .unwrap_or_else(|_| Err(io::Error::from(io::ErrorKind::TimedOut).into()));
+        if Instant::now() >= until || !result.as_ref().is_err_and(retryable_receipt_error) {
+            return result;
+        }
+        // The receipt write is idempotent under the original source key.
+        // A database interruption never repeats provider execution.
+        tokio::select! {
+            _ = shutdown.wait_for(|stopping| *stopping) => return result,
+            _ = sleep(RECEIPT_RETRY_INTERVAL) => {}
+        }
+    }
 }
 
 struct CancelOnDrop {
@@ -87,7 +115,7 @@ fn report_usage(
     let input = json!({"identity":identity,"transportStatus":status,"receipt":receipt});
     let repository = SettingsRepository::new(service.repository.database.clone());
     let jobs = service.scratch_roots.clone();
-    let mut shutdown = jobs.shutdown_signal();
+    let shutdown = jobs.shutdown_signal();
     let owner = owner.to_owned();
     tokio::spawn(async move {
         // Reporting is tracked during shutdown but never gates inference or its
@@ -98,21 +126,7 @@ fn report_usage(
                 if !retry_receipt {
                     return write().await;
                 }
-                let until = Instant::now() + RECEIPT_RETRY_WINDOW;
-                loop {
-                    let result = timeout_at(until, write())
-                        .await
-                        .context("Model operation usage retry window expired")?;
-                    if !result.as_ref().is_err_and(retryable_receipt_error) {
-                        return result;
-                    }
-                    // The receipt write is idempotent under the original source key.
-                    // A database interruption never repeats provider execution.
-                    tokio::select! {
-                        _ = shutdown.wait_for(|stopping| *stopping) => return result,
-                        _ = sleep(RECEIPT_RETRY_INTERVAL) => {}
-                    }
-                }
+                settle_receipt(shutdown, write).await
             })
             .await;
         if result.is_err() {
@@ -308,4 +322,25 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
         .route("/api/model-operations/embedding/cancel", post(handle))
         .route("/api/model-operations/decision", post(handle))
         .route("/api/model-operations/decision/cancel", post(handle))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn settles_after_postgres_has_been_unavailable_for_eight_minutes() {
+        let (_stop, shutdown) = tokio::sync::watch::channel(false);
+        let started = Instant::now();
+        let recovery_time = Duration::from_secs(8 * 60);
+        settle_receipt(shutdown, || async {
+            if started.elapsed() < recovery_time {
+                return Err(io::Error::from(io::ErrorKind::ConnectionRefused).into());
+            }
+            Ok(())
+        })
+        .await
+        .unwrap();
+        assert_eq!(started.elapsed(), recovery_time);
+    }
 }

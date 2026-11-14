@@ -52,8 +52,19 @@ database was offline. Both baselines left the usage attempt running after
 the database recovered. The Rust server now retries transient PostgreSQL
 failures for a validated receipt using the original operation identity. The
 rerun settled one receipt, rejected replay without another provider request,
-and completed a fresh decision. The retry window is 120 seconds in the live
-server process.
+and completed a fresh decision. The live server retries a validated receipt
+for up to 15 minutes, allowing for PostgreSQL WAL recovery after a prolonged
+outage. It uses the original operation identity on every write. An individual
+write attempt is bounded by two minutes, and shutdown stops retrying after
+the current attempt.
+
+A macOS ARM64 run exercised the longer window with the browser SDK, the full
+packaged worker and PostgreSQL 18. It completed all 14 operation cases. During
+the eight-minute outage, readiness returned HTTP 503 and liveness returned
+HTTP 200. The browser received the embedding before PostgreSQL recovered on
+the same port. After recovery, readiness returned HTTP 200, one usage receipt
+settled and the replay caused zero additional provider requests. A fresh
+decision completed and recorded its own receipt.
 
 ## Active Redis interruption
 
