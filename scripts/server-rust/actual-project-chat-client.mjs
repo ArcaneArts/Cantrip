@@ -144,6 +144,9 @@ export async function actualProjectChatClient({
           chat.id,
         ),
       (preparation) => assert.equal(preparation?.phase, "ready"),
+      // A cold installed Windows worker can spend over three minutes starting
+      // the native runtime and preparing the thread on an emulated host.
+      process.platform === "win32" ? 240_000 : undefined,
     );
     const usage = await page.evaluate(async (chatId) => {
       const api = await import("/src/lib/api/conversations.ts");
