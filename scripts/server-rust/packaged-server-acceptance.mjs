@@ -24,21 +24,21 @@ const { values } = parseArgs({
     "data-root": { type: "string" },
     report: { type: "string" },
     "startup-timeout-ms": { type: "string" },
+    "shutdown-timeout-ms": { type: "string" },
     "isolate-homebrew": { type: "boolean", default: false },
   },
 });
-const startupTimeoutMs =
-  values["startup-timeout-ms"] === undefined
-    ? undefined
-    : Number(values["startup-timeout-ms"]);
-if (startupTimeoutMs !== undefined) {
+function timeoutOption(name) {
+  if (values[name] === undefined) return undefined;
+  const timeout = Number(values[name]);
   assert.ok(
-    Number.isInteger(startupTimeoutMs) &&
-      startupTimeoutMs > 0 &&
-      startupTimeoutMs <= 2_147_483_647,
-    "--startup-timeout-ms must be an integer between 1 and 2147483647",
+    Number.isInteger(timeout) && timeout > 0 && timeout <= 2_147_483_647,
+    `--${name} must be an integer between 1 and 2147483647`,
   );
+  return timeout;
 }
+const startupTimeoutMs = timeoutOption("startup-timeout-ms");
+const shutdownTimeoutMs = timeoutOption("shutdown-timeout-ms") ?? 15_000;
 const artifact = path.resolve(values.artifact);
 const root = values["data-root"]
   ? path.resolve(values["data-root"])
@@ -82,7 +82,7 @@ const report = {
   driverArchitecture: process.arch,
   shutdownMethod: windows ? "supervision-stdin-close" : "SIGTERM",
   startupTimeoutMs,
-  shutdownTimeoutMs: 15_000,
+  shutdownTimeoutMs,
   shutdowns: [],
   modes: [],
 };
