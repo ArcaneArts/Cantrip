@@ -6,6 +6,29 @@ Node. The old server is an explicit development compatibility reference. See
 [default cutover](RUST_SERVER_DEFAULT_CUTOVER.md) and
 [production Node retirement](RUST_SERVER_NODE_RETIREMENT.md) for their qualification.
 
+## macOS recovery tests through Cantrip 1.1.3059
+
+The macOS ARM64 development executable in PR #3071 completed 14 model
+operations and 20 browser and worker steps with external PostgreSQL 18.
+The browser received its embedding during the eight-minute outage.
+After PostgreSQL reopened on the same port, Rust settled the original
+receipt once, rejected replay and completed a fresh decision. All 88
+Rust library tests passed using the packaged Node toolchain for the
+compatibility oracles.
+
+With the final PR #3072 source, Chromium, Rust, the Node server reference
+and two complete workers passed 14 product steps. During Redis loss,
+both peers returned HTTP 503 and PostgreSQL continued to renew the
+original job lease. A new worker claim on the same Node server let
+Rust recover the same job on attempt two at revision 11. Peer
+replacement replayed that revision and detach preserved the checkout.
+
+The current Rust executable also completed all 584 route discovery
+requests per peer with zero generic Rust fallback differences.
+Model-operation validation and owner checks matched in 366 paired HTTP
+observations across the three stores and all three authentication modes.
+[macOS recovery and HTTP evidence](security/rust-server-3059-macos-recovery-evidence.json)
+
 ## Cantrip 1.1.3048 Linux standalone and Winterhold
 
 The ARM64 and x64 images built from `358c5b323` passed startup, migration,
