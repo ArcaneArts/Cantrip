@@ -444,7 +444,8 @@
         "evidence": [
           "scripts/server-rust/worker-compatibility.mjs",
           "scripts/server-rust/worker-client-compatibility.mjs",
-          "docs/security/rust-server-2881-shared-resource-rolling.json"
+          "docs/security/rust-server-2881-shared-resource-rolling.json",
+          "docs/security/rust-server-3059-macos-workspace-discovery.json"
         ],
         "remaining": [
           "Complete domain-specific event, notification, binary relay and reconnect recovery acceptance with packaged clients across supported platforms."
@@ -2939,12 +2940,12 @@
           "scripts/server-rust/conversion-lifecycle-cases.mjs",
           "scripts/server-rust/conversion-lease-cases.mjs",
           "scripts/server-rust/conversion-lifetime-cases.mjs",
-          "scripts/server-rust/actual-github-conversion.mjs"
+          "scripts/server-rust/actual-github-conversion.mjs",
+          "docs/security/rust-server-3059-macos-workspace-discovery.json"
         ],
         "remaining": [
-          "Further source-selection/failure cases and supported-platform verification remain required.",
-          "Actual external user-source discovery and managed-folder push/initial-commit product acceptance remain required; the full-worker link flow is now proven on all three stores.",
-          "Migration/post-write rollback, packaged operation and multi-instance coordination remain unverified."
+          "Managed-folder push and initial-commit product acceptance, further source-selection and failure cases, and Linux and Windows package verification remain open.",
+          "Migration, post-write rollback and multi-instance coordination for this route remain open."
         ]
       },
       {
@@ -2958,12 +2959,12 @@
           "scripts/server-rust/conversion-lifecycle-cases.mjs",
           "scripts/server-rust/conversion-lease-cases.mjs",
           "scripts/server-rust/conversion-lifetime-cases.mjs",
-          "scripts/server-rust/actual-github-conversion.mjs"
+          "scripts/server-rust/actual-github-conversion.mjs",
+          "docs/security/rust-server-3059-macos-workspace-discovery.json"
         ],
         "remaining": [
-          "Further source-selection/failure cases and supported-platform verification remain required.",
-          "Actual external user-source discovery and managed-folder push/initial-commit product acceptance remain required; the full-worker link flow is now proven on all three stores.",
-          "Migration/post-write rollback, packaged operation and multi-instance coordination remain unverified."
+          "Managed-folder push and initial-commit product acceptance, further source-selection and failure cases, and Linux and Windows package verification remain open.",
+          "Migration, post-write rollback and multi-instance coordination for this route remain open."
         ]
       },
       {
@@ -2977,12 +2978,12 @@
           "scripts/server-rust/conversion-lifecycle-cases.mjs",
           "scripts/server-rust/conversion-lease-cases.mjs",
           "scripts/server-rust/conversion-lifetime-cases.mjs",
-          "scripts/server-rust/actual-github-conversion.mjs"
+          "scripts/server-rust/actual-github-conversion.mjs",
+          "docs/security/rust-server-3059-macos-workspace-discovery.json"
         ],
         "remaining": [
-          "Further source-selection/failure cases and supported-platform verification remain required.",
-          "Actual external user-source discovery and managed-folder push/initial-commit product acceptance remain required; the full-worker link flow is now proven on all three stores.",
-          "Migration/post-write rollback, packaged operation and multi-instance coordination remain unverified."
+          "Managed-folder push and initial-commit product acceptance, further source-selection and failure cases, and Linux and Windows package verification remain open.",
+          "Migration, post-write rollback and multi-instance coordination for this route remain open."
         ]
       },
       {
@@ -3047,11 +3048,12 @@
           "scripts/server-rust/discovery-http-compatibility.mjs",
           "scripts/server-rust/actual-folder-client.mjs",
           "scripts/server-rust/actual-workspace-discovery.mjs",
-          "scripts/server-rust/workspace-removal-http-compatibility.mjs"
+          "scripts/server-rust/workspace-removal-http-compatibility.mjs",
+          "docs/security/rust-server-3059-macos-workspace-discovery.json"
         ],
         "terminalLinkRevocationFailure": "The local production Node and Rust HTTP comparison uses external PostgreSQL and Redis. Redis denies PUBLISH during terminal-link revocation. Both runtimes return 204 and remove the workspace, project and terminal records.",
         "remaining": [
-          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required.",
+          "Single-instance packaged macOS ARM64 acceptance now covers the exercised browser and worker operations on all three stores. Linux, Windows and shared-instance qualification remain open.",
           "Full managed-execution, archive and automation removal consumers must be ported with their domains. Existing Run, terminal and surface retirement/revocation is invoked; actual offline workspace removal preserves worker files."
         ]
       },
@@ -3081,10 +3083,11 @@
           "scripts/server-rust/discovery-repository-compatibility.mjs",
           "scripts/server-rust/discovery-http-compatibility.mjs",
           "scripts/server-rust/actual-folder-client.mjs",
-          "scripts/server-rust/actual-workspace-discovery.mjs"
+          "scripts/server-rust/actual-workspace-discovery.mjs",
+          "docs/security/rust-server-3059-macos-workspace-discovery.json"
         ],
         "remaining": [
-          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+          "Single-instance packaged macOS ARM64 acceptance now covers the exercised browser and worker operations on all three stores. Linux, Windows and shared-instance qualification remain open."
         ]
       },
       {
@@ -3113,10 +3116,11 @@
           "scripts/server-rust/discovery-repository-compatibility.mjs",
           "scripts/server-rust/discovery-http-compatibility.mjs",
           "scripts/server-rust/actual-folder-client.mjs",
-          "scripts/server-rust/actual-workspace-discovery.mjs"
+          "scripts/server-rust/actual-workspace-discovery.mjs",
+          "docs/security/rust-server-3059-macos-workspace-discovery.json"
         ],
         "remaining": [
-          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+          "Single-instance packaged macOS ARM64 acceptance now covers the exercised browser and worker operations on all three stores. Linux, Windows and shared-instance qualification remain open."
         ]
       },
       {
@@ -3129,10 +3133,11 @@
           "scripts/server-rust/discovery-repository-compatibility.mjs",
           "scripts/server-rust/discovery-http-compatibility.mjs",
           "scripts/server-rust/actual-folder-client.mjs",
-          "scripts/server-rust/actual-workspace-discovery.mjs"
+          "scripts/server-rust/actual-workspace-discovery.mjs",
+          "docs/security/rust-server-3059-macos-workspace-discovery.json"
         ],
         "remaining": [
-          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+          "Single-instance packaged macOS ARM64 acceptance now covers the exercised browser and worker operations on all three stores. Linux, Windows and shared-instance qualification remain open."
         ]
       },
       {
@@ -31508,5 +31513,12 @@
       ],
       "remaining": "Existing-client desktop encryption and updates; remaining supported-platform, product, background-service, fault and coordination acceptance; broader profiles and product-state rollback; large-profile, other-store, bulk-stream, sustained-backpressure and recovery performance; Rust-default cutover and production Node server removal."
     }
-  ]
+  ],
+  "macos3059WorkspaceDiscoveryAndWorkerClose": {
+    "status": "passed",
+    "candidateVersion": "1.1.3059",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "report": "docs/security/rust-server-3059-macos-workspace-discovery.json",
+    "scope": "Packaged macOS ARM64 Rust server and Node reference. Browser and full Node worker verify discovery, encrypted import, GitHub link, persisted conversion, and offline workspace removal. Separate live WebSocket cases compare close ordering and the acknowledgement deadline."
+  }
 }
