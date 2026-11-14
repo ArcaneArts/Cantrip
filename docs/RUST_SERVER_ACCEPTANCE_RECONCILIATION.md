@@ -156,6 +156,25 @@ reuse. With external PostgreSQL holding an actual authorization query,
 the open socket still acknowledged ping and close.
 [App Live comparison evidence](security/rust-server-3059-live-compatibility.json)
 
+## Cantrip 1.1.3059 mobile clients
+
+The installed Android API 36 ARM64 emulator app signed into PGlite, bundled
+PostgreSQL and external PostgreSQL, switched servers, and retained its
+Keystore key and all three account bindings across app and server restarts.
+Each store returned an authenticated session and upgraded App Live after
+restart. The installed native scanner exchanged a fresh browser-issued QR
+against external PostgreSQL and reopened the account with its retained key.
+All six Rust server exits were clean.
+
+The iOS App Store export passed signature and embedded provisioning checks.
+The Android debug APK and the iOS IPA both contained all 195 renderer files.
+The Android Keystore instrumentation passed. Running both Android
+instrumentation tests also exposed a starter test that expects the old
+Capacitor template package name. The Android release AAB is unsigned. Installed
+iOS native QR and physical-device checks remain open. The
+[mobile qualification record](security/rust-server-3059-mobile-qualification.json)
+includes the exact artifacts and wire evidence.
+
 ## macOS recovery tests through Cantrip 1.1.3059
 
 The macOS ARM64 development executable in PR #3071 completed 14 model
