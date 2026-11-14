@@ -79,6 +79,84 @@
         "bytes": 335685363,
         "sha256": "6ac1cd189c3b9030ea38afe2c60d68fd752cad1bc3ff720c33d431388d1d5e8e"
       }
+    },
+    "activeModelOperationServerLoss": {
+      "harnessCommit": "fd428bdfd722c18838f96bb45d781475b7a7aff5",
+      "scope": "Exact 1.1.3032 standalone server on macOS ARM64 with the existing browser and full Node worker. Only model provider responses were controlled.",
+      "runtimeInputs": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-server-loss-3032-startup-deadlines/runtime-inputs.sha256",
+        "bytes": 917,
+        "sha256": "5d8d0fdaf03c9c2269bb2230ab174b2589b3be21f358c78efb57b43e1c6d6b37"
+      },
+      "cases": [
+        {
+          "databaseMode": "pglite",
+          "productSteps": 20,
+          "modelOperations": 14,
+          "providerRequests": 15,
+          "serverSigkills": 1,
+          "cleanServerExits": 3,
+          "interruptedReceipt": "running-without-reported-usage",
+          "sameWorkerReconnected": true,
+          "freshOperationSucceeded": true,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-server-loss-3032-startup-deadlines/acceptance.json",
+            "bytes": 415302,
+            "sha256": "ffe5015c1f63d6f098430616834cf974b92129286f3f1b2eb5d1b5bbbe582d54"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "productSteps": 20,
+          "modelOperations": 14,
+          "providerRequests": 15,
+          "serverSigkills": 1,
+          "cleanServerExits": 3,
+          "interruptedReceipt": "running-without-reported-usage",
+          "sameWorkerReconnected": true,
+          "freshOperationSucceeded": true,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-server-loss-3032-startup-deadlines/bundled-postgres-final/acceptance.json",
+            "bytes": 416957,
+            "sha256": "1909f992e6239f35c06e32283fe8f31c22411f79f48e6c8a2c1b3e8ffdec7883"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "productSteps": 20,
+          "modelOperations": 14,
+          "providerRequests": 15,
+          "serverSigkills": 1,
+          "cleanServerExits": 3,
+          "interruptedReceipt": "running-without-reported-usage",
+          "sameWorkerReconnected": true,
+          "freshOperationSucceeded": true,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-server-loss-3032-startup-deadlines/postgres-final/acceptance.json",
+            "bytes": 414472,
+            "sha256": "8c1a0b19bc6f8a9999e7d0cc1067f10d3c32008c0a9cf56c9b936dcba570dc37"
+          }
+        }
+      ]
+    },
+    "externalPostgresOfflineSettlement": {
+      "harnessCommit": "855d62b73f9ef2251304ff4b9027eeec0469e819",
+      "productSteps": 20,
+      "modelOperations": 14,
+      "providerRequests": 15,
+      "offlineMs": 60001,
+      "readinessOffline": 503,
+      "livenessOffline": 200,
+      "readinessRecovered": 200,
+      "providerCompletedWhileOffline": true,
+      "originalAttemptSettledOnce": true,
+      "freshOperationSucceeded": true,
+      "cleanServerExits": 3,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-server-loss-3032-startup-deadlines/postgres-offline-settlement/acceptance.json",
+        "bytes": 532415,
+        "sha256": "df84bebec155f56dbc5272c317691bf373f8079960f09f78832c8f37a3d168b9"
+      }
     }
   },
   "linuxArm64": {
