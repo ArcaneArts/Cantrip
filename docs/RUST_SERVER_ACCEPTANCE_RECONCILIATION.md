@@ -1263,6 +1263,14 @@ log-archive scenarios across all three stores, including archive obstruction
 and recovery while the server kept serving.
 [macOS background-service report](security/rust-server-3032-macos-background-acceptance.json)
 
+The same standalone executable matched the Node reference across all nine
+database and authentication combinations for native command permission
+transitions, pending requests, continuations and settings evidence. The
+comparison includes 636 paired HTTP observations, 99 App Live events and
+durable ciphertext verification with the existing worker transport and
+controlled replies.
+[macOS coordination and catalog report](security/rust-server-3032-macos-coordination-catalog.json)
+
 The current composition has native implementations for the seven durable job
 families: replicas, folder setup, workspace repository discovery, standalone
 roots, GitHub conversion, Chat relocation and Chat import. Their startup recovery,
@@ -1280,10 +1288,13 @@ The [worker catalog/quota comparison](RUST_SERVER_WORKER_CATALOG_REFRESH.md)
 reproduces missing native reconnect refresh, implements that refresh and the
 fifteen-minute producer, and passes all nine local storage/authentication pairs.
 Separate peers also pass the real fifteen-minute interval and a held quota
-INSERT during shutdown. The current optimized executable also passes the actual
-fifteen-minute interval and held-INSERT shutdown with fixture SQL routes absent
-on both peers. A broader catalog comparison additionally repairs the custom endpoint
-label in native errors and worker commands.
+INSERT during shutdown. On the 1.1.3032 executable, Rust completed the real
+fifteen-minute interval and committed both held quota rows before exit. The Node
+reference completed its real timer and exited after saving one of the two rows.
+A separate paired shutdown run without the periodic stage saved both rows on
+both peers. Both servers returned 404 for the fixture SQL route. A broader
+catalog comparison also reconciles the custom endpoint label in native errors
+and worker commands.
 
 The [credential reconnect qualification](RUST_SERVER_CREDENTIAL_RECONNECT.md)
 reproduces and repairs the next discrepancy: Rust's existing migration
