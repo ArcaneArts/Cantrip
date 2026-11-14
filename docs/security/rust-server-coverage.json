@@ -6637,7 +6637,7 @@
           "docs/security/rust-server-2976-linux-model-operations.json"
         ],
         "remaining": [
-          "The macOS ARM64 standalone and Linux ARM64 OCI packages qualify offline embedding settlement, replay rejection and a subsequent decision after five minutes of external PostgreSQL loss. These used the packaged worker reporting 1.1.2976. Remaining Windows and Linux x64 outage scenarios and version-aligned worker qualification remain open."
+          "The macOS ARM64 standalone and Linux ARM64 and x64 OCI packages qualify offline embedding settlement, replay rejection and a subsequent decision after five minutes of external PostgreSQL loss. The newer macOS and Linux x64 runs used worker 1.1.3059. Both Linux architectures also qualify a 45-second Redis outage across two Rust peers. Current Windows outage and remaining platform qualification are open."
         ]
       },
       {
@@ -6656,7 +6656,7 @@
           "docs/security/rust-server-2976-linux-model-operations.json"
         ],
         "remaining": [
-          "The macOS ARM64 standalone and Linux ARM64 OCI packages qualify offline embedding settlement, replay rejection and a subsequent decision after five minutes of external PostgreSQL loss. These used the packaged worker reporting 1.1.2976. Remaining Windows and Linux x64 outage scenarios and version-aligned worker qualification remain open."
+          "The macOS ARM64 standalone and Linux ARM64 and x64 OCI packages qualify offline embedding settlement, replay rejection and a subsequent decision after five minutes of external PostgreSQL loss. The newer macOS and Linux x64 runs used worker 1.1.3059. Both Linux architectures also qualify a 45-second Redis outage across two Rust peers. Current Windows outage and remaining platform qualification are open."
         ]
       },
       {
@@ -28967,6 +28967,9 @@
       "macos2976ActiveServerInterruption": "docs/security/rust-server-2976-darwin-arm64-model-operation-server-loss.json",
       "windows2976ActiveServerInterruption": "docs/security/rust-server-2976-win32-x64-model-server-loss.json",
       "macosExtendedPostgresReceiptRecovery": "docs/security/rust-server-3059-macos-recovery-evidence.json",
+      "currentLinuxCrossPeerRedisRecovery": "docs/security/rust-server-3059-linux-redis-outage.json",
+      "currentFiveMinutePostgresRecovery": "docs/security/rust-server-3059-postgres-long-outage.json",
+      "currentMacosWorkerQualification": "docs/security/rust-server-3059-macos-worker-version-acceptance.json",
       "status": "implemented-pending-platform-acceptance",
       "sourceBaseline": "bb7af5ccc7322e5b18c1a23cd31abb198ad1608c",
       "evidence": [

@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "workerVersion": "1.1.3059",
+  "testDriverCommit": "77d16036b72eb97b9f076c5f3878a57ac8c14c4a",
+  "scope": "Two same-architecture packaged Rust OCI peers per cell. Chromium and the freshly deployed Node worker run on macOS. Isolated PostgreSQL 18.6 and Redis 8.10.3 run on the same host. Linux x64 runs through Rosetta.",
+  "cases": [
+    {
+      "platform": "linux-arm64",
+      "imageDigest": "sha256:3e985d86d6c0f09cbf9136c99cdb03a778d9ffc1d0f09a56daa686c66bf2f2da",
+      "nativeBinarySha256": "8c4388b8303c5d126cc9e4789397fa467041a24ccebd344d3bdd9b6daf8bca4b",
+      "browserSteps": 20,
+      "modelCases": 14,
+      "actualOfflineMs": 45008,
+      "unreadyPeerStatuses": [503, 503],
+      "recoveredPeerStatuses": [200, 200],
+      "retainedWorkerContinuity": true,
+      "interruptedStatus": 502,
+      "interruptedUsageState": "unknown",
+      "interruptedUsageRows": 1,
+      "interruptedProviderRequests": 1,
+      "newDecisionState": "completed",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-cross-peer-redis.edyjSCSU/arm64/matrix.json",
+        "bytes": 556119,
+        "sha256": "201f8b76894a3cf588ea1f32bab1e40d16e7bf22f5c21fef67f7914e60b08d5d"
+      },
+      "serverProcessEvidence": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-cross-peer-redis.edyjSCSU/arm64/generations.jsonl",
+        "bytes": 5694,
+        "sha256": "8b9426056946b205e3602df00fd41688d64524ec32e8076c490f03dd9433be2f"
+      },
+      "inputHashes": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-cross-peer-redis.edyjSCSU/arm64/inputs.sha256",
+        "bytes": 1282,
+        "sha256": "ffc7cb42ca8705d8e9d2a69d4504b26ccac481a42f83b26c110ca47b514096d0"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-cross-peer-redis.edyjSCSU/arm64/matrix.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "platform": "linux-x64",
+      "imageDigest": "sha256:d2a43e692d43417756d2de4452e1a35e21c91f842b9ddfb5ae340d6320a6cdad",
+      "nativeBinarySha256": "481879df22e62d54a3db4fd320d35f49d5342f22150012c1149dc3b08cf10854",
+      "browserSteps": 20,
+      "modelCases": 14,
+      "actualOfflineMs": 45010,
+      "unreadyPeerStatuses": [503, 503],
+      "recoveredPeerStatuses": [200, 200],
+      "retainedWorkerContinuity": true,
+      "interruptedStatus": 502,
+      "interruptedUsageState": "unknown",
+      "interruptedUsageRows": 1,
+      "interruptedProviderRequests": 1,
+      "newDecisionState": "completed",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-cross-peer-redis.edyjSCSU/x64/matrix.json",
+        "bytes": 551407,
+        "sha256": "25124244cca66a0bb0610b577f09e3b108c25f1b5e7ab2eda14117a9ca8e753f"
+      },
+      "serverProcessEvidence": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-cross-peer-redis.edyjSCSU/x64/generations.jsonl",
+        "bytes": 5712,
+        "sha256": "28bb486ab75f68f0e3bc4fe5aa50bfad297341776766c3c9a1f8e182053226c8"
+      },
+      "inputHashes": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-cross-peer-redis.edyjSCSU/x64/inputs.sha256",
+        "bytes": 1280,
+        "sha256": "63cc4532b1a52ee135aeda6d5cde4cc03e79564c2155c8eb3cfe8b43bf256358"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-cross-peer-redis.edyjSCSU/x64/matrix.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    }
+  ]
+}
