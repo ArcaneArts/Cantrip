@@ -275,10 +275,15 @@
         "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
       },
       "authenticodeVerified": false
+    },
+    "windowsDesktopSignedUpdate": {
+      "report": "docs/security/rust-server-3059-windows-signed-update.json",
+      "databaseMode": "pglite",
+      "baselineVersion": "1.1.2938",
+      "scope": "The QA-signed updater rejected modified bytes, installed the exact current-worker package, and reopened the retained PGlite profile. A manual tray quit on the same upgraded process produced a Rust shutdown-completed event after the automated observer timed out. Windows release Authenticode is pending."
     }
   },
   "remainingAcceptance": [
-    "Finish the current-worker Windows signed updater exercise.",
     "Verify Windows release Authenticode and the macOS notarized release artifact when the release credentials and artifacts are available.",
     "Exercise the installed iOS native QR flow and physical mobile sign-in, and verify the Android distribution-signed build.",
     "Reconcile the remaining route, protocol, recovery and platform scopes in the coverage ledger."
