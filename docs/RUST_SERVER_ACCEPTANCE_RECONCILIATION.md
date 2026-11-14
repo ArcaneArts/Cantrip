@@ -137,8 +137,11 @@ below apply to the exact binaries and worker entries identified by their reports
 - **Model operations and WorkerLink.** The macOS and Linux reports cover native
   model operations on all three stores. Linux recorded 72 operations, 114
   product steps and 18 clean server exits. The macOS server-loss matrix covered
-  all three store pairs and six forced server deaths. The macOS WorkerLink
-  report includes shared routing, forced loss and repeated PGlite recovery.
+  all three store pairs and six forced server deaths. The packaged Linux ARM64
+  and x64 server-loss matrix also covered all three stores, including worker
+  reconnection without replay of the interrupted operation. The macOS
+  WorkerLink report includes shared routing, forced loss and repeated PGlite
+  recovery.
   On macOS, Rust and the Node reference each kept an in-flight inference
   through a 45-second external PostgreSQL outage and recorded one usage
   receipt after recovery. Active server and dependency interruption still
@@ -147,6 +150,7 @@ below apply to the exact binaries and worker entries identified by their reports
   [macOS model operations](security/rust-server-2976-darwin-arm64-model-operations.json),
   [macOS server loss](security/rust-server-2976-darwin-arm64-model-operation-server-loss.json),
   [Linux model operations](security/rust-server-2976-linux-model-operations.json),
+  [Linux server loss](security/rust-server-linux-model-operation-server-loss.json),
   [macOS WorkerLink](security/rust-server-2976-darwin-arm64-workerlink.json)
 - **Linux WorkerLink binary streaming.** Packaged Linux ARM64 and x64 Rust
   and the historical Linux x64 Node container passed nine cases across the

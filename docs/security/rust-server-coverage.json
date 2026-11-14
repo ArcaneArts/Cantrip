@@ -28830,6 +28830,7 @@
     "fullWorkerModelOperations": {
       "linux2976Qualification": "docs/security/rust-server-2976-linux-model-operations.json",
       "linux3033X64SharedRedisQualification": "docs/security/rust-server-3033-linux-x64-acceptance.json",
+      "linuxActiveServerInterruption": "docs/security/rust-server-linux-model-operation-server-loss.json",
       "macos2976Qualification": "docs/security/rust-server-2976-darwin-arm64-model-operations.json",
       "macos2976ActiveServerInterruption": "docs/security/rust-server-2976-darwin-arm64-model-operation-server-loss.json",
       "status": "implemented-pending-platform-acceptance",
@@ -28858,6 +28859,7 @@
         "Explicit cancellation, SDK abort and HTTP disconnect close the original provider connection, retain one receipt and never replay inference.",
         "Timeout and worker SIGKILL retain failed versus unknown usage; original exported rows survive actual server/worker restart.",
         "Active server SIGKILL on macOS preserves one original usage record with no worker receipt or reported counters. The same worker reconnects and completes fresh inference without replaying the interrupted input, matching the Node reference in all three stores.",
+        "Packaged Linux x64 1.1.3033 and ARM64 1.1.3014 passed active server SIGKILL in all three stores. Each interrupted request retained one unreported usage row, and the original worker reconnected and completed a fresh operation without replay.",
         "With macOS external PostgreSQL offline for 45 seconds, the same server and worker retain an active provider request and settle one completed receipt after recovery. The original replay is rejected. Rust remains live and reports unready throughout the sampled outage.",
         "A real Redis SIGKILL during an active embedding retains one unknown attempt and rejects replay without a new provider request across all four Node/Rust peer pairings using macOS ARM64 1.1.3013, Linux ARM64 1.1.3014, and Linux x64 1.1.3033.",
         "The Windows x64 1.1.2976 installer with worker grant refresh passed 36 model-operation cases in Edge on the three supported stores, including worker loss and retained usage after restart.",
@@ -28866,9 +28868,9 @@
       ],
       "baselineRepair": "Unmodified Node external/private PostgreSQL aggregate routes fail to bind Date parameters for a SQL CASE expression; four ISO timestamp bindings restore the range predicates. Node PGlite and native Rust already passed.",
       "remaining": [
-        "Outages beyond the exercised durations, simultaneous server and database loss and non-macOS server-process interruption remain unqualified.",
+        "Outages beyond the exercised durations, simultaneous server and database loss and Windows server-process interruption remain unqualified.",
         "Configured OpenAI-compatible adapters and an owned local provider are exercised; this does not prove every provider-private adapter behavior.",
-        "Default Rust cutover and production Node-server removal remain required."
+        "Final integrated package and platform acceptance remain required."
       ]
     },
     "fullWorkerProviderCatalog": {
