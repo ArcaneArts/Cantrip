@@ -9,6 +9,7 @@ const privateLabel = "private-os-backup-label-雪";
 const privateFile = "private-os-backup-雪.bin";
 const checkoutFile = "checkout.txt";
 const laterFile = "later.txt";
+const resetFile = "private-os-reset-雪.txt";
 const privateBytes = Buffer.concat([
   Buffer.from("private-os-backup-original\0雪"),
   Buffer.from([0xff]),
@@ -364,10 +365,75 @@ export async function actualCantripOsBackupClient({
   assert.deepEqual(await submit(rollback), rolled);
   assert.equal(await inode(target.homeGuestPath), originalInode);
 
+  const resetPath = path.posix.join(target.homeGuestPath, resetFile);
+  await write(target, resetPath, privateBytes);
+  const reset = await prepare({
+    action: "reset",
+    workspaceId: target.id,
+    paths: [resetFile],
+  });
+  const resetDrop = await held(reset);
+  const resetInode = await inode(target.homeGuestPath);
+  assert.notEqual(resetInode, originalInode);
+  await guest.exec("test", "!", "-e", resetPath);
+  await read(targetFile, destinationBytes, target);
+  await crashWorker();
+  const resetInterrupted = await resetDrop.pending;
+  assert.equal(resetInterrupted.ok, true);
+  assert.equal(resetInterrupted.value.result?.state, "unknown");
+  await startWorker();
+  await online();
+  const resetRecovered = await recover(resetInterrupted.value);
+  assert.deepEqual(resetRecovered.result, resetDrop.seen.envelope.result);
+  const resetReceipt = (await details(resetRecovered, "reset")).receipt;
+  assert.deepEqual(resetReceipt.reset_paths, [resetFile]);
+  assert.equal(resetReceipt.shared_system_state_changed, false);
+  assert.equal(resetReceipt.runtime_handles_restored, false);
+  assert.equal(JSON.stringify(resetRecovered).includes(resetFile), false);
+  assert.equal(await inode(resetReceipt.retained_original_home), originalInode);
+  await read(
+    path.posix.join(resetReceipt.retained_original_home, resetFile),
+    privateBytes,
+    target,
+  );
+  assert.deepEqual(await submit(reset), resetRecovered);
+  assert.equal(await inode(target.homeGuestPath), resetInode);
+  assert.deepEqual(await get(reset.operationId), resetRecovered);
+  record("workspace-reset-recovered", resetRecovered);
+
+  await write(
+    target,
+    path.posix.join(target.homeGuestPath, laterFile),
+    laterBytes,
+  );
+  const undoReset = await prepare({
+    action: "rollback",
+    workspaceId: target.id,
+    restoreOperationId: reset.operationId,
+  });
+  const resetRolledBack = await submit(undoReset);
+  const resetRollback = (await details(resetRolledBack, "rollback")).receipt;
+  assert.equal(resetRollback.restore_operation_id, reset.operationId);
+  assert.equal(await inode(target.homeGuestPath), originalInode);
+  assert.equal(await inode(resetRollback.retained_replaced_home), resetInode);
+  await read(resetPath, privateBytes, target);
+  await read(
+    path.posix.join(resetRollback.retained_replaced_home, laterFile),
+    laterBytes,
+    target,
+  );
+  record("workspace-reset-rolled-back", resetRolledBack);
+
   const reopened = await backup("getCantripOsBackupOperations");
   assert.equal(reopened.nextCursor, null);
-  assert.equal(reopened.items.length, 3);
-  for (const summary of [captured, restored, rolled]) {
+  assert.equal(reopened.items.length, 5);
+  for (const summary of [
+    captured,
+    restored,
+    rolled,
+    resetRecovered,
+    resetRolledBack,
+  ]) {
     assert.deepEqual(
       reopened.items.find((item) => item.operationId === summary.operationId),
       summary,
@@ -382,7 +448,11 @@ export async function actualCantripOsBackupClient({
     original: originalInode,
     restored: restoredInode,
   };
-  report.replies = { restore: restoreDrop.seen, rollback: rollbackDrop.seen };
+  report.replies = {
+    restore: restoreDrop.seen,
+    rollback: rollbackDrop.seen,
+    reset: resetDrop.seen,
+  };
   report.retainedOperations = reopened.items;
   record("source-backup-history", reopened);
 }

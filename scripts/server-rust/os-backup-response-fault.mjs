@@ -17,7 +17,7 @@ if (directory) {
         envelope.kind === "response" &&
         envelope.ok === true &&
         result?.state === "ready" &&
-        ["restore", "rollback"].includes(result.action) &&
+        ["restore", "rollback", "reset"].includes(result.action) &&
         /^[a-f0-9-]{36}$/.test(result.operationId)
       ) {
         const base = path.join(directory, result.operationId);
