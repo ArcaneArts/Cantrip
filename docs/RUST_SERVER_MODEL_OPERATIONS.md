@@ -87,6 +87,16 @@ entries confirmed to have exited during enumeration. All three reports
 matched the digests emitted by the guest.
 [Windows model operations](security/rust-server-2976-win32-x64-model-operations.json)
 
+The same signed desktop's Rust executable passed 20 product steps and 14
+model operations with external PostgreSQL in a Windows 11 x64 guest. A
+forced server exit interrupted an active embedding after the provider
+received one request. The replacement server reopened the same origin,
+retained one usage record without reported tokens or a receipt, and
+reconnected the same worker. A fresh decision completed with its own
+receipt. The fixture used Edge and an extended MCP startup timeout in the
+worker copy for the emulated guest.
+[Windows active model-operation recovery](security/rust-server-2976-win32-x64-model-server-loss.json)
+
 ## Product assertions
 
 `actual-folder-client.mjs --model-operations` uses production server executables
