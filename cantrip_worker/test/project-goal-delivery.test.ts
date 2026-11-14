@@ -111,15 +111,15 @@ it("keeps unrelated sources flowing while a binding is pending and excludes Task
   f.delivery.watch("task", "chat");
   for (const id of ["pending", "ready", "task"])
     f.delivery.observe(id, goal(id));
-  await vi.waitFor(() =>
-    expect(sent.some((o) => o.threadId === "ready")).toBe(true),
-  );
+  await vi.waitFor(async () => {
+    expect(sent.some((o) => o.threadId === "ready")).toBe(true);
+    expect(
+      (await records(f.directory)).find(
+        (r) => r.record.observation.threadId === "ready",
+      )?.record.delivered,
+    ).toBe(true);
+  });
   expect(sent.some((o) => o.threadId === "task")).toBe(false);
-  expect(
-    (await records(f.directory)).find(
-      (r) => r.record.observation.threadId === "ready",
-    )?.record.delivered,
-  ).toBe(true);
 });
 it("retires old process deliveries without reinterpreting them as current facts", async () => {
   const f = await fixture(async () => {
