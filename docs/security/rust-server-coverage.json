@@ -6627,6 +6627,7 @@
         "implementation": "cantrip_server_rs/src/http/model_operations.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-postgres-long-outage.json",
           "docs/RUST_SERVER_SOURCE_DRIFT.md",
           "scripts/server-rust/model-operation-boundary-compatibility.mjs",
           "docs/RUST_SERVER_MODEL_OPERATIONS.md",
@@ -6636,7 +6637,7 @@
           "docs/security/rust-server-2976-linux-model-operations.json"
         ],
         "remaining": [
-          "Current Windows package coverage, active-operation server or dependency interruption, and long-outage product qualification remain required."
+          "The macOS ARM64 standalone and Linux ARM64 OCI packages qualify offline embedding settlement, replay rejection and a subsequent decision after five minutes of external PostgreSQL loss. These used the packaged worker reporting 1.1.2976. Remaining Windows and Linux x64 outage scenarios and version-aligned worker qualification remain open."
         ]
       },
       {
@@ -6645,6 +6646,7 @@
         "implementation": "cantrip_server_rs/src/http/model_operations.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-postgres-long-outage.json",
           "docs/RUST_SERVER_SOURCE_DRIFT.md",
           "scripts/server-rust/model-operation-boundary-compatibility.mjs",
           "docs/RUST_SERVER_MODEL_OPERATIONS.md",
@@ -6654,7 +6656,7 @@
           "docs/security/rust-server-2976-linux-model-operations.json"
         ],
         "remaining": [
-          "Current Windows package coverage, active-operation server or dependency interruption, and long-outage product qualification remain required."
+          "The macOS ARM64 standalone and Linux ARM64 OCI packages qualify offline embedding settlement, replay rejection and a subsequent decision after five minutes of external PostgreSQL loss. These used the packaged worker reporting 1.1.2976. Remaining Windows and Linux x64 outage scenarios and version-aligned worker qualification remain open."
         ]
       },
       {

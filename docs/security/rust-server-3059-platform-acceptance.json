@@ -309,6 +309,7 @@
       }
     },
     "signedDesktopUpdate": {
+      "bundledWorkerReportedVersion": "1.1.2976",
       "previousVersion": "1.1.3043",
       "candidateRuntimeInputSha256": "98158f98aa453ad802282bc6119cf37f66251923d77f53b6fe08fe55c14107a3",
       "signedCandidateServerSha256": "85cce88a6bd901884c44013878b8a4aaf48b0eec5e3e84f14a6238c3d0a5701f",

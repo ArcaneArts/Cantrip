@@ -66,6 +66,17 @@ the same port. After recovery, readiness returned HTTP 200, one usage receipt
 settled and the replay caused zero additional provider requests. A fresh
 decision completed and recorded its own receipt.
 
+The 1.1.3059 macOS ARM64 standalone archive and Linux ARM64 OCI image each
+passed 14 model operations with a five-minute external PostgreSQL outage.
+The browser received the embedding while PostgreSQL was down. Readiness
+returned HTTP 503 through the outage and HTTP 200 after restart. The same
+server and worker settled one receipt, rejected a replay without another
+provider call, and completed a new decision. In the matching Node reference
+case, the browser also received the embedding during the outage and its usage
+row stayed `running` after PostgreSQL returned. The host-side worker in all
+three runs was the bundled Node worker reporting 1.1.2976.
+[1.1.3059 long PostgreSQL outage results](security/rust-server-3059-postgres-long-outage.json)
+
 ## Active Redis interruption
 
 A real 45-second Redis process outage interrupted a protected embedding

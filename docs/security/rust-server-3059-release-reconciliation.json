@@ -281,7 +281,7 @@
     "platform": "darwin-arm64",
     "harnessCommit": "453fa36242a715298a6fc9847ca320988bc3a294",
     "productCells": 6,
-    "scope": "Existing browser SDK, packaged 1.1.3059 Rust executable, full 1.1.3059 Node worker and owned Docker guests. In the bundled PostgreSQL comparison, the Rust runtime manages the local PostgreSQL 18 binaries and the Node reference uses an isolated external PostgreSQL database.",
+    "scope": "Existing browser SDK, packaged 1.1.3059 Rust executable, full packaged Node worker reporting 1.1.2976 and owned Docker guests. In the bundled PostgreSQL comparison, the Rust runtime manages the local PostgreSQL 18 binaries and the Node reference uses an isolated external PostgreSQL database.",
     "localQaImage": "sha256:2310a9cf3d6c6a59dead96664dfac559df3539e4ce8c2eae133558c8b31c14c4",
     "guestImageProvenance": "docs/security/rust-server-2938-darwin-arm64-goal-cantripos.json#cantripOsLifecycle",
     "verifiedInputs": {
