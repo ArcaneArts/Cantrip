@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "target": "win32-x64",
+  "serverSha256": "c2bee345723f75ec694d21ca9dbfe1e4d0bf34ad4ba5f4566511af5f408d1114",
+  "archiveSha256": "19298d402d00820b9f658645834b5b8d9423513cb507811a04c46040649d5f3f",
+  "scope": "Windows x64 emulated guest, exact verified standalone archive. The launcher matrix failed at bundled PostgreSQL export. Two controls reopen the same profile and call the same Rust executable directly.",
+  "launcherMatrix": {
+    "result": "failed",
+    "stage": "bundled PostgreSQL pg_dump from migrate.cmd",
+    "startupTimeoutMs": 600000,
+    "completedDatabaseModes": ["pglite"],
+    "pgliteReadinessMs": [319354.919, 3596.721, 7942.101, 3214.4],
+    "pgliteSqlSha256": "162daa1068d4226ba13fdc3e432df6bb52d349f74989dbc05c6024d0a84c950c",
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/guest-acceptance.json",
+      "bytes": 2372,
+      "sha256": "b5e0cc37b155a7c878c10a1f1b04d56e22953b1e9f52bf8dea50b0f10ed2e009"
+    },
+    "stderr": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/guest-acceptance.stderr",
+      "bytes": 1189,
+      "sha256": "9ff40ec406d052cc4ed001aaff4a6620714cebb1e1d350c1cc7dc8a18119477e"
+    }
+  },
+  "directExportControls": [
+    {
+      "pgDump": "observed packaged executable",
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/guest-diagnostic-receipt",
+        "bytes": 467,
+        "sha256": "dc70ea45ee6538d9a3894700f528d332e274eb2493f634b1a4bbddc8af04afe6"
+      },
+      "sql": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/guest-diagnostic-sql",
+        "bytes": 493560,
+        "sha256": "a54c305ae12a640a74b846e2141b8cbdc994f68fe0d9bbe006724e7f57db07df"
+      }
+    },
+    {
+      "pgDump": "direct packaged executable",
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/guest-direct-receipt",
+        "bytes": 449,
+        "sha256": "0ccd27cff046f8f1a12dd0dee8cf11dfa80dcd5a01699d0495748b1993e1e1bd"
+      },
+      "sql": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/guest-direct-sql",
+        "bytes": 493560,
+        "sha256": "a54c305ae12a640a74b846e2141b8cbdc994f68fe0d9bbe006724e7f57db07df"
+      }
+    }
+  ]
+}

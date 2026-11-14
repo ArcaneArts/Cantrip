@@ -7,16 +7,58 @@ export async function actualWorkerLogs({
   workerId,
   result,
   phase,
+  recoveringWorker,
 }) {
   const value = await page.evaluate(
-    async ({ workerId, serverUrl }) => {
+    async ({ workerId, serverUrl, recoverAfterRedisRestart }) => {
       const api = await import("/src/lib/api/workers.ts");
+      const { CantripApiError } = await import("/src/lib/api-client.ts");
       const stream = await import("/src/lib/worker-log-stream.ts");
-      const tail = await api.getWorkerServiceLogs(workerId, {
-        beforeCursor: Number.MAX_SAFE_INTEGER,
-        limit: 2,
-        minimumLevel: "trace",
-      });
+      const firstRead = () =>
+        api.getWorkerServiceLogs(workerId, {
+          beforeCursor: Number.MAX_SAFE_INTEGER,
+          limit: 2,
+          minimumLevel: "trace",
+        });
+      const recovery = [];
+      const started = performance.now();
+      let tail;
+      for (;;) {
+        try {
+          tail = await firstRead();
+          if (recoverAfterRedisRestart) {
+            recovery.push({
+              status: 200,
+              elapsedMs: performance.now() - started,
+            });
+          }
+          break;
+        } catch (error) {
+          if (
+            !recoverAfterRedisRestart ||
+            !(error instanceof CantripApiError) ||
+            error.status !== 503 ||
+            !["Worker is unavailable.", "Worker is offline."].includes(
+              error.message,
+            )
+          )
+            throw error;
+          const elapsedMs = performance.now() - started;
+          recovery.push({
+            status: error.status,
+            message: error.message,
+            elapsedMs,
+          });
+          if (elapsedMs >= 30_000) {
+            throw new Error(
+              "Worker log read did not recover after Redis restarted: " +
+                JSON.stringify(recovery),
+              { cause: error },
+            );
+          }
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
       const older = await api.getWorkerServiceLogs(workerId, {
         beforeCursor: tail.records[0]?.cursor ?? Number.MAX_SAFE_INTEGER,
         limit: 2,
@@ -102,10 +144,21 @@ export async function actualWorkerLogs({
         fatal,
         frames: state.frames,
         encoded: state.encoded,
+        ...(recoverAfterRedisRestart ? { recovery } : {}),
       };
     },
-    { workerId, serverUrl: fixture.server.origin },
+    {
+      workerId,
+      serverUrl: fixture.server.origin,
+      recoverAfterRedisRestart: Boolean(recoveringWorker),
+    },
   );
+  if (recoveringWorker) {
+    assert.equal(recoveringWorker.exitCode, null);
+    assert.equal(recoveringWorker.signalCode, null);
+    assert.ok(value.recovery.at(-1).elapsedMs < 30_000);
+    value.recoveryWorkerPid = recoveringWorker.pid;
+  }
   for (const page of [value.tail, value.older, value.fatal])
     assert.deepEqual(serviceLogReadResultSchema.parse(page), page);
   assert.ok(value.tail.records.length > 0 && value.tail.records.length <= 2);
