@@ -29292,13 +29292,18 @@
       "status": "partial",
       "evidence": [
         "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md",
-        "cantrip_server/src/app/build-app.ts",
-        "cantrip_server/src/app/runtime/background-job-runtime.ts",
+        "tests/reference-node-server/src/app/build-app.ts",
+        "tests/reference-node-server/src/app/runtime/background-job-runtime.ts",
         "cantrip_server_rs/src/auth/service.rs",
         "docs/RUST_SERVER_INTERACTION_EXPIRY.md",
         "scripts/server-rust/interaction-expiry-live-compatibility.mjs",
         "scripts/server-rust/interaction-expiry-shutdown.mjs"
       ],
+      "currentMacosPackagedChecks": {
+        "candidateVersion": "1.1.3032",
+        "status": "passed",
+        "report": "docs/security/rust-server-3032-macos-background-acceptance.json"
+      },
       "mappedDurableJobFamilies": [
         "project-replicas",
         "project-folder-setup",
@@ -29308,10 +29313,10 @@
         "chat-relocation",
         "chat-import"
       ],
-      "scope": "Source composition mapping only; each family retains its own existing behavior/fault acceptance. Does not prove all background services.",
+      "scope": "The seven durable job families retain their individual behavior and fault results. The current packaged macOS report covers selected independent background services.",
       "remaining": [
-        "Reconcile remaining production operational log consumers and console presentation, and complete background-service invariants against current Source. The bounded buffer and daily archive have separate current local qualification.",
-        "Finish current supported-platform/package, complete product/fault/coordination/performance acceptance and final Rust default/production Node removal."
+        "Reconcile the remaining background-service and operational log consumers and qualify supported shipping artifacts.",
+        "Complete supported-platform product, fault, coordination and performance acceptance."
       ],
       "resolvedGlobalExpiry": "See interactionExpiry: independent native producer, owner-scoped mutations, actual failure/recovery and shutdown drain; existing reference owner/shutdown bugs reproduced and repaired.",
       "resolvedWorkerCatalogRefresh": "Native reconnect refresh and actual fifteen-minute timer pass local comparison; see workerCatalogRefresh for exact evidence and pending production/platform qualification.",
