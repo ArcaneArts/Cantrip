@@ -24223,6 +24223,7 @@
         "note": "cantrip_server_rs/third-party/redis/README.cantrip.md",
         "scope": "The original import retained 134 upstream files. multiplexed_connection.rs and connection_manager.rs gained three connection-observation methods. Inherited trailing whitespace was removed from those Rust files, README and CHANGELOG. The native ordered command queue preserves directory request lifetime while publish and readiness observe the actual command connection. Packaged Linux TLS acceptance is recorded separately."
       },
+      "redisOfflineShutdownLinux3059": "docs/security/rust-server-3059-linux-redis-offline-shutdown.json",
       "redisOfflineShutdownLocalAcceptance": {
         "platform": "darwin-arm64",
         "observedAt": "2026-11-07",

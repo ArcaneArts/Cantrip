@@ -53,6 +53,17 @@ not prevent normal claim release and worker reconnection.
 
 ## Observed local results
 
+The 1.1.3059 release-candidate OCI images passed on Linux ARM64 and x64
+with the matching full Node worker connected to the peer opposite the browser.
+PostgreSQL stayed ready while both servers reported HTTP 503 in all four rounds.
+After more than 15 seconds of downtime, both containers exited zero while
+Redis stayed offline and the original worker stayed alive. Closing both peers
+took 150.5 ms on ARM64 and 281.9 ms on x64 under Rosetta, within the same
+30-second deadline. The first x64 run stopped at the launcher architecture
+assertion. The retry passed using Docker's `amd64` identifier for the same
+image.
+[Linux 1.1.3059 shutdown reports](security/rust-server-3059-linux-redis-offline-shutdown.json)
+
 On November 7, 2026, the optimized native server and rebuilt production Node
 entry passed all four pairings on macOS ARM64 with private PostgreSQL, Redis
 8.10.3, Node 24.22.1 and the unchanged packaged worker/native Codex 0.166.0:
