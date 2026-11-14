@@ -30926,10 +30926,10 @@
     "scope": "Actual macOS debug Tauri and WKWebView windows, packaged Rust server and full Node worker. Detached tab ownership, dirty drafts, restart, renderer reload, application crash recovery, native close and explicit encrypted save passed."
   },
   "windows3059InstalledDesktopQualification": {
-    "status": "partial",
+    "status": "passed",
     "candidateVersion": "1.1.3059",
     "report": "docs/security/rust-server-3059-windows-installed-desktop.json",
-    "scope": "The verified Windows x64 NSIS package passed first launch, retained-profile reopening and clean tray shutdown for PGlite and bundled PostgreSQL in the local guest. External PostgreSQL, the exact standalone archive retry and signed updater retain separate acceptance."
+    "scope": "The verified Windows x64 NSIS package with the 1.1.2976 Node worker passed first launch, retained-profile reopening and clean tray shutdown on all three stores in the local guest. The app stopped its bundled database and preserved the externally managed database. The exact standalone archive, signed updater and installer with the current worker retain separate acceptance."
   },
   "macos3059SharesAndTunnelsQualification": {
     "status": "passed",
@@ -30937,6 +30937,26 @@
     "databaseModes": ["pglite", "bundled-postgres", "postgres"],
     "report": "docs/security/rust-server-3059-shares-and-tunnels.json",
     "scope": "MacOS packaged Rust and Node reference with browser SDK and full packaged Node worker. Workspace ownership restart, authenticated WebDAV and real TCP relay passed over WorkerLink and legacy transport on all three databases."
+  },
+  "windows3059CurrentWorkerPackageQualification": {
+    "status": "partial",
+    "candidateVersion": "1.1.3059",
+    "report": "docs/security/rust-server-3059-windows-current-worker-package.json",
+    "scope": "Local NSIS package with the compiled 1.1.3059 Node worker and matching existing Windows-native dependencies. Payload and QA updater signature verified. Installed behavior and release Authenticode remain open."
+  },
+  "macos3059OperationalStatusAndWorkerLogsQualification": {
+    "status": "passed",
+    "candidateVersion": "1.1.3059",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "report": "docs/security/rust-server-3059-macos-operations-and-logs.json",
+    "scope": "Packaged Rust and Node reference with the existing browser and full Node worker. Health, Prometheus, worker log pagination, WebSocket replay, disconnect and lease release passed before and after restart."
+  },
+  "macos3059ProjectAutomationsQualification": {
+    "status": "passed",
+    "candidateVersion": "1.1.3059",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "report": "docs/security/rust-server-3059-macos-project-automations.json",
+    "scope": "Packaged Rust and Node reference with the existing browser, full Node worker and bundled Codex. Actual script conditions, scheduled native execution, canonical history, two restart cycles and protected schedule deletion passed."
   },
   "remainingAcceptance": [
     "Qualify packaged cross-platform dependency interruptions and longer outages. Reconcile the still-open background-service and product recovery comparisons.",

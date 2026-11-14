@@ -1557,6 +1557,23 @@ log-archive scenarios across all three stores, including archive obstruction
 and recovery while the server kept serving.
 [macOS background-service report](security/rust-server-3032-macos-background-acceptance.json)
 
+The packaged 1.1.3059 Rust server and Node reference each passed 15 browser
+and full-worker steps on every database. Health and authenticated Prometheus
+observed the connected worker and App Live session before and after server
+restart. The browser read paginated worker logs and received ordered replay
+through the existing WebSocket parser. Both runtimes returned
+`worker-offline` and closed with code 1013 when the worker stopped.
+[Operational status and worker log evidence](security/rust-server-3059-macos-operations-and-logs.json)
+
+The same 1.1.3059 server and Node reference each passed 14 Agent and
+automation steps on every database. The full worker ran real script
+conditions, started one scheduled native turn, and skipped the other.
+The browser decrypted the canonical result, and the automation and history
+survived two restart cycles. Only the accepted occurrence invoked the
+controlled model endpoint. The test also deleted both schedules and checked
+that the protected fields stayed out of requests and server diagnostics.
+[Project automation evidence](security/rust-server-3059-macos-project-automations.json)
+
 The same standalone executable matched the Node reference across all nine
 database and authentication combinations for native command permission
 transitions, pending requests, continuations and settings evidence. The

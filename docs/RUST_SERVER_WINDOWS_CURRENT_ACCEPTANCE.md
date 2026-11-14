@@ -31,8 +31,25 @@ Fresh and reopened bundled PostgreSQL cases passed on the same installed
 package. Both quits drained the app's Rust server and Node worker and stopped
 the private PostgreSQL process. The reopened profile retained the setting and
 server identity from the first case. The two guest disk receipts match the
-serial observations. External PostgreSQL desktop qualification is in progress.
+serial observations.
+
+Fresh and reopened external PostgreSQL cases passed as well. PostgreSQL
+observed a connection from the app's Rust server and remained running after
+each tray quit. The second launch used the stored database configuration
+and retained the original server identity and setting. The guest disk
+receipts match all six first-launch and reopen observations.
 [Installed desktop cases](security/rust-server-3059-windows-installed-desktop.json)
+
+### Installer with the current Node worker
+
+A second NSIS package uses the worker and workspace packages built from
+`86dc1f0a1`. Its 19 direct third-party dependency resolutions and three
+patch hashes match the prior Windows payload. The verifier checked 14,085
+app and runtime files and the QA updater signature. The app and Rust server
+digests match the first installer, and all 18 payload differences are in
+the worker directory. The guest runtime matrix and release Authenticode
+verification remain open.
+[Current-worker package verification](security/rust-server-3059-windows-current-worker-package.json)
 
 ## Windows x64 standalone `1.1.2938`
 
