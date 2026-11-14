@@ -1254,6 +1254,15 @@ notification suite for both PostgreSQL modes and all authentication profiles.
 
 ## Open background-service comparisons
 
+The macOS ARM64 1.1.3032 archive passed account approval expiry and credential
+reconnect against the development Node reference with external PostgreSQL.
+Each peer drained a started database update on shutdown. The credential run
+also recovered from a query failure and preserved the credential revision
+through restart and worker purge. The same archive passed eight paired
+log-archive scenarios across all three stores, including archive obstruction
+and recovery while the server kept serving.
+[macOS background-service report](security/rust-server-3032-macos-background-acceptance.json)
+
 The current composition has native implementations for the seven durable job
 families: replicas, folder setup, workspace repository discovery, standalone
 roots, GitHub conversion, Chat relocation and Chat import. Their startup recovery,
