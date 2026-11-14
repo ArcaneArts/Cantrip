@@ -8,6 +8,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { makeDesktopServerFilesWritable } from "../desktop-server-runtime.mjs";
 
 const execute = promisify(execFile);
 const repository = fileURLToPath(new URL("../../", import.meta.url));
@@ -237,6 +238,7 @@ export async function buildUpdaterBundle(
   await rm(resources, { recursive: true, force: true });
   await mkdir(path.dirname(resources), { recursive: true });
   await execute("cp", ["-cR", runtime, resources]);
+  await makeDesktopServerFilesWritable(path.join(resources, "server"));
   const signingIdentity = prepared.config.bundle.macOS.signingIdentity;
   if (signingIdentity !== "-")
     await runLogged(

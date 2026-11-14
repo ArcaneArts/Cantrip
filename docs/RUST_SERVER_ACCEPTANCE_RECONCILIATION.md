@@ -35,7 +35,15 @@ active embedding during a 60-second external PostgreSQL outage. The server
 stayed live and reported unready, then persisted one receipt for the original
 attempt after the database restarted. A fresh operation completed and all
 three Rust container generations exited cleanly.
-[ARM64 standalone and Winterhold report](security/rust-server-3032-standalone-acceptance.json)
+
+The local Developer ID-signed macOS desktop rehearsal updated from 1.1.2976
+to 1.1.3032 on all three stores. Each update retained the database mode,
+server identity, worker enrollment, client encryption bindings and a settings
+write. The desktop drained both child processes before replacing the app and
+after the final quit. The PGlite case also rejected an archive with a modified
+byte before installing the valid update. The rehearsal populated fresh test
+profiles on the older runtime.
+[ARM64 standalone, desktop and Winterhold report](security/rust-server-3032-standalone-acceptance.json)
 
 ## Cantrip 1.1.3014 Linux standalone
 
