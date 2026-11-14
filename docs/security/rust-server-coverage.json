@@ -29454,6 +29454,19 @@
       ]
     },
     "backgroundServiceReconciliation": {
+      "currentLinuxPackagedChecks": {
+        "candidateVersion": "1.1.3059",
+        "targets": ["linux-arm64", "linux-x64"],
+        "database": "postgres",
+        "authMode": "accounts",
+        "cases": [
+          "approval-expiry",
+          "catalog-reconnect",
+          "credential-reconnect",
+          "credential-deadline"
+        ],
+        "report": "docs/security/rust-server-3059-linux-background-compatibility.json"
+      },
       "status": "partial",
       "evidence": [
         "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md",
@@ -29488,6 +29501,14 @@
       "resolvedCredentialReconnect": "See workerCredentialReconnect: actual missing connection caller reproduced, native coordinator composed with owned lifetime/public counters;9 storage/auth pairs, real deadlines, query failure/recovery and held credential UPDATE shutdown/restart pass."
     },
     "interactionExpiry": {
+      "currentLinuxPackagedChecks": {
+        "candidateVersion": "1.1.3059",
+        "targets": ["linux-arm64", "linux-x64"],
+        "database": "postgres",
+        "authMode": "accounts",
+        "cases": ["approval-expiry"],
+        "report": "docs/security/rust-server-3059-linux-background-compatibility.json"
+      },
       "status": "implemented-pending-platform-acceptance",
       "implementation": [
         "cantrip_server_rs/src/agent_interactions/expiry.rs",
@@ -29542,6 +29563,14 @@
       }
     },
     "workerCatalogRefresh": {
+      "currentLinuxPackagedChecks": {
+        "candidateVersion": "1.1.3059",
+        "targets": ["linux-arm64", "linux-x64"],
+        "database": "postgres",
+        "authMode": "accounts",
+        "cases": ["catalog-reconnect"],
+        "report": "docs/security/rust-server-3059-linux-background-compatibility.json"
+      },
       "status": "implemented-pending-platform-acceptance",
       "currentMacosStandalone": {
         "candidateVersion": "1.1.3059",
@@ -29604,6 +29633,14 @@
       ]
     },
     "workerCredentialReconnect": {
+      "currentLinuxPackagedChecks": {
+        "candidateVersion": "1.1.3059",
+        "targets": ["linux-arm64", "linux-x64"],
+        "database": "postgres",
+        "authMode": "accounts",
+        "cases": ["credential-reconnect", "credential-deadline"],
+        "report": "docs/security/rust-server-3059-linux-background-compatibility.json"
+      },
       "status": "implemented-pending-platform-acceptance",
       "implementation": [
         "cantrip_server_rs/src/settings/account_service/credential_reconnect.rs",

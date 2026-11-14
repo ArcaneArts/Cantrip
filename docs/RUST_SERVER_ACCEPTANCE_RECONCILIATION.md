@@ -1620,6 +1620,16 @@ also waited for the real 15-minute schedule. Both peers issued three
 periodic quota reads, persisted six resulting rows and exited cleanly.
 [Current background-service reports](security/rust-server-3059-release-reconciliation.json#backgroundServices)
 
+The packaged Linux ARM64 and x64 1.1.3059 images also matched the Node
+reference over external PostgreSQL. Approval expiry restored the Chat
+state after an actual SQL failure and drained a held update on shutdown.
+Catalog reconnect recovered quota collection and committed the held
+insert. Credential reconnect preserved the committed encrypted value
+through shutdown and issued the deferred purge once after restart. A
+separate run exercised the real 15-second capture deadline on both images.
+All ten Rust container exits were clean.
+[Linux background-service evidence](security/rust-server-3059-linux-background-compatibility.json)
+
 ### CantripOS lifecycle
 
 The packaged 1.1.3059 Rust executable and Node reference each completed
