@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "applicationBuildSourceCommit": "381136680f96f207118c811eaee36cba8f156a5f",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "serverPlatform": "darwin-arm64",
+  "serverArtifact": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/cantrip-server-1.1.3059-darwin-arm64.tar.gz",
+    "bytes": 66994727,
+    "sha256": "a58ccdb402201bbb51843ab7df661aa4efe30b71b35858828fda1a596d5de866"
+  },
+  "scope": "Android emulator tests used the packaged Rust standalone server and disposable loopback TLS. The iOS artifact is a locally exported App Store IPA.",
+  "renderer": {
+    "verifiedBuiltFilesInApkAndIpa": 195,
+    "manifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/mobile-3059-renderer-manifest.json",
+      "bytes": 20267,
+      "sha256": "4c09506cc0aceac0ede454a4361d9f17d2c51412cb9e02c074dfb7f3b945e514"
+    }
+  },
+  "android": {
+    "platform": "Android API 36 ARM64 emulator",
+    "debugApk": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/Cantrip-1.1.3059-debug.apk",
+      "bytes": 38973629,
+      "sha256": "c702acdd33b4474e04ab167c73fa1bd556bdadd0175d0b95d9a13995c95177cb"
+    },
+    "instrumentationApk": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/Cantrip-1.1.3059-instrumentation.apk",
+      "bytes": 562563,
+      "sha256": "c43699d417267a3f6e246c06d9b25c2f06a186b2ab6f53c958661a55f03a44e7"
+    },
+    "unsignedReleaseBundle": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/Cantrip-1.1.3059-release-unsigned.aab",
+      "bytes": 22248172,
+      "sha256": "d34aa9baeff39b023cab43be2a9c119e4f8b750535380cf75f1ec492f8f31716"
+    },
+    "localInstallationStorageUnitTests": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/android-installation-update-test.xml",
+      "bytes": 631,
+      "sha256": "a8554e3023693cc0875ededf0ed0738bf6a310f026e1803ee1242e9eb39199cc"
+    },
+    "targetedKeystoreInstrumentation": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/native-keystore-targeted.log",
+      "bytes": 82,
+      "sha256": "be4ea826e13956f1835ab0b0dc67f7220da44d2c0987160bf3177434236f4b14"
+    },
+    "fullInstrumentationFailure": {
+      "scope": "The starter package-name assertion expected com.getcapacitor.app. The installed package is art.cantrip and the Keystore test passed.",
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/native-keystore.log",
+        "bytes": 890,
+        "sha256": "d73440557cdbf6876e7e56c2817d81345e0b4217e5e2baff2a3130f25d2f7beb"
+      }
+    },
+    "retainedNativeCatalog": {
+      "keyCount": 1,
+      "bindingCount": 3,
+      "sha256": "39c6533ab41324bd51ea9e50e0d874e7034a32c35de33d1190684c3a8ce9a1af"
+    },
+    "afterServerRestart": {
+      "pglite": {
+        "sessionHttpStatus": 200,
+        "appLiveHttpStatus": 101,
+        "cleanServerExits": 2
+      },
+      "bundled-postgres": {
+        "sessionHttpStatus": 200,
+        "appLiveHttpStatus": 101,
+        "cleanServerExits": 2
+      },
+      "postgres": {
+        "sessionHttpStatus": 200,
+        "appLiveHttpStatus": 101,
+        "cleanServerExits": 2
+      }
+    },
+    "installedSignIn": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/installed-sign-in.json",
+      "bytes": 741,
+      "sha256": "c8dceba91e978eaed1ee8adee0e1148e439923009e8338b62c288ee4905d78ba"
+    },
+    "installedRetainedAccounts": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/installed-retained.json",
+      "bytes": 734,
+      "sha256": "1f48e9aab81c32853fe05772bbdca57c091649b53d2103d64fa281248d2ea1aa"
+    },
+    "transportWitness": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/http-witness.jsonl",
+      "bytes": 84897,
+      "sha256": "a84b23427a35dc47049585f9b12b5e7d842b1ba8398ee8ad91eabad4eef33434"
+    },
+    "browserToNativeQr": {
+      "database": "postgres",
+      "status": "passed",
+      "evidence": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/native-qr-retained-key-verification.json",
+        "bytes": 530,
+        "sha256": "289a08e38ec6c16dd4ade9e5bc2f02529084faf2fb92439c856e9f506dabd9a1"
+      },
+      "observerTimeout": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/native-qr-retry.PPJzdsuw/result.json",
+        "bytes": 592,
+        "sha256": "154aaa0273c99689082b5f79416eceb47d0bbe2a38feb7cca775530df549d42e"
+      },
+      "note": "A follow-up inspection confirmed the authenticated account, App Live and retained key after the UI observer timed out waiting for a password prompt."
+    }
+  },
+  "ios": {
+    "appStoreExport": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/Cantrip-1.1.3059-ios-app-store.ipa",
+      "bytes": 4158998,
+      "sha256": "966021181ecb98370dbf7cbfaa1353b91edb0faf90b6cfc26425c66d03cd136b"
+    },
+    "verification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/ios-export-verification.json",
+      "bytes": 301,
+      "sha256": "cff9928af7cfab1eebc7345aa370eb3c68a52c3f6435ad74c11b7793a8a83f49"
+    },
+    "bundleId": "art.cantrip",
+    "build": "3059",
+    "verifiedRendererFiles": 195
+  },
+  "remainingAcceptance": [
+    "Installed iOS native QR and physical-device camera runs",
+    "Distribution-signed Android build and physical-device sign-in"
+  ]
+}
