@@ -68,9 +68,12 @@ The macOS 64 MiB worker-log test measured 218 MiB/s for Rust and 177 MiB/s
 for Node in one run per runtime. Both delivered the same payload, closed the
 slow consumer with code 1013 and retained identity and writes after restart.
 The small-profile test measured a 205 ms Rust PGlite reopen and 94–102 MiB
-of idle process-tree RSS. Fresh Rust PGlite starts took 32.7 and 4.7 seconds,
-with the difference concentrated in migration time. Fresh startup needs
-further comparison before a performance conclusion.
+of idle process-tree RSS. In 20 measured fresh-start pairs, Rust reached
+readiness in 1.26 seconds at the median and 15.06 seconds at p95. The Node
+reference measured 3.07 seconds and 16.73 seconds. Rust was faster in 17
+pairs. Both runtimes had slow migration samples. The longest new Rust run
+took 24.0 seconds, following the earlier 32.7-second observation.
+[Fresh PGlite startup evidence](security/rust-server-3059-macos-fresh-pglite.json)
 
 The signed macOS desktop update from 1.1.3043 passed all three database modes
 after the updater fixture adopted the production launcher configuration. It
