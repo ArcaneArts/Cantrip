@@ -268,7 +268,7 @@ impl CoordinatedBridge {
             self.discard(worker, &id, &peer).await;
             return Ok(false);
         }
-        self.reject_remote(worker, Some(self.coordinator.instance_id()));
+        self.reject_remote(worker, Some(&id));
         self.log(
             "info",
             "Worker attached to relay instance",
@@ -402,14 +402,23 @@ impl CoordinatedBridge {
         observed.extend(self.disconnected.workers());
         observed.extend(self.offline.workers());
         for w in observed {
-            let known = {
+            let (known, pending) = {
                 let s = self.state.lock().unwrap();
                 if s.connections.contains_key(&w) {
                     continue;
                 }
-                s.known.get(&w).cloned()
+                (
+                    s.known.get(&w).cloned(),
+                    s.pending.values().any(|p| p.worker == w),
+                )
             };
-            let Ok(presence) = self.coordinator.find_worker(&w.clone().into()).await else {
+            let worker = w.clone().into();
+            let presence = if pending {
+                self.coordinator.lookup_worker_claim(&worker).await
+            } else {
+                self.coordinator.find_worker(&worker).await
+            };
+            let Ok(presence) = presence else {
                 continue;
             };
             {
@@ -419,7 +428,7 @@ impl CoordinatedBridge {
                 }
             }
             if let Some(p) = presence {
-                self.reject_remote(&w, p["instanceId"].as_str());
+                self.reject_remote(&w, p["connectionId"].as_str());
                 if let Some(id) = text(&p["connectionId"]) {
                     self.state.lock().unwrap().known.insert(w, id);
                 }

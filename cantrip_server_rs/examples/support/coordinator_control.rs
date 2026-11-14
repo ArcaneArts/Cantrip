@@ -95,7 +95,7 @@ impl RelayCoordinator for Controlled {
     fn start(self: Arc<Self>) -> BoxFuture<'static, Result<()>> {
         Box::pin(async move { RedisCoordinator::start(&self.inner).await })
     }
-    refs! {close()->();health()->bool;find_worker(worker)->Option<Value>;release_worker(worker,connection)->bool;find_worker_link_session(session)->Option<Value>;release_worker_link_session(session,authority)->bool;}
+    refs! {close()->();health()->bool;find_worker(worker)->Option<Value>;lookup_worker_claim(worker)->Option<Value>;release_worker(worker,connection)->bool;find_worker_link_session(session)->Option<Value>;release_worker_link_session(session,authority)->bool;}
     fn publish(&self, payload: Value, ttl: Option<f64>) -> BoxFuture<'_, Result<()>> {
         let gate = self.take("publish", "");
         Box::pin(async move {

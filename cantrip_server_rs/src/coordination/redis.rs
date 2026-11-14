@@ -404,6 +404,9 @@ impl RedisCoordinator {
         if let Some(cached) = self.core.cached(worker) {
             return Ok(Some(cached));
         }
+        self.lookup_worker_claim(worker).await
+    }
+    pub async fn lookup_worker_claim(&self, worker: &JsString) -> Result<Option<Value>> {
         let Some(raw) = self.get(&self.key("worker", worker)?).await? else {
             return Ok(None);
         };

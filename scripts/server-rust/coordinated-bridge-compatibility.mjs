@@ -692,6 +692,66 @@ async function run(pair) {
     step(
       "repeated same-generation flaps keep one subscription set and one notification publication",
     );
+    if (kinds[0] === "rust") {
+      const workerId = "reclaimed-worker";
+      await b.call("attach", {
+        workerId,
+        peer: "reclaimed",
+        ownerId: "owner",
+        continuity,
+      });
+      const claim = await b.call("presence", { workerId });
+      await a.call("begin", {
+        workerId,
+        name: "reclaimed",
+        command: { type: "worker.version" },
+        options: { ownerId: "owner" },
+      });
+      const request = await requested(b, "reclaimed", 1);
+      const replacement = { ...claim, connectionId: randomUUID() };
+      const publish = (presence) =>
+        redis.client.publish(
+          prefix + ":messages",
+          JSON.stringify({
+            kind: "worker-presence",
+            action: "online",
+            presence,
+            sourceInstanceId: claim.instanceId,
+            messageId: randomUUID(),
+            createdAt: Date.now(),
+            expiresAt: Date.now() + 60000,
+          }),
+        );
+      await publish(replacement);
+      const marker = randomUUID();
+      await b.call("barrier", { target: "a", name: marker });
+      await event(
+        a,
+        (e) => e.kind === "barrier" && e.name === marker,
+        "stale online publication",
+      );
+      await delay(150);
+      await a.drain();
+      assert.equal(completions(a, "reclaimed").length, 0);
+      await redis.client.set(
+        prefix + ":worker:" + workerId,
+        JSON.stringify(replacement),
+        { PX: 60000 },
+      );
+      await publish(replacement);
+      const ended = await event(
+        a,
+        (e) => e.kind === "completion" && e.name === "reclaimed",
+        "same-instance claim replacement",
+      );
+      assert.equal(ended.error.class, "WorkerUnavailableError");
+      await response(b, "reclaimed", request);
+      await a.drain();
+      assert.equal(completions(a, "reclaimed").length, 1);
+      step(
+        "a confirmed replacement claim on the same instance rejects the old request once",
+      );
+    }
     for (const p of [a, b]) await p.call("subscribe", { workerId: "changed" });
     await b.call("attach", {
       workerId: "changed",

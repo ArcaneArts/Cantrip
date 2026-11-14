@@ -224,6 +224,9 @@ impl ReplicaService {
                     }
                 });
                 let offline = bridge.is_some_and(|e| e.unavailable);
+                let claim_replaced = bridge.is_some_and(|e| {
+                    e.unavailable && e.code.as_deref() == Some("worker-relay-claim-replaced")
+                });
                 let error = json!({"code":if offline {"worker-offline"}else{"worker-error"},"retryable":true});
                 let settled = if offline {
                     self.repository.block(&id, &command, &error).await
@@ -231,7 +234,14 @@ impl ReplicaService {
                     self.repository.fail(&id, &command, &error).await
                 };
                 match settled {
-                    Ok(job) => self.publish(&text(&claimed["ownerId"])?, &job),
+                    Ok(job) => {
+                        self.publish(&text(&claimed["ownerId"])?, &job);
+                        if claim_replaced {
+                            // The new socket can finish its requeue sweep before the
+                            // previous command records its blocked transition.
+                            self.worker_connected(text(&job["workerId"])?);
+                        }
+                    }
                     Err(e)
                         if e.downcast_ref::<ReplicaError>()
                             .is_some_and(|e| matches!(e, ReplicaError::Stale(_))) => {}
