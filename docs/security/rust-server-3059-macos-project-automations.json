@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "workerVersion": "1.1.2976",
+  "platform": "darwin-arm64",
+  "scope": "Existing browser SDK, packaged Rust executable, Node reference, full packaged Node worker and bundled Codex. Tests used controlled model HTTP replies.",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "driverSourceCommit": "d1ae33abdbf85704292ff210bc5c29a89f8e6dc8",
+  "inputs": [
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94198000,
+      "sha256": "98158f98aa453ad802282bc6119cf37f66251923d77f53b6fe08fe55c14107a3"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3059/runtime/worker/bin/cantrip",
+      "bytes": 1342656,
+      "sha256": "45e20cf3027b13938e705bb400830273c3458dd8ad2f3760f350ce619f639b3d"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3059/runtime/worker/dist/index.js",
+      "bytes": 391720,
+      "sha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3059/runtime/worker/bin/codex",
+      "bytes": 279545328,
+      "sha256": "b2dbabe42d7fde4147ae5e45cc9bd99fe2101cdd95e0b4b2b640962ce71278d4"
+    }
+  ],
+  "cases": [
+    {
+      "databaseMode": "pglite",
+      "observations": [
+        {
+          "runtime": "node",
+          "steps": 14,
+          "cleanServerExits": 5,
+          "cleanWorkerExits": 6
+        },
+        {
+          "runtime": "rust",
+          "steps": 14,
+          "cleanServerExits": 5,
+          "cleanWorkerExits": 6
+        }
+      ],
+      "projectAutomations": {
+        "completed": true,
+        "actualScheduler": true,
+        "actualScriptConditions": [0, 7],
+        "started": 1,
+        "skipped": 1,
+        "completedNativeTurns": 1,
+        "retainedAfterTwoRestarts": true,
+        "deleted": true,
+        "additionalModelRequests": 1
+      },
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/automation-3059.K5eTbabz/pglite.json",
+        "bytes": 1048759,
+        "sha256": "87f3d81e65861c7691d003ebdc1565b388ada7112e8bcf4fab594e2712beba3f"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/automation-3059.K5eTbabz/pglite.log",
+        "bytes": 1021,
+        "sha256": "9fbad063a28dd6378fbc95e8fc79e494cc96edd39d3adb2134f1925c42072425"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "observations": [
+        {
+          "runtime": "node",
+          "steps": 14,
+          "cleanServerExits": 5,
+          "cleanWorkerExits": 6
+        },
+        {
+          "runtime": "rust",
+          "steps": 14,
+          "cleanServerExits": 5,
+          "cleanWorkerExits": 6
+        }
+      ],
+      "projectAutomations": {
+        "completed": true,
+        "actualScheduler": true,
+        "actualScriptConditions": [0, 7],
+        "started": 1,
+        "skipped": 1,
+        "completedNativeTurns": 1,
+        "retainedAfterTwoRestarts": true,
+        "deleted": true,
+        "additionalModelRequests": 1
+      },
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/automation-3059.K5eTbabz/bundled-postgres.json",
+        "bytes": 1116063,
+        "sha256": "79f9717bda9cbfe29f4973245fd3a8d44ae797ba94afe7bb9ef5a2faa45e7775"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/automation-3059.K5eTbabz/bundled-postgres.log",
+        "bytes": 1500,
+        "sha256": "27ed5efde0c6279905309cf69f474e0d73e4b33902e54bf5d3f07d8d16f8e77a"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "observations": [
+        {
+          "runtime": "node",
+          "steps": 14,
+          "cleanServerExits": 5,
+          "cleanWorkerExits": 6
+        },
+        {
+          "runtime": "rust",
+          "steps": 14,
+          "cleanServerExits": 5,
+          "cleanWorkerExits": 6
+        }
+      ],
+      "projectAutomations": {
+        "completed": true,
+        "actualScheduler": true,
+        "actualScriptConditions": [0, 7],
+        "started": 1,
+        "skipped": 1,
+        "completedNativeTurns": 1,
+        "retainedAfterTwoRestarts": true,
+        "deleted": true,
+        "additionalModelRequests": 1
+      },
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/automation-3059.K5eTbabz/postgres.json",
+        "bytes": 1113249,
+        "sha256": "8ffdb1e50d056234d087e2844cd839aba363a74926c5a70c10c8ff33ae883f8b"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/automation-3059.K5eTbabz/postgres.log",
+        "bytes": 980,
+        "sha256": "16e22d83c01ffc99967bd7fdadfda326aab355c6651063236b64cc69d5adffdd"
+      }
+    }
+  ]
+}

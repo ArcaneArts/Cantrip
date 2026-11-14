@@ -68,6 +68,36 @@
         "sha256": "ce8ed321df2448e51a23a0186397aeaa9cf7ed4b26c8dc07a9ef26c250cf56ab"
       },
       "managedPostgresStopped": true
+    },
+    {
+      "databaseMode": "postgres",
+      "reopen": false,
+      "configurationSource": "explicit-initial-configuration",
+      "identityAndSettingRetained": false,
+      "ownedWorkerResponded": true,
+      "cleanTrayQuit": true,
+      "guestDiskMatchesSerial": true,
+      "receipt": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/guest-evidence/installed-3059-postgres.json",
+        "bytes": 960,
+        "sha256": "7dcfd7d3c71d27a5f89aa3b75a1ae554aa4d0b60966521b22d40ddc1884ec94d"
+      },
+      "externalPostgresSurvivedAppQuit": true
+    },
+    {
+      "databaseMode": "postgres",
+      "reopen": true,
+      "configurationSource": "persisted-profile",
+      "identityAndSettingRetained": true,
+      "ownedWorkerResponded": true,
+      "cleanTrayQuit": true,
+      "guestDiskMatchesSerial": true,
+      "receipt": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/guest-evidence/installed-3059-postgres-reopen.json",
+        "bytes": 946,
+        "sha256": "c12f241b0ec6a091039eaf4f16f3766a65443fa0392cb938b013fced659f543c"
+      },
+      "externalPostgresSurvivedAppQuit": true
     }
   ]
 }

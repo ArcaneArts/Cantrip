@@ -28,9 +28,7 @@
     "servicesReaped": true,
     "serverShutdownLogged": true
   },
-  "remaining": [
-    "External PostgreSQL desktop cases, signed updater and standalone runtime retry."
-  ],
+  "remaining": ["Signed updater and standalone runtime retry."],
   "reopenReceipt": {
     "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/guest-evidence/installed-3059-pglite-reopen.json",
     "bytes": 898,
