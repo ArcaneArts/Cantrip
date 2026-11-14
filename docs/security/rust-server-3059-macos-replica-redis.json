@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "workerVersion": "1.1.3059",
+  "platform": "darwin-arm64",
+  "databaseMode": "postgres",
+  "serverPair": "rust/rust",
+  "testDriverCommit": "d56846966da0a693bbdd65719eaa2aa559cce133",
+  "scope": "Two macOS native Rust servers with PostgreSQL 18.6 and Redis 8.10.3. Chromium connects to the app peer and two full Node workers connect to the other peer. A test wrapper delays inspection of the disposable Git checkout, then executes the real Git command.",
+  "browserSteps": 14,
+  "redisStopSignal": "SIGKILL",
+  "offlineReadiness": [503, 503],
+  "recoveredReadiness": [200, 200],
+  "databaseStayedReady": true,
+  "originalLeaseRenewalDeltaMs": 29998,
+  "originalCommandRetainedUntilRedisRestart": true,
+  "bothWorkerProcessesRetainedDuringRedisOutage": true,
+  "replicaWorkerRenewedClaimOnSamePeer": true,
+  "completedState": "succeeded",
+  "completedAttempt": 2,
+  "completedRevision": 11,
+  "replacementBrowserPeerReplayedExactRevision": true,
+  "userOwnedCheckoutSurvivedDetach": true,
+  "evidence": {
+    "matrix": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/replica-redis-3059.ge7sSEeb/matrix.json",
+      "bytes": 407810,
+      "sha256": "c41ff6441b661f87dd098ce0bd79f2e7db94cf8c716376730525f12f832863c6"
+    },
+    "exit": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/replica-redis-3059.ge7sSEeb/matrix.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "inputs": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/replica-redis-3059.ge7sSEeb/inputs.sha256",
+      "bytes": 1270,
+      "sha256": "fa959eea75d49e38bbde98ac8a0d8b58324c846e331801c25f63e6cdb9883156"
+    }
+  }
+}
