@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "applicationBuildSourceCommit": "5a7acd16617a8cb10d57ce481f4007d08db2a291",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "serverArtifact": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/cantrip-server-1.1.3059-darwin-arm64.tar.gz",
+    "bytes": 66994727,
+    "sha256": "a58ccdb402201bbb51843ab7df661aa4efe30b71b35858828fda1a596d5de866"
+  },
+  "serverExecutableSha256": "98158f98aa453ad802282bc6119cf37f66251923d77f53b6fe08fe55c14107a3",
+  "simulator": {
+    "deviceModel": "iPhone 17 Pro",
+    "platform": "iOS 26.4 Simulator ARM64",
+    "buildTool": "Xcode 27.0",
+    "bundleId": "art.cantrip.qa",
+    "version": "1.1.3059",
+    "build": "3059",
+    "configuration": "Debug, ad hoc signed",
+    "applicationArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/ios-simulator-3059.NHoiuQtU/Cantrip-1.1.3059-ios-simulator.zip",
+      "bytes": 4796235,
+      "sha256": "1b4f07a1c5085c8183611172059b08254069f0ca6b6c612c28d84b34a29512d2"
+    },
+    "installedRendererVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/ios-simulator-3059.NHoiuQtU/installed-renderer-verification.json",
+      "bytes": 127,
+      "sha256": "04ae37e198e7182839af0333dd63811ec84c994c027afef3faf72547cd7a9670"
+    },
+    "rendererFilesMatched": 195,
+    "appExecutableSha256": "76aabb9e95f5c1f105c44c54dc83c67209488a8be608ee81ba14152522d1bfda"
+  },
+  "databaseModes": {
+    "pglite": {
+      "passwordSignInStatus": 200,
+      "authenticatedSessionStatusAfterServerRestart": 200,
+      "appLiveStatusAfterServerRestart": 101,
+      "authenticatedSessionExchangesAfterRestart": 2,
+      "appLiveUpgradesAfterRestart": 2,
+      "serverExitStatuses": [0, 0]
+    },
+    "bundled-postgres": {
+      "passwordSignInStatus": 200,
+      "authenticatedSessionStatusAfterServerRestart": 200,
+      "appLiveStatusAfterServerRestart": 101,
+      "authenticatedSessionExchangesAfterRestart": 1,
+      "appLiveUpgradesAfterRestart": 1,
+      "serverExitStatuses": [0, 0]
+    },
+    "postgres": {
+      "passwordSignInStatus": 200,
+      "authenticatedSessionStatusAfterServerRestart": 200,
+      "appLiveStatusAfterServerRestart": 101,
+      "authenticatedSessionExchangesAfterRestart": 1,
+      "appLiveUpgradesAfterRestart": 1,
+      "serverExitStatuses": [0, 0]
+    }
+  },
+  "accountCatalog": {
+    "nativePublicKeys": 1,
+    "accountBindings": 3,
+    "beforeServerRestartSha256": "16e29a63888ebc10ba759b4f58069a190edcfc0a6cfbf078d005005cc3030927",
+    "afterServerRestartSha256": "16e29a63888ebc10ba759b4f58069a190edcfc0a6cfbf078d005005cc3030927"
+  },
+  "tests": [
+    {
+      "name": "first-session",
+      "exitStatus": 0,
+      "eventsPassed": [
+        "external-postgres-installed-sign-in",
+        "bundled-postgres-installed-sign-in",
+        "both-installed-sessions-retained-after-app-relaunch"
+      ],
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/ios-simulator-3059.NHoiuQtU/distinct-hostnames.Ax3sbjCM/first-session.log",
+        "bytes": 114476,
+        "sha256": "70ce9e80269fcbc18e74ed628fa17df4559db76e702cac1de219c6637b091069"
+      }
+    },
+    {
+      "name": "all-stores",
+      "exitStatus": 0,
+      "eventsPassed": [
+        "pglite-installed-sign-in",
+        "all-three-installed-sessions-retained"
+      ],
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/ios-simulator-3059.NHoiuQtU/distinct-hostnames.Ax3sbjCM/all-stores.log",
+        "bytes": 108933,
+        "sha256": "19111a78067d9ab7b82c4491e9a4ed7148f0ee238a193d400c2aa9655eb763a2"
+      }
+    },
+    {
+      "name": "restart",
+      "exitStatus": 0,
+      "eventsPassed": [
+        "all-three-installed-sessions-retained-after-rust-restart"
+      ],
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/ios-simulator-3059.NHoiuQtU/distinct-hostnames.Ax3sbjCM/restart.log",
+        "bytes": 42390,
+        "sha256": "a82512db901d7c21b151d2c3db41adc4c552430e71f3dbc12544b5a86d01da32"
+      }
+    }
+  ],
+  "evidence": {
+    "wireWitness": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/ios-simulator-3059.NHoiuQtU/distinct-hostnames.Ax3sbjCM/http-witness.jsonl",
+      "bytes": 82906,
+      "sha256": "7d64d978e35b1a74b29c94c7ae29e8dad582c392f6bc61a0cc73a1f997e408c8"
+    },
+    "xctestTemplate": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/ios-simulator-3059.NHoiuQtU/distinct-hostnames.Ax3sbjCM/InstalledCantripUITests.template.swift",
+      "bytes": 6626,
+      "sha256": "b4a8bfba0decc611fa94d11479912bc117c500f2826648bc295db1803d265a90"
+    },
+    "fixtureProxy": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/ios-simulator-3059.NHoiuQtU/distinct-hostnames.Ax3sbjCM/mobile-server.mjs",
+      "bytes": 10060,
+      "sha256": "a2dd09976f4f77423bd55ec88b5a68f956a60b80ce92dccb4b808746a49fb5be"
+    },
+    "targetSetup": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/mobile-3059.6DBAm17a/ios-simulator-3059.NHoiuQtU/add-xctest-target.rb",
+      "bytes": 1988,
+      "sha256": "8aa355f12601619159356eb8af25207331bc92c665c43b451a44cc8d448d46ba"
+    }
+  },
+  "observations": [
+    "The installed Capacitor app used its WKWebView and native account storage throughout all three XCTest runs.",
+    "An earlier fixture on two ports of the same hostname lost the first session after the second login. The passing run used three distinct TLS hostnames and all sessions reopened after server restart without a new login.",
+    "Installed iOS camera QR and physical-device sign-in remain open."
+  ]
+}
