@@ -188,6 +188,32 @@
       }
     }
   },
+  "externalPostgres3033Repeat": {
+    "status": "passed",
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/v7-external-postgres/extracted/report.json",
+      "bytes": 3748,
+      "sha256": "3c9d868d84e6d8262b3b5386c145fe23a4f94a0ed5b4ec46d36eba1adee875de"
+    },
+    "terminalReceipt": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/v7-external-postgres/extracted/terminal-receipt.json",
+      "bytes": 1300,
+      "sha256": "28efdace04a4b2c5d0b8ca3d8e6a5ca720833b53275c843f5fc66daad8199f24"
+    },
+    "harnessCommit": "6b39e03a29448b9146be6fdb9e7fe3ed8ed7e91a",
+    "version": "1.1.3033",
+    "entrySha256": "7db41db230cef76099edf4364e4b8d6386188168c6811d6c85e420cf2589b7eb",
+    "externalDatabaseStartupBudgetMs": 360000,
+    "externalDatabaseShutdownBudgetMs": 45000,
+    "initialStartupMs": 67811.50099999999,
+    "throughputMiBPerSecond": 5.836395084916367,
+    "slowConsumerCloseCode": 1013,
+    "recoveryWithWorkerReconnectMs": 28503.293999999994,
+    "retainedIdentity": true,
+    "retainedWrite": true,
+    "serverCleanExit": true,
+    "scope": "Rebuilt Rust executable used previously verified server assets in the local Windows x64 guest."
+  },
   "externalPostgresStartupHarnessFix": "54355efdeccbc741b3e39da88d434cc4738e53a2",
   "installedBundledPostgresModelServerLoss": {
     "version": "1.1.2976",

@@ -196,12 +196,15 @@ passed. The bundled PostgreSQL restart failed during WAL recovery. The external
 PostgreSQL run recovered the accepted write and identity and exited Cantrip
 cleanly, then timed out shutting down the separate database fixture.
 
-The Rust 1.1.3033 follow-up passed the PGlite and bundled PostgreSQL cases
-with 7.23 and 5.47 MiB/s respectively. Its external PostgreSQL run stopped
-before Cantrip launched because the independent fixture used a 60-second
-startup default. The benchmark now passes the configured startup timeout to
-that fixture. These results cover single observations in emulation, and the
-Node bundled PostgreSQL control uses an independent database process.
+The Rust 1.1.3033 follow-up passed on PGlite, bundled PostgreSQL and external
+PostgreSQL at 7.23, 5.47 and 5.84 MiB/s respectively. The first external
+PostgreSQL follow-up stopped at the independent fixture's 60-second startup
+deadline. The repeat used the benchmark's configured startup budget for that
+fixture and transferred the exact payload, closed the slow consumer with code
+1013, reconnected the worker and recovered the write and identity in 28.50 s.
+The Cantrip server and the independent PostgreSQL fixture both shut down
+cleanly. These results cover single observations in emulation, and the Node
+bundled PostgreSQL control uses an independent database process.
 [Windows comparison and retained failures](security/rust-server-windows-stream-comparison.json)
 
 ## Reproduce
