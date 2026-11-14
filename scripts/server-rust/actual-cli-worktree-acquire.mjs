@@ -145,7 +145,9 @@ export async function actualCliWorktreeAcquire({
           true,
           "The provider must complete the destination turn",
         ),
-      process.platform === "win32" ? 120_000 : 60_000,
+      // Destination thread preparation and the native turn both run inside
+      // this observation window on the installed Windows worker.
+      process.platform === "win32" ? 240_000 : 60_000,
     );
 
     // The archive can only finish after the destination model has responded.
