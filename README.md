@@ -478,7 +478,7 @@ This starts the shared protocol watcher, Cantrip server, local worker, and Vite 
 - App: <http://127.0.0.1:5173>
 - Server: <http://127.0.0.1:4310>
 
-Vite hot module replacement updates the app as frontend files change. The Node server and worker also restart automatically when their source changes. Press `Ctrl+C` once in the root terminal to stop every process started by the command.
+Vite hot module replacement updates the app as frontend files change. The development launcher rebuilds and restarts the Rust server when its source changes, and the Node worker restarts when its own source changes. Press `Ctrl+C` once in the root terminal to stop every process started by the command.
 
 Local database files, worker-owned repository clones, and managed project
 folders are stored under `.cantrip/browser-dev/` and are ignored by Git.
@@ -846,7 +846,7 @@ published if either mobile lane fails.
 See [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md#mobile-release-lanes) for the
 required iOS Actions secrets.
 
-Browser-only and mobile clients cannot bootstrap a Node server or worker. They use the same server switcher to select a reachable standalone server. Tauri development keeps the root-orchestrated hot-reload stack, while a production desktop bundle supervises its internal server and worker automatically.
+Browser-only and mobile clients use the server switcher to select a reachable standalone server. Tauri development keeps the root-orchestrated hot-reload stack. A production desktop bundle automatically launches and supervises its internal Rust server and Node worker.
 
 The mobile shell provides bottom navigation for project surfaces, native haptic
 feedback on tab press and long-press reset, safe-area-aware layouts, a terminal

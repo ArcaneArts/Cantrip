@@ -411,6 +411,30 @@ export async function actualCantripOsSurfaces({
   await startWorker();
   await authorizeSurfaceWorker(page, workerId);
   await page.evaluate(() => window.folderLive.start());
+  const desktopOperationPath = `/api/cantrip-os/${instance.id}/workspaces/${selected.id}/desktop-operations/${started.operationId}`;
+  const durableOperation = await call(
+    "api-client",
+    "request",
+    desktopOperationPath,
+  );
+  assert.deepEqual(durableOperation, started);
+  const observedOperation = await desktop(
+    "observeCantripOsDesktopDraft",
+    intent,
+  );
+  assert.deepEqual(observedOperation, started);
+  const history = await desktop(
+    "getCantripOsDesktopOperations",
+    instance.id,
+    selected.id,
+  );
+  assert.deepEqual(history.items, [started]);
+  assert.equal(history.nextCursor, null);
+  evidence.recoveredDesktopOperation = {
+    operationId: started.operationId,
+    state: observedOperation.state,
+    matchedReadAndHistory: true,
+  };
   const retained = await getWire();
   for (const key of [
     "titleProtection",
@@ -443,6 +467,7 @@ export async function actualCantripOsSurfaces({
       liveCapture: true,
       retainedCapture: true,
       encryptedStateRetained: true,
+      originalOperationRecovered: true,
     },
     tunnel: {
       guestEcho: true,

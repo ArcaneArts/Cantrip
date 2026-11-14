@@ -6294,6 +6294,7 @@
         "status": "implemented-pending-platform-acceptance",
         "implementation": ["cantrip_server_rs/src/http/cantrip_os_desktop.rs"],
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-desktop.json",
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
           "docs/RUST_SERVER_READ_METHODS.md",
@@ -6314,12 +6315,13 @@
         "status": "partial",
         "implementation": ["cantrip_server_rs/src/http/cantrip_os_desktop.rs"],
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-desktop.json",
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
           "docs/RUST_SERVER_READ_METHODS.md"
         ],
         "remaining": [
-          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+          "Packaged macOS ARM64 browser and full worker qualify the completed guest desktop operation on all three stores. Mid-operation receipt loss and remaining platform packages still require qualification."
         ]
       },
       {
@@ -6451,9 +6453,12 @@
         "path": "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop-operations/:operationId/observe",
         "implementation": "cantrip_server_rs/src/http/cantrip_os_desktop.rs",
         "status": "partial",
-        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-desktop.json",
+          "docs/RUST_SERVER_SOURCE_DRIFT.md"
+        ],
         "remaining": [
-          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+          "Packaged macOS ARM64 browser and full worker qualify the completed guest desktop operation on all three stores. Mid-operation receipt loss and remaining platform packages still require qualification."
         ]
       },
       {
@@ -11684,18 +11689,24 @@
         "command": "cantrip-os.desktop.status",
         "implementation": "cantrip_server_rs/src/cantrip_os/",
         "status": "partial",
-        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-desktop.json",
+          "docs/RUST_SERVER_SOURCE_DRIFT.md"
+        ],
         "remaining": [
-          "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+          "Packaged macOS ARM64 browser and full worker qualify the completed guest desktop operation on all three stores. Mid-operation receipt loss and remaining platform packages still require qualification."
         ]
       },
       {
         "command": "cantrip-os.desktop.operation",
         "implementation": "cantrip_server_rs/src/cantrip_os/",
         "status": "partial",
-        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-desktop.json",
+          "docs/RUST_SERVER_SOURCE_DRIFT.md"
+        ],
         "remaining": [
-          "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+          "Packaged macOS ARM64 browser and full worker qualify the completed guest desktop operation on all three stores. Mid-operation receipt loss and remaining platform packages still require qualification."
         ]
       },
       {
@@ -12240,6 +12251,7 @@
         "implementation": "cantrip_server_rs/src/http/remote_desktops.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-desktop.json",
           "docs/RUST_SERVER_REMOTE_SURFACES.md",
           "docs/security/rust-server-guest-surfaces.json",
           "scripts/server-rust/actual-cantrip-os-surfaces.mjs",
@@ -12254,6 +12266,7 @@
         "implementation": "cantrip_server_rs/src/http/remote_desktop_fleet.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-desktop.json",
           "docs/RUST_SERVER_REMOTE_SURFACES.md",
           "docs/security/rust-server-guest-surfaces.json",
           "scripts/server-rust/actual-cantrip-os-surfaces.mjs",
@@ -12268,6 +12281,7 @@
         "implementation": "cantrip_server_rs/src/http/remote_desktops.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-desktop.json",
           "docs/RUST_SERVER_REMOTE_SURFACES.md",
           "docs/security/rust-server-guest-surfaces.json",
           "scripts/server-rust/actual-cantrip-os-surfaces.mjs",
@@ -12282,6 +12296,7 @@
         "implementation": "cantrip_server_rs/src/http/worker_link_tunnels.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-desktop.json",
           "docs/RUST_SERVER_REMOTE_SURFACES.md",
           "docs/security/rust-server-guest-surfaces.json",
           "scripts/server-rust/actual-cantrip-os-surfaces.mjs",
