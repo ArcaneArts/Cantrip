@@ -177,6 +177,7 @@
     "historicalProfileUpgradeAndPostWriteRollback": "docs/security/rust-server-3059-historical-profile.json",
     "macosNativeExecutionPostWriteRollback": "docs/security/rust-server-3059-macos-profile-rollback.json",
     "linuxAccountProtection": "docs/security/rust-server-3059-linux-account-protection.json",
+    "linuxModelOperationBoundaries": "docs/security/rust-server-3059-linux-model-boundaries.json",
     "macosFreshPgliteReadiness": "docs/security/rust-server-3059-macos-fresh-pglite.json",
     "macosNativeQueueWire": "docs/security/rust-server-3059-macos-native-queue-wire.json",
     "mobile": "docs/security/rust-server-3059-mobile-qualification.json",

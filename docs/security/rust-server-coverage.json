@@ -6638,6 +6638,7 @@
         "implementation": "cantrip_server_rs/src/http/model_operations.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-linux-model-boundaries.json",
           "docs/security/rust-server-3059-postgres-long-outage.json",
           "docs/RUST_SERVER_SOURCE_DRIFT.md",
           "scripts/server-rust/model-operation-boundary-compatibility.mjs",
@@ -6657,6 +6658,7 @@
         "implementation": "cantrip_server_rs/src/http/model_operations.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-linux-model-boundaries.json",
           "docs/security/rust-server-3059-postgres-long-outage.json",
           "docs/RUST_SERVER_SOURCE_DRIFT.md",
           "scripts/server-rust/model-operation-boundary-compatibility.mjs",
@@ -6676,6 +6678,7 @@
         "implementation": "cantrip_server_rs/src/http/model_operations.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-linux-model-boundaries.json",
           "docs/RUST_SERVER_SOURCE_DRIFT.md",
           "scripts/server-rust/model-operation-boundary-compatibility.mjs",
           "docs/RUST_SERVER_MODEL_OPERATIONS.md",
@@ -6694,6 +6697,7 @@
         "implementation": "cantrip_server_rs/src/http/model_operations.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-linux-model-boundaries.json",
           "docs/RUST_SERVER_SOURCE_DRIFT.md",
           "scripts/server-rust/model-operation-boundary-compatibility.mjs",
           "docs/RUST_SERVER_MODEL_OPERATIONS.md",
