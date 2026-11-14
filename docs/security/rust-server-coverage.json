@@ -12384,14 +12384,14 @@
       {
         "command": "cantrip-os.backup.capture",
         "implementation": "cantrip_server_rs/src/cantrip_os/",
-        "status": "implemented-pending-platform-acceptance",
+        "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-execution.json",
           "docs/security/rust-server-os-execution-acceptance.json",
           "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
         ],
         "remaining": [
-          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
-          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+          "Published macOS ARM64 package qualifies encrypted archive and protected receipt recovery with the full worker and Linux guest on all three database modes. Shared Redis and remaining supported-platform package acceptance are open for this scenario."
         ]
       },
       {
@@ -12402,13 +12402,14 @@
         ],
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-execution.json",
           "docs/RUST_SERVER_OS_SOURCE_BACKUP.md",
           "docs/security/rust-server-os-source-backup-acceptance.json",
           "scripts/server-rust/actual-cantrip-os-backup-client.mjs",
           "scripts/server-rust/os-backup-response-fault.mjs"
         ],
         "remaining": [
-          "The actual account-authenticated browser, worker and Linux guest qualify replacement, protected receipt recovery and unchanged inodes across all three stores. Shared Redis and final supported-platform artifact acceptance remain open for this scenario."
+          "Published macOS ARM64 package qualifies encrypted archive and protected receipt recovery with the full worker and Linux guest on all three database modes. Shared Redis and remaining supported-platform package acceptance are open for this scenario."
         ]
       },
       {
@@ -12419,26 +12420,27 @@
         ],
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-execution.json",
           "docs/RUST_SERVER_OS_SOURCE_BACKUP.md",
           "docs/security/rust-server-os-source-backup-acceptance.json",
           "scripts/server-rust/actual-cantrip-os-backup-client.mjs",
           "scripts/server-rust/os-backup-response-fault.mjs"
         ],
         "remaining": [
-          "The actual account-authenticated browser, worker and Linux guest qualify replacement, protected receipt recovery and unchanged inodes across all three stores. Shared Redis and final supported-platform artifact acceptance remain open for this scenario."
+          "Published macOS ARM64 package qualifies encrypted archive and protected receipt recovery with the full worker and Linux guest on all three database modes. Shared Redis and remaining supported-platform package acceptance are open for this scenario."
         ]
       },
       {
         "command": "cantrip-os.backup.observe",
         "implementation": "cantrip_server_rs/src/cantrip_os/",
-        "status": "implemented-pending-platform-acceptance",
+        "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-execution.json",
           "docs/security/rust-server-os-execution-acceptance.json",
           "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
         ],
         "remaining": [
-          "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
-          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+          "Published macOS ARM64 package qualifies encrypted archive and protected receipt recovery with the full worker and Linux guest on all three database modes. Shared Redis and remaining supported-platform package acceptance are open for this scenario."
         ]
       },
       {
@@ -15234,6 +15236,7 @@
         "implementation": "cantrip_server_rs/src/run_configurations/lifecycle.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-execution.json",
           "docs/RUST_SERVER_OS_RUN_LIFECYCLE.md",
           "docs/security/rust-server-os-run-lifecycle-acceptance.json",
           "scripts/server-rust/actual-cantrip-os-run-client.mjs",
@@ -15241,7 +15244,7 @@
           "scripts/server-rust/actual-folder-client.mjs"
         ],
         "remaining": [
-          "The actual guest test qualifies the public browser and full worker path on all three stores with account authentication. The large retained-output worker test and final current platform/artifact acceptance remain open."
+          "Published macOS ARM64 package qualifies browser-driven Run lifecycle, encrypted output, and process recovery on all three database modes. The historical source-backup record also qualifies the worker retained-output test on its Phase 5 guest. Remaining supported-platform package acceptance is open for this scenario."
         ]
       },
       {
@@ -15249,6 +15252,7 @@
         "implementation": "cantrip_server_rs/src/run_configurations/lifecycle.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-execution.json",
           "docs/RUST_SERVER_OS_RUN_LIFECYCLE.md",
           "docs/security/rust-server-os-run-lifecycle-acceptance.json",
           "scripts/server-rust/actual-cantrip-os-run-client.mjs",
@@ -15256,7 +15260,7 @@
           "scripts/server-rust/actual-folder-client.mjs"
         ],
         "remaining": [
-          "The actual guest test qualifies the public browser and full worker path on all three stores with account authentication. The large retained-output worker test and final current platform/artifact acceptance remain open."
+          "Published macOS ARM64 package qualifies browser-driven Run lifecycle, encrypted output, and process recovery on all three database modes. The historical source-backup record also qualifies the worker retained-output test on its Phase 5 guest. Remaining supported-platform package acceptance is open for this scenario."
         ]
       },
       {
@@ -15267,6 +15271,7 @@
         ],
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-execution.json",
           "docs/RUST_SERVER_OS_RUN_LIFECYCLE.md",
           "docs/security/rust-server-os-run-lifecycle-acceptance.json",
           "scripts/server-rust/actual-cantrip-os-run-client.mjs",
@@ -15274,7 +15279,7 @@
           "scripts/server-rust/actual-folder-client.mjs"
         ],
         "remaining": [
-          "The actual guest test qualifies the public browser and full worker path on all three stores with account authentication. The large retained-output worker test and final current platform/artifact acceptance remain open."
+          "Published macOS ARM64 package qualifies browser-driven Run lifecycle, encrypted output, and process recovery on all three database modes. The historical source-backup record also qualifies the worker retained-output test on its Phase 5 guest. Remaining supported-platform package acceptance is open for this scenario."
         ]
       },
       {
@@ -15282,6 +15287,7 @@
         "implementation": "cantrip_server_rs/src/run_configurations/output.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-execution.json",
           "docs/RUST_SERVER_OS_RUN_LIFECYCLE.md",
           "docs/security/rust-server-os-run-lifecycle-acceptance.json",
           "scripts/server-rust/actual-cantrip-os-run-client.mjs",
@@ -15289,7 +15295,7 @@
           "scripts/server-rust/actual-folder-client.mjs"
         ],
         "remaining": [
-          "The actual guest test qualifies the public browser and full worker path on all three stores with account authentication. The large retained-output worker test and final current platform/artifact acceptance remain open."
+          "Published macOS ARM64 package qualifies browser-driven Run lifecycle, encrypted output, and process recovery on all three database modes. The historical source-backup record also qualifies the worker retained-output test on its Phase 5 guest. Remaining supported-platform package acceptance is open for this scenario."
         ]
       },
       {
@@ -15297,6 +15303,7 @@
         "implementation": "cantrip_server_rs/src/run_configurations/observations.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-execution.json",
           "docs/RUST_SERVER_OS_RUN_LIFECYCLE.md",
           "docs/security/rust-server-os-run-lifecycle-acceptance.json",
           "scripts/server-rust/actual-cantrip-os-run-client.mjs",
@@ -15304,7 +15311,7 @@
           "scripts/server-rust/actual-folder-client.mjs"
         ],
         "remaining": [
-          "The actual guest test qualifies the public browser and full worker path on all three stores with account authentication. The large retained-output worker test and final current platform/artifact acceptance remain open."
+          "Published macOS ARM64 package qualifies browser-driven Run lifecycle, encrypted output, and process recovery on all three database modes. The historical source-backup record also qualifies the worker retained-output test on its Phase 5 guest. Remaining supported-platform package acceptance is open for this scenario."
         ]
       },
       {
