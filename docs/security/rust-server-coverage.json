@@ -24192,6 +24192,17 @@
           "Performance, final default Rust cutover and production Node removal remain part of the full replacement goal."
         ]
       },
+      "macos3032SharedResourceRolling": {
+        "report": "docs/security/rust-server-3032-macos-live-rolling.json",
+        "version": "1.1.3032",
+        "target": "darwin-arm64",
+        "database": "postgres",
+        "pairs": ["node/node", "node/rust", "rust/node", "rust/rust"],
+        "productSteps": 128,
+        "peerReplacements": 8,
+        "cleanServerExits": 24,
+        "cleanWorkerExits": 24
+      },
       "sharedProductLocalAcceptance": {
         "platform": "darwin-arm64",
         "observedAt": "2026-11-07",
@@ -25092,6 +25103,15 @@
     },
     "appLiveTransport": {
       "status": "partial",
+      "macos3032StandaloneLive": {
+        "report": "docs/security/rust-server-3032-macos-live-rolling.json",
+        "version": "1.1.3032",
+        "target": "darwin-arm64",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "matchingSocketCases": 100,
+        "matchingHttpCases": 24,
+        "matchingUnauthenticatedHandshakes": 6
+      },
       "implementation": "cantrip_server_rs/src/live/",
       "evidence": [
         "scripts/server-rust/live-hub-oracle.mjs",

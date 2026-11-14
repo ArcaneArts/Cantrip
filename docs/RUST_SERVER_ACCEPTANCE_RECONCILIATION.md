@@ -1252,6 +1252,22 @@ HTTP fixture, private PostgreSQL helper/binaries and native PGlite runtime throu
 the same environment variables used by other server comparisons. Repeat the
 notification suite for both PostgreSQL modes and all authentication profiles.
 
+## Current App Live and shared-server acceptance
+
+The macOS ARM64 1.1.3032 standalone server matched the Node reference in
+100 App Live socket cases, 24 HTTP cases and six unauthenticated upgrade
+rejections across PGlite, bundled PostgreSQL and external PostgreSQL. The
+comparison covered reconnect replay, connection limits, committed worker
+invalidations, sign-out and shutdown. The external PostgreSQL run also held an
+authorization query and verified that socket ping and close continued.
+
+With shared external PostgreSQL and Redis, the browser and full packaged
+worker also passed 128 resource steps across all four initial Node/Rust
+pairings. All eight peer replacements retained the worker process and browser
+session. App Live reconnected, and each replacement served encrypted file
+reads and writes.
+[macOS App Live and rolling replacement report](security/rust-server-3032-macos-live-rolling.json)
+
 ## Open background-service comparisons
 
 The macOS ARM64 1.1.3032 archive passed account approval expiry and credential

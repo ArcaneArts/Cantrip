@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3032",
+  "target": "darwin-arm64",
+  "completeReplacement": false,
+  "sourceCommit": "d91420eb9e0b4513f2b8b3928cfcde81dadd4c20",
+  "harnessCommit": "2795880b0c32c042393f7d20acacb03124fbf7c9",
+  "artifact": {
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-d91420eb9/cantrip-server-1.1.3032-darwin-arm64.tar.gz",
+      "bytes": 66941602,
+      "sha256": "dacdfeaadf9a4c1ed4ed828fb6fe09bcb54a5f8e8fd176fc6222cb64e6b58bff"
+    },
+    "executable": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-d91420eb9/qualified-candidate/bin/cantrip-server",
+      "bytes": 94323600,
+      "sha256": "c422e441f9939610d6f8dc3804cf700c7d91d0cb1a5f9bc545fba77abb39d1e1"
+    }
+  },
+  "standaloneLive": {
+    "status": "passed",
+    "nodeVersion": "24.22.2",
+    "inputs": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3032-packaged/inputs.sha256",
+      "bytes": 941,
+      "sha256": "671bdfb797b74eb0cc911c909a913685f4cdb7f81d4cc23782471a8bcb07222c"
+    },
+    "scope": "Actual App Live WebSocket and HTTP behavior against the Node reference, including authentication, reconnect replay, connection capacity, committed invalidations, close handling and an external PostgreSQL authorization lock.",
+    "matchingSocketCases": 100,
+    "matchingHttpCases": 24,
+    "matchingUnauthenticatedHandshakes": 6,
+    "databaseModes": [
+      {
+        "databaseMode": "pglite",
+        "matchingSocketCasesByProfile": {
+          "development": 10,
+          "password": 8,
+          "accounts": 8,
+          "capacity": 7
+        },
+        "matchingHttpCases": 8,
+        "matchingUnauthenticatedHandshakes": 2,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3032-packaged/pglite/acceptance.json",
+          "bytes": 43232,
+          "sha256": "5ae7f285b1f9b92991afaa27591155bd3714b1019407773e934be7463aa354a4"
+        }
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "matchingSocketCasesByProfile": {
+          "development": 10,
+          "password": 8,
+          "accounts": 8,
+          "capacity": 7
+        },
+        "matchingHttpCases": 8,
+        "matchingUnauthenticatedHandshakes": 2,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3032-packaged/bundled-postgres/acceptance.json",
+          "bytes": 43242,
+          "sha256": "8e4b03c1c5595b28594380644c1762d56f562595010c3aa47feb6f0d82be07c4"
+        }
+      },
+      {
+        "databaseMode": "postgres",
+        "matchingSocketCasesByProfile": {
+          "development": 11,
+          "password": 8,
+          "accounts": 8,
+          "capacity": 7
+        },
+        "matchingHttpCases": 8,
+        "matchingUnauthenticatedHandshakes": 2,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3032-packaged/postgres/acceptance.json",
+          "bytes": 44862,
+          "sha256": "10ff9caa50ce57479816344c06e647466993ffe6ede6bad226b02fc3c958574e"
+        }
+      }
+    ]
+  },
+  "sharedRolling": {
+    "status": "passed",
+    "databaseMode": "postgres",
+    "authenticationMode": "accounts",
+    "redisVersion": "8.10.3",
+    "workerNodeVersion": "v24.22.1",
+    "scope": "Existing Chromium client and full packaged Node worker on opposite peers. Real encrypted files, workspace and document behavior, terminal and WorkerLink transport, and rolling replacement of both peers with Rust while retaining the same worker process, browser session, and Live continuity.",
+    "inputs": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/shared-rolling-3032/inputs.sha256",
+      "bytes": 2406,
+      "sha256": "4629197f78ae564aa58a2e0589b399c865cb24a33b3d0b17b0e228f3562c4d2e"
+    },
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/shared-rolling-3032/acceptance.json",
+      "bytes": 2363322,
+      "sha256": "47b0cb53e69e7136b74f7fbd593898f4925553a43e0b23f2d4f0c399786021a9"
+    },
+    "cases": [
+      {
+        "initialServerPair": "node/node",
+        "productSteps": 32,
+        "peerReplacements": 2,
+        "encryptedFileBytes": 65536,
+        "cleanServerExits": 6,
+        "cleanWorkerExits": 6
+      },
+      {
+        "initialServerPair": "node/rust",
+        "productSteps": 32,
+        "peerReplacements": 2,
+        "encryptedFileBytes": 65536,
+        "cleanServerExits": 6,
+        "cleanWorkerExits": 6
+      },
+      {
+        "initialServerPair": "rust/node",
+        "productSteps": 32,
+        "peerReplacements": 2,
+        "encryptedFileBytes": 65536,
+        "cleanServerExits": 6,
+        "cleanWorkerExits": 6
+      },
+      {
+        "initialServerPair": "rust/rust",
+        "productSteps": 32,
+        "peerReplacements": 2,
+        "encryptedFileBytes": 65536,
+        "cleanServerExits": 6,
+        "cleanWorkerExits": 6
+      }
+    ],
+    "totals": {
+      "productSteps": 128,
+      "peerReplacements": 8,
+      "cleanServerExits": 24,
+      "cleanWorkerExits": 24
+    }
+  }
+}
