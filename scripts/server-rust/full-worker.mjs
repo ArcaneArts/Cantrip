@@ -27,6 +27,7 @@ export function launchActualWorker(
   dataDirectory,
   {
     enrollmentCode,
+    startupTimeoutMs = 90_000,
     cliBinary,
     chromiumExecutable,
     chromiumTraceDirectory,
@@ -143,9 +144,9 @@ export function launchActualWorker(
         (value) =>
           assert.ok(
             value.includes("Worker command channel connected"),
-            value.slice(-8000),
+            `Worker command channel did not connect within ${startupTimeoutMs}ms.\n${value.slice(-8000)}`,
           ),
-        90000,
+        startupTimeoutMs,
       );
       ready = true;
     },

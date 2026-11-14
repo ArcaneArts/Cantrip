@@ -43,6 +43,15 @@ write. The desktop drained both child processes before replacing the app and
 after the final quit. The PGlite case also rejected an archive with a modified
 byte before installing the valid update. The rehearsal populated fresh test
 profiles on the older runtime.
+
+The same macOS ARM64 standalone executable passed 20 product steps and 14
+model-operation cases on each database mode. A real server kill interrupted
+an active embedding and retained its original usage row without reported
+tokens. The same worker reconnected, the browser kept its server identity,
+and a new operation completed. The provider received one request for each
+interrupted operation. A separate external PostgreSQL run completed an active
+embedding during a 60-second outage, then recorded one receipt after the
+database recovered and completed a fresh request.
 [ARM64 standalone, desktop and Winterhold report](security/rust-server-3032-standalone-acceptance.json)
 
 ## Cantrip 1.1.3014 Linux standalone

@@ -88,7 +88,11 @@ export class SharedProductFixture {
       peer.server = await startPackagedNodeServer(
         path.join(repositoryRoot, "tests/reference-node-server"),
         peer.environment,
-        { nodeExecutable: process.execPath, port: this.ports[index] },
+        {
+          nodeExecutable: process.execPath,
+          port: this.ports[index],
+          startupTimeoutMs: peer.startupTimeoutMs,
+        },
       );
     } else await peer.start({ port: this.ports[index] });
     this.ports[index] = Number(new URL(peer.server.origin).port);

@@ -11,13 +11,13 @@ const postgres = require("postgres");
 
 export async function postgresFixture(
   directory,
-  { url, restartable = false } = {},
+  { url, restartable = false, startupTimeoutMs } = {},
 ) {
   const bin = process.env.CANTRIP_TEST_POSTGRES_BIN_DIR ?? "";
   const cluster = restartable
     ? await (
         await import("./restartable-postgres.mjs")
-      ).restartablePostgres(directory, bin)
+      ).restartablePostgres(directory, bin, { startupTimeoutMs })
     : undefined;
   const executable =
     !url &&
@@ -30,7 +30,11 @@ export async function postgresFixture(
     (await startServer(
       executable,
       ["--data-dir", directory, "--postgres-bin-dir", bin],
-      { cwd: repositoryRoot, env: fixtureEnvironment(directory) },
+      {
+        cwd: repositoryRoot,
+        env: fixtureEnvironment(directory),
+        startupTimeoutMs,
+      },
     ));
   const connection = url || cluster?.url || owner.origin;
   const sql = postgres(connection, { max: 1 });

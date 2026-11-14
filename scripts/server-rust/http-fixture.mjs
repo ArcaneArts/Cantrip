@@ -33,6 +33,7 @@ export class HttpFixture {
     root,
     name,
     databaseMode,
+    startupTimeoutMs,
     environment = {},
     workerIngress = false,
     providerAuthDrain = false,
@@ -47,6 +48,7 @@ export class HttpFixture {
       executable,
       name,
       databaseMode,
+      startupTimeoutMs,
       workerIngress,
       providerAuthDrain,
       auditObservations,
@@ -102,7 +104,11 @@ export class HttpFixture {
               ...(this.observeTunnelExpiry ? ["--observe-tunnel-expiry"] : []),
               ...(this.liveSqlFixture ? ["--live-sql-fixture"] : []),
             ],
-            { cwd: repositoryRoot, env: this.environment },
+            {
+              cwd: repositoryRoot,
+              env: this.environment,
+              startupTimeoutMs: this.startupTimeoutMs,
+            },
           )
         : await startServer(
             this.executable,
@@ -113,7 +119,11 @@ export class HttpFixture {
               this.databaseMode,
               "--shutdown-on-stdin-close",
             ],
-            { cwd: repositoryRoot, env: this.environment },
+            {
+              cwd: repositoryRoot,
+              env: this.environment,
+              startupTimeoutMs: this.startupTimeoutMs,
+            },
           );
     registerHttpTraceOrigin(this.server.origin, {
       kind: this.kind,

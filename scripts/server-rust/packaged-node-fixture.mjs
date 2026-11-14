@@ -9,7 +9,12 @@ import { setTimeout as delay } from "node:timers/promises";
 export async function startPackagedNodeServer(
   directory,
   environment,
-  { nodeExecutable, port = 0, platform = process.platform } = {},
+  {
+    nodeExecutable,
+    port = 0,
+    platform = process.platform,
+    startupTimeoutMs = 60_000,
+  } = {},
 ) {
   if (!port) {
     const listener = net.createServer();
@@ -58,7 +63,7 @@ export async function startPackagedNodeServer(
   );
   const origin = `http://127.0.0.1:${port}`;
   try {
-    const deadline = Date.now() + 60_000;
+    const deadline = Date.now() + startupTimeoutMs;
     let last;
     for (;;) {
       if (spawnError) throw spawnError;
