@@ -6,6 +6,12 @@ Node. The old server is an explicit development compatibility reference. See
 [default cutover](RUST_SERVER_DEFAULT_CUTOVER.md) and
 [production Node retirement](RUST_SERVER_NODE_RETIREMENT.md) for their qualification.
 
+The [1.1.3059 release reconciliation](security/rust-server-3059-release-reconciliation.json)
+ties the current coverage ledger to the tested packages and checksums.
+The production server, migrations, worker, protocol and deployment files
+match across the audited package sources and integrated commit `4d19ba2b7`.
+The Windows desktop supervisor has a separate build revision.
+
 ## Cantrip 1.1.3059 packaged servers
 
 The relocated macOS ARM64 archive and both Linux OCI images passed migrations,
@@ -24,6 +30,14 @@ software-emulated guest. Its longest shutdown took 14.1 seconds. An earlier
 PGlite shutdown exceeded 60 seconds, with 58.978 seconds spent closing the
 database. The Windows desktop and signed updater have separate acceptance.
 [Windows x64 standalone report](security/rust-server-3059-windows-standalone-retry.json)
+
+The Windows x64 NSIS package with the 180-second server shutdown allowance
+and the 1.1.3059 Node worker passed its initial PGlite launch and retained-profile
+reopen. The reopened app used the stored database selection and kept the
+server identity and settings write. Both tray quits exited zero and reaped
+the Rust server and worker. The current package's bundled and external
+PostgreSQL launch and reopen cases and the updater exercise remain open.
+[Windows PGlite package and guest receipts](security/rust-server-3059-release-reconciliation.json#artifactEvidence)
 
 Each local Winterhold rehearsal completed 18 installer operations under
 systemd and Caddy HTTPS. Six injected migration and startup failures
@@ -1578,6 +1592,15 @@ reads and writes.
 [macOS App Live and rolling replacement report](security/rust-server-3032-macos-live-rolling.json)
 
 ## Open background-service comparisons
+
+The packaged macOS ARM64 1.1.3059 executable and Node reference both passed
+approval expiry, credential reconnect and worker catalog refresh on
+external PostgreSQL with accounts enabled. They recovered the approval and
+credential operations after actual database errors. Both runtimes drained
+started database writes during shutdown, including a held quota insert.
+The worker used controlled provider replies. The current catalog run
+exercised connection-triggered refresh and quota recovery.
+[Current background-service reports](security/rust-server-3059-release-reconciliation.json#backgroundServices)
 
 The macOS ARM64 1.1.3032 archive passed account approval expiry and credential
 reconnect against the development Node reference with external PostgreSQL.
