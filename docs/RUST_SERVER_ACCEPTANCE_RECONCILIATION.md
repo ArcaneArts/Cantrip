@@ -191,6 +191,14 @@ restart. The installed native scanner exchanged a fresh browser-issued QR
 against external PostgreSQL and reopened the account with its retained key.
 All six Rust server exits were clean.
 
+The installed iOS simulator app signed in and switched accounts across the
+same three database modes. It reopened each session after app relaunch and
+after restarting all three Rust servers. Each stored account returned an
+authenticated session and upgraded App Live. The native key and three
+account bindings matched across restart, and all six server processes
+exited cleanly.
+[iOS simulator evidence](security/rust-server-3059-ios-simulator-sessions.json)
+
 The iOS App Store export passed signature and embedded provisioning checks.
 The Android debug APK and the iOS IPA both contained all 195 renderer files.
 Both Android instrumentation tests passed on the original debug APK after

@@ -9,7 +9,7 @@
     "bytes": 66994727,
     "sha256": "a58ccdb402201bbb51843ab7df661aa4efe30b71b35858828fda1a596d5de866"
   },
-  "scope": "Android emulator tests used the packaged Rust standalone server and disposable loopback TLS. The iOS artifact is a locally exported App Store IPA.",
+  "scope": "The installed Android emulator and iOS simulator apps used the packaged Rust standalone server behind disposable loopback TLS. The iOS App Store IPA is a separate distribution artifact.",
   "renderer": {
     "verifiedBuiltFilesInApkAndIpa": 195,
     "manifest": {
@@ -164,10 +164,15 @@
           "sha256": "0acf0744d2ab4d2fce4bc52bfa947bd8a9a2cf4e37346bced3a7b43e1cffa865"
         }
       }
+    },
+    "installedSimulatorSessions": {
+      "status": "passed",
+      "report": "docs/security/rust-server-3059-ios-simulator-sessions.json",
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"]
     }
   },
   "remainingAcceptance": [
-    "Installed iOS native QR and physical-device camera runs",
+    "Installed iOS native QR and physical-device sign-in",
     "Distribution-signed Android build and physical-device sign-in"
   ]
 }
