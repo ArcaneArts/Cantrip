@@ -6202,12 +6202,13 @@
         "status": "partial",
         "implementation": ["cantrip_server_rs/src/http/cantrip_os_backups.rs"],
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-reset.json",
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
           "docs/RUST_SERVER_READ_METHODS.md"
         ],
         "remaining": [
-          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+          "Published macOS ARM64 package qualifies encrypted selective reset, exact receipt recovery and rollback through the browser and full worker across all three database modes. Shared deployments and the remaining supported-platform packages require their own qualification."
         ]
       },
       {
@@ -6216,12 +6217,13 @@
         "status": "partial",
         "implementation": ["cantrip_server_rs/src/http/cantrip_os_backups.rs"],
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-reset.json",
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
           "docs/RUST_SERVER_READ_METHODS.md"
         ],
         "remaining": [
-          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+          "Published macOS ARM64 package qualifies encrypted selective reset, exact receipt recovery and rollback through the browser and full worker across all three database modes. Shared deployments and the remaining supported-platform packages require their own qualification."
         ]
       },
       {
@@ -9839,6 +9841,7 @@
         "implementation": "cantrip_server_rs/src/http/cantrip_os_backups.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-reset.json",
           "docs/security/rust-server-os-execution-acceptance.json",
           "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
         ],
@@ -11713,9 +11716,12 @@
         "command": "cantrip-os.backup.reset",
         "implementation": "cantrip_server_rs/src/cantrip_os/",
         "status": "partial",
-        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-reset.json",
+          "docs/RUST_SERVER_SOURCE_DRIFT.md"
+        ],
         "remaining": [
-          "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+          "Published macOS ARM64 package qualifies encrypted selective reset, exact receipt recovery and rollback through the browser and full worker across all three database modes. Shared deployments and the remaining supported-platform packages require their own qualification."
         ]
       },
       {
@@ -12435,6 +12441,7 @@
         ],
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-reset.json",
           "docs/security/rust-server-3059-macos-cantrip-os-execution.json",
           "docs/RUST_SERVER_OS_SOURCE_BACKUP.md",
           "docs/security/rust-server-os-source-backup-acceptance.json",
@@ -12450,6 +12457,7 @@
         "implementation": "cantrip_server_rs/src/cantrip_os/",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-reset.json",
           "docs/security/rust-server-3059-macos-cantrip-os-execution.json",
           "docs/security/rust-server-os-execution-acceptance.json",
           "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"

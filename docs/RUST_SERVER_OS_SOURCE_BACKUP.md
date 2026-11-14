@@ -67,3 +67,12 @@ worker. Each database matches eight browser snapshots against the Node
 reference. All six product cells recover the original encrypted restore and
 rollback receipts after process loss and preserve the later write in the
 displaced guest home.
+
+The [workspace reset extension](security/rust-server-3059-macos-cantrip-os-reset.json)
+selects one private file in the disposable destination workspace. The guest
+keeps the other file and retains the original home. The harness drops the
+completed reset response and kills the full worker. The browser recovers the
+exact protected receipt and confirms that replay keeps the active home inode.
+Rollback restores the original home and leaves the later write in the
+displaced home. The browser reads the reset by ID and authenticates all five
+operations in history.
