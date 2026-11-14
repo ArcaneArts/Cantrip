@@ -557,6 +557,21 @@ export async function actualTaskClient({
       "the existing Task APIs plan, review and finalize through real Codex; its native Goal tool completes implementation and the browser decrypts the objective and transcript",
     );
     await stopWorker();
+    // Worker shutdown drains late turn summaries and usage events. Capture
+    // the committed transcript before replacing its server.
+    const directBeforeRestart = await readMessages();
+    const goalBeforeRestart = await readChatMessages(planned.chat.id);
+    for (const [transcript, text] of [
+      [directBeforeRestart, answer],
+      [goalBeforeRestart, implementationAnswer],
+      ...(firstTurn ? [[goalBeforeRestart, initialGoalAnswer]] : []),
+    ])
+      assert.equal(
+        transcript.filter((message) => JSON.stringify(message).includes(text))
+          .length,
+        1,
+        "worker shutdown retains one completed response",
+      );
     const inferenceBeforeRestart = structuredClone(
       model.requests.filter((request) => request.method === "POST"),
     );
@@ -575,10 +590,14 @@ export async function actualTaskClient({
     await fixture.close();
     await fixture.start({ port });
     assert.equal((await readTask()).state, "complete");
-    assert.deepEqual(await readMessages(), messages);
+    assert.deepEqual(await readMessages(), directBeforeRestart);
+    assert.deepEqual(
+      await readChatMessages(planned.chat.id),
+      goalBeforeRestart,
+    );
     await startWorker();
     assert.equal((await readTask()).briefMarkdown, brief);
-    assert.deepEqual(await readMessages(), messages);
+    assert.deepEqual(await readMessages(), directBeforeRestart);
     assert.deepEqual(
       model.requests.filter((request) => request.method === "POST"),
       inferenceBeforeRestart,
@@ -617,12 +636,8 @@ export async function actualTaskClient({
     assert.equal(retainedGoal.goal.objective, openedGoal.goal.objective);
     assert.equal(retainedGoal.goal.threadId, openedGoal.goal.threadId);
     assert.deepEqual(
-      await page.evaluate(
-        async (chat) =>
-          (await import("/src/lib/api/chats.ts")).getMessages(chat),
-        planned.chat.id,
-      ),
-      goalMessages,
+      await readChatMessages(planned.chat.id),
+      goalBeforeRestart,
     );
     const recovery = await actualTaskRecovery({
       page,
