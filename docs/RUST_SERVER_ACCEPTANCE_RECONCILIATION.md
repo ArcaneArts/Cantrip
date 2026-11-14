@@ -27,6 +27,14 @@ reopening on Rust.
 With an isolated external PostgreSQL process paused, readiness returned
 HTTP 503 in 3.004 seconds on ARM64 and 3.008 seconds on x64. Liveness
 remained HTTP 200, and readiness returned HTTP 200 after PostgreSQL resumed.
+
+The same x64 executable also passed 20 browser product steps and 14 model
+operations with the full Node worker. During a 60-second PostgreSQL outage,
+the browser received the active embedding while readiness returned HTTP 503
+and liveness stayed at HTTP 200. PostgreSQL reopened on the same port, the
+server recorded the original receipt, and replay made no second provider
+request. A fresh decision completed. All three server generations exited
+cleanly.
 [Linux 1.1.3048 artifacts and acceptance report](security/rust-server-3048-linux-acceptance.json)
 
 ## Cantrip 1.1.3043 macOS standalone and signed desktop update

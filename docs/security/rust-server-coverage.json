@@ -30836,7 +30836,7 @@
     "status": "passed",
     "sourceCommit": "358c5b3232e4ebf34a91f7c071f1af1b7cd8a794",
     "report": "docs/security/rust-server-3048-linux-acceptance.json",
-    "scope": "Standalone images and representative Winterhold rehearsals across three stores on ARM64 and x64, including startup and migration fault recovery, post-write rollback, and a separate PostgreSQL readiness stall on each image. The x64 executable ran through Rosetta on the ARM64 Linux host."
+    "scope": "Standalone images and representative Winterhold rehearsals across three stores on ARM64 and x64, including startup and migration fault recovery, post-write rollback, and a separate PostgreSQL readiness stall on each image. The x64 image also passed active inference settlement across a 60-second external PostgreSQL outage. The x64 executable ran through Rosetta on the ARM64 Linux host."
   },
   "remainingAcceptance": [
     "Qualify packaged cross-platform dependency interruptions and longer outages. Reconcile the still-open background-service and product recovery comparisons.",
