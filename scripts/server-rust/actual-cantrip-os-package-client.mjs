@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { unlink } from "node:fs/promises";
+import path from "node:path";
 import { eventually } from "./full-worker.mjs";
 
 export async function actualCantripOsPackageClient({
@@ -8,6 +10,7 @@ export async function actualCantripOsPackageClient({
   guest,
   record,
   instance,
+  dataDirectory,
   result,
   report,
 }) {
@@ -112,6 +115,100 @@ export async function actualCantripOsPackageClient({
       await guest.exec("cantrip-executor", "enable");
     }
   }
+
+  // Leave a real guest admission staged by removing its disposable Worker
+  // cache entry after catalogue verification and before any installer starts.
+  for (const mode of ["continue", "abandon"]) {
+    const status = await packages("getCantripOsPackages", instance, account);
+    assert.ok(status.target, JSON.stringify(status));
+    assert.deepEqual(
+      status.available.find((entry) => entry.sha256 === artifact.sha256),
+      artifact,
+    );
+    const draft = await call(
+      "cantrip-os-package-draft",
+      "prepareCantripOsPackageDraft",
+      status.target,
+      { action: "upgrade", configuration: "preserve", packages: [artifact] },
+    );
+    draft.submitted = true;
+    await call("cantrip-os-package-draft", "saveCantripOsPackageDraft", draft);
+    const before = await changes();
+    await unlink(
+      path.join(
+        dataDirectory,
+        "cantrip-os-package-artifacts",
+        `${artifact.sha256}.deb`,
+      ),
+    );
+    const unknown = await packages("submitCantripOsPackage", draft);
+    assert.equal(unknown.state, "unknown", JSON.stringify(unknown));
+    const journal = `/var/lib/cantrip-os-executor/package-operations/${unknown.operationId}/record.json`;
+    const staged = JSON.parse(await guest.exec("cat", journal));
+    assert.equal(staged.state, "staged");
+    assert.deepEqual(staged.received, []);
+    assert.equal(staged.installer, null);
+    assert.equal(await changes(), before);
+    const observed = record(
+      `package-${mode}-staged`,
+      await packages("observeCantripOsPackageOperation", unknown, account),
+    );
+    assert.equal(observed.state, "unknown");
+    assert.deepEqual(JSON.parse(await guest.exec("cat", journal)), staged);
+    if (mode === "continue") {
+      const refreshed = await packages(
+        "getCantripOsPackages",
+        instance,
+        account,
+      );
+      assert.deepEqual(
+        refreshed.available.find((entry) => entry.sha256 === artifact.sha256),
+        artifact,
+      );
+    }
+    const controlled = await packages(
+      "controlCantripOsPackageOperation",
+      observed,
+      mode,
+      account,
+    );
+    const state = mode === "continue" ? "ready" : "failed";
+    const outcome = record(
+      `package-${mode}-completed`,
+      controlled.state === state
+        ? controlled
+        : await eventually(
+            () =>
+              packages("observeCantripOsPackageOperation", controlled, account),
+            (value) => assert.equal(value.state, state, JSON.stringify(value)),
+          ),
+    );
+    assert.equal(outcome.phase, mode === "continue" ? "complete" : "abandoned");
+    const opened = await call(
+      "cantrip-os-package-encryption",
+      "openCantripOsPackageResult",
+      outcome,
+    );
+    assert.equal(opened.request.operationId, draft.request.operationId);
+    assert.equal(opened.record.state, state);
+    if (mode === "abandon") {
+      assert.equal(opened.record.installer, null);
+      assert.deepEqual(opened.record.received, []);
+    }
+    const replay = await packages(
+      "controlCantripOsPackageOperation",
+      outcome,
+      "continue",
+      account,
+    );
+    assert.deepEqual(replay, outcome);
+    assert.equal(await changes(), before + (mode === "continue" ? 1 : 0));
+    report.privatePackageOutcomes.push(opened);
+    summaries.push(outcome);
+  }
+  result.steps.push(
+    "observation leaves the real staged guest admission untouched; explicit continuation configures exactly once and abandonment permanently prevents installation",
+  );
   record(
     "package-history",
     await packages(

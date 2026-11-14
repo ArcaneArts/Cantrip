@@ -6496,20 +6496,26 @@
         "method": "POST",
         "path": "/api/cantrip-os/:instanceId/package-operations/:operationId/continue",
         "implementation": "cantrip_server_rs/src/http/cantrip_os_packages.rs",
-        "status": "partial",
-        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-package-recovery.json",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs"
+        ],
         "remaining": [
-          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+          "Qualify continuation in the remaining supported platform and deployment configurations."
         ]
       },
       {
         "method": "POST",
         "path": "/api/cantrip-os/:instanceId/package-operations/:operationId/abandon",
         "implementation": "cantrip_server_rs/src/http/cantrip_os_packages.rs",
-        "status": "partial",
-        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/security/rust-server-3059-macos-cantrip-os-package-recovery.json",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs"
+        ],
         "remaining": [
-          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+          "Qualify abandonment in the remaining supported platform and deployment configurations."
         ]
       },
       {
@@ -29018,6 +29024,14 @@
       ]
     },
     "fullWorkerCantripOsLifecycle": {
+      "currentPackageRecovery": {
+        "version": "1.1.3059",
+        "platform": "darwin-arm64",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "productCells": 6,
+        "matchedSnapshotsPerPair": 52,
+        "record": "docs/security/rust-server-3059-macos-cantrip-os-package-recovery.json"
+      },
       "currentPackagedServer": {
         "version": "1.1.3059",
         "sourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",

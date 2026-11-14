@@ -1,10 +1,9 @@
 # CantripOS lifecycle qualification
 
 The existing browser SDK, production servers, full worker and actual CantripOS
-Docker guest now share a workspace, desktop, power and package lifecycle scenario.
-No guest command handler, server bridge or database route is replaced. No
-production implementation change was needed. Node remains the default server;
-the full replacement goal remains incomplete.
+Docker guest exercise the workspace, desktop, power and package lifecycle.
+Rust is the default server, and the historical Node server supplies the
+development comparison.
 
 ## Executed behavior
 
@@ -53,6 +52,12 @@ encryption grants and the normal administrative APIs:
   exactly one actual `dpkg` configuration. Replay/observation retain the exact
   protected result and cannot configure again. The browser authenticates and
   decrypts both private outcomes with its real repository-content grant.
+- Remove the cached artifact after catalog verification so the guest stages
+  the original admission and the installer cannot start. Observation leaves
+  the journal unchanged. Explicit continuation restores the verified artifact
+  and configures the package once. Abandonment leaves no uploaded artifact or
+  installer. A later continuation returns the same terminal receipt, and the
+  browser authenticates both outcomes again after restart.
 - Package admission deliberately clears execution authority. Recovery with the
   old runtime returns 409; fetching the current instance and explicitly observing
   it establishes a first observation. Repair preserves the executor's disabled
@@ -63,11 +68,21 @@ encryption grants and the normal administrative APIs:
   as raw values within each peer;
   retained package results still decrypt with their original contexts.
 
-Across implementations, all 44 recorded snapshots compare every normalized field.
+The harness compares every field in each normalized snapshot across implementations.
 Only relational UUIDs, valid timestamps, the unique owned container name and
 encrypted nonce/ciphertext bytes are normalized. Actual package outcome
 authentication, ciphertext retention and within-peer identity checks are separate
 assertions. No public operation or history field is omitted from comparison.
+
+## Packaged macOS ARM64 1.1.3059
+
+The packaged Rust server and Node reference matched 52 snapshots per database
+across PGlite, bundled PostgreSQL, and external PostgreSQL. Each of the six runs
+verified four authenticated package outcomes, including the continued and
+abandoned admissions. The Rust bundled PostgreSQL case used the native
+distribution's PostgreSQL 18.6, and the corresponding Node case used a private
+external database.
+[Cantrip 1.1.3059 package recovery reports](security/rust-server-3059-macos-cantrip-os-package-recovery.json)
 
 ## Packaged macOS ARM64 1.1.2938
 

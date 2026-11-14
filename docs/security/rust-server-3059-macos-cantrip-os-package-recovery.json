@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "testDriverBaseCommit": "f52a6d9c9eaf311c83a055b78bc891434ffa87bc",
+  "completeReplacement": false,
+  "platform": "darwin-arm64",
+  "guestImage": "sha256:2310a9cf3d6c6a59dead96664dfac559df3539e4ce8c2eae133558c8b31c14c4",
+  "productCells": 6,
+  "productStepsPerPeer": 16,
+  "authenticatedPackageReceiptsPerPeer": 4,
+  "continuedConfigurationsPerPeer": 1,
+  "abandonedConfigurationsPerPeer": 0,
+  "scope": "Existing browser SDK, full packaged worker, and actual Docker guest. Each run deliberately removes an artifact from the disposable worker cache to leave a real staged guest admission. The Rust bundled PostgreSQL case uses the native package database. Its Node comparison uses an isolated external database.",
+  "inputs": {
+    "server": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94198000,
+      "sha256": "98158f98aa453ad802282bc6119cf37f66251923d77f53b6fe08fe55c14107a3"
+    },
+    "workerEntry": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3059/runtime/worker/dist/index.js",
+      "bytes": 391720,
+      "sha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c"
+    },
+    "cli": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3059/runtime/worker/bin/cantrip",
+      "bytes": 1342656,
+      "sha256": "45e20cf3027b13938e705bb400830273c3458dd8ad2f3760f350ce619f639b3d"
+    },
+    "testDriverPatch": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-package-recovery-3059.if2ZEg83/test-driver.patch",
+      "bytes": 5316,
+      "sha256": "4466e4b6bc97dd0eb5fe9cce6698b0f831cbb6911b720a9ac8cc6129755ae819"
+    }
+  },
+  "cases": [
+    {
+      "databaseMode": "pglite",
+      "matchedSnapshots": 52,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-package-recovery-3059.if2ZEg83/pglite.json",
+        "bytes": 771783,
+        "sha256": "5fff58ea669ed8840b44ffdd2cb6a863746ec1d5dda73f70e5c994e1cca52060"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-package-recovery-3059.if2ZEg83/pglite.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "matchedSnapshots": 52,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-package-recovery-3059.if2ZEg83/bundled-postgres.json",
+        "bytes": 845896,
+        "sha256": "8f9968534569c9da6738dc0a778fc7688a331ed1e50a0f0e009688bac95abeb0"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-package-recovery-3059.if2ZEg83/bundled-postgres.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "matchedSnapshots": 52,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-package-recovery-3059.if2ZEg83/postgres.json",
+        "bytes": 844986,
+        "sha256": "8ca2b4866d6b4d350121b0e232162b01c5407d1f4eaabc99bfe2379e73083e6c"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-package-recovery-3059.if2ZEg83/postgres.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    }
+  ]
+}
