@@ -15,6 +15,17 @@ The Rust bundled PostgreSQL run used PostgreSQL 18.6 from the native archive.
 The corresponding Node run used isolated external PostgreSQL.
 [Cantrip 1.1.3059 root-system reports](security/rust-server-3059-darwin-arm64-root-system.json)
 
+With the rebuilt 1.1.3059 worker, each of the three database pairs also
+matched 44 normalized snapshots after adding a prepared-capture abandonment.
+The test drops one Worker reply after the encrypted preparation is durable
+and kills the Worker. After reconnecting, the browser SDK observes the
+prepared admission and abandons it. The Server reports
+`rejected` / `not-dispatched` and returns the same outcome on continue and
+observe. The guest keeps the same container ID and start time. The six-entry
+history survives a Server and Worker restart, and the entire run has the
+same 21 Docker effects.
+[Prepared-capture abandonment reports](security/rust-server-3059-macos-system-abandonment.json)
+
 ## Packaged macOS ARM64 1.1.2938
 
 The 1.1.2938 Rust standalone package and compiled Node reference passed
