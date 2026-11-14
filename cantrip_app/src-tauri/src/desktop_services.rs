@@ -270,9 +270,9 @@ pub fn wait_for_server(
     port: u16,
     mut cancelled: impl FnMut() -> bool,
 ) -> Result<bool, String> {
-    // First-run migrations can take minutes on slower machines. Bound the
-    // total wait and each connection attempt independently.
-    const STARTUP_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+    // A fresh PGlite profile exceeded five minutes in Windows x64 QA.
+    // Keep the wait cancellable and bound each connection attempt separately.
+    const STARTUP_TIMEOUT: Duration = Duration::from_secs(10 * 60);
     const POLL_INTERVAL: Duration = Duration::from_millis(100);
 
     let address = SocketAddr::from(([127, 0, 0, 1], port));
