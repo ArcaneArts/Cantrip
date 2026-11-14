@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "appBuildSourceCommit": "34d4b14ed492b02cde8c1d5108a6eb35ac7bc0a2",
+  "target": "win32-x64",
+  "scope": "Installed Windows 11 x64 guest under QEMU software emulation on an Apple Silicon Mac. The updater used a local HTTPS endpoint, a disposable test trust root and the QA updater key.",
+  "signedUpdate": {
+    "status": "passed",
+    "databaseMode": "pglite",
+    "baselineVersion": "1.1.2938",
+    "baselineInstallerSha256": "508cc4fc20ae9b63caa1cd7f3d157dd5e7083495f0bcbeab65369a35691caaa9",
+    "baselineAppSha256": "ed196f94a7fde4ffbe8eba4e7b2f350bc33a1a35eff0f99f2b8381698b506ad1",
+    "installer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/Cantrip_1.1.3059_x64-setup.exe",
+      "bytes": 256894213,
+      "sha256": "b7cddc1fec2feb4a7270a49cc22c36dedee06388ff71414a6d4ec17c96a8ccd1"
+    },
+    "qaUpdaterSignature": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/Cantrip_1.1.3059_x64-setup.exe.sig",
+      "bytes": 420,
+      "sha256": "4f6006c2d4e1a74300b1be83f6fd407717285190a6d0cd9ab449a60e52605958"
+    },
+    "changedDownloadError": "update_signature_invalid",
+    "appSha256": "d65a47949658ac5eee8ff80a35d064676216151758752554c836ad3db9ec367d",
+    "serverSha256": "c2bee345723f75ec694d21ca9dbfe1e4d0bf34ad4ba5f4566511af5f408d1114",
+    "workerHashes": {
+      "dist/index.js": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c",
+      "bin/codex.exe": "f0db8df766e7b928f9f3f867140e7c3637ca2ef288827a9209aaf0f0d4e39138",
+      "node_modules/@zavora-ai/computer-use-mcp/computer-use-napi.win32-x64.node": "56a0e9f48bb29841fcc5c63fcb0a38454ad194f31c6f63ea6445e21d115960fb",
+      "node_modules/@zavora-ai/computer-use-mcp/vcruntime140.dll": "eb1ee979bf02324712346e5bdbfc59c785388bc50d18cc2688aae4b0734915a0"
+    },
+    "upgradedWorkerVersion": "1.1.3059",
+    "retainedServerIdentity": true,
+    "retainedWorkerIdentity": true,
+    "retainedSettingWrite": true,
+    "upgradedAppOwnedRustServerAndWorker": true
+  },
+  "trayShutdown": {
+    "automatedObserverStatus": "failed",
+    "automatedObserverFailure": "The Windows tray icon moved and the host observer did not click Quit Cantrip before its deadline.",
+    "manualQuitOnSameUpgradedApp": true,
+    "rustServerReportedShutdownComplete": true,
+    "serverShutdownDurationMs": 1953,
+    "upgradedAppExitCodeCaptured": false,
+    "appServerAndWorkerPidsAbsentAfterManualQuit": true
+  },
+  "releaseAuthenticodeVerified": false,
+  "evidence": {
+    "guestTerminalReport": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/signed-instrumented-retry.B9iGLqeb/registered-installation-retry-baseline/host-recheck.U1PqoYax/signed-upgrade-terminal-host.json",
+      "bytes": 2135,
+      "sha256": "d59d96a221914fffa5dc174230049660476a83e9c9ead224fd4fe9d0d25bfdaa"
+    },
+    "automatedObserverLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/signed-instrumented-retry.B9iGLqeb/registered-installation-retry-baseline/host-recheck.U1PqoYax/observer.log",
+      "bytes": 2243,
+      "sha256": "88524352e380112843b5794f7d1311239eb019df233bbb1637ae1b7ff0754748"
+    },
+    "mountAndInstallDriver": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/signed-instrumented-retry.B9iGLqeb/registered-installation-retry/media/u.ps1",
+      "bytes": 10442,
+      "sha256": "6925d80272d156bdb5e642a641bc4e6e6944ba68d0ce80b150fd50c9b5b80f98"
+    },
+    "webViewObserver": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/signed-media/observe-windows-signed-update.mjs",
+      "bytes": 9611,
+      "sha256": "d8d236d5bc766d8186c7692c9a341cd491ee16efcdac4b46f70bab017d93c5da"
+    },
+    "manualTrayMenu": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/signed-instrumented-retry.B9iGLqeb/registered-installation-retry-baseline/host-recheck.U1PqoYax/manual-tray-menu.png",
+      "bytes": 59781,
+      "sha256": "4a9b9d3354e7c51accc59feeb8778632073227f805cf89cd16859e25d7f19d1d"
+    },
+    "manualQuitConfirmation": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/signed-instrumented-retry.B9iGLqeb/registered-installation-retry-baseline/host-recheck.U1PqoYax/manual-quit-confirmation.png",
+      "bytes": 75231,
+      "sha256": "c145864664add5a9cf4743325f34895350240af829fc9f0eddddd37e8546ca4b"
+    },
+    "afterManualQuit": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/signed-instrumented-retry.B9iGLqeb/registered-installation-retry-baseline/host-recheck.U1PqoYax/manual-after-quit-final.png",
+      "bytes": 258363,
+      "sha256": "9ca488995a3cda7f093eeaf55e184fd49535d21143d413a4693998d7dd59e7ba"
+    },
+    "manualServerShutdownEvents": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/signed-instrumented-retry.B9iGLqeb/registered-installation-retry-baseline/host-recheck.U1PqoYax/manual-rust-shutdown-events.json",
+      "bytes": 764,
+      "sha256": "db6220146237970b489fe4174ec10f3bd482e47f197a54702ffbde555f220917"
+    },
+    "guestProcessQueryResult": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/signed-instrumented-retry.B9iGLqeb/registered-installation-retry-baseline/host-recheck.U1PqoYax/signed-3059-processes.txt",
+      "bytes": 1,
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    }
+  }
+}

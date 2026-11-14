@@ -31043,7 +31043,14 @@
     "candidateVersion": "1.1.3059",
     "databaseModes": ["pglite", "bundled-postgres", "postgres"],
     "report": "docs/security/rust-server-3059-release-reconciliation.json#artifactEvidence",
-    "scope": "Windows 11 x64 QEMU guest. Six first-launch and reopen cases used the exact shutdown-grace installer with the 1.1.3059 worker. All six retained settings, verified database ownership, and quit through the real tray menu. The signed updater and release Authenticode remain open."
+    "scope": "Windows 11 x64 QEMU guest. Six first-launch and reopen cases used the exact shutdown-grace installer with the 1.1.3059 worker. All six retained settings, verified database ownership, and quit through the real tray menu. The separately verified signed update used PGlite. Release Authenticode remains open."
+  },
+  "windows3059SignedUpdateQualification": {
+    "status": "passed",
+    "candidateVersion": "1.1.3059",
+    "databaseModes": ["pglite"],
+    "report": "docs/security/rust-server-3059-windows-signed-update.json",
+    "scope": "The actual Windows desktop updater rejected a modified download and installed the QA-signed package. The restarted app reported the same server and worker identities, retained the accepted settings write, and owned the packaged Rust server and 1.1.3059 Node worker. A manual tray quit completed Rust shutdown after the host observer missed the moved icon."
   },
   "macos3059OperationalStatusAndWorkerLogsQualification": {
     "status": "passed",

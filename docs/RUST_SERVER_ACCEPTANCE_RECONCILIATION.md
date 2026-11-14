@@ -37,9 +37,16 @@ on all three databases. The reopened app used the stored database selection
 and kept the server identity and settings write. All six tray quits exited
 zero and reaped the Rust server and worker. The app stopped its bundled
 PostgreSQL process, and the external PostgreSQL instance stayed running.
-These runs used Windows 11 x64 under software emulation. The updater
-exercise remains open.
+These runs used Windows 11 x64 under software emulation.
 [Windows desktop package and guest receipts](security/rust-server-3059-release-reconciliation.json#artifactEvidence)
+
+The installed Windows updater rejected a modified download and then
+upgraded the registered desktop from 1.1.2938 to 1.1.3059. The app reopened
+its PGlite profile with the same server and worker identities and read back
+the saved setting. It started the verified Rust server and 1.1.3059 Node
+worker. A manual tray quit completed Rust shutdown after the automated
+observer missed the moved tray icon. Windows release Authenticode remains open.
+[Windows signed updater evidence](security/rust-server-3059-windows-signed-update.json)
 
 Each local Winterhold rehearsal completed 18 installer operations under
 systemd and Caddy HTTPS. Six injected migration and startup failures
