@@ -139,6 +139,28 @@ Each pair is one observation. Recovery time includes the worker's
 reconnect backoff.
 [Current runtime and stream measurements](security/rust-server-2881-performance-acceptance.json)
 
+## macOS ARM64 `1.1.3032` comparison
+
+Three fresh PGlite profiles per runtime gave median readiness of 3.67 s for
+Node and 1.36 s for Rust. Median idle process-tree RSS was 1,306 MiB and 94 MiB,
+respectively. The median of the three per-run p95 settings-read measurements
+was 4.68 ms for Node and 1.86 ms for Rust.
+
+| Database            | Node MiB/s | Rust MiB/s | Node recovery | Rust recovery |
+| ------------------- | ---------: | ---------: | ------------: | ------------: |
+| PGlite              |     179.33 |     201.50 |       29.59 s |       24.95 s |
+| Bundled PostgreSQL  |     191.88 |     197.20 |       27.30 s |       26.38 s |
+| External PostgreSQL |     198.57 |     190.41 |       28.56 s |       24.62 s |
+
+Each stream cell is one 64 MiB observation. The Node bundled PostgreSQL
+control uses a separate private PostgreSQL process. All six runs matched the
+payload hash, closed the slow consumer with code 1013, and recovered the same
+server identity and accepted setting after SIGKILL. The existing worker
+connection then completed a new request and stream. Recovery times include
+worker reconnect backoff. External PostgreSQL throughput was 4.1% lower in
+this Rust run. Repeated measurements would be needed to establish a regression.
+[macOS benchmark evidence](security/rust-server-3032-macos-performance-routes.json)
+
 ## Reproduce
 
 Build the current Node reference and worker/protocol dependencies, and package

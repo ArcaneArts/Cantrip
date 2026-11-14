@@ -8,9 +8,13 @@ two pass [operational qualification](RUST_SERVER_OPERATIONAL_STATUS.md), and two
 pass [worker-log qualification](RUST_SERVER_WORKER_LOGS.md), and five pass
 [project-insight qualification](RUST_SERVER_PROJECT_INSIGHTS.md), and twelve pass
 [remote-surface qualification](RUST_SERVER_REMOTE_SURFACES.md), and four pass
-[computer-use qualification](RUST_SERVER_COMPUTER_USE.md);
-the current live probe retains zero active fallbacks. Node remains the default
-server and the full replacement is incomplete.
+[computer-use qualification](RUST_SERVER_COMPUTER_USE.md).
+
+The macOS ARM64 1.1.3032 probe returned matching status codes for all 584
+declared method/path pairs and found zero generic Rust fallbacks. Both peers
+exited cleanly. This run used local PGlite, missing resource IDs and empty
+mutation bodies.
+[macOS route discovery and performance report](security/rust-server-3032-macos-performance-routes.json)
 
 ## Executed discovery
 
