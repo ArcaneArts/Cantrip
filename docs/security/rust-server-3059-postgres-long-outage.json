@@ -78,6 +78,43 @@
         "bytes": 2763,
         "sha256": "eb8f858be1fa46e20793d7a5377b7ee57faa17cac5a4ff0ccbfe538b2f4b569a"
       }
+    },
+    {
+      "platform": "linux-x64",
+      "scope": "Verified Linux x64 OCI image running through Rosetta, with the rebuilt macOS Node worker and external PostgreSQL 18.6 on the macOS host.",
+      "testDriverCommit": "d1c400fc40cb78453e5fc205c909f8143c8f8137",
+      "actualOfflineMs": 300001,
+      "offlineReplyMs": 16,
+      "browserSteps": 20,
+      "modelCases": 14,
+      "settledUsageRows": 1,
+      "providerRequestsForInterruptedOperation": 1,
+      "readyStatusOffline": 503,
+      "liveStatusOffline": 200,
+      "readyStatusRecovered": 200,
+      "workerReportedVersion": "1.1.3059",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/x64/3059-postgres-5min-settlement.sPEed7lc/matrix.json",
+        "bytes": 521606,
+        "sha256": "08b6e58060c7429bb435261fe7f740df43449a0596400d206182e4ed8f54b89c"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/x64/3059-postgres-5min-settlement.sPEed7lc/matrix.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      },
+      "imageDigest": "sha256:d2a43e692d43417756d2de4452e1a35e21c91f842b9ddfb5ae340d6320a6cdad",
+      "nativeBinarySha256": "481879df22e62d54a3db4fd320d35f49d5342f22150012c1149dc3b08cf10854",
+      "containerProcessEvidence": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/x64/3059-postgres-5min-settlement.sPEed7lc/generations.jsonl",
+        "bytes": 2832,
+        "sha256": "510d7a03dd0a3fb4b1abfcab562de5fc5985930c9d44531f00fe3aa5d673c404"
+      },
+      "inputHashes": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/x64/3059-postgres-5min-settlement.sPEed7lc/inputs.sha256",
+        "bytes": 1288,
+        "sha256": "a5c4c4b05e9501af31c42769e9459aba3cdd2208b025a9ac5611bfa4b1551ca5"
+      }
     }
   ],
   "nodeReference": {

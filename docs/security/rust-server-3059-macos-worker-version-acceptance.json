@@ -115,5 +115,69 @@
       "bytes": 1062,
       "sha256": "ef92087296f645a9f2fd33f0974b61f62715053a5684cae52776468f2932fa4a"
     }
+  },
+  "signedDesktopUpgrade": {
+    "scope": "Release-mode desktop rehearsal with fresh isolated profiles, a local Developer ID signature, disposable Tauri updater signing key and loopback HTTPS. Distribution notarization belongs to the release build.",
+    "previousVersion": "1.1.3043",
+    "installedVersion": "1.1.3059",
+    "applicationSourceCommit": "d1c400fc40cb78453e5fc205c909f8143c8f8137",
+    "pgliteTamperedArchiveRejection": "update_signature_invalid",
+    "cases": [
+      {
+        "databaseMode": "pglite",
+        "matchedFiles": 13606,
+        "strictCodeSignatureVerified": true,
+        "installedWorkerVersion": "1.1.3059",
+        "installationRetained": true,
+        "postUpdateWorkerCommand": true,
+        "postUpdateSettingsWrite": true,
+        "supervisedShutdown": true
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "matchedFiles": 13606,
+        "strictCodeSignatureVerified": true,
+        "installedWorkerVersion": "1.1.3059",
+        "installationRetained": true,
+        "postUpdateWorkerCommand": true,
+        "postUpdateSettingsWrite": true,
+        "supervisedShutdown": true
+      },
+      {
+        "databaseMode": "postgres",
+        "matchedFiles": 13606,
+        "strictCodeSignatureVerified": true,
+        "installedWorkerVersion": "1.1.3059",
+        "installationRetained": true,
+        "postUpdateWorkerCommand": true,
+        "postUpdateSettingsWrite": true,
+        "supervisedShutdown": true
+      }
+    ],
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/signed-updater/rehearsal/candidate/Cantrip Server Signed Update QA.app.tar.gz",
+      "bytes": 335823208,
+      "sha256": "7253582c4d38db60190d56c62ad3f5624d5992ee97d7689317ead47e2bb970ce"
+    },
+    "updaterSignature": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/signed-updater/rehearsal/candidate/Cantrip Server Signed Update QA.app.tar.gz.sig",
+      "bytes": 436,
+      "sha256": "86c9401323e27e9809a93ad13ff57c4018e8027e1710e2044431aa8a39dfb268"
+    },
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/signed-updater/acceptance.json",
+      "bytes": 12764,
+      "sha256": "fd2d3637c2eb8c38f073857ab14b1c6ad0b2ddb1ce3c001501f3559220d33845"
+    },
+    "installedVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/signed-updater/installed-bundle-verification.json",
+      "bytes": 731,
+      "sha256": "c12371337e613c1fb6e80f93093fc92aa2027b37b6ff7494d18696feb077dec7"
+    },
+    "exit": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/signed-updater/acceptance.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    }
   }
 }
