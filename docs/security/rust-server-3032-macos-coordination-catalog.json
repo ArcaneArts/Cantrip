@@ -1,0 +1,187 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3032",
+  "target": "darwin-arm64",
+  "serverSourceCommit": "d91420eb9e0b4513f2b8b3928cfcde81dadd4c20",
+  "serverExecutableBytes": 94323600,
+  "serverExecutableSha256": "c422e441f9939610d6f8dc3804cf700c7d91d0cb1a5f9bc545fba77abb39d1e1",
+  "nativeCoordination": {
+    "status": "passed",
+    "harnessCommit": "86e45141fce03caa6fbe4df41dc9606cbde105a3",
+    "inputs": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/native-coordination-3032/inputs.sha256",
+      "bytes": 662,
+      "sha256": "030d9588b031b0bb96a817a1799bc41ba286bfb24ac1589442353cbeaca282cf"
+    },
+    "scope": "Native HTTP and Live comparison with the Node reference, existing WorkerConnection and controlled replies. Covers permission transitions, pending requests, settings evidence, activation continuations and durable encrypted records. Full native command lifecycle and other platforms remain separate.",
+    "runs": [
+      {
+        "databaseMode": "pglite",
+        "pairedObservationsByAuthMode": {
+          "none": {
+            "httpObservations": 68,
+            "liveEvents": 11,
+            "snapshotProofs": 1,
+            "cryptoProofs": 3
+          },
+          "password": {
+            "httpObservations": 69,
+            "liveEvents": 11,
+            "snapshotProofs": 1,
+            "cryptoProofs": 3
+          },
+          "accounts": {
+            "httpObservations": 75,
+            "liveEvents": 11,
+            "snapshotProofs": 1,
+            "cryptoProofs": 3
+          }
+        },
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/native-coordination-3032/pglite/acceptance.json",
+          "bytes": 851758,
+          "sha256": "98be1dfe74bef6b13fd95b3479993dff303219223eda4f26f8ac9c898502117f"
+        }
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "pairedObservationsByAuthMode": {
+          "none": {
+            "httpObservations": 68,
+            "liveEvents": 11,
+            "snapshotProofs": 1,
+            "cryptoProofs": 3
+          },
+          "password": {
+            "httpObservations": 69,
+            "liveEvents": 11,
+            "snapshotProofs": 1,
+            "cryptoProofs": 3
+          },
+          "accounts": {
+            "httpObservations": 75,
+            "liveEvents": 11,
+            "snapshotProofs": 1,
+            "cryptoProofs": 3
+          }
+        },
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/native-coordination-3032/bundled-postgres/acceptance.json",
+          "bytes": 850313,
+          "sha256": "6a8bdf348378e2ebe373d0cd1e61fae15fdae048dd9b668f583518124122888e"
+        }
+      },
+      {
+        "databaseMode": "postgres",
+        "pairedObservationsByAuthMode": {
+          "none": {
+            "httpObservations": 68,
+            "liveEvents": 11,
+            "snapshotProofs": 1,
+            "cryptoProofs": 3
+          },
+          "password": {
+            "httpObservations": 69,
+            "liveEvents": 11,
+            "snapshotProofs": 1,
+            "cryptoProofs": 3
+          },
+          "accounts": {
+            "httpObservations": 75,
+            "liveEvents": 11,
+            "snapshotProofs": 1,
+            "cryptoProofs": 3
+          }
+        },
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/native-coordination-3032/postgres/acceptance.json",
+          "bytes": 849686,
+          "sha256": "ddec68e49d7eff5a38178db5a27aac8c2a316a1c198dcf97371550f4d1c3a87a"
+        }
+      }
+    ]
+  },
+  "workerCatalog": {
+    "status": "rust-passed-reference-shutdown-inconsistent",
+    "harnessCommit": "e3ca112796d166469e609b888d7955a748c61981",
+    "inputs": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/background-services-3032/inputs.sha256",
+      "bytes": 920,
+      "sha256": "17fe699de5b36e1df1be1441146d1a2ffed23e3087a514078344c75f1baa0673"
+    },
+    "databaseMode": "postgres",
+    "authMode": "accounts",
+    "productionSqlControlStatus": 404,
+    "rustPeriodicAndShutdown": {
+      "periodic": {
+        "quotaCommandElapsedMs": [900766, 900767, 900767],
+        "periodicQuotaRows": 6
+      },
+      "shutdown": {
+        "before": 10,
+        "after": 12,
+        "expected": 12,
+        "exit": {
+          "code": 0,
+          "signal": null
+        }
+      },
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/background-services-3032/catalog-rust/acceptance.json",
+        "bytes": 114579,
+        "sha256": "8327745f838bba53e0462681869d10621f8d0a458d332cf8a0c3572c503567c0"
+      }
+    },
+    "nodePeriodicAndShutdown": {
+      "periodic": {
+        "quotaCommandElapsedMs": [903494, 903494, 903494],
+        "periodicQuotaRows": 6
+      },
+      "shutdown": {
+        "before": 10,
+        "after": 11,
+        "expected": 12,
+        "exit": {
+          "code": 0,
+          "signal": null
+        }
+      },
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/background-services-3032/catalog/acceptance.json",
+        "bytes": 110186,
+        "sha256": "948691a990971b991601300c04550a805602e9a7dee1dd6e7783538476357d96"
+      }
+    },
+    "pairedShutdownWithoutPeriodic": {
+      "comparison": {
+        "commands": 25,
+        "stages": 4,
+        "http": 4
+      },
+      "nodeShutdown": {
+        "before": 8,
+        "after": 10,
+        "expected": 10,
+        "exit": {
+          "code": 0,
+          "signal": null
+        }
+      },
+      "rustShutdown": {
+        "before": 8,
+        "after": 10,
+        "expected": 10,
+        "exit": {
+          "code": 0,
+          "signal": null
+        }
+      },
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/background-services-3032/catalog-node-shutdown-repeat/acceptance.json",
+        "bytes": 163928,
+        "sha256": "d387727928dc8b67a6b186f51831d7e4066b80c50ed359fa93cb9e50920c60f8"
+      }
+    }
+  }
+}

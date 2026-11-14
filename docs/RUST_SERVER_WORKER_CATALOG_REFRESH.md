@@ -1,8 +1,8 @@
 # Worker catalog and quota maintenance
 
 Rust now starts worker-scoped catalog and quota maintenance after authenticated
-worker connections and every fifteen minutes. Node remains the default server,
-the worker remains Node, and full replacement acceptance is incomplete.
+worker connections and every fifteen minutes. The server defaults to Rust, and
+the worker runs on Node. Full replacement acceptance is in progress.
 
 ## Behavior
 
@@ -62,9 +62,8 @@ Separate external-PostgreSQL account runs pass through the actual fifteen-minute
 production interval on both peers. Their commands and persisted relationships
 also compare equally; no shortened clock is used.
 
-The current optimized production executable also passes the complete external
-PostgreSQL account scenario, actual fifteen-minute timer and held-INSERT shutdown
-pair. This retains four paired HTTP observations, 30 paired commands and five
+An earlier optimized production executable passed the external PostgreSQL
+account scenario, actual fifteen-minute timer and held-INSERT shutdown pair. This retains four paired HTTP observations, 30 paired commands and five
 paired persistence stages. Quota commands arrive at 901,796 ms for Node and
 901,438–901,439 ms for Rust relative to each launch. Both peers reject the fixture
 SQL control route with 404; setup and observation use a separate connection to
@@ -73,6 +72,12 @@ the isolated fixture database. After releasing the shutdown lock, both retain
 
 The production executable contains 93,504,064 bytes with SHA-256
 `40ff4bdcdeeda5d7d31f6981636fb9168299d613448da590f6a530a313e5c8c2`.
+
+The macOS ARM64 standalone 1.1.3032 Rust process passed the actual timer and
+saved both held quota rows before exit. The Node reference fired its actual
+timer and saved one held quota row on that run. Both processes saved both held
+rows when the paired shutdown was repeated without the periodic stage.
+[macOS 1.1.3032 observations](security/rust-server-3032-macos-coordination-catalog.json)
 
 Strict all-target Clippy, 76 Rust library tests, three Source account-provider
 tests, seven Source catalog tests, server typecheck, all 16 generated contract

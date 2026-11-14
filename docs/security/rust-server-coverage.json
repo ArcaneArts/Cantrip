@@ -26577,6 +26577,14 @@
     },
     "nativeCommandLifecycle": {
       "status": "partial",
+      "currentMacosCoordination": {
+        "candidateVersion": "1.1.3032",
+        "status": "passed",
+        "databaseAuthPairs": 9,
+        "pairedHttpObservations": 636,
+        "pairedLiveEvents": 99,
+        "report": "docs/security/rust-server-3032-macos-coordination-catalog.json"
+      },
       "implementation": [
         "cantrip_server_rs/src/native_commands/mod.rs",
         "cantrip_server_rs/src/native_commands/transaction.rs",
@@ -29378,6 +29386,13 @@
     },
     "workerCatalogRefresh": {
       "status": "implemented-pending-platform-acceptance",
+      "currentMacosStandalone": {
+        "candidateVersion": "1.1.3032",
+        "status": "rust-passed-reference-shutdown-inconsistent",
+        "database": "postgres",
+        "auth": "accounts",
+        "report": "docs/security/rust-server-3032-macos-coordination-catalog.json"
+      },
       "implementation": [
         "cantrip_server_rs/src/settings/catalog_refresh.rs",
         "cantrip_server_rs/src/settings/account_service/catalog_refresh.rs",
