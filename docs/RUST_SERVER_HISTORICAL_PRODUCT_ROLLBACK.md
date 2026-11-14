@@ -86,6 +86,14 @@ was not treated as proof of enforcement.
 
 ## Current packaged round trip
 
+The macOS ARM64 1.1.3059 package repeated the round trip on all three stores.
+It applied two migrations on first import, compared 137 tables and four
+sequences, preserved the original session and identity, and verified twelve
+encrypted product writes per store across Rust, the old Node server and
+returned Rust. All 1,773 original files matched. An actual writable open
+on the original profile was denied.
+[1.1.3059 acceptance record](security/rust-server-3059-historical-profile.json)
+
 The optimized macOS ARM64 `1.1.2881` package at
 `ccafd3cd4baea444ab43c1b84471ab3225f718e3` passed the original Node
 `1.1.2733` upgrade, post-write rollback, and return to Rust on all three

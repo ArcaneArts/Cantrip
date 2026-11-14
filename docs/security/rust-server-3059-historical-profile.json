@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "driverSourceCommit": "8173daea9702ff45e4d672e609b1c4b47855616f",
+  "legacyNodeVersion": "1.1.2733",
+  "platform": "darwin-arm64",
+  "scope": "Historical Node PGlite profile upgraded to each Rust backend, rolled back after encrypted product writes, written again by the old Node server and returned to Rust. Real serving processes and disposable product state.",
+  "tablesCompared": 137,
+  "sequencesCompared": 4,
+  "originalFilesCompared": 1773,
+  "modes": [
+    {
+      "mode": "pglite",
+      "migrationsApplied": 2,
+      "rustWrites": 4,
+      "nodeWrites": 4,
+      "returnRustWrites": 4,
+      "allTableAndSequenceEquality": true,
+      "originalSession": true,
+      "originalIdentity": true,
+      "masterKeyAndContentDecryption": true,
+      "rustThenLegacyWrites": true,
+      "originalFilesUnchanged": true
+    },
+    {
+      "mode": "bundled-postgres",
+      "migrationsApplied": 2,
+      "rustWrites": 4,
+      "nodeWrites": 4,
+      "returnRustWrites": 4,
+      "allTableAndSequenceEquality": true,
+      "originalSession": true,
+      "originalIdentity": true,
+      "masterKeyAndContentDecryption": true,
+      "rustThenLegacyWrites": true,
+      "originalFilesUnchanged": true
+    },
+    {
+      "mode": "postgres",
+      "migrationsApplied": 2,
+      "rustWrites": 4,
+      "nodeWrites": 4,
+      "returnRustWrites": 4,
+      "allTableAndSequenceEquality": true,
+      "originalSession": true,
+      "originalIdentity": true,
+      "masterKeyAndContentDecryption": true,
+      "rustThenLegacyWrites": true,
+      "originalFilesUnchanged": true
+    }
+  ],
+  "artifacts": {
+    "nativeArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/cantrip-server-1.1.3059-darwin-arm64.tar.gz",
+      "bytes": 66994727,
+      "sha256": "a58ccdb402201bbb51843ab7df661aa4efe30b71b35858828fda1a596d5de866"
+    },
+    "nativeExecutable": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/relocated native package \u6f22\u5b57/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94198000,
+      "sha256": "98158f98aa453ad802282bc6119cf37f66251923d77f53b6fe08fe55c14107a3"
+    },
+    "inputChecksums": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/historical-profile-3059/inputs.sha256",
+      "bytes": 1807,
+      "sha256": "f36d525e81b166eac58d1d12ca3c25164c3dc4885b67cefff565731bfacc4978"
+    },
+    "legacyInputArchiveChecksum": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/historical-profile-3059/source-archive.sha256",
+      "bytes": 187,
+      "sha256": "2986e9637d62df7669751db40fe2fa8f17488e673f3de01a8de0f212760295dd"
+    },
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/historical-profile-3059/run/report.json",
+      "bytes": 73486,
+      "sha256": "965eda0aa8f6fd8d441f5b5adf463473bedf8599781f5660d114f98ff8829047"
+    },
+    "runLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/historical-profile-3059/run.log",
+      "bytes": 1967,
+      "sha256": "236c1138b53862fb7376f7be59a47bc65460a9d2b9727ce18e0619cc59320f6d"
+    },
+    "writeDenial": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/historical-profile-3059/write-denial.json",
+      "bytes": 41,
+      "sha256": "accfd99129c1b0dedc18d682bf1094455e3ee22ceb7fb5f8e273a12d713789b9"
+    },
+    "originalFileManifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/historical-profile-3059/run/original-files.json",
+      "bytes": 268769,
+      "sha256": "12f7ab23b880014b7b1fc524cba77de8d183666cc49de0e2de1aba1e24c8ae1b"
+    },
+    "expectedUpgradedSnapshot": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/historical-profile-3059/run/expected-historical-upgrade-database.json",
+      "bytes": 84772,
+      "sha256": "35742d563cb0f6fe1c6984ca6fc89c99ff53b698f3c8959f6f6b281239e5138c"
+    }
+  }
+}

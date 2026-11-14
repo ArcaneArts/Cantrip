@@ -77,6 +77,38 @@ and 1.28 seconds and Node in 3.09 and 3.32 seconds. The earlier 32.7-second
 Rust migration did not recur in this series.
 [Worktree, replica and startup evidence](security/rust-server-3059-worktrees-and-replicas.json)
 
+### Terminals, file documents and browser surfaces
+
+The macOS ARM64 package and Node reference each passed 28 browser and
+full-worker steps on each of the three databases. The native CLI opened
+encrypted snapshots of a real PTY after start, service restart and worker
+reconnect. The browser sent and received authenticated terminal traffic
+through WorkerLink relay and the legacy socket. File-document operations
+edited real bytes, rejected stale saves and replay, and retained the same
+document across server and worker restart.
+
+Real Chromium frames and encrypted controls passed through both browser
+transports. The test rejected altered authenticated metadata, resumed the
+legacy surface, retained its encrypted state, and revoked an active WorkerLink
+grant on deletion. The full worker also returned a healthy desktop inventory.
+Physical desktop capture and native desktop window ownership retain separate
+acceptance.
+[Terminal, file and browser surface evidence](security/rust-server-3059-surfaces-and-files.json)
+
+### Historical profile upgrade and post-write rollback
+
+The packaged macOS ARM64 1.1.3059 server upgraded a populated copy of a
+real Node 1.1.2733 PGlite profile to each of the three storage modes.
+Each first import applied two migrations. The round trip compared
+137 tables and four sequences, retained the original session and server
+identity, and reopened the encrypted content with the original client keys.
+Rust accepted four encrypted product writes per store, the old Node server
+reopened them and accepted four further writes, and the returned Rust server
+retained those writes and accepted four more. The 1,773 original files
+matched throughout. The sandbox rejected an actual attempt to open the
+original secret-key file for writing.
+[Historical upgrade and rollback evidence](security/rust-server-3059-historical-profile.json)
+
 ## macOS recovery tests through Cantrip 1.1.3059
 
 The macOS ARM64 development executable in PR #3071 completed 14 model
