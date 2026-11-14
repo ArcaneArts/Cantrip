@@ -161,6 +161,22 @@ worker reconnect backoff. External PostgreSQL throughput was 4.1% lower in
 this Rust run. Repeated measurements would be needed to establish a regression.
 [macOS benchmark evidence](security/rust-server-3032-macos-performance-routes.json)
 
+## Windows bundled PostgreSQL crash recovery
+
+The Windows x64 1.1.2976 server passed the 64 MiB stream and then exited during
+restart while PostgreSQL was still recovering. The 1.1.3033 candidate gives
+`pg_ctl` up to two minutes and allows the SQL readiness check to wait when
+PostgreSQL reports that startup is still in progress. The server continues to
+check the actual process exit status and SQL connection.
+
+The candidate recovered readiness 42.3 seconds after restart in the local
+Windows x64 guest. It retained the server identity and the accepted setting.
+The existing worker connection resumed, completed a new command and streamed
+again. The initial stream matched the 64 MiB payload and closed the slow
+consumer with code 1013. This run used a private copy of the installed server
+assets with the cross-built executable.
+[Windows bundled PostgreSQL recovery evidence](security/rust-server-3033-win32-x64-bundled-postgres-recovery.json)
+
 ## Reproduce
 
 Build the current Node reference and worker/protocol dependencies, and package
