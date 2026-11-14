@@ -45,6 +45,40 @@
         "bytes": 1443,
         "sha256": "4d656f5b95544a033d14335709e13adcbed5d3cc674c212a05f076109960a31a"
       }
+    },
+    "signedDesktopUpdate": {
+      "scope": "Local Developer ID-signed Tauri rehearsal with a disposable HTTPS trust root, updater key and app identity. Fresh test profiles were populated on the rebuilt 1.1.2976 baseline before the update.",
+      "harnessCommit": "51cbecf7f476cd42b655f9e4424c94aebcd002b5",
+      "previousVersion": "1.1.2976",
+      "version": "1.1.3032",
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+      "retainedServerWorkerAndClientIdentity": true,
+      "retainedSettingsWrite": true,
+      "oldAndNewChildProcessesDrained": true,
+      "tamperedPackageRejected": true,
+      "candidateAppSha256": "32389c54179af6ce5d522245c8999825e6fcdaa7a1727500acd4320c48fc75e1",
+      "runtimeInputSha256": "c422e441f9939610d6f8dc3804cf700c7d91d0cb1a5f9bc545fba77abb39d1e1",
+      "signedServerSha256": "7d403a40f8e1666c64f2a4f1778a14b91fa52f2abe83f61d26caefc9609349a3",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3032-staging-clean-retry/acceptance.json",
+        "bytes": 12632,
+        "sha256": "a33d05f5fe01393e788f5a11c1a03084a9648bee3310ca1709b8e0d6f1218d12"
+      },
+      "candidateArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3032-staging-clean-retry/rehearsal/candidate/Cantrip Server Signed Update QA.app.tar.gz",
+        "bytes": 335686325,
+        "sha256": "47187e3263d2ec823f1ad85afb21b3dcc2d4110d178d679efa979422cf7486f8"
+      },
+      "candidateUpdaterSignature": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3032-staging-clean-retry/rehearsal/candidate/Cantrip Server Signed Update QA.app.tar.gz.sig",
+        "bytes": 436,
+        "sha256": "12b0cbfcf7381eb3d33d1a16f8960e413d79f337eb694500dd8c12bd4d59e4f0"
+      },
+      "baselineArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3032-staging-clean-retry/rehearsal/baseline/Cantrip Server Signed Update QA.app.tar.gz",
+        "bytes": 335685363,
+        "sha256": "6ac1cd189c3b9030ea38afe2c60d68fd752cad1bc3ff720c33d431388d1d5e8e"
+      }
     }
   },
   "linuxArm64": {
