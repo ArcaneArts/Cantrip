@@ -220,6 +220,13 @@ wrong-owner rejection and tampering rejection. All 56 Rust container
 processes exited cleanly.
 [Linux account protection evidence](security/rust-server-3059-linux-account-protection.json)
 
+Both Linux images matched 732 embedding and decision HTTP observations
+across all three stores, including cancellation. The cases covered
+request validation, account ownership, CSRF, missing workers, and
+offline workers enrolled through the public API. All 18 Rust container
+processes exited cleanly.
+[Linux model admission and cancellation evidence](security/rust-server-3059-linux-model-boundaries.json)
+
 The packaged macOS server also matched 915 native queue HTTP
 observations and 99 ordered App Live queue invalidations across all
 three stores and anonymous, password and account authentication.
