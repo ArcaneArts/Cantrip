@@ -35,10 +35,17 @@ for these three commands. The historical scheduled automation producer of
 `automation.dispatch.protect`. A separate current HTTP comparison observed 16
 calls to that replacement across the two peers.
 
-Eight focused Linux worker lifecycle tests pass. The unchanged worker-native
-guest integration test reaches its large retained-output check and fails because
-the journal's expected `outputTruncated` flag is absent on the local image.
-That case and final supported-platform shipping acceptance remain open.
+Eight focused Linux worker lifecycle tests pass. The large retained-output
+check first failed on the older development image and later passed on the
+Phase 5 ARM64 guest recorded in the
+[source backup acceptance](security/rust-server-os-source-backup-acceptance.json).
+
+The [1.1.3059 macOS ARM64 package results](security/rust-server-3059-macos-cantrip-os-execution.json#runLifecycle)
+repeat the browser lifecycle with the released Rust server and packaged worker.
+Each database matches ten browser snapshots against the Node reference. All
+six product cells read protected output four times, keep the initial guest
+PID through server and worker loss, then verify process replacement and cleanup.
+The remaining supported-platform packages still need this lifecycle check.
 
 Use the normal built browser/worker dependencies, a current native server and
 the existing worker CLI. Select a disposable foundation guest image with

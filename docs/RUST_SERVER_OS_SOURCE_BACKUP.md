@@ -60,3 +60,10 @@ node --import tsx scripts/server-rust/actual-folder-client.mjs \
 Repeat with `bundled-postgres` and `postgres`. The
 [acceptance record](security/rust-server-os-source-backup-acceptance.json)
 identifies the tested artifacts and the retained reports.
+
+The [1.1.3059 macOS ARM64 package results](security/rust-server-3059-macos-cantrip-os-execution.json#sourceBackup)
+repeat the source-backup matrix with the released Rust server and packaged
+worker. Each database matches eight browser snapshots against the Node
+reference. All six product cells recover the original encrypted restore and
+rollback receipts after process loss and preserve the later write in the
+displaced guest home.
