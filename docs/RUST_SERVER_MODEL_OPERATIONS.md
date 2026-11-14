@@ -224,3 +224,19 @@ cases, including six active server interruptions and six post-reconnect decision
 The results establish recovery from a single abrupt server exit. Active database
 and Redis interruptions and long outages remain open.
 [Server interruption evidence](security/rust-server-2976-darwin-arm64-model-operation-server-loss.json)
+
+## Linux packaged server interruption
+
+The product fixture can invoke a container-specific signal helper through
+`CANTRIP_TEST_SERVER_SIGKILL_HELPER`. The helper receives the host launcher PID,
+identifies its live container and sends SIGKILL to the observed Rust service
+process inside it. The launcher must report exit 137 before the test reopens
+the server on the same origin with the same data.
+
+The Linux x64 1.1.3033 and Linux ARM64 1.1.3014 packages passed on all three
+stores. Each cell exercised 14 operation cases with the Chromium client and the
+packaged Node worker on macOS. Each interrupted request retained a single
+unreported usage row. The same worker reconnected and completed a new request
+without replaying the interrupted operation. Linux x64 ran through Rosetta.
+
+[Linux server interruption evidence](security/rust-server-linux-model-operation-server-loss.json)
