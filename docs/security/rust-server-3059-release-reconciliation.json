@@ -289,6 +289,13 @@
       "databaseMode": "pglite",
       "baselineVersion": "1.1.2938",
       "scope": "The QA-signed updater rejected modified bytes, installed the exact current-worker package, and reopened the retained PGlite profile. A manual tray quit on the same upgraded process produced a Rust shutdown-completed event after the automated observer timed out. Windows release Authenticode is pending."
+    },
+    "linuxJsonWire": {
+      "report": "docs/security/rust-server-3059-linux-json-wire.json",
+      "pairedHttpCases": 312,
+      "pairedWebSocketCases": 162,
+      "cleanRustExits": 12,
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"]
     }
   },
   "remainingAcceptance": [
