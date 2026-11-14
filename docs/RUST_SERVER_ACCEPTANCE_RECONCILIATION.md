@@ -169,6 +169,17 @@ matched throughout. The sandbox rejected an actual attempt to open the
 original secret-key file for writing.
 [Historical upgrade and rollback evidence](security/rust-server-3059-historical-profile.json)
 
+A separate macOS ARM64 run with the Rust 1.1.3059 standalone package,
+packaged 1.1.3059 Node worker and native Codex passed post-write
+rollback across all three stores. It completed 80 product steps and
+eight Rust/Node implementation switches. The same worker, original held
+Agent and Goal model streams, four completed Tasks per case and their
+decrypted history survived both switches. All 136 tables and three
+sequences matched at every stopped-server boundary. Six switches used
+logical profile imports. The external PostgreSQL code-only case retained
+its database URL and profile directory through both switches.
+[Native execution rollback evidence](security/rust-server-3059-macos-profile-rollback.json)
+
 ### Authentication and App Live on the packaged macOS server
 
 The Rust 1.1.3059 package and same-version Node reference matched 1,083 HTTP

@@ -1,5 +1,13 @@
 # Native execution across server rollback
 
+The macOS ARM64 1.1.3059 standalone server and packaged 1.1.3059 worker
+passed all four cases with the Node development reference reporting
+1.1.3077 and native Codex 0.166.0. The 80 product steps preserved the
+running worker and held model streams across eight implementation
+switches. Six switches used logical profile import. The remaining two
+retained the same external PostgreSQL URL and profile directory.
+[macOS 1.1.3059 rollback report](security/rust-server-3059-macos-profile-rollback.json)
+
 The macOS ARM64 matrix passed again with the standalone Rust `1.1.3032`
 executable, compiled Node reference and full packaged worker running native
 Codex. Across the four cases below, eight implementation switches retained the
