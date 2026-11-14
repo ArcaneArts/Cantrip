@@ -1,14 +1,23 @@
 # CantripOS root-system qualification
 
-The existing browser SDK, production servers, full Worker and actual Docker
-guest now share a root checkpoint, replacement and rollback scenario. All
-production implementations are unchanged. The Rust server needs no Node server
-delegate for these operations; the existing Worker remains Node as required by
-the server replacement goal. Node remains the default server.
+The existing browser SDK, production server, full Node worker and a real
+Docker guest exercise root checkpoint, replacement and rollback. Rust is the
+default server. The historical Node server provides the development comparison.
+
+## Packaged macOS ARM64 1.1.3059
+
+The packaged Rust executable and Node reference passed on PGlite, bundled
+PostgreSQL and external PostgreSQL. Each pair matched 41 normalized snapshots.
+Each run authenticated five private outcomes, interrupted two server processes
+and one worker process, and verified exactly 21 Docker effects. Rollback
+restored the earlier root while keeping newer writes on the mounted volume.
+The Rust bundled PostgreSQL run used PostgreSQL 18.6 from the native archive.
+The corresponding Node run used isolated external PostgreSQL.
+[Cantrip 1.1.3059 root-system reports](security/rust-server-3059-darwin-arm64-root-system.json)
 
 ## Packaged macOS ARM64 1.1.2938
 
-The current Rust standalone package and compiled Node reference passed
+The 1.1.2938 Rust standalone package and compiled Node reference passed
 all six root-system cells across PGlite, bundled PostgreSQL, and
 external PostgreSQL. All 41 normalized snapshots matched in each pair.
 Each cell verified five authenticated private outcomes, two actual
@@ -21,7 +30,7 @@ PGlite qualification. Rebuilding the shared protocol while the first
 bundled PostgreSQL run was active triggered a browser reload. The run
 failed and was retained. Both PostgreSQL pairs passed after that build
 finished.
-[Current packaged root-system record](security/rust-server-2938-darwin-arm64-root-system.json)
+[Cantrip 1.1.2938 root-system reports](security/rust-server-2938-darwin-arm64-root-system.json)
 
 ## Scenario and failure boundaries
 
