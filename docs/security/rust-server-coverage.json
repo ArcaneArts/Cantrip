@@ -24001,7 +24001,8 @@
       "remaining": "Reconcile the current product, fault, upgrade, rollback and performance evidence against the final shipping artifacts and remaining behaviors. Default cutover and production Node-server removal have their own qualification records."
     },
     "currentTaskGoalWorkerProcessRecovery": {
-      "status": "implemented-pending-platform-acceptance",
+      "status": "implemented-with-scoped-local-qualification",
+      "currentMacosPackage": "docs/security/rust-server-3059-macos-task-goal-worker-loss.json",
       "evidence": [
         "docs/RUST_SERVER_TASK_GOAL_WORKER_RECOVERY.md",
         "scripts/server-rust/actual-task-goal-worker-inflight-client.mjs",
@@ -24013,7 +24014,7 @@
       "localQualification": {
         "platform": "darwin-arm64",
         "databaseModes": ["pglite", "bundled-postgres", "postgres"],
-        "initialDebugProduct": "Both production server entrypoints/all3stores and all4 shared PostgreSQL/Redis pairings pass active Goal worker loss, original operation/native Goal identity, actual native Goal tool completion, one canonical answer and exact restart. Five model POSTs per case. This artifact predates final bound-Goal-only flag restriction and private result shape corrections; final optimized artifact qualification remains pending.",
+        "initialDebugProduct": "Both production server entrypoints/all3stores and all4 shared PostgreSQL/Redis pairings pass active Goal worker loss, original operation/native Goal identity, actual native Goal tool completion, one canonical answer and exact restart. Five model POSTs per case. This artifact predates final bound-Goal-only flag restriction and private result shape corrections; the later optimized qualification appears below.",
         "focusedRepositories": "204 paired observations and six restart snapshots per store; all3stores pass active/history/legacy/autonomous response identity, changed ciphertext/ID/key rejection, authority fences and actual terminal SQL-write rollback.",
         "broaderGoalRepositories": "367 paired observations and ten restart snapshots per store, all3stores pass. Existing stale-read oracle now requires the current explicit conflict and preserves the actual newer Task; every decoded private observation snapshot authority field is compared.",
         "rust": "Final source passes all83Rust library tests, Task-input native wire oracle and strict all-target Clippy with warnings denied.",
@@ -24022,7 +24023,7 @@
         "optimizedProduct": "Final optimized production main fc672af50d6e0d9681a274654711d534a3e0b4fee1720fa33ac8f5f8527c5105 passes all10activeGoalworker-loss cases:bothservers/all3stores andall4sharedpairs;50modelPOSTs,oneanswerpercase,exactGoal/Task/history restart. Existing production Task andAgent/Task matrix also passes all6storage/productcases with bothserverentrypoints andfullcurrent92patch nativeworker."
       },
       "remaining": [
-        "Supported platforms/current packaged artifacts, updates, historical profiles/full product rollback, prolonged faults, comparative performance, final Rust default cutover and production Node-server removal."
+        "Repeat the exact active-Goal worker-loss scenario on the supported Windows and Linux packages. Shared PostgreSQL and Redis coordination, historical upgrades, rollback and performance have separate evidence."
       ]
     },
     "currentTaskWorkerProcessRecovery": {
