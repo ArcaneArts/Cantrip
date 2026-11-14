@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "target": "win32-x64",
+  "scope": "Local Windows 11 x64 QEMU guest on macOS ARM64. Verified NSIS payload with previously qualified Node worker assets and exact packaged Rust server.",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "workerVersion": "1.1.2976",
+  "installerSha256": "ee83370565dbbcef360ad2e1872d60956a9328d369ee9bfe033f57bd0ca895ff",
+  "appSha256": "114d4530406b82bda4cf2d27356a9086764f4a17b6c7d29fe8fd864af5f1ea5d",
+  "serverSha256": "c2bee345723f75ec694d21ca9dbfe1e4d0bf34ad4ba5f4566511af5f408d1114",
+  "workerSha256": "dbe9866bec05f69098695957e183aa9c5c0a95daa9504b31a3e17f461cc89a39",
+  "cases": [
+    {
+      "databaseMode": "pglite",
+      "reopen": false,
+      "configurationSource": "explicit-initial-configuration",
+      "identityAndSettingRetained": false,
+      "ownedWorkerResponded": true,
+      "cleanTrayQuit": true,
+      "guestDiskMatchesSerial": true,
+      "receipt": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/guest-evidence/installed-3059-pglite.json",
+        "bytes": 912,
+        "sha256": "9653ff0735fb8d5a3add6234dbb611ac5a85643924e3be177d69e7db957e6265"
+      }
+    },
+    {
+      "databaseMode": "pglite",
+      "reopen": true,
+      "configurationSource": "persisted-profile",
+      "identityAndSettingRetained": true,
+      "ownedWorkerResponded": true,
+      "cleanTrayQuit": true,
+      "guestDiskMatchesSerial": true,
+      "receipt": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/guest-evidence/installed-3059-pglite-reopen.json",
+        "bytes": 898,
+        "sha256": "1aeefc93a13d9a19fadffbe3fd23c5be9900559f9a0e1f5069e0d36aad3a4d83"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "reopen": false,
+      "configurationSource": "explicit-initial-configuration",
+      "identityAndSettingRetained": false,
+      "ownedWorkerResponded": true,
+      "cleanTrayQuit": true,
+      "guestDiskMatchesSerial": true,
+      "receipt": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/guest-evidence/installed-3059-bundled-postgres.json",
+        "bytes": 1221,
+        "sha256": "14428c8319df6b2d83f64b537a4ad8a49664ca19b4cedebda4e3981b84a55bc4"
+      },
+      "managedPostgresStopped": true
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "reopen": true,
+      "configurationSource": "persisted-profile",
+      "identityAndSettingRetained": true,
+      "ownedWorkerResponded": true,
+      "cleanTrayQuit": true,
+      "guestDiskMatchesSerial": true,
+      "receipt": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/guest-evidence/installed-3059-bundled-postgres-reopen.json",
+        "bytes": 1207,
+        "sha256": "ce8ed321df2448e51a23a0186397aeaa9cf7ed4b26c8dc07a9ef26c250cf56ab"
+      },
+      "managedPostgresStopped": true
+    }
+  ]
+}
