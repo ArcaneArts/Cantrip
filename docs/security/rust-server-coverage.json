@@ -30822,6 +30822,11 @@
     "report": "docs/security/rust-server-3033-win32-x64-standalone.json",
     "scope": "The exact relocated Windows x64 standalone archive passed startup, migrations, SQL export, retained writes, hosted reopening and supervised shutdown on all three stores. All 2,281 packaged files matched the manifest."
   },
+  "windows2976X64ModelServerLossQualification": {
+    "status": "passed",
+    "report": "docs/security/rust-server-2976-win32-x64-model-server-loss.json",
+    "scope": "The signed desktop's Rust executable passed 20 browser product steps and 14 model operations on external PostgreSQL, including a forced server exit during an active embedding and recovery with the same worker."
+  },
   "linux3033X64Qualification": {
     "status": "passed",
     "report": "docs/security/rust-server-3033-linux-x64-acceptance.json",

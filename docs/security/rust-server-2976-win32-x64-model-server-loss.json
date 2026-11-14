@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "target": "win32-x64",
+  "candidateVersion": "1.1.2976",
+  "databaseMode": "postgres",
+  "scope": "Local Windows 11 x64 guest with Edge, the signed desktop's installed Rust server executable, the existing Node worker, and external PostgreSQL. The worker copy has a fixture-only MCP startup timeout.",
+  "installedRuntime": {
+    "installerSha256": "2d68d24bb3ce69603c9cf698a8fcc2388b6f86dd59564edec6fcbdd66f7139c8",
+    "appSha256": "8b823adccdc5897f919c445450e4ccacebdcbc49772b42ad6594f36cd67e6e25",
+    "serverSha256": "d678aacfb2d0d063812f84c1ae47766dce222f25382183f85b8c7d7b3fee7168",
+    "workerSha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c",
+    "workerEncryptionSha256": "01288d5fc14c7e7455fc137ccb9325afbad8e5f68edff0398f2b9629ee0eb3d0"
+  },
+  "harnessCommit": "2874c2aa7ab0323244caee2ef9b9dcf5781b084b",
+  "fixtureSourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+  "fixtureWorkerMcpStartupTimeoutSeconds": 120,
+  "productSteps": 20,
+  "modelOperationCases": 14,
+  "providerRequests": 15,
+  "providerFailures": 0,
+  "cleanServerExits": 3,
+  "forcedServerExits": 1,
+  "recovery": {
+    "serverReopenedSameOrigin": true,
+    "interruptedProviderRequests": 1,
+    "interruptedUsageReceipt": null,
+    "interruptedReportedTotalTokens": null,
+    "sameWorkerReconnected": true,
+    "freshOperationCompleted": true,
+    "providerCloseObservedAfterMs": 8229
+  },
+  "guestReport": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-active-model-server-loss-live-observation/postgres-active-model-server-loss-live-observation.json",
+    "bytes": 367730,
+    "sha256": "5fa89174f1c272d6c3023623c093d5fb1d903fb73f7f61cb5bbcac6642ade680"
+  },
+  "guestSerialReceipt": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-active-model-server-loss-live-observation/watcher.log",
+    "bytes": 2763,
+    "sha256": "d82b399422c999fb65bf64ecfaef176af6a3121957bb7786731a79cc76dd006d"
+  },
+  "fixtureInputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/windows-active-model-server-loss-live-observation/media/input-digests.json",
+    "bytes": 7189,
+    "sha256": "1436addf41a6b8fd871233463d70fa56898ac65dfff627958c1d9c08aefae862"
+  }
+}

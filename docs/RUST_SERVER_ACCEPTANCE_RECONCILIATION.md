@@ -147,6 +147,13 @@ host copy of the archive. The signed desktop and active database-outage
 runs have separate acceptance records.
 [Windows standalone archive and acceptance report](security/rust-server-3033-win32-x64-standalone.json)
 
+The signed Windows 1.1.2976 desktop's Rust executable passed the active
+model-operation server-loss run with external PostgreSQL. The Windows guest
+completed 20 product steps and 14 model operations. After a forced server
+exit, the same worker reconnected, the interrupted usage row remained
+without reported tokens, and a fresh decision completed.
+[Windows server-loss evidence](security/rust-server-2976-win32-x64-model-server-loss.json)
+
 ## Cantrip 1.1.3033 Linux x64 standalone and Redis recovery
 
 The rebuilt x64 server includes the Redis relay subscriber recovery fix in
