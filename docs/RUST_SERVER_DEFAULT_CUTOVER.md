@@ -1,9 +1,10 @@
 # Rust server default cutover
 
-The normal server entrypoints select Rust. The unchanged worker continues to
-use Node, as does frontend/build tooling and the bounded legacy PGlite profile
-converter. This cutover does not complete production Node-source retirement or
-the full replacement goal's remaining shipping acceptance.
+The normal server entrypoints select Rust. The worker continues to use Node,
+as do frontend/build tooling and the bounded legacy PGlite profile converter.
+The production Node server was retired in PR #2799. Its development baseline
+and retained SQL migrations are documented in
+[Node server retirement](RUST_SERVER_NODE_RETIREMENT.md).
 
 ## Normal entrypoints
 
@@ -95,13 +96,11 @@ later aggregate checks are claimed from that stopped command. Development
 validation runs locally; release workflow edits do not add ordinary push or
 pull-request validation, and no hosted diagnostic run was dispatched.
 
-## Remaining full replacement work
+## Current shipping acceptance
 
-Remove the production Node server and resolve its remaining source/build/test
-dependencies without dropping the SQL migration chain or the permitted bounded
-converter. Reconcile historical coverage entries against their later evidence.
-Complete final supported shipping artifacts and existing-client encrypted
-desktop/update acceptance; the retained macOS QA app's last observation was
-waiting on Keychain access. Preserve the separate current-wire, data-preserving
-rollback, execution recovery, performance and Linux deployment evidence. No
-production Winterhold deployment is performed by this milestone.
+The [1.1.3059 release reconciliation](security/rust-server-3059-release-reconciliation.json)
+records the current standalone packages, Linux Winterhold rehearsals, historical
+profile migration and post-write rollback, and desktop qualification. The current
+macOS updater run verifies the signed package and retained profile with the
+matching Node worker across all three database modes. The release record tracks
+the open Windows updater, release signing, mobile and compatibility checks.

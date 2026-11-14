@@ -204,6 +204,15 @@ stayed connected. A full restart retained the checkout and job. Detach
 preserved the user-owned Git files.
 [Linux x64 replica and Redis recovery report](security/rust-server-3048-linux-x64-replica-redis.json)
 
+Two packaged macOS ARM64 Rust servers and the rebuilt 1.1.3059 workers
+passed the same Redis interruption during actual Git dispatch. Both servers
+reported 503 while PostgreSQL stayed ready. The original command kept its
+lease, and releasing the Git operation during the outage left the job running.
+After Redis restarted, both servers reported 200. The same replica completed
+at attempt two and revision 11. Replacement of the browser peer replayed that
+revision, and detaching the replica preserved the user-owned Git checkout.
+[macOS 1.1.3059 Redis replica report](security/rust-server-3059-macos-replica-redis.json)
+
 A macOS ARM64 mixed run put the browser on Rust and both full workers on
 the Node reference. After Redis restarted, the replica worker acquired a
 new connection claim on the same Node instance. Rust settled the old

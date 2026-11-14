@@ -2718,6 +2718,7 @@
           "scripts/server-rust/replica-connected-cases.mjs",
           "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
           "docs/security/rust-server-current-replica-acceptance.json",
+          "docs/security/rust-server-3059-macos-replica-redis.json",
           "scripts/server-rust/actual-project-replicas.mjs",
           "scripts/server-rust/replica-http-lifetimes.mjs",
           "scripts/server-rust/actual-replica-redis-outage.mjs"
@@ -23766,6 +23767,7 @@
           "scripts/server-rust/replica-http-lifetimes.mjs",
           "scripts/server-rust/actual-replica-redis-outage.mjs",
           "docs/security/rust-server-3059-worktrees-and-replicas.json",
+          "docs/security/rust-server-3059-macos-replica-redis.json",
           "docs/security/rust-server-3059-platform-acceptance.json"
         ],
         "remaining": [
