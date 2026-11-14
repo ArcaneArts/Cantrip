@@ -361,6 +361,24 @@ during shutdown. The timer and shutdown checks passed in separate
 x64 runs.
 [Linux periodic catalog and shutdown evidence](security/rust-server-3059-linux-catalog-periodic.json)
 
+### macOS workspace discovery and worker shutdown
+
+The post-clock-fix macOS ARM64 package and Node reference completed 90
+browser steps across PGlite, bundled PostgreSQL and external PostgreSQL.
+The browser and packaged Node worker discovered and imported a user-owned
+Git checkout, linked matching public GitHub history, and reopened the
+completed conversion after restart. Removing the workspace with its worker
+offline preserved the checkout and uncommitted files. The browser sent
+encrypted metadata and opaque routing handles throughout.
+
+The packaged Rust server also matched the Node reference in three worker
+WebSocket shutdown cases. A worker reply received before the close
+acknowledgement completed the HTTP request. A close acknowledgement sent
+first produced HTTP 503. With the acknowledgement withheld on external
+PostgreSQL, Node closed after 30,000 ms and Rust after 30,002 ms. All six
+server processes exited zero.
+[macOS discovery and worker shutdown evidence](security/rust-server-3059-macos-workspace-discovery.json)
+
 ## Cantrip 1.1.3059 mobile clients
 
 The installed Android API 36 ARM64 emulator app signed into PGlite, bundled
