@@ -30965,10 +30965,10 @@
     "scope": "Packaged Rust and Node reference in all four two-peer pairings on macOS ARM64. Readiness, metrics, the existing worker log route and WebSocket replay recovered after a real Redis restart."
   },
   "windows3059StandaloneLauncherRetryQualification": {
-    "status": "partial",
+    "status": "passed",
     "candidateVersion": "1.1.3059",
     "report": "docs/security/rust-server-3059-windows-standalone-retry.json",
-    "scope": "Exact Windows x64 archive. PGlite completed twice. Bundled PostgreSQL hit a SQL export failure in the first run and a supervision shutdown timeout in the second. Two direct controls exported identical SQL from the same profile. External PostgreSQL launcher acceptance remains open."
+    "scope": "Exact Windows x64 archive passed PGlite, bundled PostgreSQL and external PostgreSQL in the local emulated guest with 2,281 manifest matches, native SQL exports, retained writes, hosted reopen and 13 clean supervision exits. Earlier export and timeout failures remain in the record. Installed desktop and signed update qualification are separate."
   },
   "macos3059ProjectAutomationsQualification": {
     "status": "passed",
