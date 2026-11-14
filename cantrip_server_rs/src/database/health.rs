@@ -4,13 +4,36 @@ use crate::{
     wire::value::json,
 };
 use anyhow::Result;
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+const POSTGRES_READINESS_TIMEOUT: Duration = Duration::from_secs(3);
 
 impl Database {
     /// The reference's explicit health probe, not a wrapper around normal SQL.
     pub async fn ping(&self) -> Result<()> {
+        self.check_health(None).await
+    }
+
+    pub(crate) async fn ping_for_readiness(&self) -> Result<()> {
+        let deadline = match &self.backend {
+            super::Backend::Postgres(_) => Some(POSTGRES_READINESS_TIMEOUT),
+            super::Backend::Pglite(_) => None,
+        };
+        self.check_health(deadline).await
+    }
+
+    async fn check_health(&self, deadline: Option<Duration>) -> Result<()> {
         let started = Instant::now();
-        let result = self.query("SELECT 1", &[]).await;
+        let probe = self.query("SELECT 1", &[]);
+        let result = match deadline {
+            Some(timeout) => match tokio::time::timeout(timeout, probe).await {
+                Ok(result) => result,
+                Err(error) => {
+                    Err(anyhow::Error::new(error).context("PostgreSQL readiness query timed out"))
+                }
+            },
+            None => probe.await,
+        };
         let elapsed = started.elapsed().as_millis() as f64;
         match &result {
             Ok(_) if elapsed >= 250.0 => logging::server_logger()(LogCall::event(

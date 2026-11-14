@@ -193,7 +193,7 @@ async fn health() -> Response {
 async fn ready(State(service): State<Arc<AuthService>>) -> Response {
     let database = &service.repository.database;
     let started = Instant::now();
-    let database_ready = database.ping().await.is_ok();
+    let database_ready = database.ping_for_readiness().await.is_ok();
     let coordination_ready = match &service.coordination {
         Some(coordinator) if database_ready => coordinator.health().await.unwrap_or(false),
         Some(_) => false,
