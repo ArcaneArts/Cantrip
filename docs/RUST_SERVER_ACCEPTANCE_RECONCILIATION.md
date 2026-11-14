@@ -325,6 +325,22 @@ External PostgreSQL rolled back to the historical Node server and
 returned to Rust. All retained the saved settings and session.
 [Linux packaged Task and Agent evidence](security/rust-server-3059-linux-full-product-restart.json)
 
+### Task Goal recovery after worker loss on Linux
+
+The rebuilt ARM64 and x64 1.1.3059 images matched the recorded Node
+recovery results on PGlite, bundled PostgreSQL and external PostgreSQL.
+The browser, packaged Node worker and native Codex ran on the macOS
+host. Each case killed the worker during an active Task Goal, retained
+the original Task operation and Goal identity, and recovered through the
+existing client control. Each case published one answer and reopened the
+exact completed transcript after restart.
+
+Across all six cases, the browser completed 60 steps and the 18 verified
+server containers exited cleanly. Goal reads returned HTTP 409 four
+times across the matrix and succeeded on retry. The x64 containers ran
+under emulation on the Apple Silicon host.
+[Linux Task Goal worker-loss evidence](security/rust-server-3059-linux-task-goal-worker-loss.json)
+
 ### Linux background catalog refresh
 
 The Linux catalog job fired on the unmodified 15-minute schedule on
