@@ -348,6 +348,22 @@ failover and network blackholes remain separate requirements.
 
 ## Packaged Linux Redis TLS
 
+### Cantrip 1.1.3048
+
+Both Linux images passed Rust/Rust, Node/Rust and Rust/Node with external
+PostgreSQL 18 and authenticated TLS-only Redis 8.10.3. Across six pairings,
+the Redis process restarts retained all 12 worker claims and replayed 24
+committed App Live publications with their original cursors and payloads.
+The restored peers completed 12 new remote WorkerLink requests.
+
+Each pairing also verified single-session and account-wide logout across
+the two peers, including relay closures, direct capability revocations,
+and continued access for an unaffected account. All 12 peers shut down
+cleanly. Both Linux images rejected the private certificate without its
+CA. The x64 image ran under Rosetta. The mixed runs used the Node 1.1.3051
+reference and controlled worker acknowledgments.
+[Linux 1.1.3048 Redis TLS acceptance](security/rust-server-3048-linux-redis-tls.json)
+
 ### Cantrip 1.1.2881
 
 The Linux ARM64 and x64 containers passed Rust/Rust, Node/Rust and Rust/Node

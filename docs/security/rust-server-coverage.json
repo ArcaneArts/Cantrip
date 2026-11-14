@@ -24291,6 +24291,10 @@
           }
         }
       },
+      "linux3048TlsRuntimeAcceptance": {
+        "report": "docs/security/rust-server-3048-linux-redis-tls.json",
+        "scope": "Six packaged Linux ARM64 and x64 Rust/Rust and mixed Node/Rust TLS-only Redis restart runs, including worker claim continuity, App Live publication and replay, and cross-peer session revocation with controlled worker acknowledgments."
+      },
       "linuxTlsRuntimeAcceptance": {
         "version": "1.1.2855",
         "runtimeSourceCommit": "67ed809d086e5b6bc112fe77bb35baccf8b9dae1",
