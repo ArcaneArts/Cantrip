@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3032",
+  "target": "darwin-arm64",
+  "serverSourceCommit": "d91420eb9e0b4513f2b8b3928cfcde81dadd4c20",
+  "artifact": {
+    "executable": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-d91420eb9/qualified-candidate/bin/cantrip-server",
+      "bytes": 94323600,
+      "sha256": "c422e441f9939610d6f8dc3804cf700c7d91d0cb1a5f9bc545fba77abb39d1e1"
+    },
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-d91420eb9/cantrip-server-1.1.3032-darwin-arm64.tar.gz",
+      "bytes": 66941602,
+      "sha256": "dacdfeaadf9a4c1ed4ed828fb6fe09bcb54a5f8e8fd176fc6222cb64e6b58bff"
+    }
+  },
+  "performance": {
+    "harnessCommit": "21ab5085fe8df0be608c0e5591614e096cc7a8b9",
+    "inputs": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/performance-3032/inputs.sha256",
+      "bytes": 878,
+      "sha256": "d75170175d8521ebddabbe851c6b233fc54c27a4b3809f35c439edcdb8e7c53a"
+    },
+    "smallProfilePglite": {
+      "node": {
+        "reports": [
+          {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/performance-3032/runtime-1/node/runs/1794629205620-88022.json",
+            "bytes": 2473,
+            "sha256": "abfcdb8282a259b75f7cbfb11a50030a8e271850b8d57f169902db6c52407509"
+          },
+          {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/performance-3032/runtime-2/node/runs/1794629218170-88567.json",
+            "bytes": 2468,
+            "sha256": "82d830d9fdc0b829cd020da54b58a8a376bad8c9d92dcb1b16ca06ccab33a4ad"
+          },
+          {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/performance-3032/runtime-3/node/runs/1794629224371-88792.json",
+            "bytes": 2477,
+            "sha256": "eadf035310a662d7b3885934d33ac6df3b50d7067c61e830e06e9eb21cf85127"
+          }
+        ],
+        "medianStartupMs": 3671.6492080000003,
+        "medianIdleRssMiB": 1306.0625,
+        "medianOfRunP95HttpMs": {
+          "/api/bootstrap": 0.7490420000003724,
+          "/api/settings": 4.677499999999782,
+          "/api/projects": 1.8561250000002474
+        },
+        "medianReadRequestsPerSecond": 693.3428738853537
+      },
+      "rust": {
+        "reports": [
+          {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/performance-3032/runtime-1/rust/runs/1794629208737-88259.json",
+            "bytes": 2472,
+            "sha256": "bf1424b552ed22eda45d23829cf9f8d005a9fa120e263bac7bc044981c669b42"
+          },
+          {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/performance-3032/runtime-2/rust/runs/1794629211727-88414.json",
+            "bytes": 2472,
+            "sha256": "fadf9bd7a368762e0215351b689d73c050af182630ca997eaa17f3b931d97ec2"
+          },
+          {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/performance-3032/runtime-3/rust/runs/1794629227582-88971.json",
+            "bytes": 2477,
+            "sha256": "d691a0e01cab5feb9abe7bd7fed72f4d55955ad49a81709f4587da9378447008"
+          }
+        ],
+        "medianStartupMs": 1363.2387090000002,
+        "medianIdleRssMiB": 94.0,
+        "medianOfRunP95HttpMs": {
+          "/api/bootstrap": 0.48745899999994435,
+          "/api/settings": 1.8647909999999683,
+          "/api/projects": 0.5929999999998472
+        },
+        "medianReadRequestsPerSecond": 2210.5477668286626
+      }
+    },
+    "workerLogStreaming": {
+      "pglite": {
+        "node": {
+          "payloadMiBPerSecond": 179.32914122698327,
+          "observedWireBytes": 67737908,
+          "payloadSha256": "e20a69eca39368572e90b9135738a613838f954987a0b44b6220889c171cbb76",
+          "pressureCloseCode": 1013,
+          "recoveryMs": 29594.913,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/performance-3032/stream-pglite/node/runs/1794629228382-89128/report.json",
+            "bytes": 3820,
+            "sha256": "6d6913fa6a550de9dc441a49ca3916fb31500accc949cddd67039d7112faded5"
+          }
+        },
+        "rust": {
+          "payloadMiBPerSecond": 201.5031924056318,
+          "observedWireBytes": 67737908,
+          "payloadSha256": "e20a69eca39368572e90b9135738a613838f954987a0b44b6220889c171cbb76",
+          "pressureCloseCode": 1013,
+          "recoveryMs": 24954.560709,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/performance-3032/stream-pglite/rust/runs/1794629263303-89746/report.json",
+            "bytes": 3812,
+            "sha256": "a3b195260b1044b39f79877217a92fb270a963451c4ea2f0c71ea592253805fa"
+          }
+        }
+      },
+      "bundled-postgres": {
+        "node": {
+          "payloadMiBPerSecond": 191.88355067018702,
+          "observedWireBytes": 67737908,
+          "payloadSha256": "e20a69eca39368572e90b9135738a613838f954987a0b44b6220889c171cbb76",
+          "pressureCloseCode": 1013,
+          "recoveryMs": 27298.028334000002,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/performance-3032/stream-bundled-postgres/node/runs/1794629319971-90580/report.json",
+            "bytes": 3830,
+            "sha256": "346e81dbbf29cd018a981858359e3b23845d5ba82fbc03320804f816db6ef3f1"
+          }
+        },
+        "rust": {
+          "payloadMiBPerSecond": 197.19725695534353,
+          "observedWireBytes": 67737908,
+          "payloadSha256": "e20a69eca39368572e90b9135738a613838f954987a0b44b6220889c171cbb76",
+          "pressureCloseCode": 1013,
+          "recoveryMs": 26384.579375,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/performance-3032/stream-bundled-postgres/rust/runs/1794629290927-90136/report.json",
+            "bytes": 6881,
+            "sha256": "19e1f2cf28b70fdfd7001550a1f89277a76bc54b6a415419898020f269f9e97b"
+          }
+        }
+      },
+      "postgres": {
+        "node": {
+          "payloadMiBPerSecond": 198.56865076886552,
+          "observedWireBytes": 67737908,
+          "payloadSha256": "e20a69eca39368572e90b9135738a613838f954987a0b44b6220889c171cbb76",
+          "pressureCloseCode": 1013,
+          "recoveryMs": 28561.617708,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/performance-3032/stream-postgres/node/runs/1794629351292-91049/report.json",
+            "bytes": 3825,
+            "sha256": "b0949bd73d9335d5be60c6c1b2e0674aadd8b378fcd3a707f2d9f62ad7d32d2f"
+          }
+        },
+        "rust": {
+          "payloadMiBPerSecond": 190.40983944749445,
+          "observedWireBytes": 67737908,
+          "payloadSha256": "e20a69eca39368572e90b9135738a613838f954987a0b44b6220889c171cbb76",
+          "pressureCloseCode": 1013,
+          "recoveryMs": 24622.978667000003,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/performance-3032/stream-postgres/rust/runs/1794629383535-91633/report.json",
+            "bytes": 3823,
+            "sha256": "63b8a2b0cda8f2013bf13adf5a8cc6ec5c5659a8107a4d138e1fae5b6efbf102"
+          }
+        }
+      }
+    },
+    "scope": "Three fresh small-profile runs per runtime with loopback HTTP and process-tree RSS. One controlled 64 MiB worker-log stream, slow consumer and SIGKILL recovery per runtime and database cell. The Node peer uses an isolated external PostgreSQL process for the bundled comparison."
+  },
+  "routeDiscovery": {
+    "harnessCommit": "f6bbf147f21b1b64cb82bc610fb678d8c5d93af3",
+    "inputs": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/route-inventory-3032/inputs.sha256",
+      "bytes": 534,
+      "sha256": "b3cfb3e816aa67eaf86d8bb4ee068ec33730500f44603b2c7918562ca5188fde"
+    },
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/route-inventory-3032/acceptance.json",
+      "bytes": 2451964,
+      "sha256": "86a8c6d53b713a199134eae0d7510573f863cac002b189f448c021a9837b62ea"
+    },
+    "databaseMode": "pglite",
+    "pairedRoutes": 584,
+    "matchingStatusCodes": 584,
+    "genericRustFallbackDifferences": 0,
+    "cleanServerExits": 2,
+    "scope": "Loopback HTTP with absent resource IDs and empty mutation bodies. Includes targeted capability parsing and error checks. Successful domain behavior and actual WebSocket upgrades have separate qualifications."
+  }
+}
