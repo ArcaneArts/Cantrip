@@ -6597,10 +6597,14 @@
         "method": "POST",
         "path": "/api/cantrip-os/:instanceId/system-operations/:operationId/abandon",
         "implementation": "cantrip_server_rs/src/http/cantrip_os_systems.rs",
-        "status": "partial",
-        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "docs/security/rust-server-3059-macos-system-abandonment.json",
+          "scripts/server-rust/actual-cantrip-os-system-client.mjs"
+        ],
         "remaining": [
-          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+          "The browser and full Worker qualify abandonment of a prepared capture on macOS ARM64 in all three database modes. Other packaged platforms and attempts to abandon after dispatch remain outside this test."
         ]
       },
       {
@@ -29131,6 +29135,7 @@
       ]
     },
     "fullWorkerCantripOsSystems": {
+      "currentPreparedCaptureAbandonment": "docs/security/rust-server-3059-macos-system-abandonment.json",
       "currentPackagedServer": {
         "version": "1.1.3059",
         "sourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",

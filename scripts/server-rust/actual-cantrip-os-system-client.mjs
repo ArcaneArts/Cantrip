@@ -1,12 +1,16 @@
 // Existing browser administrative SDK -> production Server -> full Worker ->
 // actual Docker root transitions. Only this disposable guest's files are edited.
 import assert from "node:assert/strict";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { eventually } from "./full-worker.mjs";
 import { dockerResponseFault } from "./cantrip-os-docker-fault.mjs";
 
 export async function actualCantripOsSystemClient({
   page,
   call,
+  dataDirectory,
   os,
   guest,
   record,
@@ -20,10 +24,29 @@ export async function actualCantripOsSystemClient({
   report,
 }) {
   const fault = await dockerResponseFault(guest.name);
+  const replyDirectory = path.join(
+    dataDirectory,
+    "test-system-prepare-replies",
+  );
   const restartWorker = () =>
-    startWorker(undefined, { environment: fault.environment });
+    startWorker(undefined, {
+      environment: {
+        ...fault.environment,
+        CANTRIP_TEST_SYSTEM_PREPARE_REPLY_DIRECTORY: replyDirectory,
+        NODE_OPTIONS: [
+          process.env.NODE_OPTIONS,
+          "--import=" +
+            fileURLToPath(
+              new URL("./os-system-prepare-reply-fault.mjs", import.meta.url),
+            ),
+        ]
+          .filter(Boolean)
+          .join(" "),
+      },
+    });
   report.dockerRequests = fault.requests;
   try {
+    await mkdir(replyDirectory);
     await stopWorker();
     await restartWorker();
     const system = (method, ...args) =>
@@ -194,6 +217,78 @@ export async function actualCantripOsSystemClient({
       instance = recovered.instance;
     };
     const originalId = guest.id;
+    const abandonBeforeExecution = async () => {
+      const draft = await prepare({ action: "capture", resumeOriginal: true });
+      const reply = path.join(replyDirectory, draft.request.operationId);
+      await writeFile(reply + ".armed", "", { flag: "wx" });
+      const before = await guest.json("inspect", guest.id);
+      const beforeEffects = fault.effects().length;
+      const submitted = system("submitCantripOsSystem", draft);
+      const dropped = await eventually(
+        () =>
+          readFile(reply + ".json", "utf8").catch((error) => {
+            if (error.code === "ENOENT") return null;
+            throw error;
+          }),
+        (value) => assert.ok(value),
+      );
+      const workerReply = JSON.parse(dropped);
+      assert.equal(workerReply.operationId, draft.request.operationId);
+      assert.equal(workerReply.phase, "prepared");
+      await crashWorker();
+      const uncertain = await submitted;
+      assert.equal(uncertain.state, "unknown");
+      assert.equal(uncertain.dispatchStage, "preparing");
+      await restartWorker();
+      await eventually(
+        () => call("api/worker-wire", "getWorkers"),
+        (workers) =>
+          assert.equal(
+            workers.find((worker) => worker.workerId === instance.workerId)
+              ?.online,
+            true,
+          ),
+      );
+      const prepared = record(
+        "root-abandon-prepared",
+        await system("observeCantripOsSystemDraft", draft),
+      );
+      assert.equal(prepared.dispatchStage, "preparing");
+      assert.equal(prepared.phase, "prepared");
+      assert.ok(prepared.protectedResult);
+      const closed = record(
+        "root-abandoned-before-execution",
+        await system(
+          "controlCantripOsSystemOperation",
+          prepared,
+          "abandon",
+          account,
+        ),
+      );
+      assert.equal(closed.operationId, draft.request.operationId);
+      assert.equal(closed.state, "rejected");
+      assert.equal(closed.dispatchStage, "preparing");
+      assert.equal(closed.phase, "not-dispatched");
+      const replay = await system(
+        "controlCantripOsSystemOperation",
+        closed,
+        "continue",
+        account,
+      );
+      assert.deepEqual(replay, closed);
+      assert.deepEqual(
+        await system("observeCantripOsSystemDraft", draft),
+        closed,
+      );
+      assert.equal(fault.effects().length, beforeEffects);
+      const after = await guest.json("inspect", guest.id);
+      assert.equal(after[0].Id, before[0].Id);
+      assert.equal(after[0].State.StartedAt, before[0].State.StartedAt);
+      result.steps.push(
+        "a lost Worker prepare reply leaves an encrypted admission that the app can abandon without dispatching a root change",
+      );
+      return closed;
+    };
     await write("A", "one");
     await verify("root-before-capture", "A", "one");
     const captureDraft = await prepare({
@@ -426,6 +521,7 @@ export async function actualCantripOsSystemClient({
       "exact-base system reset clears root customization while retaining mounted data; rollback preserves both the original root and the base candidate's later writes",
     );
 
+    const abandoned = await abandonBeforeExecution();
     const history = record(
       "system-history-before-restart",
       await system(
@@ -435,8 +531,13 @@ export async function actualCantripOsSystemClient({
         account,
       ),
     );
-    assert.equal(history.items.length, 5);
+    assert.equal(history.items.length, 6);
+    assert.deepEqual(
+      history.items.find((item) => item.operationId === abandoned.operationId),
+      abandoned,
+    );
     for (const value of history.items) {
+      if (value.operationId === abandoned.operationId) continue;
       assert.equal(value.state, "ready");
       assert.ok(
         await call(
@@ -468,7 +569,8 @@ export async function actualCantripOsSystemClient({
       ),
     );
     assert.deepEqual(retained, history);
-    for (const value of retained.items)
+    for (const value of retained.items) {
+      if (value.operationId === abandoned.operationId) continue;
       assert.ok(
         await call(
           "cantrip-os-system-encryption",
@@ -476,6 +578,7 @@ export async function actualCantripOsSystemClient({
           value,
         ),
       );
+    }
     const after = (await guest.json("inspect", guest.id))[0];
     assert.equal(after.Id, actual.Id);
     assert.equal(after.State.StartedAt, actual.State.StartedAt);

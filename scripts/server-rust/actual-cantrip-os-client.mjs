@@ -294,6 +294,7 @@ export async function actualCantripOsClient({
       await actualCantripOsSystemClient({
         page,
         call,
+        dataDirectory,
         os,
         guest,
         record,
