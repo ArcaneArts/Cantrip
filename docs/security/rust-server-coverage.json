@@ -4387,6 +4387,7 @@
         "implementation": "cantrip_server_rs/src/http/native_queue.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
+          "docs/security/rust-server-3059-macos-native-queue-wire.json",
           "scripts/server-rust/native-queue-http-compatibility.mjs",
           "scripts/server-rust/native-queue-http-cases.mjs",
           "scripts/server-rust/native-queue-http-authorization.mjs",
@@ -4401,7 +4402,7 @@
           "scripts/server-rust/native-queue-disconnected-mutation.mjs"
         ],
         "remaining": [
-          "Supported-platform, full failure/product and packaged acceptance remain required. Shared coordination, complete installation upgrade/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished."
+          "The packaged macOS 1.1.3059 HTTP and App Live queue comparison passed on all three databases and authentication modes. Qualify this route on Windows and Linux packages and through full-worker and shared-coordination fault scenarios."
         ]
       },
       {
@@ -4410,6 +4411,7 @@
         "implementation": "cantrip_server_rs/src/http/native_queue.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
+          "docs/security/rust-server-3059-macos-native-queue-wire.json",
           "scripts/server-rust/native-queue-http-compatibility.mjs",
           "scripts/server-rust/native-queue-http-cases.mjs",
           "scripts/server-rust/native-queue-http-authorization.mjs",
@@ -4424,7 +4426,7 @@
           "scripts/server-rust/native-queue-disconnected-mutation.mjs"
         ],
         "remaining": [
-          "Supported-platform, full failure/product and packaged acceptance remain required. Shared coordination, complete installation upgrade/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished."
+          "The packaged macOS 1.1.3059 HTTP and App Live queue comparison passed on all three databases and authentication modes. Qualify this route on Windows and Linux packages and through full-worker and shared-coordination fault scenarios."
         ]
       },
       {
@@ -4433,6 +4435,7 @@
         "implementation": "cantrip_server_rs/src/http/native_queue.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
+          "docs/security/rust-server-3059-macos-native-queue-wire.json",
           "scripts/server-rust/native-queue-http-compatibility.mjs",
           "scripts/server-rust/native-queue-http-cases.mjs",
           "scripts/server-rust/native-queue-http-authorization.mjs",
@@ -4447,7 +4450,7 @@
           "scripts/server-rust/native-queue-disconnected-mutation.mjs"
         ],
         "remaining": [
-          "Supported-platform, full failure/product and packaged acceptance remain required. Shared coordination, complete installation upgrade/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished."
+          "The packaged macOS 1.1.3059 HTTP and App Live queue comparison passed on all three databases and authentication modes. Qualify this route on Windows and Linux packages and through full-worker and shared-coordination fault scenarios."
         ]
       },
       {
@@ -4456,6 +4459,7 @@
         "implementation": "cantrip_server_rs/src/http/native_queue.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
+          "docs/security/rust-server-3059-macos-native-queue-wire.json",
           "scripts/server-rust/native-queue-http-compatibility.mjs",
           "scripts/server-rust/native-queue-http-cases.mjs",
           "scripts/server-rust/native-queue-http-authorization.mjs",
@@ -4470,7 +4474,7 @@
           "scripts/server-rust/native-queue-disconnected-mutation.mjs"
         ],
         "remaining": [
-          "Supported-platform, full failure/product and packaged acceptance remain required. Shared coordination, complete installation upgrade/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished."
+          "The packaged macOS 1.1.3059 HTTP and App Live queue comparison passed on all three databases and authentication modes. Qualify this route on Windows and Linux packages and through full-worker and shared-coordination fault scenarios."
         ]
       },
       {
@@ -4479,6 +4483,7 @@
         "implementation": "cantrip_server_rs/src/http/native_queue.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
+          "docs/security/rust-server-3059-macos-native-queue-wire.json",
           "scripts/server-rust/native-queue-http-compatibility.mjs",
           "scripts/server-rust/native-queue-http-cases.mjs",
           "scripts/server-rust/native-queue-http-authorization.mjs",
@@ -4493,7 +4498,7 @@
           "scripts/server-rust/native-queue-disconnected-mutation.mjs"
         ],
         "remaining": [
-          "Supported-platform, full failure/product and packaged acceptance remain required. Shared coordination, complete installation upgrade/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished."
+          "The packaged macOS 1.1.3059 HTTP and App Live queue comparison passed on all three databases and authentication modes. Qualify this route on Windows and Linux packages and through full-worker and shared-coordination fault scenarios."
         ]
       },
       {
@@ -4502,6 +4507,7 @@
         "implementation": "cantrip_server_rs/src/http/native_queue.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
+          "docs/security/rust-server-3059-macos-native-queue-wire.json",
           "scripts/server-rust/native-queue-http-compatibility.mjs",
           "scripts/server-rust/native-queue-http-cases.mjs",
           "scripts/server-rust/native-queue-http-authorization.mjs",
@@ -4516,7 +4522,7 @@
           "scripts/server-rust/native-queue-disconnected-mutation.mjs"
         ],
         "remaining": [
-          "Supported-platform, full failure/product and packaged acceptance remain required. Shared coordination, complete installation upgrade/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished."
+          "The packaged macOS 1.1.3059 HTTP and App Live queue comparison passed on all three databases and authentication modes. Qualify this route on Windows and Linux packages and through full-worker and shared-coordination fault scenarios."
         ]
       },
       {
@@ -27408,6 +27414,7 @@
     },
     "workerNativeQueueHttp": {
       "status": "implemented-pending-platform-acceptance",
+      "currentMacosPackage": "docs/security/rust-server-3059-macos-native-queue-wire.json",
       "scope": "All six worker:agent-tools queue routes use the credential owner, existing canonical queue repositories, exact Source schema/error boundaries, shared receipt notifications and owned dispatch/persistence lifetimes. Production startup invokes the already-ported interrupted-lane and Task-operation recovery routines alongside existing local-coordinator transient recovery. No production SQL endpoint or Node delegation.",
       "evidence": [
         "cantrip_server_rs/src/http/native_queue.rs",
