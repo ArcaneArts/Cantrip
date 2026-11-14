@@ -102,5 +102,7 @@ The [1.1.3059 release reconciliation](security/rust-server-3059-release-reconcil
 records the current standalone packages, Linux Winterhold rehearsals, historical
 profile migration and post-write rollback, and desktop qualification. The current
 macOS updater run verifies the signed package and retained profile with the
-matching Node worker across all three database modes. The release record tracks
-the open Windows updater, release signing, mobile and compatibility checks.
+matching Node worker across all three database modes. The Windows x64 updater
+also passed the signed update from 1.1.2938 with retained PGlite state. The
+release record tracks Windows Authenticode, macOS notarization, mobile and
+remaining compatibility checks.

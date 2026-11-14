@@ -58,7 +58,8 @@
       "sha256": "a58ccdb402201bbb51843ab7df661aa4efe30b71b35858828fda1a596d5de866"
     },
     "nativeExecutable": {
-      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/relocated native package \u6f22\u5b57/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "executionPathRelativeToPackageRoot": "relocated native package 漢字/cantrip-server-darwin-arm64/bin/cantrip-server",
       "bytes": 94198000,
       "sha256": "98158f98aa453ad802282bc6119cf37f66251923d77f53b6fe08fe55c14107a3"
     },
