@@ -34,6 +34,7 @@ import { actualProviderAuthClient } from "./actual-provider-auth-client.mjs";
 import { actualProjectChatClient } from "./actual-project-chat-client.mjs";
 import { providerTestBoundary } from "./provider-test-boundary.mjs";
 import { observePostgresErrors } from "./postgres-error-observation.mjs";
+import { observeFolderLive } from "./folder-live-observation.mjs";
 import { actualGithubConversion } from "./actual-github-conversion.mjs";
 import { actualWorkspaceDiscovery } from "./actual-workspace-discovery.mjs";
 import {
@@ -388,6 +389,7 @@ async function flow(
   const errors = [],
     requests = [];
   result.requests = requests;
+  const liveObservation = observeFolderLive(page, fixture.server.origin);
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("request", (request) => {
     const pathname = new URL(request.url()).pathname;
@@ -667,13 +669,20 @@ async function flow(
         undefined,
       id,
     );
-    await eventually(
-      () => page.evaluate(() => window.folderLive.snapshot()),
-      (snapshot) => {
-        assert.equal(snapshot.status, "live");
-        assert.equal(snapshot.activeScopeCount, snapshot.desiredScopeCount);
-      },
-    );
+    let lastSnapshot;
+    try {
+      await eventually(
+        () => page.evaluate(() => window.folderLive.snapshot()),
+        (snapshot) => {
+          lastSnapshot = snapshot;
+          assert.equal(snapshot.status, "live");
+          assert.equal(snapshot.activeScopeCount, snapshot.desiredScopeCount);
+        },
+      );
+    } catch (error) {
+      result.failedLiveScope = liveObservation(lastSnapshot);
+      throw error;
+    }
   };
   const filesystem = async (id) => {
     const target = deriveManagedFolderLocation(dataDirectory, id).target;
