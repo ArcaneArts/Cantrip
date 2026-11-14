@@ -26391,6 +26391,7 @@
     },
     "projectReplicaExecution": {
       "status": "partial",
+      "mixedRedisClaimRecovery": "docs/security/rust-server-3059-macos-recovery-evidence.json",
       "implementation": [
         "cantrip_server_rs/src/projects/replicas/",
         "cantrip_server_rs/src/http/replicas.rs",
@@ -26423,8 +26424,8 @@
       ],
       "validatedSubset": "Local macOS all three stores: lifecycle52cases/9snapshots, admission72/7, completion39/19. HTTP validation and offline import each18observations/runtime/auth profile. Connected success plus failure recovery43HTTPobservations,8workercommands,21jobLiveevents eachruntime in anonymous/accounts profiles: held valid progress with two stale events rejected; managed-link provision/repair, synchronization, second-source removal and final-source protection; worker block, unsafe cancel refusal, failed retry and successful retry. No full-domain or platform completion claim. Reconnect extension also passes all three stores:47HTTP/9commands/25Liveevents each runtime/profile; offline attempt1 has no dispatch and reconnect executes exactly once as attempt2. Real production lease timers pass all three stores:53HTTP/12commands/32Liveevents each runtime/profile, held attempt remains renewed beyond original expiry and stale completion recovers once on attempt2. Active-command shutdown/restart passes all three stores in both auth profiles; preserved worker-offline attempt1 resumes exactly once as attempt2 with Live revisions7,8. Second-account isolation passes all three stores: all10 routes deny foreign access with unchanged owner job/replica and no extra command; combined shutdown suite61 account/50 anonymous HTTP observations. Removal blockers match for extra worktrees, chats, terminals, Explorer/Code tabs, project views and active/released lanes on all three stores. Converted-folder removal v5 passes all3 stores and both auth profiles:56anonymous/67account HTTP observations,12commands; seeded completed conversion uses production removal routes/executor, retaining files emits no command, deleting uses folder.delete through failure and retry/absent result. Restarted durable snapshots confirm missing worktrees, retired sources and deletion timestamps. Four-job executor capacity passes all3 stores and both auth profiles:57anonymous/68account HTTP observations, five imports leave four held running and one queued, releasing one slot dispatches the fifth once, all finish attempt1. Actual encrypted browser/2full-worker local Git direct attachment/replay/restart/detach passes all3 stores12steps/runtime with no seeded repository/catalog/handler. Source paths remain opaque on HTTP; user checkout deletion refused and files preserved after detach. Existing AppLiveClient per-job sequences including repeated completion invalidations match across all6runtime reports via the actual comparison function. Real public GitHub extension v3 passes16steps/runtime on private/external PostgreSQL: actual gh import+clone, exact second replica, verify-only sync, removal preserving primary. PGlite Node16steps pass; Rust15steps then worker blocks removal because managed CodeGraph cache appears in ignored inventory. Not all-store completion. WorktreeManager late observation after close is fixed with valid child-process red/green watcher retention proof, full11worktree tests and worker build. Index retirement v5 now passes all3stores17steps/runtime: actual public gh clone/sync, ignored-user-file denial and preservation, then attempt2 physical removal of secondary only. v4 PGliteRust records2realuninit events for former failingcache; v5 NodePG and RustprivatePG also execute realcleanup. Retirement after verified ownership fences reconfiguration and drains CLI through close, attempts uninit before first observation, then leaves dirty/ignored/history checks intact. 46focusedCodeGraph/Git safety tests and workerbuild pass, plus11worktree tests. External PostgreSQL real HTTP admission/lifetime v5 passes both runtimes in anonymous/accounts modes: five forced races and two caller-disconnect cases per runtime/profile. Actual blocker PIDs prove both insert/source-lock contenders. Unique constraint replay, active-slot and reused-payload conflicts, one durable winner and exact canonical replay match. Unsafe sync cancellation refuses then reconnect completes attempt2. Shutdown retains disconnected INSERT, commits queued attempt0/revision1, restart dispatches same job once. Latest focused worker worktree/app-server/CodeGraph/Git tests139 pass.",
       "remaining": [
-        "Remaining placement/failure product flows and supported-platform CI.",
-        "Initial Node startup timeout cause remains unproven; native CI shutdown, packaged operation and multi-instance coordination remain unverified."
+        "Qualify remaining placement and failure flows on the supported release artifacts, including the four peer pairings across Redis recovery.",
+        "The mixed macOS browser and worker test confirms replacement-claim recovery for a Rust caller and Node host. The focused bridge also passes with a Rust host. The Linux 1.1.3048 package evidence covers two Rust x64 peers."
       ]
     },
     "projectGithubConversionExecution": {
@@ -28887,6 +28888,8 @@
       "linuxActiveServerInterruption": "docs/security/rust-server-linux-model-operation-server-loss.json",
       "macos2976Qualification": "docs/security/rust-server-2976-darwin-arm64-model-operations.json",
       "macos2976ActiveServerInterruption": "docs/security/rust-server-2976-darwin-arm64-model-operation-server-loss.json",
+      "windows2976ActiveServerInterruption": "docs/security/rust-server-2976-win32-x64-model-server-loss.json",
+      "macosExtendedPostgresReceiptRecovery": "docs/security/rust-server-3059-macos-recovery-evidence.json",
       "status": "implemented-pending-platform-acceptance",
       "sourceBaseline": "bb7af5ccc7322e5b18c1a23cd31abb198ad1608c",
       "evidence": [
@@ -28918,11 +28921,12 @@
         "A real Redis SIGKILL during an active embedding retains one unknown attempt and rejects replay without a new provider request across all four Node/Rust peer pairings using macOS ARM64 1.1.3013, Linux ARM64 1.1.3014, and Linux x64 1.1.3033.",
         "The Windows x64 1.1.2976 installer with worker grant refresh passed 36 model-operation cases in Edge on the three supported stores, including worker loss and retained usage after restart.",
         "The Rust server persists the original validated receipt after a 60-second external PostgreSQL outage even when the browser and provider finish while the database is offline. The macOS baselines left the attempt running. The rebuilt Linux x64 1.1.3033 container also passed the offline-settlement case with the browser, worker and private PostgreSQL on macOS.",
+        "The macOS ARM64 Rust candidate settled one validated receipt after an eight-minute external PostgreSQL outage, rejected replay without repeating provider work and accepted a fresh decision. The current development executable also matched 366 paired HTTP model boundary observations across all three stores and three authentication profiles.",
         "Public aggregate totals and completeness match observed receipts; missing counters and worker receipts remain unknown."
       ],
       "baselineRepair": "Unmodified Node external/private PostgreSQL aggregate routes fail to bind Date parameters for a SQL CASE expression; four ISO timestamp bindings restore the range predicates. Node PGlite and native Rust already passed.",
       "remaining": [
-        "Outages beyond the exercised durations, simultaneous server and database loss and Windows server-process interruption remain unqualified.",
+        "Qualify longer database outages on the current shipping artifacts and simultaneous server and database loss. The Windows x64 1.1.2976 external PostgreSQL server-process interruption passed in the local guest.",
         "Configured OpenAI-compatible adapters and an owned local provider are exercised; this does not prove every provider-private adapter behavior.",
         "Final integrated package and platform acceptance remain required."
       ]
