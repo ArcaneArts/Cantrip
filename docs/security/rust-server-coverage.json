@@ -30998,6 +30998,7 @@
   "currentWireAndAccountProtection": {
     "status": "passed",
     "report": "docs/security/rust-server-current-wire-acceptance.json",
+    "linux3059AccountProtectionReport": "docs/security/rust-server-3059-linux-account-protection.json",
     "scope": "Packaged JSON transport on macOS ARM64 and Linux x64, macOS HTTP route discovery and encrypted account protection, and source-level JavaScript serialization and schema comparisons."
   },
   "linux3048WireAndMacosModelBoundaries": {

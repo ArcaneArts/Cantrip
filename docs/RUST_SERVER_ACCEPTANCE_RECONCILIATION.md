@@ -206,6 +206,17 @@ parser limits, non-ASCII password handling, error recovery and real
 publication cursors. All 12 Rust container processes exited cleanly.
 [Linux JSON transport evidence](security/rust-server-3059-linux-json-wire.json)
 
+The same two Linux images also matched 2,322 account-protection HTTP
+cases across the three database modes. The four profiles exercised
+anonymous, password, account and administrator access, including
+principal grants, cross-account isolation and retained audit events.
+On each architecture, a shared external PostgreSQL profile preserved
+its encrypted wrappers through Node, Rust and back to Node. The
+browser cryptography checks exercised password rewrap, HPKE opening,
+wrong-owner rejection and tampering rejection. All 56 Rust container
+processes exited cleanly.
+[Linux account protection evidence](security/rust-server-3059-linux-account-protection.json)
+
 ## Cantrip 1.1.3059 mobile clients
 
 The installed Android API 36 ARM64 emulator app signed into PGlite, bundled
