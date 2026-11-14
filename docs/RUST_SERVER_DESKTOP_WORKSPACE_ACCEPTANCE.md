@@ -48,6 +48,18 @@ zero survivors. The initial worker restart occurs during fixture setup, before
 normal account/command readiness; that early SIGTERM is recorded separately and
 is not counted as a graceful worker shutdown.
 
+## Packaged Rust 1.1.3059 rerun
+
+The macOS ARM64 rerun passed the same 24 checkpoints against the 1.1.3059
+standalone package, including three Rust restarts, three app crash
+recoveries and 15 native-window screenshots. Each store recovered both
+drafts and their tab ownership. Closing the detached window returned
+its draft to main, and saving changed only the selected worker file.
+The debug native app, full Node worker and Rust server exited cleanly.
+The [current artifact and case receipts](security/rust-server-3059-macos-native-workspace.json)
+record the packaged executable, the actual debug app in each case and
+the captured windows.
+
 ## Reproduce locally
 
 Prepare the usual workspace dependencies, shared packages and CLI. Build the

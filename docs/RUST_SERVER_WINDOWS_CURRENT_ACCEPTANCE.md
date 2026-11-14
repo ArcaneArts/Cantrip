@@ -14,8 +14,8 @@ The initial standalone run ended during the PGlite connection at the
 driver's 60-second deadline. Its guest script reported a longer budget
 without passing it to the driver. The driver now accepts an explicit
 deadline and reports the time to readiness. The updated driver passed
-the relocated macOS ARM64 1.1.3059 archive on all three stores. Windows
-standalone runtime, installed desktop and updater results are still open.
+the relocated macOS ARM64 1.1.3059 archive on all three stores. The Windows
+standalone runtime retry and signed updater remain open.
 [Archive, installer and harness verification](security/rust-server-3059-windows-package-verification.json)
 
 Fresh and reopened installed PGlite cases passed in the same guest. The desktop
@@ -24,9 +24,15 @@ version reply from its packaged 1.1.2976 worker. Reopening used the stored
 database selection and retained the server identity and setting. Both tray
 quits exited zero, reaped both children and recorded an orderly server
 shutdown. Fresh PGlite startup took 216.657 seconds under x64 emulation.
-Both guest disk receipts match the serial output. The PostgreSQL desktop
-cases remain in the running matrix.
+Both guest disk receipts match the serial output.
 [Installed PGlite cases](security/rust-server-3059-windows-installed-pglite.json)
+
+Fresh and reopened bundled PostgreSQL cases passed on the same installed
+package. Both quits drained the app's Rust server and Node worker and stopped
+the private PostgreSQL process. The reopened profile retained the setting and
+server identity from the first case. The two guest disk receipts match the
+serial observations. External PostgreSQL desktop qualification is in progress.
+[Installed desktop cases](security/rust-server-3059-windows-installed-desktop.json)
 
 ## Windows x64 standalone `1.1.2938`
 

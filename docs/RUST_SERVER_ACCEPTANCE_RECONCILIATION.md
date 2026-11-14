@@ -95,6 +95,34 @@ Physical desktop capture and native desktop window ownership retain separate
 acceptance.
 [Terminal, file and browser surface evidence](security/rust-server-3059-surfaces-and-files.json)
 
+### Native workspace and dirty editor recovery
+
+On macOS ARM64, actual Tauri and WKWebView windows passed 24 workspace
+checkpoints against the packaged 1.1.3059 Rust server. Both unsaved drafts
+and the original tab ownership survived Rust restart, detached WebView
+reload and forced native app exit on all three stores. Closing the detached
+window returned its draft to the main window, and the explicit encrypted
+save wrote only the selected worker file. The debug app, Rust server and
+full Node worker exited cleanly.
+[Native workspace evidence](security/rust-server-3059-macos-native-workspace.json)
+
+### Workspace state, project shares and tunnels
+
+The macOS ARM64 package and Node reference each passed 21 browser and
+full-worker steps per database. Both retained detached file ownership and
+the unsaved draft across server restart. A new renderer attachment fenced
+the old generation. Protected WebDAV used real worker files and enforced
+Digest authentication over WorkerLink and legacy transport. After Rust
+restarted with the worker still running, the old share closed and a fresh
+share opened the retained bytes.
+
+The two tunnel transports carried authenticated ciphertext to a real TCP
+target, preserved half-close and returned the expected encrypted reply.
+WorkerLink released its grant and revocation closed the legacy attachment.
+The test used the packaged 1.1.2976 Node worker and disposable catalog
+fixtures.
+[Workspace, share and tunnel evidence](security/rust-server-3059-shares-and-tunnels.json)
+
 ### Historical profile upgrade and post-write rollback
 
 The packaged macOS ARM64 1.1.3059 server upgraded a populated copy of a

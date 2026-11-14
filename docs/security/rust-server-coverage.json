@@ -1370,10 +1370,11 @@
           "scripts/server-rust/project-share-shutdown.mjs",
           "scripts/server-rust/actual-worker-project-shares.mjs",
           "scripts/server-rust/project-share-webdav.mjs",
-          "cantrip_server_rs/tests/project_share_contracts.rs"
+          "cantrip_server_rs/tests/project_share_contracts.rs",
+          "docs/security/rust-server-3059-shares-and-tunnels.json"
         ],
         "remaining": [
-          "Supported-platform and packaged acceptance; owning project/chat archive, deletion and relocation routes remain separate unported domains."
+          "Supported-platform acceptance beyond the packaged macOS comparison. Owning project and chat archive, deletion and relocation lifecycle acceptance remains separate."
         ]
       },
       {
@@ -1386,10 +1387,11 @@
           "scripts/server-rust/project-share-shutdown.mjs",
           "scripts/server-rust/actual-worker-project-shares.mjs",
           "scripts/server-rust/project-share-webdav.mjs",
-          "cantrip_server_rs/tests/project_share_contracts.rs"
+          "cantrip_server_rs/tests/project_share_contracts.rs",
+          "docs/security/rust-server-3059-shares-and-tunnels.json"
         ],
         "remaining": [
-          "Supported-platform and packaged acceptance; owning project/chat archive, deletion and relocation routes remain separate unported domains."
+          "Supported-platform acceptance beyond the packaged macOS comparison. Owning project and chat archive, deletion and relocation lifecycle acceptance remains separate."
         ]
       },
       {
@@ -1402,10 +1404,11 @@
           "scripts/server-rust/project-share-shutdown.mjs",
           "scripts/server-rust/actual-worker-project-shares.mjs",
           "scripts/server-rust/project-share-webdav.mjs",
-          "cantrip_server_rs/tests/project_share_contracts.rs"
+          "cantrip_server_rs/tests/project_share_contracts.rs",
+          "docs/security/rust-server-3059-shares-and-tunnels.json"
         ],
         "remaining": [
-          "Supported-platform and packaged acceptance; owning project/chat archive, deletion and relocation routes remain separate unported domains."
+          "Supported-platform acceptance beyond the packaged macOS comparison. Owning project and chat archive, deletion and relocation lifecycle acceptance remains separate."
         ]
       },
       {
@@ -1483,10 +1486,11 @@
           "scripts/server-rust/workspace-repository-compatibility.mjs",
           "scripts/server-rust/workspace-http-compatibility.mjs",
           "scripts/server-rust/workspace-http-lifetimes.mjs",
-          "scripts/server-rust/actual-workspace-client.mjs"
+          "scripts/server-rust/actual-workspace-client.mjs",
+          "docs/security/rust-server-3059-macos-native-workspace.json"
         ],
         "remaining": [
-          "Current-head supported-platform and packaged acceptance; full native window/UI recovery and shared coordination."
+          "Supported-platform and shared coordination acceptance beyond the macOS native workspace recovery suite."
         ]
       },
       {
@@ -1504,10 +1508,11 @@
           "scripts/server-rust/workspace-repository-compatibility.mjs",
           "scripts/server-rust/workspace-http-compatibility.mjs",
           "scripts/server-rust/workspace-http-lifetimes.mjs",
-          "scripts/server-rust/actual-workspace-client.mjs"
+          "scripts/server-rust/actual-workspace-client.mjs",
+          "docs/security/rust-server-3059-macos-native-workspace.json"
         ],
         "remaining": [
-          "Current-head supported-platform and packaged acceptance; full native window/UI recovery and shared coordination."
+          "Supported-platform and shared coordination acceptance beyond the macOS native workspace recovery suite."
         ]
       },
       {
@@ -1525,10 +1530,11 @@
           "scripts/server-rust/workspace-repository-compatibility.mjs",
           "scripts/server-rust/workspace-http-compatibility.mjs",
           "scripts/server-rust/workspace-http-lifetimes.mjs",
-          "scripts/server-rust/actual-workspace-client.mjs"
+          "scripts/server-rust/actual-workspace-client.mjs",
+          "docs/security/rust-server-3059-macos-native-workspace.json"
         ],
         "remaining": [
-          "Current-head supported-platform and packaged acceptance; full native window/UI recovery and shared coordination."
+          "Supported-platform and shared coordination acceptance beyond the macOS native workspace recovery suite."
         ]
       },
       {
@@ -1549,7 +1555,7 @@
           "scripts/server-rust/actual-workspace-client.mjs"
         ],
         "remaining": [
-          "Current-head supported-platform and packaged acceptance; full native window/UI recovery and shared coordination."
+          "Current supported-platform and packaged legacy file import acceptance and shared coordination."
         ]
       },
       {
@@ -10178,10 +10184,11 @@
           "scripts/server-rust/project-share-shutdown.mjs",
           "scripts/server-rust/actual-worker-project-shares.mjs",
           "scripts/server-rust/project-share-webdav.mjs",
-          "cantrip_server_rs/tests/project_share_contracts.rs"
+          "cantrip_server_rs/tests/project_share_contracts.rs",
+          "docs/security/rust-server-3059-shares-and-tunnels.json"
         ],
         "remaining": [
-          "Supported-platform and packaged acceptance; owning project/chat archive, deletion and relocation routes remain separate unported domains."
+          "Supported-platform acceptance beyond the packaged macOS comparison. Owning project and chat archive, deletion and relocation lifecycle acceptance remains separate."
         ]
       },
       {
@@ -10193,10 +10200,11 @@
           "scripts/server-rust/project-share-shutdown.mjs",
           "scripts/server-rust/actual-worker-project-shares.mjs",
           "scripts/server-rust/project-share-webdav.mjs",
-          "cantrip_server_rs/tests/project_share_contracts.rs"
+          "cantrip_server_rs/tests/project_share_contracts.rs",
+          "docs/security/rust-server-3059-shares-and-tunnels.json"
         ],
         "remaining": [
-          "Supported-platform and packaged acceptance; owning project/chat archive, deletion and relocation routes remain separate unported domains."
+          "Supported-platform acceptance beyond the packaged macOS comparison. Owning project and chat archive, deletion and relocation lifecycle acceptance remains separate."
         ]
       },
       {
@@ -30273,6 +30281,7 @@
       "status": "implemented-with-scoped-local-qualification",
       "evidence": [
         "docs/RUST_SERVER_DESKTOP_WORKSPACE_ACCEPTANCE.md",
+        "docs/security/rust-server-3059-macos-native-workspace.json",
         "scripts/server-rust/native-desktop-workspace-acceptance.mjs",
         "scripts/server-rust/native-desktop-workspace-flow.mjs",
         "scripts/server-rust/native-desktop-bridge.mjs",
@@ -30908,6 +30917,26 @@
       "appLive": "docs/security/rust-server-3059-live-compatibility.json"
     },
     "scope": "Packaged Rust and Node reference comparisons for HTTP authentication, mobile code exchange, session continuity, App Live authorization, socket limits, reconnect replay and revocation. External PostgreSQL also exercised ping and close while an authorization query was blocked."
+  },
+  "macos3059NativeWorkspaceQualification": {
+    "status": "passed",
+    "candidateVersion": "1.1.3059",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "report": "docs/security/rust-server-3059-macos-native-workspace.json",
+    "scope": "Actual macOS debug Tauri and WKWebView windows, packaged Rust server and full Node worker. Detached tab ownership, dirty drafts, restart, renderer reload, application crash recovery, native close and explicit encrypted save passed."
+  },
+  "windows3059InstalledDesktopQualification": {
+    "status": "partial",
+    "candidateVersion": "1.1.3059",
+    "report": "docs/security/rust-server-3059-windows-installed-desktop.json",
+    "scope": "The verified Windows x64 NSIS package passed first launch, retained-profile reopening and clean tray shutdown for PGlite and bundled PostgreSQL in the local guest. External PostgreSQL, the exact standalone archive retry and signed updater retain separate acceptance."
+  },
+  "macos3059SharesAndTunnelsQualification": {
+    "status": "passed",
+    "candidateVersion": "1.1.3059",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "report": "docs/security/rust-server-3059-shares-and-tunnels.json",
+    "scope": "MacOS packaged Rust and Node reference with browser SDK and full packaged Node worker. Workspace ownership restart, authenticated WebDAV and real TCP relay passed over WorkerLink and legacy transport on all three databases."
   },
   "remainingAcceptance": [
     "Qualify packaged cross-platform dependency interruptions and longer outages. Reconcile the still-open background-service and product recovery comparisons.",
