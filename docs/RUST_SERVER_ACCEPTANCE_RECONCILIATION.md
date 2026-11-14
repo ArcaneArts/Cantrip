@@ -16,6 +16,15 @@ package files and four OCI layers per architecture. Both Linux containers ran
 without Node, as a non-root user, with a read-only root and noexec temporary
 filesystem. Linux x64 ran through Rosetta on the ARM64 Linux host.
 
+The exact Windows x64 standalone archive verified all 2,281 manifest files
+and passed migrations, native SQL export, settings persistence, hosted
+reopening and 13 supervision shutdowns on all three database modes.
+The clean run used explicit startup and shutdown allowances for the local
+software-emulated guest. Its longest shutdown took 14.1 seconds. An earlier
+PGlite shutdown exceeded 60 seconds, with 58.978 seconds spent closing the
+database. The Windows desktop and signed updater have separate acceptance.
+[Windows x64 standalone report](security/rust-server-3059-windows-standalone-retry.json)
+
 Each local Winterhold rehearsal completed 18 installer operations under
 systemd and Caddy HTTPS. Six injected migration and startup failures
 restored the working service. PGlite and bundled PostgreSQL retained writes
