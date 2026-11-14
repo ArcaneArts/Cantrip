@@ -26,6 +26,7 @@ const { values } = parseArgs({
     database: { type: "string", default: "pglite" },
     "payload-mib": { type: "string", default: "16" },
     "startup-timeout-ms": { type: "string" },
+    "database-shutdown-timeout-ms": { type: "string" },
     pressure: { type: "boolean", default: false },
     recovery: { type: "boolean", default: false },
   },
@@ -56,6 +57,21 @@ if (startupTimeoutMs !== undefined) {
     "--startup-timeout-ms must be a positive integer",
   );
 }
+const databaseShutdownTimeoutMs =
+  values["database-shutdown-timeout-ms"] === undefined
+    ? undefined
+    : Number(values["database-shutdown-timeout-ms"]);
+if (databaseShutdownTimeoutMs !== undefined) {
+  assert.ok(
+    !values.image,
+    "--database-shutdown-timeout-ms requires a native launch",
+  );
+  assert.ok(
+    Number.isSafeInteger(databaseShutdownTimeoutMs) &&
+      databaseShutdownTimeoutMs > 0,
+    "--database-shutdown-timeout-ms must be a positive integer",
+  );
+}
 assert.ok(
   Number.isSafeInteger(payloadMiB * 1024 * 1024) && payloadMiB > 0,
   "--payload-mib must describe a positive integer byte count",
@@ -74,6 +90,7 @@ const report = {
   nodeDirectory,
   payloadMiB,
   startupTimeoutMs,
+  databaseShutdownTimeoutMs,
   status: "running",
   scope:
     "Production server entries and actual WorkerConnection; log production is controlled. No test-only server endpoints. Bulk worker-log JSON stream and slow consumer; not opaque WorkerLink binary throughput.",
@@ -380,7 +397,7 @@ try {
     }
   if (pg)
     try {
-      await pg.close();
+      await pg.close({ shutdownTimeoutMs: databaseShutdownTimeoutMs });
     } catch (e) {
       report.status = "failed";
       report.databaseShutdownFailure = e.message;

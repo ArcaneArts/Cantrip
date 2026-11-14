@@ -53,7 +53,7 @@ export async function postgresFixture(
       databaseUrl.pathname = `/${name}`;
       return databaseUrl.href;
     },
-    async close() {
+    async close({ shutdownTimeoutMs } = {}) {
       try {
         // For a caller-supplied test server, remove only databases this fixture
         // actually created. Never alter the caller's original database.
@@ -62,7 +62,7 @@ export async function postgresFixture(
             await sql`DROP DATABASE ${sql(name)} WITH (FORCE)`;
       } finally {
         await sql.end({ timeout: 5 });
-        if (owner) await owner.close();
+        if (owner) await owner.close({ shutdownTimeoutMs });
         if (cluster) await cluster.stop();
       }
     },
