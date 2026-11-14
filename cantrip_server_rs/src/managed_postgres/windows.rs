@@ -124,7 +124,8 @@ impl PostgresProcess {
             // Inherit the owned append handle below. pg_ctl's -l redirection
             // would reopen that same file through cmd.exe with incompatible
             // Windows sharing semantics.
-            .args(["start", "-w", "-t", "30"])
+            .args(["start", "-w", "-t"])
+            .arg(super::WINDOWS_RECOVERY_TIMEOUT.as_secs().to_string())
             .arg("-o")
             .arg(format!(
                 "-h 127.0.0.1 -p {port} -c unix_socket_directories= -c log_min_messages=fatal -c log_min_error_statement=panic -c log_error_verbosity=terse"
