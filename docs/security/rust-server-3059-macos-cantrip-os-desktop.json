@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "candidateVersion": "1.1.3059",
+  "workerReportedVersion": "1.1.2976",
   "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
   "testDriverBaseCommit": "487e325b393bc99147e3397dd0b4fe10391f3296",
   "completeReplacement": false,
