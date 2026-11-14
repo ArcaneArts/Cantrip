@@ -22,9 +22,22 @@ const { values } = parseArgs({
     artifact: { type: "string" },
     "data-root": { type: "string" },
     report: { type: "string" },
+    "startup-timeout-ms": { type: "string" },
     "isolate-homebrew": { type: "boolean", default: false },
   },
 });
+const startupTimeoutMs =
+  values["startup-timeout-ms"] === undefined
+    ? undefined
+    : Number(values["startup-timeout-ms"]);
+if (startupTimeoutMs !== undefined) {
+  assert.ok(
+    Number.isInteger(startupTimeoutMs) &&
+      startupTimeoutMs > 0 &&
+      startupTimeoutMs <= 2_147_483_647,
+    "--startup-timeout-ms must be an integer between 1 and 2147483647",
+  );
+}
 const artifact = path.resolve(values.artifact);
 const root = values["data-root"]
   ? path.resolve(values["data-root"])
@@ -67,6 +80,7 @@ const report = {
   platform: process.platform,
   driverArchitecture: process.arch,
   shutdownMethod: windows ? "supervision-stdin-close" : "SIGTERM",
+  startupTimeoutMs,
   modes: [],
 };
 const launcher = (name) =>
@@ -103,7 +117,7 @@ const executeRuntime = (command, arguments_, options) => {
 const startRuntime = (command, arguments_, options) =>
   startServer(
     ...runtimeCommand(command, arguments_),
-    runtimeOptions(command, options),
+    runtimeOptions(command, { ...options, startupTimeoutMs }),
   );
 async function stop(server) {
   if (server.child.exitCode !== null || server.child.signalCode !== null) {
@@ -227,6 +241,7 @@ try {
   const externalUrl = `postgresql://cantrip@127.0.0.1:${port}/postgres`;
   for (const mode of ["pglite", "bundled-postgres", "postgres"]) {
     const data = path.join(root, mode);
+    const startupMs = [];
     await mkdir(data);
     const dotenv =
       [
@@ -241,12 +256,15 @@ try {
           : [`CANTRIP_DATABASE_MODE=${mode}`]),
       ].join("\n") + "\n";
     await writeFile(path.join(artifact, ".env"), dotenv);
-    const launch = (extra = {}, additionalArguments = []) =>
-      startRuntime(
+    const launch = async (extra = {}, additionalArguments = []) => {
+      const server = await startRuntime(
         launcher("start"),
         ["--port", "0", "--shutdown-on-stdin-close", ...additionalArguments],
         { cwd: root, env: { ...environment, ...extra } },
       );
+      startupMs.push(server.startupMs);
+      return server;
+    };
     const visit = async (server, mutate) => {
       const cookies = new Map();
       let csrf;
@@ -434,6 +452,7 @@ try {
         ],
         { cwd: root, env: environment },
       );
+      startupMs.push(saved.startupMs);
       try {
         assert.equal(
           await visit(saved, false),
@@ -461,6 +480,7 @@ try {
     }
     report.modes.push({
       mode,
+      startupMs,
       identity,
       engine: mode === "pglite" ? "pglite" : "postgres",
       settingsWriteAndRestart: true,

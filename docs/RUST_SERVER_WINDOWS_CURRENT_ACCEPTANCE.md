@@ -1,5 +1,23 @@
 # Current Windows native server qualification
 
+## Windows x64 1.1.3059 package verification
+
+The Windows 11 x64 guest packaged the Rust executable from `86dc1f0a1`.
+The host matched all 2,281 archive files to its manifest and matched the
+server executable to the desktop NSIS payload. The installer verifier
+matched all 14,092 app and runtime files and verified its QA updater
+signature. The installed executable differs from the cross-built shell
+only by Tauri's NSIS bundle marker. The installer carries the previously
+verified 1.1.2976 worker assets. Release Authenticode remains open.
+
+The initial standalone run ended during the PGlite connection at the
+driver's 60-second deadline. Its guest script reported a longer budget
+without passing it to the driver. The driver now accepts an explicit
+deadline and reports the time to readiness. The updated driver passed
+the relocated macOS ARM64 1.1.3059 archive on all three stores. Windows
+standalone runtime, installed desktop and updater results are still open.
+[Archive, installer and harness verification](security/rust-server-3059-windows-package-verification.json)
+
 ## Windows x64 standalone `1.1.2938`
 
 The standalone server from `5015c89a4` passed PGlite, bundled PostgreSQL,
