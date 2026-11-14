@@ -30817,6 +30817,11 @@
     },
     "scope": "Local standalone images and representative Winterhold rehearsals with post-write rollback. The x64 server ran under emulation."
   },
+  "windows3033X64StandaloneQualification": {
+    "status": "passed",
+    "report": "docs/security/rust-server-3033-win32-x64-standalone.json",
+    "scope": "The exact relocated Windows x64 standalone archive passed startup, migrations, SQL export, retained writes, hosted reopening and supervised shutdown on all three stores. All 2,281 packaged files matched the manifest."
+  },
   "linux3033X64Qualification": {
     "status": "passed",
     "report": "docs/security/rust-server-3033-linux-x64-acceptance.json",
