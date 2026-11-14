@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "target": "darwin-arm64",
+  "sourceCommit": "e7f25540d48209e90748cafc09c6e9f483df8934",
+  "sourceTree": "3e153f6df2a43eb6f81eb55377116cda4d5069d5",
+  "workerSourceCommit": "d1c400fc40cb78453e5fc205c909f8143c8f8137",
+  "workerVersion": "1.1.3059",
+  "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+  "completeReplacement": false,
+  "standalone": {
+    "nativeArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-871f62ae9.6GH2nOLA/cantrip-server-1.1.3059-darwin-arm64.tar.gz",
+      "bytes": 66995028,
+      "sha256": "603c4fe7bb886dfddf7dbe81ffd3d1d588d385589c35765af05aa8390d025eab"
+    },
+    "manifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-871f62ae9.6GH2nOLA/cantrip-server-darwin-arm64/native-server.json",
+      "bytes": 325804,
+      "sha256": "3de0ad435ca439493450697f5bac23c722f798dc1275108dafab9c813d65b801"
+    },
+    "server": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-871f62ae9.6GH2nOLA/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94198000,
+      "sha256": "14dea9680a1a3c82918bc8d80a0a540b3bdc9ced18cee1d7bd51044ca2073fb1"
+    },
+    "verifiedManifestFiles": 1762,
+    "cleanSigtermExits": 13,
+    "scope": "Extracted archive at a path containing spaces and Unicode. Real migration and SQL export launchers, settings persistence, hosted reopen, PostgreSQL binary selection and embedded PGlite fallback. The runtime PATH had no Node and the sandbox denied Homebrew reads and artifact writes.",
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-871f62ae9.6GH2nOLA/native-acceptance.json",
+      "bytes": 104838,
+      "sha256": "a00e3ef820d58d8c314aae1cfc134de62d686b49b4e08d2f7d1e023fb9bcaa6a"
+    }
+  },
+  "desktopSupervisor": {
+    "scope": "The headless probe uses the production desktop launcher and supervision code with the rebuilt Rust server and real packaged 1.1.3059 Node worker. Retained identity, settings, worker command execution and reaping passed before and after abrupt supervisor loss.",
+    "modes": [
+      {
+        "mode": "pglite",
+        "actualWorker": true,
+        "childrenReaped": true,
+        "nativeExitCode": 0,
+        "settingsWriteAndRestart": true,
+        "supervisorLossAndRecovery": true
+      },
+      {
+        "mode": "bundled-postgres",
+        "actualWorker": true,
+        "childrenReaped": true,
+        "nativeExitCode": 0,
+        "settingsWriteAndRestart": true,
+        "supervisorLossAndRecovery": true
+      },
+      {
+        "mode": "postgres",
+        "actualWorker": true,
+        "childrenReaped": true,
+        "nativeExitCode": 0,
+        "settingsWriteAndRestart": true,
+        "supervisorLossAndRecovery": true
+      }
+    ],
+    "inputs": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-871f62ae9.6GH2nOLA/desktop-inputs.sha256",
+      "bytes": 598,
+      "sha256": "741a00cf64465dfc0d1ffc826f6507d7e53727c122fec121835180a40ed6ba16"
+    },
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-871f62ae9.6GH2nOLA/desktop-acceptance.json",
+      "bytes": 1439,
+      "sha256": "88b5702a3e8af2853ad30bed3b6a6942d9e1e711448c6db72f314f0a9f2a62bd"
+    }
+  },
+  "browserChatControls": {
+    "scope": "Existing browser SDK, full packaged Node worker and native Codex against isolated profiles. Real Git worktree and Run retirement, native Agent turns and Goals, compaction, history continuation, dirty-lane rejection and release, one encrypted attributed message and retained restart. The model HTTP responses were controlled. Local Node reference controls cover PGlite and external PostgreSQL.",
+    "inputs": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-871f62ae9.6GH2nOLA/product-inputs.sha256",
+      "bytes": 1616,
+      "sha256": "8970cd06e75621969693818aa05728dd20275a00d6d34238f28c8dd4d5d57fcf"
+    },
+    "cases": [
+      {
+        "runtime": "node",
+        "databaseMode": "pglite",
+        "browserProductSteps": 34,
+        "gracefulWorkerStops": 7,
+        "verifiedServerGenerations": 6,
+        "modelPostsDuringChatControls": 2,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-871f62ae9.6GH2nOLA/node-controls-pglite.json",
+          "bytes": 585810,
+          "sha256": "dd140b94f06f77bb204f81cb171ea6416997d923d678722454dd98adc2e3d889"
+        }
+      },
+      {
+        "runtime": "node",
+        "databaseMode": "postgres",
+        "browserProductSteps": 34,
+        "gracefulWorkerStops": 7,
+        "verifiedServerGenerations": 6,
+        "modelPostsDuringChatControls": 2,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-871f62ae9.6GH2nOLA/node-controls-postgres.json",
+          "bytes": 660062,
+          "sha256": "eb3c1b6ccd50409091068010ff6bb8f762b397b10953a94e491970c1ca836cbf"
+        }
+      },
+      {
+        "runtime": "rust",
+        "databaseMode": "pglite",
+        "browserProductSteps": 34,
+        "gracefulWorkerStops": 7,
+        "verifiedServerGenerations": 6,
+        "modelPostsDuringChatControls": 2,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-871f62ae9.6GH2nOLA/rust-controls-pglite.json",
+          "bytes": 745928,
+          "sha256": "992ebc308f3a1f31a3c50f738b53c55c0ea1b09d1c32243f06934c8be8864bbc"
+        }
+      },
+      {
+        "runtime": "rust",
+        "databaseMode": "bundled-postgres",
+        "browserProductSteps": 34,
+        "gracefulWorkerStops": 7,
+        "verifiedServerGenerations": 6,
+        "modelPostsDuringChatControls": 2,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-871f62ae9.6GH2nOLA/rust-controls-bundled-postgres.json",
+          "bytes": 735666,
+          "sha256": "5e98070814eeb393f5d4277586273081364c2cdd392ed8e0da0f3815b6a75354"
+        }
+      },
+      {
+        "runtime": "rust",
+        "databaseMode": "postgres",
+        "browserProductSteps": 34,
+        "gracefulWorkerStops": 7,
+        "verifiedServerGenerations": 6,
+        "modelPostsDuringChatControls": 2,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-871f62ae9.6GH2nOLA/rust-controls-postgres.json",
+          "bytes": 751262,
+          "sha256": "2087dd07393dded2ffae9a546de87ca8360d4284720abfe78c44c24b72090ed8"
+        }
+      }
+    ],
+    "matchedNodeAndRustStepSequences": ["pglite", "postgres"]
+  }
+}

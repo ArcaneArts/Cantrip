@@ -45,6 +45,27 @@
     "appServerAndWorkerPidsAbsentAfterManualQuit": true
   },
   "releaseAuthenticodeVerified": false,
+  "authenticodeBaseline": {
+    "status": "matches-published-installer",
+    "method": "Read the PE optional header Certificate Table data directory from each exact installer. The retained public installer size and SHA-256 matched the GitHub release asset metadata.",
+    "publishedRelease": "https://github.com/ArcaneArts/Cantrip/releases/tag/v1.1.2397",
+    "publishedInstaller": {
+      "version": "1.1.2397",
+      "asset": "Cantrip_1.1.2397_x64-setup.exe",
+      "bytes": 168056669,
+      "sha256": "aad6b233b3bdef9b191bfda8072b4f2d47fec4bdb49fdbc4aff879556f189c5b",
+      "certificateTableOffset": 0,
+      "certificateTableBytes": 0
+    },
+    "candidateInstaller": {
+      "version": "1.1.3059",
+      "sha256": "b7cddc1fec2feb4a7270a49cc22c36dedee06388ff71414a6d4ec17c96a8ccd1",
+      "certificateTableOffset": 0,
+      "certificateTableBytes": 0
+    },
+    "publishedUpdaterSignatureAsset": "Cantrip_1.1.2397_x64-setup.exe.sig",
+    "releaseWorkflow": ".github/workflows/native-release.yml"
+  },
   "evidence": {
     "guestTerminalReport": {
       "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/signed-instrumented-retry.B9iGLqeb/registered-installation-retry-baseline/host-recheck.U1PqoYax/signed-upgrade-terminal-host.json",

@@ -383,5 +383,238 @@
         "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
       }
     }
+  },
+  "postClockFixPackages": {
+    "sourceCommit": "871f62ae9a7ea48fdcb1746c9b4e518391d2b562",
+    "snapshotHarnessMergeCommit": "e7f25540d48209e90748cafc09c6e9f483df8934",
+    "scope": "The two rebuilt Linux images include the merged folder-claim clock fix. The macOS ARM64 test host ran Linux x64 through Rosetta. The same local browser SDK and packaged 1.1.3059 Node worker used three independent profiles per image.",
+    "snapshotObservation": "Two initial x64 runs compared an in-flight transcript against a drained transcript. The corrected harness takes its baseline after worker shutdown drains events and compares the complete retained transcript after restart. The corrected x64 cells and the current Node control passed.",
+    "platforms": [
+      {
+        "target": "linux-arm64",
+        "buildBaseCommit": "9b98e58dee9ad2b3ba67377d1c55febb0f3adeeb",
+        "buildPatch": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-arm64-package/server.patch",
+          "bytes": 2151,
+          "sha256": "a4cc31b6980c783457d986e048e3a2fdeaf8a73ad63a80eadffa36464db79c4d"
+        },
+        "imageId": "sha256:5ca1ee248797d385739b295faa1d057dfac17ae7f4426871e253cff969ac427c",
+        "serverSha256": "1fc14ed5abc8a8a3e2d2acc02e4da542f280256e81f0b6ca106b93e76fcf72cf",
+        "standaloneArchive": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-arm64-package/cantrip-server-1.1.3059-linux-arm64.tar.gz",
+          "bytes": 138447714,
+          "sha256": "bdd9f0502d3f59afd3af8d138f2ba92abaead0b6e572a8461d4bf0576561fa59"
+        },
+        "standaloneArchiveVerification": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-arm64-package/standalone-archive-verification.json",
+          "bytes": 217,
+          "sha256": "0d6f754fcf0d0950f2dcb5ed3dcc78ca52478541d129aee54bcf6b2e39117ea9"
+        },
+        "verifiedManifestFiles": 2558,
+        "productCases": [
+          {
+            "databaseMode": "bundled-postgres",
+            "productSteps": 18,
+            "cleanExits": 5,
+            "goalLookupConflicts": 0,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-arm64-package/arm64/bundled-postgres/matrix.json",
+              "bytes": 928761,
+              "sha256": "d18e1d5b308b82f3df6fe9d3df405f8912f7a68ac712569ee023a3ab48e1f083"
+            },
+            "processProof": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-arm64-package/arm64/bundled-postgres/generations.jsonl",
+              "bytes": 6192,
+              "sha256": "527fc5660876c0bb711982e5006ab6e60597f3079ce8f5afed1a65880262f8e8"
+            }
+          },
+          {
+            "databaseMode": "pglite",
+            "productSteps": 18,
+            "cleanExits": 5,
+            "goalLookupConflicts": 0,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-arm64-package/arm64/pglite/matrix.json",
+              "bytes": 913733,
+              "sha256": "c305a3c9776e2a6729775e566f4033ec9b6c83c66a322250c2ecf625861d57f1"
+            },
+            "processProof": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-arm64-package/arm64/pglite/generations.jsonl",
+              "bytes": 5844,
+              "sha256": "716146859e9b0208f827d487571e3d2d6ae1bd62411411b547e63041d1d725b9"
+            }
+          },
+          {
+            "databaseMode": "postgres",
+            "productSteps": 18,
+            "cleanExits": 5,
+            "goalLookupConflicts": 0,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-arm64-package/arm64/postgres/matrix.json",
+              "bytes": 903136,
+              "sha256": "7171e4cb667c51c016228e53140cd25c84c396b26de031b7bb980265b3d6c7bb"
+            },
+            "processProof": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-arm64-package/arm64/postgres/generations.jsonl",
+              "bytes": 5910,
+              "sha256": "2a2f76d5af00465e36b88ab5fdfba57492266db390199b9c6bd7445e0cd9c729"
+            }
+          }
+        ],
+        "runtimeImageAcceptance": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-arm64-package/container-acceptance.json",
+          "bytes": 5375,
+          "sha256": "cf15e5e517cccedb6fc37cd34a9d7391fc91ae31ef9a0fcb51cf2942c16d69f4"
+        },
+        "winterhold": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-arm64-package/winterhold-candidate/acceptance.json",
+            "bytes": 1099770,
+            "sha256": "8e1c4db68c2ec4cd2ae9e18dffcb2f10f1328a07055d9040958a3bbe883736ba"
+          },
+          "testedArchive": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-arm64-package/winterhold-candidate/native.tar.gz",
+            "bytes": 138552264,
+            "sha256": "e333d26894792344e61e1cc067f08727577da4e7f5d7421e34816da5a62f4b4f"
+          },
+          "rollbackModes": {
+            "pglite": "rust",
+            "bundled-postgres": "rust",
+            "postgres": "node"
+          },
+          "stepsPerMode": {
+            "pglite": 6,
+            "bundled-postgres": 6,
+            "postgres": 6
+          }
+        },
+        "qualification": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-arm64-package/merged-arm64-qualification.json",
+          "bytes": 6560,
+          "sha256": "7f88684d3ed407842334531b6e32fb6168b11c0886614a89682383d975178438"
+        }
+      },
+      {
+        "target": "linux-x64",
+        "buildSourceCommit": "871f62ae9a7ea48fdcb1746c9b4e518391d2b562",
+        "imageId": "sha256:ab3d9ff71769e4f885cde41a104abf313b8b0d36ee4601fe649b47de3f315a9f",
+        "serverSha256": "50aa09c86bb87aba0ea01acad193a2cab25d1c1bb4abec741ebff09f877f16f4",
+        "standaloneArchive": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-x64-package/cantrip-server-1.1.3059-linux-x64.tar.gz",
+          "bytes": 142633262,
+          "sha256": "f1d5f8c9a93afd725e1fad1a64f61a8c356a1a0c6ee472d7cf46bdd5a1fc53d4"
+        },
+        "standaloneArchiveVerification": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-x64-package/standalone-archive-verification.json",
+          "bytes": 215,
+          "sha256": "2f77c05bc4ecb8235ebf4a9238d98cf2ab653d4a02455958ccc07291b9bc5e75"
+        },
+        "verifiedManifestFiles": 2558,
+        "productCases": [
+          {
+            "databaseMode": "bundled-postgres",
+            "productSteps": 18,
+            "cleanExits": 5,
+            "goalLookupConflicts": 0,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-x64-package/post-drain-snapshot/x64/bundled-postgres/matrix.json",
+              "bytes": 908694,
+              "sha256": "a95f1dded155730f98f55555752ca470b8d061c1466b073cb23a1fcafc19460c"
+            },
+            "processProof": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-x64-package/post-drain-snapshot/x64/bundled-postgres/generations.jsonl",
+              "bytes": 6181,
+              "sha256": "0ac8c913ecafd1eb6cccfc28b5ba3ddbdc4dd61ee738a29b33a739b1e6d7825c"
+            }
+          },
+          {
+            "databaseMode": "pglite",
+            "productSteps": 18,
+            "cleanExits": 5,
+            "goalLookupConflicts": 0,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-x64-package/post-drain-snapshot/x64/pglite/matrix.json",
+              "bytes": 907964,
+              "sha256": "f3062149db3dfe7cfe3253268676e3b041ec934bf7bbf555bee8fab32bff7b4f"
+            },
+            "processProof": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-x64-package/post-drain-snapshot/x64/pglite/generations.jsonl",
+              "bytes": 5826,
+              "sha256": "9665f739360cda9b6c9d46964469783b3ef06257b30e5877975ba5b4642bb84c"
+            }
+          },
+          {
+            "databaseMode": "postgres",
+            "productSteps": 18,
+            "cleanExits": 5,
+            "goalLookupConflicts": 0,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-x64-package/x64/postgres/matrix.json",
+              "bytes": 927697,
+              "sha256": "d3131e90549298d14460698fd5d016bf686ce6d2237de9bbf5fa88e9899f310a"
+            },
+            "processProof": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-x64-package/x64/postgres/generations.jsonl",
+              "bytes": 5926,
+              "sha256": "280a0c0b865d2fa93dae54eb6fb4aad2f010c8581b8283c1b5d9909f5bdb4715"
+            }
+          }
+        ],
+        "runtimeImageAcceptance": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-x64-package/container-acceptance.json",
+          "bytes": 5438,
+          "sha256": "cb0dc54ea3e856a9fab9db0fd9aaff85cb3f1b3b313a7d216ac2e748479d5996"
+        },
+        "winterhold": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-x64-package/winterhold-candidate/acceptance.json",
+            "bytes": 1099275,
+            "sha256": "d2dd94fa189840c8a8ee14f72a5529cf908b2ccb308e6b8e36aa70b3385e6a6a"
+          },
+          "testedArchive": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-x64-package/winterhold-candidate/native.tar.gz",
+            "bytes": 142733575,
+            "sha256": "ed8ea5e1ecba6c1c72946f3b2665cfba29efc7f68519fed4c62b6af4f5e037fa"
+          },
+          "rollbackModes": {
+            "pglite": "rust",
+            "bundled-postgres": "rust",
+            "postgres": "node"
+          },
+          "stepsPerMode": {
+            "pglite": 6,
+            "bundled-postgres": 6,
+            "postgres": 6
+          }
+        },
+        "initialTranscriptSnapshotFailures": [
+          {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-x64-package/initial-pglite-failure/matrix.json",
+            "bytes": 247960,
+            "sha256": "62561de0208932a0158ba7b54d2e9a763bb6f55a04231adeb0e1229c9e296653"
+          },
+          {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-x64-package/x64/bundled-postgres/matrix.json",
+            "bytes": 231422,
+            "sha256": "6164f7cf688a950db146e8e85c92b985d6b83745235658ed9be90fd799d55c3f"
+          }
+        ],
+        "snapshotHarnessControl": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-x64-package/post-drain-snapshot/node/postgres/matrix.json",
+          "bytes": 1136704,
+          "sha256": "0b799ceded02968ea14ee99a1d9cc03f4848b3c21323601956893decbc2e3e3d"
+        },
+        "qualification": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/folder-claim-x64-package/merged-x64-qualification.json",
+          "bytes": 7661,
+          "sha256": "88643fa4cf3d61e42367ed0d7552b251bbce3d547b3dae4283686272288eb397"
+        }
+      }
+    ],
+    "totals": {
+      "productSteps": 108,
+      "cleanRustExits": 30,
+      "winterholdInstallerOperations": 36
+    }
   }
 }

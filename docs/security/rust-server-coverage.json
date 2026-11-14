@@ -25931,10 +25931,10 @@
         "scripts/server-rust/folder-http-compatibility.mjs",
         "scripts/server-rust/actual-folder-client.mjs"
       ],
-      "validatedSubset": "Local macOS actual Source/Rust comparisons pass 56 repository cases and 33 full SQL snapshots on each of native PGlite, private PostgreSQL and external PostgreSQL. These include managed/attached/legacy storage contexts, membership persistence, missing-profile bootstrap, attached-default repair and retained state after reopen. Actual HTTP comparisons pass 104 observations per runtime on PGlite/private PostgreSQL and 106 on external PostgreSQL across anonymous and account profiles, including SQL failure/rollback, capability rejection, HEAD, owner isolation, four-job admission windows, committed command identities, active-command shutdown/reconnect, 29 ordered project events and eight creation invalidations per profile. External PostgreSQL observes actual membership INSERT locks through caller disconnect/shutdown, commits after release and retains the project/membership/job after restart. A real held worker command renews its two-minute lease after 30 seconds in both servers, retaining command/attempt/revision. Existing Chromium account, durable encryption, project and protected repository APIs and the full unchanged worker pass nine product steps on all three stores. The native PGlite production server also completes the HTTP suite with an actual 1 MiB main-stack limit. All 96 native tests pass across 45 targets, including 156132 protocol cases, 69648 JSON round trips and 203929 outgoing command mutations; strict all-target Clippy passes. These results do not establish Windows/Linux or packaged readiness.",
+      "validatedSubset": "Local macOS actual Source/Rust comparisons pass 56 repository cases and 33 full SQL snapshots on each of native PGlite, private PostgreSQL and external PostgreSQL. These include managed/attached/legacy storage contexts, membership persistence, missing-profile bootstrap, attached-default repair and retained state after reopen. Actual HTTP comparisons pass 104 observations per runtime on PGlite/private PostgreSQL and 106 on external PostgreSQL across anonymous and account profiles, including SQL failure/rollback, capability rejection, HEAD, owner isolation, four-job admission windows, committed command identities, active-command shutdown/reconnect, 29 ordered project events and eight creation invalidations per profile. External PostgreSQL observes actual membership INSERT locks through caller disconnect/shutdown, commits after release and retains the project/membership/job after restart. A real held worker command renews its two-minute lease after 30 seconds in both servers, retaining command/attempt/revision. Existing Chromium account, durable encryption, project and protected repository APIs and the full unchanged worker pass nine product steps on all three stores. The native PGlite production server also completes the HTTP suite with an actual 1 MiB main-stack limit. All 96 native tests pass across 45 targets, including 156132 protocol cases, 69648 JSON round trips and 203929 outgoing command mutations; strict all-target Clippy passes. Rebuilt Linux ARM64 and x64 1.1.3059 images also pass managed and attached folder workflows with the packaged Node worker on all three stores. A macOS test reproduced the queued-job failure when the server clock lagged PostgreSQL by two seconds. The patched server passes with either clock ahead.",
       "remaining": [
-        "Current Linux/macOS/Windows CI, packaged operation, multi-instance coordination and the remaining project/worktree/resource domains.",
-        "Project/worktree repository-operation consumers remain separate unported server behavior; native worker encryption refresh now supports normal browser repository auto-authorization."
+        "Verify the remaining folder-specific cases on the supported packages, including Windows and shared-server coordination.",
+        "Track project and worktree repository behavior in their own coverage entries."
       ]
     },
     "workerEncryptionRefresh": {
@@ -30399,6 +30399,8 @@
     },
     "finalReplacementAcceptance": {
       "status": "in-progress",
+      "currentPackageRefresh": "docs/security/rust-server-3059-release-reconciliation.json#artifactEvidence",
+      "postClockFixRouteDiscovery": "docs/security/rust-server-3059-release-reconciliation.json#postClockFixRouteDiscovery",
       "integratedRuntimeSource": "384e537d01bcc4d81d963916b087aafbeea412a9",
       "implementationSourceContinuity": "Actual git diff from59dbc4f10 to384e537d0 contains no changes in cantrip_server_rs/src, cantrip_worker/src or packages/protocol/src production files. The protocol change is a test-only reference path. Earlier results retain their original artifact/platform scope.",
       "currentInventoryAudit": {
@@ -31050,6 +31052,13 @@
     "sourceCommit": "358c5b3232e4ebf34a91f7c071f1af1b7cd8a794",
     "report": "docs/security/rust-server-3048-linux-acceptance.json",
     "scope": "Standalone images and representative Winterhold rehearsals across three stores on ARM64 and x64, including startup and migration fault recovery, post-write rollback, and a separate PostgreSQL readiness stall on each image. The x64 image also passed active inference settlement across a 60-second external PostgreSQL outage. The x64 executable ran through Rosetta on the ARM64 Linux host."
+  },
+  "macos3059PostClockFixPackageAndChatControls": {
+    "status": "passed",
+    "candidateVersion": "1.1.3059",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "report": "docs/security/rust-server-3059-macos-package-refresh.json",
+    "scope": "Rebuilt standalone package without Node or Homebrew runtime access, production desktop supervision with the packaged Node worker, and real browser and worker Agent compaction and dirty Git lane release across all three stores."
   },
   "packaged3059Qualification": {
     "status": "passed",
