@@ -29019,6 +29019,15 @@
     },
     "fullWorkerCantripOsLifecycle": {
       "currentPackagedServer": {
+        "version": "1.1.3059",
+        "sourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+        "platform": "darwin-arm64",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "productCells": 6,
+        "matchedSnapshotsPerPair": 48,
+        "record": "docs/security/rust-server-3059-release-reconciliation.json#cantripOsLifecycle"
+      },
+      "packaged2938Server": {
         "version": "1.1.2938",
         "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
         "platform": "darwin-arm64",
@@ -29469,6 +29478,13 @@
     "workerCatalogRefresh": {
       "status": "implemented-pending-platform-acceptance",
       "currentMacosStandalone": {
+        "candidateVersion": "1.1.3059",
+        "status": "passed",
+        "database": "postgres",
+        "auth": "accounts",
+        "report": "docs/security/rust-server-3059-release-reconciliation.json#backgroundServices"
+      },
+      "macos3032Standalone": {
         "candidateVersion": "1.1.3032",
         "status": "rust-passed-reference-shutdown-inconsistent",
         "database": "postgres",
@@ -29518,8 +29534,7 @@
         "Owned operation drain before database close; producer holds weak service references"
       ],
       "remaining": [
-        "Finish current optimized periodic/artifact qualification and broader supported-platform, product, fault, coordination, migration/rollback and performance acceptance.",
-        "Complete Rust default cutover and production Node-server removal."
+        "Qualify the catalog timer and shutdown behavior on the remaining supported platforms and deployment configurations."
       ]
     },
     "workerCredentialReconnect": {
@@ -30757,8 +30772,8 @@
   "currentReleaseAcceptance": {
     "candidateVersion": "1.1.3059",
     "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
-    "reviewedIntegratedCommit": "4d19ba2b77a543228f1d0a473f10af7abcddc56f",
-    "scope": "Exact standalone artifacts, macOS signed desktop update, current Windows PGlite desktop installation and reopen, mobile application verification, current route and contract discovery, and scoped background-service comparisons.",
+    "reviewedIntegratedCommit": "453fa36242a715298a6fc9847ca320988bc3a294",
+    "scope": "Exact standalone artifacts, macOS signed desktop update, Windows desktop installation and reopen with the current worker on all three databases, mobile application verification, current route and contract discovery, CantripOS lifecycle, and scoped background-service comparisons.",
     "report": "docs/security/rust-server-3059-release-reconciliation.json"
   },
   "release2976Acceptance": {
@@ -30955,7 +30970,14 @@
     "status": "partial",
     "candidateVersion": "1.1.3059",
     "report": "docs/security/rust-server-3059-windows-current-worker-package.json",
-    "scope": "Local NSIS package with the compiled 1.1.3059 Node worker and matching existing Windows-native dependencies. Payload and QA updater signature verified. Installed behavior and release Authenticode remain open."
+    "scope": "Earlier NSIS package with the compiled 1.1.3059 Node worker and matching Windows-native dependencies. Payload and QA updater signature verified. The shutdown-grace installer has separate acceptance."
+  },
+  "windows3059InstalledCurrentWorkerQualification": {
+    "status": "passed",
+    "candidateVersion": "1.1.3059",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "report": "docs/security/rust-server-3059-release-reconciliation.json#artifactEvidence",
+    "scope": "Windows 11 x64 QEMU guest. Six first-launch and reopen cases used the exact shutdown-grace installer with the 1.1.3059 worker. All six retained settings, verified database ownership, and quit through the real tray menu. The signed updater and release Authenticode remain open."
   },
   "macos3059OperationalStatusAndWorkerLogsQualification": {
     "status": "passed",

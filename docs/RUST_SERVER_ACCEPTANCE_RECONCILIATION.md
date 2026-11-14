@@ -9,7 +9,7 @@ Node. The old server is an explicit development compatibility reference. See
 The [1.1.3059 release reconciliation](security/rust-server-3059-release-reconciliation.json)
 ties the current coverage ledger to the tested packages and checksums.
 The production server, migrations, worker, protocol and deployment files
-match across the audited package sources and integrated commit `4d19ba2b7`.
+match across the audited package sources and integrated commit `453fa3624`.
 The Windows desktop supervisor has a separate build revision.
 
 ## Cantrip 1.1.3059 packaged servers
@@ -32,12 +32,14 @@ database. The Windows desktop and signed updater have separate acceptance.
 [Windows x64 standalone report](security/rust-server-3059-windows-standalone-retry.json)
 
 The Windows x64 NSIS package with the 180-second server shutdown allowance
-and the 1.1.3059 Node worker passed its initial PGlite launch and retained-profile
-reopen. The reopened app used the stored database selection and kept the
-server identity and settings write. Both tray quits exited zero and reaped
-the Rust server and worker. The current package's bundled and external
-PostgreSQL launch and reopen cases and the updater exercise remain open.
-[Windows PGlite package and guest receipts](security/rust-server-3059-release-reconciliation.json#artifactEvidence)
+and the 1.1.3059 Node worker passed first launch and retained-profile reopen
+on all three databases. The reopened app used the stored database selection
+and kept the server identity and settings write. All six tray quits exited
+zero and reaped the Rust server and worker. The app stopped its bundled
+PostgreSQL process, and the external PostgreSQL instance stayed running.
+These runs used Windows 11 x64 under software emulation. The updater
+exercise remains open.
+[Windows desktop package and guest receipts](security/rust-server-3059-release-reconciliation.json#artifactEvidence)
 
 Each local Winterhold rehearsal completed 18 installer operations under
 systemd and Caddy HTTPS. Six injected migration and startup failures
@@ -1591,16 +1593,31 @@ session. App Live reconnected, and each replacement served encrypted file
 reads and writes.
 [macOS App Live and rolling replacement report](security/rust-server-3032-macos-live-rolling.json)
 
-## Open background-service comparisons
+## Background-service comparisons
 
 The packaged macOS ARM64 1.1.3059 executable and Node reference both passed
 approval expiry, credential reconnect and worker catalog refresh on
 external PostgreSQL with accounts enabled. They recovered the approval and
 credential operations after actual database errors. Both runtimes drained
 started database writes during shutdown, including a held quota insert.
-The worker used controlled provider replies. The current catalog run
-exercised connection-triggered refresh and quota recovery.
+The worker used controlled provider replies. The catalog refresh test
+also waited for the real 15-minute schedule. Both peers issued three
+periodic quota reads, persisted six resulting rows and exited cleanly.
 [Current background-service reports](security/rust-server-3059-release-reconciliation.json#backgroundServices)
+
+### CantripOS lifecycle
+
+The packaged 1.1.3059 Rust executable and Node reference each completed
+15 browser and full-worker steps on every database. Each pair matched 48
+normalized snapshots from a real Docker guest. A server crash after commit
+and before acknowledgment preserved the original workspace receipt and
+worker process. Guest power and desktop replays reused their receipts
+without repeating the operation. Two package changes per run performed
+one `dpkg` configuration apiece, and the browser authenticated the
+encrypted results again after restart. The Rust bundled PostgreSQL run
+managed local PostgreSQL 18 binaries. The Node reference used an isolated
+external database for that comparison.
+[CantripOS lifecycle reports](security/rust-server-3059-release-reconciliation.json#cantripOsLifecycle)
 
 The macOS ARM64 1.1.3032 archive passed account approval expiry and credential
 reconnect against the development Node reference with external PostgreSQL.
