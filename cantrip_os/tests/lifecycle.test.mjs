@@ -83,7 +83,11 @@ test("command cancellation settles only once its child has exited", async () => 
       process.execPath,
       [
         "-e",
-        `require('node:fs').writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1000);`,
+        `const { renameSync, writeFileSync } = require('node:fs');
+const pidFile = process.argv[1];
+writeFileSync(pidFile + '.tmp', String(process.pid));
+renameSync(pidFile + '.tmp', pidFile);
+setInterval(() => {}, 1000);`,
         pidFile,
       ],
       { capture: true, signal: controller.signal },
