@@ -85,6 +85,14 @@ with one unknown usage attempt. Replay made no further provider request,
 and a fresh decision completed after readiness recovered.
 [macOS Redis interruption report](security/rust-server-3013-darwin-arm64-redis-outage.json)
 
+The packaged server also passed 14 model operations with external PostgreSQL.
+During a 60-second database outage, the browser completed the active
+embedding and the server stayed live while readiness returned HTTP 503.
+PostgreSQL reopened on the same port and the server settled the original usage
+record after readiness returned. The fixture uses PostgreSQL's `pg_ctl kill`
+to deliver the same shutdown signal on Unix and Windows.
+[macOS PostgreSQL interruption report](security/rust-server-3013-darwin-arm64-postgres-outage.json)
+
 ## Current wire and account protection evidence
 
 The macOS ARM64 1.1.3013 archive and Linux x64 1.1.3033 container each
@@ -201,9 +209,9 @@ below apply to the exact binaries and worker entries identified by their reports
   against 40.96 MiB/s at 256 MiB. The Node comparison used external
   PostgreSQL. Each figure is a single observation on a shared host.
   The Windows Rust package passed the 64 MiB stream, slow-consumer closure
-  and retained-write restart on PGlite and bundled PostgreSQL. The Windows
-  Node reference failed to load its Argon2 binding in both modes, leaving
-  the same-host comparison open.
+  and retained-write restart on all three stores. The Windows Node reference
+  failed to load its Argon2 binding in all three runs, leaving the same-host
+  comparison open.
   [Windows CLI and streaming report](security/rust-server-2976-win32-x64-cli-and-streaming.json),
   [macOS report](security/rust-server-2976-darwin-arm64-worker-log-stream.json),
   [Linux report](security/rust-server-2976-linux-worker-log-stream.json)

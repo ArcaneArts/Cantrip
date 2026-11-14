@@ -93,9 +93,25 @@
           "bytes": 3689,
           "sha256": "a786bf61fbf4581bac0956d29167723aefc54e9e2b8888eab4431b3024f2f2aa"
         }
+      },
+      "postgres": {
+        "status": "passed",
+        "startupMs": 26176.992,
+        "payloadBytes": 67108864,
+        "payloadSha256": "e20a69eca39368572e90b9135738a613838f954987a0b44b6220889c171cbb76",
+        "throughputMiBPerSecond": 7.438888369716469,
+        "streamWorkingSetKiB": 57540,
+        "slowConsumerCloseCode": 1013,
+        "recoveryMs": 28350.699999999983,
+        "retainedIdentityAndWrite": true,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/guest-v4-postgres-rust-report.json",
+          "bytes": 3680,
+          "sha256": "cc14c49659ed998e3283c730aef5870d791e6ce43528276e49477bb827688d92"
+        }
       }
     },
-    "scope": "Single guest measurements with a controlled log producer and the production worker transport. The stream working set is the process-tree sample taken after the 64 MiB transfer.",
+    "scope": "Single Windows x64 guest measurements with a controlled log producer and the production worker transport. The working-set sample after the transfer contains the server PID in each observed report.",
     "node": {
       "pglite": {
         "status": "failed",
@@ -114,7 +130,21 @@
           "bytes": 8528,
           "sha256": "17d743879c3ddfff26643215048a4e1c361023c415c08a77d006c961188b777f"
         }
+      },
+      "postgres": {
+        "status": "failed",
+        "failure": "The Node reference did not reach readiness because its Windows Argon2 binding could not load.",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/guest-v4-postgres-node-report.json",
+          "bytes": 8520,
+          "sha256": "29375b62a12038b5756be48f87142437e5ca46f6d55fd42b1505eeefffc4e0f2"
+        }
       }
+    },
+    "terminalReceipt": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/guest-v4-terminal-receipt.json",
+      "bytes": 15009,
+      "sha256": "920ed1d12ae07c0bdca9af05e52759a2072f2d412d522d6c4a1f5e37089d7e2e"
     }
   }
 }

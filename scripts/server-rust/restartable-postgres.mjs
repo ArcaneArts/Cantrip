@@ -55,8 +55,16 @@ export async function restartablePostgres(root, bin) {
     if (!running) return;
     const { child, exit } = running;
     const signal = immediate ? "SIGQUIT" : "SIGINT";
-    if (child.exitCode === null && child.signalCode === null)
-      assert.equal(child.kill(signal), true);
+    if (child.exitCode === null && child.signalCode === null) {
+      // pg_ctl delivers the PostgreSQL signal on Unix and Windows. Node
+      // cannot deliver SIGQUIT or SIGINT to the postmaster on Windows.
+      const pgCtl = process.platform === "win32" ? "pg_ctl.exe" : "pg_ctl";
+      await execute(
+        path.join(bin, pgCtl),
+        ["kill", immediate ? "QUIT" : "INT", String(child.pid)],
+        { timeout: 30_000, windowsHide: true },
+      );
+    }
     const result = await deadline(exit, "owned PostgreSQL did not exit", 15000);
     running = undefined;
     assert.equal(result.code, 0, JSON.stringify(result));
