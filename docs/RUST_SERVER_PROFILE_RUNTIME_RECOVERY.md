@@ -1,10 +1,15 @@
 # Native execution across server rollback
 
-The final local macOS arm64 matrix passes with optimized native server
-`1.1.2779`, current compiled Node server `1.1.2782`, the complete production Node
-worker and its actual patched Codex `0.166.0` runtime. This milestone changes
-qualification tools and records; production server/worker implementations and
-normal defaults are unchanged.
+The macOS ARM64 matrix passed again with the standalone Rust `1.1.3032`
+executable, compiled Node reference and full packaged worker running native
+Codex. Across the four cases below, eight implementation switches retained the
+same worker process, held model streams, completed Task state and decrypted
+history. The same-database PostgreSQL case also retained the database URL and
+profile directory.
+[macOS 1.1.3032 rollback report](security/rust-server-3032-macos-profile-rollback.json)
+
+The original local run used Rust `1.1.2779`, Node `1.1.2782` and patched
+Codex `0.166.0`.
 
 ## Executed cases
 
@@ -80,7 +85,7 @@ historical PGlite round-trip also passes with its probe present, retaining its
 Build the production Node reference and browser workspace packages:
 
 ```sh
-pnpm --filter @cantrip/server... build
+pnpm server:reference:build
 pnpm --filter @cantrip/crypto... build
 pnpm --filter @cantrip/nbt --filter @cantrip/glitch build
 ```
@@ -123,5 +128,5 @@ console is locked; its identity and vault have not been replaced.
 
 Focused local checks pass. `pnpm check` still stops at the existing Node file
 budgets: `build-app.ts` 1,539/1,500 and `chat-turn-runtime.ts` 2,329/1,999.
-Later aggregate checks are not claimed as passing. Node remains the default
-server, the worker remains Node, and complete replacement remains unfinished.
+Those aggregate results describe the original milestone. The server now
+defaults to Rust, and the worker runs on Node.
