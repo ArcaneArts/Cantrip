@@ -30827,6 +30827,12 @@
     "report": "docs/security/rust-server-3033-linux-x64-acceptance.json",
     "scope": "Local standalone and Winterhold acceptance on three stores and a four-pair Redis interruption matrix against shared PostgreSQL. The Linux x64 server ran through Rosetta on the ARM64 Linux host."
   },
+  "linux3048StandaloneQualification": {
+    "status": "passed",
+    "sourceCommit": "358c5b3232e4ebf34a91f7c071f1af1b7cd8a794",
+    "report": "docs/security/rust-server-3048-linux-acceptance.json",
+    "scope": "Standalone images and representative Winterhold rehearsals across three stores on ARM64 and x64, including startup and migration fault recovery, post-write rollback, and a separate PostgreSQL readiness stall on each image. The x64 executable ran through Rosetta on the ARM64 Linux host."
+  },
   "remainingAcceptance": [
     "Qualify packaged cross-platform dependency interruptions and longer outages. Reconcile the still-open background-service and product recovery comparisons.",
     "Reconcile remaining route-specific successful and error behavior, authenticated metadata and encrypted boundaries beyond the account wrapper cases, and protocol ordering beyond the qualified App Live parser and cursor cases.",
