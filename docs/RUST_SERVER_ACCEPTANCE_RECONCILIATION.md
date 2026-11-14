@@ -227,6 +227,19 @@ offline workers enrolled through the public API. All 18 Rust container
 processes exited cleanly.
 [Linux model admission and cancellation evidence](security/rust-server-3059-linux-model-boundaries.json)
 
+### WorkerLink binary relay and recovery on Linux
+
+Rust 1.1.3059 on ARM64 and x64 and the historical Node 1.1.2739 x64
+image passed nine WorkerLink runs across the three store configurations.
+Each preserved frame bytes during a 64 MiB download and 64 MiB tunnel
+echo. Slow consumers closed with code 1013, grant revocation preserved
+the authorized sibling, and the default bandwidth quota admitted 4,079
+frames before closing the stream. After a forced server exit, the
+replacement reopened the same profile, rejected the stale grant and
+served a fresh stream. The fixture exercised the original worker
+transport and gateway with controlled opaque endpoint bytes.
+[Linux WorkerLink evidence](security/rust-server-3059-linux-worker-link.json)
+
 The packaged macOS server also matched 915 native queue HTTP
 observations and 99 ordered App Live queue invalidations across all
 three stores and anonymous, password and account authentication.
