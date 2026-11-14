@@ -1,5 +1,23 @@
 # Signed macOS desktop update rehearsal
 
+## Installed app and signed update `1.1.3059`
+
+The macOS ARM64 rehearsal updated from 1.1.3043 to 1.1.3059 on PGlite,
+bundled PostgreSQL, and external PostgreSQL. Both builds used the same
+Developer ID and the update used a disposable Tauri signing key over
+loopback HTTPS. PGlite rejected a modified archive before accepting the
+signed archive.
+
+All three installed bundles passed strict signature verification, matched
+the 13,606 files and links in the signed candidate, and reported worker
+version 1.1.3059 from their embedded runtime. The upgraded app retained the
+database choice, server and worker identities, encrypted client bindings,
+and the setting accepted by the previous version. It completed a worker
+command and a new settings write before shutting down both services.
+The [signed 1.1.3059 acceptance record](security/rust-server-3059-macos-worker-version-acceptance.json#signedDesktopUpgrade)
+contains the archive and report checksums. Distribution notarization
+belongs to the release build.
+
 ## Rebuilt server and desktop shell on macOS ARM64
 
 The release-mode desktop shell from `deefa4204` embeds the `1.1.2881`

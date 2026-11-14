@@ -83,6 +83,13 @@ outage, the same worker settled a single usage receipt after recovery, and
 replay made no additional provider call.
 [Version-aligned macOS results](security/rust-server-3059-macos-worker-version-acceptance.json)
 
+The verified Linux x64 OCI image also passed all 14 cases with the rebuilt
+1.1.3059 worker. During the 300-second external PostgreSQL outage the browser
+received the embedding in 16 ms. Recovery settled one usage row and the
+interrupted operation made one provider request. The x64 server ran through
+Rosetta on the ARM64 Linux host.
+[Linux x64 outage results](security/rust-server-3059-postgres-long-outage.json)
+
 ## Active Redis interruption
 
 A real 45-second Redis process outage interrupted a protected embedding
