@@ -161,6 +161,7 @@
     "linuxArm64X64OciAndWinterhold": "docs/security/rust-server-3059-platform-acceptance.json",
     "linuxFullProductRestart": "docs/security/rust-server-3059-linux-full-product-restart.json",
     "linuxPostClockFixImagesAndWinterhold": "docs/security/rust-server-3059-linux-full-product-restart.json#postClockFixPackages",
+    "linuxPostClockFixTaskGoalWorkerLoss": "docs/security/rust-server-3059-linux-task-goal-worker-loss.json",
     "linuxCrossPeerRedisRecovery": "docs/security/rust-server-3059-linux-redis-outage.json",
     "linuxShutdownWithRedisOffline": "docs/security/rust-server-3059-linux-redis-offline-shutdown.json",
     "macosAndLinuxLongPostgresOutage": "docs/security/rust-server-3059-postgres-long-outage.json",
