@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(windows)]
 use tokio::process::Command;
 use tokio::time::{Instant, sleep};
-use tokio_postgres::{Config, NoTls};
+use tokio_postgres::{Config, NoTls, error::SqlState};
 use uuid::Uuid;
 
 #[cfg(unix)]
@@ -19,6 +19,9 @@ mod unix;
 use unix::PostgresProcess as Child;
 #[cfg(windows)]
 mod windows;
+
+const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
+const WINDOWS_RECOVERY_TIMEOUT: Duration = Duration::from_secs(120);
 #[cfg(windows)]
 use windows::PostgresProcess as Child;
 
@@ -168,7 +171,8 @@ impl ManagedPostgres {
     }
 
     async fn wait_for_connection(&mut self) -> Result<()> {
-        let deadline = Instant::now() + Duration::from_secs(30);
+        let started = Instant::now();
+        let mut deadline = started + STARTUP_TIMEOUT;
         loop {
             if let Some(status) = self.child.try_wait()? {
                 bail!("bundled PostgreSQL exited during startup ({status}); see postgres.log");
@@ -182,10 +186,18 @@ impl ManagedPostgres {
                     result?;
                     return Ok(());
                 }
-                Err(error) if Instant::now() >= deadline => {
-                    return Err(error).context("connect to bundled PostgreSQL during startup");
+                Err(error) => {
+                    // A forced server exit can close the Windows process job
+                    // before the postmaster checkpoints. Give the running
+                    // database time to replay WAL when it reports startup.
+                    if cfg!(windows) && error.code() == Some(&SqlState::CANNOT_CONNECT_NOW) {
+                        deadline = started + WINDOWS_RECOVERY_TIMEOUT;
+                    }
+                    if Instant::now() >= deadline {
+                        return Err(error).context("connect to bundled PostgreSQL during startup");
+                    }
+                    sleep(Duration::from_millis(100)).await;
                 }
-                Err(_) => sleep(Duration::from_millis(100)).await,
             }
         }
     }

@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "target": "win32-x64",
+  "candidateVersion": "1.1.3033",
+  "candidateSourceCommit": "5c297936524bdf8a46277c2695d14d87dc3287b9",
+  "environment": "Local Windows 11 x64 guest under QEMU on macOS ARM64. The candidate executable was copied into a private copy of the previously installed server assets.",
+  "candidate": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/v6-recovery-rerun/media/cantrip-server.exe",
+    "bytes": 111516939,
+    "sha256": "7db41db230cef76099edf4364e4b8d6386188168c6811d6c85e420cf2589b7eb"
+  },
+  "fixtureInputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/v6-recovery-rerun/media/inputs.json",
+    "bytes": 822,
+    "sha256": "ac1259e44066c5c2a8c75a86923586f897fcace738155cffa1e21646f0c59279"
+  },
+  "baseline": {
+    "version": "1.1.2976",
+    "status": "failed-after-server-kill",
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/v5-evidence/bundled-postgres-rust-report.json",
+      "bytes": 19142,
+      "sha256": "a5f24f8e34514ff03762a20de58ceb69a8b9b07bc0aea73dfa6d041e0531ba8f"
+    },
+    "postgresLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/v5-evidence/bundled-postgres-rust-postgres.log",
+      "bytes": 4040,
+      "sha256": "c3d87aa225fb4a044a4f0e6f74f65fb8789a7c278297bf08e712eb6e55a63864"
+    }
+  },
+  "bundledPostgres": {
+    "status": "passed",
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/v6-recovery-rerun/extracted/bundled-postgres.json",
+      "bytes": 3715,
+      "sha256": "7e16a383d44a06bd538593b95442ef42dce339b8513aabd7aa40e25584962f47"
+    },
+    "postgresLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/stream-performance/v6-recovery-rerun/extracted/bundled-postgres-recovery.log",
+      "bytes": 5416,
+      "sha256": "88eb2ad4ad3d1f1b7b973a793577b1a000ebdbe08f3da3c075d4fbd4f9da69e0"
+    },
+    "payloadBytes": 67108864,
+    "payloadSha256": "e20a69eca39368572e90b9135738a613838f954987a0b44b6220889c171cbb76",
+    "slowConsumerCloseCode": 1013,
+    "recoveryStartupMs": 42306.85500000004,
+    "recoveryWithWorkerReconnectMs": 63144.66200000001,
+    "retainedIdentity": true,
+    "retainedWrite": true,
+    "cleanExit": true
+  }
+}
