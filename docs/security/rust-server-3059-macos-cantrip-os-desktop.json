@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "testDriverBaseCommit": "487e325b393bc99147e3397dd0b4fe10391f3296",
+  "completeReplacement": false,
+  "platform": "darwin-arm64",
+  "guestImage": "sha256:2310a9cf3d6c6a59dead96664dfac559df3539e4ce8c2eae133558c8b31c14c4",
+  "guestPlatform": "linux-arm64",
+  "nodeVersion": "v24.22.1",
+  "productCells": 6,
+  "stepsPerPeer": 13,
+  "guestDesktopConnectionsPerPeer": 2,
+  "guestTunnelAttestationsPerPeer": 1,
+  "scope": "Authenticated browser SDK, packaged Rust executable and full worker with actual Linux desktop frames and a private synthetic TCP service in disposable guests. Host desktop is qualified through actual inventory and creation without acquiring its input or frame stream. The Node bundled comparison uses isolated external PostgreSQL.",
+  "assertions": [
+    "Desktop start, owned detail read, observation, and history all return the same durable operation and receipt after the server and worker restart.",
+    "The guest desktop returns authenticated JPEG frames before and after restart. The encrypted view and guest placement survive restart.",
+    "The stale Runtime generation returns HTTP 409. The guest TCP reply is authenticated and its grant is released on close."
+  ],
+  "inputs": {
+    "server": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94198000,
+      "sha256": "98158f98aa453ad802282bc6119cf37f66251923d77f53b6fe08fe55c14107a3"
+    },
+    "worker": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3059/runtime/worker/dist/index.js",
+      "bytes": 391720,
+      "sha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c"
+    },
+    "cli": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3059/runtime/worker/bin/cantrip",
+      "bytes": 1342656,
+      "sha256": "45e20cf3027b13938e705bb400830273c3458dd8ad2f3760f350ce619f639b3d"
+    },
+    "testDriverPatch": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-desktop-recovery-3059.8tuLng3Y/test-driver.patch",
+      "bytes": 1598,
+      "sha256": "98e62100e59fb57bcb1e43960af12470db4fc87808f0cda529ce359a49a91152"
+    }
+  },
+  "cases": [
+    {
+      "databaseMode": "pglite",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-desktop-recovery-3059.8tuLng3Y/pglite.json",
+        "bytes": 667030,
+        "sha256": "dfd9630357b4c1da8009b51cbad0f12d17ace646ea574bad88b8d8656f50a7ce"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-desktop-recovery-3059.8tuLng3Y/pglite.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-desktop-recovery-3059.8tuLng3Y/bundled-postgres.json",
+        "bytes": 733854,
+        "sha256": "04147795fdc8a422ede75a8b65361779980a06ff1753b97a44a4d37ae80b0b20"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-desktop-recovery-3059.8tuLng3Y/bundled-postgres.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-desktop-recovery-3059.8tuLng3Y/postgres.json",
+        "bytes": 735333,
+        "sha256": "39ef71d1b68579f23aecf6b674704fa1a9f51e92d5bbcdd270148eb78a47e01d"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-desktop-recovery-3059.8tuLng3Y/postgres.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    }
+  ]
+}

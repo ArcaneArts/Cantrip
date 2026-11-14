@@ -173,6 +173,13 @@ The acceptance image has workspace 0.4.0, executor 0.12.0 and remote 0.11.0.
 The [acceptance record](security/rust-server-guest-surfaces.json) links the
 fixture reports and exact artifacts.
 
+The [1.1.3059 macOS ARM64 package results](security/rust-server-3059-macos-cantrip-os-desktop.json)
+repeat the Linux guest desktop and encrypted TCP tunnel comparisons with the
+released Rust server and full packaged worker on all three database modes.
+After the server and worker restart, the browser reads and observes the
+original desktop operation and finds the identical completed receipt in
+history before it reopens the encrypted view.
+
 ```sh
 CANTRIP_TEST_OS_IMAGE=cantrip-os-acceptance:arm64 \
   node --import tsx scripts/server-rust/actual-folder-client.mjs \
