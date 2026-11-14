@@ -5444,11 +5444,12 @@
           "docs/security/rust-server-cli-http-contract-matrix.json",
           "docs/security/rust-server-2976-darwin-arm64-acceptance.json#cliWorktreeContinuation",
           "docs/security/rust-server-2936-linux-cli-worktree-acceptance.json",
-          "docs/security/rust-server-2976-linux-cli-worktree-acceptance.json"
+          "docs/security/rust-server-2976-linux-cli-worktree-acceptance.json",
+          "docs/security/rust-server-2976-win32-x64-cli-and-streaming.json"
         ],
         "scope": "All 35 legacy CLI commands use native server services. The paired HTTP matrix covers all three stores and authentication modes. The full-worker create-and-switch flow passed all three stores with the 1.1.2976 macOS package and the earlier Linux ARM64 and x64 containers.",
         "remaining": [
-          "Qualify the full-worker CLI worktree continuation with the current Windows package."
+          "Complete the Windows bundled PostgreSQL full-worker CLI continuation. The installed package passed PGlite and external PostgreSQL."
         ]
       },
       {
@@ -28392,6 +28393,7 @@
       "macosPackagedWorktreeContinuation": "docs/security/rust-server-2976-darwin-arm64-acceptance.json#cliWorktreeContinuation",
       "linuxContainerWorktreeContinuation": "docs/security/rust-server-2936-linux-cli-worktree-acceptance.json",
       "linux2976ContainerWorktreeContinuation": "docs/security/rust-server-2976-linux-cli-worktree-acceptance.json",
+      "windows2976WorktreeContinuation": "docs/security/rust-server-2976-win32-x64-cli-and-streaming.json",
       "implementation": [
         "cantrip_server_rs/src/cli",
         "cantrip_server_rs/src/http/cli.rs",
@@ -28437,7 +28439,7 @@
         "unicodeWorkerIdentity": "Actual before/after HTTP proof: after SQL UTF8 replacement, status returns stored workerId; connection predicate retains original lookup identity."
       },
       "remaining": [
-        "Complete the Windows full-worker CLI worktree continuation with the current package. The Linux container runs used a macOS worker and CLI.",
+        "Complete the Windows bundled PostgreSQL full-worker CLI continuation. The Linux container runs used a macOS worker and CLI.",
         "The paired CLI HTTP matrix uses controlled endpoint replies for its other operations. Full-worker and shared recovery evidence for those operations remains scoped separately."
       ]
     },
@@ -29575,6 +29577,7 @@
     "currentWorkerLogStreamingPerformance": {
       "status": "partial",
       "candidateAcceptance": "docs/security/rust-server-2881-performance-acceptance.json",
+      "windows2976StreamAndRecovery": "docs/security/rust-server-2976-win32-x64-cli-and-streaming.json",
       "scope": "Production-entry controlled worker-log JSON on macOS arm64. PGlite: five warmups and 20 measured 256 MiB runs for original Rust, optimized Rust and Node; all 75 pass with exact payload and wire bytes. All three stores: each production peer passes 64 MiB, slow-consumer 1013/one lease stop and SIGKILL/reconnect with retained identity/write and post-recovery command/stream. Final native package passes all3 local/hosted, embedded fallback, exports/restart/SIGTERM, 1762 file hashes, no Node PATH and denied Homebrew reads/artifact writes.",
       "evidence": [
         "docs/RUST_SERVER_STREAMING_PERFORMANCE.md",
