@@ -5,11 +5,7 @@
   "checkoutCommit": "649b05ce766622901764cfede4d9f6e16016d5e3",
   "version": "1.1.2936",
   "target": "linux-x64",
-  "databaseModes": [
-    "pglite",
-    "bundled-postgres",
-    "postgres"
-  ],
+  "databaseModes": ["pglite", "bundled-postgres", "postgres"],
   "verifiedPackageFiles": 2558,
   "candidateExecutable": {
     "path": "bin/cantrip-server",

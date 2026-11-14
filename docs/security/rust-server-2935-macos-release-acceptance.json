@@ -78,11 +78,7 @@
     }
   },
   "standalone": {
-    "modes": [
-      "pglite",
-      "bundled-postgres",
-      "postgres"
-    ],
+    "modes": ["pglite", "bundled-postgres", "postgres"],
     "nodeAbsentFromRuntimePath": true,
     "homebrewAccessDenied": true,
     "artifactWritesDenied": true,
@@ -273,11 +269,7 @@
       "bytes": 586,
       "sha256": "fcaf49cb7fd9ddaa19370b618022ae8a2d8c762f3c92da896349042e4bfe344e"
     },
-    "verifiedInstalledModes": [
-      "pglite",
-      "bundled-postgres",
-      "postgres"
-    ],
+    "verifiedInstalledModes": ["pglite", "bundled-postgres", "postgres"],
     "verifiedFilesAndLinksPerCandidateCopy": 13571,
     "signedAppExecutableSha256": "b5cc069f73ed333afc4c21624e1eff0517555a8687d81e0be06d07db2ad05a08",
     "signedRustExecutableSha256": "39670ba77cba0245adc9d3633140669144f940616c39949819b466b3697cdd4d",

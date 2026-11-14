@@ -29638,11 +29638,7 @@
       "status": "partial",
       "macos3032Qualification": {
         "report": "docs/security/rust-server-3032-macos-performance-routes.json",
-        "databaseModes": [
-          "pglite",
-          "bundled-postgres",
-          "postgres"
-        ],
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
         "runs": 6
       },
       "candidateAcceptance": "docs/security/rust-server-2881-performance-acceptance.json",
@@ -30159,32 +30155,20 @@
         "version": "1.1.2938",
         "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
         "cases": 6,
-        "firstLaunchAndReopenModes": [
-          "pglite",
-          "bundled-postgres",
-          "postgres"
-        ],
+        "firstLaunchAndReopenModes": ["pglite", "bundled-postgres", "postgres"],
         "record": "docs/security/rust-server-2938-win32-x64-installed-desktop.json"
       },
       "macOSArm64Standalone2938": {
         "version": "1.1.2938",
         "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
         "verifiedPackageFiles": 1762,
-        "databaseModes": [
-          "pglite",
-          "bundled-postgres",
-          "postgres"
-        ],
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
         "record": "docs/security/rust-server-2938-darwin-arm64-standalone.json"
       },
       "macOS2938RollbackAndPerformance": {
         "version": "1.1.2938",
         "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
-        "postWriteRollbackModes": [
-          "pglite",
-          "bundled-postgres",
-          "postgres"
-        ],
+        "postWriteRollbackModes": ["pglite", "bundled-postgres", "postgres"],
         "smallPGliteRunsPerRuntime": 6,
         "workerLogStreamPairs": 3,
         "record": "docs/security/rust-server-2938-darwin-arm64-rollback-performance.json",
@@ -30193,11 +30177,7 @@
       "macOS2938SignedDesktopAndWorkerLink": {
         "version": "1.1.2938",
         "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
-        "signedDesktopModes": [
-          "pglite",
-          "bundled-postgres",
-          "postgres"
-        ],
+        "signedDesktopModes": ["pglite", "bundled-postgres", "postgres"],
         "rendererVersion": "1.1.2938",
         "workerLinkAcceptanceRuns": 6,
         "record": "docs/security/rust-server-2938-darwin-arm64-signed-workerlink.json"

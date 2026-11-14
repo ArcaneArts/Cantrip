@@ -30,13 +30,13 @@ ripples at recent mouse presses or accessibility actions. The cursor and glow
 remain above the effect. It changes neither agent screenshots nor input coordinates.
 There is no debug badge or inversion in this effect.
 
-| Parameter | Default | Range |
-| --- | --- | --- |
-| Warp strength | 1 | 0–2; 0 is exact pass-through |
-| Warp radius (logical points) | 110 | 32–320 |
-| Motion response | 1 | 0–2 |
-| Click ripple | 1 | 0–2 |
-| Dissipation speed | 1 | 0.1–5; lower lingers, higher settles faster |
+| Parameter                    | Default | Range                                       |
+| ---------------------------- | ------- | ------------------------------------------- |
+| Warp strength                | 1       | 0–2; 0 is exact pass-through                |
+| Warp radius (logical points) | 110     | 32–320                                      |
+| Motion response              | 1       | 0–2                                         |
+| Click ripple                 | 1       | 0–2                                         |
+| Dissipation speed            | 1       | 0.1–5; lower lingers, higher settles faster |
 
 Strength, radius, motion, and ripple occupy the first uniform lane; dissipation occupies the next lane’s X component. Motion uses the existing
 frame-independent smoothed velocity; a stationary cursor keeps only a small lens.
@@ -65,15 +65,15 @@ to the application window, never the desktop. Normalized coordinates divide by
 logical window size. Velocity is in logical points per second. Texture size and
 X/Y pixel scales are supplied separately, allowing display-scale transitions.
 
-| Frame field | Meaning |
-| --- | --- |
-| `header` | ABI version, cursor count, event count, wrapping frame number |
-| `time` | Render seconds, frame delta, source-frame seconds, capture age |
-| `window` | Logical width/height, X/Y pixel scales |
-| `texture` | Pixel width/height, reciprocal dimensions |
-| `parameters[4]` | Up to 16 descriptor-ordered scalar values; booleans use 0/1 |
-| `cursors[16]` | Per-session cursor inputs sorted by stable agent identity |
-| `events[64]` | Most recent input events across those cursors, ordered by time/identity/sequence |
+| Frame field     | Meaning                                                                          |
+| --------------- | -------------------------------------------------------------------------------- |
+| `header`        | ABI version, cursor count, event count, wrapping frame number                    |
+| `time`          | Render seconds, frame delta, source-frame seconds, capture age                   |
+| `window`        | Logical width/height, X/Y pixel scales                                           |
+| `texture`       | Pixel width/height, reciprocal dimensions                                        |
+| `parameters[4]` | Up to 16 descriptor-ordered scalar values; booleans use 0/1                      |
+| `cursors[16]`   | Per-session cursor inputs sorted by stable agent identity                        |
+| `events[64]`    | Most recent input events across those cursors, ordered by time/identity/sequence |
 
 Times originate from one process-local monotonic nanosecond clock. The renderer
 supplies a local epoch and converts differences to shader seconds; absolute
@@ -128,10 +128,10 @@ history-texture requirement, and parameter definitions. History is disabled for
 all initial effects; the renderer must allocate it only for descriptors that
 request it and must keep it separate from the original capture.
 
-| ID | Fragment | Parameters |
-| --- | --- | --- |
-| `off` | None | None |
-| `pass-through` | `cantrip_passthrough` | None |
+| ID               | Fragment                 | Parameters                                                               |
+| ---------------- | ------------------------ | ------------------------------------------------------------------------ |
+| `off`            | None                     | None                                                                     |
+| `pass-through`   | `cantrip_passthrough`    | None                                                                     |
 | `debug-gradient` | `cantrip_debug_gradient` | `strength` 0–1 (1), `radius` 16–320 points (80), `showTelemetry` 0/1 (1) |
 
 Configuration validation checks the actual supplied parameter values and names.
@@ -193,9 +193,9 @@ shader, not a final artistic warp effect. The pass-through fragment samples the
 source unchanged. A fixed fullscreen triangle is the only vertex stage.
 
 The native approach follows Apple's documentation for
-[window capture](https://developer.apple.com/documentation/screencapturekit/sccontentfilter/init(desktopindependentwindow:)),
+[window capture](<https://developer.apple.com/documentation/screencapturekit/sccontentfilter/init(desktopindependentwindow:)>),
 [IOSurface-backed screen frames](https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-in-macos),
-and [CoreVideo Metal texture import](https://developer.apple.com/documentation/corevideo/cvmetaltexturecachecreatetexturefromimage(_:_:_:_:_:_:_:_:_:)).
+and [CoreVideo Metal texture import](<https://developer.apple.com/documentation/corevideo/cvmetaltexturecachecreatetexturefromimage(_:_:_:_:_:_:_:_:_:)>).
 
 ## Validation scope
 
@@ -291,15 +291,15 @@ reading and compilation never run on the input, capture, or AppKit queues.
 
 ## Implementation review and limits
 
-| Requirement | Implementation evidence |
-| --- | --- |
-| Clean video and independent cursor/effect layers | `macos/window_effects/capture.rs` uses a desktop-independent original-window filter with cursor capture disabled; `macos/overlay.rs` orders cursor panels above the separate effect panel. Monitor snapshots exclude helper-owned panels, and window snapshots retain their original filter. |
-| GPU-only live image processing and bounded ownership | `gpu.rs` imports retained CoreVideo images as Metal textures; command completion releases source owners. `render.rs` replaces pending jobs and bounds in-flight GPU commands to three. No image encoding/readback occurs in this path. |
-| Static-video animation and history | The active pipeline’s continuous flag schedules rendering without new source frames; history textures are separate render targets, initialized before sampling and reset on source/pipeline geometry changes. |
-| Shared motion/input ABI | `effects/telemetry.rs`, `live.rs`, and `uniforms.rs` provide the versioned frame contract from the same native cursor presentation and generated input events. Unit checks cover layout, elapsed-time smoothing/decay, identity, held state, and geometry changes. |
-| Settings, reconnection, and Off | Protocol validation, server migration 0202, worker heartbeat synchronization, and `computer-use/effects.ts` keep durable revisions ordered without launching a helper from settings. |
-| Shader replacement and failure handling | `compiler.rs` has one latest job/result and watches the explicit local file off the input/main queues. Failed compilation preserves the active pipeline; GPU/capture errors remove the panel. Stalled drawable presentation reveals the original window while fresh rendering is retried. |
-| Window/session lifecycle | The native owner matches current window ID/PID, updates position/scale, resets on resize, removes surfaces when the window leaves the on-screen inventory, and drops all resources when Off or the final attached session ends. Panel creation never activates or raises the target. |
+| Requirement                                          | Implementation evidence                                                                                                                                                                                                                                                                      |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Clean video and independent cursor/effect layers     | `macos/window_effects/capture.rs` uses a desktop-independent original-window filter with cursor capture disabled; `macos/overlay.rs` orders cursor panels above the separate effect panel. Monitor snapshots exclude helper-owned panels, and window snapshots retain their original filter. |
+| GPU-only live image processing and bounded ownership | `gpu.rs` imports retained CoreVideo images as Metal textures; command completion releases source owners. `render.rs` replaces pending jobs and bounds in-flight GPU commands to three. No image encoding/readback occurs in this path.                                                       |
+| Static-video animation and history                   | The active pipeline’s continuous flag schedules rendering without new source frames; history textures are separate render targets, initialized before sampling and reset on source/pipeline geometry changes.                                                                                |
+| Shared motion/input ABI                              | `effects/telemetry.rs`, `live.rs`, and `uniforms.rs` provide the versioned frame contract from the same native cursor presentation and generated input events. Unit checks cover layout, elapsed-time smoothing/decay, identity, held state, and geometry changes.                           |
+| Settings, reconnection, and Off                      | Protocol validation, server migration 0202, worker heartbeat synchronization, and `computer-use/effects.ts` keep durable revisions ordered without launching a helper from settings.                                                                                                         |
+| Shader replacement and failure handling              | `compiler.rs` has one latest job/result and watches the explicit local file off the input/main queues. Failed compilation preserves the active pipeline; GPU/capture errors remove the panel. Stalled drawable presentation reveals the original window while fresh rendering is retried.    |
+| Window/session lifecycle                             | The native owner matches current window ID/PID, updates position/scale, resets on resize, removes surfaces when the window leaves the on-screen inventory, and drops all resources when Off or the final attached session ends. Panel creation never activates or raises the target.         |
 
 The output format is SDR BGRA8/sRGB; this is not an HDR-preserving compositor.
 Effects require macOS 14 or later. Other backends report unsupported when an

@@ -100,15 +100,16 @@ function identityIncarnationStorageKey(
 function validIdentityIncarnationId(value: string | null): value is string {
   return Boolean(
     value &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
-        value,
-      ),
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      value,
+    ),
   );
 }
 
-function acquireIdentityIncarnation(
-  session: ClientSessionContext,
-): { incarnationId: string; storageKey: string } {
+function acquireIdentityIncarnation(session: ClientSessionContext): {
+  incarnationId: string;
+  storageKey: string;
+} {
   const key = identityIncarnationStorageKey(session);
   try {
     const existing = globalThis.localStorage?.getItem(key) ?? null;

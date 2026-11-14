@@ -12,10 +12,18 @@ const message = (path) =>
 
 test("classifies only known teardown endpoints during explicit WebKit reload", () => {
   for (const path of [
-    "session", "session/telemetry", "session/grants/grant",
-    "session/peers", "session/peers/peer", "session/peers/peer/signals",
+    "session",
+    "session/telemetry",
+    "session/grants/grant",
+    "session/peers",
+    "session/peers/peer",
+    "session/peers/peer/signals",
   ]) {
-    assert.equal(isEditorReloadTeardownError({ ...context, message: message(path) }), true, path);
+    assert.equal(
+      isEditorReloadTeardownError({ ...context, message: message(path) }),
+      true,
+      path,
+    );
   }
 });
 
@@ -32,6 +40,10 @@ test("preserves failures outside reload, from other origins, and unrelated endpo
     { message: "Uncaught TypeError: Cannot read properties of undefined" },
     { message: message("session") + " extra error" },
   ]) {
-    assert.equal(isEditorReloadTeardownError({ ...base, ...override }), false, JSON.stringify(override));
+    assert.equal(
+      isEditorReloadTeardownError({ ...base, ...override }),
+      false,
+      JSON.stringify(override),
+    );
   }
 });

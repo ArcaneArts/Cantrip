@@ -6,11 +6,18 @@ cantrip_app/android/
 cantrip_app/ios/
 **/target/
 
+# Local CantripOS VM state and disk images are generated outside the source tree.
+cantrip_os/.state/
+
 # Mechanically imported upstream sources are verified by content manifest.
 cantrip_codex/upstream/
 
 # Preserve the pinned Redis crate; its original archive checksum is documented.
 cantrip_server_rs/third-party/redis/
+
+# Preserve the upstream README files imported with these crates.
+cantrip_server_rs/third-party/icu_collator/README.md
+cantrip_server_rs/third-party/pglite-rs/README.md
 
 # Packaged skills may preserve licensed third-party instructions verbatim.
 skill_templates/
