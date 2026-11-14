@@ -33,7 +33,11 @@ export class SingleProductFixture extends HttpFixture {
       this.server = await startPackagedNodeServer(
         path.join(repositoryRoot, "tests/reference-node-server"),
         this.environment,
-        { nodeExecutable: process.execPath, port },
+        {
+          nodeExecutable: process.execPath,
+          port,
+          startupTimeoutMs: this.startupTimeoutMs,
+        },
       );
     } else await super.start({ port });
     const server = this.server;

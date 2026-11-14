@@ -23,7 +23,11 @@ export function fixtureEnvironment(dataDirectory) {
   };
 }
 
-export async function startServer(command, arguments_, options) {
+export async function startServer(
+  command,
+  arguments_,
+  { startupTimeoutMs = 60_000, ...options } = {},
+) {
   const startedAt = performance.now();
   const child = spawn(command, arguments_, {
     ...options,
@@ -63,9 +67,11 @@ export async function startServer(command, arguments_, options) {
       timer = setTimeout(
         () =>
           reject(
-            new Error(`Server startup timed out.\n${startupDiagnostics()}`),
+            new Error(
+              `Server startup timed out after ${startupTimeoutMs}ms.\n${startupDiagnostics()}`,
+            ),
           ),
-        60_000,
+        startupTimeoutMs,
       );
       child.once("error", reject);
       child.once("exit", (code, signal) =>

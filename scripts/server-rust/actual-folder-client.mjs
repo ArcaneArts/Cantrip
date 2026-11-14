@@ -133,6 +133,17 @@ const option = (name) => {
   const i = process.argv.indexOf(name);
   return i < 0 ? undefined : process.argv[i + 1];
 };
+function startupTimeout(name) {
+  if (!process.argv.includes(name)) return undefined;
+  const timeout = Number(option(name));
+  assert.ok(
+    Number.isInteger(timeout) && timeout > 0 && timeout <= 2_147_483_647,
+    `${name} requires a positive timeout in milliseconds within the Node timer range`,
+  );
+  return timeout;
+}
+const serverStartupTimeoutMs = startupTimeout("--server-startup-timeout-ms");
+const workerStartupTimeoutMs = startupTimeout("--worker-startup-timeout-ms");
 const databaseMode = option("--database") ?? "pglite";
 const sharedPair = option("--server-pair");
 assert.ok(
@@ -310,6 +321,8 @@ const report = {
   suite: "actual-browser-server-worker-folders",
   databaseMode,
   serverPair: sharedPair ?? null,
+  serverStartupTimeoutMs,
+  workerStartupTimeoutMs,
   completeReplacement: false,
   scope:
     "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Optional --worktrees exercises actual local Git create/lock/unlock/reconcile/remove/prune, retained identity and real Run process retirement before deletion, with only disposable catalog classification seeded. Optional --replicas uses two full workers for direct local Git attachment, replay, restart and detach; --github-replicas adds real public gh clone/fetch and managed checkout deletion. Optional --github-conversion uses the existing encrypted APIs and full worker to link matching public history in a fresh managed folder, preserve dirty bytes and identities, and restart without SQL seeding or command substitutions. Optional --tasks uses existing encrypted Task APIs, the full production worker and bundled Codex for direct execution, planning, native Goal completion, failure/retry, paused admissions and retained restart; only public model HTTP responses are controlled. Optional --project-chats exercises retained Agent creation and usage, real managed native preparation, encrypted turns, completed canonical history, native Goal tools, exact restart retention and Goal clear; only public model HTTP responses are controlled. Optional --chat-controls adds real native compaction and continuation, dirty Git worktree/lane release, encrypted system-message replay and exact committed restart retention to the existing Agent/worktree flows. Optional --chat-customizations adds actual skills, extra roots, MCP and bound permission configuration with native restart recovery. Optional --skill-settings adds actual project/account skill files, audiences, encrypted recovery deletion and retained restart. Optional --mcp-settings uses an acceptance-only owned worker home and the existing encrypted browser SDK for MCP CRUD, full discovery, copy, native resource access and restart. Shared --server-pair runs exercise production peers on private shared PostgreSQL/Redis with the browser and full worker on opposite peers; --rolling-servers replaces application and worker-owner peers without restarting that worker. Optional --native-shared-agent-recovery interrupts actual Agent/Goal execution on the selected --agent-crash-peer while retaining native authority and the original full worker. Full UI, packaged/platform, worker/native-process loss, long-outage/Redis TLS and whole replacement acceptance remain separate.",
@@ -461,6 +474,7 @@ async function flow(
       {
         cliBinary,
         enrollmentCode,
+        startupTimeoutMs: workerStartupTimeoutMs,
         workerId,
         homeDirectory,
         environment: {
@@ -1959,6 +1973,7 @@ try {
       root,
       name: sharedPair ? "actual-folder-" + kinds.join("-") : "actual-folder",
       databaseMode,
+      startupTimeoutMs: serverStartupTimeoutMs,
       providerAuthDrain: true,
       liveSqlFixture: liveTaskDiagnostics,
       environment: {

@@ -19,6 +19,15 @@ test("startup failure retains both child output streams", async () => {
   );
 });
 
+test("a configured startup deadline still requires a listening event", async () => {
+  await assert.rejects(
+    startServer(process.execPath, ["-e", "process.stdin.resume()"], {
+      startupTimeoutMs: 75,
+    }),
+    /Server startup timed out after 75ms/,
+  );
+});
+
 test("startup output preserves actual HTTP readiness and graceful shutdown", async () => {
   const server = await startServer(process.execPath, [
     "-e",
