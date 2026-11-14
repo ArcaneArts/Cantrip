@@ -49,6 +49,21 @@
       "sha256": "17517dd2d122e5e6787ba5e02e999788ccb384e3479bb61adba9c2674c06a70e"
     }
   },
+  "postClockFixRouteDiscovery": {
+    "sourceCommit": "871f62ae9a7ea48fdcb1746c9b4e518391d2b562",
+    "platform": "darwin-arm64",
+    "databaseMode": "pglite",
+    "routeResponsesPerRuntime": 584,
+    "equalStatusAndContentType": 584,
+    "unexpectedGenericRustFallbacks": 0,
+    "rustExecutableSha256": "50053d92ddee4786043bdda1b12287fd438b12d6cc4b761ed7171124b2835818",
+    "scope": "Local requests for every inventory route with missing resource identities and empty JSON bodies. WebSocket entries received ordinary HTTP requests. Runtime-generated values and version fields differ. The comparison covers route discovery, HTTP status and Content-Type, with route-specific behavior tracked separately.",
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/integrated-route-inventory/matrix.json",
+      "bytes": 2451789,
+      "sha256": "6737bd182e815fb9158f1fb7530ffb9c43ef6975e66c9b2bccf09ecd14fd1893"
+    }
+  },
   "backgroundServices": {
     "platform": "darwin-arm64",
     "database": "postgres",
@@ -138,11 +153,13 @@
   },
   "artifactEvidence": {
     "macosStandaloneSignedDesktopAndPerformance": "docs/security/rust-server-3059-platform-acceptance.json",
+    "macosPostClockFixPackageAndChatControls": "docs/security/rust-server-3059-macos-package-refresh.json",
     "macosSignedUpdateWithMatchingWorker": "docs/security/rust-server-3059-macos-worker-version-acceptance.json",
     "macosPreparedCantripOsCaptureAbandonment": "docs/security/rust-server-3059-macos-system-abandonment.json",
     "macosSharedReplicaRedisRecovery": "docs/security/rust-server-3059-macos-replica-redis.json",
     "linuxArm64X64OciAndWinterhold": "docs/security/rust-server-3059-platform-acceptance.json",
     "linuxFullProductRestart": "docs/security/rust-server-3059-linux-full-product-restart.json",
+    "linuxPostClockFixImagesAndWinterhold": "docs/security/rust-server-3059-linux-full-product-restart.json#postClockFixPackages",
     "linuxCrossPeerRedisRecovery": "docs/security/rust-server-3059-linux-redis-outage.json",
     "linuxShutdownWithRedisOffline": "docs/security/rust-server-3059-linux-redis-offline-shutdown.json",
     "macosAndLinuxLongPostgresOutage": "docs/security/rust-server-3059-postgres-long-outage.json",
@@ -174,7 +191,7 @@
         "bytes": 2331,
         "sha256": "7a0951dcde43fb4c3f5b0e51c1d3cd93df7cb9994f4e26f710d95f4640571737"
       },
-      "scope": "Windows 11 x64 under QEMU software emulation on macOS ARM64. Initial installation and retained PGlite profile reopening, both with the 1.1.3059 worker. Separately pending Authenticode and runtime updater verification."
+      "scope": "Windows 11 x64 under QEMU software emulation on macOS ARM64. Initial installation and retained PGlite profile reopening, both with the 1.1.3059 worker. The signed updater and published installer comparison have separate evidence."
     },
     "historicalProfileUpgradeAndPostWriteRollback": "docs/security/rust-server-3059-historical-profile.json",
     "macosNativeExecutionPostWriteRollback": "docs/security/rust-server-3059-macos-profile-rollback.json",
@@ -296,7 +313,7 @@
       "report": "docs/security/rust-server-3059-windows-signed-update.json",
       "databaseMode": "pglite",
       "baselineVersion": "1.1.2938",
-      "scope": "The QA-signed updater rejected modified bytes, installed the exact current-worker package, and reopened the retained PGlite profile. A manual tray quit on the same upgraded process produced a Rust shutdown-completed event after the automated observer timed out. Windows release Authenticode is pending."
+      "scope": "The QA-signed updater rejected modified bytes, installed the exact current-worker package, and reopened the retained PGlite profile. A manual tray quit on the same upgraded process produced a Rust shutdown-completed event after the automated observer timed out. The candidate and latest published installers both have empty PE certificate tables. Both use a separate Tauri updater signature."
     },
     "linuxJsonWire": {
       "report": "docs/security/rust-server-3059-linux-json-wire.json",
@@ -307,7 +324,7 @@
     }
   },
   "remainingAcceptance": [
-    "Verify Windows release Authenticode and the macOS notarized release artifact when the release credentials and artifacts are available.",
+    "Verify the macOS notarized release artifact and production updater signatures when the release credentials and artifacts are available.",
     "Exercise the installed iOS native QR flow and physical mobile sign-in, and verify the Android distribution-signed build.",
     "Reconcile the remaining route, protocol, recovery and platform scopes in the coverage ledger."
   ],

@@ -45,7 +45,9 @@ upgraded the registered desktop from 1.1.2938 to 1.1.3059. The app reopened
 its PGlite profile with the same server and worker identities and read back
 the saved setting. It started the verified Rust server and 1.1.3059 Node
 worker. A manual tray quit completed Rust shutdown after the automated
-observer missed the moved tray icon. Windows release Authenticode remains open.
+observer missed the moved tray icon. Both the candidate and the latest
+published Windows installer, 1.1.2397, have empty PE certificate tables.
+The release workflow signs the updater payload separately.
 [Windows signed updater evidence](security/rust-server-3059-windows-signed-update.json)
 
 Each local Winterhold rehearsal completed 18 installer operations under
@@ -81,6 +83,28 @@ retained the server identity, worker enrollment, client encryption bindings
 and a settings write, and drained both desktop child processes. The PGlite
 case rejected a modified updater archive before applying the valid package.
 [Platform, artifact and performance evidence](security/rust-server-3059-platform-acceptance.json)
+
+### Rebuilt macOS ARM64 standalone and desktop runtime
+
+The rebuilt 1.1.3059 archive includes the folder-claim clock fix. The
+relocated package passed migrations, SQL export, settings persistence and
+hosted reopening on all three databases. It verified 1,762 manifest entries
+and completed 13 clean SIGTERM exits. The server ran with Homebrew access
+denied and Node absent from its PATH.
+
+The headless test used the production desktop launcher and supervisor with
+the rebuilt server and packaged Node worker. On all three databases, it
+reaped the child processes, restarted from the retained profile and recovered
+from abrupt supervisor loss. The server and worker identities and saved
+settings survived.
+
+The browser and full worker passed 34 steps on each database. Native Agent
+compaction persisted its checkpoint and a subsequent turn used the compacted
+context. An attempted dirty lane release returned HTTP 409. An explicit
+release kept the dirty file and delivered one encrypted system message,
+which remained intact after replay and restart. The PGlite and external
+PostgreSQL Node controls passed the same browser steps.
+[macOS package refresh evidence](security/rust-server-3059-macos-package-refresh.json)
 
 ### Worktrees and managed Git replicas
 
@@ -268,6 +292,22 @@ database reproduced a stuck folder job. The patched executable passed all
 nine folder steps with the server clock two seconds behind and two seconds
 ahead. The patch also matched 56 repository cases and 33 snapshots per
 database mode and 157 HTTP observations on external PostgreSQL.
+
+Both Linux 1.1.3059 images were rebuilt with the folder-claim fix from
+#3115. Across the six image and database combinations, the packaged Node
+worker and browser completed all 108 product steps and 30 Rust server
+generations exited cleanly. The first x64 PGlite and bundled PostgreSQL
+runs captured a Task transcript during an update. The comparison now
+captures the baseline after the worker drains events, then verifies the
+complete transcript after restart. The reruns and the PostgreSQL Node
+control passed with that comparison.
+
+Each rebuilt standalone archive passed six installer operations per
+database under local Winterhold systemd and Caddy. Injected migration
+and startup failures restored the previous service. After Rust accepted
+writes, PGlite and bundled PostgreSQL rolled back to Rust 1.1.3048.
+External PostgreSQL rolled back to the historical Node server and
+returned to Rust. All retained the saved settings and session.
 [Linux packaged Task and Agent evidence](security/rust-server-3059-linux-full-product-restart.json)
 
 ### Linux background catalog refresh
