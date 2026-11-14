@@ -46,14 +46,61 @@
         }
       },
       "bundled-postgres": {
-        "status": "failed",
-        "guestSuite": "cantrip-2976-win32-x64-installed-grant-cli-context-v7",
-        "productStepsCompleted": 8,
-        "failure": "The worker teardown exceeded the 30-second harness deadline before the continuation. Final cleanup hit the 15-second server observation deadline while the private PostgreSQL stop was in progress.",
+        "status": "passed",
+        "guestSuite": "cantrip-2976-win32-x64-installed-grant-cli-context-v8",
+        "productSteps": 12,
+        "providerRequests": 2,
+        "canonicalMessages": 12,
+        "canonicalAnswersPerCheckout": 1,
+        "cleanServerExits": 4,
+        "reapedWorkerTrees": 4,
+        "workerTreeObservedProcesses": [3, 3, 30, 6],
+        "workerShutdownMs": [2806, 5874, 10505, 6633],
+        "privatePostgresStopMs": [5780, 996, 2647, 1269],
+        "fixtureObservationWindowsMs": {
+          "workerShutdown": 90000,
+          "serverShutdown": 105000
+        },
         "report": {
-          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/guest-v7-bundled-postgres.json",
-          "bytes": 138141,
-          "sha256": "5d9e4b026a55c40e8950ec3dc91d9326cf0d9cb639fac6b6e6b41ac25114c5b3"
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/v8-bundled-postgres-evidence/bundled-postgres-installed-grant-cli-context-v8.json",
+          "bytes": 445827,
+          "sha256": "f13194971feaa81a5c6437134d9ab89465b4529169c1439e230434c62a19724b"
+        },
+        "terminalReceipt": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/v8-bundled-postgres-evidence/receipt-installed-grant-cli-context-v8.json",
+          "bytes": 1196,
+          "sha256": "afae62f3ffe28ba939ca0d0c9f10f7575ced187a25d598d2dda00c0f6c2a269f"
+        },
+        "guestSerial": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/v8-bundled-postgres-evidence/guest-serial.jsonl",
+          "bytes": 2549,
+          "sha256": "217d607c95708f9358616b18d3eef46ba2c99f361984daf5e1eb872da893309f"
+        },
+        "harness": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/installed-grant-cli-context-v8-media/installed-grant-cli-context-v8.ps1",
+          "bytes": 8909,
+          "sha256": "6bbcb9734f3b6617fbfeeaf5c499c67eec15e42206ec6294330202e9e203b68e"
+        },
+        "previousAttempt": {
+          "status": "failed",
+          "guestSuite": "cantrip-2976-win32-x64-installed-grant-cli-context-v7",
+          "productStepsCompleted": 8,
+          "failure": "The worker teardown exceeded the 30-second harness deadline before the continuation. Final cleanup hit the 15-second server observation deadline while the private PostgreSQL stop was in progress.",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/guest-v7-bundled-postgres.json",
+            "bytes": 138141,
+            "sha256": "5d9e4b026a55c40e8950ec3dc91d9326cf0d9cb639fac6b6e6b41ac25114c5b3"
+          }
+        },
+        "stdout": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/v8-bundled-postgres-evidence/bundled-postgres-installed-grant-cli-context-v8.stdout",
+          "bytes": 364,
+          "sha256": "5cc1ed3b0856c7ec599aaf2b5cb615ee207fc63134b6b82053d40d84de6232a5"
+        },
+        "stderr": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/v8-bundled-postgres-evidence/bundled-postgres-installed-grant-cli-context-v8.stderr",
+          "bytes": 552,
+          "sha256": "0ba37e92a19758253ac8f065800abedbca2ddaaa6b3ce6f4c6b61059ed6511fe"
         }
       }
     },

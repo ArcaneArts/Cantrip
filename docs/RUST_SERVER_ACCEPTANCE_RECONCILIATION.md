@@ -61,6 +61,15 @@ matched. The running server reported `1.1.3013` and the same process instance
 ID in health and live traffic. This record covers the standalone archive.
 [macOS standalone report](security/rust-server-3013-darwin-arm64-standalone.json)
 
+The same macOS archive and compiled Node reference each completed two warmups
+and four measured runs on small local PGlite profiles. Median warm readiness
+was 88 ms for Rust and 1,408 ms for Node. Median idle process-tree RSS was
+102 MiB for Rust and 1,322 MiB for Node. Median settings read latency was
+1.31 ms for Rust and 4.55 ms for Node. Both retained identity and writes across
+restarts and delivered all enrollment events to a resumed App Live consumer.
+The Windows QA VM ran on the same host during these measurements.
+[macOS runtime measurements](security/rust-server-3013-darwin-arm64-standalone.json#runtimePerformance)
+
 The App Live harness compared that packaged executable with the Node reference
 server over HTTP and WebSocket connections. All four profiles passed on each
 store, with 100 paired socket cases, 24 paired HTTP cases and six rejected
@@ -155,11 +164,13 @@ below apply to the exact binaries and worker entries identified by their reports
   PGlite update from `1.1.2938`, retained the saved theme and worker
   enrollment, and exited cleanly. The signed package also passed all 36
   model-operation cases across the three stores in the Windows guest.
-  The same installed server passed the full-worker CLI continuation on PGlite
-  and external PostgreSQL. Each run completed 12 product steps, two provider
-  requests and four clean server exits. Bundled PostgreSQL reached eight
-  product steps before the worker teardown deadline expired. The final
-  server cleanup timed out while stopping the bundled database.
+  The same installed server passed the full-worker CLI continuation on all
+  three stores. Each case completed 12 product steps, two provider requests,
+  one canonical answer per checkout and four clean server exits. The bundled
+  PostgreSQL retry widened the guest observation windows for worker teardown
+  and server shutdown and kept the product assertions. It observed all four
+  worker trees exit and all four private PostgreSQL shutdowns complete.
+  The earlier bundled PostgreSQL timeout is retained in the report.
   [Windows CLI and streaming report](security/rust-server-2976-win32-x64-cli-and-streaming.json)
   [Windows package report](security/rust-server-2976-win32-x64-packages.json)
   [Windows model operations](security/rust-server-2976-win32-x64-model-operations.json)

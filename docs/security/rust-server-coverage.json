@@ -5447,9 +5447,9 @@
           "docs/security/rust-server-2976-linux-cli-worktree-acceptance.json",
           "docs/security/rust-server-2976-win32-x64-cli-and-streaming.json"
         ],
-        "scope": "All 35 legacy CLI commands use native server services. The paired HTTP matrix covers all three stores and authentication modes. The full-worker create-and-switch flow passed all three stores with the 1.1.2976 macOS package and the earlier Linux ARM64 and x64 containers.",
+        "scope": "All 35 legacy CLI commands use native server services. The paired HTTP matrix covers all three stores and authentication modes. The full-worker create-and-switch flow passed all three stores with the 1.1.2976 macOS package, the signed Windows x64 package and the Linux ARM64 and x64 containers. The Linux container cases ran the worker and CLI on macOS.",
         "remaining": [
-          "Complete the Windows bundled PostgreSQL full-worker CLI continuation. The installed package passed PGlite and external PostgreSQL."
+          "The paired HTTP matrix uses controlled endpoint replies for other CLI operations. Complete the remaining full-worker and shared recovery scenarios."
         ]
       },
       {
@@ -28439,7 +28439,6 @@
         "unicodeWorkerIdentity": "Actual before/after HTTP proof: after SQL UTF8 replacement, status returns stored workerId; connection predicate retains original lookup identity."
       },
       "remaining": [
-        "Complete the Windows bundled PostgreSQL full-worker CLI continuation. The Linux container runs used a macOS worker and CLI.",
         "The paired CLI HTTP matrix uses controlled endpoint replies for its other operations. Full-worker and shared recovery evidence for those operations remains scoped separately."
       ]
     },
@@ -29496,7 +29495,8 @@
       "status": "partial",
       "candidateAcceptance": "docs/security/rust-server-2881-performance-acceptance.json",
       "scope": "Compiled Node production reference and optimized Rust 1.1.2845 at 2e60d2042 on macOS ARM64. Isolated PGlite profiles, five warmups and 20 measured runs per runtime; all 50 passed with retained identities and writes. Same workload measures readiness, process-tree RSS, HTTP reads and durable writes, eight-client throughput, App Live pings and enrollment publication, paused-client catch-up and SIGTERM. The median complete workload passed the regression guard at 1515 ms versus 3770 ms.",
-      "currentReport": "docs/security/rust-server-darwin-arm64-acceptance.json#currentStandalone",
+      "currentReport": "docs/security/rust-server-3013-darwin-arm64-standalone.json#runtimePerformance",
+      "earlierReport": "docs/security/rust-server-darwin-arm64-acceptance.json#currentStandalone",
       "evidence": [
         "docs/RUST_SERVER_INTEGRATED_ARTIFACT_ACCEPTANCE.md",
         "scripts/server-rust/production-runtime-benchmark.mjs",
@@ -30760,11 +30760,10 @@
     "scope": "Local standalone and Winterhold acceptance on three stores and a four-pair Redis interruption matrix against shared PostgreSQL. The Linux x64 server ran through Rosetta on the ARM64 Linux host."
   },
   "remainingAcceptance": [
-    "Finish canonical-history CLI acceptance on Windows x64 with the signed installer containing the worker grant refresh from PR #3012.",
     "Qualify packaged cross-platform dependency interruptions and longer outages. Reconcile the still-open background-service and product recovery comparisons.",
     "Reconcile remaining route-specific successful and error behavior, authenticated metadata and encrypted boundaries beyond the account wrapper cases, and protocol ordering beyond the qualified App Live parser and cursor cases.",
     "Qualify installed iOS native QR, physical-camera runs and the remaining distribution-signed Android scenario.",
-    "Complete residual Windows performance coverage for sustained backpressure and interruption recovery.",
+    "Complete the paired Windows performance comparison for sustained backpressure and interruption recovery. The Rust executable passed all three worker-log streaming cases.",
     "Reconcile exact release artifacts, migration and rollback evidence and remaining platform limits before marking full replacement complete."
   ],
   "milestonePlatformAcceptance": [
