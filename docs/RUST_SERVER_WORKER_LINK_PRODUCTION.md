@@ -293,6 +293,18 @@ reference. This loaded observation leaves controlled PGlite recovery timing
 open.
 [macOS 1.1.2976 relay and recovery evidence](security/rust-server-2976-darwin-arm64-workerlink.json)
 
+## Packaged Linux relay and recovery at `1.1.3059`
+
+Both Rust Linux images and the historical Node 1.1.2739 x64 image passed
+the nine peer/store runs. All six Rust runs retained the server identity,
+setting and opaque tunnel record across SIGKILL. Each final shutdown
+removed all gateway channels, grants and sessions. The Rust x64
+download measured 71.46 to 93.63 MiB/s across the three stores. The Node
+x64 image measured 40.93 to 58.72 MiB/s. These are single observations
+on the same shared ARM64 host, with x64 running through Rosetta. The Node
+bundled PostgreSQL comparison used a separate fixture database process.
+[Linux 1.1.3059 relay and recovery evidence](security/rust-server-3059-linux-worker-link.json)
+
 ## Scope and remaining replacement work
 
 These checks cover macOS arm64 and the `events`/`stream` lanes with controlled
