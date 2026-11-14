@@ -249,6 +249,18 @@ controlled worker callbacks and aligned the Node reference's version
 metadata to 1.1.3059 before comparing exact bootstrap responses.
 [Native queue wire evidence](security/rust-server-3059-macos-native-queue-wire.json)
 
+### Linux background catalog refresh
+
+The Linux catalog job fired on the unmodified 15-minute schedule on
+ARM64 and x64. Both runtimes requested three quota snapshots and
+persisted six periodic observations per run. Shutdown drained both
+held observations in the ARM64 combined case and the x64 shutdown
+rerun. The original combined x64 run passed the Node timer and then
+stopped when the Node reference persisted one of two observations
+during shutdown. The timer and shutdown checks passed in separate
+x64 runs.
+[Linux periodic catalog and shutdown evidence](security/rust-server-3059-linux-catalog-periodic.json)
+
 ## Cantrip 1.1.3059 mobile clients
 
 The installed Android API 36 ARM64 emulator app signed into PGlite, bundled
