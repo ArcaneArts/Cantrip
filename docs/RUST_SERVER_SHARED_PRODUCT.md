@@ -8,8 +8,8 @@ actual Redis worker claim to prove that commands cross the server boundary.
 
 Each pairing owns an isolated PostgreSQL database, Redis process, server
 profiles, browser context and worker directory. Node peers use the compiled
-production `cantrip_server/dist/index.js` entry point. Rust peers use the normal
-server executable. No fixture routes, command-handler replacements, worker
+server entry point compiled under `tests/reference-node-server/dist`. Rust peers
+use the normal server executable. No fixture routes, command-handler replacements, worker
 acknowledgment substitutes or SQL-seeded product state are needed for these
 scenarios. Public model HTTP responses are controlled when exercising the real
 native Codex runtime.
@@ -21,7 +21,7 @@ Build the browser dependencies and Node comparison implementation:
 ```sh
 pnpm install --frozen-lockfile
 pnpm --filter '@cantrip/app^...' build
-pnpm --filter '@cantrip/server...' build
+pnpm server:reference:build
 ```
 
 Use an existing full worker distribution to retain its matching native runtime,
@@ -83,14 +83,14 @@ strict.
 
 ## Replacement and retention checks
 
-The macOS ARM64 `1.1.2881` package and same-source Node reference passed
-128 resource steps across all four initial server pairings. All eight
-peer replacements retained the original worker process. The browser
-kept its encrypted session and App Live continuity and read and wrote
-the same 64 KiB test file through both replacement peers. The run also
-covered workspace ownership, detached editor drafts, file-document
-replay, Git views, terminal snapshots and both encrypted PTY transports.
-[Current rolling resource acceptance](security/rust-server-2881-shared-resource-rolling.json)
+The macOS ARM64 `1.1.3032` standalone package and Node reference passed 128
+resource steps across all four initial server pairings. All eight peer
+replacements retained the original packaged worker process. The browser kept
+its encrypted session and App Live continuity and read and wrote the same
+64 KiB test file through both replacement peers. The run also covered workspace
+ownership, detached editor drafts, file-document replay, Git views, terminal
+snapshots and both encrypted PTY transports.
+[Current rolling resource acceptance](security/rust-server-3032-macos-live-rolling.json)
 
 `--rolling-servers` replaces the application peer with Rust while the full
 worker stays connected to its existing owner. It then replaces the worker-owner
