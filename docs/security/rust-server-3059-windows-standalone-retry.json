@@ -51,5 +51,32 @@
         "sha256": "a54c305ae12a640a74b846e2141b8cbdc994f68fe0d9bbe006724e7f57db07df"
       }
     }
-  ]
+  ],
+  "exactLauncherRecheck": {
+    "result": "failed",
+    "stage": "First bundled PostgreSQL shutdown after serving the settings write",
+    "startupTimeoutMs": 600000,
+    "shutdownTimeoutMs": 15000,
+    "completedDatabaseModes": ["pglite"],
+    "pgliteSql": {
+      "bytes": 493335,
+      "sha256": "e9ddfffc2183a4ca17f154ddd546696fc38a67621f92c209565c8307194540c7"
+    },
+    "scope": "The exact archive and original shutdown deadline were retained. The process exceeded the acceptance deadline after supervision stdin closed. This run did not reach the bundled PostgreSQL SQL export or external PostgreSQL case.",
+    "serial": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/exact-recheck.6iLZxOT9/guest-receipts.jsonl",
+      "bytes": 984,
+      "sha256": "0d9563d46e01bc4525a53e855e57899ff536e2d398d0d0d4313d202d765b79e7"
+    },
+    "stderr": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/exact-recheck.6iLZxOT9/guest-acceptance.stderr",
+      "bytes": 592,
+      "sha256": "54416ef67cb089da8b093489b660142a07a18a6155c31054f72797f0b89d1bd5"
+    },
+    "guestVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/exact-recheck.6iLZxOT9/guest-verified.json",
+      "bytes": 1256,
+      "sha256": "61c5120baa78c117f8f821795b5079001b1d820f2f243b09d0a21fa8d9cb6628"
+    }
+  }
 }
