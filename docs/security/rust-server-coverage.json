@@ -2230,10 +2230,11 @@
           "scripts/server-rust/actual-run-retirement.mjs",
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
-          "docs/RUST_SERVER_READ_METHODS.md"
+          "docs/RUST_SERVER_READ_METHODS.md",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json"
         ],
         "remaining": [
-          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, and supported-platform acceptance. The packaged macOS server passes the browser/full-worker lifecycle and actual process retirement on all three stores."
         ]
       },
       {
@@ -2249,10 +2250,11 @@
           "scripts/server-rust/worktree-coordinator-cases.mjs",
           "scripts/server-rust/actual-project-worktrees.mjs",
           "scripts/server-rust/actual-folder-client.mjs --worktrees",
-          "scripts/server-rust/actual-run-retirement.mjs"
+          "scripts/server-rust/actual-run-retirement.mjs",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json"
         ],
         "remaining": [
-          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, and supported-platform acceptance. The packaged macOS server passes the browser/full-worker lifecycle and actual process retirement on all three stores."
         ]
       },
       {
@@ -2268,10 +2270,11 @@
           "scripts/server-rust/worktree-coordinator-cases.mjs",
           "scripts/server-rust/actual-project-worktrees.mjs",
           "scripts/server-rust/actual-folder-client.mjs --worktrees",
-          "scripts/server-rust/actual-run-retirement.mjs"
+          "scripts/server-rust/actual-run-retirement.mjs",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json"
         ],
         "remaining": [
-          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, and supported-platform acceptance. The packaged macOS server passes the browser/full-worker lifecycle and actual process retirement on all three stores."
         ]
       },
       {
@@ -2287,10 +2290,11 @@
           "scripts/server-rust/worktree-coordinator-cases.mjs",
           "scripts/server-rust/actual-project-worktrees.mjs",
           "scripts/server-rust/actual-folder-client.mjs --worktrees",
-          "scripts/server-rust/actual-run-retirement.mjs"
+          "scripts/server-rust/actual-run-retirement.mjs",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json"
         ],
         "remaining": [
-          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, and supported-platform acceptance. The packaged macOS server passes the browser/full-worker lifecycle and actual process retirement on all three stores."
         ]
       },
       {
@@ -2306,10 +2310,11 @@
           "scripts/server-rust/worktree-coordinator-cases.mjs",
           "scripts/server-rust/actual-project-worktrees.mjs",
           "scripts/server-rust/actual-folder-client.mjs --worktrees",
-          "scripts/server-rust/actual-run-retirement.mjs"
+          "scripts/server-rust/actual-run-retirement.mjs",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json"
         ],
         "remaining": [
-          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, and supported-platform acceptance. The packaged macOS server passes the browser/full-worker lifecycle and actual process retirement on all three stores."
         ]
       },
       {
@@ -2325,10 +2330,11 @@
           "scripts/server-rust/worktree-coordinator-cases.mjs",
           "scripts/server-rust/actual-project-worktrees.mjs",
           "scripts/server-rust/actual-folder-client.mjs --worktrees",
-          "scripts/server-rust/actual-run-retirement.mjs"
+          "scripts/server-rust/actual-run-retirement.mjs",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json"
         ],
         "remaining": [
-          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, and supported-platform acceptance. The packaged macOS server passes the browser/full-worker lifecycle and actual process retirement on all three stores."
         ]
       },
       {
@@ -2347,10 +2353,11 @@
           "scripts/server-rust/run-runtime-contention-cases.mjs",
           "scripts/server-rust/actual-project-worktrees.mjs",
           "scripts/server-rust/actual-folder-client.mjs --worktrees",
-          "scripts/server-rust/actual-run-retirement.mjs"
+          "scripts/server-rust/actual-run-retirement.mjs",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json"
         ],
         "remaining": [
-          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, and supported-platform acceptance. The packaged macOS server passes the browser/full-worker lifecycle and actual process retirement on all three stores."
         ]
       },
       {
@@ -2750,7 +2757,9 @@
           "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
           "docs/security/rust-server-current-replica-acceptance.json",
           "scripts/server-rust/actual-project-replicas.mjs",
-          "scripts/server-rust/replica-http-lifetimes.mjs"
+          "scripts/server-rust/replica-http-lifetimes.mjs",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json",
+          "docs/security/rust-server-3059-platform-acceptance.json"
         ],
         "remaining": [
           "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
@@ -2772,7 +2781,9 @@
           "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
           "docs/security/rust-server-current-replica-acceptance.json",
           "scripts/server-rust/actual-project-replicas.mjs",
-          "scripts/server-rust/replica-http-lifetimes.mjs"
+          "scripts/server-rust/replica-http-lifetimes.mjs",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json",
+          "docs/security/rust-server-3059-platform-acceptance.json"
         ],
         "remaining": [
           "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
@@ -2794,7 +2805,9 @@
           "docs/RUST_SERVER_PROVISIONING_STATE_CONTRACTS.md",
           "docs/security/rust-server-current-replica-acceptance.json",
           "scripts/server-rust/actual-project-replicas.mjs",
-          "scripts/server-rust/replica-http-lifetimes.mjs"
+          "scripts/server-rust/replica-http-lifetimes.mjs",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json",
+          "docs/security/rust-server-3059-platform-acceptance.json"
         ],
         "remaining": [
           "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
@@ -10091,10 +10104,11 @@
         "evidence": [
           "scripts/server-rust/folder-repository-compatibility.mjs",
           "scripts/server-rust/folder-http-compatibility.mjs",
-          "scripts/server-rust/actual-folder-client.mjs"
+          "scripts/server-rust/actual-folder-client.mjs",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json"
         ],
         "remaining": [
-          "Worker-scoped encrypted metadata is routed natively. Project/worktree agent execution and other domain consumers remain unported."
+          "Extend the encrypted browser, Git and Run retirement results to the remaining Agent worktree transitions and supported packaged platforms."
         ]
       },
       {
@@ -12419,11 +12433,12 @@
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "docs/security/rust-server-os-execution-acceptance.json",
-          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json"
         ],
         "remaining": [
           "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
-          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Packaged macOS full-worker worktree and Run retirement acceptance is recorded above. Other guest archives and shared deployments retain separate scope."
         ]
       },
       {
@@ -12432,11 +12447,12 @@
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "docs/security/rust-server-os-execution-acceptance.json",
-          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json"
         ],
         "remaining": [
           "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
-          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Packaged macOS full-worker worktree and Run retirement acceptance is recorded above. Other guest archives and shared deployments retain separate scope."
         ]
       },
       {
@@ -12445,11 +12461,12 @@
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "docs/security/rust-server-os-execution-acceptance.json",
-          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json"
         ],
         "remaining": [
           "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
-          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Packaged macOS full-worker worktree and Run retirement acceptance is recorded above. Other guest archives and shared deployments retain separate scope."
         ]
       },
       {
@@ -12458,11 +12475,12 @@
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "docs/security/rust-server-os-execution-acceptance.json",
-          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json"
         ],
         "remaining": [
           "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
-          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Packaged macOS full-worker worktree and Run retirement acceptance is recorded above. Other guest archives and shared deployments retain separate scope."
         ]
       },
       {
@@ -12471,11 +12489,12 @@
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "docs/security/rust-server-os-execution-acceptance.json",
-          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json"
         ],
         "remaining": [
           "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
-          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Packaged macOS full-worker worktree and Run retirement acceptance is recorded above. Other guest archives and shared deployments retain separate scope."
         ]
       },
       {
@@ -12484,11 +12503,12 @@
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "docs/security/rust-server-os-execution-acceptance.json",
-          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+          "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json"
         ],
         "remaining": [
           "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
-          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Real worker filesystem, process and guest archive execution remains separate acceptance."
+          "Server dispatch, correlation, scope and durable side effects use controlled replies over the unchanged worker transport. Packaged macOS full-worker worktree and Run retirement acceptance is recorded above. Other guest archives and shared deployments retain separate scope."
         ]
       },
       {
@@ -14253,7 +14273,9 @@
           "scripts/server-rust/replica-concurrency-cases.mjs",
           "docs/security/rust-server-current-replica-acceptance.json",
           "scripts/server-rust/actual-project-replicas.mjs",
-          "scripts/server-rust/actual-replica-redis-outage.mjs"
+          "scripts/server-rust/actual-replica-redis-outage.mjs",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json",
+          "docs/security/rust-server-3059-platform-acceptance.json"
         ],
         "remaining": [
           "Run managed Git provisioning through the full worker on the current candidate. The full worker passes local Git attachment on all three stores and all four shared pairings.",
@@ -14276,7 +14298,9 @@
           "scripts/server-rust/replica-shutdown-cases.mjs",
           "scripts/server-rust/replica-concurrency-cases.mjs",
           "docs/security/rust-server-current-replica-acceptance.json",
-          "scripts/server-rust/actual-project-replicas.mjs"
+          "scripts/server-rust/actual-project-replicas.mjs",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json",
+          "docs/security/rust-server-3059-platform-acceptance.json"
         ],
         "remaining": [
           "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
@@ -14299,10 +14323,11 @@
           "scripts/server-rust/replica-shutdown-cases.mjs",
           "scripts/server-rust/replica-concurrency-cases.mjs",
           "docs/security/rust-server-current-replica-acceptance.json",
-          "scripts/server-rust/actual-project-replicas.mjs"
+          "scripts/server-rust/actual-project-replicas.mjs",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json",
+          "docs/security/rust-server-3059-platform-acceptance.json"
         ],
         "remaining": [
-          "Run managed Git deletion through the full worker on the current candidate. The full worker passes encrypted detachment with retained files on all three stores and all four shared pairings.",
           "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
           "Qualify replica behavior on the final supported shipping artifacts."
         ]
@@ -14323,7 +14348,9 @@
           "scripts/server-rust/replica-shutdown-cases.mjs",
           "scripts/server-rust/replica-concurrency-cases.mjs",
           "docs/security/rust-server-current-replica-acceptance.json",
-          "scripts/server-rust/actual-project-replicas.mjs"
+          "scripts/server-rust/actual-project-replicas.mjs",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json",
+          "docs/security/rust-server-3059-platform-acceptance.json"
         ],
         "remaining": [
           "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
@@ -17291,7 +17318,8 @@
         "implementation": "cantrip_server_rs/src/projects/targets/",
         "evidence": [
           "docs/RUST_SERVER_WORKTREE_OBSERVATIONS.md",
-          "docs/security/rust-server-worktree-observations-acceptance.json"
+          "docs/security/rust-server-worktree-observations-acceptance.json",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json"
         ],
         "remaining": [
           "Owned contexts, inventory/lifecycle writes, rollback, worker status persistence/clocks and real notification/Live/restart behavior. Other product/removal consumers and final platforms retain separate acceptance.",
@@ -17649,7 +17677,8 @@
           "scripts/server-rust/replica-concurrency-cases.mjs",
           "docs/security/rust-server-current-replica-acceptance.json",
           "scripts/server-rust/actual-project-replicas.mjs",
-          "scripts/server-rust/replica-http-lifetimes.mjs"
+          "scripts/server-rust/replica-http-lifetimes.mjs",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json"
         ],
         "remaining": [
           "Exercise browser and worker outcomes when a peer or dependency is interrupted during shared replica dispatch.",
@@ -23685,7 +23714,9 @@
           "docs/security/rust-server-current-replica-acceptance.json",
           "scripts/server-rust/actual-project-replicas.mjs",
           "scripts/server-rust/replica-http-lifetimes.mjs",
-          "scripts/server-rust/actual-replica-redis-outage.mjs"
+          "scripts/server-rust/actual-replica-redis-outage.mjs",
+          "docs/security/rust-server-3059-worktrees-and-replicas.json",
+          "docs/security/rust-server-3059-platform-acceptance.json"
         ],
         "remaining": [
           "Qualify replica behavior on the final supported shipping artifacts."

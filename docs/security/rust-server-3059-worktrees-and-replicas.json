@@ -1,0 +1,254 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "fixtureSourceCommit": "1db4750903dcd9c9784d9eebad1f0c21403c55c6",
+  "executable": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/cantrip-server-darwin-arm64/bin/cantrip-server",
+    "bytes": 94198000,
+    "sha256": "98158f98aa453ad802282bc6119cf37f66251923d77f53b6fe08fe55c14107a3"
+  },
+  "workerInputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worktrees-3059/inputs.sha256",
+    "bytes": 1361,
+    "sha256": "7c4ef1837c8556ba2b3777d32a56bc4d5098788e7cc30b30031ac55877363e91"
+  },
+  "worktrees": [
+    {
+      "database": "pglite",
+      "cases": [
+        {
+          "runtime": "node",
+          "steps": 25
+        },
+        {
+          "runtime": "rust",
+          "steps": 25
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worktrees-3059/pglite.json",
+        "bytes": 469815,
+        "sha256": "518df0791ea2213fc690313112733076738d91e99eebfe531a00454242595b7a"
+      }
+    },
+    {
+      "database": "bundled-postgres",
+      "cases": [
+        {
+          "runtime": "node",
+          "steps": 25
+        },
+        {
+          "runtime": "rust",
+          "steps": 25
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worktrees-3059/bundled-postgres.json",
+        "bytes": 470985,
+        "sha256": "7af67cd723efbf17f2998acf9d16a7db72536dfd93578f9a1e0f3d6ffa133b30"
+      }
+    },
+    {
+      "database": "postgres",
+      "cases": [
+        {
+          "runtime": "node",
+          "steps": 25
+        },
+        {
+          "runtime": "rust",
+          "steps": 25
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worktrees-3059/postgres.json",
+        "bytes": 466398,
+        "sha256": "f66633303816764f26ace6444bf01ac0cf59661a875b4b066c92e78e1de4155d"
+      }
+    }
+  ],
+  "managedReplicas": {
+    "rust": [
+      {
+        "database": "pglite",
+        "status": "passed",
+        "productSteps": 18,
+        "repairChanged": true,
+        "repairReplayChanged": false,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/github-replica-rust-3059/pglite.json",
+          "bytes": 352621,
+          "sha256": "0a8ff3326cad23716946170d6bf020f53f726ffc55150b404cb39e36a11f3510"
+        }
+      },
+      {
+        "database": "bundled-postgres",
+        "status": "passed",
+        "productSteps": 18,
+        "repairChanged": true,
+        "repairReplayChanged": false,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/github-replica-rust-3059/bundled-postgres.json",
+          "bytes": 352047,
+          "sha256": "245d508779bc30e9702eaef40f14310fc5e4fd9f863841a2cdfe0a1289b523e7"
+        }
+      },
+      {
+        "database": "postgres",
+        "status": "passed",
+        "productSteps": 18,
+        "repairChanged": true,
+        "repairReplayChanged": false,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/github-replica-rust-3059/postgres-rerun/postgres.json",
+          "bytes": 356540,
+          "sha256": "8a4416b6bdf650b8db6226cf3713b9dfb6dc2c07d2b3651d86ac6b3523d25a4b"
+        }
+      }
+    ],
+    "nodeReference": [
+      {
+        "database": "pglite",
+        "status": "failed-at-managed-link-repair",
+        "httpStatus": 502,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/github-replicas-3059/pglite.json",
+          "bytes": 238661,
+          "sha256": "6ac8d0c0b741b764eb9cf489562434a925624bf04299864552f651f569105f9d"
+        }
+      },
+      {
+        "database": "bundled-postgres",
+        "status": "failed-at-managed-link-repair",
+        "httpStatus": 502,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/github-replicas-3059/bundled-postgres.json",
+          "bytes": 221631,
+          "sha256": "ad2d7e197a5e0731525dfe2d734aaf3c54bd72803ecea907c27870413b634a4d"
+        }
+      },
+      {
+        "database": "postgres",
+        "status": "failed-at-managed-link-repair",
+        "httpStatus": 502,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/github-replicas-3059/postgres.json",
+          "bytes": 214903,
+          "sha256": "6f2c136a6c0822fc2eb74e35ba088d80a7bc3c439a808df910b1157f6e61d07f"
+        }
+      }
+    ],
+    "externalPostgresInitialRun": {
+      "status": "worker-shutdown-timeout",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/github-replica-rust-3059/postgres.json",
+        "bytes": 482751,
+        "sha256": "83519771bc0868f11f976b632da276be5eb6a37bb61c22c6cde7bddb7978d771"
+      }
+    }
+  },
+  "freshPgliteStartup": {
+    "scope": "Four sequential fresh local profiles using the production-entry benchmark. The earlier 32.7-second Rust sample did not recur. The cause of that earlier observation is unresolved.",
+    "observations": [
+      {
+        "runtime": "node",
+        "readyMs": 3323.329709,
+        "idleRssKiB": 1372880,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/performance/pglite-fresh-paired/1/node/runs/1794645598492-53245.json",
+          "bytes": 2471,
+          "sha256": "41fda82247450b3d38863795040f1935988a22b4d494596f727221ed66f9b671"
+        }
+      },
+      {
+        "runtime": "rust",
+        "readyMs": 1277.78275,
+        "idleRssKiB": 95536,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/performance/pglite-fresh-paired/2/rust/runs/1794645601312-53388.json",
+          "bytes": 2463,
+          "sha256": "2f1f4bfc246897de728cdbf2740f9364450fdec5ea9bc38f77e100ac90c2dd20"
+        }
+      },
+      {
+        "runtime": "rust",
+        "readyMs": 1221.027584,
+        "idleRssKiB": 95680,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/performance/pglite-fresh-paired/3/rust/runs/1794645604131-53524.json",
+          "bytes": 2469,
+          "sha256": "ffc37315406646886f78d669f4e73009909255d454a48574155ddc66741fdd0e"
+        }
+      },
+      {
+        "runtime": "node",
+        "readyMs": 3093.488958,
+        "idleRssKiB": 1349728,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/performance/pglite-fresh-paired/4/node/runs/1794645609639-53666.json",
+          "bytes": 2480,
+          "sha256": "2d548edc7ecd9caaede21b0fc2f7eb8f85c4230a10b69f626d4f92e948cce066"
+        }
+      }
+    ]
+  },
+  "cliWorktreeContinuation": [
+    {
+      "database": "pglite",
+      "runtimes": [
+        {
+          "runtime": "node",
+          "productSteps": 12
+        },
+        {
+          "runtime": "rust",
+          "productSteps": 12
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cli-worktree-3059/pglite.json",
+        "bytes": 767305,
+        "sha256": "791b418541a036fb7c54edc5db2223cca24c9d87f021d7f0732ce96878483627"
+      }
+    },
+    {
+      "database": "bundled-postgres",
+      "runtimes": [
+        {
+          "runtime": "node",
+          "productSteps": 12
+        },
+        {
+          "runtime": "rust",
+          "productSteps": 12
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cli-worktree-3059/bundled-postgres.json",
+        "bytes": 818274,
+        "sha256": "23d19141daaba26dd0b61f5b34464e88be3379c36d22b293016c607d5e39efe4"
+      }
+    },
+    {
+      "database": "postgres",
+      "runtimes": [
+        {
+          "runtime": "node",
+          "productSteps": 12
+        },
+        {
+          "runtime": "rust",
+          "productSteps": 12
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cli-worktree-3059/postgres.json",
+        "bytes": 811994,
+        "sha256": "db6a5b11c4a85b4d250eb891f8b0b18035ac11ac627fd3f5b8c4f6b1bf15c1e7"
+      }
+    }
+  ]
+}
