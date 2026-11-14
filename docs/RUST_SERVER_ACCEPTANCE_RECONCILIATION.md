@@ -6,6 +6,42 @@ Node. The old server is an explicit development compatibility reference. See
 [default cutover](RUST_SERVER_DEFAULT_CUTOVER.md) and
 [production Node retirement](RUST_SERVER_NODE_RETIREMENT.md) for their qualification.
 
+## Cantrip 1.1.3043 macOS standalone and signed desktop update
+
+The relocated macOS ARM64 archive built from `54355efde` passed startup,
+migration, SQL export, retained settings writes, hosted reopening and graceful
+shutdown with PGlite, bundled PostgreSQL and external PostgreSQL. The harness
+verified 1,762 manifest entries and ran the server with Node off its PATH and
+Homebrew reads and artifact writes denied.
+
+The local Developer ID-signed desktop rehearsal updated from 1.1.3032 on all
+three stores. It retained the database mode, server identity, worker
+enrollment, client encryption bindings and a settings write. The desktop
+drained both child processes before replacing the app and after final quit.
+PGlite also rejected a modified archive before installing the valid update.
+The retained candidate archive passed strict code-signature verification
+after extraction.
+
+Two browser runs used the exact standalone executable and the full Node
+worker with external PostgreSQL. Each passed 20 product steps and 14 model
+operations. After a forced server exit, the same worker reconnected and
+completed a fresh operation. During a separate 60-second database outage,
+the active embedding completed while readiness returned HTTP 503 and
+liveness returned HTTP 200. The server recorded one durable receipt after
+PostgreSQL recovered on the same port. Replay made no second provider
+request, and a fresh operation completed.
+
+The separate Windows x64 1.1.2976 outage run completed its active embedding
+and observed HTTP 503 from readiness and HTTP 200 from liveness. Its later
+readiness request timed out while PostgreSQL was still offline, so the run
+ended before it could verify durable settlement.
+
+The local repository check with Node 24.22.1 completed typechecking and
+tests, including 4,597 app, 2,958 worker and 87 Rust server tests. The check
+exited at formatting, where Prettier reported 17 formatting warnings and
+could not read a local CantripOS VM disk larger than 2 GiB.
+[macOS 1.1.3043 acceptance and Windows outage evidence](security/rust-server-3043-macos-acceptance.json)
+
 ## Cantrip 1.1.3032 macOS and Linux ARM64 standalone
 
 The macOS ARM64 archive and Linux ARM64 container built from `d91420eb9`
