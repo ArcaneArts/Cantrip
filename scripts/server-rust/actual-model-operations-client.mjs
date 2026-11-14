@@ -17,6 +17,7 @@ export async function actualModelOperationsClient({
   workerProcessForInterruption,
   postgresOutage,
   settleModelWhilePostgresOffline,
+  modelPostgresOutageDurationMs,
   redisOutage,
   requests,
   result,
@@ -336,7 +337,9 @@ export async function actualModelOperationsClient({
     outage.stop = await postgresOutage.stop({ immediate: true });
     assert.equal(outage.stop.requestedSignal, "SIGQUIT");
     const stoppedAt = performance.now();
-    const outageMs = settleModelWhilePostgresOffline ? 60_000 : 45_000;
+    const outageMs =
+      modelPostgresOutageDurationMs ??
+      (settleModelWhilePostgresOffline ? 60_000 : 45_000);
     try {
       outage.offline = await eventually(
         () => probe("/readyz", 5_000),
