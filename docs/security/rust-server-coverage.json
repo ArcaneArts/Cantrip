@@ -29593,6 +29593,7 @@
       }
     },
     "workerCatalogRefresh": {
+      "linux3059PeriodicAndShutdown": "docs/security/rust-server-3059-linux-catalog-periodic.json",
       "currentLinuxPackagedChecks": {
         "candidateVersion": "1.1.3059",
         "targets": ["linux-arm64", "linux-x64"],

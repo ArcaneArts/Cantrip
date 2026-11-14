@@ -132,7 +132,8 @@
       "authMode": "accounts",
       "database": "postgres",
       "rustContainerExits": 10,
-      "scope": "Approval expiry, reconnect catalog, normal credential recovery and the actual capture deadline passed on both Linux images. The periodic Linux catalog run has a separate acceptance record."
+      "scope": "Approval expiry, reconnect catalog, normal credential recovery and the actual capture deadline passed on both Linux images.",
+      "periodicCatalogReport": "docs/security/rust-server-3059-linux-catalog-periodic.json"
     }
   },
   "artifactEvidence": {
