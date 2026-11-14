@@ -112,6 +112,15 @@ the same readiness transitions, interrupted usage outcome, and replay
 behavior.
 [Packaged Redis interruption report](security/rust-server-3013-darwin-arm64-redis-outage.json)
 
+The 1.1.3059 Linux ARM64 and x64 OCI images each passed the 45-second
+Redis interruption with two Rust servers and the rebuilt Node worker.
+Both peers went unready while PostgreSQL stayed available. The interrupted
+embedding returned HTTP 502 and retained one unknown usage row, and replay
+made no additional provider request. The worker kept its connection identity
+and completed a fresh decision with a 1.1.3059 receipt. The x64 image ran
+through Rosetta.
+[1.1.3059 Linux Redis interruption results](security/rust-server-3059-linux-redis-outage.json)
+
 ## Installed Windows x64
 
 The Windows 1.1.2976 installer with the worker grant refresh passed 12
