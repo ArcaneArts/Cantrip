@@ -126,8 +126,10 @@ a runtime PATH without Node.
 
 For slow test hosts, `--startup-timeout-ms` overrides the driver's 60-second
 startup deadline. The JSON report records the configured override and the
-time to readiness for each successful launch. The shutdown deadline and
-production configuration stay the same.
+time to readiness for each successful launch. The driver allows 15 seconds for
+shutdown by default. To match the Windows desktop supervisor during local
+qualification, pass `--shutdown-timeout-ms 60000`. The report records the
+applied deadline and still requires a zero exit code without forced termination.
 
 Windows server builds include a per-process UTF-8 manifest. Matching PGlite
 helpers receive that manifest before embedding, including during cross builds.
