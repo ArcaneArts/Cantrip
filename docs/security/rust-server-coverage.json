@@ -30755,11 +30755,18 @@
     }
   },
   "currentReleaseAcceptance": {
+    "candidateVersion": "1.1.3059",
+    "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+    "reviewedIntegratedCommit": "4d19ba2b77a543228f1d0a473f10af7abcddc56f",
+    "scope": "Exact standalone artifacts, macOS signed desktop update, current Windows PGlite desktop installation and reopen, mobile application verification, current route and contract discovery, and scoped background-service comparisons.",
+    "report": "docs/security/rust-server-3059-release-reconciliation.json"
+  },
+  "release2976Acceptance": {
     "candidateVersion": "1.1.2976",
     "serverSourceCommit": "92ed534fa5b1bef8dfcf60a21b9784e159c6a655",
     "desktopSourceCommit": "f1201f3e2d6a947ecb59d784f067743708b22713",
     "reviewedIntegratedCommit": "b114567f67d8dcb4d760e9cd3069a9d6dba70ce6",
-    "scope": "Current release evidence by tested artifact. Historical milestone entries keep their original scope and do not override this record.",
+    "scope": "Historical release evidence by tested artifact.",
     "productionRuntime": {
       "defaultServer": "Rust",
       "productionNodeServerRemoved": true,
