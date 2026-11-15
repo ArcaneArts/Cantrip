@@ -131,6 +131,63 @@
       "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-relocation-source-head.LEXTuatD/cantrip-server-1.1.3059-darwin-arm64.tar.zst",
       "bytes": 58603315,
       "sha256": "a46b4b720ca0cb84103ab07a1efc3f843dcab0ea968054d5eb7acf09493eec03"
+    },
+    "signedDesktopUpdater": {
+      "scope": "Developer ID signed desktop QA bundles, a disposable updater key and local HTTPS trust anchor, production Tauri updater and managed processes, and a background-window QA overlay. Production notarization and release feed signing are pending.",
+      "sourceCommit": "8265a2ce6932c4a7efe82bd200b88e7162f50efc",
+      "previousVersion": "1.1.3043",
+      "version": "1.1.3059",
+      "desktopRuntimeInputSha256": "ec19b42caa3c79bb90b10868b12753dece16de124958a97f515646ff2a3605ba",
+      "signedDesktopServerSha256": "ff17fe4830f156f1bb7a462b860f92dbc1fd08ea0c008e6d1fcf45a4de7f62d5",
+      "tamperedPackageRejected": true,
+      "modes": [
+        {
+          "mode": "pglite",
+          "retainedTheme": "dark",
+          "deviceAndAccountBindingsRetained": true,
+          "workerAndServerRestarted": true,
+          "embeddedServerSha256": "ff17fe4830f156f1bb7a462b860f92dbc1fd08ea0c008e6d1fcf45a4de7f62d5"
+        },
+        {
+          "mode": "bundled-postgres",
+          "retainedTheme": "dark",
+          "deviceAndAccountBindingsRetained": true,
+          "workerAndServerRestarted": true,
+          "embeddedServerSha256": "ff17fe4830f156f1bb7a462b860f92dbc1fd08ea0c008e6d1fcf45a4de7f62d5"
+        },
+        {
+          "mode": "postgres",
+          "retainedTheme": "dark",
+          "deviceAndAccountBindingsRetained": true,
+          "workerAndServerRestarted": true,
+          "embeddedServerSha256": "ff17fe4830f156f1bb7a462b860f92dbc1fd08ea0c008e6d1fcf45a4de7f62d5"
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-desktop-relocation-head.BZ0kDWQd/acceptance.json",
+        "bytes": 10616,
+        "sha256": "b60fcd899c51c9492ff6068421052f93734b054cbb88b7488d7c486b1f19177b"
+      },
+      "focusOverlay": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-desktop-relocation-head.BZ0kDWQd/background-qa-overlay.patch",
+        "bytes": 795,
+        "sha256": "338054776c9f6354ab6a507ccf38c34a9d1ed6a580fccd8e5752c9f4cbeda36b"
+      },
+      "archive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-desktop-relocation-head.BZ0kDWQd/signed-app/Cantrip Server Signed Update QA.app.tar.gz",
+        "bytes": 335715260,
+        "sha256": "cbd19dd6e5c86b911d1a4f8a071c69cd0886dc3c4afe67a4286fdda64d0a245d"
+      },
+      "updaterSignature": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-desktop-relocation-head.BZ0kDWQd/signed-app/Cantrip Server Signed Update QA.app.tar.gz.sig",
+        "bytes": 436,
+        "sha256": "786620dd167e0269a2f4d217a39da74d8399d3478c421fd82bb6a5c8ea7d4433"
+      },
+      "focusObservation": {
+        "samples": 119,
+        "samplesWhileQaAppWasRunning": 49,
+        "qaAppForegroundSamples": 28
+      }
     }
   },
   "packagedLinux": {

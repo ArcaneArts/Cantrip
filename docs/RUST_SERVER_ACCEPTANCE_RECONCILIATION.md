@@ -2095,6 +2095,13 @@ standalone package also passed the two-worker handoff with normal enrollment
 through its shipped launcher. Each of the three database modes preserved its
 server identity through two clean starts and shutdowns.
 
+The installed macOS app also upgraded from 1.1.3043 to 1.1.3059 with the same
+Rust runtime input. The local HTTPS rehearsal used Developer ID signed
+bundles and a disposable updater key. All three database modes retained
+their server identities, worker enrollments, client installation records
+and settings across the update. The updater rejected a modified package
+before the valid PGlite update.
+
 The optimized Linux ARM64 and x64 images built from the merged relocation fix
 each passed the same direct-import handoff. The browser and two full workers
 ran on macOS. For each image, the target worker recovered the scheduled
