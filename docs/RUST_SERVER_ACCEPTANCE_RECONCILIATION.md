@@ -1,16 +1,57 @@
-# Current replacement acceptance
+# Rust server release readiness
 
-The server replacement remains incomplete. Rust is the default server, and the
-production Node workspace and entrypoints have been retired. The worker remains
-Node. The old server is an explicit development compatibility reference. See
-[default cutover](RUST_SERVER_DEFAULT_CUTOVER.md) and
-[production Node retirement](RUST_SERVER_NODE_RETIREMENT.md) for their qualification.
+Cantrip 1.1.3059 is qualified for the native desktop and standalone server
+release paths. Normal builds and launchers select Rust. The production Node
+server has been removed. The desktop still launches the Node worker, and
+development comparisons use the retained Node reference.
+[Default cutover](RUST_SERVER_DEFAULT_CUTOVER.md)
+[Production Node retirement](RUST_SERVER_NODE_RETIREMENT.md)
 
-The [1.1.3059 release reconciliation](security/rust-server-3059-release-reconciliation.json)
-ties the current coverage ledger to the tested packages and checksums.
-The production server, migrations, worker, protocol and deployment files
-match across the audited package sources and integrated commit `453fa3624`.
-The Windows desktop supervisor has a separate build revision.
+## Current integrated source and runtime
+
+The server artifacts use source commit `268f03b95`. The integrated runtime at
+`0e0a7a2e4` passed `pnpm check` with Node 24.22.2. This includes 88 Rust library
+tests, 4,597 app tests and 2,965 worker tests, with nine existing app skips and
+269 existing worker skips. The record retains the prior worker timeout and the
+out-of-range Date oracle difference on Node 24.14.0.
+
+| Target                         | Verified result                                                                                                                                                                                                                                                               |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS ARM64 standalone         | All three stores retained writes and identity through local and hosted restarts. The archive matched 1,762 manifest entries, and all 13 graceful shutdowns exited zero.                                                                                                       |
+| Windows x64 standalone         | All three stores passed the relocated package, SQL export and hosted reopen checks. All 2,281 manifest entries and 13 supervision shutdowns verified.                                                                                                                         |
+| Linux ARM64 and x64 standalone | Both OCI images passed all three stores, read-only runtime checks and shared Redis/PostgreSQL recovery.                                                                                                                                                                       |
+| macOS ARM64 desktop            | The signed updater retained the profile, client encryption bindings and worker enrollment on all three stores.                                                                                                                                                                |
+| Windows x64 desktop            | The current NSIS payload matched 14,085 entries. The PGlite first launch and reopened profile retained identity and settings, and both tray quits reaped the server and worker. Earlier runs with the same native shell cover both PostgreSQL modes and the QA-signed update. |
+| Winterhold                     | The local systemd and Caddy rehearsal completed 18 installer operations and preserved accepted writes and sessions through rollback.                                                                                                                                          |
+
+The Windows guest and the Linux x64 rehearsal used local emulation. The
+original Windows installer observer followed the one-time profile preparation
+process. The corrected observer reused the installed package and verified the
+serving listener, the accepted write and both clean exits. The earlier receipt
+records the observer timeout.
+
+The coverage ledger maps all 1,459 inventory identities and retains the original
+scope of each milestone. The final evidence includes successful domain and
+fault cases, 1,752 paired HTTP status and content-type checks, and review of the
+42 independently initialized response bodies that contain runtime values.
+The bundled PostgreSQL storage measurement repeat returned the same three
+categories and row counts after reconciliation finished on both runtimes.
+
+The historical upgrade compared 137 tables, four sequences and 1,773 original
+files. The full-worker rollback test completed 80 product steps and eight
+implementation switches. The small-profile measurement recorded median fresh
+PGlite readiness of 1.26 seconds for Rust and 3.07 seconds for Node, with p95 of
+15.06 and 16.73 seconds. The detailed reports retain the startup tail, latency,
+idle memory, streaming, backpressure and recovery measurements.
+
+Physical iPhone tests, installed iOS camera QR and distribution-signed Android
+remain release QA. The server sign-in checks use the retained QR, emulator and
+simulator evidence. Official publication and production Winterhold deployment
+follow their release procedures.
+
+[Current evidence and artifact checksums](security/rust-server-3059-current-runtime-qualification.json)
+[Contract and domain coverage ledger](security/rust-server-coverage.json)
+[Earlier 1.1.3059 package reconciliation](security/rust-server-3059-release-reconciliation.json)
 
 ## Cantrip 1.1.3059 packaged servers
 
