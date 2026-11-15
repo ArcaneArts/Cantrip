@@ -395,6 +395,20 @@ issued while the earlier Resume awaited its reply.
 [Queue worker-owner loss evidence](security/rust-server-3059-macos-queue-owner-loss.json)
 [Resume acknowledgment recovery evidence](security/rust-server-3059-macos-resume-ack.json)
 
+The Linux ARM64 and x64 packages passed both peer placements on external
+PostgreSQL and Redis. Across 12 queue cases the full worker reconnected,
+preserved each started native turn and completed 20 turns from 20 model
+requests. A newer Pause survived recovery of the older Resume. A peer loss
+before native admission kept the chat paused until explicit retry. The
+all-Rust cases verified container exit 137 and observed the replacement reach
+readiness as the old Redis presence expired.
+
+Four shared Linux automation cases used the same packaged servers and full
+worker. The worker ran both shell conditions, started one protected native
+turn per case, and skipped the other condition. Automation state and
+canonical history survived two restarts before deletion.
+[Linux shared queue and automation evidence](security/rust-server-3059-linux-shared-queue.json)
+
 ### Task and Agent restart on Linux
 
 The packaged Rust server and 1.1.3059 Node worker completed 18 browser

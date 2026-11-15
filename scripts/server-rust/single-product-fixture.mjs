@@ -1,18 +1,14 @@
 // One actual production server and its retained private profile. No SQL routes
 // or injected worker bridge are installed in either runtime.
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { once } from "node:events";
 import { appendFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
 import { HttpFixture } from "./http-fixture.mjs";
 import { startPackagedNodeServer } from "./packaged-node-fixture.mjs";
 import { repositoryRoot } from "./build.mjs";
-
-const execute = promisify(execFile);
+import { crashProductServer } from "./product-server-crash.mjs";
 
 export class SingleProductFixture extends HttpFixture {
   constructor(options) {
@@ -87,18 +83,7 @@ export class SingleProductFixture extends HttpFixture {
       instanceId: this.environment.CANTRIP_SERVER_INSTANCE_ID,
     };
     if (crash) {
-      const completion = once(server.child, "close");
-      const helper =
-        this.kind === "rust" && process.env.CANTRIP_TEST_SERVER_SIGKILL_HELPER;
-      if (helper) {
-        // A container launcher runs on the host. Its helper kills the actual
-        // packaged server and the launcher reports the resulting container exit.
-        await execute(helper, [String(before.pid)], { timeout: 30_000 });
-        assert.deepEqual(await completion, [137, null]);
-      } else {
-        assert.equal(server.child.kill("SIGKILL"), true);
-        assert.deepEqual(await completion, [null, "SIGKILL"]);
-      }
+      await crashProductServer(server.child, this.kind);
       this.server = undefined;
       this.recordExit(server, { intentionalInterruption: "SIGKILL" });
     } else await this.close();
