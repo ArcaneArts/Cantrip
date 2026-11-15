@@ -366,7 +366,7 @@ during shutdown. The timer and shutdown checks passed in separate
 x64 runs.
 [Linux periodic catalog and shutdown evidence](security/rust-server-3059-linux-catalog-periodic.json)
 
-### macOS workspace discovery and worker shutdown
+### Workspace discovery, conversion and worker shutdown
 
 The post-clock-fix macOS ARM64 package and Node reference completed 90
 browser steps across PGlite, bundled PostgreSQL and external PostgreSQL.
@@ -391,6 +391,14 @@ Primary worktree identities after restart. The browser sent the commit
 message as an opaque routing handle. The two servers matched the
 conversion revisions and all 72 browser steps across the six runs.
 [macOS initial commit and push evidence](security/rust-server-3059-macos-github-initial-push.json)
+
+The two rebuilt Linux OCI images matched both Node controls across all
+three databases. The browser completed 108 steps with the packaged Node
+worker. Each case preserved a discovery-imported checkout through offline
+workspace removal, then pushed one approved initial commit from a managed
+folder to its own local bare remote. All 24 verified Rust server
+generations and 42 worker processes exited zero.
+[Linux workspace discovery and conversion evidence](security/rust-server-3059-linux-workspace-discovery.json)
 
 ## Cantrip 1.1.3059 mobile clients
 
