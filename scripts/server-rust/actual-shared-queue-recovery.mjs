@@ -9,35 +9,39 @@ export async function actualSharedQueueRecovery({
   worker,
   workerId,
   projectId,
+  retainedChatId,
   configuration,
   model,
   result,
   requests,
 }) {
   const progress = (result.sharedQueueRecovery = { phase: "preparing" });
-  const chatId = await page.evaluate(async (projectId) => {
-    const { prepareConversationCreation } =
-      await import("/src/lib/api/conversations.ts");
-    const create = await prepareConversationCreation(
-      projectId,
-      "Shared queue recovery",
-      false,
+  let chatId = retainedChatId;
+  if (!chatId) {
+    chatId = await page.evaluate(async (projectId) => {
+      const { prepareConversationCreation } =
+        await import("/src/lib/api/conversations.ts");
+      const create = await prepareConversationCreation(
+        projectId,
+        "Shared queue recovery",
+        false,
+      );
+      const created = await create();
+      window.folderLive.retainScope({ kind: "chat", chatId: created.id });
+      return created.id;
+    }, projectId);
+    await eventually(
+      () =>
+        page.evaluate(
+          async (id) =>
+            (await import("/src/lib/api-client.ts")).request(
+              `/api/chats/${id}/preparation`,
+            ),
+          chatId,
+        ),
+      (state) => assert.equal(state.preparation?.phase, "ready"),
     );
-    const created = await create();
-    window.folderLive.retainScope({ kind: "chat", chatId: created.id });
-    return created.id;
-  }, projectId);
-  await eventually(
-    () =>
-      page.evaluate(
-        async (id) =>
-          (await import("/src/lib/api-client.ts")).request(
-            `/api/chats/${id}/preparation`,
-          ),
-        chatId,
-      ),
-    (state) => assert.equal(state.preparation?.phase, "ready"),
-  );
+  }
   const readMessages = () =>
     page.evaluate(
       async (id) => (await import("/src/lib/api/chats.ts")).getMessages(id),
@@ -60,7 +64,11 @@ export async function actualSharedQueueRecovery({
   const before = await fixture.assertRemoteWorker(workerId);
   const browserPeer = fixture.server.child;
   const workerPid = worker.pid;
-  Object.assign(progress, { phase: "admission", chatId });
+  Object.assign(progress, {
+    phase: "admission",
+    chatId,
+    retainedChat: Boolean(retainedChatId),
+  });
   const inputs = [
     {
       prompt: "Private first queued recovery message 🌱",

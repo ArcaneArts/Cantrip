@@ -344,9 +344,18 @@ request per prompt. The browser decrypted both results and the queue drained.
 The first runs reused an Agent chat whose completed Goal had been cleared
 after restart. The native runtime interrupted both dispatched turns before
 either reached the model. A Node/Node control without a peer kill reproduced
-the failure. Recovery for that sequence remains open, along with faults after
-claim or dispatch and the corresponding Linux and Windows runs.
+the failure.
 [Shared queue recovery evidence](security/rust-server-3059-macos-shared-queue-recovery.json)
+
+The native trace showed that Goal clear invalidated the runner and the next
+turns still used that generation. The worker now binds a fresh runner for a
+new GUI turn after the server acknowledges its durable dispatch. The old
+generation's cancellation still applies. The macOS ARM64 Rust/Rust run with
+only the two changed worker modules overlaid on the original package confirmed
+the new binding before `turn/start` and one inference per queued prompt on the
+original chat. The mixed Rust-browser/Node-worker run also exposed a separate
+queue revision conflict while two dispatch paths competed for the first prompt.
+[Retained chat queue evidence](security/rust-server-3059-macos-retained-chat-queue.json)
 
 ### Task and Agent restart on Linux
 
