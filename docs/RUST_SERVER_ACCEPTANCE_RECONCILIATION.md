@@ -2071,6 +2071,19 @@ and the replacement settled the same occurrence at fence 2. Each case
 completed one native turn from one model request.
 [Scheduled automation dispatch recovery evidence](security/rust-server-3059-scheduled-automation-recovery.json)
 
+Packaged Linux ARM64 and x64 each passed both interruptions with Rust/Rust
+and Node/Rust peers. The harness observed the killed container exit with code
+137 and verified the replacement executable checksum and readiness.
+
+On macOS, two separately enrolled workers relocated an Agent chat after the
+original worker's server exited. The target worker protected the same scheduled
+occurrence and completed one native turn at fence 2. The worker now probes the
+three Codex relocation methods that were missing from its runtime report. The
+fixture populated the source worktree's observed Git revision after a normal
+direct import left it blank and relocation returned 409. That import behavior
+and Windows recovery remain open.
+[Packaged Linux and two-worker handoff evidence](security/rust-server-3059-scheduled-automation-handoff.json)
+
 The same standalone executable matched the Node reference across all nine
 database and authentication combinations for native command permission
 transitions, pending requests, continuations and settings evidence. The

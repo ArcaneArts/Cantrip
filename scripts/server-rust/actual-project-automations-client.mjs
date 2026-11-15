@@ -3,26 +3,42 @@
 // output is controlled. No SQL clock manipulation or substitute worker commands.
 import assert from "node:assert/strict";
 import path from "node:path";
+import { actualAutomationHandoff } from "./actual-automation-handoff.mjs";
 import {
   automationDispatchWorkerEnvironment,
   interruptAutomationDispatch,
 } from "./actual-automation-dispatch-interruption.mjs";
 import { eventually } from "./full-worker.mjs";
 
-export async function actualProjectAutomationsClient({
-  page,
-  fixture,
-  projectId,
-  chatId,
-  workerId,
-  workerDataDirectory,
-  interruption,
-  startWorker,
-  stopWorker,
-  model,
-  result,
-  requests,
-}) {
+export async function actualProjectAutomationsClient(input) {
+  const handoff =
+    input.interruption === "handoff"
+      ? actualAutomationHandoff(input)
+      : undefined;
+  try {
+    await runProjectAutomations(input, handoff);
+  } finally {
+    await handoff?.close();
+  }
+}
+
+async function runProjectAutomations(
+  {
+    page,
+    fixture,
+    projectId,
+    chatId,
+    workerId,
+    workerDataDirectory,
+    interruption,
+    startWorker,
+    stopWorker,
+    model,
+    result,
+    requests,
+  },
+  handoff,
+) {
   const markers = {
     name: "Private actual automation name 🕰",
     prompt: "Private actual automation prompt 🔮",
@@ -104,6 +120,7 @@ export async function actualProjectAutomationsClient({
     initial,
     "disabled protected schedules survive server and full-worker restart exactly",
   );
+  await handoff?.prepare();
   const nativeReply = model.reply({
     text: markers.answer,
     hold: interruption === "finish",
@@ -137,6 +154,7 @@ export async function actualProjectAutomationsClient({
         phase: interruption,
         enable,
         nativeReply,
+        handoff,
         modelPosts: () => modelPosts() - baseline,
         evidence: (result.projectAutomationInterruption = {
           phase: interruption,

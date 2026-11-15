@@ -23,6 +23,17 @@ if (
 
   globalThis.fetch = function (input, init) {
     if (
+      occurrence?.phase === "handoff" &&
+      input instanceof URL &&
+      init?.method === "POST" &&
+      input.pathname ===
+        `/api/internal/workers/automations/${occurrence.id}/dispatch`
+    ) {
+      // Keep the original connected worker available for actual relocation.
+      // Leave this one occurrence for the newly placed worker to reclaim.
+      return Promise.reject(new Error("QA holds the original worker's retry"));
+    }
+    if (
       !occurrence &&
       input instanceof URL &&
       init?.method === "POST" &&
@@ -35,11 +46,13 @@ if (
         input.pathname === `/api/internal/workers/automations/${id}/dispatch`
       ) {
         const owner = new URL(process.env.CANTRIP_SERVER_URL);
-        const other = new URL(otherOrigin);
         assert.equal(input.origin, owner.origin);
         assert.equal(owner.hostname, "127.0.0.1");
-        assert.equal(other.hostname, "127.0.0.1");
-        assert.notEqual(other.origin, owner.origin);
+        const other = otherOrigin ? new URL(otherOrigin) : undefined;
+        if (phase !== "observe") {
+          assert.equal(other?.hostname, "127.0.0.1");
+          assert.notEqual(other.origin, owner.origin);
+        }
         occurrence = {
           id,
           phase,
@@ -100,6 +113,9 @@ if (
       ) {
         raced = true;
         save("protected", { requestId: frame.requestId, allowed: true });
+        if (occurrence.phase === "observe") {
+          return send.call(this, data, ...args);
+        }
         void occurrence
           .compete()
           .catch((error) => save("contender", { errorType: error.name }))
