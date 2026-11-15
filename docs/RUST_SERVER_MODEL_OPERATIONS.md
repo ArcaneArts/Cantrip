@@ -241,6 +241,16 @@ also passed export, restart and hosted startup across all three storage modes
 with Node and Homebrew excluded from the server process.
 [Overlapping dependency acceptance evidence](security/rust-server-3059-shared-decision-dependency-loss.json)
 
+Linux ARM64 and x64 1.1.3059 images built from PR #3152 each passed the
+Redis-first recovery test with two Rust peers, the existing app and the
+packaged Node worker. The 28 cases included an interrupted decision on
+each architecture. Both requests returned the established HTTP 502,
+settled the original attempt as unknown after PostgreSQL recovered and
+rejected replay without another provider request. A fresh decision on the
+same worker recorded a ten-token receipt. All 12 server generations exited
+cleanly. The x64 runtime ran under Rosetta.
+[Linux usage settlement evidence](security/rust-server-3059-linux-usage-settlement.json)
+
 ## Installed Windows x64
 
 The Windows 1.1.2976 installer with the worker grant refresh passed 12

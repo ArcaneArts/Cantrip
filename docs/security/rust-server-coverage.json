@@ -6714,6 +6714,7 @@
         "implementation": "cantrip_server_rs/src/http/model_operations.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-linux-usage-settlement.json",
           "docs/security/rust-server-3059-shared-decision-dependency-loss.json",
           "docs/security/rust-server-3059-active-decision-redis-outage.json",
           "docs/security/rust-server-3059-linux-decision-postgres-outage.json",
@@ -11697,6 +11698,7 @@
         "implementation": "cantrip_server_rs/src/http/model_operations.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-linux-usage-settlement.json",
           "docs/security/rust-server-3059-shared-decision-dependency-loss.json",
           "docs/security/rust-server-3059-active-decision-redis-outage.json",
           "docs/security/rust-server-3059-linux-decision-postgres-outage.json",
