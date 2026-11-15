@@ -236,6 +236,22 @@ assert.ok(
 const modelRedisOutage = process.argv.includes(
   "--model-operation-redis-outage",
 );
+const modelRedisOutageOperation = option(
+  "--model-operation-redis-outage-operation",
+);
+if (process.argv.includes("--model-operation-redis-outage-operation"))
+  assert.ok(
+    modelRedisOutage &&
+      ["embedding", "decision"].includes(modelRedisOutageOperation),
+    "Select embedding or decision with --model-operation-redis-outage-operation and --model-operation-redis-outage",
+  );
+const replyWhileRedisOffline = process.argv.includes(
+  "--model-operation-redis-offline-reply",
+);
+assert.ok(
+  !replyWhileRedisOffline || modelRedisOutage,
+  "Offline Redis reply requires --model-operation-redis-outage",
+);
 const modelServerAndPostgresLoss = process.argv.includes(
   "--model-operation-server-and-postgres-loss",
 );
@@ -1919,6 +1935,8 @@ async function flow(
         settleModelWhilePostgresOffline,
         modelPostgresOutageDurationMs,
         redisOutage: modelRedisOutage,
+        modelRedisOutageOperation,
+        replyWhileRedisOffline,
         requests,
         result,
       });
@@ -2131,6 +2149,7 @@ try {
       restartable:
         postgresOutage ||
         modelPostgresOutage ||
+        modelRedisOutage ||
         modelServerAndPostgresLoss ||
         goalLaneDependency === "postgres" ||
         Boolean(taskGoalTransferDependency),

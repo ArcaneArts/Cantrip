@@ -6,9 +6,10 @@ scenario exercises actual HTTP/WebSocket transport, grants, encryption, worker
 inference admission, provider adapters, cancellation and persisted usage.
 Only the provider's public HTTP responses are controlled.
 
-This milestone does not change the Rust server or rewrite the worker. It fixes
-a Node PostgreSQL date-binding defect uncovered while qualifying aggregate
-usage. Node remains the default server and full replacement remains incomplete.
+The initial qualification fixed a Node PostgreSQL date-binding defect in
+aggregate usage. Normal service entry points now select Rust. The full worker
+and the development reference server continue to use Node.
+[Rust default cutover](RUST_SERVER_DEFAULT_CUTOVER.md)
 
 ## Packaged 1.1.2845 qualification
 
@@ -173,6 +174,35 @@ made no additional provider request. The worker kept its connection identity
 and completed a fresh decision with a 1.1.3059 receipt. The x64 image ran
 through Rosetta.
 [1.1.3059 Linux Redis interruption results](security/rust-server-3059-linux-redis-outage.json)
+
+### Active decisions across shared peers
+
+The macOS ARM64 1.1.3059 standalone archive passed the decision scenario in
+all four peer pairings. The 1.1.3059 Linux ARM64 and x64 images each passed it
+with two Rust peers. Chromium and the full 1.1.3059 Node worker connected to
+opposite peers over real HTTP and WebSockets.
+
+Each pairing held the provider reply through a 45-second Redis outage and
+repeated the test with the provider replying 20 seconds into the outage.
+Both peers reported unready at the sampled points while external PostgreSQL
+remained ready. All 12 cases returned the same HTTP 502 decision error,
+retained one unknown usage attempt without a receipt and rejected exact
+replay without another provider request. After Redis recovered, the same
+worker completed a fresh decision with the same typed answers and a receipt
+for ten tokens. The stored transport status after replay was `replied` on
+macOS and `unavailable` on Linux. Both retained the original usage identity
+and recorded no receipt. The x64 containers ran through Rosetta.
+
+The decision matrix passed 168 model operations and 72 clean server exits.
+The default embedding case also passed its 14 operations with two macOS
+Rust peers.
+
+Use `--model-operation-redis-outage-operation decision` with
+`actual-folder-client.mjs --model-operations --database postgres
+--server-pair rust/rust --model-operation-redis-outage`. Add
+`--model-operation-redis-offline-reply` to release the provider response
+while Redis is down. Omitting the operation selector exercises an embedding.
+[Decision Redis outage reports and artifact identities](security/rust-server-3059-active-decision-redis-outage.json)
 
 ## Installed Windows x64
 
