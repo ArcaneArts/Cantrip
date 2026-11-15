@@ -354,6 +354,25 @@ times across the matrix and succeeded on retry. The x64 containers ran
 under emulation on the Apple Silicon host.
 [Linux Task Goal worker-loss evidence](security/rust-server-3059-linux-task-goal-worker-loss.json)
 
+### Overlapping server and PostgreSQL process loss
+
+The rebuilt macOS ARM64 package and Linux ARM64 and x64 images matched
+the macOS Node reference in a 20-step browser and full-worker run with
+external PostgreSQL 18. Each case killed the server while an embedding was
+running, then stopped PostgreSQL before restarting either process.
+PostgreSQL recovered on the same port. The server kept its public address,
+and the original worker reconnected without a worker restart.
+
+The interrupted embedding reached the model provider once. After restart,
+its usage row still recorded one unreported attempt, and a fresh decision
+completed with one durable usage receipt. The four runs matched on 56
+model cases, and all 12 server generations outside the intentional kills
+exited zero. The Linux x64 image ran under emulation. The first Linux
+runs stopped before the intended fault because the launcher omitted the
+container ID from its runtime receipt. Both passed after the launcher
+recorded the verified ID.
+[Overlapping process loss evidence](security/rust-server-3059-overlapping-server-postgres-loss.json)
+
 ### Linux background catalog refresh
 
 The Linux catalog job fired on the unmodified 15-minute schedule on
