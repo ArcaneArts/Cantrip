@@ -132,5 +132,137 @@
       "bytes": 58603315,
       "sha256": "a46b4b720ca0cb84103ab07a1efc3f843dcab0ea968054d5eb7acf09493eec03"
     }
+  },
+  "packagedLinux": {
+    "version": "1.1.3059",
+    "sourceCommit": "dcc4197a1011d816653b50a4a74504dda492beac",
+    "browserAndFullWorkers": "darwin-arm64",
+    "scope": "Actual browser direct Git import, two separately enrolled full Node workers, and two packaged Linux service peers using isolated PostgreSQL and Redis. The x64 Linux server containers used Rosetta on the ARM64 QA host.",
+    "cases": [
+      {
+        "sourceCommit": "dcc4197a1011d816653b50a4a74504dda492beac",
+        "architecture": "arm64",
+        "artifactTarget": "linux-arm64",
+        "serverSha256": "65f410c06418909303ec7a067fc2402227880ec2caf3cc78598f266445027dee",
+        "imageDigest": "sha256:55618df3e18d6fb7c73cd68ee5336d96e722eba8d9e3e2cf8e8725a29b4bb027",
+        "imageArchive": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-relocation-source-head.k2czHzqA/images/arm64/cantrip-server-1.1.3059-linux-arm64.image.tar.zst",
+          "bytes": 177472921,
+          "sha256": "bf5ab8fafefdb7e11755ad84484da0d6c607e569bd1d4a35cb69d1bdfe90ef20"
+        },
+        "containerAcceptance": {
+          "modes": ["pglite", "bundled-postgres", "postgres"],
+          "readOnlyRoot": true,
+          "tmpfsNoexec": true,
+          "nodeAbsent": true,
+          "sqlExportAndSettingsRestart": true,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-relocation-source-head.k2czHzqA/images/arm64/container-acceptance.json",
+            "bytes": 5375,
+            "sha256": "b9d1e0d5d62dd054b4939001fb25727bd63161a4943d2be7dd7d5daf2457a146"
+          }
+        },
+        "handoff": {
+          "distinctWorkers": true,
+          "sameOccurrence": true,
+          "recoveredFence": 2,
+          "nativeTurns": 1,
+          "modelRequests": 1,
+          "canonicalHistoryRetained": true,
+          "sourceRevisionBeforeRequest": null,
+          "sourceRevisionAfterRequest": "1462f08584b97632561f360e6a9bf6c65d7babc4",
+          "cleanContainerExits": 10,
+          "containerSigkillExits": 1,
+          "productSteps": 14,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-relocation-source-head.k2czHzqA/verified/arm64/handoff/rust-rust/matrix.json",
+            "bytes": 768487,
+            "sha256": "d7ab4cee43b4e3d7c9039b02e782e05795fad139b6f283b261544c7543741b3d"
+          },
+          "containerGenerations": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-relocation-source-head.k2czHzqA/verified/arm64/handoff/rust-rust/generations.jsonl",
+            "bytes": 17420,
+            "sha256": "3411573444afc09fdc0220b98840704c4a05f2bf4054fc13f3f4518a3c22297e"
+          }
+        }
+      },
+      {
+        "sourceCommit": "dcc4197a1011d816653b50a4a74504dda492beac",
+        "architecture": "amd64",
+        "artifactTarget": "linux-x64",
+        "serverSha256": "ff00b17483855d896985f1633ef3522c83e3906629f77d67e289c4017ef1240b",
+        "imageDigest": "sha256:33cd710774624cb0ca8a7a9deed8f90aedc46aed6a5e1eec4ad034c1541c4ba7",
+        "imageArchive": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-relocation-source-head.k2czHzqA/images/x64/cantrip-server-1.1.3059-linux-x64.image.tar.zst",
+          "bytes": 180776451,
+          "sha256": "0a14be0f4e6801c43fa7aec12918b53ffb61846ec0a0cbd9134c485545343594"
+        },
+        "containerAcceptance": {
+          "modes": ["pglite", "bundled-postgres", "postgres"],
+          "readOnlyRoot": true,
+          "tmpfsNoexec": true,
+          "nodeAbsent": true,
+          "sqlExportAndSettingsRestart": true,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-relocation-source-head.k2czHzqA/images/x64/container-acceptance.json",
+            "bytes": 5438,
+            "sha256": "8915a3a9419d9d78b47554c6ea377b76bc73e3ea8bbe6abcd1a0b00d0fff8271"
+          }
+        },
+        "handoff": {
+          "distinctWorkers": true,
+          "sameOccurrence": true,
+          "recoveredFence": 2,
+          "nativeTurns": 1,
+          "modelRequests": 1,
+          "canonicalHistoryRetained": true,
+          "sourceRevisionBeforeRequest": null,
+          "sourceRevisionAfterRequest": "f811714f1682e8b8ac8b18bc9a875916250ec453",
+          "cleanContainerExits": 10,
+          "containerSigkillExits": 1,
+          "productSteps": 14,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-relocation-source-head.k2czHzqA/verified/x64/handoff/rust-rust/matrix.json",
+            "bytes": 762563,
+            "sha256": "63e0c729b2749bc85ecd9226b158133816d5a7898ab71f7d1c4addfb0dc1c9e9"
+          },
+          "containerGenerations": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-relocation-source-head.k2czHzqA/verified/x64/handoff/rust-rust/generations.jsonl",
+            "bytes": 17365,
+            "sha256": "b37fbb2192e4a19c8e30b5d0962903fd8021d20dceb78b66c6b1c0298fd7e2b2"
+          }
+        }
+      }
+    ],
+    "winterholdArm64": {
+      "scope": "Local ARM64 systemd and Caddy using the production installer with disposable profiles and test-only credentials.",
+      "testedImage": "sha256:55618df3e18d6fb7c73cd68ee5336d96e722eba8d9e3e2cf8e8725a29b4bb027",
+      "serverSha256": "65f410c06418909303ec7a067fc2402227880ec2caf3cc78598f266445027dee",
+      "nativeArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-relocation-source-head.k2czHzqA/winterhold/cantrip-server-1.1.3059-linux-arm64.tar.gz",
+        "bytes": 138622908,
+        "sha256": "aff45c39618df02d51f0b5eb8fc1d6d288f1db76790206527538496742618f52"
+      },
+      "realSystemd": true,
+      "caddyHttpsAndAppLive": true,
+      "installerInvocations": 18,
+      "recoveredSystemdStartLimit": true,
+      "rollbackRuntimeByMode": {
+        "pglite": "rust",
+        "bundled-postgres": "rust",
+        "postgres": "node"
+      },
+      "preservedAcceptedWritesAndSessions": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-relocation-source-head.k2czHzqA/winterhold/acceptance.json",
+        "bytes": 1099077,
+        "sha256": "b9c2b3e34e717ac06c0d91993fd17eb51c3e7f0f38ed828d8b9a6ba19da22fcb"
+      },
+      "externalPostgresFixtureDump": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-relocation-source-head.k2czHzqA/winterhold/accepted-postgres-fixture.sql.zst",
+        "bytes": 70302,
+        "sha256": "31ecccd49e2020c0847f2673d89c010987dfafee6507d13907a1b444874cdb5e"
+      }
+    }
   }
 }
