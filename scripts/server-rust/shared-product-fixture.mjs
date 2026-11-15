@@ -2,7 +2,6 @@
 // worker attached to the peer opposite the application. No command substitutes.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { once } from "node:events";
 import { appendFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
@@ -11,6 +10,7 @@ import { redisFixture } from "./coordinated-fixture-tools.mjs";
 import { eventually } from "./full-worker.mjs";
 import { startPackagedNodeServer } from "./packaged-node-fixture.mjs";
 import { repositoryRoot } from "./build.mjs";
+import { crashProductServer } from "./product-server-crash.mjs";
 
 export class SharedProductFixture {
   static async create({ clientKind, workerKind, databaseUrl, ...options }) {
@@ -202,13 +202,7 @@ export class SharedProductFixture {
       pid: server.child.pid,
     };
     if (crash) {
-      assert.equal(server.child.exitCode, null);
-      assert.equal(server.child.signalCode, null);
-      const completion = once(server.child, "close");
-      assert.equal(server.child.kill("SIGKILL"), true);
-      const [code, signal] = await completion;
-      assert.equal(code, null);
-      assert.equal(signal, "SIGKILL");
+      await crashProductServer(server.child, peer.kind);
       peer.server = undefined;
     } else await peer.close();
     const generation = this.generations.findLast(
