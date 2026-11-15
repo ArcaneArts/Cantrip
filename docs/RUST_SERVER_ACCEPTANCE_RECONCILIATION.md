@@ -357,6 +357,16 @@ original chat. The mixed Rust-browser/Node-worker run also exposed a separate
 queue revision conflict while two dispatch paths competed for the first prompt.
 [Retained chat queue evidence](security/rust-server-3059-macos-retained-chat-queue.json)
 
+The race test holds the worker's Resume mutation while a third encrypted
+browser submission triggers the first queued turn. The server then returns
+a durable `queue-revision-conflict` rejection with no claim for the worker's
+stale operation. Before the fix, this caused the browser's Resume request
+to return HTTP 409 and pause the conversation again. The worker now returns
+control to the server for dispatch from fresh queue state. Resume succeeds
+and the three prompts each produce one model request and one completed
+native turn, in queue order on the retained thread.
+[Concurrent Resume evidence](security/rust-server-3059-macos-queue-resume-race.json)
+
 ### Task and Agent restart on Linux
 
 The packaged Rust server and 1.1.3059 Node worker completed 18 browser

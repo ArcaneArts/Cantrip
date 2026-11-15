@@ -151,6 +151,13 @@ const sharedQueueRecovery = process.argv.includes("--shared-queue-recovery");
 const sharedQueueRetainedChat = process.argv.includes(
   "--shared-queue-retained-chat",
 );
+const sharedQueueResumeRace = process.argv.includes(
+  "--shared-queue-resume-race",
+);
+assert.ok(
+  !sharedQueueResumeRace || sharedQueueRecovery,
+  "Shared queue resume race requires --shared-queue-recovery",
+);
 assert.ok(
   !sharedQueueRetainedChat || sharedQueueRecovery,
   "Retained chat queue recovery requires --shared-queue-recovery",
@@ -385,6 +392,7 @@ const report = {
   sharedQueueRecoveryScope: sharedQueueRecovery
     ? `Encrypted browser queue on ${sharedQueueRetainedChat ? "the retained Agent chat after normal restart and Goal clear" : "a separately prepared Agent chat"} with two paused prompts. SIGKILL and replace the worker-owner peer, reconnect the same full worker, and verify ordered native turns and exactly-once model requests after resume.`
     : null,
+  sharedQueueResumeRace,
   approvalCancellationScope: approvalCancellation
     ? "Production serving paths, browser SDK, full worker, and actual native Codex approval with an isolated database write failure and a normal approval control."
     : null,
@@ -459,6 +467,9 @@ async function flow(
   const dataDirectory = process.argv.includes("--skill-settings")
     ? path.join(root, fixture.kind, "worker-path-alias")
     : canonicalDataDirectory;
+  const resumeRaceFile = sharedQueueResumeRace
+    ? path.join(dataDirectory, "test-queue-resume-race")
+    : undefined;
   if (dataDirectory !== canonicalDataDirectory) {
     await mkdir(canonicalDataDirectory, { recursive: true });
     // SkillManager returns lexical account paths; native discovery returns
@@ -531,6 +542,24 @@ async function flow(
             : {}),
           ...(fakeCuaLauncher ? { CANTRIP_CUA_BIN: fakeCuaLauncher } : {}),
           ...(providerTest ? providerBoundary?.environment : {}),
+          ...(resumeRaceFile
+            ? {
+                CANTRIP_TEST_QUEUE_RESUME_RACE: resumeRaceFile,
+                CANTRIP_TEST_QUEUE_RESUME_RACE_WORKER_ENTRY: path.resolve(
+                  process.env.CANTRIP_TEST_WORKER_PACKAGE ??
+                    path.join(repositoryRoot, "cantrip_worker"),
+                  "dist/index.js",
+                ),
+                NODE_OPTIONS: [
+                  process.env.NODE_OPTIONS,
+                  "--import=" +
+                    new URL("./worker-queue-resume-race.mjs", import.meta.url)
+                      .href,
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              }
+            : {}),
           ...(cantripOsSourceBackup
             ? {
                 CANTRIP_TEST_BACKUP_RESPONSE_DIRECTORY: backupResponseDirectory,
@@ -1719,6 +1748,7 @@ async function flow(
         fixture,
         sharedQueueRecovery,
         sharedQueueRetainedChat,
+        resumeRaceFile,
         projectId: gitProjectChat ? attached.id : first.id,
         projectRoot: gitProjectChat ? opened.source.path : first.source.path,
         ...(cliWorktreeAcquire ? { cliWorktreeAcquire: cliBinary } : {}),

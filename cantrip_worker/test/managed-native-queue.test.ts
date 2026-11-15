@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { ManagedNativeQueueRejectedError } from "../src/managed-native-queue-client.js";
 import {
   ManagedNativeQueue,
   managedQueueGoalHandoff,
@@ -363,6 +364,34 @@ describe("canonical native queue projection", () => {
     await expect(f.request("thread/queue/start")).rejects.toThrow(
       "correlated native Turn",
     );
+  });
+
+  it("preserves the durable rejection code on a stale start without looking for a claim", async () => {
+    const f = fixture([item("first")]);
+    f.client.mutate.mockResolvedValueOnce({
+      revision: 2,
+      paused: false,
+      items: [],
+      claims: [],
+      receipt: {
+        status: "rejected",
+        rejectionCode: "queue-revision-conflict",
+      },
+    } as Awaited<ReturnType<typeof f.client.mutate>>);
+    const attempt = f.request("thread/queue/start", {
+      expectedRevision: 1,
+      queuedSubmissionId: "first",
+    });
+    await expect(attempt).rejects.toBeInstanceOf(
+      ManagedNativeQueueRejectedError,
+    );
+    await expect(attempt).rejects.toMatchObject({
+      rejectionCode: "queue-revision-conflict",
+      message:
+        "Canonical queue operation is rejected; reconcile this operation before retrying.",
+    });
+    expect(f.client.mutate).toHaveBeenCalledOnce();
+    expect(f.client.startReceipt).not.toHaveBeenCalled();
   });
 
   it("returns only the actual claimed native Turn acknowledgment and never retries an uncertain start", async () => {

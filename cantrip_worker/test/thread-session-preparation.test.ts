@@ -1,5 +1,9 @@
 import { connectFixtureNativeObservation } from "./fixtures/connected-native-observation.js";
 import { nativeThreadSettings } from "./fixtures/native-thread-settings.js";
+import {
+  ManagedNativeQueueRejectedError,
+  ManagedNativeQueueUncertainError,
+} from "../src/managed-native-queue-client.js";
 import { describe, expect, it, vi } from "vitest";
 import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -2143,6 +2147,43 @@ describe("resuming actual managed native automation", () => {
     ]);
   });
 
+  it("returns a rejected queue start to the server for dispatch from current state", async () => {
+    const f = fixture();
+    f.runtime.setManagedNativeCommandDispatcher("thread-1", async (command) =>
+      command.dispatch(),
+    );
+    const resume = vi.fn(async (): Promise<{ resumed: boolean }> => {
+      throw new ManagedNativeQueueRejectedError("queue-revision-conflict");
+    });
+    f.runtime.setManagedQueueResume("thread-1", resume);
+    f.request.mockResolvedValue({ goal: activeGoal });
+    await expect(
+      f.runtime.resumeManagedAutomation({ threadId: "thread-1" }),
+    ).resolves.toEqual({ resumed: false });
+    expect(resume).toHaveBeenCalledOnce();
+    expect(f.request).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    new ManagedNativeQueueRejectedError("queue-item-unavailable"),
+    new ManagedNativeQueueUncertainError("queue-revision-conflict"),
+  ])(
+    "propagates other rejected or uncertain queue starts (%s)",
+    async (failure) => {
+      const f = fixture();
+      f.runtime.setManagedNativeCommandDispatcher("thread-1", async (command) =>
+        command.dispatch(),
+      );
+      f.runtime.setManagedQueueResume("thread-1", async () => {
+        throw failure;
+      });
+      await expect(
+        f.runtime.resumeManagedAutomation({ threadId: "thread-1" }),
+      ).rejects.toBe(failure);
+      expect(f.request).not.toHaveBeenCalled();
+    },
+  );
+
   it("resumes an active goal only after the canonical queue reports no eligible input", async () => {
     const f = fixture();
     const order: string[] = [];
@@ -2163,27 +2204,39 @@ describe("resuming actual managed native automation", () => {
     expect(order).toEqual(["canonical", "thread/goal/get", "thread/goal/set"]);
   });
 
-  it("keeps old queue cleanup from removing a replacement handler and rejects an in-flight replacement", async () => {
-    const f = fixture();
-    f.runtime.setManagedNativeCommandDispatcher("thread-1", async (command) =>
-      command.dispatch(),
-    );
-    const removeOld = f.runtime.setManagedQueueResume("thread-1", async () => ({
-      resumed: false,
-    }));
-    const pending = deferred<{ resumed: boolean }>();
-    const current = vi.fn(() => pending.promise);
-    f.runtime.setManagedQueueResume("thread-1", current);
-    removeOld();
-    const result = f.runtime.resumeManagedAutomation({ threadId: "thread-1" });
-    expect(current).toHaveBeenCalledOnce();
-    f.runtime.setManagedQueueResume("thread-1", async () => ({
-      resumed: false,
-    }));
-    pending.resolve({ resumed: true });
-    await expect(result).rejects.toThrow("replaced during resume");
-    expect(f.request).not.toHaveBeenCalled();
-  });
+  it.each([true, false])(
+    "rejects a replaced queue handler when its in-flight start settles (applied: %s)",
+    async (applied) => {
+      const f = fixture();
+      f.runtime.setManagedNativeCommandDispatcher("thread-1", async (command) =>
+        command.dispatch(),
+      );
+      const removeOld = f.runtime.setManagedQueueResume(
+        "thread-1",
+        async () => ({
+          resumed: false,
+        }),
+      );
+      const pending = deferred<{ resumed: boolean }>();
+      const current = vi.fn(() => pending.promise);
+      f.runtime.setManagedQueueResume("thread-1", current);
+      removeOld();
+      const result = f.runtime.resumeManagedAutomation({
+        threadId: "thread-1",
+      });
+      expect(current).toHaveBeenCalledOnce();
+      f.runtime.setManagedQueueResume("thread-1", async () => ({
+        resumed: false,
+      }));
+      if (applied) pending.resolve({ resumed: true });
+      else
+        pending.reject(
+          new ManagedNativeQueueRejectedError("queue-revision-conflict"),
+        );
+      await expect(result).rejects.toThrow("replaced during resume");
+      expect(f.request).not.toHaveBeenCalled();
+    },
+  );
 
   it("forwards only the exact owner wake RPC and preserves the native stopped result", async () => {
     const f = fixture();
