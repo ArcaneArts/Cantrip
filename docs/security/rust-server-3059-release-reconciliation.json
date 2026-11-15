@@ -206,6 +206,7 @@
     "macosFreshPgliteReadiness": "docs/security/rust-server-3059-macos-fresh-pglite.json",
     "macosNativeQueueWire": "docs/security/rust-server-3059-macos-native-queue-wire.json",
     "macosAndLinuxNativeQueueDelivery": "docs/security/rust-server-3059-native-queue-delivery.json",
+    "macosAndLinuxEmbeddedQueueDelivery": "docs/security/rust-server-3059-embedded-queue-delivery.json",
     "linuxProjectAutomations": "docs/security/rust-server-3059-linux-project-automations.json",
     "macosSharedProjectAutomations": "docs/security/rust-server-3059-shared-project-automations.json",
     "mobile": "docs/security/rust-server-3059-mobile-qualification.json",
