@@ -6714,6 +6714,7 @@
         "implementation": "cantrip_server_rs/src/http/model_operations.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-shared-decision-dependency-loss.json",
           "docs/security/rust-server-3059-active-decision-redis-outage.json",
           "docs/security/rust-server-3059-linux-decision-postgres-outage.json",
           "docs/security/rust-server-3059-decision-postgres-outage.json",
@@ -6730,7 +6731,7 @@
           "docs/security/rust-server-3059-windows-postgres-recovery.json"
         ],
         "remaining": [
-          "The macOS and Linux ARM64/x64 1.1.3059 packages qualify decisions across external PostgreSQL loss and separate Redis interruption. The Redis tests compare four peer pairings on macOS and two Rust peers on each Linux architecture. The exact Windows package qualifies a fresh decision after overlapping process loss and five-minute database loss. Active decisions on Windows, overlapping shared dependency faults, and additional provider adapters remain open."
+          "The macOS and Linux ARM64/x64 1.1.3059 packages qualify decisions across separate PostgreSQL and Redis faults and both outages together with PostgreSQL restored first. A rebuilt macOS package matches the Node control for Redis-first recovery by settling the terminal unknown usage record after PostgreSQL returns. Redis-first recovery on the patched Linux and Windows packages, installed Windows active decisions and additional provider adapters remain open."
         ]
       },
       {
@@ -11696,6 +11697,7 @@
         "implementation": "cantrip_server_rs/src/http/model_operations.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-shared-decision-dependency-loss.json",
           "docs/security/rust-server-3059-active-decision-redis-outage.json",
           "docs/security/rust-server-3059-linux-decision-postgres-outage.json",
           "docs/security/rust-server-3059-decision-postgres-outage.json",
@@ -11703,7 +11705,7 @@
           "docs/security/rust-server-3059-windows-postgres-recovery.json"
         ],
         "remaining": [
-          "The full packaged worker qualifies active decision requests during separate PostgreSQL and cross-peer Redis outages on macOS and Linux ARM64/x64. The interrupted Redis attempts retained one unknown usage record, and a fresh decision completed after recovery. Active decisions on Windows, overlapping shared dependency faults, and additional provider adapters remain open."
+          "The full packaged worker qualifies active decisions during overlapping PostgreSQL and Redis outages on macOS and Linux ARM64/x64 with PostgreSQL restored first. The rebuilt macOS ARM64 package also settles the same terminal usage record when Redis recovers first. Patched Linux and Windows Redis-first recovery, installed Windows active decisions and additional provider adapters remain open."
         ]
       },
       {
