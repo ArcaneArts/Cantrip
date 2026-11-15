@@ -188,6 +188,49 @@
         "samplesWhileQaAppWasRunning": 49,
         "qaAppForegroundSamples": 28
       }
+    },
+    "externalRedisFixture": {
+      "scope": "macOS ARM64 with independent PostgreSQL and two full workers. The Windows guest run remains open.",
+      "version": "8.10.3",
+      "callerOwnedLifecycle": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-external-redis-harness.nspDcKTl/external-redis-lifecycle.json",
+        "bytes": 306,
+        "sha256": "a99735ced173bfd63492e786a8fb5f6fce734f5c538f4498a9b30c63f1178088"
+      },
+      "cases": {
+        "external": {
+          "steps": 14,
+          "sameOccurrence": true,
+          "recoveredFence": 2,
+          "differentSourceAndTargetWorkers": true,
+          "nativeTurns": 1,
+          "modelRequests": 1,
+          "historyRetainedAfterTwoRestarts": true,
+          "forcedPeerTerminations": 1,
+          "cleanPeerExits": 10,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-external-redis-harness.nspDcKTl/external/matrix.json",
+            "bytes": 779754,
+            "sha256": "90894d4d6450d2770fc0b7525a3832e9a5725f5056fac403c320b25f4ca0a9e1"
+          }
+        },
+        "owned": {
+          "steps": 14,
+          "sameOccurrence": true,
+          "recoveredFence": 2,
+          "differentSourceAndTargetWorkers": true,
+          "nativeTurns": 1,
+          "modelRequests": 1,
+          "historyRetainedAfterTwoRestarts": true,
+          "forcedPeerTerminations": 1,
+          "cleanPeerExits": 10,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-external-redis-harness.nspDcKTl/owned/matrix.json",
+            "bytes": 776782,
+            "sha256": "3c3512da4e2b3c0289295309d3bd0a1bb8fbfe153df5c49ffdb3a32401eb59a6"
+          }
+        }
+      }
     }
   },
   "packagedLinux": {

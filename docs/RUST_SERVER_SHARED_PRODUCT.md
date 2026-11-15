@@ -6,8 +6,8 @@ Node/Node, Node/Rust, Rust/Node and Rust/Rust. The first peer serves the browser
 the full unchanged Node worker connects to the second. The driver checks the
 actual Redis worker claim to prove that commands cross the server boundary.
 
-Each pairing owns an isolated PostgreSQL database, Redis process, server
-profiles, browser context and worker directory. Node peers use the compiled
+By default, each pairing owns an isolated PostgreSQL database, Redis process,
+server profiles, browser context and worker directory. Node peers use the compiled
 server entry point compiled under `tests/reference-node-server/dist`. Rust peers
 use the normal server executable. No fixture routes, command-handler replacements, worker
 acknowledgment substitutes or SQL-seeded product state are needed for these
@@ -44,6 +44,12 @@ The PostgreSQL fixture uses a small native cluster-owner executable. Its
 `CANTRIP_RUST_DATABASE_FIXTURE_BINARY` override can likewise reuse a built
 `database-fixture` example. Keep all Cargo outputs in the shared cache rather
 than creating a target for each worktree.
+
+For guest-based runs, set `CANTRIP_TEST_EXTERNAL_REDIS_URL` to a disposable
+Redis service reachable by the harness and both server peers. Give each
+concurrent harness invocation its own Redis instance. The caller owns its
+lifecycle. The `--operational-status` and `--redis-offline-shutdown` scenarios
+require harness-owned Redis so they can interrupt the process.
 
 Run each group against separate disposable databases:
 

@@ -147,6 +147,16 @@ const serverStartupTimeoutMs = startupTimeout("--server-startup-timeout-ms");
 const workerStartupTimeoutMs = startupTimeout("--worker-startup-timeout-ms");
 const databaseMode = option("--database") ?? "pglite";
 const sharedPair = option("--server-pair");
+// A test-owned service can run on the host when the product runs in a guest.
+const externalRedisUrl = process.env.CANTRIP_TEST_EXTERNAL_REDIS_URL;
+if (externalRedisUrl) {
+  assert.ok(sharedPair, "External Redis requires --server-pair");
+  assert.ok(
+    !process.argv.includes("--operational-status") &&
+      !process.argv.includes("--redis-offline-shutdown"),
+    "Redis interruption tests require the harness to own the Redis process",
+  );
+}
 const automationInterruption = option("--project-automation-interruption");
 if (process.argv.includes("--project-automation-interruption")) {
   assert.ok(
@@ -390,6 +400,9 @@ const report = {
   suite: "actual-browser-server-worker-folders",
   databaseMode,
   serverPair: sharedPair ?? null,
+  ...(sharedPair && {
+    redisFixture: externalRedisUrl ? "external" : "owned",
+  }),
   serverStartupTimeoutMs,
   workerStartupTimeoutMs,
   completeReplacement: false,
@@ -2162,6 +2175,7 @@ try {
           clientKind: kinds[0],
           workerKind: kinds[1],
           databaseUrl: await postgres.database(),
+          redisUrl: externalRedisUrl,
         })
       : process.argv.includes("--profile-runtime-recovery")
         ? new ProfileRuntimeFixture({
