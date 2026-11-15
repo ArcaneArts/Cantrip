@@ -26,6 +26,14 @@ export class ManagedNativeQueueUncertainError extends Error {
   }
 }
 
+export class ManagedNativeQueueRejectedError extends Error {
+  constructor(readonly rejectionCode: string | null) {
+    super(
+      "Canonical queue operation is rejected; reconcile this operation before retrying.",
+    );
+  }
+}
+
 /** A lost response never causes a new operation ID or an automatic mutation replay. */
 export class ManagedNativeQueueClient {
   constructor(private readonly options: NativeCommandClientOptions) {}

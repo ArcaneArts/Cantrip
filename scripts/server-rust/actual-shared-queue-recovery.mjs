@@ -1,6 +1,7 @@
 // A real worker reconnects to its replacement server before draining the
-// retained queue. Only the model's public HTTP responses are scripted.
+// retained queue, optionally racing a browser-side claim at Resume.
 import assert from "node:assert/strict";
+import { readFile, writeFile } from "node:fs/promises";
 import { eventually } from "./full-worker.mjs";
 
 export async function actualSharedQueueRecovery({
@@ -10,6 +11,8 @@ export async function actualSharedQueueRecovery({
   workerId,
   projectId,
   retainedChatId,
+  retainedThreadId,
+  resumeRaceFile,
   configuration,
   model,
   result,
@@ -59,6 +62,16 @@ export async function actualSharedQueueRecovery({
         (await import("/src/lib/api/chats.ts")).setChatPaused(id, paused),
       { id: chatId, paused },
     );
+  const submit = (prompt) =>
+    page.evaluate(
+      async ({ chatId, prompt, configuration }) =>
+        (await import("/src/lib/api/chats.ts")).startTurn(
+          chatId,
+          prompt,
+          configuration,
+        ),
+      { chatId, prompt, configuration },
+    );
   const posts = () => model.requests.filter((r) => r.method === "POST");
   const baseline = posts().length;
   const before = await fixture.assertRemoteWorker(workerId);
@@ -83,15 +96,7 @@ export async function actualSharedQueueRecovery({
   assert.equal((await pause(true)).paused, true);
   const admitted = [];
   for (const { prompt } of inputs) {
-    const receipt = await page.evaluate(
-      async ({ chatId, prompt, configuration }) =>
-        (await import("/src/lib/api/chats.ts")).startTurn(
-          chatId,
-          prompt,
-          configuration,
-        ),
-      { chatId, prompt, configuration },
-    );
+    const receipt = await submit(prompt);
     assert.equal(receipt.status, "queued");
     assert.equal(receipt.prompt.text, prompt);
     admitted.push(receipt.prompt.id);
@@ -128,8 +133,71 @@ export async function actualSharedQueueRecovery({
   );
 
   progress.phase = "draining";
-  const replies = inputs.map(({ answer }) => model.reply({ text: answer }));
-  assert.equal((await pause(false)).paused, false);
+  if (resumeRaceFile)
+    inputs.push({
+      prompt: "Private prompt queued during Resume 🍃",
+      answer: "Private response queued during Resume 🍀",
+    });
+  const replies = inputs.map(({ answer }, index) =>
+    model.reply({ text: answer, hold: Boolean(resumeRaceFile && index === 0) }),
+  );
+  if (resumeRaceFile) {
+    const readProbe = async (phase) => {
+      try {
+        return JSON.parse(await readFile(resumeRaceFile + "." + phase, "utf8"));
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+        return null;
+      }
+    };
+    await writeFile(resumeRaceFile + ".armed", chatId);
+    const resuming = pause(false);
+    void resuming.catch(() => {});
+    try {
+      const held = await eventually(
+        () => readProbe("held"),
+        (probe) => assert.ok(probe, "worker Resume did not attempt a start"),
+        20_000,
+      );
+      progress.resumeRace = { held };
+      assert.equal(held.id, admitted[0]);
+      const added = await submit(inputs[2].prompt);
+      assert.equal(added.status, "queued");
+      assert.equal(added.prompt.text, inputs[2].prompt);
+      progress.resumeRace.addedId = added.prompt.id;
+      const started = await eventually(
+        () => replies[0].request,
+        (request) =>
+          assert.ok(request, "the browser peer did not start the head"),
+        15_000,
+      );
+      const firstInput = started.input.input.findLast(
+        (item) => item.role === "user",
+      );
+      assert.ok(JSON.stringify(firstInput).includes(inputs[0].prompt));
+      assert.equal(started.completed, false);
+      progress.resumeRace.headInFlight = true;
+      await writeFile(resumeRaceFile + ".release", "");
+      const receipt = await eventually(
+        () => readProbe("receipt"),
+        (probe) => assert.ok(probe, "worker Resume did not receive a receipt"),
+      );
+      progress.resumeRace.receipt = receipt;
+      assert.deepEqual(receipt, {
+        httpStatus: 200,
+        operationId: held.operationId,
+        status: "rejected",
+        rejectionCode: "queue-revision-conflict",
+        hasClaim: false,
+      });
+    } finally {
+      replies[0].release();
+      await writeFile(resumeRaceFile + ".release", "");
+    }
+    assert.equal((await resuming).paused, false);
+  } else {
+    assert.equal((await pause(false)).paused, false);
+  }
   const turns = [];
   for (const [index, { prompt, answer }] of inputs.entries()) {
     const item = await eventually(
@@ -153,9 +221,10 @@ export async function actualSharedQueueRecovery({
     );
     assert.ok(JSON.stringify(lastUserInput).includes(prompt));
     const { turnId, threadId } = item[0].correlation;
+    if (retainedThreadId) assert.equal(threadId, retainedThreadId);
     turns.push({ turnId, threadId });
   }
-  assert.notEqual(turns[0].turnId, turns[1].turnId);
+  assert.equal(new Set(turns.map(({ turnId }) => turnId)).size, inputs.length);
   await eventually(
     () =>
       page.evaluate(
@@ -205,6 +274,6 @@ export async function actualSharedQueueRecovery({
     newModelPosts: inputs.length,
   });
   result.steps.push(
-    "unpausing the recovered queue executes the two prompts in order, once each, and archives both native turns",
+    `unpausing the recovered queue executes all ${inputs.length} prompts in order, once each, and archives their native turns`,
   );
 }

@@ -1,4 +1,7 @@
-import { ManagedNativeQueueUncertainError } from "../managed-native-queue-client.js";
+import {
+  ManagedNativeQueueRejectedError,
+  ManagedNativeQueueUncertainError,
+} from "../managed-native-queue-client.js";
 import { CantripServerRequestError } from "../cli-client.js";
 import type {
   ManagedNativeGatewayIdentity,
@@ -472,6 +475,8 @@ export class ManagedNativeQueue implements ManagedNativeQueueGateway {
     result: ManagedQueueMutationResult,
   ): Promise<NativeRpcFrame> {
     this.observe(result);
+    if (result.receipt.status === "rejected" && !result.claim)
+      throw new ManagedNativeQueueRejectedError(result.receipt.rejectionCode);
     if (result.receipt.status !== "applied")
       throw new Error(
         `Canonical queue operation is ${result.receipt.status}; reconcile this operation before retrying.`,

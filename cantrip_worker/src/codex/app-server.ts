@@ -1,4 +1,5 @@
 import { TaskRestorationError } from "../task-restoration-error.js";
+import { ManagedNativeQueueRejectedError } from "../managed-native-queue-client.js";
 import type {
   TaskPauseScope,
   TaskGoalCycleSuspensionSource,
@@ -5295,12 +5296,22 @@ export class CodexAppServer implements CodexRuntime {
         throw new Error(
           "The managed queue belongs to a replaced native transport.",
         );
-      const result = await canonicalQueue.handler();
+      const result = await canonicalQueue.handler().catch((error: unknown) => {
+        if (
+          error instanceof ManagedNativeQueueRejectedError &&
+          error.rejectionCode === "queue-revision-conflict"
+        )
+          return null;
+        throw error;
+      });
       if (
         canonicalQueue.transportGeneration !== this.transportGeneration ||
         this.#managedQueueResumers.get(threadId) !== canonicalQueue
       )
         throw new Error("The managed queue was replaced during resume.");
+      // The rejected start owns no claim. Let the server dispatch from its
+      // current queue state instead of retrying the receipt or resuming a Goal.
+      if (result === null) return { resumed: false };
       if (result.resumed) return result;
     }
     const { goal } = await this.refreshGoal(threadId);
