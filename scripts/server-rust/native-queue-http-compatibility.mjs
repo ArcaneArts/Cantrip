@@ -106,7 +106,7 @@ try {
           token: () => h.credential,
         });
         h.prepared = await prepareEventCommands(h);
-        let previousRevision = 0;
+        let previousRevision = -1;
         await nativeQueueHttpCases({
           h,
           client,
@@ -114,8 +114,8 @@ try {
           async observeRevision(revision) {
             if (!Number.isInteger(revision) || revision <= previousRevision)
               return;
-            // A background delivery publishes its own invalidation. Observe
-            // the exact worker revision before creating the next one.
+            // The empty read creates revision zero. Let the same outbox
+            // deliver it before a mutation can supersede it on either peer.
             await until(
               () => result.queueNotificationRevisions.at(-1),
               (notifiedRevision) => notifiedRevision === revision,
@@ -127,9 +127,14 @@ try {
         result.rawQueueEvents = h.live.history.filter(
           (event) => event.type === "event" && event.resource === "chat-queue",
         );
-        assert.ok(
-          result.rawQueueEvents.length > 0,
-          "actual queue Live effects",
+        assert.deepEqual(
+          result.queueNotificationRevisions,
+          [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        );
+        assert.equal(
+          result.rawQueueEvents.length,
+          11 + result.queueNotificationRevisions.length,
+          "direct HTTP invalidations and committed outbox invalidations",
         );
         result.queueEvents = result.rawQueueEvents.map(({ cursor, ...event }) =>
           h.fixture.normalize(event),

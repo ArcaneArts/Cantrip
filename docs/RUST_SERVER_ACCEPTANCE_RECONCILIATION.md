@@ -318,12 +318,21 @@ Linux images used external PostgreSQL and standalone bootstrap. All runs
 covered anonymous, password and account authentication.
 
 The initial ARM64 comparison received one extra App Live invalidation while
-the background service delivered its queue notice. The fixture now waits
-for the worker SDK to observe each committed revision before issuing the
-next mutation. It verifies the nine worker revisions and still compares
-the complete ordered App Live stream. The Linux x64 image ran under
-emulation. All 12 Linux server generations exited zero.
+the background service delivered its queue notice. Waiting for the worker
+SDK to observe each of the nine mutation revisions stabilized the ordered
+App Live comparison. The Linux x64 image ran under emulation. All 12 Linux
+server generations exited zero.
 [Native queue delivery evidence](security/rust-server-3059-native-queue-delivery.json)
+
+The queue comparison now covers PGlite, bundled PostgreSQL and external
+PostgreSQL on both Linux images and macOS. A slower x64 run delivered
+revision zero after the initial empty read, before the first mutation could
+supersede it. The revised harness waits for that first notification on both
+runtimes. It then checks each worker revision through nine and all 21 App
+Live invalidations per profile. Across nine platform and database cases,
+the peers matched 2,745 HTTP observations, 1,080 encryption checks and 567
+ordered invalidations. All 36 Linux server generations exited zero.
+[Embedded queue delivery evidence](security/rust-server-3059-embedded-queue-delivery.json)
 
 ### Task and Agent restart on Linux
 
