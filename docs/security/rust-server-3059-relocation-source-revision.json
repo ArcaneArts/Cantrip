@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceBase": "ca87035e65c8fe4d8e57d13434da3619011a1cad",
+  "scope": "Local macOS ARM64 and native server 1.1.3059. Actual browser direct Git import, two enrolled full Node workers, two Rust server peers on isolated PostgreSQL and Redis, and native Codex. The browser fixture did not write a source revision.",
+  "baseline": {
+    "worker": "The same worker built from the merged relocation capability fix.",
+    "serverSha256": "71cf9d66347f62d58d5f9a2fd7c3956c070243bcd7c4dfd2cf6ed80fc6d742cc",
+    "httpStatus": 409,
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-relocation-source-head.LEXTuatD/baseline/matrix.json",
+      "bytes": 557314,
+      "sha256": "90237a506723b9eeaa3cf36f541e4ec6b500c2935dbe42c976b47baff0f85262"
+    }
+  },
+  "candidate": {
+    "serverSha256": "006a2e55d9ffc906991d05c596b3eb6ff0198f426de3d30890e45f772a6ee6f9",
+    "build": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-relocation-source-head.LEXTuatD/build-server.log",
+      "bytes": 169,
+      "sha256": "4a2815bb33f6d8d1139fe04f2187c5719e249b992be149b18d5ecc788bf3f6d4"
+    },
+    "sourceRevisionBeforeRequest": null,
+    "sourceRevisionAfterRequest": "bd5a1b4fe40490840437ca996550b7c254a133e3",
+    "distinctWorkers": true,
+    "sameOccurrence": true,
+    "recoveredFence": 2,
+    "nativeTurns": 1,
+    "modelRequests": 1,
+    "canonicalHistoryRetained": true,
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-relocation-source-head.LEXTuatD/candidate/matrix.json",
+      "bytes": 772235,
+      "sha256": "4e277616fc4c0187909181f5d8a3695b06a04faed0076d0f5a73a95c23d8de8a"
+    }
+  },
+  "httpComparisons": [
+    {
+      "mode": "pglite",
+      "httpObservationsMatchingNode": 226,
+      "jobsMatchingNode": 84,
+      "focusedRevisionCases": 15,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-relocation-source-head.LEXTuatD/http-pglite/matrix.json",
+        "bytes": 24916907,
+        "sha256": "49599a549c08b1443d862b143b6925165959f3cfd39a015bc4a9ff9d0ec4d554"
+      }
+    },
+    {
+      "mode": "bundled-postgres",
+      "httpObservationsMatchingNode": 226,
+      "jobsMatchingNode": 84,
+      "focusedRevisionCases": 15,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-relocation-source-head.LEXTuatD/http-bundled-postgres/matrix.json",
+        "bytes": 24916532,
+        "sha256": "2f7682fab36bd0281686d03e46dd10a9a72cc1f829714fdc425173a709eb29ec"
+      }
+    },
+    {
+      "mode": "postgres",
+      "httpObservationsMatchingNode": 226,
+      "jobsMatchingNode": 84,
+      "focusedRevisionCases": 15,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-relocation-source-head.LEXTuatD/http-postgres/matrix.json",
+        "bytes": 24916570,
+        "sha256": "f700aa2637188fb82021c148696ce6ce8d88cf43677f728ad298db7172414e8d"
+      }
+    }
+  ],
+  "aggregate": {
+    "matchingHttpObservations": 678,
+    "matchingJobs": 252,
+    "focusedRevisionCases": 45
+  },
+  "tests": {
+    "rustLibrary": 88,
+    "appWorktree": 56,
+    "workerWorktreeAndRuntime": 94,
+    "referenceNode": "v24.22.1",
+    "rustLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-relocation-source-head.LEXTuatD/rust-tests-final.log",
+      "bytes": 9219,
+      "sha256": "73c35ec8a37e1099bfc9f500eab2de26e42570e1626d24382610e5ce2b39dcee"
+    },
+    "appLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-relocation-source-head.LEXTuatD/worktree-app-tests.log",
+      "bytes": 252,
+      "sha256": "6751df70811c502171fe360756c8015075b4607be065a2312cfb8120a30620e4"
+    },
+    "workerLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-relocation-source-head.LEXTuatD/worktree-worker-tests.log",
+      "bytes": 1437,
+      "sha256": "99c4cb7ab565f55671e6320d684f6c39c13d9c0b78b4e155be2bee7702cac550"
+    }
+  },
+  "remainingQualification": [
+    "Packaged Windows peer-loss and two-worker relocation recovery."
+  ],
+  "packagedMacOS": {
+    "version": "1.1.3059",
+    "target": "darwin-arm64",
+    "serverRequiresNode": false,
+    "serverSha256": "ec19b42caa3c79bb90b10868b12753dece16de124958a97f515646ff2a3605ba",
+    "filesVerified": 1762,
+    "startsPerDatabaseMode": 2,
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "entrypoint": "start.sh with standalone bootstrap and one-time link-code worker enrollment",
+    "handoff": {
+      "distinctWorkers": true,
+      "sameOccurrence": true,
+      "recoveredFence": 2,
+      "nativeTurns": 1,
+      "modelRequests": 1,
+      "canonicalHistoryRetained": true,
+      "sourceRevisionBeforeRequest": null,
+      "sourceRevisionAfterRequest": "f6d47d0aa21765459a2fe354f1d9241fce6057a3",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-relocation-source-head.LEXTuatD/packaged/matrix.json",
+        "bytes": 781398,
+        "sha256": "65e8525146828ee953c265000fd23ea5c995afee5e7d31132ed7727a7c8a2620"
+      }
+    },
+    "startupReport": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-relocation-source-head.LEXTuatD/native-package-smoke.json",
+      "bytes": 2224,
+      "sha256": "fe961e19e051c8a3832fa944e82f950cb2597aa2dbfe19917a13a03e4a567215"
+    },
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-relocation-source-head.LEXTuatD/cantrip-server-1.1.3059-darwin-arm64.tar.zst",
+      "bytes": 58603315,
+      "sha256": "a46b4b720ca0cb84103ab07a1efc3f843dcab0ea968054d5eb7acf09493eec03"
+    }
+  }
+}

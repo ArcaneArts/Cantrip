@@ -126,6 +126,11 @@ export async function relocationWorker({ fixture, visit, root, id, state }) {
                 id === "beta" &&
                 state.statusCounts[id] >= 2);
             const head = state.heads[id];
+            if (id === "alpha" && state.beforeSourceStatus) {
+              const beforeReply = state.beforeSourceStatus;
+              state.beforeSourceStatus = undefined;
+              await beforeReply();
+            }
             return {
               worktree: {
                 path: command.worktreePath,

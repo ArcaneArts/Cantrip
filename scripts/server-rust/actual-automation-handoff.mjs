@@ -1,15 +1,10 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { realpath, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { automationDispatchWorkerEnvironment } from "./actual-automation-dispatch-interruption.mjs";
 import { eventually, launchActualWorker } from "./full-worker.mjs";
 import { normalizeProjectSourcePath } from "../../cantrip_worker/src/project-source-path.ts";
-
-const postgres = createRequire(
-  new URL("../../tests/reference-node-server/package.json", import.meta.url),
-)("postgres");
 
 export function actualAutomationHandoff({
   chatId,
@@ -70,39 +65,6 @@ export function actualAutomationHandoff({
         },
         { source: workerId, target: targetWorkerId },
       );
-      const source = await page.evaluate(
-        async ({ projectId, chatId }) => {
-          const chats = await (
-            await import("/src/lib/api/chats.ts")
-          ).getChats(projectId);
-          const chat = chats.find(({ id }) => id === chatId);
-          const status = await (
-            await import("/src/lib/api/worktrees.ts")
-          ).getProjectWorktreeStatus(projectId, chat.activeWorktreeId);
-          return {
-            worktreeId: chat.activeWorktreeId,
-            head: status.worktree.head,
-          };
-        },
-        { projectId, chatId },
-      );
-      assert.equal(source.head, revision);
-      // The direct Git fixture starts without a persisted source HEAD. Record
-      // the real source worker revision before exercising relocation.
-      const sql = postgres(fixture.environment.DATABASE_URL, { max: 1 });
-      try {
-        const [row] = await sql`
-          UPDATE project_worktrees w SET head=COALESCE(w.head,${source.head})
-          FROM chats c
-          WHERE w.id=${source.worktreeId} AND c.active_worktree_id=w.id
-            AND c.id=${chatId} AND c.project_id=${projectId}
-            AND w.worker_id=${workerId}
-          RETURNING w.head
-        `;
-        assert.equal(row?.head, revision);
-      } finally {
-        await sql.end({ timeout: 3 });
-      }
       const replicaJob = await page.evaluate(
         async ({ projectId, targetWorkerId, placementPath, revision }) =>
           window.folderApi.createProjectReplica(projectId, {
@@ -133,6 +95,31 @@ export function actualAutomationHandoff({
     },
     async move(id) {
       await fixture.assertRemoteWorker(targetWorkerId);
+      const before = await page.evaluate(
+        async ({ projectId, chatId }) => {
+          const chats = await (
+            await import("/src/lib/api/chats.ts")
+          ).getChats(projectId);
+          const chat = chats.find(({ id }) => id === chatId);
+          const worktrees =
+            await window.folderWire.getProjectWorktreeWireList(projectId);
+          const source = worktrees.find(
+            ({ id }) => id === chat.activeWorktreeId,
+          );
+          return {
+            id: source.id,
+            workerId: source.workerId,
+            head: source.head,
+          };
+        },
+        { projectId, chatId },
+      );
+      assert.equal(before.workerId, workerId);
+      assert.equal(
+        before.head,
+        null,
+        "direct import leaves the initial revision unobserved",
+      );
       await writeFile(
         probe + ".armed",
         JSON.stringify({ id, phase: "observe" }),
@@ -160,13 +147,24 @@ export function actualAutomationHandoff({
         60_000,
       );
       assert.equal(job.sourcePlacement.workerId, workerId);
+      assert.equal(job.sourcePlacement.worktreeId, before.id);
       assert.equal(job.targetPlacement.workerId, targetWorkerId);
       assert.equal(job.targetPlacement.worktreeId, target.id);
+      const observed = await page.evaluate(
+        async ({ projectId, worktreeId }) =>
+          (await window.folderWire.getProjectWorktreeWireList(projectId)).find(
+            ({ id }) => id === worktreeId,
+          )?.head,
+        { projectId, worktreeId: before.id },
+      );
+      assert.equal(observed, target.head);
       return {
         jobId: job.id,
         sourceWorker: job.sourcePlacement.workerId,
         targetWorker: job.targetPlacement.workerId,
         targetWorktree: job.targetPlacement.worktreeId,
+        sourceRevisionBeforeRequest: before.head,
+        sourceRevisionAfterRequest: observed,
       };
     },
     async close() {

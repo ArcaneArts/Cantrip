@@ -16,6 +16,7 @@ import { relocationFailures } from "./chat-relocation-http-failures.mjs";
 import { relocationFaultRuntime } from "./chat-relocation-commit-proxy.mjs";
 import { relocationPostcommit } from "./chat-relocation-postcommit-cases.mjs";
 import { relocationRecoveryFence } from "./chat-relocation-recovery-fence.mjs";
+import { relocationSourceRevision } from "./chat-relocation-source-revision.mjs";
 import {
   relocationCallerShutdown,
   relocationUnsafeCancellation,
@@ -51,6 +52,7 @@ const { values } = parseArgs({
     caller: { type: "boolean", default: false },
     "commit-faults": { type: "boolean", default: false },
     "recovery-fence": { type: "boolean", default: false },
+    "source-revision": { type: "boolean", default: false },
   },
 });
 const root = await mkdtemp(
@@ -888,6 +890,14 @@ async function flow(fixture, result, profile, faultRuntime) {
         normal,
         startedAt,
         result,
+      });
+    if (values["source-revision"] && fixture.kind === "rust")
+      result.sourceRevision = await relocationSourceRevision({
+        fixture,
+        state,
+        reset,
+        target,
+        waitJob,
       });
     result.background = state.background;
   } catch (error) {
