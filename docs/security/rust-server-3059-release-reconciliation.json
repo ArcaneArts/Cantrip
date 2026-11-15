@@ -204,6 +204,7 @@
     "linuxWorkerLinkBinaryRelayAndRecovery": "docs/security/rust-server-3059-linux-worker-link.json",
     "macosFreshPgliteReadiness": "docs/security/rust-server-3059-macos-fresh-pglite.json",
     "macosNativeQueueWire": "docs/security/rust-server-3059-macos-native-queue-wire.json",
+    "macosAndLinuxNativeQueueDelivery": "docs/security/rust-server-3059-native-queue-delivery.json",
     "mobile": "docs/security/rust-server-3059-mobile-qualification.json",
     "existingFileChecksumsReverified": 33,
     "windowsDesktopCurrentWorker": {

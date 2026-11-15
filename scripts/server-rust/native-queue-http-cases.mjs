@@ -8,7 +8,12 @@ import { nativeQueueHttpContent } from "./native-queue-http-content.mjs";
 import { nativeQueueHttpImports } from "./native-queue-http-imports.mjs";
 import { nativeQueueHttpAuthorization } from "./native-queue-http-authorization.mjs";
 
-export async function nativeQueueHttpCases({ h, client, result }) {
+export async function nativeQueueHttpCases({
+  h,
+  client,
+  result,
+  observeRevision,
+}) {
   const session = h.prepared[chat].session;
   const content = nativeQueueHttpContent(h, result);
   const auth = {
@@ -27,6 +32,7 @@ export async function nativeQueueHttpCases({ h, client, result }) {
       },
     );
     await content.prove(value);
+    await observeRevision(value?.revision);
     return value;
   };
   for (const action of [
@@ -261,6 +267,13 @@ export async function nativeQueueHttpCases({ h, client, result }) {
       status: 400,
     },
   );
-  await nativeQueueHttpImports({ h, client, result, content, call, read });
+  await nativeQueueHttpImports({
+    h,
+    client,
+    content,
+    call,
+    read,
+    observeRevision,
+  });
   content.finish();
 }
