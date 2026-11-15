@@ -21,6 +21,8 @@ export async function actualModelOperationsClient({
   settleModelWhilePostgresOffline,
   modelPostgresOutageDurationMs,
   redisOutage,
+  modelRedisOutageOperation = "embedding",
+  replyWhileRedisOffline,
   requests,
   result,
 }) {
@@ -489,6 +491,7 @@ export async function actualModelOperationsClient({
   };
   const exerciseRedisOutage = async () => {
     const name = "active-redis-outage";
+    const operation = modelRedisOutageOperation;
     const redis = fixture.redis;
     const peers = fixture.peers.map(({ server }) => server);
     const worker = workerProcessForInterruption();
@@ -503,13 +506,13 @@ export async function actualModelOperationsClient({
       },
     );
     const claim = await fixture.assertRemoteWorker(workerId);
-    const plan = provider.reply("embedding", { hold: true });
-    await begin(name, "embedding", { timeout: 120_000 });
+    const plan = provider.reply(operation, { hold: true });
+    await begin(name, operation, { timeout: 120_000 });
     await eventually(
       () => plan.entered,
       (entered) => assert.equal(entered, true),
     );
-    const wire = JSON.parse(requestFor("embedding").body);
+    const wire = JSON.parse(requestFor(operation).body);
     const before = await eventually(rows, (current) => {
       const matching = current.filter(
         (row) => row.executionAttemptId === wire.operationId,
@@ -538,6 +541,7 @@ export async function actualModelOperationsClient({
         },
       );
     const outage = (report.redisOutage = {
+      operation,
       operationId: wire.operationId,
       claim,
       workerPid: worker.pid,
@@ -546,23 +550,36 @@ export async function actualModelOperationsClient({
     });
     outage.stop = await redis.stop();
     const stoppedAt = performance.now();
+    const observePending = async () => ({
+      providerClosed: plan.entry.closed,
+      providerCompleted: plan.entry.completed,
+      browser: await page.evaluate((key) => {
+        const { settled, result } = window.modelOperationFixture.jobs[key];
+        return { settled, result };
+      }, name),
+    });
     try {
       assert.equal(outage.stop.signal, "SIGKILL");
       assert.equal(outage.stop.code, null);
       outage.offline = await readiness("unavailable");
-      await delay(Math.max(0, 45_000 - (performance.now() - stoppedAt)));
-      outage.prolongedOffline = await readiness("unavailable");
-      outage.operationWhileOffline = {
-        providerClosed: plan.entry.closed,
-        providerCompleted: plan.entry.completed,
-        browser: await page.evaluate((key) => {
-          const { settled, result } = window.modelOperationFixture.jobs[key];
-          return { settled, result };
-        }, name),
-      };
+      const waitForOutage = (ms) =>
+        delay(Math.max(0, ms - (performance.now() - stoppedAt)));
+      await waitForOutage(replyWhileRedisOffline ? 20_000 : 45_000);
+      outage.operationWhileOffline = await observePending();
       assert.equal(outage.operationWhileOffline.providerClosed, false);
       assert.equal(outage.operationWhileOffline.providerCompleted, false);
       assert.equal(outage.operationWhileOffline.browser.settled, false);
+      if (replyWhileRedisOffline) {
+        plan.release();
+        await eventually(
+          () => plan.entry.completed,
+          (completed) => assert.equal(completed, true),
+        );
+        outage.providerReplyAfterMs = Math.round(performance.now() - stoppedAt);
+        await waitForOutage(45_000);
+        outage.providerReplyWhileOffline = await observePending();
+      }
+      outage.prolongedOffline = await readiness("unavailable");
     } finally {
       outage.offlineMs = Math.round(performance.now() - stoppedAt);
       await redis.start();
@@ -580,13 +597,13 @@ export async function actualModelOperationsClient({
       },
     );
     outage.providerClosedOnReconnect = plan.entry.closed;
-    if (!plan.entry.closed) plan.release();
-    const outcome = await finish(name, "embedding", 1);
+    if (!replyWhileRedisOffline && !plan.entry.closed) plan.release();
+    const outcome = await finish(name, operation, 1);
     assert.equal(outcome.ok, false);
     assert.equal(outcome.status, 502);
     assert.equal(outcome.code, "model-operation-unavailable");
     await receipt(name, { status: "unknown", transport: "unavailable" });
-    await replay(name, "embedding", "invalid-request", (observed, original) => {
+    await replay(name, operation, "invalid-request", (observed, original) => {
       outage.afterReplay = observed;
       // A protected replay rejection can report that it replied without a
       // usage receipt. Neither transport outcome provides billable evidence.
@@ -628,7 +645,7 @@ export async function actualModelOperationsClient({
       assert.equal(child.signalCode, null);
     }
     result.steps.push(
-      "prolonged Redis loss interrupts the cross-peer reply, records one unknown usage outcome and reconnects the same worker without replay",
+      `prolonged Redis loss interrupts the cross-peer ${operation} reply, records one unknown usage outcome and reconnects the same worker without replay`,
     );
   };
   try {

@@ -1,0 +1,575 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "integratedSourceCommitBeforeHarness": "742ce127c8a36bbb7a0bbdf20d277bd4f17d9eb4",
+  "artifactSourceCommit": "f820371ea602a2493f2e6beca6438cc188446580",
+  "workerVersion": "1.1.3059",
+  "workerEntry": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/worker/dist/index.js",
+    "bytes": 391720,
+    "sha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c"
+  },
+  "nodeReferenceSourceTree": "3b67d65df364e06ddd97e949564046e269101831",
+  "nodeDriverVersion": "v24.22.1",
+  "redisVersion": "8.10.3",
+  "postgresVersion": "postgres (PostgreSQL) 18.6 (Homebrew)",
+  "scope": "Actual Chromium app SDK and full packaged worker on macOS ARM64, with browser and worker attached to opposite peers. Each cell uses isolated external PostgreSQL and a real Redis process. Linux x64 uses Rosetta. Only the loopback provider HTTP responses are controlled.",
+  "macosStandalone": {
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/cantrip-server-1.1.3059-darwin-arm64.tar.zst",
+      "bytes": 63134019,
+      "sha256": "8524cc99886b24bcc19bd25245f2846ff631f3ef28358bee8599d821ad812abf"
+    },
+    "packageVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/verified-macos-package.json",
+      "bytes": 400,
+      "sha256": "01fe1675a0e5a0514d7e04b538589c583669d06d6246d1fec2ef065165ada664"
+    }
+  },
+  "linuxImages": {
+    "arm64": {
+      "imageArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/arm64/cantrip-server-1.1.3059-linux-arm64.image.tar.zst",
+        "bytes": 177474699,
+        "sha256": "1d64e964fc1510d9953a19600433a08a0b1cbebdc7cebcf5c72832175208f6e4"
+      },
+      "imageDigest": "sha256:02bb9cc4bc4644465882ae7013aa3ba999d79cb3850f319d50c4e7c0ebc40398",
+      "serverSha256": "b802ee28a32e6df25be91da62ead44d3735ecc834fe0d41cc8a83b70be420898"
+    },
+    "x64": {
+      "imageArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/x64/cantrip-server-1.1.3059-linux-x64.image.tar.zst",
+        "bytes": 180713775,
+        "sha256": "0e0a675396947207fc99ab3fd905de5e224e3d479fa61401f24b772e042fc8a8"
+      },
+      "imageDigest": "sha256:a315ba94431a64f991e5b49875228f77510002fbb70886261506f9ed37b7a144",
+      "serverSha256": "f85dcfe460eaeb915c57f6b726edea03cffc556891e7688d38e4db61b9e4ebd4"
+    }
+  },
+  "reusedX64PackageReceipt": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/verified-x64-package.json",
+    "bytes": 298,
+    "sha256": "e2a90d7aa7d8bb157b7c664d0fe7b7a1d519b7538396dd606fc89eb49fa6ad62"
+  },
+  "commonInterruptedDecisionOutcome": {
+    "ok": false,
+    "name": "CantripApiError",
+    "code": "model-operation-unavailable",
+    "status": 502,
+    "message": "The decision worker operation could not be completed. It was not automatically retried."
+  },
+  "matchingFreshDecision": {
+    "status": "complete",
+    "adapter": "openai-decisions",
+    "answers": [
+      {
+        "id": "ready",
+        "nativeAnswer": {
+          "name": "ready",
+          "type": "predicate",
+          "probability": 0.75
+        },
+        "type": "predicate",
+        "probability": 0.75
+      },
+      {
+        "id": "action",
+        "nativeAnswer": {
+          "name": "action",
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.8,
+          "probabilities": [
+            {
+              "value": "continue",
+              "probability": 0.8
+            },
+            {
+              "value": "stop",
+              "probability": 0.2
+            }
+          ]
+        },
+        "type": "choice",
+        "choice": "continue",
+        "probabilities": [
+          {
+            "id": "continue",
+            "probability": 0.8
+          },
+          {
+            "id": "stop",
+            "probability": 0.2
+          }
+        ],
+        "confidence": 0.8
+      },
+      {
+        "id": "risk",
+        "nativeAnswer": {
+          "name": "risk",
+          "type": "score",
+          "score": 0.75,
+          "probabilities": [
+            {
+              "value": 0,
+              "probability": 0.25
+            },
+            {
+              "value": 1,
+              "probability": 0.75
+            }
+          ]
+        },
+        "type": "score",
+        "score": 0.75,
+        "probabilities": [
+          {
+            "id": "low",
+            "probability": 0.25
+          },
+          {
+            "id": "high",
+            "probability": 0.75
+          }
+        ],
+        "confidence": null,
+        "levels": [
+          {
+            "id": "low"
+          },
+          {
+            "id": "high"
+          }
+        ],
+        "semantics": "probability-weighted-zero-based-index"
+      }
+    ],
+    "usage": {
+      "inputTokens": 7,
+      "outputTokens": 3,
+      "totalTokens": 10,
+      "cost": null
+    }
+  },
+  "cases": [
+    {
+      "platform": "darwin-arm64",
+      "peerPairing": "node/node",
+      "providerRepliedWhileRedisOffline": false,
+      "providerReplyAfterRedisStopMs": null,
+      "browserSettledWhileOfflineAfterProviderReply": null,
+      "actualOfflineMs": 45003,
+      "interruptedProviderRequests": 1,
+      "interruptedAttemptStatus": "unknown",
+      "transportAfterReplay": "replied",
+      "interruptedUsageReceiptPresent": false,
+      "freshDecisionReceiptTokens": 10,
+      "cleanPeerExits": 6,
+      "cleanWorkerExits": 4,
+      "modelOperations": 14,
+      "providerRequests": 15,
+      "input": "mac-held"
+    },
+    {
+      "platform": "darwin-arm64",
+      "peerPairing": "node/rust",
+      "providerRepliedWhileRedisOffline": false,
+      "providerReplyAfterRedisStopMs": null,
+      "browserSettledWhileOfflineAfterProviderReply": null,
+      "actualOfflineMs": 45004,
+      "interruptedProviderRequests": 1,
+      "interruptedAttemptStatus": "unknown",
+      "transportAfterReplay": "replied",
+      "interruptedUsageReceiptPresent": false,
+      "freshDecisionReceiptTokens": 10,
+      "cleanPeerExits": 6,
+      "cleanWorkerExits": 4,
+      "modelOperations": 14,
+      "providerRequests": 15,
+      "input": "mac-held"
+    },
+    {
+      "platform": "darwin-arm64",
+      "peerPairing": "rust/node",
+      "providerRepliedWhileRedisOffline": false,
+      "providerReplyAfterRedisStopMs": null,
+      "browserSettledWhileOfflineAfterProviderReply": null,
+      "actualOfflineMs": 45003,
+      "interruptedProviderRequests": 1,
+      "interruptedAttemptStatus": "unknown",
+      "transportAfterReplay": "replied",
+      "interruptedUsageReceiptPresent": false,
+      "freshDecisionReceiptTokens": 10,
+      "cleanPeerExits": 6,
+      "cleanWorkerExits": 4,
+      "modelOperations": 14,
+      "providerRequests": 15,
+      "input": "mac-held"
+    },
+    {
+      "platform": "darwin-arm64",
+      "peerPairing": "rust/rust",
+      "providerRepliedWhileRedisOffline": false,
+      "providerReplyAfterRedisStopMs": null,
+      "browserSettledWhileOfflineAfterProviderReply": null,
+      "actualOfflineMs": 45007,
+      "interruptedProviderRequests": 1,
+      "interruptedAttemptStatus": "unknown",
+      "transportAfterReplay": "replied",
+      "interruptedUsageReceiptPresent": false,
+      "freshDecisionReceiptTokens": 10,
+      "cleanPeerExits": 6,
+      "cleanWorkerExits": 4,
+      "modelOperations": 14,
+      "providerRequests": 15,
+      "input": "mac-held"
+    },
+    {
+      "platform": "darwin-arm64",
+      "peerPairing": "node/node",
+      "providerRepliedWhileRedisOffline": true,
+      "providerReplyAfterRedisStopMs": 20051,
+      "browserSettledWhileOfflineAfterProviderReply": false,
+      "actualOfflineMs": 45003,
+      "interruptedProviderRequests": 1,
+      "interruptedAttemptStatus": "unknown",
+      "transportAfterReplay": "replied",
+      "interruptedUsageReceiptPresent": false,
+      "freshDecisionReceiptTokens": 10,
+      "cleanPeerExits": 6,
+      "cleanWorkerExits": 4,
+      "modelOperations": 14,
+      "providerRequests": 15,
+      "input": "mac-offline"
+    },
+    {
+      "platform": "darwin-arm64",
+      "peerPairing": "node/rust",
+      "providerRepliedWhileRedisOffline": true,
+      "providerReplyAfterRedisStopMs": 20052,
+      "browserSettledWhileOfflineAfterProviderReply": false,
+      "actualOfflineMs": 45008,
+      "interruptedProviderRequests": 1,
+      "interruptedAttemptStatus": "unknown",
+      "transportAfterReplay": "replied",
+      "interruptedUsageReceiptPresent": false,
+      "freshDecisionReceiptTokens": 10,
+      "cleanPeerExits": 6,
+      "cleanWorkerExits": 4,
+      "modelOperations": 14,
+      "providerRequests": 15,
+      "input": "mac-offline"
+    },
+    {
+      "platform": "darwin-arm64",
+      "peerPairing": "rust/node",
+      "providerRepliedWhileRedisOffline": true,
+      "providerReplyAfterRedisStopMs": 20053,
+      "browserSettledWhileOfflineAfterProviderReply": false,
+      "actualOfflineMs": 45008,
+      "interruptedProviderRequests": 1,
+      "interruptedAttemptStatus": "unknown",
+      "transportAfterReplay": "replied",
+      "interruptedUsageReceiptPresent": false,
+      "freshDecisionReceiptTokens": 10,
+      "cleanPeerExits": 6,
+      "cleanWorkerExits": 4,
+      "modelOperations": 14,
+      "providerRequests": 15,
+      "input": "mac-offline"
+    },
+    {
+      "platform": "darwin-arm64",
+      "peerPairing": "rust/rust",
+      "providerRepliedWhileRedisOffline": true,
+      "providerReplyAfterRedisStopMs": 20053,
+      "browserSettledWhileOfflineAfterProviderReply": false,
+      "actualOfflineMs": 45006,
+      "interruptedProviderRequests": 1,
+      "interruptedAttemptStatus": "unknown",
+      "transportAfterReplay": "replied",
+      "interruptedUsageReceiptPresent": false,
+      "freshDecisionReceiptTokens": 10,
+      "cleanPeerExits": 6,
+      "cleanWorkerExits": 4,
+      "modelOperations": 14,
+      "providerRequests": 15,
+      "input": "mac-offline"
+    },
+    {
+      "platform": "linux-arm64",
+      "peerPairing": "rust/rust",
+      "providerRepliedWhileRedisOffline": false,
+      "providerReplyAfterRedisStopMs": null,
+      "browserSettledWhileOfflineAfterProviderReply": null,
+      "actualOfflineMs": 45011,
+      "interruptedProviderRequests": 1,
+      "interruptedAttemptStatus": "unknown",
+      "transportAfterReplay": "unavailable",
+      "interruptedUsageReceiptPresent": false,
+      "freshDecisionReceiptTokens": 10,
+      "cleanPeerExits": 6,
+      "cleanWorkerExits": 4,
+      "modelOperations": 14,
+      "providerRequests": 15,
+      "input": "arm64-held"
+    },
+    {
+      "platform": "linux-arm64",
+      "peerPairing": "rust/rust",
+      "providerRepliedWhileRedisOffline": true,
+      "providerReplyAfterRedisStopMs": 20057,
+      "browserSettledWhileOfflineAfterProviderReply": false,
+      "actualOfflineMs": 45011,
+      "interruptedProviderRequests": 1,
+      "interruptedAttemptStatus": "unknown",
+      "transportAfterReplay": "unavailable",
+      "interruptedUsageReceiptPresent": false,
+      "freshDecisionReceiptTokens": 10,
+      "cleanPeerExits": 6,
+      "cleanWorkerExits": 4,
+      "modelOperations": 14,
+      "providerRequests": 15,
+      "input": "arm64-offline"
+    },
+    {
+      "platform": "linux-x64",
+      "peerPairing": "rust/rust",
+      "providerRepliedWhileRedisOffline": false,
+      "providerReplyAfterRedisStopMs": null,
+      "browserSettledWhileOfflineAfterProviderReply": null,
+      "actualOfflineMs": 45010,
+      "interruptedProviderRequests": 1,
+      "interruptedAttemptStatus": "unknown",
+      "transportAfterReplay": "unavailable",
+      "interruptedUsageReceiptPresent": false,
+      "freshDecisionReceiptTokens": 10,
+      "cleanPeerExits": 6,
+      "cleanWorkerExits": 4,
+      "modelOperations": 14,
+      "providerRequests": 15,
+      "input": "x64-held"
+    },
+    {
+      "platform": "linux-x64",
+      "peerPairing": "rust/rust",
+      "providerRepliedWhileRedisOffline": true,
+      "providerReplyAfterRedisStopMs": 20055,
+      "browserSettledWhileOfflineAfterProviderReply": false,
+      "actualOfflineMs": 45020,
+      "interruptedProviderRequests": 1,
+      "interruptedAttemptStatus": "unknown",
+      "transportAfterReplay": "unavailable",
+      "interruptedUsageReceiptPresent": false,
+      "freshDecisionReceiptTokens": 10,
+      "cleanPeerExits": 6,
+      "cleanWorkerExits": 4,
+      "modelOperations": 14,
+      "providerRequests": 15,
+      "input": "x64-offline"
+    }
+  ],
+  "runs": {
+    "mac-held": {
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/mac-held.json",
+        "bytes": 2159245,
+        "sha256": "66e2db98253f48623f6f35baeb21eea76002e4be3648caa7e4b8b57030378afa"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/mac-held.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/mac-held.log",
+        "bytes": 7320,
+        "sha256": "fc6cb04a45032615304f6418d3ee6ce0ec59049e456ac08852701a8f8797aa90"
+      },
+      "harnessHashes": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/running-harness.sha256",
+        "bytes": 232,
+        "sha256": "4f75f23d06d3f2d9171bbfa7b344ffea4cc02878bc1effa0f17a134b2acfadf6"
+      }
+    },
+    "mac-offline": {
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/mac-offline.json",
+        "bytes": 2158424,
+        "sha256": "1595ac1e03cc70b21ef65e3a4c1f1ce7ceb7e010ea75bdf2384fa490b269d7cd"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/mac-offline.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/mac-offline.log",
+        "bytes": 7449,
+        "sha256": "ee589f294b9d0ab059c2a0328d0e14b92a4926c25871f93f3b05507446a9deda"
+      },
+      "harnessHashes": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/offline-reply-harness.sha256",
+        "bytes": 232,
+        "sha256": "21ef31d6ec49528321736f2064be75ef756417d9cdf29baffae7164e8168ce31"
+      }
+    },
+    "arm64-held": {
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/arm64-held.json",
+        "bytes": 521497,
+        "sha256": "e47c1b10d4976cb966d51f6f3419ccea0ba06e50393af09139932063ce625a0f"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/arm64-held.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/arm64-held.log",
+        "bytes": 1939,
+        "sha256": "7c599b9e47f9eafa46720cbff438d1ed03b88a0a4b95f5330cd29fbce3ac4a08"
+      },
+      "harnessHashes": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/running-harness.sha256",
+        "bytes": 232,
+        "sha256": "4f75f23d06d3f2d9171bbfa7b344ffea4cc02878bc1effa0f17a134b2acfadf6"
+      },
+      "containerGenerations": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/arm64-held-generations.jsonl",
+        "bytes": 6162,
+        "sha256": "a5ec35d2395e278b11bc25225dd0caf46b9b7b8f93662090e3c61a1889439c5c"
+      },
+      "observedBinaryExecution": ["direct"]
+    },
+    "arm64-offline": {
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/arm64-offline.json",
+        "bytes": 517923,
+        "sha256": "62d2b738047f4b2634d3f822176a044b1c21f2e0ea4afba8b9f72a974eb60762"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/arm64-offline.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/arm64-offline.log",
+        "bytes": 1939,
+        "sha256": "94cf56ef95a4d7376e203f949832d48b2dca9565af692dc0cf5c06a99c0c7032"
+      },
+      "harnessHashes": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/offline-reply-harness.sha256",
+        "bytes": 232,
+        "sha256": "21ef31d6ec49528321736f2064be75ef756417d9cdf29baffae7164e8168ce31"
+      },
+      "containerGenerations": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/arm64-offline-generations.jsonl",
+        "bytes": 6174,
+        "sha256": "90aba6e735ff9f8aa88c2430a3c43dbe3e7d878fdf59d151564fff2fce28763e"
+      },
+      "observedBinaryExecution": ["direct"]
+    },
+    "x64-held": {
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/x64-held.json",
+        "bytes": 534412,
+        "sha256": "58e55f6aefe9b005a761858ee4ff2f02ede553fa486a9b55861b08d887bac2e9"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/x64-held.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/x64-held.log",
+        "bytes": 1982,
+        "sha256": "ec99e1bb215389a016d9f6c3924ec68048f3d0d56375c3efca8151b86fb478d9"
+      },
+      "harnessHashes": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/running-harness.sha256",
+        "bytes": 232,
+        "sha256": "4f75f23d06d3f2d9171bbfa7b344ffea4cc02878bc1effa0f17a134b2acfadf6"
+      },
+      "containerGenerations": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/x64-held-generations.jsonl",
+        "bytes": 6474,
+        "sha256": "a9f76ebf1adff65636ddab21c24b2034374004af0115ed3956438789f262cbf5"
+      },
+      "observedBinaryExecution": ["mapped"]
+    },
+    "x64-offline": {
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/x64-offline.json",
+        "bytes": 526578,
+        "sha256": "6a3c36333d3aa9a8f2b270cb68eb552daa0d1ee5ba8ff9276be18aa023c5242f"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/x64-offline.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/x64-offline.log",
+        "bytes": 1982,
+        "sha256": "5cd96d71c10d82401c1f26434986dada8cb57930a66c4626d0d0ba2ad989ed56"
+      },
+      "harnessHashes": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/offline-reply-harness.sha256",
+        "bytes": 232,
+        "sha256": "21ef31d6ec49528321736f2064be75ef756417d9cdf29baffae7164e8168ce31"
+      },
+      "containerGenerations": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/x64-offline-generations.jsonl",
+        "bytes": 6486,
+        "sha256": "18b93c4b2f130eb1ed398b606dba0f7d4c645ecd429ebee659c37b6611da62cd"
+      },
+      "observedBinaryExecution": ["mapped"]
+    }
+  },
+  "localRunner": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/run-case.sh",
+    "bytes": 2859,
+    "sha256": "335ef286d5d359ad552501bfcee21c01467c69dc4305fac53532e78f80a28bab"
+  },
+  "defaultEmbeddingRegression": {
+    "modelOperations": 14,
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/mac-embedding-default.json",
+      "bytes": 567623,
+      "sha256": "8a9507a344ca44dde8cf577a47a38a2f522ee51fb92804be32c6da1b529cf334"
+    },
+    "exit": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/mac-embedding-default.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "log": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/mac-embedding-default.log",
+      "bytes": 1983,
+      "sha256": "c4b9150622aeba025b10d68dd131eb4bf0bbd9aa777a3a94f580fde236e1a653"
+    },
+    "runner": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/run-embedding-default.sh",
+      "bytes": 2809,
+      "sha256": "91cf886a2f6f2547fed5420ce73d6450367b929d2e25788bebafa36d8b738a08"
+    }
+  },
+  "initialLoaderFailure": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/initial-module-loader-failure/mac-held.log",
+    "bytes": 1392,
+    "sha256": "870eb98220e86032068259d11300ccb44f46d4a333f2d4cace30c81813e3efc8"
+  },
+  "canceledFixtureBuild": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-active-decision-redis-outage.emOXPeAY/canceled-rust-fixture-build/mac-held.log",
+    "bytes": 2454,
+    "sha256": "b6a0c3a909b03cf1c7b88ec35444bafb358bbf809e7105ef7a6c5f7a5896ece3"
+  },
+  "limitations": [
+    "The paired peers use external PostgreSQL. These cases exercise a Redis process failure without a simultaneous PostgreSQL or peer failure.",
+    "The Windows installed package and additional provider adapters retain separate qualification.",
+    "The original holding cases ran the earlier hash of the test driver, which sampled final readiness just before observing the held request. The final offline-reply driver samples readiness after observing it."
+  ]
+}
