@@ -4,10 +4,10 @@ The normal development, package, desktop and deployment entrypoints now select
 Rust. See [default cutover](RUST_SERVER_DEFAULT_CUTOVER.md) for the exact local
 checks and remaining replacement requirements. The production Node workspace
 and entrypoints are removed; explicit development comparisons retain a
-[test-only baseline](RUST_SERVER_NODE_RETIREMENT.md). The worker remains Node,
-and final shipping acceptance remains unfinished. Older sections below retain
-their milestone-time observations; their statements about Node being the default
-describe those earlier revisions.
+[test-only baseline](RUST_SERVER_NODE_RETIREMENT.md). The worker remains Node.
+The [final 1.1.3059 qualification](RUST_SERVER_ACCEPTANCE_RECONCILIATION.md)
+records the supported artifacts, migration and rollback results, and release
+scope. Older sections retain the observations made at each milestone.
 
 The [durable Git-operation qualification](RUST_SERVER_GIT_OBSERVATIONS.md) now
 implements the worker notification consumer and all seven repository methods,

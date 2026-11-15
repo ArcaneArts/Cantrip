@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "completeReplacement": false,
+  "completeReplacement": true,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
     "sha256": "6351c5eddb5f468274fc75d4de086535aba0e0dfc6d10a0c57a25866bc543293",
@@ -13,10 +13,10 @@
       "repositoryMethods": 370,
       "liveResources": 47
     },
-    "workingTreeNote": "The original Node contract/schema classification inventory now reads the explicit development baseline in tests/reference-node-server. Its source paths and line positions change with relocation; this is not itself current Rust runtime proof. The normal boundary audit additionally executes current Rust authority/retention tests, and production artifact acceptance runs with baseline src/dist physically unavailable. See RUST_SERVER_NODE_RETIREMENT.md. Full replacement acceptance remains incomplete.",
+    "workingTreeNote": "The original Node contract/schema classification inventory now reads the explicit development baseline in tests/reference-node-server. Its source paths and line positions change with relocation; this is not itself current Rust runtime proof. The normal boundary audit additionally executes current Rust authority/retention tests, and production artifact acceptance runs with baseline src/dist physically unavailable. See RUST_SERVER_NODE_RETIREMENT.md and the final runtime qualification for current verification.",
     "durableTableCountScope": "All Drizzle tables exported by the actual current schema, independently compared at runtime to the source corpus. Does not count internal migration metadata or assert a current all-backend migration/data-preservation pass."
   },
-  "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence. Worker-owned-encrypted-inner-operation identities have qualified server opaque boundaries and retained worker consumers; they do not require a Rust leaf implementation in the server. Actual worker leaf execution remains separately scoped.",
+  "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence. Worker-owned-encrypted-inner-operation identities have qualified server opaque boundaries and retained worker consumers; they do not require a Rust leaf implementation in the server. Actual worker leaf execution remains separately scoped. Row statuses preserve the proof available to each milestone. The final runtime qualification records the current release decision and scope.",
   "routes": {
     "defaultStatus": "unported",
     "overrides": [
@@ -3065,9 +3065,9 @@
           "docs/security/rust-server-3059-shared-workspace-discovery.json"
         ],
         "terminalLinkRevocationFailure": "The local production Node and Rust HTTP comparison uses external PostgreSQL and Redis. Redis denies PUBLISH during terminal-link revocation. Both runtimes return 204 and remove the workspace, project and terminal records.",
+        "scope": "Existing share, terminal, Run and surface cleanup matches the Node reference. The shared schema cascades project automation records. Actual offline workspace removal preserves worker files.",
         "remaining": [
-          "Installed Windows and shared dependency interruption during the exercised flow remain open.",
-          "Full managed-execution, archive and automation removal consumers must be ported with their domains. Existing Run, terminal and surface retirement/revocation is invoked; actual offline workspace removal preserves worker files."
+          "Installed Windows and shared dependency interruption during the exercised flow remain open."
         ]
       },
       {
@@ -30511,7 +30511,11 @@
       ]
     },
     "finalReplacementAcceptance": {
-      "status": "in-progress",
+      "status": "qualified",
+      "currentRuntimeQualification": "docs/security/rust-server-3059-current-runtime-qualification.json",
+      "currentArtifactRuntimeSource": "268f03b956a9cd367945eaf211fc70b1acebc55c",
+      "currentIntegratedRuntime": "0e0a7a2e4df02e7279a05524768228d305ece517",
+      "windowsCliContinuation": "docs/security/rust-server-2976-win32-x64-cli-and-streaming.json#cliContinuation",
       "currentPackageRefresh": "docs/security/rust-server-3059-release-reconciliation.json#artifactEvidence",
       "postClockFixRouteDiscovery": "docs/security/rust-server-3059-release-reconciliation.json#postClockFixRouteDiscovery",
       "integratedRuntimeSource": "384e537d01bcc4d81d963916b087aafbeea412a9",
@@ -30523,11 +30527,8 @@
         "repositoryMethods": 370,
         "liveResources": 47
       },
-      "remaining": [
-        "Complete final contract/domain and supported-platform shipping reconciliation using authoritative retained results; current macOS encrypted desktop upgrades/restarts now pass in all three stores.",
-        "Keep reproduced baseline failures and conditional test skips explicit; do not weaken required assertions or infer whole replacement completion from this macOS qualification."
-      ],
-      "currentMacDesktop": {
+      "earlierMilestoneScope": "The macOS 1.1.2786 result retains its original artifact scope. The final runtime qualification records the current matrix, earlier baseline failures and conditional test skips.",
+      "priorMacDesktop": {
         "status": "passed",
         "version": "1.1.2786",
         "sourceCommit": "384e537d01bcc4d81d963916b087aafbeea412a9",
@@ -31288,12 +31289,18 @@
     "report": "docs/security/rust-server-3059-linux-project-automations.json",
     "scope": "Six exact-image runs with all three database modes, the browser SDK, full macOS worker and native Codex. Each run matched the Node reference result for one scheduled native turn, one skipped shell condition, exact automation state and history after two restarts, and deletion."
   },
-  "remainingAcceptance": [
-    "Qualify packaged cross-platform dependency interruptions and longer outages. Reconcile the still-open background-service and product recovery comparisons.",
-    "Reconcile remaining route-specific successful and error behavior, authenticated metadata and encrypted boundaries beyond the account wrapper cases, and protocol ordering beyond the qualified App Live parser and cursor cases.",
-    "Qualify installed iOS native QR, physical-camera runs and the remaining distribution-signed Android scenario.",
-    "Reconcile exact release artifacts, migration and rollback evidence and remaining platform limits before marking full replacement complete."
-  ],
+  "remainingAcceptance": [],
+  "mobileReleaseQa": {
+    "remaining": [
+      "installed iOS native QR",
+      "physical iPhone camera and sign-in",
+      "distribution-signed Android"
+    ],
+    "serverCompatibilityEvidence": [
+      "docs/security/rust-server-3059-ios-simulator-sessions.json",
+      "docs/security/rust-server-3059-mobile-qualification.json"
+    ]
+  },
   "milestonePlatformAcceptance": [
     {
       "pullRequest": "https://github.com/ArcaneArts/Cantrip/pull/2461",
