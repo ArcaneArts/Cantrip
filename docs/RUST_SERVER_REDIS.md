@@ -369,6 +369,21 @@ shutdown on all three database modes.
 
 ## Packaged Linux Redis TLS
 
+### Cantrip 1.1.3059
+
+Both rebuilt Linux images passed Rust/Rust, Node/Rust and Rust/Node with
+TLS-only Redis 8.10.3, a private CA supplied through `NODE_EXTRA_CA_CERTS`,
+and isolated PostgreSQL 18. Rust/Rust also passed on both architectures
+with `SSL_CERT_FILE`. The eight pairings retained sixteen worker claims,
+replayed thirty-two committed App Live events, and completed sixteen remote
+WorkerLink requests after Redis restarted. Each pairing verified
+single-session and account-wide logout.
+
+Both images rejected the private certificate without its CA. The
+standalone checks verified SQL export, settings persistence and graceful
+shutdown on all three database modes. Linux x64 ran under Rosetta.
+[Linux 1.1.3059 Redis TLS acceptance](security/rust-server-3059-linux-redis-tls.json)
+
 ### Cantrip 1.1.3048
 
 Both Linux images passed Rust/Rust, Node/Rust and Rust/Node with external
