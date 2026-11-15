@@ -2942,10 +2942,11 @@
           "scripts/server-rust/conversion-lifetime-cases.mjs",
           "scripts/server-rust/actual-github-conversion.mjs",
           "docs/security/rust-server-3059-macos-workspace-discovery.json",
-          "docs/security/rust-server-3059-macos-github-initial-push.json"
+          "docs/security/rust-server-3059-macos-github-initial-push.json",
+          "docs/security/rust-server-3059-linux-workspace-discovery.json"
         ],
         "remaining": [
-          "Hosted GitHub push, further source-selection and failure cases, and Linux and Windows package verification remain open.",
+          "Hosted GitHub push, further source-selection and failure cases, and Windows package verification remain open.",
           "Migration, post-write rollback and multi-instance coordination for this route remain open."
         ]
       },
@@ -2962,10 +2963,11 @@
           "scripts/server-rust/conversion-lifetime-cases.mjs",
           "scripts/server-rust/actual-github-conversion.mjs",
           "docs/security/rust-server-3059-macos-workspace-discovery.json",
-          "docs/security/rust-server-3059-macos-github-initial-push.json"
+          "docs/security/rust-server-3059-macos-github-initial-push.json",
+          "docs/security/rust-server-3059-linux-workspace-discovery.json"
         ],
         "remaining": [
-          "Hosted GitHub push, further source-selection and failure cases, and Linux and Windows package verification remain open.",
+          "Hosted GitHub push, further source-selection and failure cases, and Windows package verification remain open.",
           "Migration, post-write rollback and multi-instance coordination for this route remain open."
         ]
       },
@@ -2982,10 +2984,11 @@
           "scripts/server-rust/conversion-lifetime-cases.mjs",
           "scripts/server-rust/actual-github-conversion.mjs",
           "docs/security/rust-server-3059-macos-workspace-discovery.json",
-          "docs/security/rust-server-3059-macos-github-initial-push.json"
+          "docs/security/rust-server-3059-macos-github-initial-push.json",
+          "docs/security/rust-server-3059-linux-workspace-discovery.json"
         ],
         "remaining": [
-          "Hosted GitHub push, further source-selection and failure cases, and Linux and Windows package verification remain open.",
+          "Hosted GitHub push, further source-selection and failure cases, and Windows package verification remain open.",
           "Migration, post-write rollback and multi-instance coordination for this route remain open."
         ]
       },
@@ -3052,11 +3055,12 @@
           "scripts/server-rust/actual-folder-client.mjs",
           "scripts/server-rust/actual-workspace-discovery.mjs",
           "scripts/server-rust/workspace-removal-http-compatibility.mjs",
-          "docs/security/rust-server-3059-macos-workspace-discovery.json"
+          "docs/security/rust-server-3059-macos-workspace-discovery.json",
+          "docs/security/rust-server-3059-linux-workspace-discovery.json"
         ],
         "terminalLinkRevocationFailure": "The local production Node and Rust HTTP comparison uses external PostgreSQL and Redis. Redis denies PUBLISH during terminal-link revocation. Both runtimes return 204 and remove the workspace, project and terminal records.",
         "remaining": [
-          "Single-instance packaged macOS ARM64 acceptance now covers the exercised browser and worker operations on all three stores. Linux, Windows and shared-instance qualification remain open.",
+          "Installed Windows and shared-instance qualification remain open.",
           "Full managed-execution, archive and automation removal consumers must be ported with their domains. Existing Run, terminal and surface retirement/revocation is invoked; actual offline workspace removal preserves worker files."
         ]
       },
@@ -3087,10 +3091,11 @@
           "scripts/server-rust/discovery-http-compatibility.mjs",
           "scripts/server-rust/actual-folder-client.mjs",
           "scripts/server-rust/actual-workspace-discovery.mjs",
-          "docs/security/rust-server-3059-macos-workspace-discovery.json"
+          "docs/security/rust-server-3059-macos-workspace-discovery.json",
+          "docs/security/rust-server-3059-linux-workspace-discovery.json"
         ],
         "remaining": [
-          "Single-instance packaged macOS ARM64 acceptance now covers the exercised browser and worker operations on all three stores. Linux, Windows and shared-instance qualification remain open."
+          "Installed Windows and shared-instance qualification remain open."
         ]
       },
       {
@@ -3120,10 +3125,11 @@
           "scripts/server-rust/discovery-http-compatibility.mjs",
           "scripts/server-rust/actual-folder-client.mjs",
           "scripts/server-rust/actual-workspace-discovery.mjs",
-          "docs/security/rust-server-3059-macos-workspace-discovery.json"
+          "docs/security/rust-server-3059-macos-workspace-discovery.json",
+          "docs/security/rust-server-3059-linux-workspace-discovery.json"
         ],
         "remaining": [
-          "Single-instance packaged macOS ARM64 acceptance now covers the exercised browser and worker operations on all three stores. Linux, Windows and shared-instance qualification remain open."
+          "Installed Windows and shared-instance qualification remain open."
         ]
       },
       {
@@ -3137,10 +3143,11 @@
           "scripts/server-rust/discovery-http-compatibility.mjs",
           "scripts/server-rust/actual-folder-client.mjs",
           "scripts/server-rust/actual-workspace-discovery.mjs",
-          "docs/security/rust-server-3059-macos-workspace-discovery.json"
+          "docs/security/rust-server-3059-macos-workspace-discovery.json",
+          "docs/security/rust-server-3059-linux-workspace-discovery.json"
         ],
         "remaining": [
-          "Single-instance packaged macOS ARM64 acceptance now covers the exercised browser and worker operations on all three stores. Linux, Windows and shared-instance qualification remain open."
+          "Installed Windows and shared-instance qualification remain open."
         ]
       },
       {
