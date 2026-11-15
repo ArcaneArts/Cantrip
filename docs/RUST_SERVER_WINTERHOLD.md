@@ -126,6 +126,17 @@ interrupted product flows, multi-instance coordination and performance.
 
 ## Current Linux x64 qualification
 
+The x64 image rebuilt from PR #3152 passed the 18-step rehearsal with the
+actual installer, systemd units and Caddy configuration. Sessions and
+accepted writes survived upgrade, failure recovery and rollback across all
+three database modes. The two local stores rolled back to an older Rust
+release, and external PostgreSQL rolled back to the historical Node server.
+The TLS-only Redis restart preserved the session and accepted write after
+readiness recovered. Both Linux images from this commit also passed
+migration, SQL export and restart across the three modes as non-root
+processes in read-only containers without Node.
+[Rebuilt Linux artifact and Winterhold evidence](security/rust-server-3059-linux-usage-settlement.json)
+
 The Linux x64 1.1.3059 distribution completed 18 installer operations under
 local ARM64 systemd and Caddy through Rosetta. External PostgreSQL used
 TLS-only Redis and the CA file configured in the systemd environment.
