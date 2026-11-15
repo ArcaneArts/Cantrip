@@ -3,6 +3,10 @@
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { eventually } from "./full-worker.mjs";
+import {
+  interruptSharedQueue,
+  verifyRecoveredQueueClaim,
+} from "./actual-shared-queue-interruption.mjs";
 
 export async function actualSharedQueueRecovery({
   page,
@@ -13,6 +17,7 @@ export async function actualSharedQueueRecovery({
   retainedChatId,
   retainedThreadId,
   resumeRaceFile,
+  interruption,
   configuration,
   model,
   result,
@@ -109,28 +114,42 @@ export async function actualSharedQueueRecovery({
   );
   assert.equal(posts().length, baseline);
 
-  progress.phase = "replacing-worker-owner";
-  const kind = fixture.workerFixture.kind;
-  const replacement = await fixture.replacePeer(1, kind, { crash: true });
-  assert.notEqual(replacement.before.pid, replacement.after.pid);
-  assert.equal(replacement.before.instanceId, before.instanceId);
-  assert.equal(fixture.server.child, browserPeer);
-  const after = await eventually(
-    () => fixture.workerClaim(workerId),
-    (claim) => {
-      assert.equal(claim?.instanceId, replacement.after.instanceId);
-      assert.ok(claim.connectionId);
-      assert.notEqual(claim.connectionId, before.connectionId);
-    },
-  );
-  assert.equal(worker.pid, workerPid);
-  assert.equal(worker.exitCode, null);
-  assert.equal(worker.signalCode, null);
-  assert.deepEqual(await queue(), retained);
-  assert.equal(posts().length, baseline);
-  result.steps.push(
-    "two paused prompts retain their exact queue state after worker-owner server loss and the original full worker reconnects",
-  );
+  const replaceWorkerOwner = async (afterCrash) => {
+    const kind = fixture.workerFixture.kind;
+    const replacement = await fixture.replacePeer(1, kind, {
+      crash: true,
+      afterCrash,
+    });
+    progress.replacement = replacement;
+    assert.notEqual(replacement.before.pid, replacement.after.pid);
+    assert.equal(replacement.before.instanceId, before.instanceId);
+    assert.equal(fixture.server.child, browserPeer);
+    const after = await eventually(
+      () => fixture.workerClaim(workerId),
+      (claim) => {
+        assert.equal(claim?.instanceId, replacement.after.instanceId);
+        assert.ok(claim.connectionId);
+        assert.notEqual(claim.connectionId, before.connectionId);
+      },
+    );
+    assert.equal(worker.pid, workerPid);
+    assert.equal(worker.exitCode, null);
+    assert.equal(worker.signalCode, null);
+    progress.newWorkerConnection = after.connectionId;
+  };
+  Object.assign(progress, {
+    workerPid,
+    oldWorkerConnection: before.connectionId,
+  });
+  if (!interruption) {
+    progress.phase = "replacing-worker-owner";
+    await replaceWorkerOwner();
+    assert.deepEqual(await queue(), retained);
+    assert.equal(posts().length, baseline);
+    result.steps.push(
+      "two paused prompts retain their exact queue state after worker-owner server loss and the original full worker reconnects",
+    );
+  }
 
   progress.phase = "draining";
   if (resumeRaceFile)
@@ -139,9 +158,38 @@ export async function actualSharedQueueRecovery({
       answer: "Private response queued during Resume 🍀",
     });
   const replies = inputs.map(({ answer }, index) =>
-    model.reply({ text: answer, hold: Boolean(resumeRaceFile && index === 0) }),
+    model.reply({
+      text: answer,
+      hold: index === 0 && Boolean(resumeRaceFile || interruption === "stream"),
+    }),
   );
-  if (resumeRaceFile) {
+  if (interruption) {
+    const fault = (progress.interruption = { phase: interruption });
+    await interruptSharedQueue({
+      fixture,
+      chatId,
+      promptId: admitted[0],
+      firstReply: replies[0],
+      modelPosts: () => posts().length - baseline,
+      resume: () =>
+        page.evaluate(async (id) => {
+          const { setChatPaused } = await import("/src/lib/api/chats.ts");
+          const { CantripApiError } = await import("/src/lib/api-client.ts");
+          try {
+            const { paused } = await setChatPaused(id, false);
+            return { paused };
+          } catch (error) {
+            if (!(error instanceof CantripApiError)) throw error;
+            return { status: error.status, error: error.message };
+          }
+        }, chatId),
+      replaceWorkerOwner,
+      fault,
+    });
+    result.steps.push(
+      `the original full worker reconnects after its server dies at the durable queue ${interruption} boundary`,
+    );
+  } else if (resumeRaceFile) {
     const readProbe = async (phase) => {
       try {
         return JSON.parse(await readFile(resumeRaceFile + "." + phase, "utf8"));
@@ -264,12 +312,16 @@ export async function actualSharedQueueRecovery({
       false,
     );
   }
+  if (progress.interruption)
+    await verifyRecoveredQueueClaim({
+      fixture,
+      chatId,
+      promptId: admitted[0],
+      turnId: turns[0].turnId,
+      fault: progress.interruption,
+    });
   Object.assign(progress, {
     phase: "passed",
-    replacement,
-    workerPid,
-    oldWorkerConnection: before.connectionId,
-    newWorkerConnection: after.connectionId,
     canonicalTurns: turns,
     newModelPosts: inputs.length,
   });

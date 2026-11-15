@@ -88,6 +88,35 @@ pub(crate) fn deep_equal(left: &Value, right: &Value) -> bool {
 }
 pub(super) const NO_PERMISSION: &str = "NOT EXISTS (SELECT 1 FROM native_settings_states s WHERE s.chat_id=c.id AND (EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(s.state->'pending','[]'::jsonb)) p WHERE p->'intent'->'permissionTransition' IS NOT NULL) OR (s.state->>'desiredStatus'='uncertain' AND s.state->'desired'->'permissionTransition' IS NOT NULL)))";
 pub(super) const NO_HANDOFF: &str = "NOT EXISTS (SELECT 1 FROM native_runtime_handoffs h WHERE h.chat_id=c.id AND h.phase IN ('preparing','prepared','committed'))";
+/// The explicit Resume transaction already owns the chat row. A transport
+/// closure is retryable only if the native command never reached dispatch.
+/// Keep the rejected command receipt and restore the prompt's queue position.
+pub(crate) async fn retry_undispatched(
+    tx: &Transaction<'_>,
+    owner: &str,
+    chat: &str,
+) -> Result<()> {
+    tx.query(
+        "UPDATE managed_queue_claims q SET status='deferred'
+         FROM queued_prompts p, native_commands n
+         WHERE q.chat_id=$1 AND q.status='rejected' AND q.native_turn_id IS NULL
+           AND p.chat_id=q.chat_id AND p.id=q.prompt_id
+           AND p.revision=q.prompt_revision AND p.state='pending' AND p.frozen=false
+           AND n.chat_id=q.chat_id AND n.owner_id=$2
+           AND n.operation_id=q.operation_id AND n.operation_generation=q.operation_generation
+           AND n.origin='gui' AND n.method='turn/start' AND n.kind='start'
+           AND n.operation_id=n.logical_operation_id
+           AND n.status='rejected' AND n.rejection_code='not-dispatched'
+           AND n.execution_completed_at IS NOT NULL AND n.logical_completed_at IS NOT NULL
+           AND n.terminal_evidence->>'kind'='transport-ended'
+           AND n.terminal_evidence->>'source'='worker-command'
+           AND NOT EXISTS (SELECT 1 FROM native_command_turns t WHERE t.operation_id=n.operation_id)",
+        &[&chat, &owner],
+    )
+    .await?;
+    Ok(())
+}
+
 /// Restore order only for the next canonical executable input. Provider routing
 /// and model availability remain the responsibility of the actual dispatcher.
 pub(super) async fn recovery_eligible(

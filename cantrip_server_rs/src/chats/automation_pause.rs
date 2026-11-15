@@ -190,7 +190,9 @@ impl Service {
                 .await;
         }
         let resume_before_worker = !paused && native && !suspension_resume;
-        let resumed = if resume_before_worker {
+        let resumed = if resume_before_worker && resume_automation {
+            self.chats.resume_agent_automation(owner, &chat).await?
+        } else if resume_before_worker {
             self.chats
                 .set_automation_paused(owner, &chat, false)
                 .await?

@@ -367,6 +367,27 @@ and the three prompts each produce one model request and one completed
 native turn, in queue order on the retained thread.
 [Concurrent Resume evidence](security/rust-server-3059-macos-queue-resume-race.json)
 
+Replacing the queue worker's server after the first prompt starts streaming
+preserved its original model connection, native turn and committed claim in
+all four macOS Node/Rust pairings after the browser acknowledged Resume. Both
+prompts completed once, in order, on the original thread.
+
+At the earlier claim boundary, killing the worker's server interrupted the
+first Resume and left the chat paused. In both the Node reference and the
+packaged Rust baseline, PostgreSQL could complete a pending native admission
+after the server exited. When the attempt later received a durable
+`not-dispatched` rejection, the next Resume skipped that prompt. The Rust
+server now makes the prompt eligible in the same transaction that unpauses
+the chat on an explicit Resume. This requires a matching terminal receipt,
+an unchanged pending prompt, and no observed native turn. The rejected
+command receipt stays available. Fresh Rust/Rust and Rust/Node tests
+consumed the original head first and completed both turns.
+
+Loss of the worker-owner server after native dispatch but before the browser
+receives Resume acknowledgment can still return HTTP 409 while the original
+model stream is open on the reconnected worker.
+[Queue worker-owner loss evidence](security/rust-server-3059-macos-queue-owner-loss.json)
+
 ### Task and Agent restart on Linux
 
 The packaged Rust server and 1.1.3059 Node worker completed 18 browser

@@ -210,6 +210,7 @@
     "macosSharedQueueRecovery": "docs/security/rust-server-3059-macos-shared-queue-recovery.json",
     "macosRetainedChatQueueRecovery": "docs/security/rust-server-3059-macos-retained-chat-queue.json",
     "macosConcurrentQueueResume": "docs/security/rust-server-3059-macos-queue-resume-race.json",
+    "macosQueueWorkerOwnerLoss": "docs/security/rust-server-3059-macos-queue-owner-loss.json",
     "linuxProjectAutomations": "docs/security/rust-server-3059-linux-project-automations.json",
     "macosSharedProjectAutomations": "docs/security/rust-server-3059-shared-project-automations.json",
     "mobile": "docs/security/rust-server-3059-mobile-qualification.json",

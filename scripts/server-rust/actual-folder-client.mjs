@@ -154,6 +154,17 @@ const sharedQueueRetainedChat = process.argv.includes(
 const sharedQueueResumeRace = process.argv.includes(
   "--shared-queue-resume-race",
 );
+const sharedQueueInterruption = option("--shared-queue-interruption");
+if (process.argv.includes("--shared-queue-interruption")) {
+  assert.ok(
+    ["claim", "stream"].includes(sharedQueueInterruption),
+    "Shared queue interruption requires claim or stream",
+  );
+  assert.ok(
+    sharedQueueRecovery && !sharedQueueResumeRace,
+    "Shared queue interruption requires --shared-queue-recovery without the Resume race",
+  );
+}
 assert.ok(
   !sharedQueueResumeRace || sharedQueueRecovery,
   "Shared queue resume race requires --shared-queue-recovery",
@@ -393,6 +404,7 @@ const report = {
     ? `Encrypted browser queue on ${sharedQueueRetainedChat ? "the retained Agent chat after normal restart and Goal clear" : "a separately prepared Agent chat"} with two paused prompts. SIGKILL and replace the worker-owner peer, reconnect the same full worker, and verify ordered native turns and exactly-once model requests after resume.`
     : null,
   sharedQueueResumeRace,
+  sharedQueueInterruption: sharedQueueInterruption ?? null,
   approvalCancellationScope: approvalCancellation
     ? "Production serving paths, browser SDK, full worker, and actual native Codex approval with an isolated database write failure and a normal approval control."
     : null,
@@ -1748,6 +1760,7 @@ async function flow(
         fixture,
         sharedQueueRecovery,
         sharedQueueRetainedChat,
+        sharedQueueInterruption,
         resumeRaceFile,
         projectId: gitProjectChat ? attached.id : first.id,
         projectRoot: gitProjectChat ? opened.source.path : first.source.path,
