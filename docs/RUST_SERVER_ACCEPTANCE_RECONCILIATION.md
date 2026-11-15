@@ -400,6 +400,13 @@ folder to its own local bare remote. All 24 verified Rust server
 generations and 42 worker processes exited zero.
 [Linux workspace discovery and conversion evidence](security/rust-server-3059-linux-workspace-discovery.json)
 
+The macOS shared-server run also matched the Node pair. Across all four
+Node and Rust pairings, the browser and full worker used opposite peers
+on one external PostgreSQL database and Redis. Discovery, linking, offline
+workspace removal and initial Git push kept the same outcomes after peer
+restarts. All 72 browser steps, 32 server exits and 28 worker exits passed.
+[Shared workspace discovery and conversion evidence](security/rust-server-3059-shared-workspace-discovery.json)
+
 ## Cantrip 1.1.3059 mobile clients
 
 The installed Android API 36 ARM64 emulator app signed into PGlite, bundled

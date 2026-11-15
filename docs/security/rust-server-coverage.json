@@ -2943,11 +2943,12 @@
           "scripts/server-rust/actual-github-conversion.mjs",
           "docs/security/rust-server-3059-macos-workspace-discovery.json",
           "docs/security/rust-server-3059-macos-github-initial-push.json",
-          "docs/security/rust-server-3059-linux-workspace-discovery.json"
+          "docs/security/rust-server-3059-linux-workspace-discovery.json",
+          "docs/security/rust-server-3059-shared-workspace-discovery.json"
         ],
         "remaining": [
           "Hosted GitHub push, further source-selection and failure cases, and Windows package verification remain open.",
-          "Migration, post-write rollback and multi-instance coordination for this route remain open."
+          "Route-specific migration, post-write rollback and shared dependency interruption remain open."
         ]
       },
       {
@@ -2964,11 +2965,12 @@
           "scripts/server-rust/actual-github-conversion.mjs",
           "docs/security/rust-server-3059-macos-workspace-discovery.json",
           "docs/security/rust-server-3059-macos-github-initial-push.json",
-          "docs/security/rust-server-3059-linux-workspace-discovery.json"
+          "docs/security/rust-server-3059-linux-workspace-discovery.json",
+          "docs/security/rust-server-3059-shared-workspace-discovery.json"
         ],
         "remaining": [
           "Hosted GitHub push, further source-selection and failure cases, and Windows package verification remain open.",
-          "Migration, post-write rollback and multi-instance coordination for this route remain open."
+          "Route-specific migration, post-write rollback and shared dependency interruption remain open."
         ]
       },
       {
@@ -2985,11 +2987,12 @@
           "scripts/server-rust/actual-github-conversion.mjs",
           "docs/security/rust-server-3059-macos-workspace-discovery.json",
           "docs/security/rust-server-3059-macos-github-initial-push.json",
-          "docs/security/rust-server-3059-linux-workspace-discovery.json"
+          "docs/security/rust-server-3059-linux-workspace-discovery.json",
+          "docs/security/rust-server-3059-shared-workspace-discovery.json"
         ],
         "remaining": [
           "Hosted GitHub push, further source-selection and failure cases, and Windows package verification remain open.",
-          "Migration, post-write rollback and multi-instance coordination for this route remain open."
+          "Route-specific migration, post-write rollback and shared dependency interruption remain open."
         ]
       },
       {
@@ -3056,11 +3059,12 @@
           "scripts/server-rust/actual-workspace-discovery.mjs",
           "scripts/server-rust/workspace-removal-http-compatibility.mjs",
           "docs/security/rust-server-3059-macos-workspace-discovery.json",
-          "docs/security/rust-server-3059-linux-workspace-discovery.json"
+          "docs/security/rust-server-3059-linux-workspace-discovery.json",
+          "docs/security/rust-server-3059-shared-workspace-discovery.json"
         ],
         "terminalLinkRevocationFailure": "The local production Node and Rust HTTP comparison uses external PostgreSQL and Redis. Redis denies PUBLISH during terminal-link revocation. Both runtimes return 204 and remove the workspace, project and terminal records.",
         "remaining": [
-          "Installed Windows and shared-instance qualification remain open.",
+          "Installed Windows and shared dependency interruption during the exercised flow remain open.",
           "Full managed-execution, archive and automation removal consumers must be ported with their domains. Existing Run, terminal and surface retirement/revocation is invoked; actual offline workspace removal preserves worker files."
         ]
       },
@@ -3092,10 +3096,11 @@
           "scripts/server-rust/actual-folder-client.mjs",
           "scripts/server-rust/actual-workspace-discovery.mjs",
           "docs/security/rust-server-3059-macos-workspace-discovery.json",
-          "docs/security/rust-server-3059-linux-workspace-discovery.json"
+          "docs/security/rust-server-3059-linux-workspace-discovery.json",
+          "docs/security/rust-server-3059-shared-workspace-discovery.json"
         ],
         "remaining": [
-          "Installed Windows and shared-instance qualification remain open."
+          "Installed Windows and shared dependency interruption during the exercised flow remain open."
         ]
       },
       {
@@ -3126,10 +3131,11 @@
           "scripts/server-rust/actual-folder-client.mjs",
           "scripts/server-rust/actual-workspace-discovery.mjs",
           "docs/security/rust-server-3059-macos-workspace-discovery.json",
-          "docs/security/rust-server-3059-linux-workspace-discovery.json"
+          "docs/security/rust-server-3059-linux-workspace-discovery.json",
+          "docs/security/rust-server-3059-shared-workspace-discovery.json"
         ],
         "remaining": [
-          "Installed Windows and shared-instance qualification remain open."
+          "Installed Windows and shared dependency interruption during the exercised flow remain open."
         ]
       },
       {
@@ -3144,10 +3150,11 @@
           "scripts/server-rust/actual-folder-client.mjs",
           "scripts/server-rust/actual-workspace-discovery.mjs",
           "docs/security/rust-server-3059-macos-workspace-discovery.json",
-          "docs/security/rust-server-3059-linux-workspace-discovery.json"
+          "docs/security/rust-server-3059-linux-workspace-discovery.json",
+          "docs/security/rust-server-3059-shared-workspace-discovery.json"
         ],
         "remaining": [
-          "Installed Windows and shared-instance qualification remain open."
+          "Installed Windows and shared dependency interruption during the exercised flow remain open."
         ]
       },
       {
