@@ -100,6 +100,7 @@ pub(crate) fn create_native_tls_connector_builder(
     let Some(NativeTlsParams {
         identity,
         root_certs,
+        replace_built_in_roots,
     }) = tls_params.native_tls_params
     else {
         return builder;
@@ -110,9 +111,7 @@ pub(crate) fn create_native_tls_connector_builder(
     }
 
     if !root_certs.is_empty() {
-        // Supplying root certificates replaces the platform trust store rather than adding to
-        // it, so that the rustls backend and this one trust the same set.
-        builder.disable_built_in_roots(true);
+        builder.disable_built_in_roots(replace_built_in_roots);
         for root_cert in root_certs {
             builder.add_root_certificate(root_cert);
         }

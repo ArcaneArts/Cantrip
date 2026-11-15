@@ -168,6 +168,30 @@ impl Client {
 
         inner_build_with_tls(connection_info, &tls_certs)
     }
+
+    /// Builds a native TLS client that trusts a PEM bundle in addition to the platform roots.
+    #[cfg(all(feature = "tls-native-tls", not(feature = "tls-rustls")))]
+    pub fn build_with_additional_native_roots<C: IntoConnectionInfo>(
+        conn_info: C,
+        root_pem: Vec<u8>,
+    ) -> RedisResult<Self> {
+        let mut client = Self::build_with_tls(
+            conn_info,
+            TlsCertificates {
+                client_tls: None,
+                root_cert: Some(root_pem),
+            },
+        )?;
+        if let crate::ConnectionAddr::TcpTls {
+            tls_params: Some(params),
+            ..
+        } = &mut client.connection_info.addr
+            && let Some(native) = &mut params.native_tls_params
+        {
+            native.replace_built_in_roots = false;
+        }
+        Ok(client)
+    }
 }
 
 #[cfg(feature = "cache-aio")]

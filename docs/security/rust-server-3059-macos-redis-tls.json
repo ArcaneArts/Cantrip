@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "scope": "Local Cantrip 1.1.3059 macOS ARM64 standalone. TLS-only Redis 8.10.3, isolated PostgreSQL 18, account authentication, App Live and controlled WorkerLink worker acknowledgments.",
+  "sourceBase": "fbb4cf42fe412048402111143d7e73c027526a49",
+  "configuration": {
+    "redisScheme": "rediss",
+    "extraCaEnvironment": "NODE_EXTRA_CA_CERTS",
+    "sslCertFileProvided": false,
+    "platformRootsRetained": true
+  },
+  "previousPackage": {
+    "serverSha256": "ec19b42caa3c79bb90b10868b12753dece16de124958a97f515646ff2a3605ba",
+    "failedStartupReport": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/baseline-rust-rust.json",
+      "bytes": 2648,
+      "sha256": "18bac6225027b875a8329d08ec2684e24c2be0fcdb8187886c9c3bb6b33a3de0"
+    }
+  },
+  "nodeReference": {
+    "runtimeVersion": "v24.22.1",
+    "inputDigests": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/node-reference-inputs.sha256",
+      "bytes": 389,
+      "sha256": "d99cd166f8d11fe1d3de0d0b4354e41a9e8db28f0f5d9a03893433b6f2a37acb"
+    },
+    "control": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/baseline-node-node.json",
+      "bytes": 3322,
+      "sha256": "7c21bec20922562a8c5abfbc7aa6723cc3ff6c95e69bd254eda216659b2ec363"
+    }
+  },
+  "macOSPackage": {
+    "serverSha256": "06ecb895e04c0a015145e9decf644a83db6919b7ba698e8e837b69954c023aba",
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/cantrip-server-1.1.3059-darwin-arm64.tar.zst",
+      "bytes": 63134019,
+      "sha256": "8524cc99886b24bcc19bd25245f2846ff631f3ef28358bee8599d821ad812abf"
+    },
+    "productionBuildDiff": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/built-production.diff",
+      "bytes": 6442,
+      "sha256": "7bc9682fd9aac873b25dc6ff6a8f71626e6b244ba03aa0b6a9e2dab6bf814bef"
+    },
+    "allDatabaseModes": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/package-acceptance.json",
+      "bytes": 104788,
+      "sha256": "f5a5967844f375971558c49384fcb67107b8c8bc91faf4f7e9c5cc3526266416"
+    },
+    "manifestFilesVerified": 1762,
+    "cleanStandaloneShutdowns": 13
+  },
+  "pairs": [
+    {
+      "pair": "rust/rust",
+      "scenarioGroups": 7,
+      "retainedWorkerClaims": 2,
+      "exactAppLiveReplays": 4,
+      "postRestartWorkerRequests": 2,
+      "cleanPeerShutdowns": 2,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/candidate-rust-rust.json",
+        "bytes": 4224,
+        "sha256": "6f7a475833cfd965701c1d631b930f33b062755f745581a96b6a5a2c4cee66dd"
+      }
+    },
+    {
+      "pair": "rust/node",
+      "scenarioGroups": 7,
+      "retainedWorkerClaims": 2,
+      "exactAppLiveReplays": 4,
+      "postRestartWorkerRequests": 2,
+      "cleanPeerShutdowns": 2,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/candidate-rust-node.json",
+        "bytes": 4015,
+        "sha256": "ee1e332f5cb1230a1d5af03f254b561b6c9489f328a4364f63e9b06ca46e2135"
+      }
+    },
+    {
+      "pair": "node/rust",
+      "scenarioGroups": 7,
+      "retainedWorkerClaims": 2,
+      "exactAppLiveReplays": 4,
+      "postRestartWorkerRequests": 2,
+      "cleanPeerShutdowns": 2,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/candidate-node-rust.json",
+        "bytes": 4015,
+        "sha256": "14d2f910e300ada5c294257573de9e542ac57935177a631eee6c81da43c9d758"
+      }
+    }
+  ],
+  "negativeCases": [
+    {
+      "case": "missing",
+      "runtimeRejection": "The certificate was not trusted",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/candidate-ca-missing.json",
+        "bytes": 2648,
+        "sha256": "06ea56af80d0ca2d17b50b7eb535398bd9109b5e4e88983cbe82ed99e5a4973d"
+      }
+    },
+    {
+      "case": "invalid-pem",
+      "runtimeRejection": "The certificate was not trusted",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/candidate-ca-invalid-pem.json",
+        "bytes": 2846,
+        "sha256": "2e431bde831403e50eb8df7d3dedaf83c20d82494339c48bd45ad3c35548387a"
+      }
+    },
+    {
+      "case": "wrong-host",
+      "runtimeRejection": "A host name mismatch has occurred",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/candidate-ca-wrong-host.json",
+        "bytes": 2654,
+        "sha256": "d60c26e000932280c2afc86ca0f3bb796cfa0b714e84385ffb5c700afa64fb2c"
+      }
+    }
+  ],
+  "plaintextWithMissingExtraCa": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/candidate-plaintext-missing-ca.json",
+    "bytes": 4011,
+    "sha256": "db254c1e7c5e509724636fe3356813cb7003a5a15c1119133e45a2e1e90fffee"
+  },
+  "drivers": [
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/tls-matrix.mjs",
+      "bytes": 17480,
+      "sha256": "da21923835ec12d8829510728f26374c5bf71f3d75fe4ba8f1325ec55aa17f66"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/tls-negative-matrix.mjs",
+      "bytes": 17796,
+      "sha256": "4dfcb700931a8174bf7a3c8a85434d075cbdf8f44d90cf948c07b4ec8e5fd32d"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/plaintext-with-missing-ca.mjs",
+      "bytes": 15521,
+      "sha256": "db5e48d113f0975c2a23f461a50cd7c10b039cfd61d9e6618c9f9e0ab1d7fda1"
+    }
+  ],
+  "remainingQualification": [
+    "Native Windows packaged Redis TLS compatibility and cross-peer session revocation."
+  ],
+  "windowsCrossBuild": {
+    "target": "x86_64-pc-windows-gnu",
+    "architecture": "AMD64",
+    "serverSha256": "5658a28eac351be3f27667cbabd4868be8a913d38c6c8b8f736f6ab9a6202dec",
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/windows-cross-build/cantrip-server.exe.zst",
+      "bytes": 36620964,
+      "sha256": "9db7b4430685f6e5ec001595badd0be692a9653b24e33df658fab677d81d0c0e"
+    },
+    "additionalImportedLibraries": [],
+    "guestRuntimeTested": false
+  }
+}

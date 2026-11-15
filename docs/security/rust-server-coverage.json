@@ -67,12 +67,11 @@
           "scripts/server-rust/shared-runtime-http-compatibility.mjs",
           "docs/RUST_SERVER_WORKER_LINK_PRODUCTION.md",
           "docs/RUST_SERVER_REDIS.md#packaged-linux-redis-tls",
-          "docs/security/rust-server-2881-shared-session-acceptance.json"
+          "docs/security/rust-server-2881-shared-session-acceptance.json",
+          "docs/security/rust-server-3059-macos-redis-tls.json"
         ],
-        "scope": "Current 1.1.2881 macOS ARM64, Linux ARM64 and Linux x64 passed Rust/Rust, Node/Rust and Rust/Node on shared PostgreSQL and Redis. Single-session logout closed both WorkerLink relays, revoked one direct capability issued on another peer, and preserved the sibling session and its relays. The Linux containers used TLS-only Redis.",
-        "remaining": [
-          "Windows native cross-peer acceptance and macOS Redis TLS with a trusted private CA."
-        ]
+        "scope": "The 1.1.2881 matrix on macOS ARM64, Linux ARM64 and Linux x64 passed Rust/Rust, Node/Rust and Rust/Node on shared PostgreSQL and Redis. Single-session logout closed both WorkerLink relays, revoked one direct capability issued on another peer, and preserved the sibling session and its relays. The Linux containers used TLS-only Redis. Packaged macOS 1.1.3059 passed all three pairings with TLS-only Redis and a private CA.",
+        "remaining": ["Windows native cross-peer acceptance."]
       },
       {
         "method": "POST",
@@ -86,12 +85,11 @@
           "scripts/server-rust/shared-runtime-http-compatibility.mjs",
           "docs/RUST_SERVER_WORKER_LINK_PRODUCTION.md",
           "docs/RUST_SERVER_REDIS.md#packaged-linux-redis-tls",
-          "docs/security/rust-server-2881-shared-session-acceptance.json"
+          "docs/security/rust-server-2881-shared-session-acceptance.json",
+          "docs/security/rust-server-3059-macos-redis-tls.json"
         ],
-        "scope": "Current 1.1.2881 macOS ARM64, Linux ARM64 and Linux x64 passed Rust/Rust, Node/Rust and Rust/Node on shared PostgreSQL and Redis. Account-wide logout revoked two sessions, closed four WorkerLink relays and revoked two direct capabilities issued on opposite peers. The foreign account retained access. The Linux containers used TLS-only Redis.",
-        "remaining": [
-          "Windows native cross-peer acceptance and macOS Redis TLS with a trusted private CA."
-        ]
+        "scope": "The 1.1.2881 matrix on macOS ARM64, Linux ARM64 and Linux x64 passed Rust/Rust, Node/Rust and Rust/Node on shared PostgreSQL and Redis. Account-wide logout revoked two sessions, closed four WorkerLink relays and revoked two direct capabilities issued on opposite peers. The foreign account retained access. The Linux containers used TLS-only Redis. Packaged macOS 1.1.3059 passed all three pairings with TLS-only Redis and a private CA.",
+        "remaining": ["Windows native cross-peer acceptance."]
       },
       {
         "method": "POST",

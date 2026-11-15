@@ -184,6 +184,7 @@ pub(crate) fn retrieve_tls_certificates(
 pub(crate) struct NativeTlsParams {
     pub(crate) identity: Option<native_tls::Identity>,
     pub(crate) root_certs: Vec<native_tls::Certificate>,
+    pub(crate) replace_built_in_roots: bool,
 }
 
 #[cfg(any(
@@ -262,6 +263,7 @@ pub(crate) fn parse_native_tls_params(
     Ok(Some(NativeTlsParams {
         identity,
         root_certs,
+        replace_built_in_roots: true,
     }))
 }
 
