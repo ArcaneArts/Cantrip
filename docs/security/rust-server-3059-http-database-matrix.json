@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "platform": "darwin-arm64",
+  "reviewedCommit": "b4571e69ebeaa58d15f25c9f2c27e51786027362",
+  "artifactSourceCommit": "f820371ea602a2493f2e6beca6438cc188446580",
+  "artifactSourceComparisonPaths": [
+    "cantrip_server_rs",
+    "cantrip_server/drizzle",
+    "cantrip_worker",
+    "packages/protocol",
+    "tests/reference-node-server"
+  ],
+  "artifactVersion": "1.1.3059",
+  "driverNodeVersion": "v24.22.1",
+  "inventoryReferenceVersion": "1.1.3077",
+  "inventorySha256": "6351c5eddb5f468274fc75d4de086535aba0e0dfc6d10a0c57a25866bc543293",
+  "rustExecutableSha256": "06ecb895e04c0a015145e9decf644a83db6919b7ba698e8e837b69954c023aba",
+  "archive": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/cantrip-server-1.1.3059-darwin-arm64.tar.zst",
+    "bytes": 63134019,
+    "sha256": "8524cc99886b24bcc19bd25245f2846ff631f3ef28358bee8599d821ad812abf"
+  },
+  "routeScope": "Real local HTTP requests on separately initialized profiles, with missing resource identifiers and empty mutation bodies. WebSocket routes receive non-upgrade requests. Each matrix row checks status and Content-Type on the complete inventory and reports runtime-dependent bodies separately.",
+  "routeMatrix": [
+    {
+      "rustDatabaseMode": "pglite",
+      "referenceDatabaseEngine": "pglite",
+      "statusAndContentTypePairs": 584,
+      "exactBodyPairs": 570,
+      "runtimeDependentBodiesPerPeer": 14,
+      "unexpectedGenericRustFallbacks": 0,
+      "requestErrors": 0,
+      "matchingAdditionalWorkerCapabilityQueryPairs": 4,
+      "exitCodes": [0, 0],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-route-reconciliation.91c7pvGa/pglite-reconciliation.json",
+        "bytes": 2454169,
+        "sha256": "2bdded79704adf5c2269ca63098003a3ff5d22813a2a7f5cf7f9588b90cadca7"
+      }
+    },
+    {
+      "rustDatabaseMode": "bundled-postgres",
+      "referenceDatabaseEngine": "postgres",
+      "statusAndContentTypePairs": 584,
+      "exactBodyPairs": 570,
+      "runtimeDependentBodiesPerPeer": 14,
+      "unexpectedGenericRustFallbacks": 0,
+      "requestErrors": 0,
+      "matchingAdditionalWorkerCapabilityQueryPairs": 4,
+      "exitCodes": [0, 0],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-route-reconciliation.91c7pvGa/bundled-postgres-reconciliation.json",
+        "bytes": 2453636,
+        "sha256": "c835aaef12904185ee3acca3c3507afb3d0be2c93f0b66449275203922251e78"
+      }
+    },
+    {
+      "rustDatabaseMode": "postgres",
+      "referenceDatabaseEngine": "postgres",
+      "statusAndContentTypePairs": 584,
+      "exactBodyPairs": 570,
+      "runtimeDependentBodiesPerPeer": 14,
+      "unexpectedGenericRustFallbacks": 0,
+      "requestErrors": 0,
+      "matchingAdditionalWorkerCapabilityQueryPairs": 4,
+      "exitCodes": [0, 0],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-route-reconciliation.91c7pvGa/postgres-reconciliation.json",
+        "bytes": 2454192,
+        "sha256": "dcae21fd1955d09d388dda52f6d11adbc4e712ad013d425e91b43a1cb89668bb"
+      }
+    }
+  ],
+  "authenticationScope": "Real HTTP against the same Rust archive and test-only Node server with matching 1.1.3059 version metadata. Eight auth profiles per database include account login, secure cookies, trusted loopback proxy and rate limits. A single isolated external PostgreSQL database is reopened across Node and Rust process lifetimes for retained-account and session tests.",
+  "authenticationMatrix": [
+    {
+      "rustDatabaseMode": "pglite",
+      "profiles": 8,
+      "casePairs": 361,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-route-reconciliation.91c7pvGa/pglite-auth.json",
+        "bytes": 481153,
+        "sha256": "71880792f4a4848e60f474cb33a3e27756d2728d5b66d0b38e8ff603e3e8782e"
+      }
+    },
+    {
+      "rustDatabaseMode": "bundled-postgres",
+      "profiles": 8,
+      "casePairs": 361,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-route-reconciliation.91c7pvGa/bundled-postgres-auth.json",
+        "bytes": 481163,
+        "sha256": "d030be7f15fa8a6bb5eb880d70444c9107b0fb07e861132a7e01871fd3db7bdb"
+      }
+    },
+    {
+      "rustDatabaseMode": "postgres",
+      "profiles": 8,
+      "casePairs": 361,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-route-reconciliation.91c7pvGa/postgres-auth.json",
+        "bytes": 506464,
+        "sha256": "30ac85f7aea00b26528d787f977bd752d94fc3a8e087ab9dfbe3e962568574c2"
+      },
+      "crossRuntimeAuthenticationSteps": 17
+    }
+  ],
+  "generatedContracts": {
+    "matching": 17,
+    "firstParentReferenceChanges": 58,
+    "alsoTouchingRustCore": 49,
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-route-reconciliation.91c7pvGa/current-source-drift.json",
+      "bytes": 92017,
+      "sha256": "64f4f305b309445fa80e4d106530d226eb145b315b8ab406bd921ab9f6671701"
+    }
+  },
+  "limitations": "Other platforms, authenticated WebSocket upgrades, successful domain operations beyond these authentication cases, and the remaining package and rollout acceptance are tracked separately."
+}
