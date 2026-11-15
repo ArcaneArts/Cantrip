@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "target": "win32-x64",
+  "serverSourceCommit": "cdba080907df32759458d6efed55c4d38f8236dc",
+  "testDriverCommit": "9798f5c699e509476adc1931c2704ff3b8aa2ae7",
+  "scope": "Exact Windows standalone archive and original 1.1.3059 packaged Node worker in a headless Windows 11 x64 guest emulated on Apple Silicon. Edge, external PostgreSQL, the worker, native Codex and isolated model provider ran inside the guest.",
+  "completeReplacement": false,
+  "serverArchive": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-871f62ae9-retry.gso8SAsC/extracted/cantrip-server-1.1.3059-win32-x64.tar.gz",
+    "bytes": 97803749,
+    "sha256": "13bbdc1e261029dd21a769edac88d30a27fd67e741b17477b1ddaf1b44673b46"
+  },
+  "serverSha256": "290c60f27e15e5cd2c1110cad05ba413648904e84ffb8f5e7ffc72e0e79ac459",
+  "workerHashes": {
+    "dist/index.js": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c",
+    "bin/codex.exe": "f0db8df766e7b928f9f3f867140e7c3637ca2ef288827a9209aaf0f0d4e39138"
+  },
+  "versions": {
+    "driverNodeVersion": "v24.22.2",
+    "postgresVersion": "postgres (PostgreSQL) 18.6",
+    "gitVersion": "git version 2.56.1.windows.1"
+  },
+  "guestTerminalReceipt": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-3059-postgres-retry.zm7hVILD/extracted/receipt.json",
+    "bytes": 705,
+    "sha256": "62bbf9bc447ded64c2066b07bb307e9356674a5889c5571b9bcd1a6ccbee4a8b"
+  },
+  "hostVerifiedCollection": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-3059-postgres-retry.zm7hVILD/collection.json",
+    "bytes": 1536,
+    "sha256": "88dcd7578baf1f9c5ad863350ed418799ccf889279689a0748ad71a740b17444"
+  },
+  "firstFixtureFailure": {
+    "reason": "Windows tar refused to overwrite the retained runner source. The retry copied only the updated driver files and reused the separately verified original archive.",
+    "receipt": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-3059-postgres-recovery.EMl5fQFm/extracted/receipt.json",
+      "bytes": 389,
+      "sha256": "5cd85106ba5a7ece3577508630c9cddcd3119989fab6535ba9628e847021aff1"
+    }
+  },
+  "overlappingLoss": {
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-3059-postgres-retry.zm7hVILD/extracted/overlap/matrix.json",
+      "bytes": 367615,
+      "sha256": "78ed7ae55e47bbb0de6ff5246eb786f37705632f7796a3ef5e388a170103fe11"
+    },
+    "browserSteps": 20,
+    "modelOperationCases": 14,
+    "providerRequests": 15,
+    "cleanServerExits": 3,
+    "workerRetainedThroughServerLoss": true,
+    "postgresSamePort": true,
+    "interruptedAttemptStatus": "running",
+    "interruptedOperationProviderPosts": 1,
+    "interruptedOperationUsageReceipt": null,
+    "postRecoveryDecisionUsageReceipts": 1,
+    "providerCloseObservedAfterMs": 14631
+  },
+  "longOutage": {
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-3059-postgres-retry.zm7hVILD/extracted/long-outage/matrix.json",
+      "bytes": 494896,
+      "sha256": "9596b6dfdd0057e95f8af97dfd4ae7c86fefdefbe9930cba394ae17c3dfa4a4f"
+    },
+    "browserSteps": 20,
+    "modelOperationCases": 14,
+    "providerRequests": 15,
+    "cleanServerExits": 3,
+    "recordedOfflineMs": 300017,
+    "providerCompletedWhileOffline": true,
+    "offlineReplyMs": 2240,
+    "httpReadinessOffline": 503,
+    "httpLivenessOffline": 200,
+    "httpReadinessRecovered": 200,
+    "postgresSamePort": true,
+    "serverAndWorkerRetainedThroughDatabaseLoss": true,
+    "usageReceiptsForOriginalOperation": 1,
+    "postRecoveryDecisionUsageReceipts": 1,
+    "replayRejected": true
+  },
+  "limits": [
+    "The model HTTP responses were controlled. Cancellation and timeout were exercised in separate operations from the external PostgreSQL outage.",
+    "QEMU timing is specific to the emulated guest. Shared Windows peers and other provider-specific faults have separate acceptance."
+  ]
+}

@@ -6697,11 +6697,11 @@
           "scripts/server-rust/model-operation-provider.mjs",
           "docs/security/rust-server-2976-darwin-arm64-model-operations.json",
           "docs/security/rust-server-2976-linux-model-operations.json",
-          "docs/security/rust-server-3059-overlapping-server-postgres-loss.json"
+          "docs/security/rust-server-3059-overlapping-server-postgres-loss.json",
+          "docs/security/rust-server-3059-windows-postgres-recovery.json"
         ],
         "remaining": [
-          "The macOS ARM64 standalone and Linux ARM64 and x64 OCI packages qualify offline embedding settlement, replay rejection and a subsequent decision after five minutes of external PostgreSQL loss. The newer macOS and Linux x64 runs used worker 1.1.3059. Both Linux architectures also qualify a 45-second Redis outage across two Rust peers. Current Windows outage and remaining platform qualification are open.",
-          "The macOS ARM64 package and both Linux images match the Node control when server and external PostgreSQL outages overlap. Exact Windows coverage of this fault remains open."
+          "Packaged macOS, both Linux images and the exact 1.1.3059 Windows x64 executable qualify active external PostgreSQL loss and post-recovery accounting. Both Linux architectures also qualify a 45-second Redis outage across two Rust peers. Shared Windows peers and provider-specific failures remain open."
         ]
       },
       {
@@ -6719,11 +6719,11 @@
           "scripts/server-rust/model-operation-provider.mjs",
           "docs/security/rust-server-2976-darwin-arm64-model-operations.json",
           "docs/security/rust-server-2976-linux-model-operations.json",
-          "docs/security/rust-server-3059-overlapping-server-postgres-loss.json"
+          "docs/security/rust-server-3059-overlapping-server-postgres-loss.json",
+          "docs/security/rust-server-3059-windows-postgres-recovery.json"
         ],
         "remaining": [
-          "The macOS ARM64 standalone and Linux ARM64 and x64 OCI packages qualify offline embedding settlement, replay rejection and a subsequent decision after five minutes of external PostgreSQL loss. The newer macOS and Linux x64 runs used worker 1.1.3059. Both Linux architectures also qualify a 45-second Redis outage across two Rust peers. Current Windows outage and remaining platform qualification are open.",
-          "The macOS ARM64 package and both Linux images match the Node control when server and external PostgreSQL outages overlap. Exact Windows coverage of this fault remains open."
+          "The exact Windows package qualifies a fresh decision after both overlapping process loss and five-minute database loss. Shared Windows peers, a decision held through a dependency outage and provider-specific failures remain open."
         ]
       },
       {
@@ -6739,10 +6739,11 @@
           "scripts/server-rust/actual-model-operations-client.mjs",
           "scripts/server-rust/model-operation-provider.mjs",
           "docs/security/rust-server-2976-darwin-arm64-model-operations.json",
-          "docs/security/rust-server-2976-linux-model-operations.json"
+          "docs/security/rust-server-2976-linux-model-operations.json",
+          "docs/security/rust-server-3059-windows-postgres-recovery.json"
         ],
         "remaining": [
-          "Current Windows package coverage, active-operation server or dependency interruption, and long-outage product qualification remain required."
+          "The Windows 1.1.3059 full worker qualifies explicit embedding cancellation, SDK abort and caller disconnect as separate operations. Cancellation during a dependency interruption and additional provider-specific behavior remain open."
         ]
       },
       {
@@ -11674,27 +11675,36 @@
         "command": "model.embedding",
         "implementation": "cantrip_server_rs/src/http/model_operations.rs",
         "status": "partial",
-        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "docs/security/rust-server-3059-windows-postgres-recovery.json"
+        ],
         "remaining": [
-          "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+          "The exact 1.1.3059 Windows standalone server and packaged worker qualify active embedding across overlapping process loss and prolonged external PostgreSQL loss. Shared Windows peers and provider-specific failures remain open."
         ]
       },
       {
         "command": "model.decision",
         "implementation": "cantrip_server_rs/src/http/model_operations.rs",
         "status": "partial",
-        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "docs/security/rust-server-3059-windows-postgres-recovery.json"
+        ],
         "remaining": [
-          "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+          "Packaged Windows, macOS and Linux runs exercise decisions and retained usage through the real worker. A decision held through dependency interruption and additional provider-specific models remain open."
         ]
       },
       {
         "command": "model.operation.cancel",
         "implementation": "cantrip_server_rs/src/http/model_operations.rs",
         "status": "partial",
-        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "docs/security/rust-server-3059-windows-postgres-recovery.json"
+        ],
         "remaining": [
-          "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+          "The exact Windows package exercises cancellation on a held embedding request. Decision cancellation and cancellation while dependencies are offline retain separate qualification."
         ]
       },
       {
@@ -29068,6 +29078,7 @@
       "macosExtendedPostgresReceiptRecovery": "docs/security/rust-server-3059-macos-recovery-evidence.json",
       "currentLinuxCrossPeerRedisRecovery": "docs/security/rust-server-3059-linux-redis-outage.json",
       "currentFiveMinutePostgresRecovery": "docs/security/rust-server-3059-postgres-long-outage.json",
+      "currentWindowsPostgresRecovery": "docs/security/rust-server-3059-windows-postgres-recovery.json",
       "currentMacosWorkerQualification": "docs/security/rust-server-3059-macos-worker-version-acceptance.json",
       "status": "implemented-pending-platform-acceptance",
       "sourceBaseline": "bb7af5ccc7322e5b18c1a23cd31abb198ad1608c",
@@ -29105,7 +29116,7 @@
       ],
       "baselineRepair": "Unmodified Node external/private PostgreSQL aggregate routes fail to bind Date parameters for a SQL CASE expression; four ISO timestamp bindings restore the range predicates. Node PGlite and native Rust already passed.",
       "remaining": [
-        "Qualify longer database outages on the current shipping artifacts and simultaneous server and database loss. The Windows x64 1.1.2976 external PostgreSQL server-process interruption passed in the local guest.",
+        "Exact Windows 1.1.3059 passed overlapping server and PostgreSQL loss and independently settled usage after five minutes offline. Exercise additional fault combinations and shared-runtime Windows coordination.",
         "Configured OpenAI-compatible adapters and an owned local provider are exercised; this does not prove every provider-private adapter behavior.",
         "Final integrated package and platform acceptance remain required."
       ]

@@ -397,6 +397,20 @@ container ID from its runtime receipt. Both passed after the launcher
 recorded the verified ID.
 [Overlapping process loss evidence](security/rust-server-3059-overlapping-server-postgres-loss.json)
 
+The exact Windows x64 1.1.3059 standalone package and its unchanged worker
+passed this case in the local headless guest. PostgreSQL recovered on the
+same port, the same worker reconnected, and a fresh decision settled one
+receipt while the interrupted embedding remained unreported.
+
+The separate five-minute Windows case kept the server and worker running
+while PostgreSQL was offline. The original embedding completed during the
+outage. Readiness returned HTTP 503 and liveness stayed at HTTP 200.
+PostgreSQL recovered on the same port, readiness returned HTTP 200, and
+the original operation recorded one receipt. The service rejected a replay
+and settled a new decision. The two runs covered 40 browser steps and
+28 model cases with a controlled model provider.
+[Windows PostgreSQL recovery evidence](security/rust-server-3059-windows-postgres-recovery.json)
+
 ### Linux background catalog refresh
 
 The Linux catalog job fired on the unmodified 15-minute schedule on
