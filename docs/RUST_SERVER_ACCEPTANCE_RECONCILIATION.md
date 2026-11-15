@@ -1942,6 +1942,15 @@ controlled model endpoint. The test also deleted both schedules and checked
 that the protected fields stayed out of requests and server diagnostics.
 [Project automation evidence](security/rust-server-3059-macos-project-automations.json)
 
+Both 1.1.3059 Linux images repeated this product run with PGlite,
+bundled PostgreSQL and external PostgreSQL. The browser and unchanged
+packaged worker ran on macOS, with the x64 server translated on Apple
+Silicon. Each Linux case matched the Node reference's 14 product steps,
+including one scheduled native turn, one skipped condition and exact
+history after two further restart cycles. All 30 Linux server generations
+and 36 worker exits were clean.
+[Linux project automation evidence](security/rust-server-3059-linux-project-automations.json)
+
 The same standalone executable matched the Node reference across all nine
 database and authentication combinations for native command permission
 transitions, pending requests, continuations and settings evidence. The

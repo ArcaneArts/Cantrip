@@ -4569,10 +4569,12 @@
           "scripts/server-rust/project-automation-legacy-zones.mjs",
           "scripts/server-rust/project-automation-repository-compatibility.mjs",
           "scripts/server-rust/project-automation-http-compatibility.mjs",
-          "scripts/server-rust/actual-project-automations-client.mjs"
+          "scripts/server-rust/actual-project-automations-client.mjs",
+          "docs/security/rust-server-3059-macos-project-automations.json",
+          "docs/security/rust-server-3059-linux-project-automations.json"
         ],
         "remaining": [
-          "Current-head supported-platform and packaged acceptance remain required. Shared coordination, complete upgrades/post-write rollback, artifacts, desktop packaging, Winterhold rehearsal, performance and final default cutover remain unfinished. Node remains the default server; worker remains Node."
+          "Current macOS and both Linux image runs cover scheduled native execution on all three databases. Windows product execution, shared scheduler ownership and interruption at the automated dispatch boundary remain open."
         ]
       },
       {
@@ -4587,10 +4589,12 @@
           "scripts/server-rust/project-automation-legacy-zones.mjs",
           "scripts/server-rust/project-automation-repository-compatibility.mjs",
           "scripts/server-rust/project-automation-http-compatibility.mjs",
-          "scripts/server-rust/actual-project-automations-client.mjs"
+          "scripts/server-rust/actual-project-automations-client.mjs",
+          "docs/security/rust-server-3059-macos-project-automations.json",
+          "docs/security/rust-server-3059-linux-project-automations.json"
         ],
         "remaining": [
-          "Current-head supported-platform and packaged acceptance remain required. Shared coordination, complete upgrades/post-write rollback, artifacts, desktop packaging, Winterhold rehearsal, performance and final default cutover remain unfinished. Node remains the default server; worker remains Node."
+          "Current macOS and both Linux image runs cover scheduled native execution on all three databases. Windows product execution, shared scheduler ownership and interruption at the automated dispatch boundary remain open."
         ]
       },
       {
@@ -4605,10 +4609,12 @@
           "scripts/server-rust/project-automation-legacy-zones.mjs",
           "scripts/server-rust/project-automation-repository-compatibility.mjs",
           "scripts/server-rust/project-automation-http-compatibility.mjs",
-          "scripts/server-rust/actual-project-automations-client.mjs"
+          "scripts/server-rust/actual-project-automations-client.mjs",
+          "docs/security/rust-server-3059-macos-project-automations.json",
+          "docs/security/rust-server-3059-linux-project-automations.json"
         ],
         "remaining": [
-          "Current-head supported-platform and packaged acceptance remain required. Shared coordination, complete upgrades/post-write rollback, artifacts, desktop packaging, Winterhold rehearsal, performance and final default cutover remain unfinished. Node remains the default server; worker remains Node."
+          "Current macOS and both Linux image runs cover scheduled native execution on all three databases. Windows product execution, shared scheduler ownership and interruption at the automated dispatch boundary remain open."
         ]
       },
       {
@@ -4623,10 +4629,12 @@
           "scripts/server-rust/project-automation-legacy-zones.mjs",
           "scripts/server-rust/project-automation-repository-compatibility.mjs",
           "scripts/server-rust/project-automation-http-compatibility.mjs",
-          "scripts/server-rust/actual-project-automations-client.mjs"
+          "scripts/server-rust/actual-project-automations-client.mjs",
+          "docs/security/rust-server-3059-macos-project-automations.json",
+          "docs/security/rust-server-3059-linux-project-automations.json"
         ],
         "remaining": [
-          "Current-head supported-platform and packaged acceptance remain required. Shared coordination, complete upgrades/post-write rollback, artifacts, desktop packaging, Winterhold rehearsal, performance and final default cutover remain unfinished. Node remains the default server; worker remains Node."
+          "Current macOS and both Linux image runs cover scheduled native execution on all three databases. Windows product execution, shared scheduler ownership and interruption at the automated dispatch boundary remain open."
         ]
       },
       {
@@ -4641,10 +4649,12 @@
           "scripts/server-rust/project-automation-legacy-zones.mjs",
           "scripts/server-rust/project-automation-repository-compatibility.mjs",
           "scripts/server-rust/project-automation-http-compatibility.mjs",
-          "scripts/server-rust/actual-project-automations-client.mjs"
+          "scripts/server-rust/actual-project-automations-client.mjs",
+          "docs/security/rust-server-3059-macos-project-automations.json",
+          "docs/security/rust-server-3059-linux-project-automations.json"
         ],
         "remaining": [
-          "Current-head supported-platform and packaged acceptance remain required. Shared coordination, complete upgrades/post-write rollback, artifacts, desktop packaging, Winterhold rehearsal, performance and final default cutover remain unfinished. Node remains the default server; worker remains Node."
+          "Current macOS and both Linux image runs cover scheduled native execution on all three databases. Windows product execution, shared scheduler ownership and interruption at the automated dispatch boundary remain open."
         ]
       },
       {
@@ -4659,10 +4669,12 @@
           "scripts/server-rust/project-automation-legacy-zones.mjs",
           "scripts/server-rust/project-automation-repository-compatibility.mjs",
           "scripts/server-rust/project-automation-http-compatibility.mjs",
-          "scripts/server-rust/actual-project-automations-client.mjs"
+          "scripts/server-rust/actual-project-automations-client.mjs",
+          "docs/security/rust-server-3059-macos-project-automations.json",
+          "docs/security/rust-server-3059-linux-project-automations.json"
         ],
         "remaining": [
-          "Current-head supported-platform and packaged acceptance remain required. Shared coordination, complete upgrades/post-write rollback, artifacts, desktop packaging, Winterhold rehearsal, performance and final default cutover remain unfinished. Node remains the default server; worker remains Node."
+          "Current macOS and both Linux image runs cover scheduled native execution on all three databases. Windows product execution, shared scheduler ownership and interruption at the automated dispatch boundary remain open."
         ]
       },
       {
@@ -11129,10 +11141,11 @@
         ],
         "evidence": [
           "cantrip_server_rs/src/native_commands/runtime/delivery/native.rs",
-          "cantrip_worker/src/task-pause-controls.ts"
+          "cantrip_worker/src/task-pause-controls.ts",
+          "docs/security/rust-server-3059-native-queue-delivery.json"
         ],
         "remaining": [
-          "Source-reviewed integration only for this milestone; compilation, actual worker/native lifecycle behavior and supported-platform acceptance were not executed."
+          "Packaged macOS and both Linux images matched the ordered committed queue revision delivered to the worker transport and read by the unchanged SDK. Windows, full-worker shared recovery and consumer effects remain open."
         ]
       },
       {
@@ -23510,7 +23523,7 @@
           "scripts/server-rust/actual-project-automations-client.mjs"
         ],
         "remaining": [
-          "Current-head supported-platform and packaged acceptance remain required. Shared coordination, complete upgrades/post-write rollback, artifacts, desktop packaging, Winterhold rehearsal, performance and final default cutover remain unfinished. Node remains the default server; worker remains Node."
+          "The local HTTP comparison verifies owner/project invalidation. Packaged automation product runs assert protected state through public reads. Shared reconnect, replay and supported-platform live delivery remain open."
         ]
       },
       {
@@ -27458,6 +27471,7 @@
     "workerNativeQueueHttp": {
       "status": "implemented-pending-platform-acceptance",
       "currentMacosPackage": "docs/security/rust-server-3059-macos-native-queue-wire.json",
+      "currentPackagedQueueDelivery": "docs/security/rust-server-3059-native-queue-delivery.json",
       "scope": "All six worker:agent-tools queue routes use the credential owner, existing canonical queue repositories, exact Source schema/error boundaries, shared receipt notifications and owned dispatch/persistence lifetimes. Production startup invokes the already-ported interrupted-lane and Task-operation recovery routines alongside existing local-coordinator transient recovery. No production SQL endpoint or Node delegation.",
       "evidence": [
         "cantrip_server_rs/src/http/native_queue.rs",
@@ -27479,8 +27493,8 @@
       "validatedSubset": "Final local macOS arm64 production HTTP comparison passes all nine database/authentication profiles: 888 paired observations, 40 endpoint decryption proofs and five unchanged worker SDK operations per peer/profile. The full receipt matrix passes 37 paired scenarios (12 PGlite,12 bundled PostgreSQL,13 external PostgreSQL), plus one focused locked-write disconnect scenario and repeat of the existing locked-read scenario. It includes real 90-second accounts deadlines on each backend; settlement/disconnect/SQL failures under every auth mode; all six real foreign-owner denials, exact drained revision-zero/one worker and Live notices; four concurrent identical mutations; mutate/import/ack SQL rollback and retry; actual restart/reconnect; deterministic explicit-start claims and retained decryptable input; dispatch-failure release and receipt replay. The actual PostgreSQL mutation SQL read remains owned after caller disconnect, then commits once and publishes both route and durable notifications; the unchanged SDK reconciles and replays the original operation without duplicates. All 47 Rust library tests,44824 native-command contract comparisons,strict all-target Clippy,boundary audit and changed-file formatting pass. Actual browser SDK/full production worker/bundled Codex Agent Chat and Task regressions pass all three stores after startup recovery is wired; public model HTTP responses alone are controlled. This is local scoped evidence,not platform/package/full replacement acceptance.",
       "remaining": [
         "Resolve broad-run timing, Goal-delivery assertion and unhandled EPIPE; focused and standalone Primary success do not establish a broad green check or the failure cause.",
-        "Observe supported-platform CI and retain actual failures; configured workflows and local macOS success do not prove Linux/Windows readiness.",
-        "Complete other feature, coercion/Buffer, shared coordination, existing-data upgrade/post-write rollback, artifact/app/Winterhold/performance and default-cutover requirements. Node remains the default server and the worker remains Node."
+        "Qualify Windows queue delivery, embedded-store Linux queue wire parity and full-worker shared recovery in local packaged runs.",
+        "Complete remaining queue coordination, coercion and Buffer compatibility, and reconcile exact shipping coverage."
       ],
       "localAcceptance": {
         "platform": "macOS arm64",
@@ -27557,11 +27571,13 @@
         "scripts/server-rust/project-automation-legacy-zones.mjs",
         "scripts/server-rust/project-automation-repository-compatibility.mjs",
         "scripts/server-rust/project-automation-http-compatibility.mjs",
-        "scripts/server-rust/actual-project-automations-client.mjs"
+        "scripts/server-rust/actual-project-automations-client.mjs",
+        "docs/security/rust-server-3059-macos-project-automations.json",
+        "docs/security/rust-server-3059-linux-project-automations.json"
       ],
-      "validatedSubset": "Local macOS arm64: 9,337 Source contract, transformation and exact-error comparisons and 17,252 occurrence comparisons, including all Intl-supported timezones, legacy aliases/history, DST folds/gaps, the year-3000 cutoff and UTF-16 date comments. Twenty-one Source-derived SQL templates and six legacy TZif assets; future footer transitions verified over 400 Gregorian years. All three stores pass 66 paired repository cases. The expanded nine-profile HTTP matrix passes 516 paired observations: 24 crypto proofs, eight protection commands, 35 project invalidations, two unchanged worker-scheduler HTTP operations and six lease, lifetime, concurrent-edit and legacy-recovery scenarios per peer/profile. Account cases include foreign-owner CRUD denials and a worker credential used alongside a foreign session cookie. Existing browser SDK, normal production servers, full worker, real scheduler, script exits 0/7 and actual bundled Codex pass on all three stores: one permitted canonical automation turn, one skipped condition, two additional server/worker restarts with exact protected state/history retention, then deletion. Public model HTTP responses alone are controlled. These are local scoped results, not supported-platform, packaging or whole-replacement acceptance.",
+      "validatedSubset": "Local macOS arm64: 9,337 Source contract, transformation and exact-error comparisons and 17,252 occurrence comparisons, including all Intl-supported timezones, legacy aliases/history, DST folds/gaps, the year-3000 cutoff and UTF-16 date comments. Twenty-one Source-derived SQL templates and six legacy TZif assets; future footer transitions verified over 400 Gregorian years. All three stores pass 66 paired repository cases. The expanded nine-profile HTTP matrix passes 516 paired observations: 24 crypto proofs, eight protection commands, 35 project invalidations, two unchanged worker-scheduler HTTP operations and six lease, lifetime, concurrent-edit and legacy-recovery scenarios per peer/profile. Account cases include foreign-owner CRUD denials and a worker credential used alongside a foreign session cookie. Existing browser SDK, normal production servers, full worker, real scheduler, script exits 0/7 and actual bundled Codex pass on all three stores: one permitted canonical automation turn, one skipped condition, two additional server/worker restarts with exact protected state/history retention, then deletion. Public model HTTP responses alone are controlled. The packaged macOS server and both Linux images also pass across all three stores. The Linux runs include 84 browser steps, 30 clean container exits and 36 clean packaged worker exits.",
       "remaining": [
-        "Current-head supported-platform and packaged acceptance remain required. Shared coordination, complete upgrades/post-write rollback, artifacts, desktop packaging, Winterhold rehearsal, performance and final default cutover remain unfinished. Node remains the default server; worker remains Node."
+        "Current macOS and both Linux image runs cover scheduled native execution on all three databases. Windows product execution, shared scheduler ownership and interruption at the automated dispatch boundary remain open."
       ],
       "localAcceptance": {
         "platform": "macOS arm64",
@@ -31204,6 +31220,14 @@
     "databaseModes": ["pglite", "bundled-postgres", "postgres"],
     "report": "docs/security/rust-server-3059-macos-project-automations.json",
     "scope": "Packaged Rust and Node reference with the existing browser, full Node worker and bundled Codex. Actual script conditions, scheduled native execution, canonical history, two restart cycles and protected schedule deletion passed."
+  },
+  "linux3059ProjectAutomationsQualification": {
+    "status": "passed",
+    "candidateVersion": "1.1.3059",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "platforms": ["linux-arm64", "linux-x64"],
+    "report": "docs/security/rust-server-3059-linux-project-automations.json",
+    "scope": "Six exact-image runs with all three database modes, the browser SDK, full macOS worker and native Codex. Each run matched the Node reference result for one scheduled native turn, one skipped shell condition, exact automation state and history after two restarts, and deletion."
   },
   "remainingAcceptance": [
     "Qualify packaged cross-platform dependency interruptions and longer outages. Reconcile the still-open background-service and product recovery comparisons.",
