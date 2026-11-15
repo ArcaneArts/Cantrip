@@ -29,6 +29,7 @@ use crate::{
     workers::command_bus::{LimitedCommandBus, RequestTimeout},
 };
 use anyhow::{Context, Result};
+pub use automation::ResumeOutcome;
 use futures::{FutureExt, future::BoxFuture};
 pub use leases::{dispatch_cycle_lease, goal_dispatch_lease};
 use std::{

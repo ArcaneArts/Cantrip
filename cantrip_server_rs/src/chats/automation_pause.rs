@@ -277,31 +277,36 @@ impl Service {
             return Err(failure(404, "Chat source not found."));
         };
         self.publish(owner, context);
-        if resume_automation
-            && !paused
-            && !truthy(updated.get("automationPaused"))
-            && let Err(error) = self.goals.resume(owner, &chat, false, false).await
-        {
-            self.chats.set_automation_paused(owner, &chat, true).await?;
-            self.publish(owner, context);
-            if self.commands.is_connected(&worker) {
-                let _ = self
-                    .commands
-                    .request_with_timeout(
-                        &worker,
-                        command(context, &control, native, true),
-                        RequestTimeout::Default,
-                        None,
-                    )
-                    .await;
+        let mut paused_state = updated["automationPaused"].clone();
+        if resume_automation && !paused && !truthy(Some(&paused_state)) {
+            match self.goals.resume(owner, &chat, false, false).await {
+                Ok(goals::ResumeOutcome::Complete) => {}
+                Ok(goals::ResumeOutcome::RecoveredQueueStart { paused }) => {
+                    paused_state = json!(paused);
+                }
+                Err(error) => {
+                    self.chats.set_automation_paused(owner, &chat, true).await?;
+                    self.publish(owner, context);
+                    if self.commands.is_connected(&worker) {
+                        let _ = self
+                            .commands
+                            .request_with_timeout(
+                                &worker,
+                                command(context, &control, native, true),
+                                RequestTimeout::Default,
+                                None,
+                            )
+                            .await;
+                    }
+                    return Err(wrapped(
+                        409,
+                        "This chat remains paused because its next action could not start: ",
+                        &error,
+                    ));
+                }
             }
-            return Err(wrapped(
-                409,
-                "This chat remains paused because its next action could not start: ",
-                &error,
-            ));
         }
-        let paused = truthy(updated.get("automationPaused"));
+        let paused = truthy(Some(&paused_state));
         (self.logger)(LogCall::event(
             "info",
             if paused {
@@ -311,6 +316,6 @@ impl Service {
             },
             json!({"event":if paused{"chat.automation.paused"}else{"chat.automation.resumed"},"subsystem":"chat-execution","operation":if paused{"pause"}else{"resume"},"status":if paused{"paused"}else{"active"},"chatId":context["chatId"],"projectId":context["projectId"],"workerId":context["workerId"]}),
         ));
-        Ok(json!({"paused":updated["automationPaused"],"active":active}))
+        Ok(json!({"paused":paused_state,"active":active}))
     }
 }

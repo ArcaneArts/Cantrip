@@ -5,6 +5,7 @@ mod delivery;
 mod imports;
 mod mutation;
 mod replay;
+mod resume;
 mod snapshot;
 use super::{
     admit::{raw_one, reject, text},

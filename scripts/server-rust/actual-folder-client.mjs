@@ -157,8 +157,10 @@ const sharedQueueResumeRace = process.argv.includes(
 const sharedQueueInterruption = option("--shared-queue-interruption");
 if (process.argv.includes("--shared-queue-interruption")) {
   assert.ok(
-    ["claim", "stream"].includes(sharedQueueInterruption),
-    "Shared queue interruption requires claim or stream",
+    ["claim", "stream", "resume-ack", "resume-ack-paused"].includes(
+      sharedQueueInterruption,
+    ),
+    "Shared queue interruption requires claim, stream, resume-ack or resume-ack-paused",
   );
   assert.ok(
     sharedQueueRecovery && !sharedQueueResumeRace,
@@ -401,7 +403,7 @@ const report = {
     ? "Existing browser Chat and Agent APIs, production server, full worker and native initial labeling through disposable model HTTP endpoints."
     : null,
   sharedQueueRecoveryScope: sharedQueueRecovery
-    ? `Encrypted browser queue on ${sharedQueueRetainedChat ? "the retained Agent chat after normal restart and Goal clear" : "a separately prepared Agent chat"} with two paused prompts. SIGKILL and replace the worker-owner peer, reconnect the same full worker, and verify ordered native turns and exactly-once model requests after resume.`
+    ? `Encrypted browser queue on ${sharedQueueRetainedChat ? "the retained Agent chat after normal restart and Goal clear" : "a separately prepared Agent chat"} with ${sharedQueueInterruption === "resume-ack-paused" ? "one paused prompt" : "two paused prompts"}. SIGKILL and replace the worker-owner peer, reconnect the same full worker, and verify ordered native turns and exactly-once model requests after resume.`
     : null,
   sharedQueueResumeRace,
   sharedQueueInterruption: sharedQueueInterruption ?? null,
@@ -482,6 +484,9 @@ async function flow(
   const resumeRaceFile = sharedQueueResumeRace
     ? path.join(dataDirectory, "test-queue-resume-race")
     : undefined;
+  const resumeAckFile = sharedQueueInterruption?.startsWith("resume-ack")
+    ? path.join(dataDirectory, "test-queue-resume-ack")
+    : undefined;
   if (dataDirectory !== canonicalDataDirectory) {
     await mkdir(canonicalDataDirectory, { recursive: true });
     // SkillManager returns lexical account paths; native discovery returns
@@ -554,6 +559,26 @@ async function flow(
             : {}),
           ...(fakeCuaLauncher ? { CANTRIP_CUA_BIN: fakeCuaLauncher } : {}),
           ...(providerTest ? providerBoundary?.environment : {}),
+          ...(resumeAckFile
+            ? {
+                CANTRIP_TEST_QUEUE_RESUME_ACK: resumeAckFile,
+                CANTRIP_TEST_QUEUE_RESUME_ACK_WORKER_ENTRY: path.resolve(
+                  process.env.CANTRIP_TEST_WORKER_PACKAGE ??
+                    path.join(repositoryRoot, "cantrip_worker"),
+                  "dist/index.js",
+                ),
+                NODE_OPTIONS: [
+                  process.env.NODE_OPTIONS,
+                  "--import=" +
+                    new URL(
+                      "./worker-queue-resume-ack-loss.mjs",
+                      import.meta.url,
+                    ).href,
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              }
+            : {}),
           ...(resumeRaceFile
             ? {
                 CANTRIP_TEST_QUEUE_RESUME_RACE: resumeRaceFile,
@@ -1761,6 +1786,7 @@ async function flow(
         sharedQueueRecovery,
         sharedQueueRetainedChat,
         sharedQueueInterruption,
+        resumeAckFile,
         resumeRaceFile,
         projectId: gitProjectChat ? attached.id : first.id,
         projectRoot: gitProjectChat ? opened.source.path : first.source.path,

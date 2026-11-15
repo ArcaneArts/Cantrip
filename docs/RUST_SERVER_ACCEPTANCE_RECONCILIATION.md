@@ -383,10 +383,17 @@ an unchanged pending prompt, and no observed native turn. The rejected
 command receipt stays available. Fresh Rust/Rust and Rust/Node tests
 consumed the original head first and completed both turns.
 
-Loss of the worker-owner server after native dispatch but before the browser
-receives Resume acknowledgment can still return HTTP 409 while the original
-model stream is open on the reconnected worker.
+The packaged baseline returned HTTP 409 if the worker-owner server died
+after the first native queue start but before the browser received Resume
+acknowledgment. The Rust server now resolves that request from the exact
+queue operation and its committed turn receipt. It reads the current pause
+state and leaves the original native turn in place. Recovery uses the
+deployed worker's queue operation identifier and the existing receipt schema.
+Both macOS Rust/Rust and Rust/Node pairings kept the original stream open and
+completed each queued prompt once. Both pairings also preserved a newer Pause
+issued while the earlier Resume awaited its reply.
 [Queue worker-owner loss evidence](security/rust-server-3059-macos-queue-owner-loss.json)
+[Resume acknowledgment recovery evidence](security/rust-server-3059-macos-resume-ack.json)
 
 ### Task and Agent restart on Linux
 

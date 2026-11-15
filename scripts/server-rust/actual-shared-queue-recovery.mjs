@@ -17,6 +17,7 @@ export async function actualSharedQueueRecovery({
   retainedChatId,
   retainedThreadId,
   resumeRaceFile,
+  resumeAckFile,
   interruption,
   configuration,
   model,
@@ -77,6 +78,16 @@ export async function actualSharedQueueRecovery({
         ),
       { chatId, prompt, configuration },
     );
+  const waitForIdle = () =>
+    eventually(
+      () =>
+        page.evaluate(
+          async (id) => (await import("/src/lib/api/chats.ts")).getChats(id),
+          projectId,
+        ),
+      (chats) =>
+        assert.equal(chats.find((item) => item.id === chatId)?.status, "idle"),
+    );
   const posts = () => model.requests.filter((r) => r.method === "POST");
   const baseline = posts().length;
   const before = await fixture.assertRemoteWorker(workerId);
@@ -98,6 +109,8 @@ export async function actualSharedQueueRecovery({
     },
   ];
 
+  const pauseWhileAwaitingResume = interruption === "resume-ack-paused";
+  if (pauseWhileAwaitingResume) inputs.pop();
   assert.equal((await pause(true)).paused, true);
   const admitted = [];
   for (const { prompt } of inputs) {
@@ -160,7 +173,9 @@ export async function actualSharedQueueRecovery({
   const replies = inputs.map(({ answer }, index) =>
     model.reply({
       text: answer,
-      hold: index === 0 && Boolean(resumeRaceFile || interruption === "stream"),
+      hold:
+        index === 0 &&
+        Boolean(resumeRaceFile || (interruption && interruption !== "claim")),
     }),
   );
   if (interruption) {
@@ -168,6 +183,7 @@ export async function actualSharedQueueRecovery({
     await interruptSharedQueue({
       fixture,
       chatId,
+      resumeAckFile,
       promptId: admitted[0],
       firstReply: replies[0],
       modelPosts: () => posts().length - baseline,
@@ -183,6 +199,12 @@ export async function actualSharedQueueRecovery({
             return { status: error.status, error: error.message };
           }
         }, chatId),
+      pauseAfterFirstTurn: pauseWhileAwaitingResume
+        ? async () => {
+            await waitForIdle();
+            return pause(true);
+          }
+        : undefined,
       replaceWorkerOwner,
       fault,
     });
@@ -273,15 +295,7 @@ export async function actualSharedQueueRecovery({
     turns.push({ turnId, threadId });
   }
   assert.equal(new Set(turns.map(({ turnId }) => turnId)).size, inputs.length);
-  await eventually(
-    () =>
-      page.evaluate(
-        async (id) => (await import("/src/lib/api/chats.ts")).getChats(id),
-        projectId,
-      ),
-    (chats) =>
-      assert.equal(chats.find((item) => item.id === chatId)?.status, "idle"),
-  );
+  await waitForIdle();
   await eventually(queue, (state) => assert.deepEqual(state.items, []));
   await eventually(
     () =>
