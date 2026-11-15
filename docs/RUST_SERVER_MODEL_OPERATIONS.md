@@ -115,6 +115,34 @@ reply while the database is down. Omitting the operation selector still
 exercises an embedding, which passed its regression run on the same archive.
 [Decision outage evidence and artifact checksums](security/rust-server-3059-decision-postgres-outage.json)
 
+### Linux container qualification
+
+The Linux ARM64 and x64 1.1.3059 images built at `f820371ea` also held a
+decision through a 45-second external PostgreSQL outage. The browser request
+remained pending while PostgreSQL was down. After recovery, both architectures
+returned the original typed decision, recorded one receipt and rejected exact
+replay without another provider call.
+
+Both images also returned the typed decision during a five-minute PostgreSQL
+outage. After the database recovered, the original receipt settled and the
+same worker reconnected. Exact replay preserved the receipt and made no
+additional provider call. Each server then accepted a fresh decision. All
+four Linux cases passed 56 model-operation checks and 12 container exits
+were clean.
+
+The first ARM64 five-minute run returned the decision and settled the receipt.
+Its immediate replay got HTTP 502 because the worker command channel was still
+offline. The repeat explicitly observes the reconnect before testing the
+worker's replay response. The earlier result is retained.
+
+The browser and the bundled 1.1.3059 Node worker ran on macOS ARM64. The x64
+image ran through Rosetta. Every server generation used the expected image
+and executable. ARM64 file checks ran inside its containers. The x64 check
+hashed a copy of the exact image's package on the host, then matched the image,
+manifest and running executable in each read-only container. The test also
+checks that mounts cannot replace package files.
+[Linux decision outage evidence](security/rust-server-3059-linux-decision-postgres-outage.json)
+
 ## Active Redis interruption
 
 A real 45-second Redis process outage interrupted a protected embedding

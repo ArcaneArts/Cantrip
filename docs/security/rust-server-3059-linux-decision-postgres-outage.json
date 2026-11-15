@@ -1,0 +1,239 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "reviewedCommit": "beed4a1bb89f79cf54acfdf3ab0c3efa938ee70f",
+  "artifactSourceCommit": "f820371ea602a2493f2e6beca6438cc188446580",
+  "scope": "Actual Linux ARM64 and x64 production containers on macOS ARM64, with x64 through Rosetta. Production browser SDK, existing packaged macOS Node worker, isolated external PostgreSQL 18.6 and owned loopback provider. The database interruptions begin after the running decision is recorded. Every generation hashes its runtime executable. ARM64 verifies the packaged files in the running container. The x64 files are verified once on the host from the exact read-only image. Each x64 generation checks the same image and manifest and verifies that no mount overlaps the package.",
+  "postgresVersion": "postgres (PostgreSQL) 18.6 (Homebrew)",
+  "nodeVersion": "v24.22.1",
+  "workerVersion": "1.1.3059",
+  "workerEntry": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/worker/dist/index.js",
+    "bytes": 391720,
+    "sha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c"
+  },
+  "sameTypedDecisionAsMacos": true,
+  "cases": [
+    {
+      "architecture": "arm64",
+      "scenario": "held",
+      "imageDigest": "sha256:02bb9cc4bc4644465882ae7013aa3ba999d79cb3850f319d50c4e7c0ebc40398",
+      "imageArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/arm64/cantrip-server-1.1.3059-linux-arm64.image.tar.zst",
+        "bytes": 177474699,
+        "sha256": "1d64e964fc1510d9953a19600433a08a0b1cbebdc7cebcf5c72832175208f6e4"
+      },
+      "elfMachine": 183,
+      "processObservation": "direct",
+      "nativeBinarySha256": "b802ee28a32e6df25be91da62ead44d3735ecc834fe0d41cc8a83b70be420898",
+      "verifiedPackageFiles": 2558,
+      "packageVerification": "running-container",
+      "actualOutageMs": 45004,
+      "modelOperationCases": 14,
+      "browserSteps": 20,
+      "readyStatusOffline": 503,
+      "livenessStatusOffline": 200,
+      "readyStatusAfterRecovery": 200,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/arm64-held.json",
+        "bytes": 487351,
+        "sha256": "89e541abfcd0fb617c9ec60e767c66ac2ec84de572021218b49c5bc66e93db95"
+      },
+      "processGenerations": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/arm64-held-generations.jsonl",
+        "bytes": 3015,
+        "sha256": "d8e69a21f116b16e77c452b51006ef2fe1bd105519bd38b7ff67aa35d9e78d98"
+      },
+      "outageProviderRequests": 1,
+      "recordedTotalTokens": 10,
+      "replayIssuedNoAdditionalProviderCall": true,
+      "cleanContainerExits": 3,
+      "browserRequestPendingBeforeRecovery": true
+    },
+    {
+      "architecture": "arm64",
+      "scenario": "offline",
+      "imageDigest": "sha256:02bb9cc4bc4644465882ae7013aa3ba999d79cb3850f319d50c4e7c0ebc40398",
+      "imageArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/arm64/cantrip-server-1.1.3059-linux-arm64.image.tar.zst",
+        "bytes": 177474699,
+        "sha256": "1d64e964fc1510d9953a19600433a08a0b1cbebdc7cebcf5c72832175208f6e4"
+      },
+      "elfMachine": 183,
+      "processObservation": "direct",
+      "nativeBinarySha256": "b802ee28a32e6df25be91da62ead44d3735ecc834fe0d41cc8a83b70be420898",
+      "verifiedPackageFiles": 2558,
+      "packageVerification": "running-container",
+      "actualOutageMs": 300000,
+      "modelOperationCases": 14,
+      "browserSteps": 20,
+      "readyStatusOffline": 503,
+      "livenessStatusOffline": 200,
+      "readyStatusAfterRecovery": 200,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/arm64-offline.json",
+        "bytes": 509349,
+        "sha256": "31514af7e152d467214a19f34a65674000d9e9eda9ba87c0f013a1614bb90a3e"
+      },
+      "processGenerations": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/arm64-offline-generations.jsonl",
+        "bytes": 3015,
+        "sha256": "9e934d945ffe310d3e17fd8a83ed46b7335f11a209a312b1239ad2af66975ade"
+      },
+      "outageProviderRequests": 1,
+      "recordedTotalTokens": 10,
+      "replayIssuedNoAdditionalProviderCall": true,
+      "cleanContainerExits": 3,
+      "workerOnlineAfterRecoveryMs": 879,
+      "browserReplyDuringOutageMs": 47
+    },
+    {
+      "architecture": "x64",
+      "scenario": "held",
+      "imageDigest": "sha256:a315ba94431a64f991e5b49875228f77510002fbb70886261506f9ed37b7a144",
+      "imageArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/x64/cantrip-server-1.1.3059-linux-x64.image.tar.zst",
+        "bytes": 180713775,
+        "sha256": "0e0a675396947207fc99ab3fd905de5e224e3d479fa61401f24b772e042fc8a8"
+      },
+      "elfMachine": 62,
+      "processObservation": "mapped",
+      "nativeBinarySha256": "f85dcfe460eaeb915c57f6b726edea03cffc556891e7688d38e4db61b9e4ebd4",
+      "verifiedPackageFiles": 2558,
+      "packageVerification": "immutable-image",
+      "actualOutageMs": 45008,
+      "modelOperationCases": 14,
+      "browserSteps": 20,
+      "readyStatusOffline": 503,
+      "livenessStatusOffline": 200,
+      "readyStatusAfterRecovery": 200,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/x64-held.json",
+        "bytes": 509938,
+        "sha256": "14c6efce0a4edf6176602a45bcd000f3c4f03feb1e6f2729574e9aa2939d9ece"
+      },
+      "processGenerations": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/x64-held-generations.jsonl",
+        "bytes": 3171,
+        "sha256": "3bdc7947532db164d178fb74e543e6de1c697e064dd7e641511ce014cc7141c6"
+      },
+      "outageProviderRequests": 1,
+      "recordedTotalTokens": 10,
+      "replayIssuedNoAdditionalProviderCall": true,
+      "cleanContainerExits": 3,
+      "browserRequestPendingBeforeRecovery": true
+    },
+    {
+      "architecture": "x64",
+      "scenario": "offline",
+      "imageDigest": "sha256:a315ba94431a64f991e5b49875228f77510002fbb70886261506f9ed37b7a144",
+      "imageArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/x64/cantrip-server-1.1.3059-linux-x64.image.tar.zst",
+        "bytes": 180713775,
+        "sha256": "0e0a675396947207fc99ab3fd905de5e224e3d479fa61401f24b772e042fc8a8"
+      },
+      "elfMachine": 62,
+      "processObservation": "mapped",
+      "nativeBinarySha256": "f85dcfe460eaeb915c57f6b726edea03cffc556891e7688d38e4db61b9e4ebd4",
+      "verifiedPackageFiles": 2558,
+      "packageVerification": "immutable-image",
+      "actualOutageMs": 300000,
+      "modelOperationCases": 14,
+      "browserSteps": 20,
+      "readyStatusOffline": 503,
+      "livenessStatusOffline": 200,
+      "readyStatusAfterRecovery": 200,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/x64-offline.json",
+        "bytes": 513190,
+        "sha256": "3c7ac6b7c1ce5cceb6fbd36e078101516e65d5aa0a944091b2bdc78a97bef0bc"
+      },
+      "processGenerations": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/x64-offline-generations.jsonl",
+        "bytes": 3171,
+        "sha256": "3123896f3fc21f109f8bf2ce5717dbc90af0e99ea19054c3071560f4f9fb8431"
+      },
+      "outageProviderRequests": 1,
+      "recordedTotalTokens": 10,
+      "replayIssuedNoAdditionalProviderCall": true,
+      "cleanContainerExits": 3,
+      "workerOnlineAfterRecoveryMs": 313,
+      "browserReplyDuringOutageMs": 27
+    }
+  ],
+  "inputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/inputs.sha256",
+    "bytes": 1539,
+    "sha256": "b5e1b6f91f4dcb43852848eea84cff3a7b089dc97ab9910860423b1faba6942a"
+  },
+  "driver": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/run-case.sh",
+    "bytes": 2516,
+    "sha256": "74af528d68b936f57a766b9e93cf7c2d195d12a693e2d02dd89f4a9d9b66b4af"
+  },
+  "linuxContainerAdapters": [
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/container-server.mjs",
+      "bytes": 5642,
+      "sha256": "ceabf89b3e43f7089442c66c6184fa50d84e428c4ddedfa4ba24c5416d331c44"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/x64-container-server.mjs",
+      "bytes": 6108,
+      "sha256": "e6d4f4c1de5189cddaa1f4c240d43a7297102b187a3512a0652aa355674ba828"
+    }
+  ],
+  "x64VerifiedPackage": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/verified-x64-package.json",
+    "bytes": 298,
+    "sha256": "e2a90d7aa7d8bb157b7c664d0fe7b7a1d519b7538396dd606fc89eb49fa6ad62"
+  },
+  "liveFinalX64Verifier": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/live-final-x64-verifier.json",
+    "bytes": 559,
+    "sha256": "dd7e808f7cbf36d86070dcf2a227b44fe4a034964103a3c77b721d494177b744"
+  },
+  "recoveryDriverInput": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/final-recovery-driver.sha256",
+    "bytes": 121,
+    "sha256": "3b79fcb8bbf0bba9238420d6512791e737e1e903e61b82df5ed71275d435e970"
+  },
+  "runtimeVerifierInput": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/final-runtime-verifier.sha256",
+    "bytes": 117,
+    "sha256": "1d275085f20ecee9a676a14094ec9d6859a6a8a12066d00abdfde952c6c305cf"
+  },
+  "earlierFailedRuns": {
+    "x64StartupAdapter": [
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/initial-x64/x64-held-state.json",
+        "bytes": 1367,
+        "sha256": "a2e3381994fcba76308032f9fa1dc765b0055c42f59ff03b4127cace75b7ca98"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/initial-x64/x64-offline-state.json",
+        "bytes": 1366,
+        "sha256": "dd95d27ef51affb2e8a8a70089d4b343eb4ccf410800fcfa347260e39c5f2e8c"
+      }
+    ],
+    "x64VerificationDuringShutdown": [
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/x64-verification-race/x64-held-generations.jsonl",
+        "bytes": 285,
+        "sha256": "c461441231048f429b1c435aea6aaa2953c9e17d483f32efa393edac6160f07a"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/x64-verification-race/x64-offline-generations.jsonl",
+        "bytes": 285,
+        "sha256": "774d334088389f6d664cd99c270a47517b5549ff6990d1934b1af16279444068"
+      }
+    ],
+    "arm64ReplayBeforeWorkerReconnected": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-active-decision-outage.o7POti9w/early-replay/arm64-offline.json",
+      "bytes": 472698,
+      "sha256": "ff698264cdfb0cc567d33c3e41ca36699b847edc5c090ca70b257237cdc161dd"
+    }
+  },
+  "limitations": "One browser, one worker, one Rust server and a controlled provider per case. Other dependency faults, adapters, shared peers, Windows installation and production distribution signatures have separate acceptance."
+}

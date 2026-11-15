@@ -6714,6 +6714,7 @@
         "implementation": "cantrip_server_rs/src/http/model_operations.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-linux-decision-postgres-outage.json",
           "docs/security/rust-server-3059-decision-postgres-outage.json",
           "docs/security/rust-server-3059-linux-model-boundaries.json",
           "docs/security/rust-server-3059-postgres-long-outage.json",
@@ -6728,7 +6729,7 @@
           "docs/security/rust-server-3059-windows-postgres-recovery.json"
         ],
         "remaining": [
-          "The macOS 1.1.3059 package qualifies an active decision held until external PostgreSQL recovery and a response returned while PostgreSQL is down with receipt settlement after recovery. The exact Windows package qualifies a fresh decision after overlapping process loss and five-minute database loss. Qualify active decisions across other platforms, shared peer and dependency interruptions, and provider-specific failures."
+          "The macOS and Linux ARM64/x64 1.1.3059 packages qualify decisions held through external PostgreSQL recovery and replies delivered while PostgreSQL is down, with one receipt settled after recovery. The exact Windows package qualifies a fresh decision after overlapping process loss and five-minute database loss. Active decisions on Windows, shared peer and other dependency interruptions, and provider-specific failures remain open."
         ]
       },
       {
@@ -11694,12 +11695,13 @@
         "implementation": "cantrip_server_rs/src/http/model_operations.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-linux-decision-postgres-outage.json",
           "docs/security/rust-server-3059-decision-postgres-outage.json",
           "docs/RUST_SERVER_SOURCE_DRIFT.md",
           "docs/security/rust-server-3059-windows-postgres-recovery.json"
         ],
         "remaining": [
-          "The real packaged worker completed an active decision through both PostgreSQL outage cases on macOS. Qualify active decisions across other platforms, shared dependencies and additional provider adapters."
+          "The real packaged worker completed active decisions through both PostgreSQL outage cases on macOS and Linux ARM64/x64. Qualify active decisions on Windows and across shared dependencies and additional provider adapters."
         ]
       },
       {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { posix } from "node:path";
 
 // Inspect the running server's executable after a real request succeeds. Image
 // metadata and uname alone can conceal an x64 executable under ARM emulation.
@@ -6,6 +7,7 @@ export async function containerRuntimeIdentity(
   docker,
   name,
   imageArchitecture,
+  { verifiedPackage } = {},
 ) {
   const processes = (
     await docker(
@@ -29,11 +31,14 @@ export async function containerRuntimeIdentity(
   const [processDirectory, , observation, mappedInode] = roots[0];
   const processExecutable = processDirectory + "/exe";
   let executable = processExecutable;
+  const state =
+    observation === "mapped" || verifiedPackage
+      ? JSON.parse(await docker("inspect", name))[0]
+      : undefined;
   if (observation === "mapped") {
     // Rosetta's /proc/<pid>/exe identifies its ARM interpreter. Its maps still
     // identifies the x64 input inode. Hash that same inode on the immutable
     // container root, rather than mislabeling the interpreter as the server.
-    const state = JSON.parse(await docker("inspect", name))[0];
     assert.equal(state.HostConfig.ReadonlyRootfs, true);
     executable = "/opt/cantrip/bin/cantrip-server";
     assert.equal(
@@ -74,20 +79,52 @@ export async function containerRuntimeIdentity(
   );
   assert.ok(server, "artifact manifest records the executed server");
   assert.equal(sha256, server.sha256);
-  const checksums = await docker(
-    "exec",
-    name,
-    "sha256sum",
-    "--",
-    ...manifest.files.map((file) => "/opt/cantrip/" + file.path),
-  );
-  assert.equal(
-    checksums,
-    manifest.files
-      .map((file) => file.sha256 + "  /opt/cantrip/" + file.path)
-      .join("\n"),
-    "all actual packaged files match the artifact manifest",
-  );
+  if (verifiedPackage) {
+    // A disposable container's exact immutable image can be verified once on
+    // the host. The running executable is still identified and hashed above.
+    const packageDirectory = "/opt/cantrip";
+    assert.equal(state.Image, verifiedPackage.imageId);
+    assert.equal(state.HostConfig.ReadonlyRootfs, true);
+    const mountDestinations = [
+      ...state.Mounts.map((mount) => mount.Destination),
+      ...Object.keys(state.HostConfig.Tmpfs ?? {}),
+    ];
+    for (const mount of mountDestinations) {
+      const destination = posix.resolve(mount);
+      const overlapsPackage =
+        destination === "/" ||
+        destination === packageDirectory ||
+        destination.startsWith(packageDirectory + "/") ||
+        packageDirectory.startsWith(destination + "/");
+      assert.equal(overlapsPackage, false, "immutable package path");
+    }
+    const manifestChecksum = await docker(
+      "exec",
+      name,
+      "sha256sum",
+      "/opt/cantrip/native-server.json",
+    );
+    assert.equal(
+      manifestChecksum.split(/\s+/)[0],
+      verifiedPackage.manifestSha256,
+    );
+    assert.equal(manifest.files.length, verifiedPackage.verifiedArtifactFiles);
+  } else {
+    const checksums = await docker(
+      "exec",
+      name,
+      "sha256sum",
+      "--",
+      ...manifest.files.map((file) => "/opt/cantrip/" + file.path),
+    );
+    assert.equal(
+      checksums,
+      manifest.files
+        .map((file) => file.sha256 + "  /opt/cantrip/" + file.path)
+        .join("\n"),
+      "all actual packaged files match the artifact manifest",
+    );
+  }
   return {
     processExecutable,
     serverProcessDirectories: [...directories],
@@ -104,6 +141,7 @@ export async function containerRuntimeIdentity(
     sha256,
     bytes: server.bytes,
     verifiedArtifactFiles: manifest.files.length,
+    ...(verifiedPackage ? { packageVerifiedFromImmutableImage: true } : {}),
     artifactTarget: manifest.target,
     artifactVersion: manifest.version,
   };

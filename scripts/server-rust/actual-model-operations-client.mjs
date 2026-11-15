@@ -188,6 +188,16 @@ export async function actualModelOperationsClient({
         ).tokenUsage,
       setup.provider.id,
     );
+  const waitForWorkerOnline = (timeout) =>
+    eventually(
+      () => page.evaluate(() => window.folderWorkers.getWorkers()),
+      (workers) =>
+        assert.equal(
+          workers.find((worker) => worker.workerId === workerId)?.online,
+          true,
+        ),
+      timeout,
+    );
   const receipt = async (name, expected) => {
     const wire = wires.get(name);
     const row = await eventually(rows, (rows) => {
@@ -436,6 +446,7 @@ export async function actualModelOperationsClient({
         peers.forEach((peer) => assertDatabaseReadiness(peer, "ready", 200)),
       45_000,
     );
+    const databaseRecoveredAt = performance.now();
     if (!settleModelWhilePostgresOffline) {
       assert.equal(plan.entry.closed, false);
       plan.release();
@@ -450,6 +461,14 @@ export async function actualModelOperationsClient({
       ),
       before.filter((row) => row.executionAttemptId !== wire.operationId),
     );
+    // Database readiness and worker-command recovery are separate observations.
+    // Assert reconnection before testing worker-side handling of the replay.
+    await waitForWorkerOnline(60_000);
+    outage.workerOnlineAfterRecoveryMs = Math.round(
+      performance.now() - databaseRecoveredAt,
+    );
+    workerStillRunning();
+    assert.equal(provider.requests.length, report.cases.at(-1).before + 1);
     await replay(name, operation, "invalid-request");
     provider.reply("decision");
     await begin("after-postgres-outage", "decision");
@@ -845,14 +864,7 @@ export async function actualModelOperationsClient({
     });
     const beforeReconnect = provider.requests.length;
     await startWorker();
-    await eventually(
-      () => page.evaluate(() => window.folderWorkers.getWorkers()),
-      (workers) =>
-        assert.equal(
-          workers.find((w) => w.workerId === workerId)?.online,
-          true,
-        ),
-    );
+    await waitForWorkerOnline();
     assert.equal(provider.requests.length, beforeReconnect);
     result.steps.push(
       "actual worker SIGKILL closes its provider request, retains unknown usage and never automatically resubmits the operation after reconnect",
@@ -862,14 +874,7 @@ export async function actualModelOperationsClient({
     await stopWorker();
     await fixture.restart();
     await startWorker();
-    await eventually(
-      () => page.evaluate(() => window.folderWorkers.getWorkers()),
-      (workers) =>
-        assert.equal(
-          workers.find((w) => w.workerId === workerId)?.online,
-          true,
-        ),
-    );
+    await waitForWorkerOnline();
     assert.deepEqual(await rows(), beforeRestart);
     provider.reply("decision");
     await begin("after-restart", "decision");
@@ -991,14 +996,7 @@ export async function actualModelOperationsClient({
       report.serverInterruption.providerClosedObservedAfterMs = Math.round(
         performance.now() - interruptedAt,
       );
-      await eventually(
-        () => page.evaluate(() => window.folderWorkers.getWorkers()),
-        (workers) =>
-          assert.equal(
-            workers.find((w) => w.workerId === workerId)?.online,
-            true,
-          ),
-      );
+      await waitForWorkerOnline();
       assert.equal(
         await page.evaluate(async () => {
           const { getClientSession } =
