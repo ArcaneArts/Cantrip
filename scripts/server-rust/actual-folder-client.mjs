@@ -150,11 +150,11 @@ const sharedPair = option("--server-pair");
 const automationInterruption = option("--project-automation-interruption");
 if (process.argv.includes("--project-automation-interruption")) {
   assert.ok(
-    ["protect", "finish"].includes(automationInterruption) &&
+    ["protect", "finish", "handoff"].includes(automationInterruption) &&
       sharedPair &&
       databaseMode === "postgres" &&
       process.argv.includes("--project-automations"),
-    "Automation interruption requires protect or finish, a shared PostgreSQL pair, and --project-automations",
+    "Automation interruption requires protect, finish or handoff, a shared PostgreSQL pair, and --project-automations",
   );
 }
 const sharedQueueRecovery = process.argv.includes("--shared-queue-recovery");
@@ -309,7 +309,9 @@ assert.ok(!fakeComputerUse || computerUseProduct);
 assert.ok(!workerLinkRenewal || !sharedPair);
 const cliWorktreeAcquire = process.argv.includes("--cli-worktree-acquire");
 const gitProjectChat =
-  cliWorktreeAcquire || process.argv.includes("--chat-controls");
+  cliWorktreeAcquire ||
+  automationInterruption === "handoff" ||
+  process.argv.includes("--chat-controls");
 const singleProduct =
   cliWorktreeAcquire ||
   cantripOsRun ||
@@ -1805,6 +1807,7 @@ async function flow(
         ...(cliWorktreeAcquire ? { cliWorktreeAcquire: cliBinary } : {}),
         workerDataDirectory: dataDirectory,
         workerId,
+        cliBinary,
         startWorker,
         stopWorker,
         result,
@@ -2012,7 +2015,8 @@ try {
     process.argv.includes("--tunnels") ||
     process.argv.includes("--project-shares") ||
     process.argv.includes("--worktrees") ||
-    gitProjectChat ||
+    cliWorktreeAcquire ||
+    process.argv.includes("--chat-controls") ||
     process.argv.includes("--project-administration")
   )
     surfaceRepositoryBinary = !usesNative

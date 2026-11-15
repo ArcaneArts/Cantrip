@@ -82,6 +82,7 @@ export async function interruptAutomationDispatch({
   phase,
   enable,
   nativeReply,
+  handoff,
   modelPosts,
   evidence,
 }) {
@@ -196,6 +197,17 @@ export async function interruptAutomationDispatch({
     assert.equal(worker.exitCode, null);
     assert.equal(worker.signalCode, null);
     evidence.workerPid = worker.pid;
+    if (handoff) {
+      evidence.handoff = await handoff.move(id);
+      evidence.targetWorkerProtection = await eventually(
+        () => readProbe(handoff.probe, "protected"),
+        (reply) => {
+          assert.equal(reply?.allowed, true);
+          assert.notEqual(reply.requestId, evidence.workerProtection.requestId);
+        },
+        65_000,
+      );
+    }
     if (stream) {
       assert.equal(nativeReply.request, stream);
       assert.equal(stream.closed, false);

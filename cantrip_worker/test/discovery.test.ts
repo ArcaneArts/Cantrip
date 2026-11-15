@@ -125,6 +125,11 @@ describe("Codex runtime discovery", () => {
     });
     expect(CODEX_EXPERIMENTAL_WORKFLOW_METHODS).toEqual({
       diagnostics: ["server/diagnostics"],
+      chatRelocation: [
+        "thread/inject_items",
+        "thread/unsubscribe",
+        "thread/settings/update",
+      ],
       promptQueue: [
         "thread/queue/add",
         "thread/queue/list",

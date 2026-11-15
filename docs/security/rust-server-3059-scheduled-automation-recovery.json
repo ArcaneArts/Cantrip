@@ -312,8 +312,9 @@
       }
     ]
   },
+  "followUpQualification": "docs/security/rust-server-3059-scheduled-automation-handoff.json",
   "remainingQualification": [
-    "Packaged Linux and Windows tests of this interruption.",
-    "Transfer of scheduled execution authority between two separately enrolled workers."
+    "Packaged Windows tests of both interruption boundaries.",
+    "Transfer after ordinary direct Git import without pre-populating the source worktree revision in the fixture."
   ]
 }

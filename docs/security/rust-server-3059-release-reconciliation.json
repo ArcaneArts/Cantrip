@@ -214,6 +214,7 @@
     "macosQueueResumeAcknowledgment": "docs/security/rust-server-3059-macos-resume-ack.json",
     "linuxSharedQueueAndAutomations": "docs/security/rust-server-3059-linux-shared-queue.json",
     "scheduledAutomationDispatchRecovery": "docs/security/rust-server-3059-scheduled-automation-recovery.json",
+    "scheduledAutomationLinuxAndWorkerHandoff": "docs/security/rust-server-3059-scheduled-automation-handoff.json",
     "linuxProjectAutomations": "docs/security/rust-server-3059-linux-project-automations.json",
     "macosSharedProjectAutomations": "docs/security/rust-server-3059-shared-project-automations.json",
     "mobile": "docs/security/rust-server-3059-mobile-qualification.json",

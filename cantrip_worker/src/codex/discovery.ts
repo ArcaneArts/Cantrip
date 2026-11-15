@@ -76,6 +76,11 @@ export const CODEX_CUSTOMIZATION_METHODS = {
 
 export const CODEX_EXPERIMENTAL_WORKFLOW_METHODS = {
   diagnostics: ["server/diagnostics"],
+  chatRelocation: [
+    "thread/inject_items",
+    "thread/unsubscribe",
+    "thread/settings/update",
+  ],
   promptQueue: [
     "thread/queue/add",
     "thread/queue/list",
