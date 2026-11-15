@@ -2093,8 +2093,23 @@ placement and revision changes, and idempotent replay across all three
 database modes and authentication profiles. The optimized macOS ARM64
 standalone package also passed the two-worker handoff with normal enrollment
 through its shipped launcher. Each of the three database modes preserved its
-server identity through two clean starts and shutdowns. Windows recovery
-remains open.
+server identity through two clean starts and shutdowns.
+
+The optimized Linux ARM64 and x64 images built from the merged relocation fix
+each passed the same direct-import handoff. The browser and two full workers
+ran on macOS. For each image, the target worker recovered the scheduled
+occurrence at fence 2 and completed one native turn, with the original
+container's exit status recorded as 137. Both images also passed migration,
+SQL export, settings persistence and clean shutdown with all three database
+modes on a read-only root filesystem and a non-executable temporary mount.
+
+The current ARM64 package also passed 18 installer runs on an isolated
+Winterhold host with systemd and Caddy. Each database kept a session and
+settings accepted by Rust across rollback and return to the new package.
+The embedded modes rolled back to the previous Rust release. External
+PostgreSQL rolled back to the Node reference. The installer recovered from
+migration and startup failures, including systemd's start limit. The Windows
+runtime cases remain open.
 [Direct Git import and relocation evidence](security/rust-server-3059-relocation-source-revision.json)
 
 The same standalone executable matched the Node reference across all nine
