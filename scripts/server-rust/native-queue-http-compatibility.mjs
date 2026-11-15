@@ -11,6 +11,7 @@ import { password } from "./security-fixtures.mjs";
 import {
   settingsHttpFixture,
   settingsWorker as worker,
+  until,
 } from "./native-settings-http-fixture.mjs";
 import {
   seedEventChats,
@@ -25,10 +26,12 @@ const option = (key) => {
   return index < 0 ? undefined : process.argv[index + 1];
 };
 const databaseMode = option("--database") ?? "pglite";
+const standalone = process.argv.includes("--standalone");
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-native-queue-http-"));
 const report = {
   suite: "actual-native-queue-http",
   databaseMode,
+  bootstrapMode: standalone ? "standalone" : "pnpm-dev",
   root,
   completeReplacement: false,
   profiles: [],
@@ -56,6 +59,7 @@ try {
         workerSdkOperations: 0,
         sdkObservations: [],
         queueNotifications: 0,
+        queueNotificationRevisions: [],
       };
       outputs.push(result);
       let client;
@@ -67,6 +71,12 @@ try {
         repositoryExecutable,
         databaseMode,
         passwordHash,
+        environment: standalone
+          ? {
+              CANTRIP_BOOTSTRAP_MODE: "standalone",
+              CANTRIP_WORKER_TOKEN: undefined,
+            }
+          : {},
         url:
           pg && (kind === "node" || databaseMode === "postgres")
             ? await pg.database()
@@ -79,8 +89,12 @@ try {
         onCommand: async (command) => {
           if (command.type === "chat.queue.changed") {
             assert.ok(client, "actual queue client initialized");
-            await client.read({ session: h.prepared[command.chatId].session });
+            const snapshot = await client.read({
+              session: h.prepared[command.chatId].session,
+            });
+            assert.equal(snapshot.revision, command.revision);
             result.queueNotifications++;
+            result.queueNotificationRevisions.push(command.revision);
             return null;
           }
         },
@@ -92,7 +106,23 @@ try {
           token: () => h.credential,
         });
         h.prepared = await prepareEventCommands(h);
-        await nativeQueueHttpCases({ h, client, result });
+        let previousRevision = 0;
+        await nativeQueueHttpCases({
+          h,
+          client,
+          result,
+          async observeRevision(revision) {
+            if (!Number.isInteger(revision) || revision <= previousRevision)
+              return;
+            // A background delivery publishes its own invalidation. Observe
+            // the exact worker revision before creating the next one.
+            await until(
+              () => result.queueNotificationRevisions.at(-1),
+              (notifiedRevision) => notifiedRevision === revision,
+            );
+            previousRevision = revision;
+          },
+        });
         await h.live.ping("complete canonical queue effects");
         result.rawQueueEvents = h.live.history.filter(
           (event) => event.type === "event" && event.resource === "chat-queue",
@@ -116,6 +146,7 @@ try {
       "workerSdkOperations",
       "sdkObservations",
       "queueEvents",
+      "queueNotificationRevisions",
     ])
       assert.deepEqual(outputs[1][key], outputs[0][key], profile + " " + key);
   }

@@ -461,10 +461,12 @@
           "scripts/server-rust/live-repository-compatibility.mjs",
           "scripts/server-rust/live-compatibility.mjs",
           "scripts/server-rust/worker-client-compatibility.mjs",
-          "docs/security/rust-server-2881-shared-resource-rolling.json"
+          "docs/security/rust-server-2881-shared-resource-rolling.json",
+          "docs/security/rust-server-3059-native-queue-delivery.json"
         ],
         "remaining": [
-          "Complete the remaining domain publisher, supported-platform installed client and shared failure acceptance."
+          "Complete the remaining domain publisher, supported-platform installed client and shared failure acceptance.",
+          "The macOS package and both Linux images matched ordered chat-queue invalidations after the worker confirmed each durable revision. Remaining App Live resource and failure scopes are tracked separately."
         ]
       },
       {
@@ -4423,10 +4425,11 @@
           "scripts/server-rust/native-queue-authority-case.mjs",
           "scripts/server-rust/native-queue-transaction-case.mjs",
           "cantrip_server_rs/tests/native_command_contracts.rs",
-          "scripts/server-rust/native-queue-disconnected-mutation.mjs"
+          "scripts/server-rust/native-queue-disconnected-mutation.mjs",
+          "docs/security/rust-server-3059-native-queue-delivery.json"
         ],
         "remaining": [
-          "The packaged macOS 1.1.3059 HTTP and App Live queue comparison passed on all three databases and authentication modes. Qualify this route on Windows and Linux packages and through full-worker and shared-coordination fault scenarios."
+          "The packaged macOS 1.1.3059 server matched all three stores. Linux ARM64 and x64 matched with external PostgreSQL. Windows, embedded Linux cases and full-worker shared recovery remain open."
         ]
       },
       {
@@ -4447,10 +4450,11 @@
           "scripts/server-rust/native-queue-authority-case.mjs",
           "scripts/server-rust/native-queue-transaction-case.mjs",
           "cantrip_server_rs/tests/native_command_contracts.rs",
-          "scripts/server-rust/native-queue-disconnected-mutation.mjs"
+          "scripts/server-rust/native-queue-disconnected-mutation.mjs",
+          "docs/security/rust-server-3059-native-queue-delivery.json"
         ],
         "remaining": [
-          "The packaged macOS 1.1.3059 HTTP and App Live queue comparison passed on all three databases and authentication modes. Qualify this route on Windows and Linux packages and through full-worker and shared-coordination fault scenarios."
+          "The packaged macOS 1.1.3059 server matched all three stores. Linux ARM64 and x64 matched with external PostgreSQL. Windows, embedded Linux cases and full-worker shared recovery remain open."
         ]
       },
       {
@@ -4471,10 +4475,11 @@
           "scripts/server-rust/native-queue-authority-case.mjs",
           "scripts/server-rust/native-queue-transaction-case.mjs",
           "cantrip_server_rs/tests/native_command_contracts.rs",
-          "scripts/server-rust/native-queue-disconnected-mutation.mjs"
+          "scripts/server-rust/native-queue-disconnected-mutation.mjs",
+          "docs/security/rust-server-3059-native-queue-delivery.json"
         ],
         "remaining": [
-          "The packaged macOS 1.1.3059 HTTP and App Live queue comparison passed on all three databases and authentication modes. Qualify this route on Windows and Linux packages and through full-worker and shared-coordination fault scenarios."
+          "The packaged macOS 1.1.3059 server matched all three stores. Linux ARM64 and x64 matched with external PostgreSQL. Windows, embedded Linux cases and full-worker shared recovery remain open."
         ]
       },
       {
@@ -4495,10 +4500,11 @@
           "scripts/server-rust/native-queue-authority-case.mjs",
           "scripts/server-rust/native-queue-transaction-case.mjs",
           "cantrip_server_rs/tests/native_command_contracts.rs",
-          "scripts/server-rust/native-queue-disconnected-mutation.mjs"
+          "scripts/server-rust/native-queue-disconnected-mutation.mjs",
+          "docs/security/rust-server-3059-native-queue-delivery.json"
         ],
         "remaining": [
-          "The packaged macOS 1.1.3059 HTTP and App Live queue comparison passed on all three databases and authentication modes. Qualify this route on Windows and Linux packages and through full-worker and shared-coordination fault scenarios."
+          "The packaged macOS 1.1.3059 server matched all three stores. Linux ARM64 and x64 matched with external PostgreSQL. Windows, embedded Linux cases and full-worker shared recovery remain open."
         ]
       },
       {
@@ -4519,10 +4525,11 @@
           "scripts/server-rust/native-queue-authority-case.mjs",
           "scripts/server-rust/native-queue-transaction-case.mjs",
           "cantrip_server_rs/tests/native_command_contracts.rs",
-          "scripts/server-rust/native-queue-disconnected-mutation.mjs"
+          "scripts/server-rust/native-queue-disconnected-mutation.mjs",
+          "docs/security/rust-server-3059-native-queue-delivery.json"
         ],
         "remaining": [
-          "The packaged macOS 1.1.3059 HTTP and App Live queue comparison passed on all three databases and authentication modes. Qualify this route on Windows and Linux packages and through full-worker and shared-coordination fault scenarios."
+          "The packaged macOS 1.1.3059 server matched all three stores. Linux ARM64 and x64 matched with external PostgreSQL. Windows, embedded Linux cases and full-worker shared recovery remain open."
         ]
       },
       {
@@ -4543,10 +4550,11 @@
           "scripts/server-rust/native-queue-authority-case.mjs",
           "scripts/server-rust/native-queue-transaction-case.mjs",
           "cantrip_server_rs/tests/native_command_contracts.rs",
-          "scripts/server-rust/native-queue-disconnected-mutation.mjs"
+          "scripts/server-rust/native-queue-disconnected-mutation.mjs",
+          "docs/security/rust-server-3059-native-queue-delivery.json"
         ],
         "remaining": [
-          "The packaged macOS 1.1.3059 HTTP and App Live queue comparison passed on all three databases and authentication modes. Qualify this route on Windows and Linux packages and through full-worker and shared-coordination fault scenarios."
+          "The packaged macOS 1.1.3059 server matched all three stores. Linux ARM64 and x64 matched with external PostgreSQL. Windows, embedded Linux cases and full-worker shared recovery remain open."
         ]
       },
       {

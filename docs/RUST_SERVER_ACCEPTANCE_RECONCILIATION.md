@@ -311,6 +311,20 @@ controlled worker callbacks and aligned the Node reference's version
 metadata to 1.1.3059 before comparing exact bootstrap responses.
 [Native queue wire evidence](security/rust-server-3059-macos-native-queue-wire.json)
 
+The rebuilt macOS package and both Linux images matched 1,525 queue HTTP
+observations, 300 ordered App Live invalidations and 135 worker queue
+notifications. The macOS package ran on all three database modes. Both
+Linux images used external PostgreSQL and standalone bootstrap. All runs
+covered anonymous, password and account authentication.
+
+The initial ARM64 comparison received one extra App Live invalidation while
+the background service delivered its queue notice. The fixture now waits
+for the worker SDK to observe each committed revision before issuing the
+next mutation. It verifies the nine worker revisions and still compares
+the complete ordered App Live stream. The Linux x64 image ran under
+emulation. All 12 Linux server generations exited zero.
+[Native queue delivery evidence](security/rust-server-3059-native-queue-delivery.json)
+
 ### Task and Agent restart on Linux
 
 The packaged Rust server and 1.1.3059 Node worker completed 18 browser

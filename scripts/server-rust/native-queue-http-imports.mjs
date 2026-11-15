@@ -11,6 +11,7 @@ export async function nativeQueueHttpImports({
   content,
   call,
   read,
+  observeRevision,
 }) {
   const session = read.session,
     nativeItemId = "native-queue-http-item";
@@ -100,6 +101,7 @@ export async function nativeQueueHttpImports({
   const renewed = await content.sdk("worker SDK renews native import", () =>
     client.import(renewedInput),
   );
+  await observeRevision(renewed.revision);
   assert.equal(renewed.imports[0].importId, original.importId);
   assert.equal(renewed.imports[0].status, "uncertain");
   assert.deepEqual(
@@ -160,6 +162,7 @@ export async function nativeQueueHttpImports({
     "worker SDK acknowledges native deletion",
     () => client.acknowledgeImport(success),
   );
+  await observeRevision(accepted.revision);
   assert.deepEqual(accepted.pendingImports, []);
   assert.equal(accepted.items.length, 1);
   assert.equal(accepted.items[0].id, replacement.id);
