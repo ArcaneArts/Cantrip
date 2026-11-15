@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { eventually } from "./full-worker.mjs";
 import { literal } from "./project-target-state.mjs";
@@ -62,13 +63,37 @@ async function holdClaimAdmission(sql, promptId) {
   };
 }
 
+async function reserveHeadForWorkerResume(sql, promptId) {
+  // The server's recovery sweep can claim this same prompt first. The
+  // acknowledgment case needs the worker's own queue/start receipt, so defer
+  // server-owned claims of this fixture prompt until that receipt is observed.
+  await sql.unsafe(`
+    CREATE FUNCTION cantrip_qa_defer_server_queue_claim() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      RETURN NULL;
+    END $$;
+    CREATE TRIGGER cantrip_qa_defer_server_queue_claim
+      BEFORE INSERT ON managed_queue_claims FOR EACH ROW
+      WHEN (NEW.prompt_id=${literal(promptId)} AND NEW.request_operation_id IS NULL)
+      EXECUTE FUNCTION cantrip_qa_defer_server_queue_claim();
+  `);
+  return () =>
+    sql.unsafe(`
+      DROP TRIGGER cantrip_qa_defer_server_queue_claim ON managed_queue_claims;
+      DROP FUNCTION cantrip_qa_defer_server_queue_claim();
+    `);
+}
+
 export async function interruptSharedQueue({
   fixture,
   chatId,
+  resumeAckFile,
   promptId,
   firstReply,
   modelPosts,
   resume,
+  pauseAfterFirstTurn,
   replaceWorkerOwner,
   fault,
 }) {
@@ -143,8 +168,21 @@ export async function interruptSharedQueue({
       fault.retry = await resume();
       assert.equal(fault.retry.paused, false, JSON.stringify(fault.retry));
     } else {
+      let releaseServerClaim;
+      if (resumeAckFile) {
+        await writeFile(resumeAckFile + ".armed", chatId);
+        releaseServerClaim = await reserveHeadForWorkerResume(sql, promptId);
+      }
+      let resolved = false;
       const resuming = resume();
-      void resuming.catch(() => {});
+      void resuming.then(
+        () => {
+          resolved = true;
+        },
+        () => {
+          resolved = true;
+        },
+      );
       try {
         const started = await eventually(
           () => firstReply.request,
@@ -159,20 +197,74 @@ export async function interruptSharedQueue({
           assert.ok(rows[0].turnId);
         });
         fault.before = before;
-        fault.resume = await resuming;
-        assert.equal(fault.resume.paused, false, JSON.stringify(fault.resume));
+        if (resumeAckFile) {
+          assert.match(before.requestOperationId, /^queue-resume:/);
+          fault.heldAck = await eventually(
+            async () => {
+              try {
+                return JSON.parse(
+                  await readFile(resumeAckFile + ".held", "utf8"),
+                );
+              } catch (error) {
+                if (error.code !== "ENOENT") throw error;
+                return null;
+              }
+            },
+            (value) => assert.equal(value?.resumed, true),
+          );
+          assert.equal(
+            resolved,
+            false,
+            "the browser must still be waiting for Resume",
+          );
+          const release = releaseServerClaim;
+          releaseServerClaim = undefined;
+          await release();
+        } else {
+          fault.resume = await resuming;
+          assert.equal(
+            fault.resume.paused,
+            false,
+            JSON.stringify(fault.resume),
+          );
+        }
         fault.modelStreamOpen = !started.completed && !started.closed;
         assert.ok(fault.modelStreamOpen);
         assert.equal(modelPosts(), 1);
+        if (pauseAfterFirstTurn) {
+          firstReply.release();
+          fault.newerPause = await pauseAfterFirstTurn();
+          assert.equal(fault.newerPause.paused, true);
+          assert.equal(started.completed, true);
+          assert.equal(resolved, false);
+        }
         await replaceWorkerOwner();
         fault.after = await snapshot();
         assert.deepEqual(fault.after, [before]);
         assert.equal(firstReply.request, started);
-        assert.equal(started.completed, false);
-        assert.equal(started.closed, false);
+        if (!pauseAfterFirstTurn) {
+          assert.equal(started.completed, false);
+          assert.equal(started.closed, false);
+        }
         assert.equal(modelPosts(), 1);
+        if (resumeAckFile) {
+          fault.resume = await resuming;
+          const expectedPause = Boolean(pauseAfterFirstTurn);
+          assert.equal(
+            fault.resume.paused,
+            expectedPause,
+            JSON.stringify(fault.resume),
+          );
+          const [chat] = await sql`
+            SELECT automation_paused AS paused FROM chats WHERE id=${chatId}
+          `;
+          fault.durablePaused = chat.paused;
+          assert.equal(fault.durablePaused, expectedPause);
+          if (!pauseAfterFirstTurn) assert.equal(started.closed, false);
+        }
       } finally {
         firstReply.release();
+        await releaseServerClaim?.();
       }
     }
   } finally {
@@ -208,7 +300,7 @@ export async function verifyRecoveredQueueClaim({
     assert.equal(claim.promptState, "consumed");
     assert.equal(claim.receiptStatus, "applied");
     assert.equal(claim.turnId, turnId);
-    if (fault.phase === "stream") assert.deepEqual(claim, fault.before);
+    if (fault.phase !== "claim") assert.deepEqual(claim, fault.before);
     fault.completed = claim;
   } finally {
     await sql.end({ timeout: 3 });

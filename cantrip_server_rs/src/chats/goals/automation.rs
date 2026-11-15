@@ -1,4 +1,14 @@
 use super::*;
+use crate::{
+    native_commands::managed_queue::QueueRepository, workers::command_bus::CommandFailure,
+};
+
+#[derive(Debug)]
+pub enum ResumeOutcome {
+    Complete,
+    RecoveredQueueStart { paused: bool },
+}
+
 impl Service {
     pub fn recover_managed_goal(
         self: &Arc<Self>,
@@ -291,7 +301,7 @@ impl Service {
         chat: &str,
         activate: bool,
         reconciled: bool,
-    ) -> BoxFuture<'static, Result<()>> {
+    ) -> BoxFuture<'static, Result<ResumeOutcome>> {
         let (this, owner, chat) = (self.clone(), owner.to_owned(), chat.to_owned());
         self.operations
             .run(async move { this.resume_one(&owner, &chat, activate, reconciled).await })
@@ -302,9 +312,9 @@ impl Service {
         chat: &str,
         activate: bool,
         reconciled: bool,
-    ) -> Result<()> {
+    ) -> Result<ResumeOutcome> {
         let Some(context) = self.chats.execution_context(owner, chat).await? else {
-            return Ok(());
+            return Ok(ResumeOutcome::Complete);
         };
         if truthy(context.get("automationPaused"))
             || executing(&context)
@@ -313,16 +323,16 @@ impl Service {
                 .commands
                 .is_connected(&text(&context["workerId"])?)
         {
-            return Ok(());
+            return Ok(ResumeOutcome::Complete);
         }
         if !reconciled && (self.dependencies.pending)(owner.into(), chat.into()).await? {
-            return Ok(());
+            return Ok(ResumeOutcome::Complete);
         }
         let Some(context) = self.chats.execution_context(owner, chat).await? else {
-            return Ok(());
+            return Ok(ResumeOutcome::Complete);
         };
         if truthy(context.get("automationPaused")) || executing(&context) {
-            return Ok(());
+            return Ok(ResumeOutcome::Complete);
         }
         if truthy(context.get("threadId")) {
             let runtime = self
@@ -346,16 +356,45 @@ impl Service {
                 managed["planMode"] = selected(managed.get("planMode"), &json!("default"));
                 managed["permissionProfileId"] =
                     managed_console::permission_profile(&context)["effectiveId"].clone();
-                let result = self
+                let worker = text(&context["workerId"])?;
+                let queue = QueueRepository::new(self.dependencies.database.clone());
+                // Capture the queue head for lost-acknowledgment recovery. A
+                // read failure must not prevent the worker from trying Resume.
+                let expected = if context["experience"] == "agent" {
+                    queue
+                        .next_resume_operation(owner, chat)
+                        .await
+                        .ok()
+                        .flatten()
+                } else {
+                    None
+                };
+                let response = self
                     .dependencies
                     .commands
-                    .request_with_timeout(
-                        &text(&context["workerId"])?,
-                        managed,
-                        RequestTimeout::Default,
-                        None,
-                    )
-                    .await?;
+                    .request_with_timeout(&worker, managed, RequestTimeout::Default, None)
+                    .await;
+                let result = match response {
+                    Ok(result) => result,
+                    Err(error) => {
+                        if matches!(&error, CommandFailure::Bridge(cause)
+                            if cause.unavailable && cause.code.as_deref() != Some("worker-command-not-sent"))
+                            && let Some(expected) = expected
+                            && let Ok(Some(paused)) = queue
+                                .applied_resume_pause_state(
+                                    owner,
+                                    chat,
+                                    &worker,
+                                    &text(&context["threadId"])?,
+                                    &expected,
+                                )
+                                .await
+                        {
+                            return Ok(ResumeOutcome::RecoveredQueueStart { paused });
+                        }
+                        return Err(error.into());
+                    }
+                };
                 let resumed = result
                     .as_ref()
                     .and_then(|v| v["resumed"].as_bool())
@@ -363,11 +402,11 @@ impl Service {
                 if !resumed {
                     (self.dependencies.queue)(owner.into(), chat.into()).await?;
                 }
-                return Ok(());
+                return Ok(ResumeOutcome::Complete);
             }
             if context["experience"] == "task" {
                 let Some(task) = self.tasks.get(owner, chat).await? else {
-                    return Ok(());
+                    return Ok(ResumeOutcome::Complete);
                 };
                 if self
                     .tasks
@@ -386,7 +425,7 @@ impl Service {
                         self.resume_pending_goal_input(owner, &context, &lease, &mut options)
                             .await?;
                     }
-                    return Ok(());
+                    return Ok(ResumeOutcome::Complete);
                 }
                 let id = uuid::Uuid::new_v4().to_string();
                 let key = format!("task-goal-resume:{id}");
@@ -438,7 +477,7 @@ impl Service {
                     };
                     (self.dependencies.begin)(owner.into(), context, input, options, hooks).await?;
                 }
-                return Ok(());
+                return Ok(ResumeOutcome::Complete);
             }
             let result=self.request(&context["workerId"],json!({"type":"chat.goal.get","chatId":context["chatId"],"cwd":context["cwd"],"threadId":context["threadId"],"model":runtime["model"],"provider":runtime["provider"],"permissionProfileId":managed_console::permission_profile(&context)["effectiveId"]}),"chatGoalResponseSchema").await?;
             if result["goal"]["status"] == "active" {
@@ -448,9 +487,10 @@ impl Service {
                     .resolve_model_id(owner, &context, None)
                     .await?;
                 (self.dependencies.begin)(owner.into(),context,json!({"text":concat(&[&json!("Resume goal: "),&result["goal"]["objective"]]),"mode":"goal","modelId":model,"idempotencyKey":concat(&[&json!("chat-resume:"),&result["goal"]["updatedAt"],&json!(":"),&json!(uuid::Uuid::new_v4().to_string())])}),json!({"acquiringActor":"agent","purpose":"Resume paused Codex goal","runtimes":vec![runtime],"workerPrompt":RESUME_PROMPT}),Hooks::default()).await?;
-                return Ok(());
+                return Ok(ResumeOutcome::Complete);
             }
         }
-        (self.dependencies.queue)(owner.into(), chat.into()).await
+        (self.dependencies.queue)(owner.into(), chat.into()).await?;
+        Ok(ResumeOutcome::Complete)
     }
 }
