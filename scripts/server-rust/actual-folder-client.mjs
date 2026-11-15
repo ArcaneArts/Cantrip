@@ -248,9 +248,23 @@ if (process.argv.includes("--model-operation-redis-outage-operation"))
 const replyWhileRedisOffline = process.argv.includes(
   "--model-operation-redis-offline-reply",
 );
+const modelRedisAndPostgresOutage = process.argv.includes(
+  "--model-operation-redis-and-postgres-outage",
+);
+const restoreRedisBeforePostgres = process.argv.includes(
+  "--model-operation-redis-first-recovery",
+);
 assert.ok(
   !replyWhileRedisOffline || modelRedisOutage,
   "Offline Redis reply requires --model-operation-redis-outage",
+);
+assert.ok(
+  !modelRedisAndPostgresOutage || (modelRedisOutage && replyWhileRedisOffline),
+  "Overlapping model dependency loss requires --model-operation-redis-outage and --model-operation-redis-offline-reply",
+);
+assert.ok(
+  !restoreRedisBeforePostgres || modelRedisAndPostgresOutage,
+  "Redis-first recovery requires --model-operation-redis-and-postgres-outage",
 );
 const modelServerAndPostgresLoss = process.argv.includes(
   "--model-operation-server-and-postgres-loss",
@@ -1935,6 +1949,10 @@ async function flow(
         settleModelWhilePostgresOffline,
         modelPostgresOutageDurationMs,
         redisOutage: modelRedisOutage,
+        postgresDuringRedisOutage: modelRedisAndPostgresOutage
+          ? postgres.cluster
+          : undefined,
+        restoreRedisBeforePostgres,
         modelRedisOutageOperation,
         replyWhileRedisOffline,
         requests,

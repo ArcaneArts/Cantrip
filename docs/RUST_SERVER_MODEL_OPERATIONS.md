@@ -204,6 +204,43 @@ Use `--model-operation-redis-outage-operation decision` with
 while Redis is down. Omitting the operation selector exercises an embedding.
 [Decision Redis outage reports and artifact identities](security/rust-server-3059-active-decision-redis-outage.json)
 
+### PostgreSQL and Redis down at the same time
+
+The current packages repeated the cross-peer decision with Redis stopped and
+external PostgreSQL shut down immediately. The provider completed its original
+reply 20 seconds into the overlap. PostgreSQL recovered on the same port
+after at least 45 seconds, and the peers stayed unready until Redis also
+recovered. Both peers stayed live. Rust readiness returned HTTP 503 while
+both dependencies were down. The Node readiness probes exceeded five seconds
+during the overlap.
+
+The four macOS peer pairings and the two Linux Rust/Rust pairings completed
+84 model operations and 36 clean server exits. The interrupted request returned
+the same HTTP 502 as in the Redis-only run. It kept one unknown usage record
+and rejected replay without another provider call. The same worker completed
+a fresh decision and recorded one ten-token receipt after recovery.
+
+Add `--model-operation-redis-and-postgres-outage` to the cross-peer Redis
+scenario with `--model-operation-redis-offline-reply` to exercise this recovery
+order. Add `--model-operation-redis-first-recovery` to restore Redis before
+PostgreSQL. The Linux x64 image ran through Rosetta.
+
+With Redis restored first, the original request can return HTTP 502 while
+PostgreSQL is still offline. The original Rust package dropped that terminal
+usage write and left the attempt running after recovery. The Node reference
+recorded an unknown outcome for the same failure. Rust now retries terminal
+usage writes on transient PostgreSQL errors, including outcomes without a
+receipt. The retry uses the original operation identity, preserves an
+existing receipt and never resends inference to the provider.
+
+The rebuilt macOS ARM64 package passed 42 operations with Redis recovering
+first across Rust/Rust, Rust/Node and Node/Rust. All three cases returned
+HTTP 502 before PostgreSQL recovered and then settled the original record as
+unknown. Replay made no additional provider request. The relocated package
+also passed export, restart and hosted startup across all three storage modes
+with Node and Homebrew excluded from the server process.
+[Overlapping dependency acceptance evidence](security/rust-server-3059-shared-decision-dependency-loss.json)
+
 ## Installed Windows x64
 
 The Windows 1.1.2976 installer with the worker grant refresh passed 12

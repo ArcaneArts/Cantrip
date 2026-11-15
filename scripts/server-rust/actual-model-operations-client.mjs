@@ -7,6 +7,21 @@ import { eventually } from "./full-worker.mjs";
 import { modelOperationProvider } from "./model-operation-provider.mjs";
 import { repositoryRoot } from "./build.mjs";
 
+const probePeers = (peers, pathname, timeout) =>
+  Promise.all(
+    peers.map(async ({ origin }) => {
+      try {
+        const response = await fetch(origin + pathname, {
+          signal: AbortSignal.timeout(timeout),
+        });
+        return { status: response.status, body: await response.json() };
+      } catch (error) {
+        if (error.name !== "TimeoutError") throw error;
+        return { timeoutMs: timeout };
+      }
+    }),
+  );
+
 export async function actualModelOperationsClient({
   page,
   fixture,
@@ -21,6 +36,8 @@ export async function actualModelOperationsClient({
   settleModelWhilePostgresOffline,
   modelPostgresOutageDurationMs,
   redisOutage,
+  postgresDuringRedisOutage,
+  restoreRedisBeforePostgres,
   modelRedisOutageOperation = "embedding",
   replyWhileRedisOffline,
   requests,
@@ -350,20 +367,7 @@ export async function actualModelOperationsClient({
       assert.equal(child.exitCode, null);
       assert.equal(child.signalCode, null);
     };
-    const probe = (pathname, timeout) =>
-      Promise.all(
-        servers.map(async ({ origin }) => {
-          try {
-            const response = await fetch(origin + pathname, {
-              signal: AbortSignal.timeout(timeout),
-            });
-            return { status: response.status, body: await response.json() };
-          } catch (error) {
-            if (error.name !== "TimeoutError") throw error;
-            return { timeoutMs: timeout };
-          }
-        }),
-      );
+    const probe = (pathname, timeout) => probePeers(servers, pathname, timeout);
     const assertDatabaseReadiness = (peer, status, code) => {
       assert.equal(peer.status, code);
       assert.equal(peer.body.database.engine, "postgres");
@@ -523,15 +527,7 @@ export async function actualModelOperationsClient({
     });
     const readiness = (status) =>
       eventually(
-        () =>
-          Promise.all(
-            peers.map(async ({ origin }) => {
-              const response = await fetch(origin + "/readyz", {
-                signal: AbortSignal.timeout(5_000),
-              });
-              return { status: response.status, body: await response.json() };
-            }),
-          ),
+        () => probePeers(peers, "/readyz", 5_000),
         (observations) => {
           for (const peer of observations) {
             assert.equal(peer.status, status === "ready" ? 200 : 503);
@@ -550,6 +546,7 @@ export async function actualModelOperationsClient({
     });
     outage.stop = await redis.stop();
     const stoppedAt = performance.now();
+    let postgresStoppedAt;
     const observePending = async () => ({
       providerClosed: plan.entry.closed,
       providerCompleted: plan.entry.completed,
@@ -558,12 +555,33 @@ export async function actualModelOperationsClient({
         return { settled, result };
       }, name),
     });
+    const restartPostgres = async (overlap) => {
+      overlap.offlineMs = Math.round(performance.now() - postgresStoppedAt);
+      overlap.restart = await postgresDuringRedisOutage.start();
+      assert.notEqual(overlap.restart.pid, overlap.stop.pid);
+      assert.equal(overlap.restart.port, overlap.stop.port);
+    };
+    const restartRedis = async () => {
+      outage.offlineMs = Math.round(performance.now() - stoppedAt);
+      await redis.start();
+    };
     try {
       assert.equal(outage.stop.signal, "SIGKILL");
       assert.equal(outage.stop.code, null);
       outage.offline = await readiness("unavailable");
+      if (postgresDuringRedisOutage) {
+        const stop = await postgresDuringRedisOutage.stop({ immediate: true });
+        postgresStoppedAt = performance.now();
+        outage.postgresOverlap = { stop };
+        assert.equal(stop.requestedSignal, "SIGQUIT");
+      }
       const waitForOutage = (ms) =>
-        delay(Math.max(0, ms - (performance.now() - stoppedAt)));
+        delay(
+          Math.max(
+            0,
+            ms - (performance.now() - (postgresStoppedAt ?? stoppedAt)),
+          ),
+        );
       await waitForOutage(replyWhileRedisOffline ? 20_000 : 45_000);
       outage.operationWhileOffline = await observePending();
       assert.equal(outage.operationWhileOffline.providerClosed, false);
@@ -576,13 +594,68 @@ export async function actualModelOperationsClient({
           (completed) => assert.equal(completed, true),
         );
         outage.providerReplyAfterMs = Math.round(performance.now() - stoppedAt);
+        if (outage.postgresOverlap)
+          outage.postgresOverlap.providerReplyAfterMs = Math.round(
+            performance.now() - postgresStoppedAt,
+          );
         await waitForOutage(45_000);
         outage.providerReplyWhileOffline = await observePending();
       }
-      outage.prolongedOffline = await readiness("unavailable");
+      const overlap = outage.postgresOverlap;
+      if (overlap) {
+        [overlap.readiness, overlap.liveness] = await Promise.all([
+          probePeers(peers, "/readyz", 5_000),
+          probePeers(peers, "/healthz", 5_000),
+        ]);
+        overlap.readiness.forEach((peer, index) => {
+          if (fixture.peers[index].kind === "node" && peer.timeoutMs) return;
+          assert.equal(peer.status, 503);
+          assert.equal(peer.body.database.status, "unavailable");
+          assert.deepEqual(peer.body.coordination, {
+            shared: true,
+            status: "unavailable",
+          });
+        });
+        for (const peer of overlap.liveness) {
+          assert.equal(peer.status, 200);
+          assert.equal(peer.body.status, "alive");
+        }
+      } else outage.prolongedOffline = await readiness("unavailable");
     } finally {
-      outage.offlineMs = Math.round(performance.now() - stoppedAt);
-      await redis.start();
+      const overlap = outage.postgresOverlap;
+      if (overlap && restoreRedisBeforePostgres) {
+        try {
+          await restartRedis();
+          overlap.redisAcceptedCommandsAtMs = Math.round(
+            performance.now() - postgresStoppedAt,
+          );
+          overlap.browserWhileOnlyPostgresOffline = await Promise.race([
+            page.evaluate(
+              (key) => window.modelOperationFixture.jobs[key].promise,
+              name,
+            ),
+            delay(15_000, { pending: true }, { ref: false }),
+          ]);
+          assert.equal(overlap.browserWhileOnlyPostgresOffline.status, 502);
+          assert.equal(
+            overlap.browserWhileOnlyPostgresOffline.code,
+            "model-operation-unavailable",
+          );
+          // Leave time for the terminal usage write to encounter the stopped database.
+          await delay(5_000);
+        } finally {
+          await restartPostgres(overlap);
+        }
+      } else {
+        try {
+          if (overlap) {
+            await restartPostgres(overlap);
+            overlap.recoveredWhileRedisOffline = await readiness("unavailable");
+          }
+        } finally {
+          await restartRedis();
+        }
+      }
     }
     outage.recovered = await readiness("ready");
     outage.recoveredClaim = await eventually(

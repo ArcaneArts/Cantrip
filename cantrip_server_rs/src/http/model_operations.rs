@@ -25,11 +25,11 @@ use std::{future::Future, io, sync::Arc, time::Duration};
 use tokio::time::{Instant, sleep, timeout_at};
 
 // PostgreSQL can spend several minutes recovering its WAL before accepting writes.
-const RECEIPT_RETRY_WINDOW: Duration = Duration::from_secs(15 * 60);
-const RECEIPT_RETRY_INTERVAL: Duration = Duration::from_secs(1);
-const RECEIPT_WRITE_TIMEOUT: Duration = Duration::from_secs(120);
+const USAGE_RETRY_WINDOW: Duration = Duration::from_secs(15 * 60);
+const USAGE_RETRY_INTERVAL: Duration = Duration::from_secs(1);
+const USAGE_WRITE_TIMEOUT: Duration = Duration::from_secs(120);
 
-fn retryable_receipt_error(error: &anyhow::Error) -> bool {
+fn retryable_usage_error(error: &anyhow::Error) -> bool {
     error.chain().any(|cause| {
         if let Some(error) = cause.downcast_ref::<tokio_postgres::Error>() {
             return error.is_closed()
@@ -55,28 +55,28 @@ fn retryable_receipt_error(error: &anyhow::Error) -> bool {
     })
 }
 
-async fn settle_receipt<F>(
+async fn settle_usage<F>(
     mut shutdown: tokio::sync::watch::Receiver<bool>,
     write: impl Fn() -> F,
 ) -> Result<()>
 where
     F: Future<Output = Result<()>>,
 {
-    let until = Instant::now() + RECEIPT_RETRY_WINDOW;
+    let until = Instant::now() + USAGE_RETRY_WINDOW;
     loop {
         // Preserve the bound on a single blocked write, including during shutdown.
-        let write_deadline = until.min(Instant::now() + RECEIPT_WRITE_TIMEOUT);
+        let write_deadline = until.min(Instant::now() + USAGE_WRITE_TIMEOUT);
         let result = timeout_at(write_deadline, write())
             .await
             .unwrap_or_else(|_| Err(io::Error::from(io::ErrorKind::TimedOut).into()));
-        if Instant::now() >= until || !result.as_ref().is_err_and(retryable_receipt_error) {
+        if Instant::now() >= until || !result.as_ref().is_err_and(retryable_usage_error) {
             return result;
         }
-        // The receipt write is idempotent under the original source key.
+        // Settlement is idempotent under the original source key.
         // A database interruption never repeats provider execution.
         tokio::select! {
             _ = shutdown.wait_for(|stopping| *stopping) => return result,
-            _ = sleep(RECEIPT_RETRY_INTERVAL) => {}
+            _ = sleep(USAGE_RETRY_INTERVAL) => {}
         }
     }
 }
@@ -111,7 +111,10 @@ fn report_usage(
     let receipt = raw_receipt
         .and_then(|value| settings::parse_response("modelOperationUsageSchema", Some(value)).ok())
         .filter(|receipt| settings::model_operation_usage::receipt_fits(receipt, identity));
-    let retry_receipt = receipt.is_some() && service.repository.database.engine() == "postgres";
+    // The relay can report a terminal result before PostgreSQL recovers.
+    // Persist an unknown outcome even when the worker supplied no receipt.
+    let retry_final_usage =
+        status != "running" && service.repository.database.engine() == "postgres";
     let input = json!({"identity":identity,"transportStatus":status,"receipt":receipt});
     let repository = SettingsRepository::new(service.repository.database.clone());
     let jobs = service.scratch_roots.clone();
@@ -123,10 +126,10 @@ fn report_usage(
         let result = jobs
             .owned(async move {
                 let write = || repository.record_model_operation_usage(&owner, &input);
-                if !retry_receipt {
+                if !retry_final_usage {
                     return write().await;
                 }
-                settle_receipt(shutdown, write).await
+                settle_usage(shutdown, write).await
             })
             .await;
         if result.is_err() {
@@ -333,7 +336,7 @@ mod tests {
         let (_stop, shutdown) = tokio::sync::watch::channel(false);
         let started = Instant::now();
         let recovery_time = Duration::from_secs(8 * 60);
-        settle_receipt(shutdown, || async {
+        settle_usage(shutdown, || async {
             if started.elapsed() < recovery_time {
                 return Err(io::Error::from(io::ErrorKind::ConnectionRefused).into());
             }
