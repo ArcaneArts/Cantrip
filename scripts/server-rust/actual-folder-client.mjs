@@ -208,6 +208,15 @@ const postgresOutage = option("--inflight-peer") === "postgres";
 const modelPostgresOutage = process.argv.includes(
   "--model-operation-postgres-outage",
 );
+const modelPostgresOutageOperation = option(
+  "--model-operation-postgres-outage-operation",
+);
+if (process.argv.includes("--model-operation-postgres-outage-operation"))
+  assert.ok(
+    modelPostgresOutage &&
+      ["embedding", "decision"].includes(modelPostgresOutageOperation),
+    "Select embedding or decision with --model-operation-postgres-outage-operation and --model-operation-postgres-outage",
+  );
 const settleModelWhilePostgresOffline = process.argv.includes(
   "--model-operation-postgres-offline-settlement",
 );
@@ -1903,6 +1912,7 @@ async function flow(
             ? () => worker?.child
             : undefined,
         postgresOutage: modelPostgresOutage ? postgres.cluster : undefined,
+        modelPostgresOutageOperation,
         serverAndPostgresOutage: modelServerAndPostgresLoss
           ? postgres.cluster
           : undefined,

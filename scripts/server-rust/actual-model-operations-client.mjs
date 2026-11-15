@@ -16,6 +16,7 @@ export async function actualModelOperationsClient({
   crashWorker,
   workerProcessForInterruption,
   postgresOutage,
+  modelPostgresOutageOperation = "embedding",
   serverAndPostgresOutage,
   settleModelWhilePostgresOffline,
   modelPostgresOutageDurationMs,
@@ -51,6 +52,9 @@ export async function actualModelOperationsClient({
               modelId: state[operation].id,
               routeId: state[operation].routes[0].id,
             };
+        const operationOptions = options.timeout
+          ? { timeoutMs: options.timeout }
+          : undefined;
         const content =
           operation === "embedding"
             ? {
@@ -63,13 +67,12 @@ export async function actualModelOperationsClient({
                     ],
                   }),
                 ),
-                options: options.timeout
-                  ? { timeoutMs: options.timeout }
-                  : undefined,
+                options: operationOptions,
                 expectedSpace: options.expectedSpace,
               }
             : {
                 state: { privateText: state.marker },
+                options: operationOptions,
                 questions: [
                   {
                     id: "ready",
@@ -284,15 +287,41 @@ export async function actualModelOperationsClient({
       retained,
     );
   };
+  const verifyDecision = (decision, row) => {
+    assert.deepEqual(
+      decision.answers.map((a) => a.id),
+      ["ready", "action", "risk"],
+    );
+    assert.equal(decision.answers[0].probability, 0.75);
+    assert.equal(decision.answers[1].choice, "continue");
+    assert.equal(decision.answers[2].score, 0.75);
+    assert.equal(decision.modelId, setup.decision.id);
+    assert.equal(decision.routeId, setup.decision.routes[0].id);
+    assert.equal(decision.providerId, setup.provider.id);
+    assert.equal(decision.adapter, "openai-decisions");
+    assert.equal(decision.status, "complete");
+    assert.deepEqual(
+      [
+        row.inputTokens,
+        row.outputTokens,
+        row.cachedInputTokens,
+        row.cacheWriteInputTokens,
+        row.reasoningOutputTokens,
+        row.reportedTotalTokens,
+      ],
+      [7, 3, 2, 1, 1, 10],
+    );
+  };
   const exercisePostgresOutage = async () => {
     const name = "active-postgres-outage";
-    const plan = provider.reply("embedding", { hold: true });
-    await begin(name, "embedding", { timeout: 120_000 });
+    const operation = modelPostgresOutageOperation;
+    const plan = provider.reply(operation, { hold: true });
+    await begin(name, operation, { timeout: 120_000 });
     await eventually(
       () => plan.entered,
       (entered) => assert.equal(entered, true),
     );
-    const wire = JSON.parse(requestFor("embedding").body);
+    const wire = JSON.parse(requestFor(operation).body);
     const before = await eventually(rows, (current) => {
       const attempts = current.filter(
         (row) => row.executionAttemptId === wire.operationId,
@@ -329,6 +358,7 @@ export async function actualModelOperationsClient({
       assert.equal(peer.body.database.status, status);
     };
     const outage = (report.postgresOutage = {
+      operation,
       serverPids: servers.map(({ child }) => child.pid),
       workerPid: child.pid,
       operationId: wire.operationId,
@@ -341,6 +371,7 @@ export async function actualModelOperationsClient({
     const outageMs =
       modelPostgresOutageDurationMs ??
       (settleModelWhilePostgresOffline ? 60_000 : 45_000);
+    let outcome;
     try {
       outage.offline = await eventually(
         () => probe("/readyz", 5_000),
@@ -351,7 +382,7 @@ export async function actualModelOperationsClient({
       );
       if (settleModelWhilePostgresOffline) {
         plan.release();
-        const outcome = await finish(name, "embedding", 1);
+        outcome = await finish(name, operation, 1);
         outage.inferenceWhileOffline = {
           providerCompleted: plan.entry.completed,
           elapsedMs: Math.round(performance.now() - stoppedAt),
@@ -385,6 +416,11 @@ export async function actualModelOperationsClient({
       if (!settleModelWhilePostgresOffline) {
         assert.equal(plan.entry.closed, false);
         assert.equal(plan.entry.completed, false);
+        outage.heldBrowserRequestSettled = await page.evaluate(
+          (name) => window.modelOperationFixture.jobs[name].settled,
+          name,
+        );
+        assert.equal(outage.heldBrowserRequestSettled, false);
       }
       assert.equal(provider.requests.length, report.cases.at(-1).before + 1);
       workerStillRunning();
@@ -403,16 +439,18 @@ export async function actualModelOperationsClient({
     if (!settleModelWhilePostgresOffline) {
       assert.equal(plan.entry.closed, false);
       plan.release();
-      assert.equal((await finish(name, "embedding", 1)).ok, true);
+      outcome = await finish(name, operation, 1);
+      assert.equal(outcome.ok, true);
     }
-    await receipt(name, { status: "completed" });
+    const row = await receipt(name, { status: "completed" });
+    if (operation === "decision") verifyDecision(outcome.value, row);
     assert.deepEqual(
       (await rows()).filter(
         (row) => row.executionAttemptId !== wire.operationId,
       ),
       before.filter((row) => row.executionAttemptId !== wire.operationId),
     );
-    await replay(name, "embedding", "invalid-request");
+    await replay(name, operation, "invalid-request");
     provider.reply("decision");
     await begin("after-postgres-outage", "decision");
     assert.equal(
@@ -427,7 +465,7 @@ export async function actualModelOperationsClient({
     }
     workerStillRunning();
     result.steps.push(
-      "the original inference survives prolonged external PostgreSQL loss, records one receipt and rejects replay after recovery",
+      `the original ${operation} survives prolonged external PostgreSQL loss, records one receipt and rejects replay after recovery`,
     );
   };
   const exerciseRedisOutage = async () => {
@@ -666,30 +704,8 @@ export async function actualModelOperationsClient({
     await begin("decision", "decision", { defaults: true });
     const decision = await finish("decision", "decision", 1);
     assert.equal(decision.ok, true, JSON.stringify(decision));
-    assert.deepEqual(
-      decision.value.answers.map((a) => a.id),
-      ["ready", "action", "risk"],
-    );
-    assert.equal(decision.value.answers[0].probability, 0.75);
-    assert.equal(decision.value.answers[1].choice, "continue");
-    assert.equal(decision.value.answers[2].score, 0.75);
     const decisionRow = await receipt("decision", { status: "completed" });
-    assert.equal(decision.value.modelId, setup.decision.id);
-    assert.equal(decision.value.routeId, setup.decision.routes[0].id);
-    assert.equal(decision.value.providerId, setup.provider.id);
-    assert.equal(decision.value.adapter, "openai-decisions");
-    assert.equal(decision.value.status, "complete");
-    assert.deepEqual(
-      [
-        decisionRow.inputTokens,
-        decisionRow.outputTokens,
-        decisionRow.cachedInputTokens,
-        decisionRow.cacheWriteInputTokens,
-        decisionRow.reasoningOutputTokens,
-        decisionRow.reportedTotalTokens,
-      ],
-      [7, 3, 2, 1, 1, 10],
-    );
+    verifyDecision(decision.value, decisionRow);
     result.steps.push(
       "existing encrypted SDK preserves pinned embedding space and native typed decision answers with reported token counters",
     );

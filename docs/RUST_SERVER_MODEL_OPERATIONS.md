@@ -90,6 +90,31 @@ interrupted operation made one provider request. The x64 server ran through
 Rosetta on the ARM64 Linux host.
 [Linux x64 outage results](security/rust-server-3059-postgres-long-outage.json)
 
+## Decision requests during PostgreSQL interruption
+
+The current macOS ARM64 1.1.3059 archive and rebuilt Node reference kept an
+active decision pending through a 45-second PostgreSQL outage. After
+PostgreSQL restarted, the browser received the original typed answers and
+each server recorded one receipt for ten tokens. The original server and
+worker processes stayed alive. Replaying the operation made no additional
+provider call.
+
+A separate run released the provider response while PostgreSQL was down for
+60 seconds. Both servers returned the same typed decision before the database
+restarted. Rust settled one receipt after recovery and rejected a replay
+without another provider call. The Node control left the attempt running with
+no receipt throughout the 30-second post-recovery assertion. Its failed run
+is retained. The Rust readiness checks returned HTTP 503 while PostgreSQL
+was down and HTTP 200 after restart. Liveness returned HTTP 200 during the outage.
+
+Use `--model-operation-postgres-outage-operation decision` with
+`actual-folder-client.mjs --model-operations --database postgres
+--model-operation-postgres-outage` to hold the decision until PostgreSQL
+recovers. Add `--model-operation-postgres-offline-settlement` to release the
+reply while the database is down. Omitting the operation selector still
+exercises an embedding, which passed its regression run on the same archive.
+[Decision outage evidence and artifact checksums](security/rust-server-3059-decision-postgres-outage.json)
+
 ## Active Redis interruption
 
 A real 45-second Redis process outage interrupted a protected embedding

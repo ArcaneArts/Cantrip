@@ -1,0 +1,310 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "platform": "darwin-arm64",
+  "candidateVersion": "1.1.3059",
+  "reviewedCommit": "201ae054112b1972ada3b891cb1b62d514c3597b",
+  "artifactSourceCommit": "f820371ea602a2493f2e6beca6438cc188446580",
+  "nativeExecutableSha256": "06ecb895e04c0a015145e9decf644a83db6919b7ba698e8e837b69954c023aba",
+  "nativeArchive": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/cantrip-server-1.1.3059-darwin-arm64.tar.zst",
+    "bytes": 63134019,
+    "sha256": "8524cc99886b24bcc19bd25245f2846ff631f3ef28358bee8599d821ad812abf"
+  },
+  "workerVersion": "1.1.3059",
+  "workerEntry": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/worker/dist/index.js",
+    "bytes": 391720,
+    "sha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c"
+  },
+  "nodeDriverVersion": "v24.22.1",
+  "scope": "External PostgreSQL 18 on macOS ARM64. The real Chromium SDK, bundled Node worker, and isolated PostgreSQL cluster exercise the packaged Rust server and the rebuilt Node development reference. An owned loopback provider returns controlled typed decision answers. Same server and worker processes remain alive during the database interruption.",
+  "matchingDecisionOutcomeFieldsAcrossRuntimes": [
+    "status",
+    "adapter",
+    "answers",
+    "usage"
+  ],
+  "decisionAnswers": [
+    {
+      "id": "ready",
+      "nativeAnswer": {
+        "name": "ready",
+        "type": "predicate",
+        "probability": 0.75
+      },
+      "type": "predicate",
+      "probability": 0.75
+    },
+    {
+      "id": "action",
+      "nativeAnswer": {
+        "name": "action",
+        "type": "choice",
+        "choice": "continue",
+        "confidence": 0.8,
+        "probabilities": [
+          {
+            "value": "continue",
+            "probability": 0.8
+          },
+          {
+            "value": "stop",
+            "probability": 0.2
+          }
+        ]
+      },
+      "type": "choice",
+      "choice": "continue",
+      "probabilities": [
+        {
+          "id": "continue",
+          "probability": 0.8
+        },
+        {
+          "id": "stop",
+          "probability": 0.2
+        }
+      ],
+      "confidence": 0.8
+    },
+    {
+      "id": "risk",
+      "nativeAnswer": {
+        "name": "risk",
+        "type": "score",
+        "score": 0.75,
+        "probabilities": [
+          {
+            "value": 0,
+            "probability": 0.25
+          },
+          {
+            "value": 1,
+            "probability": 0.75
+          }
+        ]
+      },
+      "type": "score",
+      "score": 0.75,
+      "probabilities": [
+        {
+          "id": "low",
+          "probability": 0.25
+        },
+        {
+          "id": "high",
+          "probability": 0.75
+        }
+      ],
+      "confidence": null,
+      "levels": [
+        {
+          "id": "low"
+        },
+        {
+          "id": "high"
+        }
+      ],
+      "semantics": "probability-weighted-zero-based-index"
+    }
+  ],
+  "cases": [
+    {
+      "runtime": "rust",
+      "operation": "decision",
+      "providerReleasedWhileDatabaseWasOffline": false,
+      "outageMs": 45004,
+      "originalProviderCalls": 1,
+      "originalBrowserReplySucceeded": true,
+      "usageAttemptStatusAfterRecovery": "completed",
+      "usageReceiptSettled": true,
+      "recordedTotalTokens": 10,
+      "passed": true,
+      "livenessDuringOutage": 200,
+      "initialReadinessDuringOutage": 503,
+      "prolongedReadinessDuringOutage": {
+        "status": 503
+      },
+      "readinessAfterRecovery": 200,
+      "operationCases": 14,
+      "cleanServerExits": 3,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-decision-postgres-outage.CXBDLJHF/rust-held-decision.json",
+        "bytes": 529556,
+        "sha256": "053e03a70e81bcc263b2164c38db5640f703a2af197db08e3e89d81a561bc65b"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-decision-postgres-outage.CXBDLJHF/rust-held-decision.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      },
+      "driverLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-decision-postgres-outage.CXBDLJHF/rust-held-decision.log",
+        "bytes": 1799,
+        "sha256": "0de5902f77ca9c27467939f8c19def2a10350c1048c2ef2be15c2a5873992dde"
+      },
+      "replayIssuedNoAdditionalProviderCall": true
+    },
+    {
+      "runtime": "node",
+      "operation": "decision",
+      "providerReleasedWhileDatabaseWasOffline": false,
+      "outageMs": 45006,
+      "originalProviderCalls": 1,
+      "originalBrowserReplySucceeded": true,
+      "usageAttemptStatusAfterRecovery": "completed",
+      "usageReceiptSettled": true,
+      "recordedTotalTokens": 10,
+      "passed": true,
+      "livenessDuringOutage": 200,
+      "initialReadinessDuringOutage": 503,
+      "prolongedReadinessDuringOutage": {
+        "timeoutMs": 5000
+      },
+      "readinessAfterRecovery": 200,
+      "operationCases": 14,
+      "cleanServerExits": 3,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-decision-postgres-outage.CXBDLJHF/node-held-decision.json",
+        "bytes": 518457,
+        "sha256": "3827c4f25fc5a1043f3029ab1126fcad0f5d79f4e8b4fa7f637b397a19b50b5f"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-decision-postgres-outage.CXBDLJHF/node-held-decision.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      },
+      "driverLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-decision-postgres-outage.CXBDLJHF/node-held-decision.log",
+        "bytes": 1928,
+        "sha256": "818875234468aee0ce290566fc3b05d2440ef8b21205fa91b1ea65312e0af58c"
+      },
+      "replayIssuedNoAdditionalProviderCall": true
+    },
+    {
+      "runtime": "rust",
+      "operation": "decision",
+      "providerReleasedWhileDatabaseWasOffline": true,
+      "outageMs": 60001,
+      "originalProviderCalls": 1,
+      "originalBrowserReplySucceeded": true,
+      "usageAttemptStatusAfterRecovery": "completed",
+      "usageReceiptSettled": true,
+      "recordedTotalTokens": 10,
+      "passed": true,
+      "livenessDuringOutage": 200,
+      "initialReadinessDuringOutage": 503,
+      "prolongedReadinessDuringOutage": {
+        "status": 503
+      },
+      "readinessAfterRecovery": 200,
+      "operationCases": 14,
+      "cleanServerExits": 3,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-decision-postgres-outage.CXBDLJHF/rust-offline-decision.json",
+        "bytes": 534361,
+        "sha256": "e6c34e73b710f281f838ce3597756aef948a862dbd1a00c1b73a58820a488784"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-decision-postgres-outage.CXBDLJHF/rust-offline-decision.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      },
+      "driverLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-decision-postgres-outage.CXBDLJHF/rust-offline-decision.log",
+        "bytes": 1971,
+        "sha256": "4530a01da323b596035942c8002c344cb3305f2bf8ddd733ffe96d35ff8ec482"
+      },
+      "replayIssuedNoAdditionalProviderCall": true
+    },
+    {
+      "runtime": "node",
+      "operation": "decision",
+      "providerReleasedWhileDatabaseWasOffline": true,
+      "outageMs": 60004,
+      "originalProviderCalls": 1,
+      "originalBrowserReplySucceeded": true,
+      "usageAttemptStatusAfterRecovery": "running",
+      "usageReceiptSettled": false,
+      "recordedTotalTokens": null,
+      "passed": false,
+      "livenessDuringOutage": 200,
+      "initialReadinessDuringOutage": 503,
+      "prolongedReadinessDuringOutage": {
+        "timeoutMs": 5000
+      },
+      "readinessAfterRecovery": 200,
+      "operationCases": 13,
+      "cleanServerExits": 3,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-decision-postgres-outage.CXBDLJHF/node-offline-decision.json",
+        "bytes": 496027,
+        "sha256": "32b8d6a8280c6b5a54824c4bb98af8639dea73f6d021df080e9925d0d2e604f6"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-decision-postgres-outage.CXBDLJHF/node-offline-decision.exit",
+        "bytes": 2,
+        "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+      },
+      "driverLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-decision-postgres-outage.CXBDLJHF/node-offline-decision.log",
+        "bytes": 4463,
+        "sha256": "6eff63693484c4c74dae295476b5c14ba4ab3e06777976c3a6fb45592ef7f7c7"
+      },
+      "failure": "The existing 30-second receipt assertion observed the original attempt still running with no receipt after PostgreSQL recovered. The legacy Node server had already returned the decision."
+    },
+    {
+      "runtime": "rust",
+      "operation": "embedding",
+      "providerReleasedWhileDatabaseWasOffline": false,
+      "outageMs": 45005,
+      "originalProviderCalls": 1,
+      "originalBrowserReplySucceeded": true,
+      "usageAttemptStatusAfterRecovery": "completed",
+      "usageReceiptSettled": true,
+      "recordedTotalTokens": 5,
+      "passed": true,
+      "livenessDuringOutage": 200,
+      "initialReadinessDuringOutage": 503,
+      "prolongedReadinessDuringOutage": {
+        "status": 503
+      },
+      "readinessAfterRecovery": 200,
+      "operationCases": 14,
+      "cleanServerExits": 3,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-decision-postgres-outage.CXBDLJHF/rust-held-embedding-default.json",
+        "bytes": 526997,
+        "sha256": "5d38a51a229d765353da8bdf810a516d22767b8a8ba4ff69a3daed2a04de88f9"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-decision-postgres-outage.CXBDLJHF/rust-held-embedding-default.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      },
+      "driverLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-decision-postgres-outage.CXBDLJHF/rust-held-embedding-default.log",
+        "bytes": 1885,
+        "sha256": "906c6ebdf2301a8df64f388e17147ea73ac9da05a9886fad13dbf3e129e3c1a8"
+      },
+      "replayIssuedNoAdditionalProviderCall": true
+    }
+  ],
+  "inputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-decision-postgres-outage.CXBDLJHF/inputs.sha256",
+    "bytes": 1173,
+    "sha256": "37b5603640728dec04954b1022b5fdb4c4c76d207b4c642b847863198add7673"
+  },
+  "driverInputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-decision-postgres-outage.CXBDLJHF/driver-inputs.sha256",
+    "bytes": 340,
+    "sha256": "4bb6fd616ade279b12347e06bf36ffcb86d52a69968a009df52170a2f5e9bf34"
+  },
+  "caseDriver": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-decision-postgres-outage.CXBDLJHF/run-case.sh",
+    "bytes": 1609,
+    "sha256": "63293b837ddb03713e21a9882542d266bfdca3ddd5ea17c238b46b455b80be9b"
+  },
+  "limitations": "The held-response and offline-response cases qualify one configured decision adapter and macOS external PostgreSQL. Shared peers, other interruption classes, other adapters, and shipping platforms retain their separate evidence."
+}
