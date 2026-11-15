@@ -142,6 +142,24 @@ test("builds an allowlisted hosted environment without deployment credentials", 
   assert.equal("CANTRIP_WORKER_TOKEN" in environment, false);
 });
 
+test("forwards configured Redis TLS settings to the systemd service", () => {
+  const secrets = productionSecrets();
+  const unconfigured = buildProductionEnvironment(secrets, config);
+  assert.equal(unconfigured.REDIS_URL, undefined);
+  assert.equal(unconfigured.NODE_EXTRA_CA_CERTS, undefined);
+
+  const url = "rediss://:fixture%23password@redis.example.invalid:6379/2";
+  const ca = "/usr/local/share/cantrip/redis-ca.pem";
+  secrets.set("REDIS_URL", url);
+  secrets.set("NODE_EXTRA_CA_CERTS", ca);
+  const environment = buildProductionEnvironment(secrets, config);
+  assert.equal(environment.REDIS_URL, url);
+  assert.equal(environment.NODE_EXTRA_CA_CERTS, ca);
+  const environmentFile = serializeSystemdEnvironment(environment);
+  assert.ok(environmentFile.includes('REDIS_URL="' + url + '"\n'));
+  assert.ok(environmentFile.includes('NODE_EXTRA_CA_CERTS="' + ca + '"\n'));
+});
+
 test("requires every production secret and the configured public origins", () => {
   const missing = productionSecrets();
   missing.delete("DATABASE_URL");

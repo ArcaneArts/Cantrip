@@ -31,6 +31,12 @@ packages include native PGlite and private PostgreSQL assets. Winterhold's
 production environment continues to select external PostgreSQL with
 `DATABASE_URL`; standalone native services can select either local backend.
 
+Winterhold forwards optional `REDIS_URL` and `NODE_EXTRA_CA_CERTS` settings
+from the configured production environment to systemd. For private Redis
+TLS, use a `rediss://` URL and point `NODE_EXTRA_CA_CERTS` to a PEM CA bundle
+on the host. The `cantrip` service account needs read access to that file, for
+example under `/usr/local/share/cantrip`.
+
 ## Installation and failure recovery
 
 The deployer stages the candidate environment with the archive in a root-only
@@ -119,6 +125,16 @@ Final shipping qualification also covers desktop installers and updates,
 interrupted product flows, multi-instance coordination and performance.
 
 ## Current Linux x64 qualification
+
+The Linux x64 1.1.3059 distribution completed 18 installer operations under
+local ARM64 systemd and Caddy through Rosetta. External PostgreSQL used
+TLS-only Redis and the CA file configured in the systemd environment.
+Stopping Redis returned HTTP 503 for readiness and HTTP 200 for liveness.
+Restarting Redis restored readiness and preserved the authenticated
+session and accepted settings write. Each local store rolled back to an
+older Rust release. External PostgreSQL rolled back to the historical Node
+server and then returned to Rust with its writes intact.
+[Linux 1.1.3059 acceptance](security/rust-server-3059-linux-redis-tls.json)
 
 The Winterhold Dockerfile built Linux x64 `1.1.2954` from
 `f21824cc883343819d581dafcc5fc93e20591a8b`. The container and standalone

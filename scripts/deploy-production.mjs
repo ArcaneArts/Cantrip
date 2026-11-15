@@ -60,6 +60,8 @@ const forwardedSecretNames = [
   "CANTRIP_WORKER_RELAY_BYTES_PER_MINUTE",
   "CANTRIP_WORKER_REMOTE_SURFACE_LIMIT",
   "CANTRIP_WORKER_UPLOAD_BYTES_PER_MINUTE",
+  "NODE_EXTRA_CA_CERTS",
+  "REDIS_URL",
 ];
 
 const deploymentOverrides = Object.freeze({

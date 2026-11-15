@@ -1,0 +1,248 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "productionDeployed": false,
+  "scope": "Local Linux ARM64 and Rosetta-emulated x64 images. Winterhold uses the actual x64 distribution on an ARM64 systemd fixture with Caddy HTTPS and disposable dependencies.",
+  "artifactSourceCommit": "f820371ea602a2493f2e6beca6438cc188446580",
+  "artifactSourceTree": "99edcae96207f71924bb1219a591703d7bbc826e",
+  "version": "1.1.3059",
+  "nodeReferenceVersion": "1.1.3077",
+  "nodeReferenceInputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/node-reference-inputs.sha256",
+    "sha256": "e03082fb01ec8c0689831403927469add5cf3cd434feab7b67643edafeb37050",
+    "bytes": 205
+  },
+  "linux": {
+    "arm64": {
+      "architecture": "arm64",
+      "artifactTarget": "linux-arm64",
+      "imageDigest": "sha256:02bb9cc4bc4644465882ae7013aa3ba999d79cb3850f319d50c4e7c0ebc40398",
+      "serverSha256": "b802ee28a32e6df25be91da62ead44d3735ecc834fe0d41cc8a83b70be420898",
+      "imageArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/arm64/cantrip-server-1.1.3059-linux-arm64.image.tar.zst",
+        "bytes": 177474699,
+        "sha256": "1d64e964fc1510d9953a19600433a08a0b1cbebdc7cebcf5c72832175208f6e4"
+      },
+      "standalone": {
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "nodeAbsent": true,
+        "readOnlyRoot": true,
+        "nonRoot": true,
+        "noexecTmpfs": true,
+        "sqlExportAndRetainedSettings": true,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/arm64/container-acceptance.json",
+          "bytes": 5375,
+          "sha256": "e07f5d2fdca2dd985d86190edba93671b8b17349ac3f661ae3498de2dfca41b1"
+        }
+      },
+      "untrustedCertificateRejected": true,
+      "redisCases": {
+        "rust-rust": {
+          "pair": "rust/rust",
+          "caEnvironment": "NODE_EXTRA_CA_CERTS",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/arm64/tls/rust-rust.json",
+            "bytes": 4456,
+            "sha256": "f8fc10a28609600a781bdb8b31897d29398021215711b230bab23ddcc913bf81"
+          },
+          "retainedWorkerClaims": 2,
+          "exactAppLiveReplays": 4,
+          "newRemoteWorkerRequests": 2,
+          "cleanPeerShutdowns": 2,
+          "scenarioGroups": 7
+        },
+        "rust-node": {
+          "pair": "rust/node",
+          "caEnvironment": "NODE_EXTRA_CA_CERTS",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/arm64/tls/rust-node.json",
+            "bytes": 4233,
+            "sha256": "e23a5fd6f9d620b2658626fa4fe9fa633a737f1c910f12f680b5185afd9163e0"
+          },
+          "retainedWorkerClaims": 2,
+          "exactAppLiveReplays": 4,
+          "newRemoteWorkerRequests": 2,
+          "cleanPeerShutdowns": 2,
+          "scenarioGroups": 7
+        },
+        "node-rust": {
+          "pair": "node/rust",
+          "caEnvironment": "NODE_EXTRA_CA_CERTS",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/arm64/tls/node-rust.json",
+            "bytes": 4233,
+            "sha256": "b98ab332d8b99b9db13d9d1228f4977f7ba83bd87aee87c451f6c6f24a7d397c"
+          },
+          "retainedWorkerClaims": 2,
+          "exactAppLiveReplays": 4,
+          "newRemoteWorkerRequests": 2,
+          "cleanPeerShutdowns": 2,
+          "scenarioGroups": 7
+        },
+        "openssl-ca": {
+          "pair": "rust/rust",
+          "caEnvironment": "SSL_CERT_FILE",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/arm64/tls/openssl-ca.json",
+            "bytes": 4415,
+            "sha256": "830497cd7634d731df42559b4f851ffab968e85de13f3a64cc8111f81870109f"
+          },
+          "retainedWorkerClaims": 2,
+          "exactAppLiveReplays": 4,
+          "newRemoteWorkerRequests": 2,
+          "cleanPeerShutdowns": 2,
+          "scenarioGroups": 7
+        }
+      }
+    },
+    "x64": {
+      "architecture": "amd64",
+      "artifactTarget": "linux-x64",
+      "imageDigest": "sha256:a315ba94431a64f991e5b49875228f77510002fbb70886261506f9ed37b7a144",
+      "serverSha256": "f85dcfe460eaeb915c57f6b726edea03cffc556891e7688d38e4db61b9e4ebd4",
+      "imageArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/x64/cantrip-server-1.1.3059-linux-x64.image.tar.zst",
+        "bytes": 180713775,
+        "sha256": "0e0a675396947207fc99ab3fd905de5e224e3d479fa61401f24b772e042fc8a8"
+      },
+      "standalone": {
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "nodeAbsent": true,
+        "readOnlyRoot": true,
+        "nonRoot": true,
+        "noexecTmpfs": true,
+        "sqlExportAndRetainedSettings": true,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/x64/container-acceptance.json",
+          "bytes": 5438,
+          "sha256": "18d1937947c6f56cc95184be4bd7bbf5795f947a314d0d3b7a474a9fc7c944e7"
+        }
+      },
+      "untrustedCertificateRejected": true,
+      "redisCases": {
+        "rust-rust": {
+          "pair": "rust/rust",
+          "caEnvironment": "NODE_EXTRA_CA_CERTS",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/x64/tls/rust-rust.json",
+            "bytes": 4452,
+            "sha256": "698880afdd8f587d6aac1ee98c27f038185a05cbc1a85e303361d5c1cee552b5"
+          },
+          "retainedWorkerClaims": 2,
+          "exactAppLiveReplays": 4,
+          "newRemoteWorkerRequests": 2,
+          "cleanPeerShutdowns": 2,
+          "scenarioGroups": 7
+        },
+        "rust-node": {
+          "pair": "rust/node",
+          "caEnvironment": "NODE_EXTRA_CA_CERTS",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/x64/tls/rust-node.json",
+            "bytes": 4231,
+            "sha256": "c4696aae4f689511f03526227ed280ecf1b5f2d5ea4f6ca20e2c9133900645d8"
+          },
+          "retainedWorkerClaims": 2,
+          "exactAppLiveReplays": 4,
+          "newRemoteWorkerRequests": 2,
+          "cleanPeerShutdowns": 2,
+          "scenarioGroups": 7
+        },
+        "node-rust": {
+          "pair": "node/rust",
+          "caEnvironment": "NODE_EXTRA_CA_CERTS",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/x64/tls/node-rust.json",
+            "bytes": 4231,
+            "sha256": "020ffaafdae67312f96d5171d12dd42d344aa865ad50584f5e630341e3cb8e26"
+          },
+          "retainedWorkerClaims": 2,
+          "exactAppLiveReplays": 4,
+          "newRemoteWorkerRequests": 2,
+          "cleanPeerShutdowns": 2,
+          "scenarioGroups": 7
+        },
+        "openssl-ca": {
+          "pair": "rust/rust",
+          "caEnvironment": "SSL_CERT_FILE",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/x64/tls/openssl-ca.json",
+            "bytes": 4411,
+            "sha256": "0423c42cc201c1455b1553c80d2d1d3e3ab75e731081132339f7fcfe4d76334e"
+          },
+          "retainedWorkerClaims": 2,
+          "exactAppLiveReplays": 4,
+          "newRemoteWorkerRequests": 2,
+          "cleanPeerShutdowns": 2,
+          "scenarioGroups": 7
+        }
+      }
+    }
+  },
+  "winterholdX64": {
+    "scope": "x64 artifact under Rosetta with local ARM64 systemd and Caddy. Production installer and disposable PostgreSQL and Redis TLS peers.",
+    "testedImage": "sha256:a315ba94431a64f991e5b49875228f77510002fbb70886261506f9ed37b7a144",
+    "serverSha256": "f85dcfe460eaeb915c57f6b726edea03cffc556891e7688d38e4db61b9e4ebd4",
+    "nativeArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/winterhold/cantrip-server-1.1.3059-linux-x64.tar.gz",
+      "bytes": 142809130,
+      "sha256": "9cf1631d43ed6dc4e56c63bf14972d559d2b1ebfb1fa28c65a129ff5b35887ec"
+    },
+    "realSystemd": true,
+    "caddyHttpsAndAppLive": true,
+    "installerInvocations": 18,
+    "recoveredSystemdStartLimit": true,
+    "rollbackRuntimeByMode": {
+      "pglite": "rust",
+      "bundled-postgres": "rust",
+      "postgres": "node"
+    },
+    "preservedAcceptedWritesAndSessions": true,
+    "redisTls": {
+      "caSha256": "2c85592b49d8791395c28fc7eb0afe95e905597545afc943f1ee26f078be22ba",
+      "plaintextPort": 0,
+      "tlsPort": 6379,
+      "stageReadinessChecks": 8,
+      "loadedBy": "NODE_EXTRA_CA_CERTS from the service EnvironmentFile",
+      "installedServiceRecoveredWithoutLosingSessionOrWrite": true
+    },
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/winterhold/acceptance.json",
+      "bytes": 1098917,
+      "sha256": "021328d9d54e891afdee74075ff9e8ec339fb304bdb15907622d64b25eccd316"
+    },
+    "externalPostgresFixtureDump": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/winterhold/accepted-postgres-fixture.sql.zst",
+      "bytes": 70302,
+      "sha256": "a9685f02af5e68957217029abbbb3a3f3a350fa03b9daf3a263fa46a2c845f80"
+    }
+  },
+  "deployScriptTests": {
+    "passed": 15,
+    "priorMissingSettingFailure": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/deploy-regression-before.log",
+      "sha256": "d492581e323b3ff552b371d3168ea3adcf849abca5168fe5c01e53ce572b1a2e",
+      "bytes": 1118
+    },
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/deploy-tests.log",
+      "sha256": "b99128a12cbb891bc5e99eaf0d55244f9c943cb5f9111ad32d72cfd611faa387",
+      "bytes": 1389
+    }
+  },
+  "winterholdDeploymentScriptSha256": "4f4544977c1713b4622b8e305e7938ef2b2a5deafa4e2bb5ddbc12a63e0195ec",
+  "drivers": {
+    "redisTls": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/redis-tls-run.mjs",
+      "sha256": "f7c4dd4cc24373737998fdcfbeada15344445122dd33440de4a264b7d86b4450",
+      "bytes": 18864
+    },
+    "winterhold": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/winterhold-redis-tls-acceptance.mjs",
+      "sha256": "350f1f661a3b92165800c98c1a8dce7ad1e8b960d398518b688f92109c964c52",
+      "bytes": 29564
+    }
+  }
+}
