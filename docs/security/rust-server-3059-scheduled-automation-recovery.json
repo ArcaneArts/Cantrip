@@ -313,8 +313,8 @@
     ]
   },
   "followUpQualification": "docs/security/rust-server-3059-scheduled-automation-handoff.json",
+  "directGitImportRelocation": "docs/security/rust-server-3059-relocation-source-revision.json",
   "remainingQualification": [
-    "Packaged Windows tests of both interruption boundaries.",
-    "Transfer after ordinary direct Git import without pre-populating the source worktree revision in the fixture."
+    "Packaged Windows tests of both interruption boundaries."
   ]
 }

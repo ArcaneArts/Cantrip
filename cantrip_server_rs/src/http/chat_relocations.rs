@@ -14,6 +14,7 @@ use crate::{
         targets::TargetRepository,
     },
     wire::{Value, value::json},
+    workers::command_bus::CommandFailure,
 };
 use anyhow::{Context as _, Result};
 use axum::{
@@ -133,7 +134,7 @@ async fn mutate(
             if !source.as_ref().is_some_and(|w|crate::wire::coercion::truthy(w.get("chatRelocation")))||!target.as_ref().is_some_and(|w|crate::wire::coercion::truthy(w.get("chatRelocation"))) {
                 return Err(Error::Conflict("Both workers must be upgraded to a version that supports durable chat relocation.".into()).into());
             }
-            repository.create(&owner,context["chatId"].as_str().context("Relocation chat")?,&resolution["placement"],input["idempotencyKey"].as_str().context("Relocation idempotency key")?).await
+            service.chat_relocations.create(&owner,context["chatId"].as_str().context("Relocation chat")?,&resolution["placement"],input["idempotencyKey"].as_str().context("Relocation idempotency key")?).await
         }.await;
         return match admitted {
             Ok(job) => {
@@ -142,6 +143,12 @@ async fn mutate(
                 output(202, "chatRelocationJobSummarySchema", &job)
             }
             Err(cause) => {
+                if let Some(failure) = cause.downcast_ref::<CommandFailure>() {
+                    return Ok(error(
+                        failure.status(502),
+                        "Could not read the source worktree revision from its worker.",
+                    ));
+                }
                 if let Some(error) = cause.downcast_ref::<Error>() {
                     return match error {
                         Error::NotFound(_) => Ok(super::settings::error(404, error.to_string())),

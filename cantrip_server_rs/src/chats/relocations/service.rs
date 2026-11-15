@@ -58,6 +58,51 @@ impl Service {
             stop: watch::channel(false).0,
         })
     }
+    pub async fn create(
+        &self,
+        owner: &str,
+        chat: &str,
+        target: &Value,
+        key: &str,
+    ) -> Result<Value> {
+        use super::admission::{ObservedSource, UnobservedSource};
+        let result = self
+            .repository
+            .create_with_observation(owner, chat, target, key, None)
+            .await;
+        let Some(source) = result
+            .as_ref()
+            .err()
+            .and_then(|error| error.downcast_ref::<UnobservedSource>())
+        else {
+            return result;
+        };
+        let status = self.worktree_status(&source.0).await?;
+        if status["worktree"]["path"] != source.0["worktree"]["path"]
+            || status["worktree"]["missing"] == true
+            || status["worktree"]["prunable"] == true
+        {
+            return Err(conflict("The source worktree is no longer available."));
+        }
+        let Some(head) = status["status"]["head"]
+            .as_str()
+            .filter(|head| !head.is_empty())
+        else {
+            return Err(conflict(&source.to_string()));
+        };
+        self.repository
+            .create_with_observation(
+                owner,
+                chat,
+                target,
+                key,
+                Some(ObservedSource {
+                    binding: source.0.clone(),
+                    head: head.to_owned(),
+                }),
+            )
+            .await
+    }
     fn callback(self: &Arc<Self>) -> Option<Callback> {
         let mut state = self.state.lock().unwrap();
         if state.stopping {

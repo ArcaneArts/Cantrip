@@ -2079,10 +2079,23 @@ On macOS, two separately enrolled workers relocated an Agent chat after the
 original worker's server exited. The target worker protected the same scheduled
 occurrence and completed one native turn at fence 2. The worker now probes the
 three Codex relocation methods that were missing from its runtime report. The
-fixture populated the source worktree's observed Git revision after a normal
-direct import left it blank and relocation returned 409. That import behavior
-and Windows recovery remain open.
+first successful fixture populated the source worktree's observed Git revision
+after a normal direct import left it blank and relocation returned 409.
 [Packaged Linux and two-worker handoff evidence](security/rust-server-3059-scheduled-automation-handoff.json)
+
+The Rust server now asks the source worker for the live Git HEAD when
+relocation encounters a blank revision. It saves the observation with the
+relocation after rechecking the placement. A fresh direct import then passed
+the full two-worker handoff without a fixture write to the source revision.
+The target worker recovered the same occurrence at fence 2 and completed one
+native turn. The HTTP tests covered missing and unborn HEADs, concurrent
+placement and revision changes, and idempotent replay across all three
+database modes and authentication profiles. The optimized macOS ARM64
+standalone package also passed the two-worker handoff with normal enrollment
+through its shipped launcher. Each of the three database modes preserved its
+server identity through two clean starts and shutdowns. Windows recovery
+remains open.
+[Direct Git import and relocation evidence](security/rust-server-3059-relocation-source-revision.json)
 
 The same standalone executable matched the Node reference across all nine
 database and authentication combinations for native command permission

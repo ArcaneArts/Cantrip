@@ -222,8 +222,8 @@
       }
     }
   },
+  "followUpQualification": "docs/security/rust-server-3059-relocation-source-revision.json",
   "remainingQualification": [
-    "Fix the normal direct Git import path that can leave the source worktree revision blank, then repeat the handoff without fixture catalog preparation.",
     "Repeat both packaged Linux interruption boundaries on Windows using the isolated guest."
   ]
 }
