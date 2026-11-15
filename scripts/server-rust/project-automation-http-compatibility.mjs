@@ -49,6 +49,7 @@ const report = {
 const id = (n) => `f2f2f2f2-2222-4222-8222-${String(n).padStart(12, "0")}`;
 const future = "2050-01-01T00:00:00.123Z";
 const marker = "private-automation-endpoint-proof";
+const protectedRecoveryCase = "recover the admitted protected queue occurrence";
 const schemas = {
   name: projectAutomationProtectedNameSchema,
   prompt: projectAutomationProtectedPromptSchema,
@@ -650,28 +651,46 @@ try {
           automationStatus: state.automation.last_status,
         });
         const beforeRecovery = result.commands.length;
-        await visit(
-          "expired encrypted queue recovery preserves Source mapper failure",
+        const recoveredProtected = await visit(
+          protectedRecoveryCase,
           "POST",
           workerBase + `/${id(8)}/dispatch?workerId=` + worker,
-          { ...auth, json: { revision: 1, scheduledFor: stamp }, status: 409 },
+          {
+            ...auth,
+            json: { revision: 1, scheduledFor: stamp },
+            status: kind === "rust" ? 202 : 409,
+          },
         );
-        assert.equal(
-          result.commands.length,
-          beforeRecovery,
-          "opaque legacy lookup fails before another protection command",
+        assert.deepEqual(
+          recoveredProtected,
+          kind === "rust"
+            ? { accepted: true, status: "queued", nextRunAt: null }
+            : { error: "Protected automation dispatch failed." },
         );
+        assert.equal(result.commands.length, beforeRecovery);
         state = await durable(8);
-        assert.equal(state.run.status, "failed");
+        const expected = kind === "rust" ? "queued" : "failed";
+        assert.equal(state.run.status, expected);
+        assert.equal(state.automation.last_status, expected);
         assert.equal(state.run.fencing_token, 2);
         assert.equal(state.run.attempt_count, 2);
         assert.equal(state.automation.next_run_at, null);
-        result.recovery.push({
-          case: "opaque-legacy-recovery",
-          runStatus: "failed",
+        const [prompts] = await h.fixture.sql(
+          [],
+          [
+            `SELECT jsonb_build_object('count',count(*)::int,'opaque',bool_and(text IS NULL))::text result
+             FROM queued_prompts WHERE chat_id=${literal(chat)}
+               AND idempotency_key=${literal(`automation:${id(8)}:${stamp}`)}`,
+          ],
+        );
+        assert.deepEqual(prompts, { count: 1, opaque: true });
+        result.protectedDispatchRecovery = {
+          response: recoveredProtected,
+          runStatus: expected,
           fencingToken: 2,
           attempts: 2,
-        });
+          prompts,
+        };
         await claimCase(9);
         const controller = new AbortController();
         const abandoned = fetch(
@@ -801,14 +820,16 @@ try {
         h = null;
       }
     }
-    for (const key of [
-      "observations",
-      "commands",
-      "cryptoProofs",
-      "events",
-      "sdk",
-      "recovery",
-    ])
+    // The admitted protected retry has explicit status, body and state
+    // assertions above. Compare every other recorded HTTP observation.
+    const parityObservations = ({ observations }) =>
+      observations.filter(({ name }) => name !== protectedRecoveryCase);
+    assert.deepEqual(
+      parityObservations(outputs[1]),
+      parityObservations(outputs[0]),
+      profile + " observations",
+    );
+    for (const key of ["commands", "cryptoProofs", "events", "sdk", "recovery"])
       assert.deepEqual(outputs[1][key], outputs[0][key], profile + " " + key);
   }
   report.passed = true;

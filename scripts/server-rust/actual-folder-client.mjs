@@ -147,6 +147,16 @@ const serverStartupTimeoutMs = startupTimeout("--server-startup-timeout-ms");
 const workerStartupTimeoutMs = startupTimeout("--worker-startup-timeout-ms");
 const databaseMode = option("--database") ?? "pglite";
 const sharedPair = option("--server-pair");
+const automationInterruption = option("--project-automation-interruption");
+if (process.argv.includes("--project-automation-interruption")) {
+  assert.ok(
+    ["protect", "finish"].includes(automationInterruption) &&
+      sharedPair &&
+      databaseMode === "postgres" &&
+      process.argv.includes("--project-automations"),
+    "Automation interruption requires protect or finish, a shared PostgreSQL pair, and --project-automations",
+  );
+}
 const sharedQueueRecovery = process.argv.includes("--shared-queue-recovery");
 const sharedQueueRetainedChat = process.argv.includes(
   "--shared-queue-retained-chat",
@@ -1774,6 +1784,7 @@ async function flow(
     }
     if (
       process.argv.includes("--project-chats") ||
+      automationInterruption ||
       sharedQueueRecovery ||
       gitProjectChat ||
       process.argv.includes("--native-single-agent-recovery") ||
@@ -1786,6 +1797,7 @@ async function flow(
         sharedQueueRecovery,
         sharedQueueRetainedChat,
         sharedQueueInterruption,
+        automationInterruption,
         resumeAckFile,
         resumeRaceFile,
         projectId: gitProjectChat ? attached.id : first.id,
@@ -2112,6 +2124,9 @@ try {
         // Retained-session product flows use the normal server lifetime. The
         // short HTTP fixture lifetime can expire during an emulated restart.
         CANTRIP_SESSION_TTL_SECONDS: String(30 * 24 * 60 * 60),
+        ...(automationInterruption
+          ? { CANTRIP_SCHEDULER_LEASE_TTL_MS: "30000" }
+          : {}),
         ...(process.argv.includes("--operational-status")
           ? { CANTRIP_METRICS_TOKEN: operationalProductToken }
           : {}),

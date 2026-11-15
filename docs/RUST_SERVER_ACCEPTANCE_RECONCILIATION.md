@@ -2056,6 +2056,21 @@ condition and reopened the exact schedules and canonical history after
 two restarts of both peers. The four cases covered 56 browser steps.
 [Shared project automation evidence](security/rust-server-3059-shared-project-automations.json)
 
+When the server died after admitting a scheduled Agent turn and before
+recording the occurrence as started, the packaged Rust baseline and the
+Node reference later marked the occurrence failed. The protected user
+message was already durable and the original model stream was still open.
+The Rust retry now finds the admitted message or queue entry by its owned
+idempotency key and finalizes the occurrence without reading its content.
+
+The macOS candidate passed both an interruption before protection reached
+the server and one after the original native turn opened its model stream.
+In both Rust/Rust and Node/Rust pairings, the second API peer declined the
+competing request while fence 1 was active. The same worker reconnected,
+and the replacement settled the same occurrence at fence 2. Each case
+completed one native turn from one model request.
+[Scheduled automation dispatch recovery evidence](security/rust-server-3059-scheduled-automation-recovery.json)
+
 The same standalone executable matched the Node reference across all nine
 database and authentication combinations for native command permission
 transitions, pending requests, continuations and settings evidence. The

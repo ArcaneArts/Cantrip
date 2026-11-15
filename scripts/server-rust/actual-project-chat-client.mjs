@@ -28,6 +28,7 @@ export async function actualProjectChatClient({
   sharedQueueRecovery,
   sharedQueueRetainedChat,
   sharedQueueInterruption,
+  automationInterruption,
   resumeAckFile,
   resumeRaceFile,
   interruptNativeStream,
@@ -35,7 +36,11 @@ export async function actualProjectChatClient({
 }) {
   const model = await taskModelProvider({
     allowMcpDiscoveryProbe: process.argv.includes("--mcp-settings"),
-    observeStreams: Boolean(interruptNativeStream || sharedQueueInterruption),
+    observeStreams: Boolean(
+      interruptNativeStream ||
+      sharedQueueInterruption ||
+      automationInterruption,
+    ),
   });
   const prompt = "Private actual Agent prompt 🌲",
     answer = "Private actual Agent answer 🍄",
@@ -562,6 +567,8 @@ export async function actualProjectChatClient({
         projectId,
         chatId: chat.id,
         workerId,
+        workerDataDirectory,
+        interruption: automationInterruption,
         startWorker,
         stopWorker,
         model,
