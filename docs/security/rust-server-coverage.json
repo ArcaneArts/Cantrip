@@ -29928,6 +29928,14 @@
     },
     "currentWorkerLogStreamingPerformance": {
       "status": "partial",
+      "macos3059RepeatedQualification": {
+        "report": "docs/security/rust-server-3059-macos-stream-performance.json",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "measuredInvocations": 60,
+        "warmupInvocations": 12,
+        "crashRecoveryInvocations": 6,
+        "completeCommandPerformanceGuardPassedModes": 3
+      },
       "macos3032Qualification": {
         "report": "docs/security/rust-server-3032-macos-performance-routes.json",
         "databaseModes": ["pglite", "bundled-postgres", "postgres"],
@@ -29960,8 +29968,8 @@
         "workerLogPgliteAuthenticationModes": 3
       },
       "remaining": [
-        "Opaque WorkerLink binary throughput, large product datasets, representative other-store performance and complete supported-platform/product/fault/coordination acceptance remain required.",
-        "Existing-client desktop encryption/update acceptance, broader historical upgrades and product-state rollback, Rust-default cutover and production Node-server removal remain incomplete. Worker remains Node."
+        "Qualify opaque WorkerLink binary throughput, large product datasets, and additional workloads on the supported shipping platforms.",
+        "Existing-client desktop encryption and updates, historical upgrades, and product-state rollback have separate acceptance records."
       ]
     },
     "currentProductionWorkerLinkQualification": {
