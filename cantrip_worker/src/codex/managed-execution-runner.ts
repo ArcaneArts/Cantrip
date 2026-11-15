@@ -186,6 +186,24 @@ export class ManagedExecutionRunner {
     }
   }
 
+  /** A new GUI input has its own durable dispatch and may use a fresh gate. */
+  beforeAdmittedGuiTurn(threadId: string, transport: string): Promise<void> {
+    return this.mutate(async () => {
+      this.assertCurrent(threadId, transport);
+      if (!this.invalidated) return;
+      this.providerTransfer.discard();
+      await this.rebind(threadId, transport);
+    });
+  }
+
+  private assertCurrent(threadId: string, transport: string): void {
+    this.prepared(threadId);
+    if (this.transport !== transport)
+      throw new Error(
+        "The native command belongs to a replaced runner transport.",
+      );
+  }
+
   /** Never queues behind model execution or the native queue/start request. */
   beforeNativeDispatch(
     method: string,
@@ -207,11 +225,7 @@ export class ManagedExecutionRunner {
     )
       return Promise.resolve();
     return this.mutate(async () => {
-      this.prepared(threadId);
-      if (this.transport !== transport)
-        throw new Error(
-          "The native command belongs to a replaced runner transport.",
-        );
+      this.assertCurrent(threadId, transport);
       if (method === "turn/interrupt" || cancelGoalAttempt) {
         this.providerTransfer.discard();
         this.controller.abort(

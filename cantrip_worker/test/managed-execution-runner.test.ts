@@ -170,6 +170,48 @@ describe("managed execution runner", () => {
   });
 
   it.each(["turn/interrupt", "thread/goal/clear"])(
+    "rearms a new admitted GUI turn after %s while the previous runner stays stopped",
+    async (method) => {
+      const f = fixture();
+      const previous = f.runner.configuration.runnerGeneration;
+      await f.runner.beforeNativeDispatch(
+        method,
+        "thread-1",
+        "runtime-1",
+        false,
+        method === "thread/goal/clear",
+      );
+      await f.runner.beforeAdmittedGuiTurn("thread-1", "runtime-1");
+      const next = f.runner.configuration.runnerGeneration;
+      expect(next).not.toBe(previous);
+      expect(f.runtime.bindManagedExecution).toHaveBeenCalledExactlyOnceWith(
+        {
+          threadId: "thread-1",
+          runnerGeneration: next,
+          expectedRunnerGeneration: previous,
+        },
+        "runtime-1",
+      );
+      const attempt = {
+        threadId: "thread-1",
+        runnerGeneration: previous,
+        attemptId: "stopped-attempt",
+        turnId: "stopped-turn",
+        trigger: "goal" as const,
+        input: {},
+      };
+      expect(() =>
+        f.handlers
+          .get(previous)!
+          .requested(attempt, new AbortController().signal),
+      ).toThrow();
+      expect(f.handler.requested).not.toHaveBeenCalled();
+      await f.runner.beforeAdmittedGuiTurn("thread-1", "runtime-1");
+      expect(f.runtime.bindManagedExecution).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(["turn/interrupt", "thread/goal/clear"])(
     "rearms an explicitly admitted compaction after %s without restoring its old admission",
     async (method) => {
       const f = fixture();

@@ -7005,6 +7005,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                         command.nativeCommandReceipt!,
                         guiBridgeSignal,
                       );
+                      if (
+                        nativeCommandState.receipt?.method === "turn/start" &&
+                        nativeCommandState.receipt.startsExecution
+                      )
+                        await managedRunnerForPlacement(
+                          runtime,
+                          identity,
+                        )?.beforeAdmittedGuiTurn(
+                          threadId,
+                          nativeCommandState.entry.generation,
+                        );
                     }
                   : undefined,
               onNativeDeferred: command.nativeCommandReceipt

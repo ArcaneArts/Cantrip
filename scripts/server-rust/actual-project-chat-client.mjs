@@ -26,6 +26,7 @@ export async function actualProjectChatClient({
   requests,
   providerBoundary,
   sharedQueueRecovery,
+  sharedQueueRetainedChat,
   interruptNativeStream,
   cliWorktreeAcquire,
 }) {
@@ -523,6 +524,7 @@ export async function actualProjectChatClient({
         worker: recoveredWorker.child,
         workerId,
         projectId,
+        retainedChatId: sharedQueueRetainedChat ? chat.id : undefined,
         configuration,
         model,
         result,
