@@ -1,5 +1,22 @@
 # Signed macOS desktop update rehearsal
 
+## Rebuilt Rust server update from 1.1.3032 to 1.1.3059
+
+A macOS ARM64 QA app built from PR #3152 embedded the server from the
+same revision and the retained 1.1.3059 Node worker. The app updated over
+loopback HTTPS from the 1.1.3032 runtime on PGlite, private PostgreSQL,
+and external PostgreSQL. Each run retained the server identity, worker
+enrollment, database selection, accepted setting and encrypted client
+bindings. The installed app accepted another write and shut down its
+supervised services. PGlite rejected a changed archive before accepting
+the valid update.
+
+All three installed apps passed strict Developer ID verification and
+matched the signed candidate executable and server hashes. This rehearsal
+used a disposable updater key and hidden QA windows. Release notarization
+and official feed signing are separate.
+[Signed desktop usage settlement evidence](security/rust-server-3059-macos-usage-settlement-updater.json)
+
 ## Installed app and signed update `1.1.3059`
 
 The macOS ARM64 rehearsal updated from 1.1.3043 to 1.1.3059 on PGlite,

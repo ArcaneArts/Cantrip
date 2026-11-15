@@ -2119,6 +2119,13 @@ migration and startup failures, including systemd's start limit. The Windows
 runtime cases remain open.
 [Direct Git import and relocation evidence](security/rust-server-3059-relocation-source-revision.json)
 
+The desktop fixture rebuilt with the later usage settlement fix also
+passed its signed macOS update over loopback HTTPS. The 1.1.3032 baseline
+upgraded to 1.1.3059 on all three database modes. The installed app and
+embedded server matched the signed candidate, and the same worker and
+client bindings survived the update.
+[Signed updater evidence for the rebuilt server](security/rust-server-3059-macos-usage-settlement-updater.json)
+
 The same standalone executable matched the Node reference across all nine
 database and authentication combinations for native command permission
 transitions, pending requests, continuations and settings evidence. The
