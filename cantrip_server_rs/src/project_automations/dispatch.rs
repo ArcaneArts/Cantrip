@@ -4,7 +4,7 @@
 use super::repository::{DispatchLease, Repository};
 use crate::{
     auth::service::AuthService,
-    chats::{self, message_queries::MessageKind, turn_runtime::engine::Hooks},
+    chats::{self, turn_runtime::engine::Hooks},
     native_commands::queued_prompt::PromptRepository,
     operations::logging::{self, LogCall},
     projects::targets::TargetRepository,
@@ -93,41 +93,13 @@ async fn perform(
         text(&automation["id"])?,
         text(&input["scheduledFor"])?
     );
-    // Promise.all rejects as soon as a read fails, while the other database read
-    // remains alive. Each existing operation owner retains that independent read.
-    let message_read = {
-        let (database, owner, chat, key) = (
-            service.repository.database.clone(),
-            owner.to_owned(),
-            chat.clone(),
-            key.clone(),
-        );
-        service.scratch_roots.owned(async move {
-            chats::Repository::new(database)
-                .message_by_idempotency_key(&owner, &chat, &key, MessageKind::Plain)
-                .await
-        })
-    };
-    let prompt_read = {
-        let (database, owner, chat, key) = (
-            service.repository.database.clone(),
-            owner.to_owned(),
-            chat.clone(),
-            key.clone(),
-        );
-        service.scratch_roots.owned(async move {
-            PromptRepository::new(database)
-                .visible_by_key(&owner, &chat, &key)
-                .await
-        })
-    };
-    let (message, prompt) = tokio::try_join!(message_read, prompt_read)?;
-    if message.is_some() || prompt.is_some() {
-        let status = if prompt.is_some() {
-            "queued"
-        } else {
-            "started"
-        };
+    // An occurrence can be admitted before the dispatch lease is finalized.
+    // Recover its status from the owned idempotency key without mapping content.
+    if let Some(status) = repository
+        .admitted_dispatch_status(owner, &chat, &key)
+        .await?
+    {
+        let status = status.as_str();
         if !finish(service, repository, owner, lease, status, None).await? {
             return Ok(failure(
                 "Automation dispatch lease expired before recovery.",

@@ -27591,6 +27591,7 @@
       }
     },
     "projectAutomations": {
+      "currentScheduledDispatchRecovery": "docs/security/rust-server-3059-scheduled-automation-recovery.json",
       "status": "implemented-pending-platform-acceptance",
       "implementation": "cantrip_server_rs/src/project_automations/",
       "scope": "All four public CRUD routes and both worker routes; worker:automations credentials and captured owner; native five-part, one-shot, weekly and interval scheduling; opaque content and the existing execution graph; revision, occurrence, lease, fencing and recovery semantics; owner/project Live. No server-side plaintext access or Node delegation.",

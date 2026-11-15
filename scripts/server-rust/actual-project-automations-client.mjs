@@ -2,6 +2,11 @@
 // scheduler/condition executor -> actual bundled native runtime. Only model HTTP
 // output is controlled. No SQL clock manipulation or substitute worker commands.
 import assert from "node:assert/strict";
+import path from "node:path";
+import {
+  automationDispatchWorkerEnvironment,
+  interruptAutomationDispatch,
+} from "./actual-automation-dispatch-interruption.mjs";
 import { eventually } from "./full-worker.mjs";
 
 export async function actualProjectAutomationsClient({
@@ -10,6 +15,8 @@ export async function actualProjectAutomationsClient({
   projectId,
   chatId,
   workerId,
+  workerDataDirectory,
+  interruption,
   startWorker,
   stopWorker,
   model,
@@ -22,7 +29,13 @@ export async function actualProjectAutomationsClient({
     answer: "Private actual automation answer ✨",
     skipped: "Private actual skipped automation 💤",
   };
-  const baseline = model.requests.filter((r) => r.method === "POST").length;
+  const modelPosts = () =>
+    model.requests.filter((r) => r.method === "POST").length;
+  const baseline = modelPosts();
+  const file = interruption
+    ? path.join(workerDataDirectory, "test-automation-dispatch")
+    : undefined;
+  let worker;
   const created = await page.evaluate(
     async ({ projectId, chatId, markers }) => {
       const api = await import("/src/lib/project-automation-api.ts");
@@ -64,13 +77,13 @@ export async function actualProjectAutomationsClient({
         ).getProjectAutomations(projectId),
       projectId,
     );
-  const restart = async (afterStop) => {
+  const restart = async (afterStop, environment) => {
     await stopWorker();
     const captured = await afterStop?.();
     const port = Number(new URL(fixture.server.origin).port);
     await fixture.close();
     await fixture.start({ port });
-    await startWorker();
+    worker = (await startWorker(undefined, { environment })).child;
     await page.evaluate(async (workerId) => {
       const worker = (
         await (await import("/src/lib/api/worker-wire.ts")).getWorkers()
@@ -82,30 +95,54 @@ export async function actualProjectAutomationsClient({
     return captured;
   };
   const initial = await read();
-  await restart();
+  await restart(
+    undefined,
+    file ? automationDispatchWorkerEnvironment(file) : undefined,
+  );
   assert.deepEqual(
     await read(),
     initial,
     "disabled protected schedules survive server and full-worker restart exactly",
   );
-  const nativeReply = model.reply({ text: markers.answer });
-  const enabled = await page.evaluate(
-    async ({ ids }) => {
-      const api = await import("/src/lib/project-automation-api.ts");
-      const schedule = {
-        kind: "interval",
-        every: 1000000,
-        unit: "minute",
-        startsAt: new Date(Date.now() + 5000).toISOString(),
-      };
-      return Promise.all(
-        ids.map((id) =>
-          api.updateProjectAutomation(id, { enabled: true, schedule }),
-        ),
-      );
-    },
-    { ids: [created.started.id, created.skipped.id] },
-  );
+  const nativeReply = model.reply({
+    text: markers.answer,
+    hold: interruption === "finish",
+  });
+  const enable = () =>
+    page.evaluate(
+      async ({ ids }) => {
+        const api = await import("/src/lib/project-automation-api.ts");
+        const schedule = {
+          kind: "interval",
+          every: 1000000,
+          unit: "minute",
+          startsAt: new Date(Date.now() + 5000).toISOString(),
+        };
+        return Promise.all(
+          ids.map((id) =>
+            api.updateProjectAutomation(id, { enabled: true, schedule }),
+          ),
+        );
+      },
+      { ids: [created.started.id, created.skipped.id] },
+    );
+  const enabled = interruption
+    ? await interruptAutomationDispatch({
+        fixture,
+        worker,
+        workerId,
+        chatId,
+        id: created.started.id,
+        file,
+        phase: interruption,
+        enable,
+        nativeReply,
+        modelPosts: () => modelPosts() - baseline,
+        evidence: (result.projectAutomationInterruption = {
+          phase: interruption,
+        }),
+      })
+    : await enable();
   for (const a of enabled) {
     assert.equal(a.revision, 2);
     assert.equal(a.enabled, true);

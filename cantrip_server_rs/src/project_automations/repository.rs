@@ -298,6 +298,31 @@ impl Repository {
             })
             .await
     }
+    pub async fn admitted_dispatch_status(
+        &self,
+        owner: &str,
+        chat: &str,
+        key: &str,
+    ) -> Result<Option<String>> {
+        let rows = self
+            .database
+            .query(
+                "SELECT CASE
+                    WHEN EXISTS (SELECT 1 FROM queued_prompts q
+                        WHERE q.chat_id=c.id AND q.idempotency_key=$3) THEN 'queued'
+                    WHEN EXISTS (SELECT 1 FROM chat_messages m
+                        WHERE m.chat_id=c.id AND m.idempotency_key=$3) THEN 'started'
+                 END
+                 FROM chats c JOIN projects p ON p.id=c.project_id
+                 WHERE p.owner_id=$1 AND c.id=$2 AND c.experience='agent'",
+                &[&owner, &chat, &key],
+            )
+            .await?;
+        rows.first()
+            .map(|row| row.get::<Option<String>>(0))
+            .transpose()
+            .map(Option::flatten)
+    }
     pub async fn finish_dispatch(
         &self,
         lease: &DispatchLease,
