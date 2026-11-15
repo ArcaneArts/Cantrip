@@ -36,10 +36,15 @@ three-store matrix. The verified archive contains 2,281 manifest files, and
 all 13 native supervision exits completed within 6.7 seconds. The NSIS
 installer containing that exact Rust binary and the 1.1.3059 Node worker
 matched 14,085 expected payload files and passed local QA updater signature
-verification. Installed testing of this installer remains in progress.
+verification. The exact installer passed all six first-launch and
+retained-profile reopen cases. Each reopened profile retained its database
+selection, server identity and saved setting. Every tray quit exited zero
+and reaped the Rust server and Node worker. The bundled PostgreSQL process
+stopped, and external PostgreSQL survived app quit in both runs. The
+on-disk receipts match the live guest results.
 [Post-clock-fix Windows packages](security/rust-server-3059-windows-post-clock-package.json)
 
-The Windows x64 NSIS package with the 180-second server shutdown allowance
+The earlier Windows x64 NSIS package with the 180-second server shutdown allowance
 and the 1.1.3059 Node worker passed first launch and retained-profile reopen
 on all three databases. The reopened app used the stored database selection
 and kept the server identity and settings write. All six tray quits exited
