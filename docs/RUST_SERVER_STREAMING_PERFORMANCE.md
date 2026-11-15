@@ -161,6 +161,41 @@ worker reconnect backoff. External PostgreSQL throughput was 4.1% lower in
 this Rust run. Repeated measurements would be needed to establish a regression.
 [macOS benchmark evidence](security/rust-server-3032-macos-performance-routes.json)
 
+## Current macOS ARM64 1.1.3059 comparison
+
+The standalone archive built at `f820371ea` and the rebuilt Node reference
+each ran two warmups, ten measured 64 MiB streams, and one crash-recovery run
+per database. Both reported version 1.1.3059. Runs were sequential, with a fresh
+profile for each invocation. The Node bundled PostgreSQL control used a separate
+fixture-owned PostgreSQL process.
+
+| Database            | Node median MiB/s | Rust median MiB/s | Node recovery | Rust recovery |
+| ------------------- | ----------------: | ----------------: | ------------: | ------------: |
+| PGlite              |            218.04 |            221.38 |       27.28 s |       27.89 s |
+| Bundled PostgreSQL  |            223.51 |            223.21 |       25.08 s |       28.02 s |
+| External PostgreSQL |            222.71 |            217.31 |       28.39 s |       25.00 s |
+
+All 78 final-series and recovery invocations delivered the same payload and
+closed the stalled consumer with code 1013. In the six SIGKILL runs, the
+restarted server recovered its identity and the accepted settings write. The
+existing worker connection reconnected and completed a new command and stream.
+The recovery measurements include reconnect backoff.
+
+Median transfer durations were within 2.5% of Node in every mode. The full
+benchmark command, which includes startup, enrollment, backpressure and normal
+shutdown, passed the 5% median slowdown check in all three modes. Its medians
+were 2.22 vs 4.21 seconds on PGlite, 2.30 vs 3.41 seconds on bundled PostgreSQL,
+and 2.40 vs 3.31 seconds on external PostgreSQL, with Rust listed first.
+
+The first series passed the workload assertions, but the output comparison
+flagged worker log timestamps and connection durations. The repeat kept the raw
+logs, masked those two fields for the output comparison, and included the
+verified hash, byte and frame counts, close behavior and exit code in its
+comparison output. This is a local worker-log JSON workload with controlled log
+generation. At ten measured samples per cell, the reported p95 is the highest
+measured value.
+[Current benchmark data and artifact checksums](security/rust-server-3059-macos-stream-performance.json)
+
 ## Windows bundled PostgreSQL crash recovery
 
 The Windows x64 1.1.2976 server passed the 64 MiB stream and then exited during

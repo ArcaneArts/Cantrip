@@ -1,0 +1,431 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "sourceCommit": "7882ffbcf944bcb074f6b7b9f6a8bdb4e03f62c2",
+  "nativeArtifactSourceCommit": "f820371ea602a2493f2e6beca6438cc188446580",
+  "nativeExecutableSha256": "06ecb895e04c0a015145e9decf644a83db6919b7ba698e8e837b69954c023aba",
+  "nativeArchive": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/cantrip-server-1.1.3059-darwin-arm64.tar.zst",
+    "bytes": 63134019,
+    "sha256": "8524cc99886b24bcc19bd25245f2846ff631f3ef28358bee8599d821ad812abf"
+  },
+  "nodeVersion": "v24.22.1",
+  "host": [
+    "ProductName:\t\tmacOS",
+    "ProductVersion:\t\t27.0.1",
+    "BuildVersion:\t\t26A434",
+    "Apple M4 Max"
+  ],
+  "initialLoadObservation": "3:22  up 1 day, 23:27, 6 users, load averages: 5.01 4.28 4.44",
+  "runConfiguration": {
+    "scope": "Local macOS ARM64 production standalone entry points with the existing WorkerConnection and controlled worker-log generation. Each invocation exercises ordered payload/cursors, a paused client, and an accepted settings write.",
+    "order": "Run one configuration at a time. Start the first series with Rust for bundled and external PostgreSQL and Node for PGlite. Reverse the order for each database in the second series. Use fresh test data per invocation.",
+    "payloadBytes": 67108864,
+    "payloadSha256": "e20a69eca39368572e90b9135738a613838f954987a0b44b6220889c171cbb76",
+    "wireBytes": 67737908,
+    "warmupsPerPeerAndMode": 2,
+    "measuredInvocationsPerPeerAndMode": 10,
+    "crashRecoveryInvocations": 6,
+    "guardedAndRecoveryInvocations": 78,
+    "originalUnnormalizedWarmupAndMeasuredInvocations": 72,
+    "pressureCloseCode": 1013,
+    "limits": "The p95 is the largest measured sample at this sample size. RSS sums server-process-tree pages and omits independent PostgreSQL. Recovery includes the existing worker reconnect wait. Node uses an independent PostgreSQL process for the bundled control. The results cover a worker-log JSON workload on one host."
+  },
+  "matrix": [
+    {
+      "rustStorageMode": "pglite",
+      "peers": {
+        "node": {
+          "payloadThroughputMiBPerSecond": {
+            "median": 218.039,
+            "p95": 228.923,
+            "min": 209.762,
+            "max": 228.923
+          },
+          "streamDurationMs": {
+            "median": 293.531,
+            "p95": 305.108,
+            "min": 279.57,
+            "max": 305.108
+          },
+          "initialServerReadinessMs": {
+            "median": 3002.587,
+            "p95": 3044.271,
+            "min": 2857.397,
+            "max": 3044.271
+          },
+          "processTreeResidentMiBAtEndOfStream": {
+            "median": 1331.203,
+            "p95": 1343.969,
+            "min": 1320.828,
+            "max": 1343.969
+          },
+          "backpressureToLeaseStopMs": {
+            "median": 22.019,
+            "p95": 27.671,
+            "min": 20.633,
+            "max": 27.671
+          },
+          "completeCommandMedianMs": 4210.254,
+          "completeCommandP95Ms": 4259.388,
+          "recoveryRun": {
+            "reconnectAndStateRecoveryMs": 27279.1,
+            "serverRestartReadinessMs": 1358.044,
+            "verifiedIdentityAndWrite": true,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/recovery/pglite-node/1794734689328-57281/report.json",
+              "bytes": 3665,
+              "sha256": "b2f5dd373673673c4ef4f1ebd66afe013d4c5b20a6f51d1ef4bbe6b7a9a93e05"
+            }
+          },
+          "capture": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/timed-guard/capture-pglite-node.json",
+            "bytes": 1246,
+            "sha256": "3c1fb53811d77ba50008194421f22c8b5624edf70e50ee489483b3c7d3db99ac"
+          }
+        },
+        "rust": {
+          "payloadThroughputMiBPerSecond": {
+            "median": 221.384,
+            "p95": 234.141,
+            "min": 214.93,
+            "max": 234.141
+          },
+          "streamDurationMs": {
+            "median": 289.119,
+            "p95": 297.772,
+            "min": 273.339,
+            "max": 297.772
+          },
+          "initialServerReadinessMs": {
+            "median": 1051.643,
+            "p95": 1100.195,
+            "min": 1013.732,
+            "max": 1100.195
+          },
+          "processTreeResidentMiBAtEndOfStream": {
+            "median": 127.477,
+            "p95": 127.875,
+            "min": 126.984,
+            "max": 127.875
+          },
+          "backpressureToLeaseStopMs": {
+            "median": 22.54,
+            "p95": 30.628,
+            "min": 20.97,
+            "max": 30.628
+          },
+          "completeCommandMedianMs": 2215.354,
+          "completeCommandP95Ms": 2258.736,
+          "recoveryRun": {
+            "reconnectAndStateRecoveryMs": 27892.054,
+            "serverRestartReadinessMs": 263.755,
+            "verifiedIdentityAndWrite": true,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/recovery/pglite-rust/1794734720821-57525/report.json",
+              "bytes": 3669,
+              "sha256": "f1825d6f8ed54ad2435c9e1b99c62e66ea973e15307687c5e074866714ef0358"
+            }
+          },
+          "capture": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/timed-guard/capture-pglite-rust.json",
+            "bytes": 1244,
+            "sha256": "ba3fb7fdcad88dc296af2a8cf801e0f33f8add8a18580b2ce9c6296cf295274c"
+          }
+        }
+      },
+      "guard": {
+        "target": "complete benchmark command wall time",
+        "medianSlowdownLimitPercent": 5,
+        "verdict": "pass",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/timed-guard/comparison-pglite.md",
+          "bytes": 814,
+          "sha256": "6bc6af423f4527b8ad189a731f8e884da4f2e78c93275a9bcd31172911ccee02"
+        }
+      },
+      "medianStreamDurationDeltaPercent": -1.503
+    },
+    {
+      "rustStorageMode": "bundled-postgres",
+      "peers": {
+        "node": {
+          "payloadThroughputMiBPerSecond": {
+            "median": 223.511,
+            "p95": 232.956,
+            "min": 216.184,
+            "max": 232.956
+          },
+          "streamDurationMs": {
+            "median": 286.34,
+            "p95": 296.044,
+            "min": 274.73,
+            "max": 296.044
+          },
+          "initialServerReadinessMs": {
+            "median": 1584.549,
+            "p95": 1623.303,
+            "min": 1516.321,
+            "max": 1623.303
+          },
+          "processTreeResidentMiBAtEndOfStream": {
+            "median": 513.891,
+            "p95": 520.453,
+            "min": 506.969,
+            "max": 520.453
+          },
+          "backpressureToLeaseStopMs": {
+            "median": 21.984,
+            "p95": 22.932,
+            "min": 21.414,
+            "max": 22.932
+          },
+          "completeCommandMedianMs": 3409.507,
+          "completeCommandP95Ms": 3449.443,
+          "recoveryRun": {
+            "reconnectAndStateRecoveryMs": 25083.024,
+            "serverRestartReadinessMs": 956.382,
+            "verifiedIdentityAndWrite": true,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/recovery/bundled-postgres-node/1794734661007-57064/report.json",
+              "bytes": 3669,
+              "sha256": "c05130e87e9c7aa187c15383a685fdb5a6689a0a4ae11e4f457f5ffa12432c2e"
+            }
+          },
+          "capture": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/timed-guard/capture-bundled-postgres-node.json",
+            "bytes": 1280,
+            "sha256": "26885f8364e2ee387d87f67ae5f13789a9caf50b3e5bdbe1e73543afb8c2cb74"
+          }
+        },
+        "rust": {
+          "payloadThroughputMiBPerSecond": {
+            "median": 223.212,
+            "p95": 228.819,
+            "min": 217.429,
+            "max": 228.819
+          },
+          "streamDurationMs": {
+            "median": 286.723,
+            "p95": 294.349,
+            "min": 279.697,
+            "max": 294.349
+          },
+          "initialServerReadinessMs": {
+            "median": 1131.465,
+            "p95": 1163.027,
+            "min": 1104.757,
+            "max": 1163.027
+          },
+          "processTreeResidentMiBAtEndOfStream": {
+            "median": 324.211,
+            "p95": 327.484,
+            "min": 319.547,
+            "max": 327.484
+          },
+          "backpressureToLeaseStopMs": {
+            "median": 22.741,
+            "p95": 29.604,
+            "min": 21.892,
+            "max": 29.604
+          },
+          "completeCommandMedianMs": 2296.33,
+          "completeCommandP95Ms": 2339.965,
+          "recoveryRun": {
+            "reconnectAndStateRecoveryMs": 28020.46,
+            "serverRestartReadinessMs": 181.157,
+            "verifiedIdentityAndWrite": true,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/recovery/bundled-postgres-rust/1794734628421-56688/report.json",
+              "bytes": 6728,
+              "sha256": "ca4bfac5ce0973c9bb2684dec2f8cd70b776b6b8bc809e1a430aebf629458905"
+            }
+          },
+          "capture": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/timed-guard/capture-bundled-postgres-rust.json",
+            "bytes": 1278,
+            "sha256": "7a4a68035dfe90d2848515c234d5b8fecf9e28d262f7c297ba8588ec31199220"
+          }
+        }
+      },
+      "guard": {
+        "target": "complete benchmark command wall time",
+        "medianSlowdownLimitPercent": 5,
+        "verdict": "pass",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/timed-guard/comparison-bundled-postgres.md",
+          "bytes": 834,
+          "sha256": "f409178e87bb97d66bb631594c6426de81706359b25f9ef1b4882c871242f1d9"
+        }
+      },
+      "medianStreamDurationDeltaPercent": 0.134
+    },
+    {
+      "rustStorageMode": "postgres",
+      "peers": {
+        "node": {
+          "payloadThroughputMiBPerSecond": {
+            "median": 222.713,
+            "p95": 236.49,
+            "min": 212.711,
+            "max": 236.49
+          },
+          "streamDurationMs": {
+            "median": 287.366,
+            "p95": 300.878,
+            "min": 270.625,
+            "max": 300.878
+          },
+          "initialServerReadinessMs": {
+            "median": 1519.781,
+            "p95": 1561.968,
+            "min": 1483.664,
+            "max": 1561.968
+          },
+          "processTreeResidentMiBAtEndOfStream": {
+            "median": 514.203,
+            "p95": 523.0,
+            "min": 503.125,
+            "max": 523.0
+          },
+          "backpressureToLeaseStopMs": {
+            "median": 22.995,
+            "p95": 41.955,
+            "min": 20.536,
+            "max": 41.955
+          },
+          "completeCommandMedianMs": 3311.718,
+          "completeCommandP95Ms": 3415.407,
+          "recoveryRun": {
+            "reconnectAndStateRecoveryMs": 28394.523,
+            "serverRestartReadinessMs": 912.093,
+            "verifiedIdentityAndWrite": true,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/recovery/postgres-node/1794734778763-58083/report.json",
+              "bytes": 3663,
+              "sha256": "df1323301f265d3cedfd9e4303ba71346b275a130d6a90700eb2026c75379f13"
+            }
+          },
+          "capture": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/timed-guard/capture-postgres-node.json",
+            "bytes": 1256,
+            "sha256": "7c974b46cf4d6f616eddcf11eef48b8e51c488bbd22b05919c3c96e6720064c6"
+          }
+        },
+        "rust": {
+          "payloadThroughputMiBPerSecond": {
+            "median": 217.305,
+            "p95": 223.368,
+            "min": 210.803,
+            "max": 223.368
+          },
+          "streamDurationMs": {
+            "median": 294.52,
+            "p95": 303.602,
+            "min": 286.523,
+            "max": 303.602
+          },
+          "initialServerReadinessMs": {
+            "median": 617.085,
+            "p95": 642.171,
+            "min": 590.91,
+            "max": 642.171
+          },
+          "processTreeResidentMiBAtEndOfStream": {
+            "median": 69.664,
+            "p95": 70.109,
+            "min": 69.391,
+            "max": 70.109
+          },
+          "backpressureToLeaseStopMs": {
+            "median": 23.138,
+            "p95": 45.712,
+            "min": 21.555,
+            "max": 45.712
+          },
+          "completeCommandMedianMs": 2395.751,
+          "completeCommandP95Ms": 2422.356,
+          "recoveryRun": {
+            "reconnectAndStateRecoveryMs": 24996.698,
+            "serverRestartReadinessMs": 59.914,
+            "verifiedIdentityAndWrite": true,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/recovery/postgres-rust/1794734751411-57788/report.json",
+              "bytes": 3662,
+              "sha256": "4c429a6da0246f05ccccb373df7a3f3c2f52a34570da8f809208bc7f701c02e9"
+            }
+          },
+          "capture": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/timed-guard/capture-postgres-rust.json",
+            "bytes": 1254,
+            "sha256": "b11490518def7f57bf03dcba56a2563bc7c81f26ee21b074117e38678fb94ec6"
+          }
+        }
+      },
+      "guard": {
+        "target": "complete benchmark command wall time",
+        "medianSlowdownLimitPercent": 5,
+        "verdict": "pass",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/timed-guard/comparison-postgres.md",
+          "bytes": 818,
+          "sha256": "5647e26293062415193b66f5f39a83ad7836795d7eb41a62a2e8593ddee01e59"
+        }
+      },
+      "medianStreamDurationDeltaPercent": 2.49
+    }
+  ],
+  "executionRecord": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/timed-guard/progress.json",
+    "bytes": 979,
+    "sha256": "e463a773ea5307df81b12c5b84d83f07af0afcbc93a01781aeddecbfc2cdb6d6"
+  },
+  "originalExecution": {
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/matrix-progress.json",
+      "bytes": 2701,
+      "sha256": "137c85cc8b2f0ea30d412d7f7bf59a549a632ae16bfbe5cdb39c457fec90c89b"
+    },
+    "guardReports": [
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/perf-guard-pglite.md",
+        "bytes": 790,
+        "sha256": "ba7e79124c127d1ba9fcece884da679d59cbd06403c31243a5f8d801650bb752"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/perf-guard-bundled-postgres.md",
+        "bytes": 810,
+        "sha256": "199be4f6b4218f899587c471757603093c6d9dcdad3406ea5c7649c95c725cf3"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/perf-guard-postgres.md",
+        "bytes": 794,
+        "sha256": "c0a49647239a86c1ac3e67fdab3a3f4131a596e6fb59981b5e5615d72b1fd9fa"
+      }
+    ],
+    "detail": "Initial raw worker stdout contains a local time and connection duration. The second series preserves raw logs, normalizes those two fields only, and prints the verified payload, close and exit results for the guard."
+  },
+  "runIndex": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/raw-run-index.json",
+    "bytes": 29157,
+    "sha256": "ed67b42a4c3d54bd2ee9b054428788a55243e45332576d0d1b0c490ebe1dc60d"
+  },
+  "drivers": [
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/run-current-stream-matrix.py",
+      "bytes": 4497,
+      "sha256": "697db475fc196a2d6ea6ceee6ba612e38b12fa862f9aec01a73393913660d505"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/timed-guard/run-timed-guard.py",
+      "bytes": 2673,
+      "sha256": "5936a8ccd42221b8961e0961258c741a7edcd13533822ead94c1b70f5c649d5f"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-current-stream-matrix.2t6de7TN/timed-guard/benchmark-output.py",
+      "bytes": 1772,
+      "sha256": "fc688403b710162c6fde550a427236af46975aef27b71e658d92be3c16a38b47"
+    }
+  ]
+}
