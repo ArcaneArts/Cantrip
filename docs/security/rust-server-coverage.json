@@ -27499,6 +27499,7 @@
       "currentMacosSharedQueueRecovery": "docs/security/rust-server-3059-macos-shared-queue-recovery.json",
       "currentMacosRetainedChatQueueRecovery": "docs/security/rust-server-3059-macos-retained-chat-queue.json",
       "currentMacosConcurrentQueueResume": "docs/security/rust-server-3059-macos-queue-resume-race.json",
+      "currentMacosQueueWorkerOwnerLoss": "docs/security/rust-server-3059-macos-queue-owner-loss.json",
       "scope": "All six worker:agent-tools queue routes use the credential owner, existing canonical queue repositories, exact Source schema/error boundaries, shared receipt notifications and owned dispatch/persistence lifetimes. Production startup invokes the already-ported interrupted-lane and Task-operation recovery routines alongside existing local-coordinator transient recovery. No production SQL endpoint or Node delegation.",
       "evidence": [
         "cantrip_server_rs/src/http/native_queue.rs",

@@ -1,0 +1,283 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "target": "darwin-arm64",
+  "database": "external PostgreSQL 18.6",
+  "coordination": "Redis 8.10.3",
+  "baselineIntegratedCommit": "e864478aa17b0ef682f82f0326220b6159f8c4d4",
+  "packagedRustBaseline": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-871f62ae9.6GH2nOLA/cantrip-server-darwin-arm64/bin/cantrip-server",
+    "bytes": 94198000,
+    "sha256": "14dea9680a1a3c82918bc8d80a0a540b3bdc9ced18cee1d7bd51044ca2073fb1"
+  },
+  "candidateRustBinary": {
+    "bytes": 179696688,
+    "sha256": "4326c01511aee6348d0ccd7184d76e488d31a8b1cc9e13d54b30f4f06af526b1",
+    "build": "CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 cargo build --manifest-path cantrip_server_rs/Cargo.toml --locked --bin cantrip-server",
+    "buildLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/candidate-server-build.log",
+      "bytes": 9030,
+      "sha256": "24b2955548ad3126ef95f83c2ea693d638883f705e9943cdd1be990bd1c1626f"
+    }
+  },
+  "scope": "Two prompts queued in a retained Agent chat after normal restart and Goal clear. Actual browser, server, full worker and native Codex use private PostgreSQL and Redis with a controlled model endpoint. SIGKILL the worker-owner peer while the browser peer stays live.",
+  "claimMethod": "A fixture-only trigger and advisory lock hold the next admission for the first prompt while the real queue claim has committed. Release the lock after confirmed process exit. The browser checks HTTP 409 and durable pause before explicitly retrying with the same worker. No application rows are seeded.",
+  "streamMethod": "Wait for the browser Resume response, the applied native start, and the open HTTP model stream. Replace the worker owner, verify the unchanged claim and open original stream, then let the native turn finish.",
+  "baselineClaimFailures": [
+    {
+      "pair": "node/node",
+      "workerOwnerKilled": true,
+      "workerRetained": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/diagnose-retry/claim/node-node/matrix.json",
+        "bytes": 420042,
+        "sha256": "3589cd9ab0d91a36512a3efdd89c0d4dd2f5a2a9f21a88795896d5118e3194a8"
+      },
+      "phase": "claimed-before-native-admission",
+      "resumeLossResponse": 409,
+      "recoveredWorkerResumeUnpaused": true,
+      "retainedRejection": "not-dispatched",
+      "transportEvidence": "transport-ended",
+      "result": "first-queued-input-skipped",
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/diagnose-retry/claim/node-node/matrix.log",
+        "bytes": 2762,
+        "sha256": "0e87677ca02a32ed30bad2b1728604891fdf66d42fd61d041b26102570848236"
+      }
+    },
+    {
+      "pair": "rust/rust",
+      "workerOwnerKilled": true,
+      "workerRetained": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/qualified/claim/rust-rust/matrix.json",
+        "bytes": 470492,
+        "sha256": "9d6ffa98c50262944ae9c90a3b9a158abf1d7f5c73f9e666684b8f291883018e"
+      },
+      "phase": "claimed-before-native-admission",
+      "resumeLossResponse": 409,
+      "recoveredWorkerResumeUnpaused": true,
+      "retainedRejection": "not-dispatched",
+      "transportEvidence": "transport-ended",
+      "result": "first-queued-input-skipped",
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/qualified/claim/rust-rust/matrix.log",
+        "bytes": 2570,
+        "sha256": "de5374cf505356c1ce96755b0fc4e5511f82645def461ba2d9700b3c4b9cb775"
+      }
+    }
+  ],
+  "fixedClaimRecovery": [
+    {
+      "pair": "rust/node",
+      "workerOwnerKilled": true,
+      "workerRetained": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/candidate/claim/rust-node/matrix.json",
+        "bytes": 585354,
+        "sha256": "197bcf315f3008cda9ead2b9898c8d1b5c0cfa14c00fd5367d892df5a3ae5be1"
+      },
+      "phase": "claimed-before-native-admission",
+      "resumeLossResponse": 409,
+      "recoveredWorkerResumeUnpaused": true,
+      "retainedRejection": "not-dispatched",
+      "transportEvidence": "transport-ended",
+      "result": "passed",
+      "modelPosts": 2,
+      "completedNativeTurns": 2,
+      "originalThreadRetained": true,
+      "queueDrained": true
+    },
+    {
+      "pair": "rust/rust",
+      "workerOwnerKilled": true,
+      "workerRetained": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/candidate/claim/rust-rust/matrix.json",
+        "bytes": 619558,
+        "sha256": "223d939fc9f730ea85b00ec3d586ecd39609c4c2455adc92f516df5284aecbf1"
+      },
+      "phase": "claimed-before-native-admission",
+      "resumeLossResponse": 409,
+      "recoveredWorkerResumeUnpaused": true,
+      "retainedRejection": "not-dispatched",
+      "transportEvidence": "transport-ended",
+      "result": "passed",
+      "modelPosts": 2,
+      "completedNativeTurns": 2,
+      "originalThreadRetained": true,
+      "queueDrained": true
+    }
+  ],
+  "acknowledgedStreamRecovery": [
+    {
+      "pair": "node/node",
+      "workerOwnerKilled": true,
+      "workerRetained": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/acknowledged-stream/stream/node-node/matrix.json",
+        "bytes": 558453,
+        "sha256": "4cfbb79d105535f4f80f2ee057b0343df8494b3db5ff4e9cea0e090e508a5c78"
+      },
+      "phase": "applied-start-with-open-model-stream",
+      "originalModelStreamRetained": true,
+      "result": "passed",
+      "modelPosts": 2,
+      "completedNativeTurns": 2,
+      "originalThreadRetained": true,
+      "queueDrained": true
+    },
+    {
+      "pair": "node/rust",
+      "workerOwnerKilled": true,
+      "workerRetained": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/acknowledged-stream/stream/node-rust/matrix.json",
+        "bytes": 595343,
+        "sha256": "0f7971512227a0e1c31097bd849bf819164d1cb7d7445bcad0596267ac484f3c"
+      },
+      "phase": "applied-start-with-open-model-stream",
+      "originalModelStreamRetained": true,
+      "result": "passed",
+      "modelPosts": 2,
+      "completedNativeTurns": 2,
+      "originalThreadRetained": true,
+      "queueDrained": true
+    },
+    {
+      "pair": "rust/node",
+      "workerOwnerKilled": true,
+      "workerRetained": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/acknowledged-stream/stream/rust-node/matrix.json",
+        "bytes": 574799,
+        "sha256": "8d72040a44657c933847f4e508036dfb919178c85f253a1894fd19976aea8f5c"
+      },
+      "phase": "applied-start-with-open-model-stream",
+      "originalModelStreamRetained": true,
+      "result": "passed",
+      "modelPosts": 2,
+      "completedNativeTurns": 2,
+      "originalThreadRetained": true,
+      "queueDrained": true
+    },
+    {
+      "pair": "rust/rust",
+      "workerOwnerKilled": true,
+      "workerRetained": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/acknowledged-stream/stream/rust-rust/matrix.json",
+        "bytes": 605400,
+        "sha256": "0fd496b5bd5711651f93d47bfa7f8d6cd22a4c06ea031f7b3885469df66f3f87"
+      },
+      "phase": "applied-start-with-open-model-stream",
+      "originalModelStreamRetained": true,
+      "result": "passed",
+      "modelPosts": 2,
+      "completedNativeTurns": 2,
+      "originalThreadRetained": true,
+      "queueDrained": true
+    }
+  ],
+  "openResumeAcknowledgmentBoundary": [
+    {
+      "pair": "rust/node",
+      "workerOwnerKilled": true,
+      "workerRetained": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/recovery/stream/rust-node/matrix.json",
+        "bytes": 429462,
+        "sha256": "4532977961e1c606ff7477043d373d275cd464924f489fe01f5da99497ce2607"
+      },
+      "phase": "applied-start-with-open-model-stream",
+      "originalModelStreamRetained": true,
+      "result": "unacknowledged-resume-returned-409",
+      "resumeResponse": 409,
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/recovery/stream/rust-node/matrix.log",
+        "bytes": 3124,
+        "sha256": "0793046d6bdb77f52c5a03073f712fd04cdc84e2fe3981588f794a436f5bc0dc"
+      }
+    },
+    {
+      "pair": "rust/rust",
+      "workerOwnerKilled": true,
+      "workerRetained": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/recovery/stream/rust-rust/matrix.json",
+        "bytes": 464304,
+        "sha256": "078ea03b649c2ea721e15ca56df04b97f94b3f7e32ca3bff7bf0ec335d36f3d9"
+      },
+      "phase": "applied-start-with-open-model-stream",
+      "originalModelStreamRetained": true,
+      "result": "unacknowledged-resume-returned-409",
+      "resumeResponse": 409,
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/recovery/stream/rust-rust/matrix.log",
+        "bytes": 3326,
+        "sha256": "0a5893a186b8d79c5d086ed503f98036268d24074826cf00b282a209d824c17b"
+      }
+    }
+  ],
+  "limits": "The candidate changes explicit Agent Resume on the Rust browser server. Prior failures remain observable on the frozen Node reference. Worker loss before the browser receives Resume acknowledgment and Linux and Windows shared qualification remain open.",
+  "unchangedResumeHttpContract": [
+    {
+      "databaseMode": "pglite",
+      "profiles": ["none", "password", "accounts"],
+      "pairedHttp": 36,
+      "pairedSdk": 9,
+      "pairedWorkerCommands": 33,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/http-compatibility/pglite/matrix.json",
+        "bytes": 1581428,
+        "sha256": "7b39b10e6879f3d265d870065a0699b39f9911c15269218ac05544a24ab3e288"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "profiles": ["none", "password", "accounts"],
+      "pairedHttp": 36,
+      "pairedSdk": 9,
+      "pairedWorkerCommands": 33,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/http-compatibility-retry/bundled-postgres/matrix.json",
+        "bytes": 1579817,
+        "sha256": "c68446b7cef007733f679b3719d64ca788bcf8ae71e021bb7f5e5f1c78cd71a1"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "profiles": ["none", "password", "accounts"],
+      "pairedHttp": 36,
+      "pairedSdk": 9,
+      "pairedWorkerCommands": 33,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/http-compatibility-retry/postgres/matrix.json",
+        "bytes": 1580101,
+        "sha256": "134ec2505b9c4a2d37ef8e6655fda6f310fcec3ee991d78c8e4bf05ef84d404f"
+      }
+    }
+  ],
+  "postgresFixtureRetry": {
+    "reason": "The retained database launcher initially lacked QA_RESTARTABLE_POSTGRES, so neither PostgreSQL product comparison ran. Both passed after supplying its fixture module.",
+    "firstBundledPostgresOutput": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/http-compatibility/bundled-postgres/matrix.log",
+      "bytes": 955,
+      "sha256": "2ff7f61a3bbf3191cf648ac4c8443019ab103ef8375c7b3b7412b76f76369f20"
+    },
+    "firstExternalPostgresOutput": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/http-compatibility/postgres/matrix.log",
+      "bytes": 955,
+      "sha256": "2ff7f61a3bbf3191cf648ac4c8443019ab103ef8375c7b3b7412b76f76369f20"
+    }
+  },
+  "concurrentResumeRegression": {
+    "pair": "rust/node",
+    "orderedNativeTurns": 3,
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-queue-owner-loss.zrlv4Z1C/candidate/resume-race/rust-node/matrix.json",
+      "bytes": 636784,
+      "sha256": "3107a604d3e9520354c2c7a84c0b5193c3577401e913281b47cb66fbd6d966c8"
+    }
+  }
+}

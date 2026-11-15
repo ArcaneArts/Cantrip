@@ -193,7 +193,7 @@ export class SharedProductFixture {
       })),
     };
   }
-  async replacePeer(index, kind = "rust", { crash = false } = {}) {
+  async replacePeer(index, kind = "rust", { crash = false, afterCrash } = {}) {
     const peer = this.peers[index];
     const server = peer.server;
     const before = {
@@ -220,6 +220,7 @@ export class SharedProductFixture {
       diagnostics: server.diagnostics(),
       ...(crash ? { intentionalInterruption: "SIGKILL" } : {}),
     });
+    if (crash && afterCrash) await afterCrash();
     peer.kind = kind;
     peer.environment.CANTRIP_SERVER_INSTANCE_ID = randomUUID();
     await this.startPeer(index);
