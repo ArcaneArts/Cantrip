@@ -31187,7 +31187,8 @@
     "candidateVersion": "1.1.3059",
     "databaseModes": ["pglite", "bundled-postgres", "postgres"],
     "report": "docs/security/rust-server-3059-windows-post-clock-package.json",
-    "scope": "Exact post-clock-fix Windows x64 standalone archive with 2,281 verified files and 13 clean supervision exits. All three stores passed migration, native export, retained writes and hosted reopening. The NSIS installer with the same server verified 14,085 payload files and its local QA updater signature. It passed six installed first-launch and profile-reopen cases with owned workers, retained settings, correct database ownership and clean tray shutdown. Production signing and updater installation of this exact artifact remain open."
+    "signedUpdaterReport": "docs/security/rust-server-3059-windows-post-clock-signed-update.json",
+    "scope": "Exact post-clock-fix Windows x64 standalone archive with 2,281 verified files and 13 clean supervision exits. All three stores passed migration, native export, retained writes and hosted reopening. The NSIS installer with the same server verified 14,085 payload files and its local QA updater signature. It passed six installed first-launch and profile-reopen cases with owned workers, retained settings, correct database ownership and clean tray shutdown. The actual QA-signed updater installed this exact artifact and preserved the PGlite profile through a clean tray quit. Production release signing remains open."
   },
   "macos3059ProjectAutomationsQualification": {
     "status": "passed",
