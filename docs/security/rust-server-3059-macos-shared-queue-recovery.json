@@ -1,0 +1,336 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "completeReplacement": false,
+  "serverSourceCommit": "871f62ae9a7ea48fdcb1746c9b4e518391d2b562",
+  "harnessBaseCommit": "9e47f3a7132f0e26cf143c987a39565fb82b6d2b",
+  "target": "darwin-arm64",
+  "workerReportedVersion": "1.1.2976",
+  "database": "external PostgreSQL 18.6",
+  "coordination": "Redis 8.10.3",
+  "scope": "Both peers run locally on one macOS ARM64 host with private PostgreSQL and Redis per case. The existing browser connects to one peer and the unchanged packaged Node worker to the other. A separately prepared Agent chat retains two paused prompts across SIGKILL of its worker-owner peer and the same worker reconnects to the replacement. Only public model HTTP responses are scripted.",
+  "artifactInputs": {
+    "cantrip-server": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-871f62ae9.6GH2nOLA/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94198000,
+      "sha256": "14dea9680a1a3c82918bc8d80a0a540b3bdc9ced18cee1d7bd51044ca2073fb1"
+    },
+    "index.js": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3059/runtime/worker/dist/index.js",
+      "bytes": 391720,
+      "sha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c"
+    },
+    "codex": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3059/runtime/worker/bin/codex",
+      "bytes": 279545328,
+      "sha256": "b2dbabe42d7fde4147ae5e45cc9bd99fe2101cdd95e0b4b2b640962ce71278d4"
+    },
+    "redis-server": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/replica-relay-claim-fencing/redis-bottle/redis/8.10.3/bin/redis-server",
+      "bytes": 2354784,
+      "sha256": "638f08672983dbb03f2527193dd93d575521c495d8f6d0d196030de9010980cd"
+    },
+    "nodeRuntime": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3059/runtime/node",
+      "bytes": 121833248,
+      "sha256": "ba349cebcb849de261b20139c545e30348eda0fb663a8253b692b9947b1375a8"
+    },
+    "developmentNodeReferenceEntry": {
+      "path": "tests/reference-node-server/dist/index.js",
+      "bytes": 106,
+      "sha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310"
+    }
+  },
+  "productionSourceDiff": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-shared-queue-matrix.SRZLUjd5/production-source-diff.txt",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "totals": {
+    "browserSteps": 60,
+    "cleanServerExits": 24,
+    "cleanWorkerExits": 16,
+    "intentionalWorkerOwnerKills": 4,
+    "completedQueueTurns": 8
+  },
+  "cases": [
+    {
+      "browserPeer": "node",
+      "workerPeer": "node",
+      "browserSteps": 15,
+      "cleanServerExits": 6,
+      "cleanWorkerExits": 4,
+      "workerOwnerSIGKILL": true,
+      "queue": {
+        "phase": "passed",
+        "chatId": "089a200f-1ea7-42ce-8eef-a5b373cf94f1",
+        "admitted": [
+          "e349b889-8b71-49ee-af9a-690a82c560fc",
+          "e110f685-46d7-4613-a621-049df6b6d6e0"
+        ],
+        "retainedRevision": 4,
+        "replacement": {
+          "peer": 1,
+          "before": {
+            "kind": "node",
+            "instanceId": "5a572a54-3d72-4862-a1ea-b397a4b70286",
+            "pid": 86154
+          },
+          "after": {
+            "kind": "node",
+            "instanceId": "73ac2be7-03f5-46c8-bfde-1e010749929f",
+            "pid": 88074
+          }
+        },
+        "workerPid": 86388,
+        "oldWorkerConnection": "b5f94d6e-5c39-4dec-8f80-2b9bed210df1",
+        "newWorkerConnection": "48f077fa-90b8-41c8-bf0c-d0bbb3ce9748",
+        "canonicalTurns": [
+          {
+            "turnId": "01a1dd27-9da2-7f63-aaf0-f04a85b755d6",
+            "threadId": "01a1dd27-890b-7e40-bf23-ef41d9200b31"
+          },
+          {
+            "turnId": "01a1dd27-9ee0-79e2-b890-8f2b36069bbb",
+            "threadId": "01a1dd27-890b-7e40-bf23-ef41d9200b31"
+          }
+        ],
+        "newModelPosts": 2
+      },
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-shared-queue-matrix.SRZLUjd5/node-node/matrix.json",
+        "bytes": 570728,
+        "sha256": "bcc4c7880cf102bb4f406b5bee7830e1bb4f8bbcc5b2d957f4210856ae3342a3"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-shared-queue-matrix.SRZLUjd5/node-node/matrix.log",
+        "bytes": 696,
+        "sha256": "853d37adb15df2e2f11ec5c1795b0f7763598900e9166ce8cb887842b7f19e36"
+      }
+    },
+    {
+      "browserPeer": "node",
+      "workerPeer": "rust",
+      "browserSteps": 15,
+      "cleanServerExits": 6,
+      "cleanWorkerExits": 4,
+      "workerOwnerSIGKILL": true,
+      "queue": {
+        "phase": "passed",
+        "chatId": "765d5130-bc04-48c3-9e68-37356d913778",
+        "admitted": [
+          "dec6daaa-454d-4ef0-b42c-53d3e354589a",
+          "d80225e0-68ea-40e7-88ef-992101ea7710"
+        ],
+        "retainedRevision": 4,
+        "replacement": {
+          "peer": 1,
+          "before": {
+            "kind": "rust",
+            "instanceId": "b883f62a-b8a3-45df-81f7-d08ac0a36d7b",
+            "pid": 86136
+          },
+          "after": {
+            "kind": "rust",
+            "instanceId": "5a6673c8-0df9-46e5-adfe-72def93633e4",
+            "pid": 87078
+          }
+        },
+        "workerPid": 86143,
+        "oldWorkerConnection": "3c037749-2777-49df-a89a-432fe9ec6085",
+        "newWorkerConnection": "3d0272ae-2277-437a-90a8-0aada01b1830",
+        "canonicalTurns": [
+          {
+            "turnId": "01a1dd27-98c1-7c12-8327-18483a894ffe",
+            "threadId": "01a1dd27-83ae-7583-95f4-6721703dc2ea"
+          },
+          {
+            "turnId": "01a1dd27-9a0c-7623-9e85-3f9a028d02e0",
+            "threadId": "01a1dd27-83ae-7583-95f4-6721703dc2ea"
+          }
+        ],
+        "newModelPosts": 2
+      },
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-shared-queue-matrix.SRZLUjd5/node-rust/matrix.json",
+        "bytes": 603737,
+        "sha256": "fe2e1aa3f5155a781f5571faa7e3626435191f0ea4325639b4ebe97a7677a36e"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-shared-queue-matrix.SRZLUjd5/node-rust/matrix.log",
+        "bytes": 653,
+        "sha256": "5da669f7a69eddc4478195e068bf892e67e80b5b12e3f2f185af28f7f646def1"
+      }
+    },
+    {
+      "browserPeer": "rust",
+      "workerPeer": "node",
+      "browserSteps": 15,
+      "cleanServerExits": 6,
+      "cleanWorkerExits": 4,
+      "workerOwnerSIGKILL": true,
+      "queue": {
+        "phase": "passed",
+        "chatId": "5a4976a3-6f71-4492-bf60-0696b2dc892e",
+        "admitted": [
+          "3a5d4036-9446-417b-ac9d-a1c61da94072",
+          "5cec2f80-0238-4901-a3e0-eb16b156cf34"
+        ],
+        "retainedRevision": 4,
+        "replacement": {
+          "peer": 1,
+          "before": {
+            "kind": "node",
+            "instanceId": "6febc453-9365-4718-b7f0-a2202322e008",
+            "pid": 91560
+          },
+          "after": {
+            "kind": "node",
+            "instanceId": "a7a7b3c6-0f26-4f6e-8e5b-66bafe0c6c67",
+            "pid": 93492
+          }
+        },
+        "workerPid": 91791,
+        "oldWorkerConnection": "2d3181a2-f249-449a-8822-912fe23ec311",
+        "newWorkerConnection": "f86e5f85-8173-4bbc-bc27-fd59b761246a",
+        "canonicalTurns": [
+          {
+            "turnId": "01a1dd28-9a01-76d2-8948-6fa5c2d44581",
+            "threadId": "01a1dd28-85d8-73e3-aa8a-d835f42aae0b"
+          },
+          {
+            "turnId": "01a1dd28-9b56-70c0-8558-f125a403285b",
+            "threadId": "01a1dd28-85d8-73e3-aa8a-d835f42aae0b"
+          }
+        ],
+        "newModelPosts": 2
+      },
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-shared-queue-matrix.SRZLUjd5/rust-node/matrix.json",
+        "bytes": 589359,
+        "sha256": "746337673c34bca4b8d2bbf4cb77ecf3644f0433b685d3a7ce1ac57612c3a2e6"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-shared-queue-matrix.SRZLUjd5/rust-node/matrix.log",
+        "bytes": 468,
+        "sha256": "b04167ec2a5eb222a93509dc4f3f15ac71fe5176bd99d35f92ad260d4e332cac"
+      }
+    },
+    {
+      "browserPeer": "rust",
+      "workerPeer": "rust",
+      "browserSteps": 15,
+      "cleanServerExits": 6,
+      "cleanWorkerExits": 4,
+      "workerOwnerSIGKILL": true,
+      "queue": {
+        "phase": "passed",
+        "chatId": "ed4c416f-55a6-40f7-944d-1b949ac0c82e",
+        "admitted": [
+          "a0d255a2-838a-418d-bd90-cc76b5df5c79",
+          "ccab74be-9497-4b62-990f-c55236792fca"
+        ],
+        "retainedRevision": 4,
+        "replacement": {
+          "peer": 1,
+          "before": {
+            "kind": "rust",
+            "instanceId": "49ee8e99-94a3-4182-9e01-df1c97015bc6",
+            "pid": 91539
+          },
+          "after": {
+            "kind": "rust",
+            "instanceId": "3e9576bd-39d5-4617-8932-4d51ad95b79c",
+            "pid": 92479
+          }
+        },
+        "workerPid": 91550,
+        "oldWorkerConnection": "12a05ef9-b314-4b2c-bbe8-9e833a7bdf73",
+        "newWorkerConnection": "bc379d4e-45c1-40a9-9c3f-35b7b8d97393",
+        "canonicalTurns": [
+          {
+            "turnId": "01a1dd28-953a-7453-a968-85eab8c214eb",
+            "threadId": "01a1dd28-801b-7443-8038-96a6704c1dc0"
+          },
+          {
+            "turnId": "01a1dd28-965b-7ab1-a694-5292ba9a5e49",
+            "threadId": "01a1dd28-801b-7443-8038-96a6704c1dc0"
+          }
+        ],
+        "newModelPosts": 2
+      },
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-shared-queue-matrix.SRZLUjd5/rust-rust/matrix.json",
+        "bytes": 618488,
+        "sha256": "7a61e4206458b89549e05c2d23d706e4e8e0a8022a47ff60ff04aee5a6658158"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-shared-queue-matrix.SRZLUjd5/rust-rust/matrix.log",
+        "bytes": 425,
+        "sha256": "42e8f014e6bdef6f1c063273f83f22fc435feb45b434db2ad2c7ad71614c3cd6"
+      }
+    }
+  ],
+  "existingChatControl": {
+    "scope": "The previously used Agent chat already had completed native turns and a cleared Goal after a normal server and worker restart. The browser paused it, queued two encrypted turns and resumed it. The native runtime interrupted both dispatched turns before the provider saw either one.",
+    "diagnosticHarness": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-shared-queue-diagnosis.WJg40nzl/diagnostic-harness.patch",
+      "bytes": 10912,
+      "sha256": "26fd7612716d57346617be700d549b11aaf0d36e85beb45ac92d579afb2248b1"
+    },
+    "cases": [
+      {
+        "pair": "node/node",
+        "workerOwnerPeerKilled": true,
+        "newModelPosts": 0,
+        "interruptedNativeTurns": 2,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-shared-queue-recovery.WJVN08Kd/node-node/matrix.json",
+          "bytes": 514062,
+          "sha256": "6fd597ad5e274b109892f3a40d30637c93d2e6f77f151c6d2308b441da492e04"
+        },
+        "nativeRollout": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-shared-queue-recovery.WJVN08Kd/node-node/native-rollout.jsonl",
+          "bytes": 106539,
+          "sha256": "8c2711c30883d6192474e4020c4aebbade5717e9a43f58295b8aab7d6593e64b"
+        }
+      },
+      {
+        "pair": "node/rust",
+        "workerOwnerPeerKilled": true,
+        "newModelPosts": 0,
+        "interruptedNativeTurns": 2,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-shared-queue-recovery.WJVN08Kd/node-rust/matrix.json",
+          "bytes": 542231,
+          "sha256": "ed1e212bc9e663bce1c796c803c12e34e477ab6738a69aa64bee631367d5f3cc"
+        },
+        "nativeRollout": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-shared-queue-recovery.WJVN08Kd/node-rust/native-rollout.jsonl",
+          "bytes": 106536,
+          "sha256": "9e112624408f66135e38216b10a0cfc288a395a907a3265c892f34979f72d5d3"
+        }
+      },
+      {
+        "pair": "node/node",
+        "workerOwnerPeerKilled": false,
+        "newModelPosts": 0,
+        "interruptedNativeTurns": 2,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-shared-queue-diagnosis.WJg40nzl/node-node/matrix.json",
+          "bytes": 505546,
+          "sha256": "3638e85403e3d5716cfd83ed55f7c513828c889ff9858bb0244b3b8058fc9c18"
+        },
+        "nativeRollout": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-shared-queue-diagnosis.WJg40nzl/node-node/native-rollout.jsonl",
+          "bytes": 107264,
+          "sha256": "bc50c9d1826874e031230bd573a2ce612ac32e153e55009787e4e0254df57027"
+        }
+      }
+    ]
+  },
+  "remaining": [
+    "Diagnose the interrupted turns on the previously used Agent chat. The Node-only control reproduced the behavior without killing a peer.",
+    "Qualify loss after claim, loss after dispatch, competing workers and the corresponding packaged Linux and Windows scenarios."
+  ]
+}

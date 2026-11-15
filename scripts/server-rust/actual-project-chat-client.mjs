@@ -10,6 +10,7 @@ import { actualMcpSettingsClient } from "./actual-mcp-settings-client.mjs";
 import { actualProviderTestClient } from "./actual-provider-test-client.mjs";
 import { actualAgentTaskClient } from "./actual-agent-task-client.mjs";
 import { actualChatControls } from "./actual-chat-controls.mjs";
+import { actualSharedQueueRecovery } from "./actual-shared-queue-recovery.mjs";
 import { actualCliWorktreeAcquire } from "./actual-cli-worktree-acquire.mjs";
 
 export async function actualProjectChatClient({
@@ -24,6 +25,7 @@ export async function actualProjectChatClient({
   result,
   requests,
   providerBoundary,
+  sharedQueueRecovery,
   interruptNativeStream,
   cliWorktreeAcquire,
 }) {
@@ -426,7 +428,7 @@ export async function actualProjectChatClient({
     await fixture.close();
     await fixture.start({ port });
     assert.deepEqual(await readMessages(), messages);
-    await startWorker();
+    const recoveredWorker = await startWorker();
     await page.evaluate(async (workerId) => {
       const api = await import("/src/lib/api/worker-wire.ts");
       await (
@@ -514,6 +516,18 @@ export async function actualProjectChatClient({
     result.steps.push(
       "Agent creation and usage receipts, encrypted history and native Goal survive server/worker restart; public Goal clear succeeds without duplicate inference",
     );
+    if (sharedQueueRecovery)
+      await actualSharedQueueRecovery({
+        page,
+        fixture,
+        worker: recoveredWorker.child,
+        workerId,
+        projectId,
+        configuration,
+        model,
+        result,
+        requests,
+      });
     if (process.argv.includes("--chat-controls"))
       await actualChatControls({
         page,

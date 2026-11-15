@@ -334,6 +334,20 @@ the peers matched 2,745 HTTP observations, 1,080 encryption checks and 567
 ordered invalidations. All 36 Linux server generations exited zero.
 [Embedded queue delivery evidence](security/rust-server-3059-embedded-queue-delivery.json)
 
+On macOS ARM64, all four Node/Rust server pairings preserved a separately
+prepared Agent chat's two paused prompts across a `SIGKILL` of the worker's
+server. The browser stayed connected to the other peer. The same full worker
+registered a new connection with the replacement over shared PostgreSQL and
+Redis. Resume produced two completed native turns in order and one model
+request per prompt. The browser decrypted both results and the queue drained.
+
+The first runs reused an Agent chat whose completed Goal had been cleared
+after restart. The native runtime interrupted both dispatched turns before
+either reached the model. A Node/Node control without a peer kill reproduced
+the failure. Recovery for that sequence remains open, along with faults after
+claim or dispatch and the corresponding Linux and Windows runs.
+[Shared queue recovery evidence](security/rust-server-3059-macos-shared-queue-recovery.json)
+
 ### Task and Agent restart on Linux
 
 The packaged Rust server and 1.1.3059 Node worker completed 18 browser
