@@ -147,6 +147,11 @@ const serverStartupTimeoutMs = startupTimeout("--server-startup-timeout-ms");
 const workerStartupTimeoutMs = startupTimeout("--worker-startup-timeout-ms");
 const databaseMode = option("--database") ?? "pglite";
 const sharedPair = option("--server-pair");
+const sharedQueueRecovery = process.argv.includes("--shared-queue-recovery");
+assert.ok(
+  !sharedQueueRecovery || sharedPair,
+  "Shared queue recovery requires --server-pair",
+);
 assert.ok(
   !process.argv.includes("--replica-redis-outage") ||
     (sharedPair && process.argv.includes("--replicas")),
@@ -369,6 +374,9 @@ const report = {
     : null,
   inlineChatLabelScope: inlineChatLabels
     ? "Existing browser Chat and Agent APIs, production server, full worker and native initial labeling through disposable model HTTP endpoints."
+    : null,
+  sharedQueueRecoveryScope: sharedQueueRecovery
+    ? "Encrypted browser queue on a separately prepared Agent chat with two paused prompts. SIGKILL and replace the worker-owner peer, reconnect the same full worker, and verify ordered native turns and exactly-once model requests after resume."
     : null,
   approvalCancellationScope: approvalCancellation
     ? "Production serving paths, browser SDK, full worker, and actual native Codex approval with an isolated database write failure and a normal approval control."
@@ -1693,6 +1701,7 @@ async function flow(
     }
     if (
       process.argv.includes("--project-chats") ||
+      sharedQueueRecovery ||
       gitProjectChat ||
       process.argv.includes("--native-single-agent-recovery") ||
       process.argv.includes("--native-shared-agent-recovery")
@@ -1701,6 +1710,7 @@ async function flow(
       await actualProjectChatClient({
         page,
         fixture,
+        sharedQueueRecovery,
         projectId: gitProjectChat ? attached.id : first.id,
         projectRoot: gitProjectChat ? opened.source.path : first.source.path,
         ...(cliWorktreeAcquire ? { cliWorktreeAcquire: cliBinary } : {}),
