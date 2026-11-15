@@ -9,6 +9,18 @@ import { repositoryRoot } from "./cargo.mjs";
 const { createClient } = createRequire(
   path.join(repositoryRoot, "tests/reference-node-server/package.json"),
 )("redis");
+export async function connectRedisFixture(url) {
+  const client = createClient({ url, socket: { reconnectStrategy: false } });
+  client.on("error", () => {});
+  try {
+    await client.connect();
+  } catch (error) {
+    if (client.isOpen) client.destroy();
+    throw error;
+  }
+  return { url, client };
+}
+
 export async function redisFixture(binary, root) {
   const socket = createServer();
   await new Promise((r) => socket.listen(0, "127.0.0.1", r));

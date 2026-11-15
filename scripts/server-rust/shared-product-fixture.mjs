@@ -6,20 +6,31 @@ import { appendFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { HttpFixture } from "./http-fixture.mjs";
-import { redisFixture } from "./coordinated-fixture-tools.mjs";
+import {
+  connectRedisFixture,
+  redisFixture,
+} from "./coordinated-fixture-tools.mjs";
 import { eventually } from "./full-worker.mjs";
 import { startPackagedNodeServer } from "./packaged-node-fixture.mjs";
 import { repositoryRoot } from "./build.mjs";
 import { crashProductServer } from "./product-server-crash.mjs";
 
 export class SharedProductFixture {
-  static async create({ clientKind, workerKind, databaseUrl, ...options }) {
+  static async create({
+    clientKind,
+    workerKind,
+    databaseUrl,
+    redisUrl,
+    ...options
+  }) {
     const directory = path.join(options.root, options.name);
     await mkdir(directory, { recursive: true });
-    const redis = await redisFixture(
-      process.env.CANTRIP_TEST_REDIS_BIN ?? "redis-server",
-      directory,
-    );
+    const redis = redisUrl
+      ? await connectRedisFixture(redisUrl)
+      : await redisFixture(
+          process.env.CANTRIP_TEST_REDIS_BIN ?? "redis-server",
+          directory,
+        );
     return new SharedProductFixture({
       ...options,
       clientKind,
@@ -171,7 +182,8 @@ export class SharedProductFixture {
     try {
       await this.close();
     } finally {
-      await this.redis.stop();
+      if (this.redis.stop) await this.redis.stop();
+      else if (this.redis.client.isOpen) this.redis.client.destroy();
     }
   }
   async restart() {
