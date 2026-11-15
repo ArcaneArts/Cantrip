@@ -1951,6 +1951,13 @@ history after two further restart cycles. All 30 Linux server generations
 and 36 worker exits were clean.
 [Linux project automation evidence](security/rust-server-3059-linux-project-automations.json)
 
+All four macOS Node/Rust peer pairings also passed with private PostgreSQL
+and Redis. The browser used one peer and the full worker used the other.
+Each pairing completed one scheduled native turn, skipped the second
+condition and reopened the exact schedules and canonical history after
+two restarts of both peers. The four cases covered 56 browser steps.
+[Shared project automation evidence](security/rust-server-3059-shared-project-automations.json)
+
 The same standalone executable matched the Node reference across all nine
 database and authentication combinations for native command permission
 transitions, pending requests, continuations and settings evidence. The

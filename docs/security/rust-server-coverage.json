@@ -4571,10 +4571,11 @@
           "scripts/server-rust/project-automation-http-compatibility.mjs",
           "scripts/server-rust/actual-project-automations-client.mjs",
           "docs/security/rust-server-3059-macos-project-automations.json",
-          "docs/security/rust-server-3059-linux-project-automations.json"
+          "docs/security/rust-server-3059-linux-project-automations.json",
+          "docs/security/rust-server-3059-shared-project-automations.json"
         ],
         "remaining": [
-          "Current macOS and both Linux image runs cover scheduled native execution on all three databases. Windows product execution, shared scheduler ownership and interruption at the automated dispatch boundary remain open."
+          "The packaged macOS and Linux runs cover all three databases. All four macOS Node/Rust peer pairings also pass with one full worker attached to the opposite peer from the browser. Windows execution, competing workers and interruption during automated dispatch remain open."
         ]
       },
       {
@@ -4591,10 +4592,11 @@
           "scripts/server-rust/project-automation-http-compatibility.mjs",
           "scripts/server-rust/actual-project-automations-client.mjs",
           "docs/security/rust-server-3059-macos-project-automations.json",
-          "docs/security/rust-server-3059-linux-project-automations.json"
+          "docs/security/rust-server-3059-linux-project-automations.json",
+          "docs/security/rust-server-3059-shared-project-automations.json"
         ],
         "remaining": [
-          "Current macOS and both Linux image runs cover scheduled native execution on all three databases. Windows product execution, shared scheduler ownership and interruption at the automated dispatch boundary remain open."
+          "The packaged macOS and Linux runs cover all three databases. All four macOS Node/Rust peer pairings also pass with one full worker attached to the opposite peer from the browser. Windows execution, competing workers and interruption during automated dispatch remain open."
         ]
       },
       {
@@ -4611,10 +4613,11 @@
           "scripts/server-rust/project-automation-http-compatibility.mjs",
           "scripts/server-rust/actual-project-automations-client.mjs",
           "docs/security/rust-server-3059-macos-project-automations.json",
-          "docs/security/rust-server-3059-linux-project-automations.json"
+          "docs/security/rust-server-3059-linux-project-automations.json",
+          "docs/security/rust-server-3059-shared-project-automations.json"
         ],
         "remaining": [
-          "Current macOS and both Linux image runs cover scheduled native execution on all three databases. Windows product execution, shared scheduler ownership and interruption at the automated dispatch boundary remain open."
+          "The packaged macOS and Linux runs cover all three databases. All four macOS Node/Rust peer pairings also pass with one full worker attached to the opposite peer from the browser. Windows execution, competing workers and interruption during automated dispatch remain open."
         ]
       },
       {
@@ -4631,10 +4634,11 @@
           "scripts/server-rust/project-automation-http-compatibility.mjs",
           "scripts/server-rust/actual-project-automations-client.mjs",
           "docs/security/rust-server-3059-macos-project-automations.json",
-          "docs/security/rust-server-3059-linux-project-automations.json"
+          "docs/security/rust-server-3059-linux-project-automations.json",
+          "docs/security/rust-server-3059-shared-project-automations.json"
         ],
         "remaining": [
-          "Current macOS and both Linux image runs cover scheduled native execution on all three databases. Windows product execution, shared scheduler ownership and interruption at the automated dispatch boundary remain open."
+          "The packaged macOS and Linux runs cover all three databases. All four macOS Node/Rust peer pairings also pass with one full worker attached to the opposite peer from the browser. Windows execution, competing workers and interruption during automated dispatch remain open."
         ]
       },
       {
@@ -4651,10 +4655,11 @@
           "scripts/server-rust/project-automation-http-compatibility.mjs",
           "scripts/server-rust/actual-project-automations-client.mjs",
           "docs/security/rust-server-3059-macos-project-automations.json",
-          "docs/security/rust-server-3059-linux-project-automations.json"
+          "docs/security/rust-server-3059-linux-project-automations.json",
+          "docs/security/rust-server-3059-shared-project-automations.json"
         ],
         "remaining": [
-          "Current macOS and both Linux image runs cover scheduled native execution on all three databases. Windows product execution, shared scheduler ownership and interruption at the automated dispatch boundary remain open."
+          "The packaged macOS and Linux runs cover all three databases. All four macOS Node/Rust peer pairings also pass with one full worker attached to the opposite peer from the browser. Windows execution, competing workers and interruption during automated dispatch remain open."
         ]
       },
       {
@@ -4671,10 +4676,11 @@
           "scripts/server-rust/project-automation-http-compatibility.mjs",
           "scripts/server-rust/actual-project-automations-client.mjs",
           "docs/security/rust-server-3059-macos-project-automations.json",
-          "docs/security/rust-server-3059-linux-project-automations.json"
+          "docs/security/rust-server-3059-linux-project-automations.json",
+          "docs/security/rust-server-3059-shared-project-automations.json"
         ],
         "remaining": [
-          "Current macOS and both Linux image runs cover scheduled native execution on all three databases. Windows product execution, shared scheduler ownership and interruption at the automated dispatch boundary remain open."
+          "The packaged macOS and Linux runs cover all three databases. All four macOS Node/Rust peer pairings also pass with one full worker attached to the opposite peer from the browser. Windows execution, competing workers and interruption during automated dispatch remain open."
         ]
       },
       {
@@ -27573,11 +27579,12 @@
         "scripts/server-rust/project-automation-http-compatibility.mjs",
         "scripts/server-rust/actual-project-automations-client.mjs",
         "docs/security/rust-server-3059-macos-project-automations.json",
-        "docs/security/rust-server-3059-linux-project-automations.json"
+        "docs/security/rust-server-3059-linux-project-automations.json",
+        "docs/security/rust-server-3059-shared-project-automations.json"
       ],
       "validatedSubset": "Local macOS arm64: 9,337 Source contract, transformation and exact-error comparisons and 17,252 occurrence comparisons, including all Intl-supported timezones, legacy aliases/history, DST folds/gaps, the year-3000 cutoff and UTF-16 date comments. Twenty-one Source-derived SQL templates and six legacy TZif assets; future footer transitions verified over 400 Gregorian years. All three stores pass 66 paired repository cases. The expanded nine-profile HTTP matrix passes 516 paired observations: 24 crypto proofs, eight protection commands, 35 project invalidations, two unchanged worker-scheduler HTTP operations and six lease, lifetime, concurrent-edit and legacy-recovery scenarios per peer/profile. Account cases include foreign-owner CRUD denials and a worker credential used alongside a foreign session cookie. Existing browser SDK, normal production servers, full worker, real scheduler, script exits 0/7 and actual bundled Codex pass on all three stores: one permitted canonical automation turn, one skipped condition, two additional server/worker restarts with exact protected state/history retention, then deletion. Public model HTTP responses alone are controlled. The packaged macOS server and both Linux images also pass across all three stores. The Linux runs include 84 browser steps, 30 clean container exits and 36 clean packaged worker exits.",
       "remaining": [
-        "Current macOS and both Linux image runs cover scheduled native execution on all three databases. Windows product execution, shared scheduler ownership and interruption at the automated dispatch boundary remain open."
+        "The packaged macOS and Linux runs cover all three databases. All four macOS Node/Rust peer pairings also pass with one full worker attached to the opposite peer from the browser. Windows execution, competing workers and interruption during automated dispatch remain open."
       ],
       "localAcceptance": {
         "platform": "macOS arm64",
