@@ -6714,6 +6714,7 @@
         "implementation": "cantrip_server_rs/src/http/model_operations.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-decision-postgres-outage.json",
           "docs/security/rust-server-3059-linux-model-boundaries.json",
           "docs/security/rust-server-3059-postgres-long-outage.json",
           "docs/RUST_SERVER_SOURCE_DRIFT.md",
@@ -6727,7 +6728,7 @@
           "docs/security/rust-server-3059-windows-postgres-recovery.json"
         ],
         "remaining": [
-          "The exact Windows package qualifies a fresh decision after both overlapping process loss and five-minute database loss. Shared Windows peers, a decision held through a dependency outage and provider-specific failures remain open."
+          "The macOS 1.1.3059 package qualifies an active decision held until external PostgreSQL recovery and a response returned while PostgreSQL is down with receipt settlement after recovery. The exact Windows package qualifies a fresh decision after overlapping process loss and five-minute database loss. Qualify active decisions across other platforms, shared peer and dependency interruptions, and provider-specific failures."
         ]
       },
       {
@@ -11693,11 +11694,12 @@
         "implementation": "cantrip_server_rs/src/http/model_operations.rs",
         "status": "partial",
         "evidence": [
+          "docs/security/rust-server-3059-decision-postgres-outage.json",
           "docs/RUST_SERVER_SOURCE_DRIFT.md",
           "docs/security/rust-server-3059-windows-postgres-recovery.json"
         ],
         "remaining": [
-          "Packaged Windows, macOS and Linux runs exercise decisions and retained usage through the real worker. A decision held through dependency interruption and additional provider-specific models remain open."
+          "The real packaged worker completed an active decision through both PostgreSQL outage cases on macOS. Qualify active decisions across other platforms, shared dependencies and additional provider adapters."
         ]
       },
       {
