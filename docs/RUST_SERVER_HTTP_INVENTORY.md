@@ -1,6 +1,41 @@
-# Current HTTP inventory reconciliation
+# HTTP inventory reconciliation
 
-The live inventory audit identifies missing Rust HTTP behavior in addition to
+## Current standalone comparison
+
+The macOS ARM64 1.1.3059 standalone archive and the rebuilt Node development
+reference matched HTTP status and Content-Type on all 584 inventory routes in
+each storage configuration.
+
+| Rust storage mode   | Compared route pairs | Exact response bodies |
+| ------------------- | -------------------: | --------------------: |
+| PGlite              |                  584 |                   570 |
+| Bundled PostgreSQL  |                  584 |                   570 |
+| External PostgreSQL |                  584 |                   570 |
+| Total               |                1,752 |                 1,710 |
+
+Each mode also passed four exact route error comparisons within the inventory
+and four additional worker-capability query cases per peer. All six server
+processes exited cleanly and no request returned an unexpected generic Rust
+route fallback. The PostgreSQL runs use independently initialized storage. In
+the bundled comparison, Rust manages its own PostgreSQL child and the Node
+reference connects to a distinct fixture-owned cluster.
+
+The report records 14 runtime-dependent bodies per mode, including generated
+IDs, timestamps, counters and versions. The audit checks status and Content-Type
+for those routes and retains their bodies for review. This matrix exercises
+local startup, absent resource identifiers and empty mutation bodies.
+Successful domain operations, authenticated WebSocket upgrades and other
+platforms have separate acceptance evidence.
+[Current matrix and artifact checksums](security/rust-server-3059-http-database-matrix.json)
+
+The same archive passed 1,083 paired authentication cases across eight
+profiles in each storage mode. The external PostgreSQL comparison also passed
+17 steps alternating the Node and Rust servers on one database. Those steps
+exercise retained accounts, passwords, regular and mobile sessions, and session
+revocation after server changes. The reference reported 1.1.3059 in the
+authentication runs.
+
+The original inventory audit identified missing Rust HTTP behavior in addition to
 historical coverage-ledger omissions. Four lifecycle/preference endpoints now
 pass [project-administration qualification](RUST_SERVER_PROJECT_ADMINISTRATION.md),
 four more pass [Chat-control qualification](RUST_SERVER_CHAT_CONTROLS.md),
@@ -16,7 +51,7 @@ exited cleanly. This run used local PGlite, missing resource IDs and empty
 mutation bodies.
 [macOS route discovery and performance report](security/rust-server-3032-macos-performance-routes.json)
 
-## Executed discovery
+## Initial discovery
 
 Baseline `898af08e4d87b41dc443288e66b038082b6f6b56` declares 584 routes, 323
 worker commands and 135 tables. An isolated local macOS arm64 PGlite run sent
@@ -30,20 +65,24 @@ returned another contract. Seventy-two are already-retired repository routes;
 does not establish successful behavior. This probe also does not compare every
 response field, authenticate WebSocket upgrades or qualify other platforms.
 
-The repeatable command uses the actual built Node server and native executable:
+The repeatable command uses the built Node reference and native executable:
 
 ```sh
 CANTRIP_RUST_SERVER_BINARY=/absolute/path/to/cantrip-server \
 PGLITE_RUNTIME_DIR=/absolute/path/to/materialized-native-runtime \
-  node --import tsx scripts/server-rust/http-route-inventory.mjs \
+  node scripts/server-rust/http-route-inventory.mjs --database pglite \
   --report /absolute/path/to/report.json
 ```
 
-Build the workspace packages and Node server first. The audit retains isolated
+Build the Node comparison distribution with
+`pnpm --filter @cantrip/server-reference reference:build`. The two PostgreSQL
+runs use `--database bundled-postgres` or `--database postgres` and set
+`CANTRIP_TEST_POSTGRES_BIN_DIR` to the directory containing `initdb`, `postgres`
+and `pg_ctl`. The audit retains isolated
 profiles, complete process logs, all responses, executable/inventory hashes and
-actual exit statuses. Its exit status is nonzero while generic Rust fallback
-differences remain. It is a development inspection command, with no deployment
-or normal-startup gate.
+actual exit statuses. Unexpected fallback responses, status and Content-Type
+drift, stable-body mismatches and transport or cleanup failures cause a nonzero
+exit. Run it locally for development validation.
 
 ## Retired repository contract
 
@@ -130,6 +169,7 @@ does not satisfy those requirements. The last four computer-use rows now record
 their implementation and scoped qualification rather than an unported status.
 
 Other category rows and background-service limitations still require
-reconciliation. Final platform/artifact, migration/rollback and performance
-acceptance, default Rust selection and production Node-server removal remain
-required. No development GitHub Actions are used by this audit.
+reconciliation. Final platform, migration and rollback, and performance
+acceptance are tracked in the coverage ledger. Default Rust selection and
+the production Node-server retirement have separate qualification.
+[Production Node server retirement](RUST_SERVER_NODE_RETIREMENT.md)

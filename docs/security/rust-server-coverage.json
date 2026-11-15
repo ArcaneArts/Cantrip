@@ -29328,6 +29328,15 @@
     },
     "httpRouteInventoryReconciliation": {
       "status": "partial",
+      "macos3059DatabaseMatrix": {
+        "report": "docs/security/rust-server-3059-http-database-matrix.json",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "matchingStatusAndContentTypePairs": 1752,
+        "exactBodyPairs": 1710,
+        "unexpectedGenericRustFallbacks": 0,
+        "authenticationCasePairs": 1083,
+        "crossRuntimePostgresAuthenticationSteps": 17
+      },
       "macos3032Qualification": {
         "report": "docs/security/rust-server-3032-macos-performance-routes.json",
         "matchingStatusCodes": 584,
@@ -29373,8 +29382,7 @@
         "All three local authentication modes across all three stores pass paired status/body/header/HEAD and audit checks. The hosted external PostgreSQL account profile proves per-route budget exemption/exhaustion and actual Retry-After bounds."
       ],
       "remaining": [
-        "Reconcile other category rows/background services and qualify complete current behavior, supported platforms/packages, migrations/rollback and performance.",
-        "Default Rust cutover and production Node-server removal remain required."
+        "Reconcile other category rows and background services and qualify complete current behavior, supported platforms and packages, migrations and rollback, and performance."
       ],
       "localChecks": {
         "strictAllTargetClippy": true,
