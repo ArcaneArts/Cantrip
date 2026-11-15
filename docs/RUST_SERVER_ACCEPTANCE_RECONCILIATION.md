@@ -44,6 +44,16 @@ stopped, and external PostgreSQL survived app quit in both runs. The
 on-disk receipts match the live guest results.
 [Post-clock-fix Windows packages](security/rust-server-3059-windows-post-clock-package.json)
 
+The exact post-clock-fix installer also passed the Windows QA-signed update
+from a registered 1.1.2938 installation. The Tauri updater rejected a modified
+download, installed the valid package and reopened the retained PGlite
+profile with the same server identity, worker enrollment and saved setting.
+The installed shell, Rust server and Node worker matched the verified package.
+A tray quit exited zero, reaped both child processes and recorded Rust
+shutdown. The test certificate was removed from the guest before normal
+Windows shutdown, and the on-disk receipt matched the live result.
+[Post-clock-fix Windows updater evidence](security/rust-server-3059-windows-post-clock-signed-update.json)
+
 The earlier Windows x64 NSIS package with the 180-second server shutdown allowance
 and the 1.1.3059 Node worker passed first launch and retained-profile reopen
 on all three databases. The reopened app used the stored database selection

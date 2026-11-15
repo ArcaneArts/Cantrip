@@ -329,6 +329,7 @@
     "macosPostClockFixWorkspaceDiscoveryAndWorkerClose": "docs/security/rust-server-3059-macos-workspace-discovery.json",
     "macosPostClockFixManagedFolderInitialPush": "docs/security/rust-server-3059-macos-github-initial-push.json",
     "windowsPostClockFixInstalledDesktop": "docs/security/rust-server-3059-windows-post-clock-package.json#installedDesktop",
+    "windowsPostClockFixSignedUpdater": "docs/security/rust-server-3059-windows-post-clock-signed-update.json",
     "linuxPostClockFixWorkspaceDiscoveryAndInitialPush": "docs/security/rust-server-3059-linux-workspace-discovery.json",
     "macosPostClockFixSharedWorkspaceDiscoveryAndInitialPush": "docs/security/rust-server-3059-shared-workspace-discovery.json"
   },
