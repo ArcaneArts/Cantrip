@@ -4,7 +4,7 @@ use crate::{
     operations::logging::{LogCall, Logger},
     wire::{JsString, Value, parse_json_text, value::json},
 };
-use ::redis::Client;
+use ::redis::{Client, ConnectionAddr};
 use anyhow::{Context, Result, anyhow, bail};
 use futures::{FutureExt, StreamExt};
 use std::{
@@ -48,6 +48,31 @@ impl Options {
     }
 }
 
+fn redis_client(options: &Options) -> Result<Client> {
+    let client = Client::open(options.url.as_str())?;
+    let connection = client.get_connection_info();
+    if matches!(connection.addr(), ConnectionAddr::TcpTls { .. })
+        && let Some(file) = std::env::var_os("NODE_EXTRA_CA_CERTS").filter(|path| !path.is_empty())
+    {
+        if let Ok(pem) = std::fs::read(file)
+            && let Ok(client) = Client::build_with_additional_native_roots(connection.clone(), pem)
+        {
+            return Ok(client);
+        }
+        (options.logger)(LogCall::event(
+            "warn",
+            "Ignoring unreadable or invalid NODE_EXTRA_CA_CERTS for Redis TLS",
+            json!({
+                "event":"coordination.tls.extra-ca.ignored",
+                "subsystem":"relay-coordination",
+                "operation":"load-extra-ca",
+                "status":"ignored"
+            }),
+        ));
+    }
+    Ok(client)
+}
+
 struct Tasks {
     subscriber: JoinHandle<()>,
     heartbeat: Option<JoinHandle<()>>,
@@ -75,7 +100,7 @@ pub struct RedisCoordinator {
 }
 impl RedisCoordinator {
     pub fn new(options: Options) -> Result<Arc<Self>> {
-        let client = Client::open(options.url)?;
+        let client = redis_client(&options)?;
         Ok(Arc::new(Self {
             core: Arc::new(Core::new(
                 options.instance_id,

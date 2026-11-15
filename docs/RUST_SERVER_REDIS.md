@@ -21,14 +21,19 @@ The full worker now passes local resource/native execution and orderly mixed
 peer replacement checks described in [shared product acceptance](RUST_SERVER_SHARED_PRODUCT.md).
 Active-execution failures, long outages and supported-platform acceptance remain
 required.
-Node remains the default server and the worker remains Node.
+Rust is the default server and the worker remains Node.
 
 The Redis client is pinned to the vendored upstream 1.8.1 crate. Its original
-archive checksum and three additional connection-observation methods are
-documented in [the client provenance note](../cantrip_server_rs/third-party/redis/README.cantrip.md).
+archive checksum, connection-observation methods and additional TLS constructor
+are documented in [the client provenance note](../cantrip_server_rs/third-party/redis/README.cantrip.md).
 Inherited trailing whitespace is removed from its README, changelog and the
 two changed Rust files; other upstream file bytes remain unchanged.
-TLS, parsing, authentication and reconnect use the upstream implementation.
+The Redis connection uses the native TLS backend. For a `rediss://` deployment
+that previously used the Node server, keep `NODE_EXTRA_CA_CERTS` set to the
+PEM CA bundle in the server's launch environment. The Rust server combines
+that bundle with the platform roots for its Redis connections. A missing or
+invalid bundle logs a warning when configured and Redis connection attempts
+use platform trust.
 Cantrip's ordered command queue retains directory operations through reconnect;
 publication and readiness reject an actually unavailable command connection
 without waiting for that queue. No subscriber flag or separate TCP probe stands
@@ -345,6 +350,22 @@ the observed Rust/Rust shutdown took 5.4 ms and pairings containing Node took
 0.95–1.35 seconds. Ordinary offline/reconnect and healthy resource/native
 Agent/Goal/history/rolling checks also passed. Long-outage recovery, active job
 failover and network blackholes remain separate requirements.
+
+## Packaged macOS Redis TLS
+
+The rebuilt 1.1.3059 ARM64 package passed Rust/Rust, Node/Rust and Rust/Node
+using the existing `NODE_EXTRA_CA_CERTS` setting with a disposable private
+CA. After actual Redis process restarts, the pairings retained six worker
+claims, replayed twelve committed App Live events with their original
+cursors and payloads, and completed six new remote WorkerLink requests.
+Single-session and account-wide logout also passed in each pairing.
+
+The package rejected an untrusted endpoint and a wrong hostname. A malformed
+PEM produced a warning and the real Redis connection then failed certificate
+validation. A separate plaintext Redis run passed with the extra CA path
+unavailable. The relocated archive passed startup, retained writes and
+shutdown on all three database modes.
+[macOS 1.1.3059 Redis TLS acceptance](security/rust-server-3059-macos-redis-tls.json)
 
 ## Packaged Linux Redis TLS
 
