@@ -79,7 +79,7 @@ export class SingleProductFixture extends HttpFixture {
       if (server) this.recordExit(server);
     }
   }
-  async restart({ crash = false } = {}) {
+  async restart({ crash = false, afterStop } = {}) {
     const server = this.server;
     const before = {
       pid: server.child.pid,
@@ -102,6 +102,7 @@ export class SingleProductFixture extends HttpFixture {
       this.server = undefined;
       this.recordExit(server, { intentionalInterruption: "SIGKILL" });
     } else await this.close();
+    if (afterStop) await afterStop();
     this.environment.CANTRIP_SERVER_INSTANCE_ID = randomUUID();
     await this.start({ port: Number(new URL(before.origin).port) });
     assert.equal(this.server.origin, before.origin);

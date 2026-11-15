@@ -175,7 +175,19 @@ assert.ok(
 const modelRedisOutage = process.argv.includes(
   "--model-operation-redis-outage",
 );
-const modelServerLoss = process.argv.includes("--model-operation-server-loss");
+const modelServerAndPostgresLoss = process.argv.includes(
+  "--model-operation-server-and-postgres-loss",
+);
+const modelServerLoss =
+  modelServerAndPostgresLoss ||
+  process.argv.includes("--model-operation-server-loss");
+assert.ok(
+  !modelServerAndPostgresLoss ||
+    (process.argv.includes("--model-operations") &&
+      databaseMode === "postgres" &&
+      !sharedPair),
+  "Overlapping model-operation server and PostgreSQL loss requires --model-operations --database postgres with one server",
+);
 assert.ok(
   !modelPostgresOutage ||
     (process.argv.includes("--model-operations") &&
@@ -1776,6 +1788,9 @@ async function flow(
             ? () => worker?.child
             : undefined,
         postgresOutage: modelPostgresOutage ? postgres.cluster : undefined,
+        serverAndPostgresOutage: modelServerAndPostgresLoss
+          ? postgres.cluster
+          : undefined,
         settleModelWhilePostgresOffline,
         modelPostgresOutageDurationMs,
         redisOutage: modelRedisOutage,
@@ -1990,6 +2005,7 @@ try {
       restartable:
         postgresOutage ||
         modelPostgresOutage ||
+        modelServerAndPostgresLoss ||
         goalLaneDependency === "postgres" ||
         Boolean(taskGoalTransferDependency),
     });

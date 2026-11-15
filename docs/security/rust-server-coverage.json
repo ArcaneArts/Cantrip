@@ -945,10 +945,12 @@
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/telemetry-http-compatibility.mjs",
-          "scripts/server-rust/telemetry-delete-shutdown.mjs"
+          "scripts/server-rust/telemetry-delete-shutdown.mjs",
+          "docs/security/rust-server-3059-overlapping-server-postgres-loss.json"
         ],
         "remaining": [
-          "Current-head supported-platform acceptance; execution write consumers and complete product/package acceptance remain in scope."
+          "Current-head supported-platform acceptance; execution write consumers and complete product/package acceptance remain in scope.",
+          "The macOS ARM64 and Linux packages retain the interrupted embedding usage row and record one fresh decision receipt through overlapping server and PostgreSQL loss. Other telemetry scenarios and Windows remain tracked separately."
         ]
       },
       {
@@ -6668,10 +6670,12 @@
           "scripts/server-rust/actual-model-operations-client.mjs",
           "scripts/server-rust/model-operation-provider.mjs",
           "docs/security/rust-server-2976-darwin-arm64-model-operations.json",
-          "docs/security/rust-server-2976-linux-model-operations.json"
+          "docs/security/rust-server-2976-linux-model-operations.json",
+          "docs/security/rust-server-3059-overlapping-server-postgres-loss.json"
         ],
         "remaining": [
-          "The macOS ARM64 standalone and Linux ARM64 and x64 OCI packages qualify offline embedding settlement, replay rejection and a subsequent decision after five minutes of external PostgreSQL loss. The newer macOS and Linux x64 runs used worker 1.1.3059. Both Linux architectures also qualify a 45-second Redis outage across two Rust peers. Current Windows outage and remaining platform qualification are open."
+          "The macOS ARM64 standalone and Linux ARM64 and x64 OCI packages qualify offline embedding settlement, replay rejection and a subsequent decision after five minutes of external PostgreSQL loss. The newer macOS and Linux x64 runs used worker 1.1.3059. Both Linux architectures also qualify a 45-second Redis outage across two Rust peers. Current Windows outage and remaining platform qualification are open.",
+          "The macOS ARM64 package and both Linux images match the Node control when server and external PostgreSQL outages overlap. Exact Windows coverage of this fault remains open."
         ]
       },
       {
@@ -6688,10 +6692,12 @@
           "scripts/server-rust/actual-model-operations-client.mjs",
           "scripts/server-rust/model-operation-provider.mjs",
           "docs/security/rust-server-2976-darwin-arm64-model-operations.json",
-          "docs/security/rust-server-2976-linux-model-operations.json"
+          "docs/security/rust-server-2976-linux-model-operations.json",
+          "docs/security/rust-server-3059-overlapping-server-postgres-loss.json"
         ],
         "remaining": [
-          "The macOS ARM64 standalone and Linux ARM64 and x64 OCI packages qualify offline embedding settlement, replay rejection and a subsequent decision after five minutes of external PostgreSQL loss. The newer macOS and Linux x64 runs used worker 1.1.3059. Both Linux architectures also qualify a 45-second Redis outage across two Rust peers. Current Windows outage and remaining platform qualification are open."
+          "The macOS ARM64 standalone and Linux ARM64 and x64 OCI packages qualify offline embedding settlement, replay rejection and a subsequent decision after five minutes of external PostgreSQL loss. The newer macOS and Linux x64 runs used worker 1.1.3059. Both Linux architectures also qualify a 45-second Redis outage across two Rust peers. Current Windows outage and remaining platform qualification are open.",
+          "The macOS ARM64 package and both Linux images match the Node control when server and external PostgreSQL outages overlap. Exact Windows coverage of this fault remains open."
         ]
       },
       {

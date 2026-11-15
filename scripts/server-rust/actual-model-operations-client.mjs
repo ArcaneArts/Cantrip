@@ -16,6 +16,7 @@ export async function actualModelOperationsClient({
   crashWorker,
   workerProcessForInterruption,
   postgresOutage,
+  serverAndPostgresOutage,
   settleModelWhilePostgresOffline,
   modelPostgresOutageDurationMs,
   redisOutage,
@@ -931,10 +932,38 @@ export async function actualModelOperationsClient({
         "provider must still be active at server interruption",
       );
       const interruptedAt = performance.now();
-      report.serverInterruption = {
-        ...(await fixture.restart({ crash: true })),
+      const interruption = (report.serverInterruption = {
         workerPid: workerProcess.pid,
-      };
+      });
+      const restarted = await fixture.restart({
+        crash: true,
+        afterStop: serverAndPostgresOutage
+          ? async () => {
+              interruption.postgresStopped = await serverAndPostgresOutage.stop(
+                {
+                  immediate: true,
+                },
+              );
+              assert.equal(
+                interruption.postgresStopped.requestedSignal,
+                "SIGQUIT",
+              );
+              assert.equal(workerProcess.exitCode, null);
+              assert.equal(workerProcess.signalCode, null);
+              interruption.postgresRestarted =
+                await serverAndPostgresOutage.start();
+              assert.notEqual(
+                interruption.postgresRestarted.pid,
+                interruption.postgresStopped.pid,
+              );
+              assert.equal(
+                interruption.postgresRestarted.port,
+                interruption.postgresStopped.port,
+              );
+            }
+          : undefined,
+      });
+      Object.assign(interruption, restarted);
       const original = await finish(name, "embedding", 1);
       assert.equal(original.ok, false);
       await eventually(
@@ -979,7 +1008,9 @@ export async function actualModelOperationsClient({
       assert.equal(workerProcess.signalCode, null);
       assert.equal((await rows()).length, report.cases.length);
       result.steps.push(
-        "server SIGKILL interrupts an active operation, preserves one unreported usage record and reconnects the same worker without replay",
+        serverAndPostgresOutage
+          ? "overlapping server SIGKILL and PostgreSQL interruption preserve one unreported usage record and reconnect the same worker without replay"
+          : "server SIGKILL interrupts an active operation, preserves one unreported usage record and reconnects the same worker without replay",
       );
     }
     assert.deepEqual(provider.failures, []);

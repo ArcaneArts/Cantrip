@@ -165,6 +165,7 @@
     "linuxCrossPeerRedisRecovery": "docs/security/rust-server-3059-linux-redis-outage.json",
     "linuxShutdownWithRedisOffline": "docs/security/rust-server-3059-linux-redis-offline-shutdown.json",
     "macosAndLinuxLongPostgresOutage": "docs/security/rust-server-3059-postgres-long-outage.json",
+    "macosAndLinuxOverlappingServerPostgresLoss": "docs/security/rust-server-3059-overlapping-server-postgres-loss.json",
     "windowsStandalone": "docs/security/rust-server-3059-windows-standalone-retry.json",
     "windowsPostClockFixStandaloneAndDesktopPayload": "docs/security/rust-server-3059-windows-post-clock-package.json",
     "windowsDesktopPglite": {
