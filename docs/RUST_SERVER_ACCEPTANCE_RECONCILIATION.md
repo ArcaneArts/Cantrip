@@ -379,6 +379,14 @@ PostgreSQL, Node closed after 30,000 ms and Rust after 30,002 ms. All six
 server processes exited zero.
 [macOS discovery and worker shutdown evidence](security/rust-server-3059-macos-workspace-discovery.json)
 
+The macOS managed-folder conversion also passed on all three stores.
+The packaged worker committed the selected file once, pushed the commit
+to a disposable local bare repository, and retained the source and
+Primary worktree identities after restart. The browser sent the commit
+message as an opaque routing handle. The two servers matched the
+conversion revisions and all 72 browser steps across the six runs.
+[macOS initial commit and push evidence](security/rust-server-3059-macos-github-initial-push.json)
+
 ## Cantrip 1.1.3059 mobile clients
 
 The installed Android API 36 ARM64 emulator app signed into PGlite, bundled

@@ -301,6 +301,9 @@ const needsRemoteSurface =
   process.argv.includes("--surfaces") || remoteSurfaces;
 const workerLinkRoute = option("--worker-link-route") ?? "relay";
 const reportPath = option("--report");
+const githubInitialPush = process.argv.includes("--github-initial-push");
+const githubConversion =
+  githubInitialPush || process.argv.includes("--github-conversion");
 const liveTaskDiagnostics =
   process.argv.includes("--task-diagnostics") ||
   process.argv.includes("--postgres-errors");
@@ -335,7 +338,7 @@ const report = {
   workerStartupTimeoutMs,
   completeReplacement: false,
   scope:
-    "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Optional --worktrees exercises actual local Git create/lock/unlock/reconcile/remove/prune, retained identity and real Run process retirement before deletion, with only disposable catalog classification seeded. Optional --replicas uses two full workers for direct local Git attachment, replay, restart and detach; --github-replicas adds real public gh clone/fetch and managed checkout deletion. Optional --github-conversion uses the existing encrypted APIs and full worker to link matching public history in a fresh managed folder, preserve dirty bytes and identities, and restart without SQL seeding or command substitutions. Optional --tasks uses existing encrypted Task APIs, the full production worker and bundled Codex for direct execution, planning, native Goal completion, failure/retry, paused admissions and retained restart; only public model HTTP responses are controlled. Optional --project-chats exercises retained Agent creation and usage, real managed native preparation, encrypted turns, completed canonical history, native Goal tools, exact restart retention and Goal clear; only public model HTTP responses are controlled. Optional --chat-controls adds real native compaction and continuation, dirty Git worktree/lane release, encrypted system-message replay and exact committed restart retention to the existing Agent/worktree flows. Optional --chat-customizations adds actual skills, extra roots, MCP and bound permission configuration with native restart recovery. Optional --skill-settings adds actual project/account skill files, audiences, encrypted recovery deletion and retained restart. Optional --mcp-settings uses an acceptance-only owned worker home and the existing encrypted browser SDK for MCP CRUD, full discovery, copy, native resource access and restart. Shared --server-pair runs exercise production peers on private shared PostgreSQL/Redis with the browser and full worker on opposite peers; --rolling-servers replaces application and worker-owner peers without restarting that worker. Optional --native-shared-agent-recovery interrupts actual Agent/Goal execution on the selected --agent-crash-peer while retaining native authority and the original full worker. Full UI, packaged/platform, worker/native-process loss, long-outage/Redis TLS and whole replacement acceptance remain separate.",
+    "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Optional --worktrees exercises actual local Git create/lock/unlock/reconcile/remove/prune, retained identity and real Run process retirement before deletion, with only disposable catalog classification seeded. Optional --replicas uses two full workers for direct local Git attachment, replay, restart and detach; --github-replicas adds real public gh clone/fetch and managed checkout deletion. Optional --github-conversion uses the existing encrypted APIs and full worker to link matching public history in a fresh managed folder, preserve dirty bytes and identities, and restart without SQL seeding or command substitutions. Optional --github-initial-push exercises explicit initial commit and actual Git push to an owned local bare remote. Optional --tasks uses existing encrypted Task APIs, the full production worker and bundled Codex for direct execution, planning, native Goal completion, failure/retry, paused admissions and retained restart; only public model HTTP responses are controlled. Optional --project-chats exercises retained Agent creation and usage, real managed native preparation, encrypted turns, completed canonical history, native Goal tools, exact restart retention and Goal clear; only public model HTTP responses are controlled. Optional --chat-controls adds real native compaction and continuation, dirty Git worktree/lane release, encrypted system-message replay and exact committed restart retention to the existing Agent/worktree flows. Optional --chat-customizations adds actual skills, extra roots, MCP and bound permission configuration with native restart recovery. Optional --skill-settings adds actual project/account skill files, audiences, encrypted recovery deletion and retained restart. Optional --mcp-settings uses an acceptance-only owned worker home and the existing encrypted browser SDK for MCP CRUD, full discovery, copy, native resource access and restart. Shared --server-pair runs exercise production peers on private shared PostgreSQL/Redis with the browser and full worker on opposite peers; --rolling-servers replaces application and worker-owner peers without restarting that worker. Optional --native-shared-agent-recovery interrupts actual Agent/Goal execution on the selected --agent-crash-peer while retaining native authority and the original full worker. Full UI, packaged/platform, worker/native-process loss, long-outage/Redis TLS and whole replacement acceptance remain separate.",
   runtimes: [],
   cliWorktreeAcquireScope: cliWorktreeAcquire
     ? "Packaged CLI, full worker and native Agent turn on an attached local Git checkout. Only project catalog classification and local model replies are supplied by the fixture."
@@ -1255,7 +1258,7 @@ async function flow(
       process.argv.includes("--worktrees") ||
       process.argv.includes("--project-administration") ||
       process.argv.includes("--replicas") ||
-      process.argv.includes("--github-conversion") ||
+      githubConversion ||
       runTaskProduct ||
       singleProduct ||
       process.argv.includes("--project-chats") ||
@@ -1522,7 +1525,7 @@ async function flow(
         stopWorker,
         result,
       });
-    if (process.argv.includes("--github-conversion"))
+    if (githubConversion)
       await actualGithubConversion({
         page,
         fixture,
@@ -1531,6 +1534,7 @@ async function flow(
         startWorker,
         stopWorker,
         result,
+        initialPush: githubInitialPush,
       });
     if (process.argv.includes("--native-single-recovery")) {
       if (!worker) await startWorker();
@@ -2258,10 +2262,7 @@ try {
         report.runtimes[0].providerConnectionSummary,
       );
     }
-    if (
-      process.argv.includes("--github-conversion") ||
-      process.argv.includes("--workspace-discovery")
-    )
+    if (githubConversion || process.argv.includes("--workspace-discovery"))
       assert.deepEqual(
         runtime.githubConversionSummary,
         report.runtimes[0].githubConversionSummary,

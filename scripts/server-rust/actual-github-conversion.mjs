@@ -1,13 +1,70 @@
 // Existing encrypted browser APIs and the complete worker convert a fresh
 // managed folder by linking matching public GitHub history. No SQL fixtures,
-// command substitutions, remote repository creation or push are involved.
+// command substitutions or remote writes are involved in the link case.
+// Initial commit and push use a disposable local bare remote.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFile, realpath, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { deriveManagedFolderLocation } from "../../cantrip_worker/src/managed-folders.ts";
 import { normalizeProjectSourcePath } from "../../cantrip_worker/src/project-source-path.ts";
 import { eventually } from "./full-worker.mjs";
+
+async function initialPushFixture(dataDirectory) {
+  const fixture = path.join(dataDirectory, "github-initial-push");
+  const bin = path.join(fixture, "bin");
+  const bare = path.join(fixture, "remote.git");
+  await mkdir(bin, { recursive: true });
+  const repository = {
+    id: 42,
+    full_name: "cantrip-qa-fixture/initial-push",
+    html_url: "https://github.com/cantrip-qa-fixture/initial-push",
+    default_branch: "main",
+  };
+  const environment = {
+    PATH: [bin, process.env.PATH].filter(Boolean).join(path.delimiter),
+    CANTRIP_QA_GITHUB_BARE: bare,
+    GIT_ALLOW_PROTOCOL: "file",
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: `url.${bare}.insteadOf`,
+    GIT_CONFIG_VALUE_0: `${repository.html_url}.git`,
+    GIT_AUTHOR_NAME: "Cantrip QA",
+    GIT_AUTHOR_EMAIL: "cantrip@example.test",
+    GIT_COMMITTER_NAME: "Cantrip QA",
+    GIT_COMMITTER_EMAIL: "cantrip@example.test",
+  };
+  const git = (...args) =>
+    execFileSync("git", args, {
+      encoding: "utf8",
+      env: { ...process.env, ...environment },
+      timeout: 60000,
+    });
+  git("init", "--bare", "--initial-branch=main", bare);
+  await writeFile(
+    path.join(bin, "gh"),
+    `#!/bin/sh
+case "$1:$2" in
+  api:repos/${repository.full_name})
+    printf '%s\n' '${JSON.stringify(repository)}'
+    ;;
+  api:graphql)
+    refs=$(git --git-dir "$CANTRIP_QA_GITHUB_BARE" for-each-ref) || exit 1
+    if [ -z "$refs" ]; then
+      printf '%s\n' '{"data":{"repository":{"isEmpty":true}}}'
+    else
+      printf '%s\n' '{"data":{"repository":{"isEmpty":false}}}'
+    fi
+    ;;
+  auth:git-credential) ;;
+  *) exit 1 ;;
+esac
+`,
+    { mode: 0o700 },
+  );
+  return { repository, environment, bare, git };
+}
 
 export async function actualGithubConversion({
   page,
@@ -18,13 +75,17 @@ export async function actualGithubConversion({
   stopWorker,
   result,
   externalSource,
+  initialPush = false,
 }) {
-  const remote = JSON.parse(
-    execFileSync("gh", ["api", "repos/octocat/Hello-World"], {
-      encoding: "utf8",
-      timeout: 30000,
-    }),
-  );
+  const push = initialPush ? await initialPushFixture(dataDirectory) : null;
+  const remote =
+    push?.repository ??
+    JSON.parse(
+      execFileSync("gh", ["api", "repos/octocat/Hello-World"], {
+        encoding: "utf8",
+        timeout: 30000,
+      }),
+    );
   const repository = {
     repositoryId: String(remote.id),
     nameWithOwner: remote.full_name,
@@ -50,8 +111,13 @@ export async function actualGithubConversion({
       encoding: "utf8",
       timeout: 60000,
     }).trim();
+  const startConversionWorker = () =>
+    push
+      ? startWorker(undefined, { environment: push.environment })
+      : startWorker();
   try {
-    await startWorker();
+    if (push) await stopWorker();
+    await startConversionWorker();
     await eventually(
       () => page.evaluate(() => window.folderWorkers.getWorkers()),
       (workers) =>
@@ -90,21 +156,31 @@ export async function actualGithubConversion({
       relative && !relative.startsWith("..") && !path.isAbsolute(relative),
       "checkout belongs to disposable worker data",
     );
-    if (!externalSource)
-      git(directory, "init", "--initial-branch=" + remote.default_branch);
-    git(directory, "remote", "add", "origin", repository.url + ".git");
-    if (!externalSource) {
-      git(directory, "fetch", "--depth=1", "origin", remote.default_branch);
-      git(directory, "reset", "--hard", "FETCH_HEAD");
+    if (!push) {
+      if (!externalSource)
+        git(directory, "init", "--initial-branch=" + remote.default_branch);
+      git(directory, "remote", "add", "origin", repository.url + ".git");
+      if (!externalSource) {
+        git(directory, "fetch", "--depth=1", "origin", remote.default_branch);
+        git(directory, "reset", "--hard", "FETCH_HEAD");
+      }
     }
-    const revision = git(directory, "rev-parse", "HEAD");
-    const remoteBefore = git(
-      directory,
-      "ls-remote",
-      "--heads",
-      "origin",
-      remote.default_branch,
-    );
+    const revision = push ? null : git(directory, "rev-parse", "HEAD");
+    const remoteHead = () =>
+      push
+        ? push
+            .git("--git-dir", push.bare, "rev-parse", "refs/heads/main")
+            .trim()
+        : git(
+            directory,
+            "ls-remote",
+            "--heads",
+            "origin",
+            remote.default_branch,
+          );
+    const remoteBefore = push ? null : remoteHead();
+    if (push)
+      assert.equal(push.git("--git-dir", push.bare, "for-each-ref"), "");
     const sentinel = path.join(directory, "private-uncommitted-conversion.txt");
     const contents = "Private uncommitted content survives conversion.\n";
     await writeFile(sentinel, contents);
@@ -136,18 +212,23 @@ export async function actualGithubConversion({
       },
     ]);
     assert.equal(preflight.status, "ready", JSON.stringify(preflight));
-    assert.equal(preflight.remoteAction, "link");
-    assert.equal(preflight.requiresInitialCommit, false);
-    assert.equal(preflight.localState, "committed");
-    assert.equal(preflight.dirty, true);
+    assert.equal(preflight.remoteAction, push ? "push" : "link");
+    assert.equal(preflight.requiresInitialCommit, Boolean(push));
+    assert.equal(preflight.localState, push ? "not-initialized" : "committed");
+    assert.equal(preflight.dirty, !push);
     assert.equal(preflight.head, revision);
     assert.equal(preflight.projectSourceId, before.source.id);
     assert.equal(preflight.workerId, workerId);
     result.steps.push(
-      externalSource
-        ? "existing encrypted browser preflights a discovery-imported user-owned checkout against public GitHub history and selects link"
-        : "existing encrypted browser preflights a real managed folder with matching public GitHub history and selects link",
+      push
+        ? "existing encrypted browser preflights a real managed folder and requests approval for its initial commit"
+        : externalSource
+          ? "existing encrypted browser preflights a discovery-imported user-owned checkout against public GitHub history and selects link"
+          : "existing encrypted browser preflights a real managed folder with matching public GitHub history and selects link",
     );
+    const initialCommit = push
+      ? { message: "Cantrip QA initial commit" }
+      : null;
     const admitted = await call("startProjectGithubConversion", [
       project.id,
       {
@@ -155,7 +236,7 @@ export async function actualGithubConversion({
         projectSourceId: preflight.projectSourceId,
         workerId,
         confirmationToken: preflight.confirmationToken,
-        initialCommit: null,
+        initialCommit,
       },
     ]);
     const completed = await eventually(
@@ -181,7 +262,8 @@ export async function actualGithubConversion({
     assert.equal(after.source.id, before.source.id);
     assert.equal(after.source.ownershipKind, before.source.ownershipKind);
     assert.equal(after.source.path, directory);
-    assert.equal(after.replicas[0].head, revision);
+    const convertedHead = git(directory, "rev-parse", "HEAD");
+    assert.equal(after.replicas[0].head, convertedHead);
     assert.ok(wireBefore.replicas[0].primaryWorktreeId);
     assert.equal(
       wireAfter.replicas[0].primaryWorktreeId,
@@ -190,11 +272,26 @@ export async function actualGithubConversion({
     assert.deepEqual(wireAfter.nameProtection, wireBefore.nameProtection);
     assert.equal(after.github.nameWithOwner, repository.nameWithOwner);
     assert.equal(await readFile(sentinel, "utf8"), contents);
-    assert.equal(git(directory, "rev-parse", "HEAD"), revision);
-    assert.equal(
-      git(directory, "ls-remote", "--heads", "origin", remote.default_branch),
-      remoteBefore,
-    );
+    if (push) {
+      assert.equal(remoteHead(), convertedHead);
+      assert.equal(git(directory, "rev-list", "--count", "HEAD"), "1");
+      assert.equal(
+        git(directory, "log", "-1", "--format=%s"),
+        initialCommit.message,
+      );
+      assert.equal(
+        push.git(
+          "--git-dir",
+          push.bare,
+          "show",
+          `main:${path.basename(sentinel)}`,
+        ),
+        contents,
+      );
+    } else {
+      assert.equal(convertedHead, revision);
+      assert.equal(remoteHead(), remoteBefore);
+    }
     const events = await eventually(
       () =>
         page.evaluate(
@@ -229,13 +326,15 @@ export async function actualGithubConversion({
         assert.equal(request.body.includes(value), false);
     }
     result.steps.push(
-      "full worker links GitHub without changing the remote, retains uncommitted bytes and project/source/Primary identities, and publishes ordered conversion completion",
+      push
+        ? "full worker creates one approved commit, pushes it to the owned local remote, preserves project/source/Primary identities, and publishes ordered completion"
+        : "full worker links GitHub without changing the remote, retains uncommitted bytes and project/source/Primary identities, and publishes ordered conversion completion",
     );
     await stopWorker();
     const port = Number(new URL(fixture.server.origin).port);
     await fixture.close();
     await fixture.start({ port });
-    await startWorker();
+    await startConversionWorker();
     const retained = await eventually(
       () => call("getProjectGithubConversion", [project.id]),
       (job) => assert.deepEqual(job, completed),
@@ -253,6 +352,10 @@ export async function actualGithubConversion({
       repository.nameWithOwner,
     );
     assert.equal(await readFile(sentinel, "utf8"), contents);
+    if (push) {
+      assert.equal(remoteHead(), convertedHead);
+      assert.equal(git(directory, "rev-list", "--count", "HEAD"), "1");
+    }
     result.steps.push(
       "server and full worker restart retain the converted GitHub job, encrypted metadata and existing local checkout",
     );
@@ -266,7 +369,7 @@ export async function actualGithubConversion({
       sourceKind: retainedProject.source.sourceKind,
       ownershipKind: retainedProject.source.ownershipKind,
       remoteAction: preflight.remoteAction,
-      retainedDirtyBytes: true,
+      ...(push ? { pushedInitialCommit: true } : { retainedDirtyBytes: true }),
     };
     result.githubConversion = {
       before,
