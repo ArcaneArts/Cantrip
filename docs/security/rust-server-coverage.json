@@ -2941,10 +2941,11 @@
           "scripts/server-rust/conversion-lease-cases.mjs",
           "scripts/server-rust/conversion-lifetime-cases.mjs",
           "scripts/server-rust/actual-github-conversion.mjs",
-          "docs/security/rust-server-3059-macos-workspace-discovery.json"
+          "docs/security/rust-server-3059-macos-workspace-discovery.json",
+          "docs/security/rust-server-3059-macos-github-initial-push.json"
         ],
         "remaining": [
-          "Managed-folder push and initial-commit product acceptance, further source-selection and failure cases, and Linux and Windows package verification remain open.",
+          "Hosted GitHub push, further source-selection and failure cases, and Linux and Windows package verification remain open.",
           "Migration, post-write rollback and multi-instance coordination for this route remain open."
         ]
       },
@@ -2960,10 +2961,11 @@
           "scripts/server-rust/conversion-lease-cases.mjs",
           "scripts/server-rust/conversion-lifetime-cases.mjs",
           "scripts/server-rust/actual-github-conversion.mjs",
-          "docs/security/rust-server-3059-macos-workspace-discovery.json"
+          "docs/security/rust-server-3059-macos-workspace-discovery.json",
+          "docs/security/rust-server-3059-macos-github-initial-push.json"
         ],
         "remaining": [
-          "Managed-folder push and initial-commit product acceptance, further source-selection and failure cases, and Linux and Windows package verification remain open.",
+          "Hosted GitHub push, further source-selection and failure cases, and Linux and Windows package verification remain open.",
           "Migration, post-write rollback and multi-instance coordination for this route remain open."
         ]
       },
@@ -2979,10 +2981,11 @@
           "scripts/server-rust/conversion-lease-cases.mjs",
           "scripts/server-rust/conversion-lifetime-cases.mjs",
           "scripts/server-rust/actual-github-conversion.mjs",
-          "docs/security/rust-server-3059-macos-workspace-discovery.json"
+          "docs/security/rust-server-3059-macos-workspace-discovery.json",
+          "docs/security/rust-server-3059-macos-github-initial-push.json"
         ],
         "remaining": [
-          "Managed-folder push and initial-commit product acceptance, further source-selection and failure cases, and Linux and Windows package verification remain open.",
+          "Hosted GitHub push, further source-selection and failure cases, and Linux and Windows package verification remain open.",
           "Migration, post-write rollback and multi-instance coordination for this route remain open."
         ]
       },

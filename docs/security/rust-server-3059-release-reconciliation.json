@@ -325,7 +325,8 @@
       "cleanRustExits": 12,
       "databaseModes": ["pglite", "bundled-postgres", "postgres"]
     },
-    "macosPostClockFixWorkspaceDiscoveryAndWorkerClose": "docs/security/rust-server-3059-macos-workspace-discovery.json"
+    "macosPostClockFixWorkspaceDiscoveryAndWorkerClose": "docs/security/rust-server-3059-macos-workspace-discovery.json",
+    "macosPostClockFixManagedFolderInitialPush": "docs/security/rust-server-3059-macos-github-initial-push.json"
   },
   "remainingAcceptance": [
     "Verify the macOS notarized release artifact and production updater signatures when the release credentials and artifacts are available.",
