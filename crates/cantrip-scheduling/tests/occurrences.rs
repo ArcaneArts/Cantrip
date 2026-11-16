@@ -1,10 +1,12 @@
-use cantrip_server::{project_automations::schedule, wire::Value};
+use cantrip_scheduling as schedule;
+use cantrip_wire::Value;
 use std::process::Command;
 
 #[test]
 fn automation_occurrences_match_actual_source() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
+        .ancestors()
+        .nth(2)
         .unwrap();
     let output = Command::new("node")
         .args([

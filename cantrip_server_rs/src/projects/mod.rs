@@ -11,28 +11,8 @@ pub mod repository_operation;
 pub mod targets;
 pub mod worktrees;
 
-use serde::Serialize;
+pub(crate) use cantrip_protocol::project_capabilities::capabilities;
 
-#[derive(Serialize)]
-pub(crate) struct Capabilities {
-    pub git: bool,
-    pub github: bool,
-    pub worktrees: bool,
-    pub replicas: bool,
-    pub relocation: bool,
-}
-pub(crate) fn capabilities(origin: &str, git: bool, github: bool) -> Capabilities {
-    let remote = origin == "github";
-    let git = remote || git;
-    let local_git = origin == "managed-folder" && git;
-    Capabilities {
-        git,
-        github: remote || github,
-        worktrees: remote,
-        replicas: remote || local_git,
-        relocation: remote || local_git,
-    }
-}
 pub mod folders;
 pub mod github_conversion;
 pub mod workspace_discovery;

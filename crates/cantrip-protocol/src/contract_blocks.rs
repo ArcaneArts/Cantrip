@@ -1,23 +1,23 @@
 //! Compose independent generated graphs without coupling their node indices.
 use super::{Contracts, StringPattern};
 
-const BASE: &str = include_str!("../../contracts/security.json");
-const RUN: &str = include_str!("../../contracts/mcp-run.json");
-const SURFACE: &str = include_str!("../../contracts/mcp-surface.json");
-const CLI: &str = include_str!("../../contracts/cli.json");
-const PROJECT_EXPORTS: &str = include_str!("../../contracts/project-exports.json");
-const ATTACHMENTS: &str = include_str!("../../contracts/chat-attachments.json");
-const WORKER_MANAGEMENT: &str = include_str!("../../contracts/worker-management.json");
-const WORKER_OPERATIONS: &str = include_str!("../../contracts/worker-operations.json");
-const PROJECT_ADMINISTRATION: &str = include_str!("../../contracts/project-administration.json");
-const CHAT_CONTROL: &str = include_str!("../../contracts/chat-control.json");
-const OPERATIONAL_STATUS: &str = include_str!("../../contracts/operational-status.json");
-const WORKER_LOGS: &str = include_str!("../../contracts/worker-logs.json");
-const PROJECT_INSIGHTS: &str = include_str!("../../contracts/project-insights.json");
+const BASE: &str = include_str!("../contracts/security.json");
+const RUN: &str = include_str!("../contracts/mcp-run.json");
+const SURFACE: &str = include_str!("../contracts/mcp-surface.json");
+const CLI: &str = include_str!("../contracts/cli.json");
+const PROJECT_EXPORTS: &str = include_str!("../contracts/project-exports.json");
+const ATTACHMENTS: &str = include_str!("../contracts/chat-attachments.json");
+const WORKER_MANAGEMENT: &str = include_str!("../contracts/worker-management.json");
+const WORKER_OPERATIONS: &str = include_str!("../contracts/worker-operations.json");
+const PROJECT_ADMINISTRATION: &str = include_str!("../contracts/project-administration.json");
+const CHAT_CONTROL: &str = include_str!("../contracts/chat-control.json");
+const OPERATIONAL_STATUS: &str = include_str!("../contracts/operational-status.json");
+const WORKER_LOGS: &str = include_str!("../contracts/worker-logs.json");
+const PROJECT_INSIGHTS: &str = include_str!("../contracts/project-insights.json");
 
-const REMOTE_SURFACE_HTTP: &str = include_str!("../../contracts/remote-surface-http.json");
-const COMPUTER_USE_HTTP: &str = include_str!("../../contracts/computer-use-http.json");
-const GIT_OBSERVATIONS: &str = include_str!("../../contracts/git-observations.json");
+const REMOTE_SURFACE_HTTP: &str = include_str!("../contracts/remote-surface-http.json");
+const COMPUTER_USE_HTTP: &str = include_str!("../contracts/computer-use-http.json");
+const GIT_OBSERVATIONS: &str = include_str!("../contracts/git-observations.json");
 
 pub(super) fn load() -> Contracts {
     let mut contracts: Contracts = serde_json::from_str(BASE).expect("embedded protocol contracts");
@@ -109,7 +109,7 @@ impl Contracts {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::wire::{ValidationError, Value, parsed_value};
+    use crate::{ValidationError, Value, parsed_value};
     use anyhow::{Context, Result};
     use std::{path::Path, process::Command};
 
@@ -494,7 +494,12 @@ mod tests {
                 ]);
             }
             let output = command
-                .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap())
+                .current_dir(
+                    Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .ancestors()
+                        .nth(2)
+                        .unwrap(),
+                )
                 .output()?;
             anyhow::ensure!(
                 output.status.success(),

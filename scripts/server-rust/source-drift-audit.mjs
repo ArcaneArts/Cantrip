@@ -60,8 +60,10 @@ const commits = git(
       nodeFiles: files.filter((file) =>
         nodeSourceRoots.some((root) => file.startsWith(root)),
       ),
-      rustCoreFiles: files.filter((file) =>
-        file.startsWith("cantrip_server_rs/src/"),
+      rustCoreFiles: files.filter(
+        (file) =>
+          file.startsWith("cantrip_server_rs/src/") ||
+          file.startsWith("crates/"),
       ),
     };
   });
@@ -86,7 +88,13 @@ for (const [file, roots] of [
   ["endpoint-providers.json", null],
 ]) {
   const raw = await readFile(
-    path.join(repositoryRoot, "cantrip_server_rs/contracts", file),
+    path.join(
+      repositoryRoot,
+      roots === null
+        ? "cantrip_server_rs/contracts"
+        : "crates/cantrip-protocol/contracts",
+      file,
+    ),
   );
   const tracked = JSON.parse(raw);
   const current =

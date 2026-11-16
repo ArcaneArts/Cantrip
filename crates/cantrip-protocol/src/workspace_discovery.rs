@@ -2,7 +2,7 @@
 use super::{Parsed, ValidationError, Value, value::json};
 use std::collections::HashSet;
 
-pub(crate) fn classification_valid(candidate: &Value, origin: &str) -> bool {
+pub fn classification_valid(candidate: &Value, origin: &str) -> bool {
     let github = !candidate["github"].is_null();
     let origin = !candidate[origin].is_null();
     let diagnostic = !candidate["diagnosticCode"].is_null();

@@ -46,12 +46,12 @@ server policy stayed in place.
 
 ## Milestones and current progress
 
-1. **Wire foundation and workspace — implemented and locally validated.**
+1. **Wire foundation and workspace — merged in [#3156](https://github.com/ArcaneArts/Cantrip/pull/3156).**
    Move existing wire values, coercion, JSON/date behavior, and canonical digest
    into `cantrip-wire`. Preserve server import paths with re-exports. Move the
    existing focused tests with their implementation. Update Docker build inputs,
    local workspace checks, and development watching for the new layout.
-2. **Protocol and pure scheduling — pending.** Extract generated contracts and
+2. **Protocol and pure scheduling — implemented and locally validated.** Extract generated contracts and
    validation, removing the current back-references into project capabilities
    and automation scheduling. Preserve exporter/oracle ownership and fixtures.
 3. **Framing and execution contracts — pending.** Extract the three binary codecs
@@ -90,8 +90,17 @@ private. The `json!` macro resolves its types inside its defining library so it
 works through the server compatibility re-export and in independent consumers.
 
 Protocol schema sources remain `packages/protocol`. The development exporter and
-Node oracle remain development tools. Contract extraction must relocate generated
-assets and update their producers together, preserving one maintained definition.
+Node oracle remain development tools. The 16 generated schema graphs now live in
+`crates/cantrip-protocol/contracts`, with their exporter and source-drift audit
+updated together. SQL queries, provider catalogs, and server policy assets stay
+in `cantrip_server_rs/contracts`. All moved graph bytes are unchanged.
+
+`cantrip-protocol` depends on wire values and `cantrip-scheduling`, replacing its
+former back-references into server project capabilities and automation services.
+The scheduling library accepts validated schedules and contains no database,
+timers, claims, or dispatch. Its timezone data and Croner license moved with the
+implementation. Existing server `wire` and `project_automations::schedule` paths
+remain compatibility facades; implementations are not duplicated.
 
 The server stores encrypted payloads and grants opaquely. Extracting its protocol
 validation does not supply HPKE, component-key storage, endpoint encryption, or
@@ -134,7 +143,9 @@ foundations; they do not constitute those implementations.
 
 ## Delivery record
 
-Milestone 1 uses branch `agent/manual/rust-shared-wire-foundation`.
+Milestone 1 used branch `agent/manual/rust-shared-wire-foundation` and merged in
+[#3156](https://github.com/ArcaneArts/Cantrip/pull/3156), commit `6d8efe5f7`.
+Primary was synchronized and its owned temporary worktree removed.
 Local validation on macOS ARM64 with Rust 1.93 and Node 24.22.2 passed:
 
 - Workspace check and Clippy with all targets and warnings denied.
@@ -158,3 +169,33 @@ artifact setup initially lacked package links; the existing network check passed
 after supplying those local dependencies. No product behavior was changed to
 make these checks pass. Full application suites and release/platform campaigns
 were not run for this milestone.
+
+Milestone 2 uses branch `agent/manual/rust-shared-protocol-scheduling`. It moves
+the existing protocol engine and scheduling implementation into
+`cantrip-protocol` and `cantrip-scheduling`, including their fixtures, timezone
+assets, and Croner license. The shared dependency closures have no server,
+database driver, PGlite, Redis, or HTTP runtime; the lockfile preserves all
+existing third-party versions and checksums. Both libraries compile independently.
+
+All 16 regenerated schema graphs and six moved timezone assets are byte-for-byte
+unchanged. The source-drift audit also matches the server-owned provider map.
+Workspace Clippy passes with all targets and warnings denied, covering the
+server's library, executable, integration tests, and examples. The existing
+immutable-string cache exception moved to root `clippy.toml` and now names the
+shared wire type. The compile pass also identified two UTC-date aliases still
+used by server telemetry; the compatibility facade retains them.
+
+The 18 protocol unit tests pass, including independent graph composition and
+recursive JSON normalization; the Git-observation oracle needed the existing
+worker package links supplied in the temporary worktree before its successful
+retry. The generated-manifest, JSON round-trip, and automation contract tests
+also pass. The exhaustive all-schema mutation test was stopped intentionally
+after the other cases passed: it repeats broad qualification beyond this
+structural move and is not counted as a passing run. The local Run-contract audit
+and three focused authentication/encryption/HTTP boundary tests pass.
+
+The moved worker-envelope test passes 34,862 comparisons and the scheduling test
+passes 17,252 occurrence comparisons against Node 24.22.2. Formatting, diff, and
+source decomposition checks pass. The full application suite, device/VM QA, and
+release packaging were not run; this milestone is locally validated on macOS
+ARM64, with other platform implementations preserved by the move.

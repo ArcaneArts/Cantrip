@@ -216,7 +216,8 @@ mod tests {
     #[test]
     fn recursive_json_matches_actual_protocol_values_and_issue_paths() -> Result<()> {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
+            .ancestors()
+            .nth(2)
             .unwrap()
             .to_owned();
         let output = Command::new("node")

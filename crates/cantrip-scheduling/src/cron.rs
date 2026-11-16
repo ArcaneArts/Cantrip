@@ -1,7 +1,7 @@
 //! Croner 10.0.1's five-part grammar and diagnostic ordering. Native masks also
 //! retain its DOM/DOW wildcard distinction before question-mark substitution.
 //! Behavior adapted from Croner (MIT); see third-party/croner-compat/LICENSE.
-use crate::wire::{JsString, Value, coercion};
+use cantrip_wire::{JsString, Value, coercion};
 
 pub(super) struct Pattern {
     pub fields: [Vec<u8>; 7],
@@ -80,7 +80,7 @@ fn numeric(value: f64) -> String {
         .into_owned()
 }
 fn nickname(value: &str) -> Result<&str, String> {
-    Ok(match crate::text::trim(value).to_ascii_lowercase().as_str() {
+    Ok(match cantrip_wire::text::trim(value).to_ascii_lowercase().as_str() {
         "@yearly" | "@annually" => "0 0 1 1 *", "@monthly" => "0 0 1 * *", "@weekly" => "0 0 * * 0",
         "@daily" | "@midnight" => "0 0 * * *", "@hourly" => "0 * * * *",
         "@reboot" => return Err("CronPattern: @reboot is not supported in this environment. This is an event-based trigger that requires system startup detection.".into()), _ => value,
@@ -298,7 +298,7 @@ fn parse_inner(input: &JsString) -> Result<Pattern, String> {
     let encoded = encoded(input);
     let value = nickname(&encoded)?;
     let mut parts: Vec<String> = value
-        .split(crate::text::whitespace)
+        .split(cantrip_wire::text::whitespace)
         .filter(|s| !s.is_empty())
         .map(str::to_owned)
         .collect();

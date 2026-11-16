@@ -1,0 +1,15 @@
+[package]
+name = "cantrip-scheduling"
+version = "0.0.0"
+description = "Cantrip automation cron, calendar, and timezone calculations"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow = "1"
+cantrip-wire = { path = "../cantrip-wire" }
+jiff = { version = "0.2.37", features = ["tzdb-bundle-always"] }
+
+[dev-dependencies]
+serde_json = "1"

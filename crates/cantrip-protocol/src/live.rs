@@ -2,7 +2,7 @@
 use super::{JsString, Parsed, ValidationError, Value, value::json};
 use std::collections::HashSet;
 
-pub(crate) fn scope_key(scope: &Value) -> JsString {
+pub fn scope_key(scope: &Value) -> JsString {
     let (prefix, field) = match scope["kind"].as_str() {
         Some("project") => ("project:", "projectId"),
         Some("chat") => ("chat:", "chatId"),
@@ -19,7 +19,7 @@ pub(crate) fn scope_key(scope: &Value) -> JsString {
     }
     JsString::new(units)
 }
-pub(crate) fn datetime_millis(value: &Value) -> Option<i64> {
+pub fn datetime_millis(value: &Value) -> Option<i64> {
     super::js_date::parse(value.as_js_string()?)
 }
 fn bounded_object(

@@ -129,7 +129,7 @@ pub(super) fn refine(
             "folder management must match the project origin".into(),
         );
     }
-    let expected = Value::from_serialize(&crate::projects::capabilities(
+    let expected = Value::from_serialize(&crate::project_capabilities::capabilities(
         origin,
         value["capabilities"]["git"]
             .as_bool()

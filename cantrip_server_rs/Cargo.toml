@@ -7,6 +7,8 @@ publish = false
 
 [dependencies]
 cantrip-wire = { path = "../crates/cantrip-wire" }
+cantrip-protocol = { path = "../crates/cantrip-protocol" }
+cantrip-scheduling = { path = "../crates/cantrip-scheduling" }
 anyhow = "1"
 argon2 = { version = "0.5", features = ["std"] }
 axum = { version = "0.8", features = ["ws"] }

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 
 const destination = new URL(
-  "../../cantrip_server_rs/src/project_automations/zones/",
+  "../../crates/cantrip-scheduling/src/zones/",
   import.meta.url,
 );
 const day = 86400000;
