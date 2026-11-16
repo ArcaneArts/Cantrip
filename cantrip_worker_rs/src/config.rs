@@ -55,6 +55,16 @@ pub fn data_directory(environment: &Environment, cwd: &Path) -> PathBuf {
 }
 
 pub fn read(environment: &Environment, host: &Host<'_>) -> Result<Config> {
+    read_with_hostname(environment, host, || Ok(host.hostname.to_owned()))
+}
+
+/// Resolve the OS hostname only at the original local-development identity
+/// fallback, never as a prerequisite for an enrolled or explicitly named worker.
+pub fn read_with_hostname(
+    environment: &Environment,
+    host: &Host<'_>,
+    hostname: impl FnOnce() -> Result<String>,
+) -> Result<Config> {
     let codex_installation = installation::discover(
         host.worker_root,
         host.platform,
@@ -164,7 +174,7 @@ pub fn read(environment: &Environment, host: &Host<'_>) -> Result<Config> {
     } else if let Some(stored) = stored {
         stored.worker_id
     } else if development {
-        format!("local-{}", host.hostname).into()
+        format!("local-{}", hostname()?).into()
     } else {
         credentials::identity(&data_directory)?
     };

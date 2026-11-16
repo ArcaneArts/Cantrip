@@ -827,6 +827,7 @@ export const contractRoots = [
   "modelOperationUsageIdentitySchema",
   "modelOperationUsageEvidenceSchema",
   "taskGoalCycleDispatchPublicationResultSchema",
+  "cuaEffectPreferencesSchema",
 ];
 
 export const projectExportContractRoots = [

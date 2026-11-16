@@ -58,6 +58,11 @@ impl Runtime {
     pub fn capture_with_undefined(&self, record: Value, fields: &[&str]) {
         self.capture_kind(record, false, fields);
     }
+    /// Capture once and return the exact minimized, cursor-assigned record for
+    /// caller-owned subscriptions. Console formatting still uses the full record.
+    pub fn capture_record(&self, record: Value, fields: &[&str]) -> Value {
+        self.capture_kind(record, false, fields)
+    }
     pub fn capture_http(&self, record: Value) {
         self.capture_kind(record, true, &[]);
     }
@@ -67,29 +72,30 @@ impl Runtime {
     pub fn has_archive(&self) -> bool {
         self.active.lock().unwrap().is_some()
     }
-    fn capture_kind(&self, record: Value, http: bool, fields: &[&str]) {
+    fn capture_kind(&self, record: Value, http: bool, fields: &[&str]) -> Value {
         let json_record =
             (!fields.is_empty()).then(|| logging::without_undefined(record.clone(), fields));
         let archived = json_record.as_ref().unwrap_or(&record);
-        {
+        let stored = {
             // Cursor assignment and archive admission share one order even when
             // several Tokio/OS threads emit at the same time.
             let mut buffer = self.buffer.lock().unwrap();
             let stored = buffer.append(archived);
             if let Some(runtime) = self.active.lock().unwrap().as_ref() {
-                let _ = runtime.send.send(Command::Append(stored));
+                let _ = runtime.send.send(Command::Append(stored.clone()));
             }
-        }
+            stored
+        };
         let Some(console) = self.console.get() else {
             eprintln!("{}", archived.stringify());
-            return;
+            return stored;
         };
         let level = record["level"].as_str().unwrap_or("info");
         let threshold = (self.level)();
         if (level == "trace" && threshold != "trace")
             || (level == "debug" && threshold != "debug" && threshold != "trace")
         {
-            return;
+            return stored;
         }
         let destination = if matches!(level, "warn" | "error" | "fatal") {
             &console.stderr
@@ -103,6 +109,7 @@ impl Runtime {
                 .unwrap_or_else(|_| archived.stringify().into())
         };
         let _ = writeln!(destination.lock().unwrap(), "{}", line.lossy());
+        stored
     }
     pub fn read_buffer(&self, options: &Value) -> anyhow::Result<Value> {
         self.buffer.lock().unwrap().read(options)
