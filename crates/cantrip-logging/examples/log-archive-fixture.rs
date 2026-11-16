@@ -1,9 +1,7 @@
 //! Development-only driver of the actual filesystem archive; never packaged.
 use anyhow::{Context, Result};
-use cantrip_server::{
-    operations::log_archive::{Archive, Options},
-    wire::Value,
-};
+use cantrip_logging::log_archive::{Archive, Options};
+use cantrip_wire::Value;
 use serde_json::json;
 use std::{
     io::{self, BufRead, Write},
@@ -24,7 +22,8 @@ fn main() -> Result<()> {
         }
         let result = match request["op"].as_str().context("operation")? {
             "open" => {
-                let mut options = Options::server(
+                let mut options = Options::new(
+                    "server".into(),
                     PathBuf::from(request["directory"].as_str().context("directory")?),
                     serde_json::from_str(&request["legacy"].stringify())?,
                 );

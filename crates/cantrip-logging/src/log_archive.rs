@@ -1,6 +1,6 @@
 //! Serialized UTC daily JSONL archive. I/O errors are handled by the owning sink.
-use crate::wire::Value;
 use anyhow::{Context, Result, bail};
+use cantrip_wire::Value;
 use chrono::{DateTime, Datelike, TimeZone, Utc};
 use flate2::{Compression, GzBuilder};
 use std::{
@@ -23,9 +23,9 @@ pub struct Options {
     pub clock: Clock,
 }
 impl Options {
-    pub fn server(directory: PathBuf, legacy: Vec<String>) -> Self {
+    pub fn new(source: String, directory: PathBuf, legacy: Vec<String>) -> Self {
         Self {
-            source: "server".into(),
+            source,
             directory,
             legacy,
             max_bytes: 100 * 1024 * 1024,
@@ -77,7 +77,7 @@ fn date(at: i64) -> Result<DateTime<Utc>> {
     DateTime::from_timestamp_millis(at).context("Invalid time value")
 }
 fn day(at: i64) -> Result<String> {
-    Ok(crate::wire::date_iso_milliseconds(at)
+    Ok(cantrip_wire::date::iso_milliseconds(at)
         .context("Invalid time value")?
         .chars()
         .take(10)
@@ -104,7 +104,7 @@ pub struct Archive {
 }
 impl Archive {
     pub fn new(mut options: Options) -> Result<Self> {
-        options.source = crate::text::trim(&options.source).to_lowercase();
+        options.source = cantrip_wire::text::trim(&options.source).to_lowercase();
         if !regex::Regex::new(r"^[a-z0-9][a-z0-9-]*$")
             .unwrap()
             .is_match(&options.source)
@@ -318,10 +318,8 @@ impl Archive {
             }
             let created = match entry.entry.created {
                 Some(at) => at,
-                None => {
-                    crate::wire::date_milliseconds(&format!("{}T23:59:59.999Z", entry.day).into())
-                        .map_or(f64::NAN, |at| at as f64)
-                }
+                None => cantrip_wire::date::parse(&format!("{}T23:59:59.999Z", entry.day).into())
+                    .map_or(f64::NAN, |at| at as f64),
             };
             if now - created <= self.options.compression_age_ms as f64 {
                 continue;

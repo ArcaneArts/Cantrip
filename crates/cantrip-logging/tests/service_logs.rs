@@ -1,8 +1,6 @@
 use anyhow::{Context, Result};
-use cantrip_server::{
-    operations::{log_sanitize, logging::Emitter},
-    wire::{JsString, Value},
-};
+use cantrip_logging::{log_sanitize, logging::Emitter};
+use cantrip_wire::{JsString, Value};
 use std::{
     path::PathBuf,
     process::Command,
@@ -14,7 +12,8 @@ fn string(v: &Value) -> JsString {
 #[test]
 fn service_log_sanitization_and_noise_match_actual_shared_logger() -> Result<()> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
+        .ancestors()
+        .nth(2)
         .unwrap()
         .to_owned();
     let output = Command::new("node")

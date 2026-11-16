@@ -57,9 +57,9 @@ server policy stayed in place.
 3. **Framing and execution contracts — merged in [#3158](https://github.com/ArcaneArts/Cantrip/pull/3158).** Extract the three binary codecs
    and remaining applicable pure identities/history/execution contracts. Keep
    resource authority in server adapters.
-4. **Configuration — implemented and locally validated.** Extract environment readers, environment-file
+4. **Configuration — merged in [#3159](https://github.com/ArcaneArts/Cantrip/pull/3159).** Extract environment readers, environment-file
    parsing, and errors while keeping server defaults and precedence unchanged.
-5. **Logging — pending.** Extract records, formatting/redaction, archives, and
+5. **Logging — implemented and locally validated.** Extract records, formatting/redaction, archives, and
    lifecycle with explicit process configuration. Keep HTTP instrumentation and
    authenticated endpoints in the server.
 6. **Transport primitives — pending.** Extract mechanisms after the wire,
@@ -260,3 +260,38 @@ runs the real server with temporary local storage. Workspace Clippy passes for
 all targets with warnings denied, as do formatting, diff, decomposition, and
 Run-contract checks. No third-party version/checksum changed. Windows-specific
 code is preserved but was not executed; no full suite or hosted CI ran.
+
+Milestone 4 merged in [#3159](https://github.com/ArcaneArts/Cantrip/pull/3159),
+commit `24d91caf8`. Primary was synchronized and its owned worktree removed.
+
+Milestone 5 uses branch `agent/manual/rust-shared-logging`. `cantrip-logging`
+contains the existing structured emitter, redaction, formatting, persisted-record
+minimization, bounded buffer/cursors, UTC archive, and serialized archive-thread
+lifetime. Process names, archive directories/legacy names, console colors, and
+level lookup are explicit inputs. Its runtime is an instance with no global
+server configuration or singleton; the server adapter retains its singleton,
+environment policy, version/lifecycle messages, and application error taxonomy.
+HTTP instrumentation, route policy, metrics, and authenticated endpoints remain
+in the server. The HTTP formatter is shared presentation only.
+
+The archive keeps its original rotation, quota, compression, recovery, permission,
+and close behavior. Cursor assignment and archive admission still share one lock;
+explicit close drains the archive channel and joins its thread. The existing
+unbounded archive channel is preserved. Stop producers before close, and flush
+repeated summaries when the caller's lifecycle requires it. A future worker must
+still implement log subscriptions and authenticated streaming adapters.
+
+Milestone 5 local validation passed on macOS ARM64: the independent logging
+crate's moved buffer/privacy and emitter tests, including 65,937 redaction/error
+cases and 2,136 noise-control actions across eight scenarios; archive boundary
+timer and concurrent-drain tests; and a new two-instance cursor/archive/close
+isolation test. The existing filesystem oracle passes 172 steps across 12
+rotation/quota/compression/recovery/permission scenarios. Server console-format
+comparisons and the existing HTTP completion/abandonment/error fixture pass,
+including 34 HTTP records per implementation and minimized persisted diagnostics.
+Workspace Clippy passes for all targets with warnings denied. Formatting, diff,
+decomposition, and Run-contract checks pass. Dependencies retain their versions
+and checksums; no server/database/Redis/HTTP runtime enters the shared closure.
+Windows implementations were preserved but not executed. No full suite, hosted
+CI, installer, or device campaign ran. Disposable filesystem oracle data was
+removed after retaining its small reports.

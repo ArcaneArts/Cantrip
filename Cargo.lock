@@ -356,6 +356,25 @@ name = "cantrip-icu-collator-data"
 version = "0.0.0"
 
 [[package]]
+name = "cantrip-logging"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "cantrip-wire",
+ "chrono",
+ "flate2",
+ "indexmap",
+ "jiff",
+ "os_pipe",
+ "regex",
+ "regress",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "cantrip-protocol"
 version = "0.0.0"
 dependencies = [
@@ -392,6 +411,7 @@ dependencies = [
  "base64 0.22.1",
  "cantrip-config",
  "cantrip-framing",
+ "cantrip-logging",
  "cantrip-protocol",
  "cantrip-scheduling",
  "cantrip-wire",
