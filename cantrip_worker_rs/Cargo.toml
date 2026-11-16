@@ -1,0 +1,17 @@
+[package]
+name = "cantrip-worker"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow = "1"
+cantrip-config = { path = "../crates/cantrip-config" }
+cantrip-host = { path = "../crates/cantrip-host" }
+cantrip-wire = { path = "../crates/cantrip-wire" }
+url = "2.5"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"

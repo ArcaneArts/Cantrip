@@ -95,7 +95,9 @@
     "server:check": "node scripts/server-rust/cargo.mjs check --workspace --lib --bins",
     "server:test": "node scripts/server-rust/cargo.mjs test --workspace --lib",
     "audit:reference-server-boundaries": "node scripts/audit-reference-server-boundaries.mjs --check",
-    "audit:reference-server-boundaries:write": "node scripts/audit-reference-server-boundaries.mjs --write"
+    "audit:reference-server-boundaries:write": "node scripts/audit-reference-server-boundaries.mjs --write",
+    "worker:rust:check": "cargo fmt --manifest-path cantrip_worker_rs/Cargo.toml -- --check && node scripts/worker-rust/cargo.mjs clippy --all-targets -- -D warnings",
+    "worker:rust:test": "node scripts/worker-rust/cargo.mjs test"
   },
   "devDependencies": {
     "@babel/parser": "7.29.8",

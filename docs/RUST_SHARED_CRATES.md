@@ -46,7 +46,7 @@ config and logging each depend on wire. Scheduling depends on wire. There is no
 shared-crate dependency on server startup, routing, repositories, PostgreSQL,
 PGlite, Redis, or an HTTP runtime.
 
-The root Cargo workspace contains only the server and these eight crates. It
+The root Cargo workspace contains the server, native worker package and these eight crates. It
 shares the original lockfile, dependency patches, release profile, and Rust 1.93
 baseline. Desktop, CLI, interaction, CUA, vendored Codex and other third-party
 workspaces remain separately owned. `cargo build` defaults to the server; the
