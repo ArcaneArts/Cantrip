@@ -44,6 +44,11 @@ async fn ordered_tunnel_delivery_buffering_and_logging_match_actual_bridge() -> 
     let bridge = WorkerBridge::with_usage_and_logger(Duration::ZERO, None, {
         let logs = logs.clone();
         Arc::new(move |call| {
+            // The Node fixture's event() is a no-op. Connection lifecycle
+            // events are distinct from the repeated tunnel diagnostics below.
+            if matches!(call.policy, Policy::Event) {
+                return;
+            }
             let Policy::Repeated { key, options } = call.policy else {
                 panic!("Expected bounded repeated log");
             };

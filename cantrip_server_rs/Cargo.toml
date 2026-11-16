@@ -6,6 +6,7 @@ rust-version = "1.93"
 publish = false
 
 [dependencies]
+cantrip-transport = { path = "../crates/cantrip-transport" }
 cantrip-logging = { path = "../crates/cantrip-logging" }
 cantrip-config = { path = "../crates/cantrip-config" }
 cantrip-framing = { path = "../crates/cantrip-framing" }

@@ -15,18 +15,19 @@ pub type SurfaceFrameSubscription =
 pub type TunnelFrameHandler = super::frames::Handler<crate::tunnels::frame::Frame>;
 pub type TunnelFrameSubscription = super::frames::Subscription<crate::tunnels::frame::Frame>;
 use super::command_deadline::CommandDeadline;
+use super::frames::Frames;
 use super::notifications::Notifications;
 pub use super::notifications::{
     NotificationHandler, NotificationSubscription, OwnedNotificationHandler,
 };
 use super::offline::OfflineListeners;
 pub use super::offline::{OfflineHandler, OfflineSubscription};
-use super::{frames::Frames, output::Buffered};
 pub use super::{
     frames::{FrameHandler, FrameSubscription},
     output::Queued,
 };
 use crate::wire::{self, JsString, Value};
+use cantrip_transport::correlation::{Correlation, Delivery};
 use indexmap::{IndexMap, IndexSet};
 use std::{
     collections::HashMap,
@@ -39,16 +40,10 @@ use std::{
     },
     time::Duration,
 };
-use tokio::sync::{broadcast, mpsc, oneshot, watch};
+use tokio::sync::{broadcast, watch};
 use tokio::task::AbortHandle;
 use uuid::Uuid;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Continuity {
-    pub owner: String,
-    pub credential: String,
-    pub process_generation: String,
-}
 #[derive(Clone, Debug)]
 pub struct CommandError {
     pub message: JsString,
@@ -94,114 +89,18 @@ impl fmt::Display for CommandError {
     }
 }
 impl std::error::Error for CommandError {}
-pub enum Outgoing {
-    Text(Queued<String>),
-    Binary(Queued<crate::worker_links::frame::Frame>),
-    Tunnel(Queued<crate::tunnels::frame::Frame>),
-    Surface(Queued<crate::remote_surfaces::frame::Frame>),
-    Close(u16, String),
-}
-pub struct Peer {
-    pub id: Uuid,
-    pub identity: Continuity,
-    pub continuity: Option<Continuity>,
-    pub open: AtomicBool,
-    pub output: mpsc::UnboundedSender<Outgoing>,
-    pub closing: watch::Sender<Option<(u16, String)>>,
-    output_order: Mutex<()>,
-    close_started: Mutex<Option<tokio::time::Instant>>,
-    buffered: Buffered,
-}
-impl Peer {
-    pub fn new(identity: Continuity) -> (Arc<Self>, mpsc::UnboundedReceiver<Outgoing>) {
-        Self::with_continuity(identity, true)
-    }
-    pub fn legacy(identity: Continuity) -> (Arc<Self>, mpsc::UnboundedReceiver<Outgoing>) {
-        Self::with_continuity(identity, false)
-    }
-    fn with_continuity(
-        identity: Continuity,
-        asserted: bool,
-    ) -> (Arc<Self>, mpsc::UnboundedReceiver<Outgoing>) {
-        let (tx, rx) = mpsc::unbounded_channel();
-        (
-            Arc::new(Self {
-                id: Uuid::new_v4(),
-                continuity: asserted.then(|| identity.clone()),
-                identity,
-                open: AtomicBool::new(true),
-                output: tx,
-                closing: watch::channel(None).0,
-                output_order: Mutex::new(()),
-                close_started: Mutex::new(None),
-                buffered: Buffered::default(),
-            }),
-            rx,
-        )
-    }
-    pub fn is_open(&self) -> bool {
-        self.open.load(Ordering::Acquire) && !self.output.is_closed()
-    }
-    pub fn buffered_amount(&self) -> usize {
-        self.buffered.bytes()
-    }
-    fn send_text(&self, text: String) -> bool {
-        let _order = self.output_order.lock().unwrap();
-        if !self.is_open() {
-            return false;
-        }
-        let bytes = super::output::framed_size(text.len());
-        self.output
-            .send(Outgoing::Text(self.buffered.reserve(text, bytes)))
-            .is_ok()
-    }
-    fn send_frame(&self, frame: crate::worker_links::frame::Frame) -> bool {
-        let _order = self.output_order.lock().unwrap();
-        if !self.is_open() {
-            return false;
-        }
-        let bytes = super::output::framed_size(frame.bytes().len());
-        let Some(queued) = self.buffered.bounded(frame, bytes, 8 * 1024 * 1024) else {
-            return false;
-        };
-        self.output.send(Outgoing::Binary(queued)).is_ok()
-    }
-    pub fn close(&self, code: u16, reason: &str) {
-        let _order = self.output_order.lock().unwrap();
-        if self.open.swap(false, Ordering::AcqRel) {
-            *self.close_started.lock().unwrap() = Some(tokio::time::Instant::now());
-            self.closing.send_replace(Some((code, reason.into())));
-            let _ = self.output.send(Outgoing::Close(code, reason.into()));
-        }
-    }
-    /// 1005 represents an absent status locally; it must never be put on wire.
-    pub fn close_empty(&self) {
-        self.close(1005, "");
-    }
-    pub fn close_deadline(&self) -> Option<tokio::time::Instant> {
-        self.close_started
-            .lock()
-            .unwrap()
-            .map(|at| at + Duration::from_secs(30))
-    }
-}
+pub use cantrip_transport::peer::{Continuity, Outgoing, Peer};
 pub type EventHandler = Arc<
     dyn Fn(Value) -> Pin<Box<dyn Future<Output = Result<(), CommandError>> + Send>> + Send + Sync,
 >;
 type Outcome = Result<Option<Value>, CommandError>;
-enum Delivery {
-    Event(Value),
-    Response(Outcome),
-    Finished,
-}
 struct Pending {
     request_id: String,
     started_at: f64,
     response_duration: Mutex<Option<f64>>,
     worker: String,
     command: String,
-    delivery: mpsc::UnboundedSender<Delivery>,
-    completion: Mutex<Option<oneshot::Sender<Outcome>>>,
+    correlation: Correlation<Value, Outcome>,
     timer: Mutex<Option<AbortHandle>>,
     deadline: Mutex<CommandDeadline>,
     deadline_changed: watch::Sender<()>,
@@ -322,7 +221,7 @@ impl WorkerBridge {
         self.finish_as(pending, result, None)
     }
     fn finish_as(&self, pending: &Pending, result: Outcome, log: Option<FinishLog>) {
-        if let Some(tx) = pending.completion.lock().unwrap().take() {
+        pending.correlation.finish(result, |result| {
             if let Some(timer) = pending.timer.lock().unwrap().take() {
                 timer.abort();
             }
@@ -332,12 +231,11 @@ impl WorkerBridge {
                 self.failed.fetch_add(1, Ordering::Relaxed);
             }
             if let Some(log) = log {
-                self.command_finished(pending, &result, log);
+                self.command_finished(pending, result, log);
             }
-            let _ = tx.send(result);
-            let _ = pending.delivery.send(Delivery::Finished);
-        }
+        });
     }
+
     fn terminate(
         &self,
         state: &mut State,
@@ -589,7 +487,7 @@ impl WorkerBridge {
                 },
             })
         };
-        let _ = pending.delivery.send(Delivery::Response(result));
+        pending.correlation.response(result);
     }
     /// Admission from the actual worker transport. Every accepted envelope is
     /// normalized by the authoritative generated contract before dispatch.
@@ -670,7 +568,7 @@ impl WorkerBridge {
             {
                 pending.deadline_changed.send_replace(());
             }
-            let _ = pending.delivery.send(Delivery::Event(event));
+            pending.correlation.event(event);
         }
     }
     pub async fn request(
@@ -711,16 +609,14 @@ impl WorkerBridge {
                     }
                 })?;
             let mut encoded = envelope.stringify();
-            let (tx, rx) = oneshot::channel();
-            let (events, delivery) = mpsc::unbounded_channel();
+            let (correlation, rx, delivery) = Correlation::channel();
             let pending = Arc::new(Pending {
                 request_id: id.clone(),
                 started_at: (self.clock)(),
                 response_duration: Mutex::new(None),
                 worker: worker.into(),
                 command: kind.clone(),
-                delivery: events,
-                completion: Mutex::new(Some(tx)),
+                correlation,
                 timer: Mutex::new(None),
                 deadline: Mutex::new(CommandDeadline::new(timeout)),
                 deadline_changed: watch::channel(()).0,

@@ -9,7 +9,7 @@ enum Phase {
     Running,
 }
 
-pub(super) struct CommandDeadline {
+pub struct CommandDeadline {
     duration: Option<Duration>,
     preparation: Duration,
     execution: Duration,
@@ -19,7 +19,7 @@ pub(super) struct CommandDeadline {
 }
 
 impl CommandDeadline {
-    pub(super) fn new(duration: Option<Duration>) -> Self {
+    pub fn new(duration: Option<Duration>) -> Self {
         Self {
             duration,
             preparation: duration.unwrap_or_default(),
@@ -30,7 +30,7 @@ impl CommandDeadline {
         }
     }
 
-    pub(super) fn observe(&mut self, sequence: u64, phase: &str) -> bool {
+    pub fn observe(&mut self, sequence: u64, phase: &str) -> bool {
         if self.sequence.is_some_and(|current| sequence <= current) {
             return false;
         }
@@ -53,7 +53,7 @@ impl CommandDeadline {
         true
     }
 
-    pub(super) fn remaining(&self) -> Option<Duration> {
+    pub fn remaining(&self) -> Option<Duration> {
         self.duration?;
         let remaining = match self.phase {
             Phase::Waiting => return None,

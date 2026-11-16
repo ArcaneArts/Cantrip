@@ -414,6 +414,7 @@ dependencies = [
  "cantrip-logging",
  "cantrip-protocol",
  "cantrip-scheduling",
+ "cantrip-transport",
  "cantrip-wire",
  "chrono",
  "clap",
@@ -466,6 +467,19 @@ dependencies = [
  "uuid",
  "windows-sys",
  "zeroize",
+]
+
+[[package]]
+name = "cantrip-transport"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "cantrip-framing",
+ "cantrip-wire",
+ "futures",
+ "indexmap",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

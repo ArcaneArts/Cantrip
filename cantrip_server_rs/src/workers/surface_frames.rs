@@ -1,6 +1,6 @@
-use super::{Outgoing, Peer, SurfaceFrameHandler, SurfaceFrameSubscription, WorkerBridge};
+use super::{Peer, SurfaceFrameHandler, SurfaceFrameSubscription, WorkerBridge};
 use crate::{
-    remote_surfaces::frame::{self, Frame},
+    remote_surfaces::frame::{self},
     wire::Value,
 };
 use std::sync::Arc;
@@ -48,17 +48,5 @@ impl WorkerBridge {
             return false;
         }
         true
-    }
-}
-impl Peer {
-    fn send_surface_frame(&self, frame: Frame) -> bool {
-        let _order = self.output_order.lock().unwrap();
-        if !self.is_open() {
-            return false;
-        }
-        let bytes = super::super::output::framed_size(frame.bytes().len());
-        self.output
-            .send(Outgoing::Surface(self.buffered.reserve(frame, bytes)))
-            .is_ok()
     }
 }

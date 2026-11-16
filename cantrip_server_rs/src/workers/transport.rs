@@ -11,9 +11,8 @@ use super::{
 };
 use crate::{wire::Value, worker_links::frame::Frame};
 use anyhow::Result;
-use futures::{FutureExt, future::BoxFuture};
-use std::{future::Future, sync::Arc};
-use tokio::sync::oneshot;
+use futures::future::BoxFuture;
+use std::sync::Arc;
 
 pub trait WorkerTransport: CommandDelegate {
     fn local(&self) -> &WorkerBridge;
@@ -71,22 +70,7 @@ pub trait WorkerTransport: CommandDelegate {
     fn shutdown(&self) -> BoxFuture<'static, Result<()>>;
 }
 
-fn owned<T: Send + 'static>(
-    operation: impl Future<Output = Result<T>> + Send + 'static,
-) -> BoxFuture<'static, Result<T>> {
-    let (send, receive) = oneshot::channel();
-    let mut running = Box::pin(async move {
-        let _ = send.send(operation.await);
-    });
-    if running.as_mut().now_or_never().is_none() {
-        tokio::spawn(running);
-    }
-    Box::pin(async move {
-        receive
-            .await
-            .map_err(|_| anyhow::anyhow!("Worker transport operation stopped."))?
-    })
-}
+use cantrip_transport::lifecycle::owned;
 
 impl WorkerTransport for WorkerBridge {
     fn local(&self) -> &WorkerBridge {
