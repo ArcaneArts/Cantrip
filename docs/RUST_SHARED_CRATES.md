@@ -51,10 +51,10 @@ server policy stayed in place.
    into `cantrip-wire`. Preserve server import paths with re-exports. Move the
    existing focused tests with their implementation. Update Docker build inputs,
    local workspace checks, and development watching for the new layout.
-2. **Protocol and pure scheduling — implemented and locally validated.** Extract generated contracts and
+2. **Protocol and pure scheduling — merged in [#3157](https://github.com/ArcaneArts/Cantrip/pull/3157).** Extract generated contracts and
    validation, removing the current back-references into project capabilities
    and automation scheduling. Preserve exporter/oracle ownership and fixtures.
-3. **Framing and execution contracts — pending.** Extract the three binary codecs
+3. **Framing and execution contracts — implemented and locally validated.** Extract the three binary codecs
    and remaining applicable pure identities/history/execution contracts. Keep
    resource authority in server adapters.
 4. **Configuration — pending.** Extract environment readers, environment-file
@@ -199,3 +199,37 @@ passes 17,252 occurrence comparisons against Node 24.22.2. Formatting, diff, and
 source decomposition checks pass. The full application suite, device/VM QA, and
 release packaging were not run; this milestone is locally validated on macOS
 ARM64, with other platform implementations preserved by the move.
+
+Milestone 2 merged in [#3157](https://github.com/ArcaneArts/Cantrip/pull/3157),
+commit `14339908b`. Primary was synchronized and its owned worktree removed.
+
+Milestone 3 uses branch `agent/manual/rust-shared-framing`. `cantrip-framing`
+contains the existing WorkerLink, tunnel, and remote-surface codecs and remote
+chunk assembly. Frame objects retain their original immutable bytes, including
+unknown or differently ordered header properties. The server's existing frame
+module paths re-export the library implementations.
+
+The codecs' previous validation dependencies on server settings and WorkerLink
+services now live in `cantrip-protocol::response` and `worker_link`. The concrete
+error types are re-exported by the server, preserving downcasting, logging, and
+error classification. Only value/error and identity mechanisms moved; session
+availability, authorization, leases, resource lookup, and routing remain in the
+server. WorkerLink keys still use UTF-16 lengths and require validated input.
+
+`cantrip-protocol::history` now supplies the existing history item key and
+protected-event ID algorithms. The canonical payload digest was already extracted
+into `cantrip-wire`. Inspection of `native_history` and execution lanes found
+that the remaining helpers implement database reconciliation, retained telemetry,
+provenance, and transactional ownership policy; they remain server responsibilities.
+The shared generated contracts already include history and execution envelopes.
+No worker history reducer, journal, or execution runtime is implemented here.
+
+Local validation for milestone 3 passed on macOS ARM64: independent framing
+compilation/tests; 160 tunnel and 127 WorkerLink/chunk/assembly oracle cases;
+26 remote-surface byte/error/buffer-retention cases; 18 history identity pairs
+against existing Node functions; and concrete response-error downcast checks.
+Workspace Clippy passes for all targets with warnings denied, including every
+server consumer. Formatting, diff, decomposition, and the Run-contract audit
+pass. The framing dependency closure has no server, database, Redis, or HTTP
+runtime, and third-party versions/checksums are unchanged. No broad protocol
+mutation rerun, application suite, hosted CI, or platform campaign was performed.

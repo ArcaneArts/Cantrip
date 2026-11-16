@@ -1,13 +1,7 @@
 use super::*;
 use crate::wire::{coercion::truthy, value::json};
 
-pub(super) fn key(chat: &Value, identity: &Value) -> String {
-    payload_digest(&Value::Array(vec![
-        json!("native-history-item-v1"),
-        chat.clone(),
-        identity.clone(),
-    ]))
-}
+pub(super) use cantrip_protocol::history::item_key as key;
 fn mapped(row: &Value) -> Result<Value> {
     let value = json!({"key":row["key"],"identity":json!({"threadId":row["thread_id"],"turnId":row["turn_id"],"itemId":row["item_id"],"component":row["component"],"identityKind":row["identity_kind"]}),"messageId":row["message_id"],"idempotencyKey":row["idempotency_key"],"preservedInput":row["preserved_input"]});
     crate::settings::parse_response("nativeHistoryItemMappingSchema", Some(&value))

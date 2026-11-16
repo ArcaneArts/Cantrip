@@ -1,9 +1,7 @@
 use anyhow::{Context, Result};
 use base64::{Engine, engine::general_purpose::STANDARD};
-use cantrip_server::{
-    wire::{self, ValidationError, Value},
-    worker_links::{Error, frame},
-};
+use cantrip_framing::worker_link as frame;
+use cantrip_protocol::{self as wire, ValidationError, Value, worker_link::Error};
 use sha2::{Digest, Sha256};
 use std::{path::PathBuf, process::Command};
 fn json(value: impl serde::Serialize) -> Value {
@@ -36,7 +34,12 @@ fn details(frame: frame::Frame) -> Value {
 fn binary_frames_and_remote_chunks_match_actual_protocol() -> Result<()> {
     let output = Command::new("node")
         .arg("scripts/server-rust/worker-link-frame-oracle.mjs")
-        .current_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap())
+        .current_dir(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .ancestors()
+                .nth(2)
+                .unwrap(),
+        )
         .output()?;
     anyhow::ensure!(
         output.status.success(),

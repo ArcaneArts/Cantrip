@@ -1,7 +1,7 @@
 //! WorkerLink authority. Worker processes own transports and resources; the
 //! server installs short-lived, generation-bound capabilities and fences revocation.
 pub mod authority;
-pub mod frame;
+pub use cantrip_framing::worker_link as frame;
 mod grants;
 mod lifecycle;
 mod native;
@@ -26,32 +26,11 @@ pub type WorkerRequest = Arc<
     dyn Fn(Value, Value, Option<Value>) -> BoxFuture<'static, anyhow::Result<Value>> + Send + Sync,
 >;
 pub type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
-pub type Result<T> = std::result::Result<T, Error>;
+pub use cantrip_protocol::worker_link::{Error, Result};
+use cantrip_protocol::worker_link::{checked, identity_key, resource_key};
 
-#[derive(Clone, Debug)]
-pub enum Error {
-    Unavailable(JsString),
-    Failure(Arc<anyhow::Error>),
-}
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Unavailable(v) => f.write_str(&v.lossy()),
-            Self::Failure(v) => v.fmt(f),
-        }
-    }
-}
-impl std::error::Error for Error {}
-impl From<anyhow::Error> for Error {
-    fn from(value: anyhow::Error) -> Self {
-        Self::Failure(Arc::new(value))
-    }
-}
 fn unavailable(message: &str) -> Error {
     Error::Unavailable(message.into())
-}
-fn checked(schema: &str, value: Value) -> Result<Value> {
-    wire::parse(schema, Some(&value)).map_err(|e| crate::settings::response_error(e).into())
 }
 fn date(value: &Value) -> f64 {
     value
@@ -87,29 +66,6 @@ fn revocation_value(reason: Value, now: i64) -> Value {
 }
 fn id(value: &Value, field: &str) -> String {
     value[field].as_str().unwrap().to_owned()
-}
-fn key(parts: &[&Value]) -> Vec<u16> {
-    let mut out = Vec::new();
-    for part in parts {
-        let part = part.as_js_string().expect("validated WorkerLink identity");
-        out.extend(format!("{}:", part.len()).encode_utf16());
-        out.extend_from_slice(part.units());
-    }
-    out
-}
-fn identity_key(identity: &Value) -> Vec<u16> {
-    key(&[
-        &identity["serverId"],
-        &identity["serverGeneration"],
-        &identity["ownerId"],
-        &identity["accountSessionId"],
-        &identity["clientInstanceId"],
-        &identity["workerId"],
-        &identity["workerProcessGeneration"],
-    ])
-}
-fn resource_key(owner: &Value, kind: &Value, resource: &Value) -> Vec<u16> {
-    key(&[owner, kind, resource])
 }
 fn identity_authorized(state: &State, identity: &Value) -> bool {
     !state

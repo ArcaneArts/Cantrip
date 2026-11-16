@@ -1,7 +1,7 @@
 //! Binary frames retain their validated bytes. Queued forwarding never rebuilds
 //! JSON headers or lends a mutable caller buffer to another transport.
-use super::{Error, Result, checked};
-use crate::wire::Value;
+use cantrip_protocol::Value;
+use cantrip_protocol::worker_link::{Error, Result, checked};
 use std::{ops::Range, sync::Arc};
 
 pub const MAX_HEADER_BYTES: usize = 8 * 1024;

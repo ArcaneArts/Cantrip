@@ -24,3 +24,10 @@ locale/timezone snapshot requirements are documented by `cantrip-wire`.
 
 Encrypted-envelope validation preserves opaque data. It does not implement
 worker encryption, HPKE, component-key storage, or decryption.
+
+`response` retains the existing response-validation error formatting and concrete
+error type, including the legacy operation-error text. `worker_link` supplies
+the existing shared error classification and length-prefixed UTF-16 identity keys;
+its key helpers expect validated identities and do not authorize them. `history`
+supplies canonical item keys and protected-event IDs. Their callers still own
+ingestion, persistence, reconciliation, and execution authority.
