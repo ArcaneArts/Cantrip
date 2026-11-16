@@ -72,7 +72,7 @@ loaded by a production service.
 | Configuration and profile identity | `config.ts`, `credential-store.ts`, `codex/bundled-runtime.ts`                                                                            | `config`, `credentials`, `installation` modules                                        | Local Node differential checks, private file/rotation tests. Resolution only; Codex manifest verification/probing still pending                                                                                                                                                                                  |
 | Logging and process lifetime       | `logger.ts`, `log-stream.ts`, `runtime-loop.ts`, `process-guard.ts`, `index.ts` startup/stop                                              | Native logging adapter and owned runtime cycles                                        | Archive/options/privacy buffer, subscriptions, retained restart cursors, signal/stdin shutdown and actor teardown tested. Remote log-stream leases, full command log context and native child/execution retirement remain pending                                                                                |
 | Enrollment/control transport       | `enrollment.ts`, `heartbeat.ts`, `transport.ts`, routing/observation adapters                                                             | Native enrollment/replacement, heartbeat, readiness/reconnect and credential lifecycle | Actual Rust-server round trip, rotation/reconnect, restart/revocation and HTTP oracles pass. Execution lifetime/admission fencing, reconnect-grace resource callbacks, notifications/events/task acknowledgments, data-plane adapters, congestion fidelity and deployment TLS/proxy configuration remain pending |
-| Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | `cantrip-crypto`, `encryption::{Identity,Service}`                                     | Native primitives, compatible keys, authenticated grants/rotation/revocation and refresh generations; protected domain and encrypted stream/replay adapters remain pending                                                                                                                                       |
+| Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | `cantrip-crypto::{content,...}`, `encryption::{Identity,Service}`, `protected_secrets` | Native primitives, compatible keys, authenticated grants/rotation/revocation, four protected content formats and provider/MCP secret helpers; remaining domain and encrypted stream/replay/resource adapters remain pending                                                                                      |
 | Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Pending                                                                                | Temporary roots; symlink/containment, binary/text, partial writes, watches and relocation fixtures; use docs/WORKTREES.md focused matrix                                                                                                                                                                         |
 | Git/projects/GitHub                | `commands/{git,worktree,github}.ts`, `git.ts`, `worktrees.ts`, replicas, repository operations, exports and shares                        | Pending                                                                                | Owned repositories; command-specific differential tests, operation identity/recovery and actual Git/GitHub protocol boundaries                                                                                                                                                                                   |
 | History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | Pending                                                                                | Replay/crash/reopen, stable UTF-16 keys/digests, outbox acknowledgments and history reducer/projection fixtures; no cursor resets or uncertain effect replay                                                                                                                                                     |
@@ -247,8 +247,9 @@ The crypto addition requires new RustCrypto/HPKE dependencies. Existing package
 identities are retained except `ctutils` 0.4.5 → 0.4.8, required by the new
 `crypto-bigint` dependency. No unrelated dependency upgrades are intended.
 
-The authenticated-grants subcycle uses branch
-`agent/manual/rust-worker-encryption-grants` and reference commit `b06777dc1`.
+The authenticated-grants subcycle merged in
+[#3167](https://github.com/ArcaneArts/Cantrip/pull/3167), commit `68fd1ff91`, using
+branch `agent/manual/rust-worker-encryption-grants` and reference commit `b06777dc1`.
 The native service validates authenticated bootstrap identities and grant metadata,
 opens real HPKE component keys, retains older granted revisions, and persists
 revision high-water values before publishing replacement keys. A changed logical
@@ -285,16 +286,57 @@ pass locally. The real grant/control flow passes both stdin and SIGTERM shutdown
 No external lockfile package identity changed; one additional generated root
 exposes the existing status schema without changing any old node or root index.
 
+The protected-content subcycle uses branch
+`agent/manual/rust-worker-protected-content` and reference commit `68fd1ff91`.
+The crypto content module implements the existing secret, endpoint, private
+display-label and attachment metadata/chunk formats. It binds the actual AAD,
+revisions, classifications and chunk metadata, validates authenticated plaintext,
+and preserves the distinct encoded byte limits and normalized decryption errors.
+`DecryptionError` retains the existing public message while supporting native
+typed error handling.
+
+The worker provider/MCP secret helpers now use authenticated component grants,
+including subject/name blind indexes, public expiry metadata, configuration
+defaults, enabled filtering and reserved managed-name guards. A key/owner/server
+snapshot is captured under one state lock so a concurrent refresh cannot combine
+different bindings. Helpers preserve the reference's latest-key selection policy;
+this does not implement provider execution or MCP server processes.
+
+Twelve generated roots expose existing TypeScript plaintext/opaque schemas. All
+814 previous roots and 12,463 previous nodes are unchanged; 61 nodes are appended.
+MCP key/value count and UTF-16 size refinements are now implemented. Record
+parsing publishes normalized keys, applies last-value collision behavior and
+preserves `__proto__` assignment behavior, matching the actual protocol parser.
+No TypeScript source, production command selection or Cargo dependency changes.
+
+These are content implementations rather than complete domain services. Chunk
+arrival/replay enforcement, stream epochs, transfer/resource lifetimes, other
+protected domains and their actual command integrations remain pending. The five
+native control handlers and production Node-worker default remain unchanged.
+
+Local macOS ARM64 validation passes 96 comparisons with the actual TypeScript
+crypto and worker helpers. They cover bidirectional content, UTF-16/BOM handling,
+authenticated metadata and plaintext failures, provider subjects/expiry, MCP
+limits/defaults/discovery guards and latest-key rotation behavior. All 25 native
+worker/crypto tests pass, including six new content/secret tests. A focused
+protocol regression checks normalized key collisions before collection limits;
+the current generated-protocol manifest comparison also passes. Workspace
+all-target Clippy with warnings denied, linked worker/server builds and the real
+grant/control flow with stdin shutdown pass locally. Worker dependency inspection
+contains no server/database stack; Cargo.lock is unchanged. No Windows/Linux
+runtime qualification or hosted Actions run is claimed.
+
 ## Local development and validation
 
 ```sh
 pnpm worker:rust:build
 pnpm worker:rust:check
 pnpm worker:rust:test
-node scripts/worker-rust/cargo.mjs build --example config-fixture --example crypto-fixture --example grant-fixture
+node scripts/worker-rust/cargo.mjs build --example config-fixture --example crypto-fixture --example grant-fixture --example content-fixture
 node --import tsx scripts/worker-rust/config-compatibility.mjs --binary /absolute/path/to/config-fixture
 node --import tsx scripts/worker-rust/crypto-compatibility.mjs --binary /absolute/path/to/crypto-fixture
 node --import tsx scripts/worker-rust/grant-compatibility.mjs --binary /absolute/path/to/grant-fixture
+node --import tsx scripts/worker-rust/content-compatibility.mjs --binary /absolute/path/to/content-fixture
 node scripts/worker-rust/control-smoke.mjs --worker /absolute/path/to/cantrip-worker --server /absolute/path/to/cantrip-server
 ```
 

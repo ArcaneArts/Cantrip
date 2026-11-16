@@ -46,6 +46,33 @@ pub(super) fn refine(
         .ok_or(ValidationError::Operation)?
         .clone();
     match tag {
+        "mcp-key-value-count" | "mcp-key-value-size" => {
+            let fields = value.as_object().ok_or(ValidationError::Operation)?;
+            let invalid = if tag == "mcp-key-value-count" {
+                fields.len() > 100
+            } else {
+                let mut size = 0usize;
+                for (key, item) in fields {
+                    size += key.units().len()
+                        + item
+                            .as_js_string()
+                            .ok_or(ValidationError::Operation)?
+                            .units()
+                            .len();
+                }
+                size > 524_288
+            };
+            if invalid {
+                let message = if tag == "mcp-key-value-count" {
+                    "MCP key/value collections cannot contain more than 100 entries."
+                } else {
+                    "MCP key/value collections cannot exceed 512 KiB."
+                };
+                result
+                    .issues
+                    .push(json!({"code":"custom","path":path,"message":message}));
+            }
+        }
         "mcp-run-update" => {
             if value["configurationId"] != value["document"]["id"] {
                 let mut at = path.to_vec();

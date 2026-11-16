@@ -14,6 +14,8 @@ Implemented from `packages/crypto`:
 - Raw P-256 private/public import/export, keypair integrity and worker component
   key wrappers.
 - Component/field/lookup HKDF-SHA256 derivation and blind HMAC-SHA256 tags.
+- Protected secrets, endpoint payloads, private display labels and attachment
+  metadata/chunks, including existing AAD bindings and encoded byte limits.
 
 HPKE uses `hpke` 0.14.1, including its KEM zeroization fixes, with only the
 alloc/AES/NIST-curve/system-random features. The suite remains P-256; the upstream
@@ -26,7 +28,8 @@ there is no deterministic randomness switch.
 `HpkeKeyPair` omits Debug and holds the library's zeroizing private-key type.
 Returned private/key/plaintext buffers use `Zeroizing`; callers still must keep
 secret buffers out of logs and avoid retaining unprotected copies. Decryption
-normalizes validation/authentication failures to the existing generic message.
+normalizes validation/authentication failures to the existing generic message
+and exposes a downcastable `DecryptionError` for the worker's error handling.
 Validation errors for public configuration/envelopes use the shared contracts.
 
 Tests retain small synthetic TypeScript-produced ciphertext vectors, compare
@@ -35,10 +38,20 @@ canonical bytes, and check recipient/context/tamper failures. The worker's
 implementation in both directions. Never give those development fixtures a real
 profile or secret.
 
-Authenticated grant refresh and its HTTP/task ownership now live in
-`cantrip_worker::encryption::Service`. This primitive crate owns no HTTP
-authorization. Domain-specific protected content, replay/counter state and
-encrypted stream adapters remain worker-port work. Password/recovery
+The content module validates decrypted UTF-8/JSON and the actual plaintext
+schemas, preserving BOM handling and UTF-16 strings. Labels authenticate their
+inner and outer classification; attachment chunks authenticate their declared
+size, sequence and EOF. Chunk crypto is stateless: it does not authorize a
+transfer or enforce arrival order, replay windows or resource lifetimes.
+
+Authenticated grant refresh and its HTTP/task ownership live in
+`cantrip_worker::encryption::Service`. This crate owns no HTTP authorization.
+The worker's `protected_secrets` module adapts the real provider and MCP formats
+to that service. The content fixture compares these operations with the actual
+TypeScript implementations in both directions using disposable synthetic data.
+
+Other domain-specific protected content, replay/counter state and encrypted
+stream adapters remain worker-port work. Password/recovery
 KDFs and client account-management operations are not implemented here; the
 worker uses granted component keys rather than account passwords/master keys.
 A generic payload operation alone does not establish those domain contracts.

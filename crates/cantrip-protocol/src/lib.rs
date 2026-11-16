@@ -735,7 +735,15 @@ impl Contracts {
             }
             let child = self.run(value_type, object.get(&key), &path_with(path, json!(key)))?;
             if let Some(value) = &child.value {
-                output.insert(key, value.clone());
+                // Zod reads/diagnoses the original key, but publishes the key
+                // schema's output. Normalized collisions retain the last value.
+                let output_key =
+                    coercion::string(checked.value.as_ref().ok_or(ValidationError::Operation)?)
+                        .map_err(|_| ValidationError::Operation)?;
+                // Assignment to Object.prototype's setter creates no own field.
+                if output_key.as_str() != Some("__proto__") {
+                    output.insert(output_key, value.clone());
+                }
             }
             result.merge(child);
         }

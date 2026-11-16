@@ -70,6 +70,19 @@ impl Service {
     pub fn status(&self) -> Value {
         self.state.lock().unwrap().status()
     }
+    pub fn bound_component(
+        &self,
+        scope: &str,
+        revision: Option<u64>,
+    ) -> Result<super::BoundComponentKey, ServiceError> {
+        let state = self.state.lock().unwrap();
+        let component = state.component_key(scope, revision)?;
+        Ok(super::BoundComponentKey {
+            owner_id: state.owner_id()?,
+            server_id: state.server_identity()?,
+            component,
+        })
+    }
     pub fn registration(&self) -> Value {
         self.state.lock().unwrap().identity.registration()
     }

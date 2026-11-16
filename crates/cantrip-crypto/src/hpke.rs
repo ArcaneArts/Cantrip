@@ -1,4 +1,4 @@
-use crate::{DECRYPTION_ERROR, associated_data, checked, encode, encoded_field, require_length};
+use crate::{associated_data, checked, decryption_error, encode, encoded_field, require_length};
 use anyhow::{Result, anyhow, bail};
 use cantrip_wire::{Value, value::json};
 use hpke::{
@@ -74,7 +74,7 @@ pub fn unwrap_key(
             &envelope,
             "encapsulatedKey",
         )?)
-        .map_err(|_| anyhow!(DECRYPTION_ERROR))?;
+        .map_err(|_| decryption_error())?;
         let bytes = Zeroizing::new(
             hpke::single_shot_open::<AesGcm256, HkdfSha256, Kem>(
                 &OpModeR::Base,
@@ -84,12 +84,12 @@ pub fn unwrap_key(
                 &encoded_field(&envelope, "ciphertext")?,
                 &associated_data(aad)?,
             )
-            .map_err(|_| anyhow!(DECRYPTION_ERROR))?,
+            .map_err(|_| decryption_error())?,
         );
         require_length(&bytes, 32, "Key")?;
         Ok(bytes)
     };
-    open().map_err(|_| anyhow!(DECRYPTION_ERROR))
+    open().map_err(|_| decryption_error())
 }
 pub fn worker_grant_aad(owner: &Value, grant: &Value) -> Value {
     json!({"ownerId":owner,"component":grant["component"],"table":"encryption_worker_grants","rowId":grant["workerId"],"field":"wrapped_component_key","formatVersion":1,"keyRevision":grant["keyRevision"]})

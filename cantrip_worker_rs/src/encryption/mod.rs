@@ -5,7 +5,7 @@ mod state;
 use cantrip_wire::JsString;
 pub use identity::{Identity, IdentityError};
 pub use service::{RequestedGrant, Service};
-pub use state::ComponentKey;
+pub use state::{BoundComponentKey, ComponentKey};
 
 #[derive(Clone, Debug)]
 pub struct ServiceError {
