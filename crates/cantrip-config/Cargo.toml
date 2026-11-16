@@ -1,0 +1,12 @@
+[package]
+name = "cantrip-config"
+version = "0.0.0"
+description = "Cantrip environment-file and configuration parsing primitives"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow = "1"
+cantrip-wire = { path = "../cantrip-wire" }
+serde_json = { version = "1", features = ["preserve_order", "arbitrary_precision", "raw_value"] }

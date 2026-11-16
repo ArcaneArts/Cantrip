@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, ensure};
-use cantrip_server::{config::Environment, env_file};
+use cantrip_config::{Environment, env_file};
 use serde_json::{Value, json};
 use std::{
     io::Write,
