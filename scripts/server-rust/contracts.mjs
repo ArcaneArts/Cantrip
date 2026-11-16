@@ -837,6 +837,18 @@ export const contractRoots = [
   "workerEncryptionComponentScopeSchema",
   "encryptionKeyRevisionSchema",
   "workerEncryptionStatusSchema",
+  "protectedSecretEnvelopeSchema",
+  "providerApiKeyProtectedContentSchema",
+  "providerAccountLabelProtectedContentSchema",
+  "providerCredentialProtectedContentSchema",
+  "providerCredentialPublicMetadataSchema",
+  "protectedProviderCredentialSchema",
+  "mcpServerConfigurationSchema",
+  "endpointContentContextSchema",
+  "endpointContentOpaqueSchema",
+  "privateDisplayLabelOpaqueSchema",
+  "privateDisplayLabelProtectedContentSchema",
+  "attachmentMetadataProtectedContentSchema",
 ];
 
 export const projectExportContractRoots = [
@@ -1148,6 +1160,10 @@ function registerChecks(schema, tags) {
     );
   tags.forEach((tag, index) => registerCustom(schema, index, tag));
 }
+registerChecks(
+  protocol.mcpServerConfigurationSchema.options[0].shape.environment.unwrap(),
+  ["mcp-key-value-count", "mcp-key-value-size"],
+);
 registerChecks(protocol.remoteDesktopPrivateInventoryOpaqueSchema, [
   "worker-command-surface-kind:remote-desktop-inventory",
 ]);

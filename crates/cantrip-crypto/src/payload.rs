@@ -1,5 +1,5 @@
 use crate::{
-    DECRYPTION_ERROR, associated_data, checked, encode, encoded_field, random_bytes, require_length,
+    associated_data, checked, decryption_error, encode, encoded_field, random_bytes, require_length,
 };
 use aes_gcm::{
     Aes256Gcm, KeyInit, Nonce,
@@ -33,12 +33,12 @@ pub fn decrypt_payload(key: &[u8], envelope: &Value, aad: &Value) -> Result<Zero
         require_length(key, 32, "Key")?;
         let v = checked("encryptedPayloadEnvelopeSchema", envelope)?;
         if v["keyRevision"] != aad["keyRevision"] {
-            return Err(anyhow!(DECRYPTION_ERROR));
+            return Err(decryption_error());
         }
         let nonce = encoded_field(&v, "nonce")?;
         let ciphertext = encoded_field(&v, "ciphertext")?;
         let aad = associated_data(aad)?;
-        let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| anyhow!(DECRYPTION_ERROR))?;
+        let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| decryption_error())?;
         Ok(Zeroizing::new(
             cipher
                 .decrypt(
@@ -49,10 +49,10 @@ pub fn decrypt_payload(key: &[u8], envelope: &Value, aad: &Value) -> Result<Zero
                         aad: &aad,
                     },
                 )
-                .map_err(|_| anyhow!(DECRYPTION_ERROR))?,
+                .map_err(|_| decryption_error())?,
         ))
     };
-    open().map_err(|_| anyhow!(DECRYPTION_ERROR))
+    open().map_err(|_| decryption_error())
 }
 pub fn serialize_payload(input: &Value) -> Result<String> {
     let v = checked("encryptedPayloadEnvelopeSchema", input)?;

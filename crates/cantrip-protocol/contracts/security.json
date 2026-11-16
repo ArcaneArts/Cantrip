@@ -814,7 +814,19 @@
     "encryptionComponentScopeSchema": 833,
     "workerEncryptionComponentScopeSchema": 838,
     "encryptionKeyRevisionSchema": 13,
-    "workerEncryptionStatusSchema": 1093
+    "workerEncryptionStatusSchema": 1093,
+    "protectedSecretEnvelopeSchema": 155,
+    "providerApiKeyProtectedContentSchema": 12463,
+    "providerAccountLabelProtectedContentSchema": 12467,
+    "providerCredentialProtectedContentSchema": 12471,
+    "providerCredentialPublicMetadataSchema": 7302,
+    "protectedProviderCredentialSchema": 7300,
+    "mcpServerConfigurationSchema": 12492,
+    "endpointContentContextSchema": 10658,
+    "endpointContentOpaqueSchema": 3040,
+    "privateDisplayLabelOpaqueSchema": 1422,
+    "privateDisplayLabelProtectedContentSchema": 12514,
+    "attachmentMetadataProtectedContentSchema": 12518
   },
   "nodes": [
     {
@@ -75521,6 +75533,357 @@
       "checks": [
         { "check": "min_length", "minimum": 1, "when": "length" },
         { "check": "max_length", "maximum": 120, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "providerApiKeyProtectedContentSchema",
+      "shape": { "version": 12464, "apiKey": 12465 },
+      "catchall": 12466,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 10000, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "providerAccountLabelProtectedContentSchema",
+      "shape": { "version": 12468, "label": 12469 },
+      "catchall": 12470,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 160, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "providerLegacyCredentialSchema",
+      "options": [12472, 12489],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "accessToken": 12473,
+        "email": 12474,
+        "expiresAt": 12476,
+        "planType": 12478,
+        "refreshToken": 12480,
+        "version": 12482,
+        "accountId": 12483,
+        "idToken": 12484,
+        "kind": 12486,
+        "userId": 12487
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 12475, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 1024, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 12477, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 12479, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 1024, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 12481, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 512, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 12485, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    { "type": "literal", "values": ["chatgpt"], "checks": [] },
+    { "type": "nullable", "innerType": 12488, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 512, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "accessToken": 12473,
+        "email": 12474,
+        "expiresAt": 12476,
+        "planType": 12478,
+        "refreshToken": 12480,
+        "version": 12482,
+        "kind": 12490,
+        "userId": 12491
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["grok"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 512, "when": "length" }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "mcpServerConfigurationSchema",
+      "options": [12493, 12506],
+      "discriminator": "transport",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "mcpServerStdioConfigurationSchema",
+      "shape": {
+        "name": 12494,
+        "enabled": 12495,
+        "transport": 12497,
+        "command": 12498,
+        "args": 12499,
+        "environment": 12502
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "name": "mcpServerNameSchema",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" },
+        {
+          "message": "Use only letters, numbers, hyphens, and underscores.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]+$/u"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 12496,
+      "defaultValue": true,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "literal", "values": ["stdio"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 12500,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 12501,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 8192, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 12503,
+      "defaultValue": {},
+      "checks": []
+    },
+    {
+      "type": "record",
+      "keyType": 12504,
+      "valueType": 12505,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "mcp-key-value-count",
+          "messageAfterPath": true,
+          "message": "MCP key/value collections cannot contain more than 100 entries."
+        },
+        {
+          "check": "refinement",
+          "tag": "mcp-key-value-size",
+          "messageAfterPath": true,
+          "message": "MCP key/value collections cannot exceed 512 KiB."
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 256, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 65536, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "mcpServerHttpConfigurationSchema",
+      "shape": {
+        "name": 12494,
+        "enabled": 12495,
+        "transport": 12507,
+        "url": 12508,
+        "bearerTokenEnvironmentVariable": 12509,
+        "headers": 12512,
+        "environmentHeaders": 12513
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["http"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "string_format", "format": "url", "abort": false },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 12510,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 12511, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 256, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 12503,
+      "defaultValue": {},
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 12503,
+      "defaultValue": {},
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "privateDisplayLabelProtectedContentSchema",
+      "shape": { "version": 12515, "classification": 1423, "label": 12516 },
+      "catchall": 12517,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "attachmentMetadataProtectedContentSchema",
+      "shape": {
+        "version": 12519,
+        "fileName": 5543,
+        "mimeType": 5544,
+        "kind": 5545,
+        "source": 5546,
+        "previewText": 5547,
+        "sha256": 12520,
+        "error": 12521
+      },
+      "catchall": 12523,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{64}$/u"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 12522, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
       ]
     },
     { "type": "never", "checks": [] }

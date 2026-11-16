@@ -11,6 +11,13 @@ pub struct ComponentKey {
     pub key_revision: u64,
 }
 
+/// One atomic view of the account/server binding and a copied component key.
+/// Existing operations own this snapshot; resource cancellation is caller policy.
+pub struct BoundComponentKey {
+    pub owner_id: JsString,
+    pub server_id: Value,
+    pub component: ComponentKey,
+}
 pub(super) struct State {
     pub identity: Identity,
     pub worker_id: JsString,

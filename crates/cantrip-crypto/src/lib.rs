@@ -1,5 +1,6 @@
 //! Endpoint cryptography; no network, server, database, or process-global keys.
 //! Protocol validation is shared; cryptographic operations execute natively.
+pub mod content;
 mod derivation;
 mod hpke;
 mod payload;
@@ -16,6 +17,17 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use cantrip_wire::{Value, value::json};
 
 pub const DECRYPTION_ERROR: &str = "Encrypted material could not be authenticated.";
+#[derive(Debug, Clone, Copy)]
+pub struct DecryptionError;
+impl std::fmt::Display for DecryptionError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(DECRYPTION_ERROR)
+    }
+}
+impl std::error::Error for DecryptionError {}
+pub fn decryption_error() -> anyhow::Error {
+    DecryptionError.into()
+}
 
 pub fn checked(schema: &str, input: &Value) -> Result<Value> {
     cantrip_protocol::parse(schema, Some(input)).map_err(cantrip_protocol::response::response_error)

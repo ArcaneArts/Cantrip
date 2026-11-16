@@ -8,5 +8,6 @@ pub mod http;
 pub mod installation;
 pub mod logging;
 pub mod platform;
+pub mod protected_secrets;
 pub mod runtime;
 pub mod version;

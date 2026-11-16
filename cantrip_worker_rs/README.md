@@ -36,8 +36,16 @@ grants, persists revision high-water values, and fences stale refresh results.
 Heartbeat publication and `worker.encryption.refresh` use this service; transient
 failures retain keys, while invalid authorization/revocation clears them. Refresh
 work and coalesced retries survive an abandoned caller and are joined at shutdown.
-Protected domain/stream adapters and their resource-revocation hooks remain pending;
-a stored identity alone never authorizes a component key.
+`protected_secrets` implements provider API/credential and MCP configuration
+protection, public expiry metadata, subject/name blind indexes and reserved-name
+guards. It uses an atomic snapshot of the authorized component key and its
+owner/server binding. The helpers preserve the Node worker's latest-key selection
+policy; they do not implement provider execution or MCP processes.
 
-The configuration, HTTP, crypto and grant examples are development-only differential drivers
+`cantrip-crypto::content` supplies protected secret, endpoint, display-label and
+attachment formats. Remaining domain/stream adapters, replay state and resource
+revocation hooks are still pending. A stored identity alone never authorizes a
+component key, and stateless chunk crypto alone does not authorize a transfer.
+
+The configuration, HTTP, crypto, grant and content examples are development-only differential drivers
 that emit synthetic secrets. Never run them against real profiles.
