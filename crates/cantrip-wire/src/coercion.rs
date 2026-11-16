@@ -1,7 +1,11 @@
+//! ECMAScript coercions report only success or a thrown operation. The
+//! protocol layer supplies the existing JavaScript exception classification.
+#![allow(clippy::result_unit_err)]
+
 use super::{JsString, Value, value::Object};
 use std::sync::OnceLock;
 
-pub(crate) fn number(value: Option<&Value>) -> Result<f64, ()> {
+pub fn number(value: Option<&Value>) -> Result<f64, ()> {
     Ok(match value {
         None => f64::NAN,
         Some(Value::Null) => 0.0,
@@ -42,7 +46,7 @@ pub(crate) fn number(value: Option<&Value>) -> Result<f64, ()> {
         }
     })
 }
-pub(crate) fn string(value: &Value) -> Result<JsString, ()> {
+pub fn string(value: &Value) -> Result<JsString, ()> {
     Ok(match value {
         Value::Null => "null".into(),
         Value::Bool(value) => value.to_string().into(),
@@ -68,7 +72,7 @@ pub(crate) fn string(value: &Value) -> Result<JsString, ()> {
         }
     })
 }
-pub(crate) fn truthy(value: Option<&Value>) -> bool {
+pub fn truthy(value: Option<&Value>) -> bool {
     match value {
         None | Some(Value::Null) => false,
         Some(Value::Bool(v)) => *v,
@@ -77,7 +81,7 @@ pub(crate) fn truthy(value: Option<&Value>) -> bool {
         _ => true,
     }
 }
-pub(super) fn json_number(value: f64) -> Value {
+pub fn json_number(value: f64) -> Value {
     Value::Number(value)
 }
 fn key_order(key: &JsString) -> (bool, u32) {
@@ -101,19 +105,19 @@ pub(super) fn entries(object: &Object) -> Vec<(&JsString, &Value)> {
     }
     entries
 }
-pub(crate) fn keys(object: &Object) -> Vec<&JsString> {
+pub fn keys(object: &Object) -> Vec<&JsString> {
     let mut keys: Vec<_> = object.keys().collect();
     if !keys_in_order(object) {
         keys.sort_by_key(|key| key_order(key));
     }
     keys
 }
-pub(super) struct Length {
+pub struct Length {
     pub number: f64,
     pub numeric: bool,
     pub origin: &'static str,
 }
-pub(super) fn length(value: Option<&Value>) -> Result<Option<Length>, ()> {
+pub fn length(value: Option<&Value>) -> Result<Option<Length>, ()> {
     Ok(match value {
         Some(Value::String(value)) => Some(Length {
             number: value.len() as f64,

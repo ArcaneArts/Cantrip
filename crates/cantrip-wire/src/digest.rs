@@ -1,4 +1,4 @@
-use crate::wire::Value;
+use crate::Value;
 use sha2::{Digest, Sha256};
 
 /// Match the Node reference's persisted digest, with sorted object keys and

@@ -44,6 +44,8 @@ RUN apt-get update \
     && apt-get install --yes --no-install-recommends libssl-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
 COPY version.json ./
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
 COPY cantrip_server_rs ./cantrip_server_rs
 COPY cantrip_server/drizzle ./cantrip_server/drizzle
 COPY scripts/version.mjs ./scripts/

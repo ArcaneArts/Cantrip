@@ -1,0 +1,21 @@
+[package]
+name = "cantrip-wire"
+version = "0.0.0"
+description = "Cantrip JavaScript-compatible wire values, JSON, and dates"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+indexmap = "2.14"
+icu_locale_core = { version = "2.4", features = ["alloc"] }
+jiff = { version = "0.2.37", features = ["tzdb-bundle-always"] }
+regex = "1"
+ryu-js = "1.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "arbitrary_precision", "raw_value"] }
+sys-locale = "0.3.2"
+sha2 = "0.10"
+
+[dev-dependencies]
+anyhow = "1"

@@ -1,4 +1,4 @@
-use cantrip_server::{native_history::payload_digest, wire::Value};
+use cantrip_wire::{Value, payload_digest};
 use sha2::{Digest, Sha256};
 
 #[test]

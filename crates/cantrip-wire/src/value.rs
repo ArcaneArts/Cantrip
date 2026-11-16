@@ -62,7 +62,7 @@ impl JsString {
         }
     }
 
-    pub(in crate::wire) fn is_base64url(&self) -> bool {
+    pub fn is_base64url(&self) -> bool {
         let StringStorage::Utf8(value) = &self.0 else {
             return false;
         };
@@ -475,9 +475,10 @@ impl<'de> Deserialize<'de> for Value {
 
 // Object values are serialized directly (rather than through serde_json::Value)
 // so raw UTF-16 strings remain representable while constructing error objects.
+#[macro_export]
 macro_rules! json{
-    (null)=>{$crate::wire::Value::Null};
-    ({$($key:literal:$value:expr),*$(,)?})=>{{let mut object=$crate::wire::value::Object::new();$(object.insert($key.into(),$crate::wire::Value::from_serialize(&$value));)*$crate::wire::Value::Object(object)}};
-    ($value:expr)=>{$crate::wire::Value::from_serialize(&$value)};
+    (null)=>{$crate::Value::Null};
+    ({$($key:literal:$value:expr),*$(,)?})=>{{let mut object=$crate::value::Object::new();$(object.insert($key.into(),$crate::Value::from_serialize(&$value));)*$crate::Value::Object(object)}};
+    ($value:expr)=>{$crate::Value::from_serialize(&$value)};
 }
-pub(crate) use json;
+pub use crate::json;
