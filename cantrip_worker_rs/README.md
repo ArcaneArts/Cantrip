@@ -1,20 +1,32 @@
 # Native Cantrip worker
 
 This package is the incremental Rust worker replacement. See
-[the implementation ledger](../docs/RUST_WORKER_PORT.md) for scope, current
-coverage, compatibility and delivery milestones.
+[the implementation ledger](../docs/RUST_WORKER_PORT.md) for complete scope,
+coverage, compatibility and delivery milestones. Production packaging continues
+selecting the Node worker until the complete implementation is ready.
 
-Currently implemented: worker configuration/authentication precedence,
-version-1 identity and credential persistence, and Codex installation resolution.
-These use `cantrip-config`, `cantrip-wire` and `cantrip-host`, with no server,
-database or server build-script dependency. Host paths/hostname/platform are
-explicit inputs. Credential-bearing structures deliberately omit `Debug`.
+The native `cantrip-worker` executable currently supports configuration,
+version-1 identity/credential persistence, logging/archive lifecycle, enrollment,
+heartbeat, WebSocket readiness/reconnect, version queries, credential rotation,
+in-process restart and log reads. Remaining domains fail explicitly and advertise
+unavailable capabilities. This is not yet the complete production replacement.
 
-There is not yet a production native worker executable. Production packaging
-continues selecting the existing Node worker until the complete implementation
-is ready. The `config-fixture` example is a development-only differential driver
-that emits synthetic secrets; never run it against a real worker profile.
+The implementation reuses `cantrip-config`, `cantrip-wire`, `cantrip-host`,
+`cantrip-logging` and `cantrip-protocol`, without a server or database dependency.
+Other shared foundations will be integrated with their owning domains. Credentials
+omit `Debug`. Initialization loads the optional environment file synchronously
+before starting Tokio/archive threads. Shutdown joins owned producers and closes
+the archive before another runtime starts with the same durable identity.
 
-Run `pnpm worker:rust:check` and `pnpm worker:rust:test` locally. The worker Cargo
-wrapper shares the bounded server/library cache without discovering PGlite.
-Keep direct Cargo invocations on that shared target directory as well.
+Run `pnpm worker:rust:build`, `pnpm worker:rust:check` and `pnpm worker:rust:test`
+locally. The Cargo wrapper shares the bounded server/library cache without PGlite
+discovery. Build-time version embedding uses the existing Node development
+resolver; the compiled executable does not run Node.
+
+Launch the built binary using the existing worker environment variables. Optional
+flags are `--env-file-if-exists=<path>`, `--shutdown-on-stdin-close`, `--version`
+and `--help`. Before testing, use a disposable profile and explicit enrollment;
+do not run Node and Rust workers against the same mutable profile.
+
+The configuration and HTTP examples are development-only differential drivers
+that emit synthetic secrets. Never run them against real profiles.

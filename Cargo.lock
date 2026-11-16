@@ -518,10 +518,21 @@ dependencies = [
  "anyhow",
  "cantrip-config",
  "cantrip-host",
+ "cantrip-logging",
+ "cantrip-protocol",
  "cantrip-wire",
+ "chrono",
+ "embed-resource",
+ "futures",
+ "getrandom 0.3.4",
+ "libc",
+ "reqwest",
  "tempfile",
+ "tokio",
+ "tokio-tungstenite 0.29.0",
  "url",
  "uuid",
+ "windows-sys",
 ]
 
 [[package]]
@@ -2747,7 +2758,9 @@ checksum = "8f72a05e828585856dacd553fba484c242c46e391fb0e58917c942ee9202915c"
 dependencies = [
  "futures-util",
  "log",
+ "native-tls",
  "tokio",
+ "tokio-native-tls",
  "tungstenite 0.29.0",
 ]
 
@@ -2910,6 +2923,7 @@ dependencies = [
  "http",
  "httparse",
  "log",
+ "native-tls",
  "rand 0.9.5",
  "sha1",
  "thiserror",

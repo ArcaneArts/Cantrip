@@ -10,8 +10,26 @@ anyhow = "1"
 cantrip-config = { path = "../crates/cantrip-config" }
 cantrip-host = { path = "../crates/cantrip-host" }
 cantrip-wire = { path = "../crates/cantrip-wire" }
+cantrip-logging = { path = "../crates/cantrip-logging" }
+cantrip-protocol = { path = "../crates/cantrip-protocol" }
+chrono = "0.4"
+futures = "0.3"
+getrandom = { version = "0.3", features = ["std"] }
+reqwest = { version = "=0.13.4", default-features = false, features = ["native-tls", "gzip", "deflate", "brotli"] }
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "native-tls"] }
 url = "2.5"
 uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock"] }
+
+[build-dependencies]
+embed-resource = "3.0.11"
+
 
 [dev-dependencies]
 tempfile = "3"

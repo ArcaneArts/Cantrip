@@ -804,7 +804,8 @@
     "modelOperationUsageSchema": 7663,
     "modelOperationUsageIdentitySchema": 7653,
     "modelOperationUsageEvidenceSchema": 7652,
-    "taskGoalCycleDispatchPublicationResultSchema": 12455
+    "taskGoalCycleDispatchPublicationResultSchema": 12455,
+    "cuaEffectPreferencesSchema": 2848
   },
   "nodes": [
     {
