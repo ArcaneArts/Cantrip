@@ -1,13 +1,19 @@
 use anyhow::{Context, Result};
 use base64::{Engine, engine::general_purpose::STANDARD};
-use cantrip_server::{tunnels::frame, wire::Value};
+use cantrip_framing::tunnel as frame;
+use cantrip_protocol::Value;
 use std::{path::PathBuf, process::Command};
 
 #[test]
 fn tunnel_frame_bytes_and_failures_match_actual_codec() -> Result<()> {
     let output = Command::new("node")
         .args(["scripts/server-rust/tunnel-frame-oracle.mjs"])
-        .current_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap())
+        .current_dir(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .ancestors()
+                .nth(2)
+                .unwrap(),
+        )
         .output()?;
     anyhow::ensure!(
         output.status.success(),

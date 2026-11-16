@@ -1,0 +1,17 @@
+[package]
+name = "cantrip-framing"
+version = "0.0.0"
+description = "Cantrip WorkerLink, tunnel, and remote-surface binary codecs"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow = "1"
+cantrip-protocol = { path = "../cantrip-protocol" }
+serde_json = { version = "1", features = ["preserve_order", "arbitrary_precision", "raw_value"] }
+
+[dev-dependencies]
+base64 = "0.22"
+serde = "1"
+sha2 = "0.10"

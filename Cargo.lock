@@ -331,6 +331,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
+name = "cantrip-framing"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "cantrip-protocol",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "cantrip-icu-collator-data"
 version = "0.0.0"
 
@@ -345,7 +357,9 @@ dependencies = [
  "regress",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "url",
+ "uuid",
 ]
 
 [[package]]
@@ -367,6 +381,7 @@ dependencies = [
  "async-compression",
  "axum",
  "base64 0.22.1",
+ "cantrip-framing",
  "cantrip-protocol",
  "cantrip-scheduling",
  "cantrip-wire",

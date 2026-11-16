@@ -1,6 +1,6 @@
 //! Legacy CTTN frames, separate from the WorkerLink envelope/carrier.
-use crate::wire::{self, Value};
 use anyhow::{Result, bail};
+use cantrip_protocol::{self as wire, Value};
 use std::{ops::Range, sync::Arc};
 
 pub const MAX_HEADER_BYTES: usize = 8 * 1024;
@@ -56,8 +56,10 @@ fn validate_payload(header: &Value, payload: &[u8]) -> Result<()> {
     Ok(())
 }
 pub fn create(header: Value, payload: &[u8]) -> Result<Frame> {
-    let header =
-        crate::settings::parse_response("tunnelDataPlaneFrameHeaderSchema", Some(&header))?;
+    let header = cantrip_protocol::response::parse_response(
+        "tunnelDataPlaneFrameHeaderSchema",
+        Some(&header),
+    )?;
     validate_payload(&header, payload)?;
     let encoded = header.stringify();
     if encoded.len() > MAX_HEADER_BYTES {
@@ -93,7 +95,10 @@ pub fn decode(bytes: Arc<[u8]>) -> Result<Frame> {
     let text = String::from_utf8_lossy(&bytes[8..start]);
     let value = wire::parse_json_text(text.strip_prefix('\u{feff}').unwrap_or(&text))
         .map_err(|_| anyhow::anyhow!("Tunnel data frame header is not valid JSON."))?;
-    let header = crate::settings::parse_response("tunnelDataPlaneFrameHeaderSchema", Some(&value))?;
+    let header = cantrip_protocol::response::parse_response(
+        "tunnelDataPlaneFrameHeaderSchema",
+        Some(&value),
+    )?;
     validate_payload(&header, &bytes[start..])?;
     let end = bytes.len();
     Ok(Frame {

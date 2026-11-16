@@ -2,7 +2,7 @@
 pub mod attachments;
 mod catalog;
 mod desktops;
-pub mod frame;
+pub use cantrip_framing::remote_surface as frame;
 mod mutations;
 pub mod webrtc;
 use crate::{
