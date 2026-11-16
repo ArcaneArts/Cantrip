@@ -1,6 +1,6 @@
 //! Console presentation of sanitized records, independent of archive minimization.
-use crate::wire::{JsString, Value, coercion};
 use anyhow::{Result, anyhow};
+use cantrip_wire::{JsString, Value, coercion};
 fn join(parts: impl IntoIterator<Item = JsString>, separator: &str) -> JsString {
     let mut units = Vec::new();
     for (index, part) in parts.into_iter().enumerate() {
@@ -25,7 +25,7 @@ fn painted(value: JsString, color: u8, colors: bool) -> JsString {
     }
 }
 fn space(unit: u16) -> bool {
-    char::from_u32(unit as u32).is_some_and(crate::text::whitespace)
+    char::from_u32(unit as u32).is_some_and(cantrip_wire::text::whitespace)
 }
 fn one_line(value: &JsString) -> JsString {
     let mut units = Vec::new();
@@ -133,9 +133,9 @@ fn prefix(record: &Value, colors: bool) -> JsString {
     };
     let clock = record["timestamp"]
         .as_js_string()
-        .and_then(crate::wire::date_milliseconds)
+        .and_then(cantrip_wire::date::parse)
         .and_then(|at| jiff::Timestamp::from_millisecond(at).ok())
-        .map(|at| at.to_zoned(crate::environment::timezone().clone()))
+        .map(|at| at.to_zoned(cantrip_wire::environment::timezone().clone()))
         .map_or_else(
             || "NaN:NaN".to_owned(),
             |at| format!("{:02}:{:02}", at.hour(), at.minute()),

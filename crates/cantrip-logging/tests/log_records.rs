@@ -1,13 +1,12 @@
 use anyhow::{Context, Result};
-use cantrip_server::{
-    operations::log_records::{self, Buffer},
-    wire::Value,
-};
+use cantrip_logging::log_records::{self, Buffer};
+use cantrip_wire::Value;
 use std::{path::PathBuf, process::Command};
 #[test]
 fn persisted_minimization_buffer_bounds_and_cursors_match_source() -> Result<()> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
+        .ancestors()
+        .nth(2)
         .unwrap()
         .to_owned();
     let output = Command::new("node")

@@ -1,0 +1,25 @@
+[package]
+name = "cantrip-logging"
+version = "0.0.0"
+description = "Cantrip structured service logging and archive lifecycle"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow = "1"
+cantrip-wire = { path = "../cantrip-wire" }
+chrono = { version = "0.4", features = ["serde"] }
+flate2 = "1"
+indexmap = "2.14"
+jiff = { version = "0.2.37", features = ["tzdb-bundle-always"] }
+os_pipe = "1"
+regex = "1"
+regress = { version = "0.12", features = ["utf16"] }
+serde_json = { version = "1", features = ["preserve_order", "arbitrary_precision", "raw_value"] }
+tokio = { version = "1", features = ["sync", "rt"] }
+url = "2.5"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }

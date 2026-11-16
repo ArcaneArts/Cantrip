@@ -1,10 +1,9 @@
 //! Operational counters ported alongside their owning transport consumers.
-mod http_status_names;
-pub mod log_archive;
-pub mod log_format;
-pub mod log_records;
+pub use cantrip_logging::log_archive;
+pub use cantrip_logging::log_format;
+pub use cantrip_logging::log_records;
 pub mod log_runtime;
-pub mod log_sanitize;
+pub use cantrip_logging::log_sanitize;
 pub mod logging;
 pub mod metrics;
 pub mod shared_failure;

@@ -1,7 +1,7 @@
 //! Persisted logs deliberately contain less information than console diagnostics.
 use super::log_sanitize;
-use crate::wire::{JsString, Value, coercion, value::json};
 use anyhow::{Result, bail};
+use cantrip_wire::{JsString, Value, coercion, value::json};
 use std::collections::VecDeque;
 
 const STRINGS: &[&str] = &[

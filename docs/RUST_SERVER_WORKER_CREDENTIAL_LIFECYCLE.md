@@ -110,7 +110,8 @@ and retain their assertions.
 ```sh
 node --import tsx scripts/server-rust/log-runtime-server-compatibility.mjs \
   --worker-lifecycle-records --report /absolute/path/lifecycle.json
-node scripts/server-rust/cargo.mjs test --test log_format --test service_logs
+node scripts/server-rust/cargo.mjs test --test log_format
+node scripts/server-rust/cargo.mjs test -p cantrip-logging --test service_logs
 ```
 
 Supply the existing isolated database/runtime environment and set

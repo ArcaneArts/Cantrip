@@ -1,5 +1,5 @@
 //! The shared service-log text and JSON context boundary, retaining UTF-16.
-use crate::wire::{JsString, Value, coercion};
+use cantrip_wire::{JsString, Value, coercion};
 use regress::{Match, Regex};
 use std::sync::OnceLock;
 
@@ -131,7 +131,7 @@ pub fn text(value: &JsString) -> JsString {
         let matched = &u[m.range()];
         let end = matched
             .iter()
-            .position(|c| char::from_u32(u32::from(*c)).is_some_and(crate::text::whitespace))
+            .position(|c| char::from_u32(u32::from(*c)).is_some_and(cantrip_wire::text::whitespace))
             .unwrap_or(matched.len());
         let mut out = matched[..end].to_vec();
         out.extend(literal(" [REDACTED]"));
