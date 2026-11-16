@@ -5,11 +5,7 @@ mod secret;
 mod value;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::{
-    fmt,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 use url::Url;
 
 pub use peer::{PeerConfig, WebRtcConfig};
@@ -17,32 +13,7 @@ pub use secret::SecretEncryption;
 pub use value::Environment;
 use value::{Reader, enumeration, length};
 
-#[derive(Debug)]
-pub struct ConfigError {
-    pub name: &'static str,
-    pub message: String,
-}
-pub type Result<T> = std::result::Result<T, ConfigError>;
-impl ConfigError {
-    fn new(message: impl Into<String>) -> Self {
-        Self {
-            name: "Error",
-            message: message.into(),
-        }
-    }
-    fn zod(issues: Vec<Value>) -> Self {
-        Self {
-            name: "ZodError",
-            message: serde_json::to_string_pretty(&issues).expect("JSON validation issues"),
-        }
-    }
-}
-impl fmt::Display for ConfigError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.message)
-    }
-}
-impl std::error::Error for ConfigError {}
+pub use cantrip_config::{ConfigError, Result};
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

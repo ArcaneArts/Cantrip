@@ -54,10 +54,10 @@ server policy stayed in place.
 2. **Protocol and pure scheduling — merged in [#3157](https://github.com/ArcaneArts/Cantrip/pull/3157).** Extract generated contracts and
    validation, removing the current back-references into project capabilities
    and automation scheduling. Preserve exporter/oracle ownership and fixtures.
-3. **Framing and execution contracts — implemented and locally validated.** Extract the three binary codecs
+3. **Framing and execution contracts — merged in [#3158](https://github.com/ArcaneArts/Cantrip/pull/3158).** Extract the three binary codecs
    and remaining applicable pure identities/history/execution contracts. Keep
    resource authority in server adapters.
-4. **Configuration — pending.** Extract environment readers, environment-file
+4. **Configuration — implemented and locally validated.** Extract environment readers, environment-file
    parsing, and errors while keeping server defaults and precedence unchanged.
 5. **Logging — pending.** Extract records, formatting/redaction, archives, and
    lifecycle with explicit process configuration. Keep HTTP instrumentation and
@@ -233,3 +233,30 @@ server consumer. Formatting, diff, decomposition, and the Run-contract audit
 pass. The framing dependency closure has no server, database, Redis, or HTTP
 runtime, and third-party versions/checksums are unchanged. No broad protocol
 mutation rerun, application suite, hosted CI, or platform campaign was performed.
+
+Milestone 3 merged in [#3158](https://github.com/ArcaneArts/Cantrip/pull/3158),
+commit `ed73d9d16`. Primary was synchronized and its owned worktree removed.
+
+Milestone 4 uses branch `agent/manual/rust-shared-config`. `cantrip-config`
+contains the existing environment map/readers, dotenv implementation, errors,
+lexical paths, and object-entry ordering. Its only shared library dependency is
+`cantrip-wire` for existing text semantics; it has no database or server startup
+dependency. Server defaults, environment-variable names, hosted origin/proxy
+policy, peer settings, and secret/database configuration stay in `ServerConfig`
+and its server-owned modules. Re-exports preserve existing public imports.
+
+The process environment loader retains its unsafe startup-only contract and its
+place in executable initialization. It still applies byte-sorted names using the
+OS environment lookup rules and never overwrites existing values. The Windows
+drive-resolution implementation moves unchanged; no filesystem preflight was
+introduced. Configuration readers do not merge server and worker policy.
+
+Milestone 4 validation passed locally on macOS ARM64: independent config tests
+match 1,308 Node dotenv cases; the existing server configuration target passes
+all four tests, including 977 Node/Rust configuration comparisons, database-mode
+selection/hosted policy, CLI overrides and relative-path reopening, and serving
+process identity with HTTP startup and orderly shutdown. This target links and
+runs the real server with temporary local storage. Workspace Clippy passes for
+all targets with warnings denied, as do formatting, diff, decomposition, and
+Run-contract checks. No third-party version/checksum changed. Windows-specific
+code is preserved but was not executed; no full suite or hosted CI ran.

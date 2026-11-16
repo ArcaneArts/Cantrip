@@ -331,6 +331,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
+name = "cantrip-config"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "cantrip-wire",
+ "serde_json",
+]
+
+[[package]]
 name = "cantrip-framing"
 version = "0.0.0"
 dependencies = [
@@ -381,6 +390,7 @@ dependencies = [
  "async-compression",
  "axum",
  "base64 0.22.1",
+ "cantrip-config",
  "cantrip-framing",
  "cantrip-protocol",
  "cantrip-scheduling",

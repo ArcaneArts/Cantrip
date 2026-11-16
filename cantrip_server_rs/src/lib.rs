@@ -17,7 +17,7 @@ pub mod database;
 pub mod database_transfer;
 pub mod direct_attachments;
 pub mod encryption;
-pub mod env_file;
+pub use cantrip_config::env_file;
 mod environment;
 pub mod file_documents;
 pub mod http;

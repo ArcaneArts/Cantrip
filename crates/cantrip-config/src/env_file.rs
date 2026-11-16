@@ -1,7 +1,7 @@
 //! Node 24 dotenv syntax for native distribution launchers. Values are data:
 //! no shell evaluation, variable expansion, or command execution occurs.
 //! Reference: https://github.com/nodejs/node/blob/v24.22.1/src/node_dotenv.cc
-use crate::config::Environment;
+use crate::Environment;
 use anyhow::{Context, Result};
 use std::{collections::BTreeMap, path::Path};
 
