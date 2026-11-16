@@ -1,0 +1,26 @@
+[package]
+name = "cantrip-shared-consumer"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.93"
+publish = false
+
+# Deliberately independent: proves consumption outside the server workspace.
+[workspace]
+
+[dependencies]
+anyhow = "1"
+cantrip-wire = { path = "../../crates/cantrip-wire" }
+cantrip-protocol = { path = "../../crates/cantrip-protocol" }
+cantrip-scheduling = { path = "../../crates/cantrip-scheduling" }
+cantrip-framing = { path = "../../crates/cantrip-framing" }
+cantrip-config = { path = "../../crates/cantrip-config" }
+cantrip-logging = { path = "../../crates/cantrip-logging" }
+cantrip-transport = { path = "../../crates/cantrip-transport" }
+cantrip-host = { path = "../../crates/cantrip-host" }
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt"] }
+
+[profile.dev]
+debug = 0
+incremental = false
