@@ -133,8 +133,10 @@ still server-owned.
 
 The server stores encryption material opaquely. Shared envelope validation does
 not implement HPKE, component keys, endpoint encryption or worker decryption.
-Those implementations in `packages/crypto` and the Node worker remain later work;
-there is no placeholder Rust crypto crate.
+The worker port adds `cantrip-crypto` with native payload/HPKE/KDF primitives
+and endpoint key persistence. Authenticated grants and protected domain/stream
+adapters remain ongoing work. This new endpoint crate is consumed by the worker,
+not the server.
 
 The existing `cantrip-interaction` library already supplies geometry, cursor,
 input and ownership primitives. The later worker can integrate native execution

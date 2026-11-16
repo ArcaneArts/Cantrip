@@ -828,6 +828,14 @@ export const contractRoots = [
   "modelOperationUsageEvidenceSchema",
   "taskGoalCycleDispatchPublicationResultSchema",
   "cuaEffectPreferencesSchema",
+  "encryptionAssociatedDataSchema",
+  "encryptedPayloadEnvelopeSchema",
+  "encryptionPublicKeySchema",
+  "hpkeWrappedKeyEnvelopeSchema",
+  "workerComponentKeyGrantSchema",
+  "encryptionComponentScopeSchema",
+  "workerEncryptionComponentScopeSchema",
+  "encryptionKeyRevisionSchema",
 ];
 
 export const projectExportContractRoots = [

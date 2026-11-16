@@ -41,8 +41,9 @@ Reuse the foundations documented in [RUST_SHARED_CRATES.md](RUST_SHARED_CRATES.m
   Codex separately owned. Integrate their existing capabilities instead of
   duplicating their implementations.
 
-Additional substantial endpoint-crypto/history libraries may be appropriate as
-those subsystems are implemented. No placeholder libraries are needed.
+`cantrip-crypto` now supplies worker-side endpoint primitives; additional cohesive
+history libraries may be appropriate as those subsystems are implemented. No
+placeholder libraries are needed.
 
 The server retains accounts, durable application state, routing, scheduling
 and execution authority. Worker code owns repositories/files, PTYs, browser and
@@ -70,7 +71,7 @@ loaded by a production service.
 | Configuration and profile identity | `config.ts`, `credential-store.ts`, `codex/bundled-runtime.ts`                                                                            | `config`, `credentials`, `installation` modules                                        | Local Node differential checks, private file/rotation tests. Resolution only; Codex manifest verification/probing still pending                                                                                                                                                                                  |
 | Logging and process lifetime       | `logger.ts`, `log-stream.ts`, `runtime-loop.ts`, `process-guard.ts`, `index.ts` startup/stop                                              | Native logging adapter and owned runtime cycles                                        | Archive/options/privacy buffer, subscriptions, retained restart cursors, signal/stdin shutdown and actor teardown tested. Remote log-stream leases, full command log context and native child/execution retirement remain pending                                                                                |
 | Enrollment/control transport       | `enrollment.ts`, `heartbeat.ts`, `transport.ts`, routing/observation adapters                                                             | Native enrollment/replacement, heartbeat, readiness/reconnect and credential lifecycle | Actual Rust-server round trip, rotation/reconnect, restart/revocation and HTTP oracles pass. Execution lifetime/admission fencing, reconnect-grace resource callbacks, notifications/events/task acknowledgments, data-plane adapters, congestion fidelity and deployment TLS/proxy configuration remain pending |
-| Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | Pending                                                                                | Bidirectional Node/Rust vectors, associated data, invalid context/revision, persistent keys, stream nonce/epoch behavior                                                                                                                                                                                         |
+| Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | `cantrip-crypto`, `encryption::Identity`                                               | Native AES/HPKE/HKDF/HMAC and compatible key records; authenticated grant refresh, domain wrappers and encrypted stream/replay adapters remain pending                                                                                                                                                           |
 | Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Pending                                                                                | Temporary roots; symlink/containment, binary/text, partial writes, watches and relocation fixtures; use docs/WORKTREES.md focused matrix                                                                                                                                                                         |
 | Git/projects/GitHub                | `commands/{git,worktree,github}.ts`, `git.ts`, `worktrees.ts`, replicas, repository operations, exports and shares                        | Pending                                                                                | Owned repositories; command-specific differential tests, operation identity/recovery and actual Git/GitHub protocol boundaries                                                                                                                                                                                   |
 | History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | Pending                                                                                | Replay/crash/reopen, stable UTF-16 keys/digests, outbox acknowledgments and history reducer/projection fixtures; no cursor resets or uncertain effect replay                                                                                                                                                     |
@@ -98,7 +99,8 @@ Malformed identity files are never silently replaced. A stored credential
 suppresses a pending enrollment code, as in the existing worker. No secrets are
 included in a derived Rust `Debug` implementation.
 
-Remaining state includes `worker-encryption-key.json`, routing registries,
+The endpoint key record now reopens and publishes compatibly; authenticated
+grant/binding lifecycle remains pending. Remaining state includes routing registries,
 repository-operation stores, inference keeper journals, native history
 sources/archives/outboxes/cursors, native settings and goal deliveries,
 suspension/handoff journals, chat scratch/relocation and attachment stores,
@@ -144,8 +146,8 @@ worktree, branch, local checks, PR, observed squash auto-merge, Primary sync whe
 clean and owned worktree/artifact cleanup. Do not stack dependent unmerged work.
 
 1. Configuration/identity foundation and baseline ledger — merged [#3164](https://github.com/ArcaneArts/Cantrip/pull/3164).
-2. Worker logging/lifecycle, native executable and initial control transport — current cycle; transport/execution adapters continue with their owning domains.
-3. Endpoint cryptography and protected persistence.
+2. Worker logging/lifecycle, native executable and initial control transport — merged [#3165](https://github.com/ArcaneArts/Cantrip/pull/3165); transport/execution adapters continue with their owning domains.
+3. Endpoint cryptography and protected persistence — native primitives and key records in the current subcycle; authenticated grants and domain/stream adapters follow.
 4. Files/workspace/project and repository foundations.
 5. Git/GitHub, sharing, attachments and related commands.
 6. Durable journals/history/projection and recovery.
@@ -181,7 +183,7 @@ inputs; no Docker build or image was created. This preserves server source-build
 inputs as the root workspace grows. Actual Node worker/client/server/shared
 library implementations and production launch selection are unchanged.
 
-The control-runtime cycle uses branch `agent/manual/rust-worker-control-runtime`
+The control-runtime cycle merged in [#3165](https://github.com/ArcaneArts/Cantrip/pull/3165), commit `89b984bd0`, using branch `agent/manual/rust-worker-control-runtime`
 and reference commit `cce03f466` (the Node source behavior remains unchanged from
 the original baseline). The linked native worker and Rust server pass real
 enrollment/heartbeat/version, delivered credential rotation and reconnect,
@@ -212,14 +214,46 @@ congested transport behavior must be completed with those subsystems before
 cutover. Windows code has a UTF-8 process manifest and native hostname API, but
 Windows/Linux execution has not been claimed or newly qualified.
 
+The endpoint-crypto subcycle uses branch `agent/manual/rust-worker-endpoint-crypto`
+and reference commit `89b984bd0`. New `cantrip-crypto` supplies native AES payloads,
+canonical AAD/envelope strings, P-256 HPKE/worker wrappers and HKDF/HMAC derivation.
+It uses maintained libraries and the existing generated protocol validation.
+Eight additional roots and six appended nodes expose current TypeScript schemas;
+all existing nodes and root indices remain unchanged.
+
+Worker startup opens and retains the existing endpoint key identity until its
+runtime ends. Version-1 records reopen without an eager rewrite; authenticated
+binding publication writes version 2. Exact/development loopback port policies,
+UUID identity, keypair integrity, persisted revision high-water values, owner-only
+Unix permissions and recoverable publication errors are preserved. Bindings on
+disk are not current authorization, and no component keys are advertised from
+this identity-only stage. Grant refresh/concurrency/revocation and every protected
+domain/stream adapter remain required before cutover.
+
+Local checks for this subcycle pass 57 differential comparisons, seven new native
+crypto/identity tests plus the nine existing worker tests, workspace all-target
+Clippy with warnings denied, and the generated-protocol manifest comparison.
+The comparisons include bidirectional TypeScript AES/HPKE and
+worker-grant comparisons, canonical UTF-16 AAD/KDF/HMAC bytes, cross-opening Node
+and Rust key records, corrupt/foreign-record preservation, small retained
+TypeScript ciphertext vectors, and transactional binding-write/reopen tests.
+The real worker/server control smoke also verifies exact key retention across
+same-process restart with an empty worker PATH. Runtime evidence remains macOS
+ARM64; Windows/Linux runtime execution is not claimed. No default switch occurs.
+
+The crypto addition requires new RustCrypto/HPKE dependencies. Existing package
+identities are retained except `ctutils` 0.4.5 → 0.4.8, required by the new
+`crypto-bigint` dependency. No unrelated dependency upgrades are intended.
+
 ## Local development and validation
 
 ```sh
 pnpm worker:rust:build
 pnpm worker:rust:check
 pnpm worker:rust:test
-node scripts/worker-rust/cargo.mjs build --example config-fixture
+node scripts/worker-rust/cargo.mjs build --example config-fixture --example crypto-fixture
 node --import tsx scripts/worker-rust/config-compatibility.mjs --binary /absolute/path/to/config-fixture
+node --import tsx scripts/worker-rust/crypto-compatibility.mjs --binary /absolute/path/to/crypto-fixture
 node scripts/worker-rust/control-smoke.mjs --worker /absolute/path/to/cantrip-worker --server /absolute/path/to/cantrip-server
 ```
 

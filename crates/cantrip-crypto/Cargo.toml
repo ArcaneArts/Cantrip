@@ -1,0 +1,19 @@
+[package]
+name = "cantrip-crypto"
+version = "0.0.0"
+description = "Cantrip endpoint encryption and compatible key envelopes"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow = "1"
+aes-gcm = { version = "=0.11.1", default-features = false, features = ["aes", "alloc", "zeroize"] }
+base64 = "0.22"
+cantrip-protocol = { path = "../cantrip-protocol" }
+cantrip-wire = { path = "../cantrip-wire" }
+getrandom = "0.3"
+hkdf = "0.13"
+hpke = { version = "=0.14.1", default-features = false, features = ["alloc", "aes", "nistp", "getrandom"] }
+sha2 = "0.11"
+zeroize = "1"
