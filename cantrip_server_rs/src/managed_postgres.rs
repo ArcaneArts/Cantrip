@@ -45,26 +45,7 @@ fn binary(directory: &Path, name: &str) -> PathBuf {
     directory.join(format!("{name}{}", std::env::consts::EXE_SUFFIX))
 }
 
-fn private_directory(path: &Path) -> Result<()> {
-    std::fs::create_dir_all(path)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
-    }
-    Ok(())
-}
-
-fn private_file(path: &Path) -> Result<std::fs::File> {
-    let mut options = OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    Ok(options.open(path)?)
-}
+use cantrip_host::files::{open_private as private_file, secure_directory as private_directory};
 
 impl ManagedPostgres {
     pub async fn start(root: &Path, binary_directory: &Path) -> Result<Self> {

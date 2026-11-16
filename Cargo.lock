@@ -352,6 +352,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cantrip-host"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "libc",
+ "os_pipe",
+ "tempfile",
+ "tokio",
+ "windows-sys",
+]
+
+[[package]]
 name = "cantrip-icu-collator-data"
 version = "0.0.0"
 
@@ -411,6 +423,7 @@ dependencies = [
  "base64 0.22.1",
  "cantrip-config",
  "cantrip-framing",
+ "cantrip-host",
  "cantrip-logging",
  "cantrip-protocol",
  "cantrip-scheduling",

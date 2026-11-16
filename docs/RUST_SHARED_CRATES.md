@@ -22,16 +22,16 @@ Redis coordination, HTTP handlers, migrations, and server startup stay outside
 their dependency graphs. No crate may hide a server dependency behind its default
 features.
 
-| Library                                                  | Existing implementation and boundary                                                                                                 | Future worker consumer                                                                |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| `cantrip-wire`                                           | `wire/value`, coercion, JSON text, date semantics, text helpers, host locale/timezone snapshot, and canonical history payload digest | Every protocol producer/consumer and worker history publication                       |
-| `cantrip-scheduling`                                     | Pure cron/timezone calculations from `project_automations`; scheduler policy and SQL remain server-owned                             | Worker automation schedule calculations                                               |
-| `cantrip-protocol`                                       | Generated contract assets, validation engine, refinements, pure capability and execution/identity contracts from `wire`              | Worker requests, events, notifications, encrypted envelopes, and execution validation |
-| `cantrip-framing`                                        | WorkerLink, tunnel, and remote-surface binary codecs; no authorization or resource lookup                                            | Worker transport framing and stream adapters                                          |
-| `cantrip-config`                                         | Environment-file parsing, readers, and configuration errors; no `ServerConfig` or deployment defaults                                | Future worker configuration parsing                                                   |
-| `cantrip-logging`                                        | Structured records, redaction, formatting, buffer/archive management and explicit logging lifecycle                                  | Worker diagnostic and log-stream infrastructure                                       |
-| `cantrip-transport`                                      | Existing reusable ordered subscriptions, correlation/deadlines, bounded queues, cancellation and lifecycle mechanisms                | Worker connection and command infrastructure, implemented later                       |
-| Filesystem/process library, subject to source inspection | Private writes, atomic publication, and child ownership mechanisms with useful independent boundaries                                | Worker local persistence and child cleanup, implemented later                         |
+| Library              | Existing implementation and boundary                                                                                                 | Future worker consumer                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| `cantrip-wire`       | `wire/value`, coercion, JSON text, date semantics, text helpers, host locale/timezone snapshot, and canonical history payload digest | Every protocol producer/consumer and worker history publication                       |
+| `cantrip-scheduling` | Pure cron/timezone calculations from `project_automations`; scheduler policy and SQL remain server-owned                             | Worker automation schedule calculations                                               |
+| `cantrip-protocol`   | Generated contract assets, validation engine, refinements, pure capability and execution/identity contracts from `wire`              | Worker requests, events, notifications, encrypted envelopes, and execution validation |
+| `cantrip-framing`    | WorkerLink, tunnel, and remote-surface binary codecs; no authorization or resource lookup                                            | Worker transport framing and stream adapters                                          |
+| `cantrip-config`     | Environment-file parsing, readers, and configuration errors; no `ServerConfig` or deployment defaults                                | Future worker configuration parsing                                                   |
+| `cantrip-logging`    | Structured records, redaction, formatting, buffer/archive management and explicit logging lifecycle                                  | Worker diagnostic and log-stream infrastructure                                       |
+| `cantrip-transport`  | Existing reusable ordered subscriptions, correlation/deadlines, bounded queues, cancellation and lifecycle mechanisms                | Worker connection and command infrastructure, implemented later                       |
+| `cantrip-host`       | Private writes, exclusive directory publication, pipe EOF and owned Unix child signal mechanisms                                     | Worker local persistence and child cleanup, implemented later                         |
 
 The wire layer is the bottom of this graph. Scheduling and protocol build on its
 semantics; framing builds on protocol. Logging, configuration, and transport may
@@ -62,10 +62,10 @@ server policy stayed in place.
 5. **Logging — merged in [#3160](https://github.com/ArcaneArts/Cantrip/pull/3160).** Extract records, formatting/redaction, archives, and
    lifecycle with explicit process configuration. Keep HTTP instrumentation and
    authenticated endpoints in the server.
-6. **Transport primitives — implemented and locally validated.** Extract mechanisms after the wire,
+6. **Transport primitives — merged in [#3161](https://github.com/ArcaneArts/Cantrip/pull/3161).** Extract mechanisms after the wire,
    framing, and logging boundaries are available. Keep Redis and server authority
    outside the library; preserve ordering, backpressure, and shutdown behavior.
-7. **Filesystem/process mechanisms — pending.** Inspect and extract cohesive
+7. **Filesystem/process mechanisms — implemented and locally validated.** Inspect and extract cohesive
    existing mechanisms. Preserve platform implementations and server policy.
 8. **Independent consumption and integration — pending.** Add a small real
    library-consumption example, audit remaining dependencies and packaging paths,
@@ -333,3 +333,38 @@ updated fixture's targeted Clippy pass with warnings denied. Formatting, diff,
 decomposition, and Run-contract checks pass. Dependency metadata contains no
 server/database/Redis/HTTP runtime and preserves all third-party versions and
 checksums. No full suite, hosted CI, release, or platform campaign ran.
+
+Milestone 6 merged in [#3161](https://github.com/ArcaneArts/Cantrip/pull/3161),
+commit `a2058b7ad`. Primary was synchronized and its owned worktree removed.
+
+Milestone 7 uses branch `agent/manual/rust-shared-host`. `cantrip-host` contains
+private file creation/durable writes, creation-only and permission-enforcing
+directory variants, native exclusive directory publication, pipe EOF notification,
+and signaling an owned unreaped Unix child. The publication implementation keeps
+Linux/macOS/Windows operations and Unix parent-directory sync unchanged. Private
+file consumers in profile copying, managed PostgreSQL credentials, and local key
+creation now share the same exclusive open implementation.
+
+Inspection left profile path/checksum/manifest policy, database installation,
+activation/recovery, Unix PostgreSQL lifetime locks and startup/shutdown escalation,
+and Windows pg_ctl job supervision in the server. The Windows job owner combines
+PostgreSQL launcher and recovery policy; extracting it would require a process
+framework beyond this goal. The shared Unix signal helper retains a real unreaped
+child handle and caller-created group, with no persisted PID inference. The server
+still chooses its signals and supplies the same diagnostic context. The pipe
+thread receives its reader/name explicitly and retains the existing EOF/error
+behavior without making Tokio teardown join a blocking stdin task.
+
+Milestone 7 local validation passed on macOS ARM64: independent host tests cover
+exclusive private writes, existing-directory permission variants, publication
+collisions, pipe EOF, and signaling/reaping an owned child. All six existing
+profile-file tests pass, including opaque bytes, empty directories, non-replacing
+publication, tampering/path rejection, file links, and cycle handling. Workspace
+all-target Clippy passes with warnings denied; formatting, diff, decomposition,
+and Run-contract checks pass. Shared dependencies exclude server/database/Redis/HTTP
+code and preserve third-party versions/checksums. A real standalone bundled
+PostgreSQL startup/readiness/stdin-shutdown smoke passed; pg_ctl confirmed the
+owned database stopped. Its first fixture attempt correctly rejected a pnpm-dev
+worker token in standalone mode; removing that fixture-only variable allowed the
+actual intended operation. The temporary database was removed after shutdown.
+No full lifecycle campaign, migration matrix, hosted CI, or Windows execution ran.
