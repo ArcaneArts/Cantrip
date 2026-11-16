@@ -2,7 +2,7 @@
 resolver = "3"
 # A precise glob avoids Cargo 1.93 treating every nested vendored path as an
 # explicitly included member, which would override the third-party exclusion.
-members = ["cantrip_server_r[s]", "crates/*"]
+members = ["cantrip_server_r[s]", "cantrip_worker_r[s]", "crates/*"]
 default-members = ["cantrip_server_rs"]
 exclude = [
     "cantrip_app/src-tauri",

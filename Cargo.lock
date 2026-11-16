@@ -512,6 +512,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cantrip-worker"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "cantrip-config",
+ "cantrip-host",
+ "cantrip-wire",
+ "tempfile",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "cc"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
