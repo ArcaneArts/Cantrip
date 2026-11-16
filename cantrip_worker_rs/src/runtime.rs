@@ -107,6 +107,12 @@ async fn cycle(
     let generation = uuid::Uuid::new_v4().to_string();
     logs.event("info","Cantrip Worker startup began",json!({"event":"worker.startup.started","subsystem":"worker-startup","operation":"start","status":"started","version":version::value()["version"],"workerGeneration":generation}));
     logs.event("info","Worker configuration loaded",json!({"event":"worker.configuration.loaded","workerId":worker,"credentialState":config.token_source}));
+    let encryption_identity = crate::encryption::Identity::open(
+        &config.data_directory,
+        &config.server_url,
+        &config.worker_id,
+        config.token_source == "development",
+    )?;
     let client = http::client()?;
     let started = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let heartbeat = http::heartbeat(&config, host.platform, host.architecture, &started)?;
@@ -204,6 +210,7 @@ async fn cycle(
         bail!("Worker heartbeat publisher stopped unexpectedly.");
     }
     outgoing.close();
+    drop(encryption_identity);
     logs.event("info","Cantrip Worker stopped",json!({"event":"worker.shutdown.completed","subsystem":"worker-startup","operation":"shutdown","status":"completed","reasonCode":if outcome.restart{"restart-requested"}else{"signal"},"trigger":outcome.trigger,"workerId":worker,"durationMs":began.elapsed().as_millis() as u64}));
     Ok(outcome)
 }

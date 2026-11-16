@@ -126,6 +126,10 @@ try {
   assert.equal(publishedVersion.status, 0, publishedVersion.stderr);
   assert.equal(JSON.parse(publishedVersion.stdout).version, first.body.version);
   const credentialPath = path.join(dataDirectory, "worker-credential.json");
+  const encryptionPath = path.join(dataDirectory, "worker-encryption-key.json");
+  const encryptionRecord = await readFile(encryptionPath, "utf8");
+  assert.equal(JSON.parse(encryptionRecord).version, 2);
+  assert.equal(JSON.parse(encryptionRecord).workerId, "native-control-worker");
   const initialLogs = await call(
     "GET",
     "/api/workers/native-control-worker/logs?limit=200",
@@ -185,6 +189,11 @@ try {
     "same-process restart retains the log buffer",
   );
   assert.deepEqual(JSON.parse(await readFile(credentialPath, "utf8")), saved);
+  assert.equal(
+    await readFile(encryptionPath, "utf8"),
+    encryptionRecord,
+    "restart retains the exact endpoint encryption identity",
+  );
   const revoked = await call(
     "DELETE",
     `/api/workers/native-control-worker/credentials/${rotated.body.credentialSummary.id}`,

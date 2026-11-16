@@ -7,6 +7,8 @@ publish.workspace = true
 
 [dependencies]
 anyhow = "1"
+cantrip-crypto = { path = "../crates/cantrip-crypto" }
+zeroize = "1"
 cantrip-config = { path = "../crates/cantrip-config" }
 cantrip-host = { path = "../crates/cantrip-host" }
 cantrip-wire = { path = "../crates/cantrip-wire" }

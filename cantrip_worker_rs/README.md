@@ -8,11 +8,13 @@ selecting the Node worker until the complete implementation is ready.
 The native `cantrip-worker` executable currently supports configuration,
 version-1 identity/credential persistence, logging/archive lifecycle, enrollment,
 heartbeat, WebSocket readiness/reconnect, version queries, credential rotation,
-in-process restart and log reads. Remaining domains fail explicitly and advertise
+in-process restart and log reads. It also opens and retains compatible endpoint
+encryption identities using native P-256/HPKE and private version-2 records. Remaining domains fail explicitly and advertise
 unavailable capabilities. This is not yet the complete production replacement.
 
 The implementation reuses `cantrip-config`, `cantrip-wire`, `cantrip-host`,
-`cantrip-logging` and `cantrip-protocol`, without a server or database dependency.
+`cantrip-logging`, `cantrip-protocol` and `cantrip-crypto`, without a server or
+database dependency.
 Other shared foundations will be integrated with their owning domains. Credentials
 omit `Debug`. Initialization loads the optional environment file synchronously
 before starting Tokio/archive threads. Shutdown joins owned producers and closes
@@ -28,5 +30,8 @@ flags are `--env-file-if-exists=<path>`, `--shutdown-on-stdin-close`, `--version
 and `--help`. Before testing, use a disposable profile and explicit enrollment;
 do not run Node and Rust workers against the same mutable profile.
 
-The configuration and HTTP examples are development-only differential drivers
+Authenticated encryption-grant refresh, protected domain and stream adapters
+remain pending; opening a persisted identity does not authorize a component key.
+
+The configuration, HTTP and crypto examples are development-only differential drivers
 that emit synthetic secrets. Never run them against real profiles.

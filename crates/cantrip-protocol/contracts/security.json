@@ -805,7 +805,15 @@
     "modelOperationUsageIdentitySchema": 7653,
     "modelOperationUsageEvidenceSchema": 7652,
     "taskGoalCycleDispatchPublicationResultSchema": 12455,
-    "cuaEffectPreferencesSchema": 2848
+    "cuaEffectPreferencesSchema": 2848,
+    "encryptionAssociatedDataSchema": 12457,
+    "encryptedPayloadEnvelopeSchema": 157,
+    "encryptionPublicKeySchema": 793,
+    "hpkeWrappedKeyEnvelopeSchema": 801,
+    "workerComponentKeyGrantSchema": 835,
+    "encryptionComponentScopeSchema": 833,
+    "workerEncryptionComponentScopeSchema": 838,
+    "encryptionKeyRevisionSchema": 13
   },
   "nodes": [
     {
@@ -75470,6 +75478,50 @@
       "optionalOut": true,
       "innerType": 2378,
       "checks": []
-    }
+    },
+    {
+      "type": "object",
+      "name": "encryptionAssociatedDataSchema",
+      "shape": {
+        "ownerId": 12458,
+        "component": 833,
+        "table": 12459,
+        "rowId": 12460,
+        "field": 12461,
+        "formatVersion": 15,
+        "keyRevision": 13
+      },
+      "catchall": 12462,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 120, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 120, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] }
   ]
 }
