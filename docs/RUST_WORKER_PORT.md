@@ -15,9 +15,10 @@ locating changes but are not behavioral proof or a runtime gate.
 
 `cantrip_worker_rs` now builds the native `cantrip-worker` executable. It includes
 configuration/profile identity, worker logging/archive lifetimes, enrollment and
-heartbeat HTTP, and a reconnecting WebSocket control connection. Four real native
-handlers are installed: `worker.version`, `worker.credential.rotate`,
-`worker.restart`, and `diagnostics.logs.read`. Other commands fail explicitly;
+heartbeat HTTP, a reconnecting WebSocket control connection and authenticated
+encryption-grant lifecycle. Five real native handlers are installed:
+`worker.version`, `worker.credential.rotate`, `worker.restart`,
+`diagnostics.logs.read`, and `worker.encryption.refresh`. Other commands fail explicitly;
 unimplemented capabilities are reported unavailable. Production packaging still
 selects Node. Nothing invokes the Node worker as a native fallback.
 
@@ -58,7 +59,7 @@ direct calls and imported handlers, startup constructions/event names and
 publication call sites. It currently identifies 323 distinct command names across
 546 primary/delegated switch sites. These counts earn no implementation credit.
 Follow constructors, nested handlers, callbacks and dynamic routing manually.
-The four native control handlers above are implemented. Other indexed commands
+The five native control handlers above are implemented. Other indexed commands
 remain pending; the source index itself grants no implementation credit.
 
 Regenerate deliberately with `node scripts/worker-rust/inventory.mjs`. It uses
@@ -71,7 +72,7 @@ loaded by a production service.
 | Configuration and profile identity | `config.ts`, `credential-store.ts`, `codex/bundled-runtime.ts`                                                                            | `config`, `credentials`, `installation` modules                                        | Local Node differential checks, private file/rotation tests. Resolution only; Codex manifest verification/probing still pending                                                                                                                                                                                  |
 | Logging and process lifetime       | `logger.ts`, `log-stream.ts`, `runtime-loop.ts`, `process-guard.ts`, `index.ts` startup/stop                                              | Native logging adapter and owned runtime cycles                                        | Archive/options/privacy buffer, subscriptions, retained restart cursors, signal/stdin shutdown and actor teardown tested. Remote log-stream leases, full command log context and native child/execution retirement remain pending                                                                                |
 | Enrollment/control transport       | `enrollment.ts`, `heartbeat.ts`, `transport.ts`, routing/observation adapters                                                             | Native enrollment/replacement, heartbeat, readiness/reconnect and credential lifecycle | Actual Rust-server round trip, rotation/reconnect, restart/revocation and HTTP oracles pass. Execution lifetime/admission fencing, reconnect-grace resource callbacks, notifications/events/task acknowledgments, data-plane adapters, congestion fidelity and deployment TLS/proxy configuration remain pending |
-| Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | `cantrip-crypto`, `encryption::Identity`                                               | Native AES/HPKE/HKDF/HMAC and compatible key records; authenticated grant refresh, domain wrappers and encrypted stream/replay adapters remain pending                                                                                                                                                           |
+| Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | `cantrip-crypto`, `encryption::{Identity,Service}`                                     | Native primitives, compatible keys, authenticated grants/rotation/revocation and refresh generations; protected domain and encrypted stream/replay adapters remain pending                                                                                                                                       |
 | Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Pending                                                                                | Temporary roots; symlink/containment, binary/text, partial writes, watches and relocation fixtures; use docs/WORKTREES.md focused matrix                                                                                                                                                                         |
 | Git/projects/GitHub                | `commands/{git,worktree,github}.ts`, `git.ts`, `worktrees.ts`, replicas, repository operations, exports and shares                        | Pending                                                                                | Owned repositories; command-specific differential tests, operation identity/recovery and actual Git/GitHub protocol boundaries                                                                                                                                                                                   |
 | History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | Pending                                                                                | Replay/crash/reopen, stable UTF-16 keys/digests, outbox acknowledgments and history reducer/projection fixtures; no cursor resets or uncertain effect replay                                                                                                                                                     |
@@ -99,8 +100,8 @@ Malformed identity files are never silently replaced. A stored credential
 suppresses a pending enrollment code, as in the existing worker. No secrets are
 included in a derived Rust `Debug` implementation.
 
-The endpoint key record now reopens and publishes compatibly; authenticated
-grant/binding lifecycle remains pending. Remaining state includes routing registries,
+The endpoint key record and authenticated grant/binding lifecycle now reopen and
+publish compatibly. Remaining state includes routing registries,
 repository-operation stores, inference keeper journals, native history
 sources/archives/outboxes/cursors, native settings and goal deliveries,
 suspension/handoff journals, chat scratch/relocation and attachment stores,
@@ -147,7 +148,7 @@ clean and owned worktree/artifact cleanup. Do not stack dependent unmerged work.
 
 1. Configuration/identity foundation and baseline ledger — merged [#3164](https://github.com/ArcaneArts/Cantrip/pull/3164).
 2. Worker logging/lifecycle, native executable and initial control transport — merged [#3165](https://github.com/ArcaneArts/Cantrip/pull/3165); transport/execution adapters continue with their owning domains.
-3. Endpoint cryptography and protected persistence — native primitives and key records in the current subcycle; authenticated grants and domain/stream adapters follow.
+3. Endpoint cryptography and protected persistence — primitives/key records merged in [#3166](https://github.com/ArcaneArts/Cantrip/pull/3166); authenticated grants in the current subcycle; protected domain/stream adapters follow.
 4. Files/workspace/project and repository foundations.
 5. Git/GitHub, sharing, attachments and related commands.
 6. Durable journals/history/projection and recovery.
@@ -214,7 +215,8 @@ congested transport behavior must be completed with those subsystems before
 cutover. Windows code has a UTF-8 process manifest and native hostname API, but
 Windows/Linux execution has not been claimed or newly qualified.
 
-The endpoint-crypto subcycle uses branch `agent/manual/rust-worker-endpoint-crypto`
+The endpoint-crypto subcycle merged in [#3166](https://github.com/ArcaneArts/Cantrip/pull/3166),
+commit `b06777dc1`, using branch `agent/manual/rust-worker-endpoint-crypto`
 and reference commit `89b984bd0`. New `cantrip-crypto` supplies native AES payloads,
 canonical AAD/envelope strings, P-256 HPKE/worker wrappers and HKDF/HMAC derivation.
 It uses maintained libraries and the existing generated protocol validation.
@@ -227,8 +229,8 @@ binding publication writes version 2. Exact/development loopback port policies,
 UUID identity, keypair integrity, persisted revision high-water values, owner-only
 Unix permissions and recoverable publication errors are preserved. Bindings on
 disk are not current authorization, and no component keys are advertised from
-this identity-only stage. Grant refresh/concurrency/revocation and every protected
-domain/stream adapter remain required before cutover.
+that identity-only stage. That subcycle left grant refresh/concurrency/revocation
+and every protected domain/stream adapter for subsequent work.
 
 Local checks for this subcycle pass 57 differential comparisons, seven new native
 crypto/identity tests plus the nine existing worker tests, workspace all-target
@@ -245,15 +247,54 @@ The crypto addition requires new RustCrypto/HPKE dependencies. Existing package
 identities are retained except `ctutils` 0.4.5 → 0.4.8, required by the new
 `crypto-bigint` dependency. No unrelated dependency upgrades are intended.
 
+The authenticated-grants subcycle uses branch
+`agent/manual/rust-worker-encryption-grants` and reference commit `b06777dc1`.
+The native service validates authenticated bootstrap identities and grant metadata,
+opens real HPKE component keys, retains older granted revisions, and persists
+revision high-water values before publishing replacement keys. A changed logical
+server/account binding resets revisions only after the complete new authorization
+validates and persists. Invalid grants leave the retained disk binding intact.
+
+Identical in-flight refreshes coalesce. An explicit grant request retries when a
+coalesced heartbeat predates that grant; that continuation remains owned even if
+the caller abandons its future. Newer refresh generations fence older successes
+and failures. Network/5xx failures retain prior material; 4xx or malformed/invalid
+authorization clears it. Lock/revocation clears component buffers, and runtime
+close cancels and joins HTTP work and command continuations before restart.
+Status/error text preserves the reference UTF-16 truncation and wire error codes.
+
+Heartbeat publication now refreshes and advertises actual encryption status.
+`worker.encryption.refresh` runs asynchronously so unrelated control commands and
+shutdown remain serviceable. Per-domain content/stream protection, replay state,
+and resource retirement/reconciliation callbacks remain unfinished with their
+owning subsystems; grant availability does not complete those capabilities.
+
+Focused local evidence: 129 compared observations in two authorization/concurrency
+traces against the actual Node service, comparing status/errors, returned key bytes, HTTP
+registration/authentication, retained bindings and revision files. Three native
+grant tests cover restart rollback, replacement-binding failure and actual network
+work surviving an abandoned caller then joining on close. The real Rust worker
+and server initialize an anonymous encryption profile, register/approve the worker,
+open client-produced grants, rotate revisions and revoke authorization over the
+production HTTP/control handlers. The worker runs with an empty PATH and retains
+its exact identity through restart. macOS ARM64 execution is the available local
+runtime evidence; no Windows/Linux runtime claim or production cutover occurs.
+All 19 native worker/crypto tests pass, including three new grant tests. Workspace
+all-target Clippy with warnings denied and the generated-protocol manifest test
+pass locally. The real grant/control flow passes both stdin and SIGTERM shutdown.
+No external lockfile package identity changed; one additional generated root
+exposes the existing status schema without changing any old node or root index.
+
 ## Local development and validation
 
 ```sh
 pnpm worker:rust:build
 pnpm worker:rust:check
 pnpm worker:rust:test
-node scripts/worker-rust/cargo.mjs build --example config-fixture --example crypto-fixture
+node scripts/worker-rust/cargo.mjs build --example config-fixture --example crypto-fixture --example grant-fixture
 node --import tsx scripts/worker-rust/config-compatibility.mjs --binary /absolute/path/to/config-fixture
 node --import tsx scripts/worker-rust/crypto-compatibility.mjs --binary /absolute/path/to/crypto-fixture
+node --import tsx scripts/worker-rust/grant-compatibility.mjs --binary /absolute/path/to/grant-fixture
 node scripts/worker-rust/control-smoke.mjs --worker /absolute/path/to/cantrip-worker --server /absolute/path/to/cantrip-server
 ```
 

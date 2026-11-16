@@ -134,8 +134,9 @@ still server-owned.
 The server stores encryption material opaquely. Shared envelope validation does
 not implement HPKE, component keys, endpoint encryption or worker decryption.
 The worker port adds `cantrip-crypto` with native payload/HPKE/KDF primitives
-and endpoint key persistence. Authenticated grants and protected domain/stream
-adapters remain ongoing work. This new endpoint crate is consumed by the worker,
+and endpoint key persistence. The worker now supplies authenticated grant
+refresh and revision/revocation handling; protected domain/stream adapters remain
+ongoing work. This new endpoint crate is consumed by the worker,
 not the server.
 
 The existing `cantrip-interaction` library already supplies geometry, cursor,

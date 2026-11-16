@@ -183,6 +183,9 @@ impl Identity {
             accepted_revisions,
         })
     }
+    pub fn worker_id(&self) -> &JsString {
+        &self.worker_id
+    }
     pub fn registration(&self) -> Value {
         json!({"principalId":self.principal_id,"publicKey":self.keys.public_key()})
     }
@@ -254,7 +257,7 @@ fn loopback(url: &url::Url) -> bool {
         Some("127.0.0.1" | "localhost" | "[::1]" | "::1")
     )
 }
-fn canonical_url(input: &str, allow_port_change: bool) -> Result<String> {
+pub(super) fn canonical_url(input: &str, allow_port_change: bool) -> Result<String> {
     let mut url = url::Url::parse(input).map_err(|_| {
         error(
             "identity-mismatch",

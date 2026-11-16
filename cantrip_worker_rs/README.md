@@ -8,7 +8,8 @@ selecting the Node worker until the complete implementation is ready.
 The native `cantrip-worker` executable currently supports configuration,
 version-1 identity/credential persistence, logging/archive lifecycle, enrollment,
 heartbeat, WebSocket readiness/reconnect, version queries, credential rotation,
-in-process restart and log reads. It also opens and retains compatible endpoint
+in-process restart, log reads and authenticated encryption-grant refresh. It opens
+and retains compatible endpoint
 encryption identities using native P-256/HPKE and private version-2 records. Remaining domains fail explicitly and advertise
 unavailable capabilities. This is not yet the complete production replacement.
 
@@ -30,8 +31,13 @@ flags are `--env-file-if-exists=<path>`, `--shutdown-on-stdin-close`, `--version
 and `--help`. Before testing, use a disposable profile and explicit enrollment;
 do not run Node and Rust workers against the same mutable profile.
 
-Authenticated encryption-grant refresh, protected domain and stream adapters
-remain pending; opening a persisted identity does not authorize a component key.
+Authenticated bootstrap validates principal/server/owner bindings, opens scoped
+grants, persists revision high-water values, and fences stale refresh results.
+Heartbeat publication and `worker.encryption.refresh` use this service; transient
+failures retain keys, while invalid authorization/revocation clears them. Refresh
+work and coalesced retries survive an abandoned caller and are joined at shutdown.
+Protected domain/stream adapters and their resource-revocation hooks remain pending;
+a stored identity alone never authorizes a component key.
 
-The configuration, HTTP and crypto examples are development-only differential drivers
+The configuration, HTTP, crypto and grant examples are development-only differential drivers
 that emit synthetic secrets. Never run them against real profiles.

@@ -813,7 +813,8 @@
     "workerComponentKeyGrantSchema": 835,
     "encryptionComponentScopeSchema": 833,
     "workerEncryptionComponentScopeSchema": 838,
-    "encryptionKeyRevisionSchema": 13
+    "encryptionKeyRevisionSchema": 13,
+    "workerEncryptionStatusSchema": 1093
   },
   "nodes": [
     {
