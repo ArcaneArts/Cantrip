@@ -1,17 +1,17 @@
 //! Croner JS's civil traversal and Intl time-zone roundtrips, including its
 //! year-3000 search boundary and earlier-fold behavior. See retained MIT license.
 use super::cron::Pattern;
-use crate::wire::{self, JsString};
 use anyhow::{Context, Result};
+use cantrip_wire::{JsString, date};
 use jiff::{Timestamp, tz::TimeZone};
 pub(super) type Fields = [i64; 6]; // year, zero-based month, day, hour, minute, second
 const DAY: i64 = 86_400_000;
 const MONTH: [i64; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
 fn utc(f: Fields) -> Result<i64> {
-    let value = i128::from(
-        wire::date_utc_milliseconds(f[0], f[1], f[2]).context("Cron date outside TimeClip")?,
-    ) + i128::from((f[3] * 3600 + f[4] * 60 + f[5]) * 1000);
+    let value =
+        i128::from(date::utc_milliseconds(f[0], f[1], f[2]).context("Cron date outside TimeClip")?)
+            + i128::from((f[3] * 3600 + f[4] * 60 + f[5]) * 1000);
     anyhow::ensure!(
         value.abs() <= 8_640_000_000_000_000,
         "Cron date outside TimeClip"
@@ -19,7 +19,7 @@ fn utc(f: Fields) -> Result<i64> {
     Ok(value as i64)
 }
 fn utc_fields(ms: i64) -> Result<Fields> {
-    let (y, m, d) = wire::date_utc_fields(ms).context("Cron date outside TimeClip")?;
+    let (y, m, d) = date::utc_fields(ms).context("Cron date outside TimeClip")?;
     let c = ms.rem_euclid(DAY);
     Ok([y, m - 1, d, c / 3_600_000, c / 60_000 % 60, c / 1000 % 60])
 }
@@ -69,8 +69,7 @@ fn from_tz(f: Fields, zone: &TimeZone) -> Result<i64> {
     })
 }
 pub(super) fn once_fields(expression: &JsString, zone: &TimeZone) -> Result<Fields> {
-    let parsed = wire::date_milliseconds(expression)
-        .context("Invalid ISO8601 passed to timezone parser.")?;
+    let parsed = date::parse(expression).context("Invalid ISO8601 passed to timezone parser.")?;
     let explicit = expression
         .units()
         .iter()
@@ -79,7 +78,7 @@ pub(super) fn once_fields(expression: &JsString, zone: &TimeZone) -> Result<Fiel
     let fields = if explicit {
         utc_fields(parsed)?
     } else {
-        local(parsed, crate::environment::timezone(), false)?
+        local(parsed, cantrip_wire::environment::timezone(), false)?
     };
     let utc = TimeZone::UTC;
     let timestamp = from_tz(fields, if explicit { &utc } else { zone })?;
@@ -94,7 +93,7 @@ fn last_day(year: i64, month: i64) -> Result<i64> {
     if month != 1 {
         return Ok(MONTH[month as usize]);
     }
-    Ok(utc_fields(wire::date_utc_milliseconds(year, month + 1, 0).context("Cron month")?)?[2])
+    Ok(utc_fields(date::utc_milliseconds(year, month + 1, 0).context("Cron month")?)?[2])
 }
 fn weekday(year: i64, month: i64, day: i64) -> Result<i64> {
     Ok((utc([year, month, day, 0, 0, 0])?.div_euclid(DAY) + 4).rem_euclid(7))

@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use cantrip_server::wire::{self, ValidationError, Value};
+use cantrip_protocol::{self as wire, ValidationError, Value};
 use std::{path::Path, process::Command};
 
 #[test]
@@ -26,7 +26,12 @@ fn project_automation_contracts_match_actual_protocol() -> Result<()> {
                 "--vectors",
                 schema,
             ])
-            .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap())
+            .current_dir(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .ancestors()
+                    .nth(2)
+                    .unwrap(),
+            )
             .output()?;
         anyhow::ensure!(
             output.status.success(),

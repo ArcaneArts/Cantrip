@@ -1,8 +1,8 @@
 //! Source-compatible interval anchors and civil cron evaluation. Inputs have
 //! already passed the project automation schedule contract.
-use crate::wire::JsString;
-use crate::wire::{self, Value};
 use anyhow::{Context, Result};
+use cantrip_wire::JsString;
+use cantrip_wire::{Value, date};
 
 const DAY: i64 = 86_400_000;
 const DATE_LIMIT: i128 = 8_640_000_000_000_000;
@@ -16,11 +16,11 @@ fn number(value: &Value) -> Result<i64> {
         .context("Validated automation schedule number")? as i64)
 }
 fn start(schedule: &Value) -> Option<i64> {
-    wire::date_milliseconds(schedule["startsAt"].as_js_string()?)
+    date::parse(schedule["startsAt"].as_js_string()?)
 }
 
 fn add_calendar(start: i64, count: i64, year_unit: bool) -> Option<i64> {
-    let (year, month, day) = wire::date_utc_fields(start)?;
+    let (year, month, day) = date::utc_fields(start)?;
     let target_month = month - 1 + count * if year_unit { 12 } else { 1 };
     let target_year = year + target_month.div_euclid(12);
     let normalized_month = target_month.rem_euclid(12);
@@ -29,9 +29,9 @@ fn add_calendar(start: i64, count: i64, year_unit: bool) -> Option<i64> {
     }
     // Source uses Date.UTC twice: year 0..99 maps to 1900..1999 even for
     // daysInUtcMonth, and month/day normalization happens after that mapping.
-    let last_day = wire::date_utc_milliseconds(target_year, normalized_month + 1, 0)?;
-    let (_, _, last_day) = wire::date_utc_fields(last_day)?;
-    let midnight = wire::date_utc_milliseconds(target_year, normalized_month, day.min(last_day))?;
+    let last_day = date::utc_milliseconds(target_year, normalized_month + 1, 0)?;
+    let (_, _, last_day) = date::utc_fields(last_day)?;
+    let midnight = date::utc_milliseconds(target_year, normalized_month, day.min(last_day))?;
     clipped(i128::from(midnight) + i128::from(start.rem_euclid(DAY)))
 }
 
@@ -62,10 +62,10 @@ fn interval(schedule: &Value, after: i64) -> Result<Option<i64>> {
     if !year_unit && unit != "month" {
         return Ok(None);
     }
-    let Some((start_year, start_month, _)) = wire::date_utc_fields(start) else {
+    let Some((start_year, start_month, _)) = date::utc_fields(start) else {
         return Ok(None);
     };
-    let Some((after_year, after_month, _)) = wire::date_utc_fields(after) else {
+    let Some((after_year, after_month, _)) = date::utc_fields(after) else {
         return Ok(None);
     };
     let rough = if year_unit {
@@ -92,7 +92,7 @@ fn named_zone(name: &str) -> Result<jiff::tz::TimeZone, jiff::Error> {
         .get_or_init(jiff::tz::TimeZoneDatabase::bundled)
         .get(name)
 }
-pub(crate) fn timezone(name: &str) -> Result<jiff::tz::TimeZone> {
+pub fn timezone(name: &str) -> Result<jiff::tz::TimeZone> {
     let legacy = match name.to_ascii_lowercase().as_str() {
         "etc/unknown" | "factory" | "posixrules" => anyhow::bail!("Invalid automation time zone"),
         "us/pacific-new" => Some(named_zone("America/Los_Angeles")),
@@ -223,7 +223,7 @@ pub fn next(schedule: &Value, after: i64) -> Result<Option<i64>> {
     super::cron_date::next(&pattern, &zone, after)
 }
 
-pub(crate) fn cron_error(expression: &JsString, zone: &jiff::tz::TimeZone) -> Option<JsString> {
+pub fn cron_error(expression: &JsString, zone: &jiff::tz::TimeZone) -> Option<JsString> {
     if expression
         .units()
         .iter()

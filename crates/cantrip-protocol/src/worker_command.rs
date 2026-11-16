@@ -126,9 +126,9 @@ pub(super) fn refine(
             };
             prefix == 0
                 || units.len() == prefix
-                || units[prefix..]
-                    .iter()
-                    .any(|u| char::from_u32(u32::from(*u)).is_some_and(crate::text::whitespace))
+                || units[prefix..].iter().any(|u| {
+                    char::from_u32(u32::from(*u)).is_some_and(cantrip_wire::text::whitespace)
+                })
         }
         "unique" => {
             let mut seen = HashSet::new();

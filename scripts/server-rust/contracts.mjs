@@ -1761,7 +1761,7 @@ if (
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
   const destination = new URL(
-    "../../cantrip_server_rs/contracts/security.json",
+    "../../crates/cantrip-protocol/contracts/security.json",
     import.meta.url,
   );
   await mkdir(fileURLToPath(new URL(".", destination)), { recursive: true });
@@ -1792,7 +1792,7 @@ if (
   );
   const runManifest = buildContractManifest(runMcpContractRoots);
   const runDestination = new URL(
-    "../../cantrip_server_rs/contracts/mcp-run.json",
+    "../../crates/cantrip-protocol/contracts/mcp-run.json",
     import.meta.url,
   );
   await writeFile(
@@ -1804,7 +1804,7 @@ if (
   );
   const surfaceManifest = buildContractManifest(surfaceMcpContractRoots);
   const surfaceDestination = new URL(
-    "../../cantrip_server_rs/contracts/mcp-surface.json",
+    "../../crates/cantrip-protocol/contracts/mcp-surface.json",
     import.meta.url,
   );
   await writeFile(
@@ -1816,7 +1816,7 @@ if (
   );
   const cliManifest = buildContractManifest(cliContractRoots);
   const cliDestination = new URL(
-    "../../cantrip_server_rs/contracts/cli.json",
+    "../../crates/cantrip-protocol/contracts/cli.json",
     import.meta.url,
   );
   await writeFile(
@@ -1827,7 +1827,7 @@ if (
     }),
   );
   const exportDestination = new URL(
-    "../../cantrip_server_rs/contracts/project-exports.json",
+    "../../crates/cantrip-protocol/contracts/project-exports.json",
     import.meta.url,
   );
   await writeFile(
@@ -1841,7 +1841,7 @@ if (
     ),
   );
   const attachmentDestination = new URL(
-    "../../cantrip_server_rs/contracts/chat-attachments.json",
+    "../../crates/cantrip-protocol/contracts/chat-attachments.json",
     import.meta.url,
   );
   await writeFile(
@@ -1855,7 +1855,7 @@ if (
     ),
   );
   const managementDestination = new URL(
-    "../../cantrip_server_rs/contracts/worker-management.json",
+    "../../crates/cantrip-protocol/contracts/worker-management.json",
     import.meta.url,
   );
   await writeFile(
@@ -1869,35 +1869,35 @@ if (
     ),
   );
   const operationsDestination = new URL(
-    "../../cantrip_server_rs/contracts/worker-operations.json",
+    "../../crates/cantrip-protocol/contracts/worker-operations.json",
     import.meta.url,
   );
   const administrationDestination = new URL(
-    "../../cantrip_server_rs/contracts/project-administration.json",
+    "../../crates/cantrip-protocol/contracts/project-administration.json",
     import.meta.url,
   );
   const chatControlDestination = new URL(
-    "../../cantrip_server_rs/contracts/chat-control.json",
+    "../../crates/cantrip-protocol/contracts/chat-control.json",
     import.meta.url,
   );
   const operationalStatusDestination = new URL(
-    "../../cantrip_server_rs/contracts/operational-status.json",
+    "../../crates/cantrip-protocol/contracts/operational-status.json",
     import.meta.url,
   );
   const workerLogsDestination = new URL(
-    "../../cantrip_server_rs/contracts/worker-logs.json",
+    "../../crates/cantrip-protocol/contracts/worker-logs.json",
     import.meta.url,
   );
   const remoteSurfacesDestination = new URL(
-    "../../cantrip_server_rs/contracts/remote-surface-http.json",
+    "../../crates/cantrip-protocol/contracts/remote-surface-http.json",
     import.meta.url,
   );
   const computerUseDestination = new URL(
-    "../../cantrip_server_rs/contracts/computer-use-http.json",
+    "../../crates/cantrip-protocol/contracts/computer-use-http.json",
     import.meta.url,
   );
   const gitObservationsDestination = new URL(
-    "../../cantrip_server_rs/contracts/git-observations.json",
+    "../../crates/cantrip-protocol/contracts/git-observations.json",
     import.meta.url,
   );
   await writeFile(
@@ -1931,7 +1931,7 @@ if (
     ),
   );
   const projectInsightsDestination = new URL(
-    "../../cantrip_server_rs/contracts/project-insights.json",
+    "../../crates/cantrip-protocol/contracts/project-insights.json",
     import.meta.url,
   );
   await writeFile(

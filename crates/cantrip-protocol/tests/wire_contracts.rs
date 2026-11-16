@@ -1,10 +1,11 @@
 use anyhow::{Context, Result};
-use cantrip_server::wire::{self, ValidationError, Value};
+use cantrip_protocol::{self as wire, ValidationError, Value};
 use std::{path::PathBuf, process::Command};
 
 fn oracle(args: &[&str]) -> Result<Value> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
+        .ancestors()
+        .nth(2)
         .unwrap()
         .to_owned();
     let output = Command::new("node")

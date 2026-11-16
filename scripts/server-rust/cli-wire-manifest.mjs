@@ -5,7 +5,7 @@ import { format, resolveConfig } from "prettier";
 import { buildContractManifest, cliContractRoots } from "./contracts.mjs";
 const manifest = buildContractManifest(cliContractRoots);
 const destination = new URL(
-  "../../cantrip_server_rs/contracts/cli.json",
+  "../../crates/cantrip-protocol/contracts/cli.json",
   import.meta.url,
 );
 const output = await format(JSON.stringify(manifest), {

@@ -15,5 +15,5 @@ The generated TZif files retain historical transitions from year 1 through 2100,
 including historical exceptions, and a recurring last-Sunday April/October rule
 for later dates, checked against Source for a complete future Gregorian cycle.
 Ordinary IANA zones use Jiff's bundled database, avoiding host zoneinfo drift.
-These assets are compiled into the
-server; extraction is a development task and requires no server runtime helper.
+These assets are compiled into the scheduling library; extraction is a development
+task and requires no runtime helper.

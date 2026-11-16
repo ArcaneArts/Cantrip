@@ -106,8 +106,10 @@ change was needed to restore these fixture sets.
 pnpm --filter @cantrip/protocol build
 node scripts/server-rust/refresh-worker-command-fixtures.mjs
 node scripts/server-rust/refresh-worker-command-alternatives.mjs
+node scripts/server-rust/cargo.mjs test -p cantrip-protocol \
+  --test wire_contracts -- --nocapture
 node scripts/server-rust/cargo.mjs test \
-  --test wire_contracts --test worker_command_contracts \
+  --test worker_command_contracts \
   --test task_input_contracts -- --nocapture
 ```
 

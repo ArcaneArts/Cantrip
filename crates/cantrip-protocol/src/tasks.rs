@@ -258,17 +258,17 @@ pub(super) fn refine(
             }
         }
         "chat-placement-create" => {
-            if crate::wire::coercion::truthy(value.get("cantripOsBindingId"))
-                && (crate::wire::coercion::truthy(value.get("worktreeId"))
-                    || crate::wire::coercion::truthy(value.get("target")))
+            if crate::coercion::truthy(value.get("cantripOsBindingId"))
+                && (crate::coercion::truthy(value.get("worktreeId"))
+                    || crate::coercion::truthy(value.get("target")))
             {
                 custom(
                     &["cantripOsBindingId"],
                     "An OS binding already selects its exact worktree; do not also supply another target.",
                 );
             }
-            if crate::wire::coercion::truthy(value.get("worktreeId"))
-                && crate::wire::coercion::truthy(value.get("target"))
+            if crate::coercion::truthy(value.get("worktreeId"))
+                && crate::coercion::truthy(value.get("target"))
             {
                 custom(
                     &[],

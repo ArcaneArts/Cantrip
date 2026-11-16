@@ -335,6 +335,30 @@ name = "cantrip-icu-collator-data"
 version = "0.0.0"
 
 [[package]]
+name = "cantrip-protocol"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "cantrip-scheduling",
+ "cantrip-wire",
+ "indexmap",
+ "regress",
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
+name = "cantrip-scheduling"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "cantrip-wire",
+ "jiff",
+ "serde_json",
+]
+
+[[package]]
 name = "cantrip-server"
 version = "0.0.0"
 dependencies = [
@@ -343,6 +367,8 @@ dependencies = [
  "async-compression",
  "axum",
  "base64 0.22.1",
+ "cantrip-protocol",
+ "cantrip-scheduling",
  "cantrip-wire",
  "chrono",
  "clap",

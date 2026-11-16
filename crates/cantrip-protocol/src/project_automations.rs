@@ -18,7 +18,7 @@ pub(super) fn refine(
     if tag == "automation-timezone" {
         if value
             .as_str()
-            .is_none_or(|v| crate::project_automations::schedule::timezone(v).is_err())
+            .is_none_or(|v| cantrip_scheduling::timezone(v).is_err())
         {
             result.issue(
                 json!({"code":"custom"}),
@@ -31,9 +31,9 @@ pub(super) fn refine(
         let mut at = path.to_vec();
         let zone = value["timeZone"]
             .as_str()
-            .and_then(|v| crate::project_automations::schedule::timezone(v).ok());
+            .and_then(|v| cantrip_scheduling::timezone(v).ok());
         if let Some(zone) = zone {
-            if let Some(message) = crate::project_automations::schedule::cron_error(
+            if let Some(message) = cantrip_scheduling::cron_error(
                 value["expression"]
                     .as_js_string()
                     .ok_or(ValidationError::Operation)?,
