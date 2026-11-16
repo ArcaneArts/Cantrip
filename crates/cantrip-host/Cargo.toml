@@ -1,0 +1,22 @@
+[package]
+name = "cantrip-host"
+version = "0.0.0"
+description = "Cantrip private files, publication, and owned-process primitives"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow = "1"
+tokio = { version = "1", features = ["process", "sync"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+
+[dev-dependencies]
+os_pipe = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt", "time"] }

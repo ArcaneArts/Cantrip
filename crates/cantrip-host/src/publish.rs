@@ -1,7 +1,7 @@
 //! Publish a complete directory without replacing any existing destination.
 use std::{io, path::Path};
 
-pub(super) fn directory(source: &Path, destination: &Path) -> io::Result<()> {
+pub fn directory(source: &Path, destination: &Path) -> io::Result<()> {
     #[cfg(unix)]
     let result = {
         use std::{ffi::CString, os::unix::ffi::OsStrExt};

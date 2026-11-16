@@ -2,7 +2,7 @@ use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     io::{Read, Write},
     path::{Component, Path, PathBuf},
     time::{Duration, UNIX_EPOCH},
@@ -47,17 +47,7 @@ mod portable_path {
         Ok(PathBuf::from(value))
     }
 }
-pub(super) fn private_directory(path: &Path) -> Result<()> {
-    let mut builder = fs::DirBuilder::new();
-    builder.recursive(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
-    }
-    builder.create(path)?;
-    Ok(())
-}
+pub(super) use cantrip_host::files::{private_directory, write_private};
 fn reserved(path: &Path) -> bool {
     matches!(path.components().next(),Some(Component::Normal(name)) if ["server-db","postgres","server-database.json","server-profile-receipt.json"].iter().any(|value| name==*value))
 }
@@ -101,14 +91,7 @@ fn copy_file(source: &Path, destination: &Path, expected: Option<&Entry>) -> Res
     let mut input = File::open(source)?;
     let metadata = input.metadata()?;
     ensure!(metadata.is_file(), "Profile asset is not a regular file");
-    let mut options = OpenOptions::new();
-    options.create_new(true).write(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut output = options.open(destination)?;
+    let mut output = cantrip_host::files::open_private(destination)?;
     let mut digest = Sha256::new();
     let mut bytes = 0u64;
     let mut buffer = [0; 65536];
@@ -263,17 +246,4 @@ pub(super) fn restore(source: &Path, destination: &Path, entries: &[Entry]) -> R
 pub(super) fn digest_copy(source: &Path, destination: &Path) -> Result<(u64, String)> {
     let entry = copy_file(source, destination, None)?;
     Ok((entry.bytes, entry.sha256))
-}
-pub(super) fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
-    let mut options = OpenOptions::new();
-    options.create_new(true).write(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut file = options.open(path)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    Ok(())
 }

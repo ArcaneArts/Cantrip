@@ -61,14 +61,7 @@ pub(super) fn resolve(config: &ServerConfig) -> Result<()> {
     }
     let mut key = [0; 32];
     getrandom::fill(&mut key)?;
-    let mut options = fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    match options.open(&file) {
+    match cantrip_host::files::open_private(&file) {
         Ok(mut out) => writeln!(
             out,
             "{}",

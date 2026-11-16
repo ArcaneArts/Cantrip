@@ -3,7 +3,7 @@
 mod activation;
 mod bundle;
 mod files;
-mod publish;
+use cantrip_host::publish;
 pub mod upgrade;
 use crate::config::{DatabaseMode, Environment, ServerConfig};
 pub use activation::{
