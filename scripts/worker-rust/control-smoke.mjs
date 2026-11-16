@@ -1,5 +1,6 @@
 // Actual native worker/server control integration. No fake worker command handler.
 import assert from "node:assert/strict";
+import { verifyGrantFlow } from "./grant-server-flow.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -127,9 +128,11 @@ try {
   assert.equal(JSON.parse(publishedVersion.stdout).version, first.body.version);
   const credentialPath = path.join(dataDirectory, "worker-credential.json");
   const encryptionPath = path.join(dataDirectory, "worker-encryption-key.json");
-  const encryptionRecord = await readFile(encryptionPath, "utf8");
+  let encryptionRecord = await readFile(encryptionPath, "utf8");
   assert.equal(JSON.parse(encryptionRecord).version, 2);
   assert.equal(JSON.parse(encryptionRecord).workerId, "native-control-worker");
+  await verifyGrantFlow(call, encryptionPath, "native-control-worker");
+  encryptionRecord = await readFile(encryptionPath, "utf8");
   const initialLogs = await call(
     "GET",
     "/api/workers/native-control-worker/logs?limit=200",
@@ -248,6 +251,7 @@ try {
       versionRoundTrip: true,
       credentialRotationAndReconnect: true,
       sameProcessRestart: true,
+      actualScopedGrantRotationAndRevocation: true,
       credentialRevocation: true,
       archiveDrained: true,
       cleanShutdown: true,

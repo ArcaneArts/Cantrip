@@ -4,6 +4,7 @@ use crate::{
     config::{self, Config, Host},
     connection::{Connection, Outbound},
     credentials::{self, Credential},
+    encryption::{RequestedGrant, Service, ServiceError},
     http,
     logging::{self, Logs},
     platform, version,
@@ -115,7 +116,9 @@ async fn cycle(
     )?;
     let client = http::client()?;
     let started = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let heartbeat = http::heartbeat(&config, host.platform, host.architecture, &started)?;
+    let encryption = Service::new(encryption_identity, &config.server_url, client.clone())?;
+    let mut heartbeat = http::heartbeat(&config, host.platform, host.architecture, &started)?;
+    heartbeat["encryption"] = encryption.status();
     http::enroll(&client, &mut config, &heartbeat, logs).await?;
     let configuration = Arc::new(Mutex::new(config));
     let outgoing = Arc::new(Outbound::default());
@@ -129,6 +132,7 @@ async fn cycle(
         logs.clone(),
         stop_rx.clone(),
         registered,
+        encryption.clone(),
     ));
     let connection = Connection {
         configuration: configuration.clone(),
@@ -150,6 +154,8 @@ async fn cycle(
     });
     let (restart, mut restart_requested) = mpsc::unbounded_channel::<()>();
     let mut timers = tokio::task::JoinSet::new();
+    let mut commands = tokio::task::JoinSet::new();
+    let mut command_failure = None;
     let mut commands_open = true;
     let mut heartbeat_result = None;
     let mut connection_result = None;
@@ -162,6 +168,9 @@ async fn cycle(
                 let failed=!matches!(&result,Ok(Ok(())));connection_result=Some(result);
                 if failed {break Outcome{restart:false,trigger:"connection-failed"};}
             },
+            result=commands.join_next(),if !commands.is_empty()=>{
+                if let Some(Err(error))=result {command_failure=Some(error);break Outcome{restart:false,trigger:"command-failed"};}
+            },
             trigger=signals.receive()=>break Outcome{restart:false,trigger},
             _=restart_requested.recv()=>break Outcome{restart:true,trigger:"restart-request"},
             request=received.recv(),if commands_open=>{
@@ -170,16 +179,22 @@ async fn cycle(
                 let kind=command["type"].as_str().unwrap_or("unknown");
                 let began=std::time::Instant::now();
                 logs.event("debug","Worker command dispatched",json!({"event":"worker.command.dispatched","operation":kind,"requestId":request["requestId"],"workerId":worker}));
-                let result=dispatch(command,&configuration,logs);
-                match &result {
-                    Ok(_)=>logs.event("debug","Worker command completed",json!({"event":"worker.command.completed","operation":kind,"requestId":request["requestId"],"workerId":worker,"durationMs":began.elapsed().as_millis() as u64})),
-                    Err(error)=>logs.event("error","Worker command failed",json!({"event":"worker.command.failed","operation":kind,"requestId":request["requestId"],"workerId":worker,"error":logging::error(error)})),
+                if kind=="worker.encryption.refresh" {
+                    let requested=RequestedGrant{component:command["component"].as_str().unwrap().to_owned(),key_revision:command["keyRevision"].as_u64().unwrap()};
+                    let credential=configuration.lock().unwrap().token.clone();
+                    let refresh=encryption.refresh(credential,Some(requested));
+                    let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
+                    commands.spawn(async move {
+                        let result=match refresh.await {
+                            Ok(status)=>http::checked("workerEncryptionRefreshResultSchema",&json!({"component":request["command"]["component"],"keyRevision":request["command"]["keyRevision"],"status":status})),
+                            Err(error)=>Err(error.into()),
+                        };
+                        finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
                 }
-                let response=match &result {
-                    Ok(result)=>json!({"kind":"response","requestId":request["requestId"],"ok":true,"result":result}),
-                    Err(error)=>json!({"kind":"response","requestId":request["requestId"],"ok":false,"error":json!({"message":error.to_string()})}),
-                };
-                if let Err(error)=outgoing.send(response) {logs.event("error","Worker command response was rejected",json!({"event":"worker.command.invalid-response","workerId":worker,"error":logging::error(&error)}));}
+                let result=dispatch(command,&configuration,logs);
+                finish(&request,&worker,logs,&outgoing,began,&result);
                 if result.is_ok() && kind=="worker.restart" {
                     let restart=restart.clone();timers.spawn(async move {tokio::time::sleep(Duration::from_millis(250)).await;let _=restart.send(());});
                 }
@@ -190,6 +205,12 @@ async fn cycle(
     stop.send_replace(true);
     timers.abort_all();
     while timers.join_next().await.is_some() {}
+    let encryption_closed = encryption.close().await;
+    while let Some(result) = commands.join_next().await {
+        if let Err(error) = result {
+            command_failure.get_or_insert(error);
+        }
+    }
     let (heartbeat_done, connection_done) = tokio::join!(
         async {
             match heartbeat_result {
@@ -204,15 +225,51 @@ async fn cycle(
             }
         }
     );
+    outgoing.close();
+    encryption_closed?;
+    if let Some(error) = command_failure {
+        return Err(anyhow!("Worker command task failed: {error}"));
+    }
     heartbeat_done.map_err(|error| anyhow!("Heartbeat task failed: {error}"))?;
     connection_done.map_err(|error| anyhow!("Worker connection task failed: {error}"))??;
     if outcome.trigger == "heartbeat-stopped" {
         bail!("Worker heartbeat publisher stopped unexpectedly.");
     }
-    outgoing.close();
-    drop(encryption_identity);
+
     logs.event("info","Cantrip Worker stopped",json!({"event":"worker.shutdown.completed","subsystem":"worker-startup","operation":"shutdown","status":"completed","reasonCode":if outcome.restart{"restart-requested"}else{"signal"},"trigger":outcome.trigger,"workerId":worker,"durationMs":began.elapsed().as_millis() as u64}));
     Ok(outcome)
+}
+fn finish(
+    request: &Value,
+    worker: &cantrip_wire::JsString,
+    logs: &Logs,
+    outgoing: &Outbound,
+    began: std::time::Instant,
+    result: &Result<Value>,
+) {
+    let kind = request["command"]["type"].as_str().unwrap_or("unknown");
+    match result {
+        Ok(_)=>logs.event("debug","Worker command completed",json!({"event":"worker.command.completed","operation":kind,"requestId":request["requestId"],"workerId":worker,"durationMs":began.elapsed().as_millis() as u64})),
+        Err(error)=>logs.event("error","Worker command failed",json!({"event":"worker.command.failed","operation":kind,"requestId":request["requestId"],"workerId":worker,"error":logging::error(error)})),
+    }
+    let response = match result {
+        Ok(result) => {
+            json!({"kind":"response","requestId":request["requestId"],"ok":true,"result":result})
+        }
+        Err(error) => {
+            let error = match error.downcast_ref::<ServiceError>() {
+                Some(error) => match error.code {
+                    Some(code) => json!({"code":code,"message":error.message}),
+                    None => json!({"message":error.message}),
+                },
+                None => json!({"message":error.to_string()}),
+            };
+            json!({"kind":"response","requestId":request["requestId"],"ok":false,"error":error})
+        }
+    };
+    if let Err(error) = outgoing.send(response) {
+        logs.event("error","Worker command response was rejected",json!({"event":"worker.command.invalid-response","workerId":worker,"error":logging::error(&error)}));
+    }
 }
 fn dispatch(command: &Value, configuration: &Arc<Mutex<Config>>, logs: &Logs) -> Result<Value> {
     match command["type"].as_str().unwrap_or("") {
@@ -246,10 +303,11 @@ fn dispatch(command: &Value, configuration: &Arc<Mutex<Config>>, logs: &Logs) ->
 async fn publish(
     config: Arc<Mutex<Config>>,
     client: reqwest::Client,
-    heartbeat: Value,
+    mut heartbeat: Value,
     logs: Arc<Logs>,
     mut stop: watch::Receiver<bool>,
     registered: watch::Sender<bool>,
+    encryption: Arc<Service>,
 ) {
     let mut connected = false;
     let mut next = tokio::time::Instant::now();
@@ -262,6 +320,14 @@ async fn publish(
             break;
         }
         tokio::select! {_=stop.changed()=>break,_=tokio::time::sleep_until(next)=>{}}
+        let token = config.lock().unwrap().token.clone();
+        let refresh =
+            tokio::select! {_=stop.changed()=>break,result=encryption.refresh(token,None)=>result};
+        if let Err(error) = refresh {
+            let worker = config.lock().unwrap().worker_id.clone();
+            logs.repeated(format!("worker-encryption-refresh-failed:{}",worker.lossy()),"warn","Worker protected server connection is not ready",json!({"event":"worker.encryption.refresh-failed","subsystem":"worker-encryption","operation":"refresh-grants","reasonCode":"request-failed","status":"retrying","workerId":worker,"error":logging::error(&anyhow!(error))}));
+        }
+        heartbeat["encryption"] = encryption.status();
         let (url, token, worker) = {
             let config = config.lock().unwrap();
             (

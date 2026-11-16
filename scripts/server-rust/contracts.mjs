@@ -836,6 +836,7 @@ export const contractRoots = [
   "encryptionComponentScopeSchema",
   "workerEncryptionComponentScopeSchema",
   "encryptionKeyRevisionSchema",
+  "workerEncryptionStatusSchema",
 ];
 
 export const projectExportContractRoots = [

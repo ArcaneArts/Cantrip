@@ -35,8 +35,10 @@ canonical bytes, and check recipient/context/tamper failures. The worker's
 implementation in both directions. Never give those development fixtures a real
 profile or secret.
 
-Authenticated grant refresh, domain-specific protected content, replay/counter
-state and encrypted stream adapters remain worker-port work. Password/recovery
+Authenticated grant refresh and its HTTP/task ownership now live in
+`cantrip_worker::encryption::Service`. This primitive crate owns no HTTP
+authorization. Domain-specific protected content, replay/counter state and
+encrypted stream adapters remain worker-port work. Password/recovery
 KDFs and client account-management operations are not implemented here; the
 worker uses granted component keys rather than account passwords/master keys.
 A generic payload operation alone does not establish those domain contracts.
