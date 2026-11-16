@@ -1,5 +1,5 @@
 // Copyright 2011 the V8 project authors. All rights reserved.
-// Adapted under the BSD-3-Clause terms in ../../third-party/V8-LICENSE.
+// Adapted under the BSD-3-Clause terms in ../V8-LICENSE.
 //! Node-compatible date parsing for protocol refinements, including malformed
 //! ISO input that still reaches a continuable custom check.
 //! Reference: nodejs/node v24.14.0, deps/v8/src/date/dateparser{,-inl}.{cc,h}.
@@ -440,7 +440,7 @@ fn days(year: i64, month: i64, day: i64) -> i128 {
         - 719468
 }
 
-pub(super) fn utc_fields(value: i64) -> Option<(i64, i64, i64)> {
+pub fn utc_fields(value: i64) -> Option<(i64, i64, i64)> {
     if value.unsigned_abs() > 8_640_000_000_000_000 {
         return None;
     }
@@ -460,7 +460,7 @@ pub(super) fn utc_fields(value: i64) -> Option<(i64, i64, i64)> {
     Some((year, month, day))
 }
 
-pub(super) fn utc_milliseconds(year: i64, month: i64, day: i64) -> Option<i64> {
+pub fn utc_milliseconds(year: i64, month: i64, day: i64) -> Option<i64> {
     // Date.UTC uses a zero-based month and maps years 0..99 into 1900..1999
     // before normalizing the month and day.
     let year = if (0..=99).contains(&year) {
@@ -473,7 +473,7 @@ pub(super) fn utc_milliseconds(year: i64, month: i64, day: i64) -> Option<i64> {
     (value.abs() <= 8_640_000_000_000_000).then_some(value as i64)
 }
 
-pub(super) fn iso_milliseconds(value: i64) -> Option<String> {
+pub fn iso_milliseconds(value: i64) -> Option<String> {
     let (year, month, day) = utc_fields(value)?;
     let year = if (0..=9999).contains(&year) {
         format!("{year:04}")
@@ -515,7 +515,7 @@ fn local(value: i128, year: i64, month: i64, day: i64, clock: [i64; 4]) -> Optio
     i64::try_from(value).ok()?.checked_sub(offset)
 }
 
-pub(super) fn parse(input: &JsString) -> Option<i64> {
+pub fn parse(input: &JsString) -> Option<i64> {
     let mut scanner = Scanner::new(input.units());
     let (mut day, mut time, mut zone) = (Day::default(), Time::default(), Zone::default());
     let mut token = iso(&mut scanner, &mut day, &mut time, &mut zone).ok()?;
@@ -616,7 +616,7 @@ pub(super) fn parse(input: &JsString) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::wire::Value;
+    use crate::Value;
     use anyhow::{Context, Result};
     use std::{path::PathBuf, process::Command};
 
@@ -676,7 +676,7 @@ console.log(JSON.stringify(values.map(value=>{let iso=null;try{iso=new Date(valu
                 child
                     .args([
                         "--exact",
-                        "wire::js_date::tests::date_parse_matches_the_actual_node_runtime",
+                        "date::tests::date_parse_matches_the_actual_node_runtime",
                         "--nocapture",
                     ])
                     .env("CANTRIP_DATE_ORACLE_CHILD", "1");
@@ -705,7 +705,8 @@ console.log(JSON.stringify(values.map(value=>{let iso=null;try{iso=new Date(valu
             return Ok(());
         }
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
+            .ancestors()
+            .nth(2)
             .unwrap()
             .to_owned();
         let output = Command::new("node")

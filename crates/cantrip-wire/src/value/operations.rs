@@ -57,12 +57,12 @@ impl Value {
         output
     }
     pub fn stringify(&self) -> String {
-        self.stringify_with_entries(crate::wire::coercion::entries)
+        self.stringify_with_entries(crate::coercion::entries)
     }
 
     /// Serialize with keys sorted by UTF-16 code units, including array-index
     /// keys. Native history uses this ordering for digests persisted by Node.
-    pub(crate) fn stringify_canonical(&self) -> String {
+    pub fn stringify_canonical(&self) -> String {
         self.stringify_with_entries(|object| {
             let mut entries: Vec<_> = object.iter().collect();
             entries.sort_unstable_by(|(a, _), (b, _)| a.units().cmp(b.units()));
@@ -124,7 +124,7 @@ impl Value {
         output
     }
 
-    pub(crate) fn into_json_round_trip(self) -> Self {
+    pub fn into_json_round_trip(self) -> Self {
         if self.json_round_trip_preserves_value() {
             self
         } else {
@@ -145,7 +145,7 @@ impl Value {
                 }
                 Self::Array(values) => pending.extend(values),
                 Self::Object(values) => {
-                    if !crate::wire::coercion::keys_in_order(values) {
+                    if !crate::coercion::keys_in_order(values) {
                         return false;
                     }
                     pending.extend(values.values());

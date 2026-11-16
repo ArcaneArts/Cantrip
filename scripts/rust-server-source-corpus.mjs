@@ -22,7 +22,16 @@ export async function readRustServerSources(root) {
     );
     return files.flat();
   }
-  return (await visit("cantrip_server_rs/src")).sort((a, b) =>
-    a.file.localeCompare(b.file),
-  );
+  const crates = await readdir(path.join(root, "crates"), {
+    withFileTypes: true,
+  });
+  const roots = [
+    "cantrip_server_rs/src",
+    ...crates
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => `crates/${entry.name}/src`),
+  ];
+  return (await Promise.all(roots.map(visit)))
+    .flat()
+    .sort((a, b) => a.file.localeCompare(b.file));
 }

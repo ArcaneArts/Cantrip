@@ -343,6 +343,7 @@ dependencies = [
  "async-compression",
  "axum",
  "base64 0.22.1",
+ "cantrip-wire",
  "chrono",
  "clap",
  "deadpool",
@@ -394,6 +395,22 @@ dependencies = [
  "uuid",
  "windows-sys",
  "zeroize",
+]
+
+[[package]]
+name = "cantrip-wire"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "icu_locale_core",
+ "indexmap",
+ "jiff",
+ "regex",
+ "ryu-js",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sys-locale",
 ]
 
 [[package]]

@@ -4,7 +4,6 @@ mod attachments;
 mod attribution;
 mod bindings;
 pub mod delivery;
-mod digest;
 mod ingest;
 mod input_alias;
 mod items;
@@ -23,7 +22,7 @@ use crate::{
     wire::Value,
 };
 use anyhow::{Context, Result};
-pub use digest::payload_digest;
+pub use cantrip_wire::payload_digest;
 use std::sync::Arc;
 
 #[derive(Clone)]

@@ -68,3 +68,6 @@ cantrip_interaction/target/
 
 # Local QA sessions and their disposable browser profiles/artifacts.
 .qa/
+
+# Shared server/library Cargo workspace output.
+/target/

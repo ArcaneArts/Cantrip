@@ -80,6 +80,7 @@ const scanTargets = [
   "cantrip_app/src",
   "cantrip_cli/src",
   "cantrip_server_rs/src",
+  "crates",
   "tests/reference-node-server/src",
   "tests/reference-node-server/test",
   "cantrip_site/src",
