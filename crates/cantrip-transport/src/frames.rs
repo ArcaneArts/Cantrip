@@ -1,33 +1,43 @@
-//! Permanent-offline callbacks execute before a replacement lifecycle is
-//! published. Temporary transport interruption retains the reconnect grace.
+//! Synchronous, ordered binary frame listeners retain JavaScript Set
+//! mutation behavior while allowing callbacks to change their subscriptions.
+use cantrip_framing::worker_link::Frame;
 use indexmap::IndexMap;
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex, Weak},
 };
 use uuid::Uuid;
-pub type OfflineHandler = Arc<dyn Fn() + Send + Sync>;
-type Group = Arc<Mutex<IndexMap<Uuid, OfflineHandler>>>;
-#[derive(Default)]
-pub(super) struct OfflineListeners {
-    groups: Mutex<HashMap<String, Group>>,
+
+pub type Handler<T> = Arc<dyn Fn(Arc<T>) -> anyhow::Result<()> + Send + Sync>;
+pub type FrameHandler = Handler<Frame>;
+pub type FrameSubscription = Subscription<Frame>;
+type Group<T> = Arc<Mutex<IndexMap<Uuid, Handler<T>>>>;
+pub struct Frames<T = Frame> {
+    groups: Mutex<HashMap<String, Group<T>>>,
 }
-pub struct OfflineSubscription {
-    registry: Weak<OfflineListeners>,
-    group: Weak<Mutex<IndexMap<Uuid, OfflineHandler>>>,
+impl<T> Default for Frames<T> {
+    fn default() -> Self {
+        Self {
+            groups: Mutex::new(HashMap::new()),
+        }
+    }
+}
+pub struct Subscription<T> {
+    registry: Weak<Frames<T>>,
+    group: Weak<Mutex<IndexMap<Uuid, Handler<T>>>>,
     worker: String,
     id: Uuid,
 }
-impl Drop for OfflineSubscription {
+impl<T> Drop for Subscription<T> {
     fn drop(&mut self) {
         let (Some(registry), Some(group)) = (self.registry.upgrade(), self.group.upgrade()) else {
             return;
         };
         let mut groups = registry.groups.lock().unwrap();
         let empty = {
-            let mut g = group.lock().unwrap();
-            g.shift_remove(&self.id);
-            g.is_empty()
+            let mut listeners = group.lock().unwrap();
+            listeners.shift_remove(&self.id);
+            listeners.is_empty()
         };
         if empty
             && groups
@@ -38,37 +48,34 @@ impl Drop for OfflineSubscription {
         }
     }
 }
-impl OfflineListeners {
-    pub(super) fn workers(&self) -> Vec<String> {
+impl<T> Frames<T> {
+    pub fn workers(&self) -> Vec<String> {
         self.groups.lock().unwrap().keys().cloned().collect()
     }
-    pub(super) fn subscribe(
-        self: &Arc<Self>,
-        worker: &str,
-        handler: OfflineHandler,
-    ) -> OfflineSubscription {
+    pub fn subscribe(self: &Arc<Self>, worker: &str, handler: Handler<T>) -> Subscription<T> {
         let mut groups = self.groups.lock().unwrap();
         let group = groups.entry(worker.into()).or_default();
         let id = {
-            let mut g = group.lock().unwrap();
-            if let Some((id, _)) = g.iter().find(|(_, h)| Arc::ptr_eq(h, &handler)) {
+            let mut listeners = group.lock().unwrap();
+            if let Some((id, _)) = listeners.iter().find(|(_, h)| Arc::ptr_eq(h, &handler)) {
                 *id
             } else {
                 let id = Uuid::new_v4();
-                g.insert(id, handler);
+                listeners.insert(id, handler);
                 id
             }
         };
-        OfflineSubscription {
+        Subscription {
             registry: Arc::downgrade(self),
             group: Arc::downgrade(group),
             worker: worker.into(),
             id,
         }
     }
-    pub(super) fn deliver(&self, worker: &str) {
+    pub fn deliver(&self, worker: &str, frame: T) -> anyhow::Result<()> {
         let group = self.groups.lock().unwrap().get(worker).cloned();
-        let Some(group) = group else { return };
+        let Some(group) = group else { return Ok(()) };
+        let frame = Arc::new(frame);
         let mut visited = HashSet::new();
         loop {
             let next = group
@@ -79,10 +86,11 @@ impl OfflineListeners {
                 .map(|(id, h)| (*id, h.clone()));
             let Some((id, handler)) = next else { break };
             visited.insert(id);
-            handler();
+            handler(frame.clone())?;
         }
+        Ok(())
     }
-    pub(super) fn clear(&self) {
+    pub fn clear(&self) {
         self.groups.lock().unwrap().clear();
     }
 }

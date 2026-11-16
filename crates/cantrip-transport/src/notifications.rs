@@ -1,5 +1,5 @@
 //! Worker notification subscriptions retain insertion order and reconnect scope.
-use crate::wire::Value;
+use cantrip_wire::Value;
 use futures::FutureExt;
 use indexmap::IndexMap;
 use std::{
@@ -15,7 +15,7 @@ pub type NotificationHandler = Arc<dyn Fn(Arc<Value>) -> NotificationFuture + Se
 pub type OwnedNotificationHandler =
     Arc<dyn Fn(String, Arc<Value>) -> NotificationFuture + Send + Sync>;
 #[derive(Clone)]
-pub(super) enum Listener {
+enum Listener {
     Plain(NotificationHandler),
     Owned(OwnedNotificationHandler),
 }
@@ -28,10 +28,11 @@ impl Listener {
         }
     }
 }
-pub(super) type Group = Arc<Mutex<IndexMap<Uuid, Listener>>>;
+#[derive(Clone, Default)]
+pub struct Group(Arc<Mutex<IndexMap<Uuid, Listener>>>);
 
 #[derive(Default)]
-pub(super) struct Notifications {
+pub struct Notifications {
     groups: Mutex<HashMap<String, Group>>,
 }
 
@@ -56,7 +57,7 @@ impl Drop for NotificationSubscription {
         if empty
             && groups
                 .get(&self.worker)
-                .is_some_and(|current| Arc::ptr_eq(current, &group))
+                .is_some_and(|current| Arc::ptr_eq(&current.0, &group))
         {
             groups.remove(&self.worker);
         }
@@ -64,17 +65,17 @@ impl Drop for NotificationSubscription {
 }
 
 impl Notifications {
-    pub(super) fn workers(&self) -> Vec<String> {
+    pub fn workers(&self) -> Vec<String> {
         self.groups.lock().unwrap().keys().cloned().collect()
     }
-    pub(super) fn subscribe(
+    pub fn subscribe(
         self: &Arc<Self>,
         worker: &str,
         handler: NotificationHandler,
     ) -> NotificationSubscription {
         self.subscribe_listener(worker, Listener::Plain(handler))
     }
-    pub(super) fn subscribe_owned(
+    pub fn subscribe_owned(
         self: &Arc<Self>,
         worker: &str,
         handler: OwnedNotificationHandler,
@@ -89,7 +90,7 @@ impl Notifications {
         let mut groups = self.groups.lock().unwrap();
         let group = groups.entry(worker.into()).or_default();
         let id = {
-            let mut listeners = group.lock().unwrap();
+            let mut listeners = group.0.lock().unwrap();
             if let Some((id, _)) = listeners.iter().find(|(_, current)| current.same(&handler)) {
                 *id
             } else {
@@ -100,17 +101,17 @@ impl Notifications {
         };
         NotificationSubscription {
             registry: Arc::downgrade(self),
-            group: Arc::downgrade(group),
+            group: Arc::downgrade(&group.0),
             worker: worker.into(),
             id,
         }
     }
 
-    pub(super) fn group(&self, worker: &str) -> Option<Group> {
+    pub fn group(&self, worker: &str) -> Option<Group> {
         self.groups.lock().unwrap().get(worker).cloned()
     }
 
-    pub(super) fn deliver(group: Group, owner: &str, notification: Value) {
+    pub fn deliver(group: Group, owner: &str, notification: Value) {
         let notification = Arc::new(notification);
         let mut visited = HashSet::new();
         let mut pending = Vec::new();
@@ -119,6 +120,7 @@ impl Notifications {
             // group so removals and additions during a callback retain Set
             // iteration behavior.
             let next = group
+                .0
                 .lock()
                 .unwrap()
                 .iter()
@@ -144,7 +146,7 @@ impl Notifications {
         }
     }
 
-    pub(super) fn clear(&self) {
+    pub fn clear(&self) {
         self.groups.lock().unwrap().clear();
     }
 }

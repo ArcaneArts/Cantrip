@@ -9,8 +9,8 @@ use std::{
 };
 
 #[derive(Default)]
-pub(crate) struct Buffered(Arc<AtomicUsize>);
-pub(crate) fn framed_size(payload: usize) -> usize {
+pub struct Buffered(Arc<AtomicUsize>);
+pub fn framed_size(payload: usize) -> usize {
     payload
         + if payload < 126 {
             2
@@ -44,10 +44,10 @@ impl<T> Drop for Queued<T> {
     }
 }
 impl Buffered {
-    pub(crate) fn bytes(&self) -> usize {
+    pub fn bytes(&self) -> usize {
         self.0.load(Ordering::Acquire)
     }
-    pub(crate) fn reserve<T>(&self, value: T, bytes: usize) -> Queued<T> {
+    pub fn reserve<T>(&self, value: T, bytes: usize) -> Queued<T> {
         self.0.fetch_add(bytes, Ordering::AcqRel);
         Queued {
             value: Some(value),
@@ -55,7 +55,7 @@ impl Buffered {
             bytes,
         }
     }
-    pub(super) fn bounded<T>(&self, value: T, bytes: usize, limit: usize) -> Option<Queued<T>> {
+    pub fn bounded<T>(&self, value: T, bytes: usize, limit: usize) -> Option<Queued<T>> {
         // Match ws.bufferedAmount > limit: the crossing frame is admitted;
         // subsequent sends fail until actual writes release their bytes.
         self.0

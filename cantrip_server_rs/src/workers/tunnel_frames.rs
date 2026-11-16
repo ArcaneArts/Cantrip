@@ -1,6 +1,6 @@
-use super::{Outgoing, Peer, TunnelFrameHandler, TunnelFrameSubscription, WorkerBridge};
+use super::{Peer, TunnelFrameHandler, TunnelFrameSubscription, WorkerBridge};
 use crate::{
-    tunnels::frame::{self, Frame},
+    tunnels::frame::{self},
     wire::{Value, value::json},
 };
 use std::sync::Arc;
@@ -60,18 +60,5 @@ impl WorkerBridge {
             json!({"event":"worker.transport.invalid-binary-frame","subsystem":"worker-transport","reasonCode":"invalid-binary-frame","status":"rejected","workerId":worker}),
             None,
         ));
-    }
-}
-impl Peer {
-    fn send_tunnel_frame(&self, frame: Frame) -> bool {
-        let _order = self.output_order.lock().unwrap();
-        if !self.is_open() {
-            return false;
-        }
-        let bytes = super::super::output::framed_size(frame.bytes().len());
-        let Some(queued) = self.buffered.bounded(frame, bytes, 8 * 1024 * 1024) else {
-            return false;
-        };
-        self.output.send(Outgoing::Tunnel(queued)).is_ok()
     }
 }

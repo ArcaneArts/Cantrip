@@ -59,10 +59,10 @@ server policy stayed in place.
    resource authority in server adapters.
 4. **Configuration — merged in [#3159](https://github.com/ArcaneArts/Cantrip/pull/3159).** Extract environment readers, environment-file
    parsing, and errors while keeping server defaults and precedence unchanged.
-5. **Logging — implemented and locally validated.** Extract records, formatting/redaction, archives, and
+5. **Logging — merged in [#3160](https://github.com/ArcaneArts/Cantrip/pull/3160).** Extract records, formatting/redaction, archives, and
    lifecycle with explicit process configuration. Keep HTTP instrumentation and
    authenticated endpoints in the server.
-6. **Transport primitives — pending.** Extract mechanisms after the wire,
+6. **Transport primitives — implemented and locally validated.** Extract mechanisms after the wire,
    framing, and logging boundaries are available. Keep Redis and server authority
    outside the library; preserve ordering, backpressure, and shutdown behavior.
 7. **Filesystem/process mechanisms — pending.** Inspect and extract cohesive
@@ -295,3 +295,41 @@ and checksums; no server/database/Redis/HTTP runtime enters the shared closure.
 Windows implementations were preserved but not executed. No full suite, hosted
 CI, installer, or device campaign ran. Disposable filesystem oracle data was
 removed after retaining its small reports.
+
+Milestone 5 merged in [#3160](https://github.com/ArcaneArts/Cantrip/pull/3160),
+commit `8fbad99d1`. Primary was synchronized and its owned worktree removed.
+
+Milestone 6 uses branch `agent/manual/rust-shared-transport`. `cantrip-transport`
+contains byte-budgeted output, outgoing peer/close lifetime, scoped ordered frame
+and notification/offline subscriptions, preparation/execution deadlines, ordered
+event/response completion, and eager lifetime-owned async operations. Existing
+server paths re-export moved types, including the outgoing peer types. Generic
+completion retains its original lock, single-shot result, delivery ordering, and
+cleanup-before-receiver behavior. Notification groups expose opaque handles
+rather than listener internals.
+
+`WorkerTransport` is still a server adapter; its local/shared implementation is
+not a worker client. The server keeps request IDs and the pending-request map,
+peer/owner/credential fencing, admission metrics and logs, event-handler failure
+policy, concrete timer cancellation, Redis claims, and reconnect decisions. The
+shared peer contains supplied continuity metadata and cannot authorize it.
+Surface congestion/drop policy remains at its server call site. Existing queue
+and threshold policies are preserved, including crossing-frame admission and
+unbounded event channels. No worker reconnect loop, executor, or WebRTC stack
+was implemented.
+
+Milestone 6 validation passed locally on macOS ARM64: the transport library builds
+and its five focused tests cover in-flight/abandoned byte reservations, first
+close, paused phase deadlines, single-shot cleanup/order, dropped result futures,
+and asynchronous notification prefixes. Fifteen existing server tests pass across
+the bridge, transport, WorkerLink/tunnel buffering and listener oracles, admission,
+and diagnostics targets. They exercise reconnect fencing, stale sockets, event
+before-response ordering, callback failure, shutdown, and late/duplicate results.
+The tunnel fixture initially rejected ordinary lifecycle events even though its
+Node oracle explicitly ignores them; the Rust fixture now uses the same event
+no-op and still compares every repeated tunnel diagnostic. No production log
+policy changed to accommodate the fixture. Workspace all-target Clippy and the
+updated fixture's targeted Clippy pass with warnings denied. Formatting, diff,
+decomposition, and Run-contract checks pass. Dependency metadata contains no
+server/database/Redis/HTTP runtime and preserves all third-party versions and
+checksums. No full suite, hosted CI, release, or platform campaign ran.
