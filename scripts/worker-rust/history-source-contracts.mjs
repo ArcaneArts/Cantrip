@@ -18,6 +18,9 @@ import {
   historySequenceSchema,
 } from "../../cantrip_worker/src/native-history-outbox-record.ts";
 
+import * as projection from "../../cantrip_worker/src/native-history-projection.ts";
+import * as rebase from "../../cantrip_worker/src/native-history-projection-rebase.ts";
+
 export const schemas = {
   nativeHistorySourceScopeSchema: journal.scopeSchema,
   nativeHistorySourceManifestSchema: journal.manifestSchema,
@@ -39,6 +42,20 @@ export const schemas = {
   nativeHistoryOutboxBaselineSchema,
   nativeHistoryOutboxRecordSchema,
   nativeHistoryOutboxSequenceSchema: historySequenceSchema,
+  nativeHistoryProjectionCursorSchema:
+    projection.nativeHistoryProjectionCursorSchema,
+  nativeHistoryProjectionManifestSchema:
+    projection.nativeHistoryProjectionManifestSchema,
+  nativeHistoryProjectionStageSchema:
+    projection.nativeHistoryProjectionStageSchema,
+  nativeHistoryProjectionPayloadSchema:
+    projection.nativeHistoryProjectionPayloadSchema,
+  nativeHistoryProjectionCommitSchema:
+    projection.nativeHistoryProjectionCommitSchema,
+  nativeHistoryProjectionRebaseHeaderSchema:
+    rebase.nativeHistoryProjectionRebaseHeaderSchema,
+  nativeHistoryProjectionRebasePayloadSchema:
+    rebase.nativeHistoryProjectionRebasePayloadSchema,
 };
 const refinements = new Map([
   [native.nativeHistorySequenceSchema, "history-source-native-sequence"],
@@ -56,6 +73,8 @@ if (
     refinements,
     recursiveJson: new Set([
       state.nativeHistoryStateObjectSchema._zod.def.valueType,
+      projection.nativeHistoryProjectionPayloadSchema.shape.state,
+      rebase.nativeHistoryProjectionRebasePayloadSchema.shape.replacement,
     ]),
   });
   await writeFile(

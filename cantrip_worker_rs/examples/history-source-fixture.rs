@@ -17,6 +17,8 @@ use std::{
 
 #[path = "support/history_outbox.rs"]
 mod history_outbox;
+#[path = "support/history_projection.rs"]
+mod history_projection;
 
 struct Keys(Mutex<Value>);
 impl Encryption for Keys {
@@ -73,9 +75,19 @@ struct Fixture {
     handles: HashMap<String, Journal>,
     outboxes: HashMap<String, cantrip_history::outbox::Outbox>,
     tracker: Tracker,
+    projections: history_projection::Engine,
 }
 impl Fixture {
     async fn run(&mut self, input: Value) -> Result<Value> {
+        if input["op"]
+            .as_str()
+            .is_some_and(|op| op.starts_with("projection."))
+        {
+            return self
+                .projections
+                .run(self.service.clone(), &self.handles, &self.outboxes, &input)
+                .await;
+        }
         if input["op"]
             .as_str()
             .is_some_and(|op| op.starts_with("outbox."))
@@ -261,6 +273,7 @@ async fn main() -> Result<()> {
         handles: HashMap::new(),
         outboxes: HashMap::new(),
         tracker: Tracker::default(),
+        projections: history_projection::Engine::default(),
     };
     for line in io::stdin().lock().lines() {
         let input = parse_json_text(&line?).map_err(|e| anyhow!("{}", e.lossy()))?;

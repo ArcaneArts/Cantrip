@@ -1,10 +1,11 @@
-//! Worker-owned, encrypted evidence before projection or server acknowledgment.
+//! Worker-owned encrypted evidence, outboxes and projection transactions.
 //! No server application, database, HTTP client, runtime or process ownership.
 pub mod content;
 pub mod cursor;
 pub mod files;
 pub mod native;
 pub mod outbox;
+pub mod projection;
 pub mod reducer;
 pub mod source;
 

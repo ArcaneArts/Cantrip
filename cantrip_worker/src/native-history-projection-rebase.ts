@@ -157,3 +157,9 @@ export async function appendNativeHistoryProjectionRebase(
       "Native history projection rebased concurrently; recover its saved plan.",
     );
 }
+
+// Native validation uses these exact persisted rebase contracts.
+export {
+  headerSchema as nativeHistoryProjectionRebaseHeaderSchema,
+  payloadSchema as nativeHistoryProjectionRebasePayloadSchema,
+};
