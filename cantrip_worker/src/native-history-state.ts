@@ -73,3 +73,6 @@ export type NativeHistoryStateItem = NativeHistoryStateTurn["items"][number];
 export type NativeHistoryCandidate = z.infer<typeof candidateSchema>;
 export type NativeHistoryOrigin = z.infer<typeof historyOriginSchema>;
 export type NativeHistoryObject = z.infer<typeof jsonObject>;
+
+// Development exporter reads the exact recursive JSON leaf used by state bodies.
+export { jsonObject as nativeHistoryStateObjectSchema };

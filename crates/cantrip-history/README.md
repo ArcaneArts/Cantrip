@@ -22,6 +22,12 @@ and the server application or database.
 - `cursor::Tracker`: validated observation frames, per-item u64 predecessor gaps,
   complete-item recovery, overlapping reads and epoch replacement. This owns no
   execution permission or committed projection cursor.
+- `reducer::reduce`: complete pure source reduction into the existing v1 state.
+  Preserve item/turn identities, relative chronology, revisions, measured times,
+  canonical/legacy separation, native u64 ordering, late reads, uncertain deltas,
+  conflicting completions and immutable settings/model attribution. Unknown or
+  malformed future evidence remains retained. JavaScript deep equality includes
+  signed zero, and actual coercion errors propagate without mutating prior state.
 - `files`: private files, flush-before-hard-link publication without overwriting
   committed paths, directory flushing and process-local serialization.
 
@@ -61,6 +67,27 @@ node --import tsx scripts/worker-rust/history-source-compatibility.mjs \
   --binary /absolute/shared-target/aarch64-apple-darwin/debug/examples/history-source-fixture
 ```
 
-Runtime observation/capture, retries, reducers, projections, checkpoints,
+Runtime observation/capture, retries, projections, checkpoints,
 prepared-batch outboxes, attachments and delivery/acknowledgment remain worker
 port work. This source journal alone advertises no new worker capability.
+
+The reducer accepts an optional previous state and the verified journal page;
+it does not advance a source cursor or authorize execution. It parses previous
+and returned state through the actual exported worker schema. States remain
+private plaintext in worker memory until the owning projection encrypts them.
+The journal fixture exercises encrypted-page reduction and serialized state
+across an actual native-process restart; this does not implement the pending
+projection/ACK transaction.
+
+Reuse the existing Node reducer suite as a differential oracle:
+
+```sh
+CANTRIP_NATIVE_HISTORY_FIXTURE=/absolute/shared-target/aarch64-apple-darwin/debug/examples/history-source-fixture \
+  node_modules/.bin/vitest run --config scripts/worker-rust/history-reducer.config.mjs
+```
+
+Every reduction in that focused configuration executes the original Node
+implementation and a fresh native process, then compares full state, revisions,
+errors and exact JSON bytes. Normal worker test execution still runs the Node
+suite directly. Development/reference tooling may use Node; the history crate
+and native fixture do not require it.

@@ -9,7 +9,9 @@
     "historySourcePositiveSchema": 9,
     "historySourcePageLimitSchema": 43,
     "codexNativeHistorySnapshotSchema": 44,
-    "codexNativeHistoryCursorSchema": 29
+    "codexNativeHistoryCursorSchema": 29,
+    "nativeHistoryStateSchema": 184,
+    "nativeHistoryInitialTurnSettingsSchema": 230
   },
   "nodes": [
     {
@@ -716,6 +718,218 @@
     { "type": "unknown", "checks": [] },
     { "type": "unknown", "checks": [] },
     { "type": "unknown", "checks": [] },
-    { "type": "unknown", "checks": [] }
+    { "type": "unknown", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "version": 185,
+        "threadId": 186,
+        "turns": 187,
+        "evidence": 220,
+        "notifications": 225
+      },
+      "catchall": 229,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "array", "element": 188, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 189,
+        "ordinal": 190,
+        "revision": 191,
+        "body": 192,
+        "metadata": 195,
+        "terminalNotification": 196,
+        "origin": 198,
+        "items": 203,
+        "conflicts": 218
+      },
+      "catchall": 219,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "record", "keyType": 193, "valueType": 194, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "json", "checks": [] },
+    { "type": "nullable", "innerType": 192, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 197,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["completed", "failed", "interrupted"],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "generation": 199,
+        "sequence": 190,
+        "kind": 200,
+        "nativeCursor": 201
+      },
+      "catchall": 202,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "enum", "values": ["snapshot", "notification"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 29,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "array", "element": 204, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "body": 192,
+        "lifecycle": 205,
+        "completeBody": 206,
+        "startedAtMs": 207,
+        "completedAtMs": 209,
+        "origin": 198,
+        "id": 211,
+        "identityKind": 212,
+        "revision": 213,
+        "ordinal": 190,
+        "conflicts": 214
+      },
+      "catchall": 217,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["started", "completed", "unknown"],
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 208, "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "nullable", "innerType": 210, "checks": [] },
+    { "type": "number", "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "enum", "values": ["canonical", "legacy"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "array", "element": 215, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "body": 192,
+        "lifecycle": 205,
+        "completeBody": 206,
+        "startedAtMs": 207,
+        "completedAtMs": 209,
+        "origin": 198
+      },
+      "catchall": 216,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "array", "element": 192, "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "array", "element": 221, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "recordId": 222, "method": 223, "params": 192 },
+      "catchall": 224,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "string", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "array", "element": 226, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "generation": 227, "sequence": 190 },
+      "catchall": 228,
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeInitialTurnSettingsSchema",
+      "shape": {
+        "model": 231,
+        "modelProvider": 232,
+        "reasoningEffort": 233,
+        "effectiveReasoningEffort": 235,
+        "serviceTier": 237,
+        "effectiveServiceTier": 239,
+        "collaborationMode": 241
+      },
+      "catchall": 242,
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 234, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 236, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 238, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 240, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "never", "checks": [] }
   ]
 }

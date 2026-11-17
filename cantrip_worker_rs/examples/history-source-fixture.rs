@@ -91,6 +91,28 @@ impl Fixture {
                 self.handles.insert(handle, journal);
                 Ok(result)
             }
+            "reduce" => cantrip_history::reducer::reduce(
+                input.get("previous"),
+                input["records"].as_array().unwrap(),
+                input["threadId"].as_js_string().unwrap_or(&"thread".into()),
+            ),
+            "reduce-source" => {
+                let journal = self
+                    .handles
+                    .get(&handle)
+                    .ok_or_else(|| anyhow!("Missing handle"))?;
+                let records = journal
+                    .read(
+                        input["after"].as_u64().unwrap_or(0),
+                        input["limit"].as_u64().unwrap_or(128),
+                    )
+                    .await?;
+                cantrip_history::reducer::reduce(
+                    input.get("previous"),
+                    &records,
+                    input["threadId"].as_js_string().unwrap_or(&"thread".into()),
+                )
+            }
             "schema" => Ok(
                 match cantrip_protocol::parse(
                     input["schema"].as_str().unwrap(),
@@ -204,7 +226,7 @@ impl Fixture {
         }
     }
 }
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let mut fixture = Fixture {
         service: Arc::new(Keys(Mutex::new(
