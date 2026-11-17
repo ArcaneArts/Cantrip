@@ -104,6 +104,11 @@ impl RepositoryOperations {
                 | "git.graph.snapshot"
                 | "git.graph.metrics"
                 | "git.graph.commit-overlay"
+                | "git.worktree.changes.preview"
+                | "git.worktree.changes.apply"
+                | "git.recovery.list"
+                | "git.recovery.preview"
+                | "git.recovery.apply"
                 | "worktree.status"
                 | "git.file.history"
                 | "git.file.blame"
@@ -207,6 +212,8 @@ impl RepositoryOperations {
                             | "git.tag.action.apply"
                             | "git.submodule.action.apply"
                             | "git.lfs.action.apply"
+                            | "git.worktree.changes.apply"
+                            | "git.recovery.apply"
                     ) && crate::git::stored::active(stored.as_ref())
                     {
                         bail!("Finish or abort the active Git operation first.");
@@ -220,10 +227,19 @@ impl RepositoryOperations {
                     {
                         bail!("Git operation not found.");
                     }
-                    if command
-                        .get("peerWorktree")
-                        .is_some_and(|v| v != &Value::Null)
-                    {
+                    let moves = matches!(
+                        kind,
+                        "git.worktree.changes.preview" | "git.worktree.changes.apply"
+                    );
+                    if moves {
+                        if command["peerWorktree"].is_null()
+                            || !request["arguments"]["request"].is_object()
+                            || request["arguments"]["request"]["sourceWorktreeId"]
+                                != command["peerWorktree"]["id"]
+                        {
+                            bail!("The protected source worktree does not match the routed peer worktree.");
+                        }
+                    } else if !command["peerWorktree"].is_null() {
                         bail!("A peer worktree is only valid for a worktree changes move.");
                     }
                     let mut trusted = request["arguments"].clone();
@@ -231,6 +247,9 @@ impl RepositoryOperations {
                     trusted["cwd"] = command["cwd"].clone();
                     trusted["sourcePath"] = command["sourcePath"].clone();
                     trusted["worktreePath"] = command["cwd"].clone();
+                    if moves {
+                        trusted["sourceCwd"] = command["peerWorktree"]["cwd"].clone();
+                    }
                     if control {
                         trusted["context"] =
                             checked("gitManagedOperationContextSchema", stored.as_ref().unwrap())?;
@@ -274,7 +293,10 @@ impl RepositoryOperations {
                                 .await?;
                         }
                         Ok(result)
-                    } else if kind == "git.stash.action.apply" {
+                    } else if matches!(
+                        kind,
+                        "git.stash.action.apply" | "git.worktree.changes.apply"
+                    ) {
                         if !result["operation"].is_null() {
                             let mut state = result["operation"].clone();
                             state["state"] = json!("conflicted");

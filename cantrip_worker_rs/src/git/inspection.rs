@@ -224,7 +224,7 @@ pub async fn candidates(cwd: &Path, scope: &Scope) -> Result<Value> {
     }
     checked("gitRevisionCandidateListSchema", &json!(result))
 }
-async fn comparison_commits(
+pub(super) async fn comparison_commits(
     cwd: &Path,
     include: &str,
     exclude: &str,

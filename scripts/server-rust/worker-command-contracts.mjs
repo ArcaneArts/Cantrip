@@ -818,6 +818,8 @@ export function registerWorkerCommandContracts(register) {
     if (shape.branch) forwards.set(shape.branch, gitBranchNameInputSchema);
     forwards.set(shape.target, gitRevisionInputSchema);
   }
+  forwards.set(p.gitRecoveryPreviewSchema.shape.status, p.gitStatusSchema);
+  forwards.set(p.gitRecoveryResultSchema.shape.status, p.gitStatusSchema);
   for (const [lazy, target] of forwards) {
     if (
       lazy._zod.def.type !== "lazy" ||

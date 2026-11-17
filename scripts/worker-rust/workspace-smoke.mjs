@@ -31,7 +31,7 @@ import {
 import { verifyTerminalServices } from "./terminal-services-smoke.mjs";
 import { verifyGit } from "./git-smoke-cases.mjs";
 import { verifyNativeWorktrees } from "./worktree-smoke-cases.mjs";
-import { verifyNativeObservations } from "./observation-smoke-cases.mjs";
+import { verifyWorktreeRecovery } from "./worktree-recovery-smoke-cases.mjs";
 // Every Git remote in this owned fixture is local. Preserve production Git
 // policy while explicitly allowing this test's local submodule clones.
 const previousGitProtocol = process.env.GIT_ALLOW_PROTOCOL;
@@ -41,6 +41,7 @@ const { values } = parseArgs({
     worker: { type: "string" },
     server: { type: "string" },
     "observations-only": { type: "boolean", default: false },
+    "recovery-only": { type: "boolean", default: false },
   },
 });
 assert.ok(
@@ -519,7 +520,7 @@ try {
   );
   assert.equal(await readFile(sentinel, "utf8"), "private dirty content\n");
   let gitRuntimeCoverage;
-  if (!values["observations-only"]) {
+  if (!values["observations-only"] && !values["recovery-only"]) {
     const reopenGit = await verifyGit({
       call,
       ownerId: repository.ownerId,
@@ -614,7 +615,23 @@ try {
   startWorker();
   await ready();
   let observationCoverage;
-  if (values["observations-only"]) {
+  let recoveryCoverage;
+  if (values["recovery-only"]) {
+    recoveryCoverage = await verifyWorktreeRecovery({
+      call,
+      ownerId: repository.ownerId,
+      serverId: repository.serverId,
+      componentKey,
+      projectId,
+      workerId,
+      workerDirectory,
+      checkout,
+      restartWorker,
+      registerMetadata: repository.registerMetadata,
+    });
+  } else if (values["observations-only"]) {
+    const { verifyNativeObservations } =
+      await import("./observation-smoke-cases.mjs");
     observationCoverage = await verifyNativeObservations({
       call,
       origin: server.origin,
@@ -641,7 +658,17 @@ try {
   await stopWorker();
   await server.close();
   server = undefined;
-  if (values["observations-only"])
+  if (values["recovery-only"])
+    console.log(
+      JSON.stringify({
+        suite: "actual-native-worktree-recovery-worker-server",
+        passed: true,
+        realWorkerAndServer: true,
+        nodeAbsentFromWorkerPath: true,
+        ...recoveryCoverage,
+      }),
+    );
+  else if (values["observations-only"])
     console.log(
       JSON.stringify({
         suite: "actual-native-observation-worker-server",

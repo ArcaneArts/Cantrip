@@ -14,6 +14,7 @@ pub mod managed;
 mod patches;
 mod plans;
 mod process;
+mod recovery;
 mod remote_text;
 mod remotes;
 mod review;
@@ -24,6 +25,7 @@ mod status;
 pub mod stored;
 mod submodules;
 mod tags;
+mod worktree_changes;
 pub mod worktrees;
 use crate::filesystem::{Scope, paths};
 pub use actions::action;
@@ -48,6 +50,28 @@ pub fn error_message(error: &anyhow::Error) -> JsString {
 pub async fn execute(command: &Value, scope: &Scope) -> Result<Value> {
     let cwd = paths::native(command["cwd"].as_js_string().unwrap());
     match command["type"].as_str().unwrap() {
+        "git.worktree.changes.preview" => {
+            worktree_changes::preview(
+                &cwd,
+                &paths::native(command["sourceCwd"].as_js_string().unwrap()),
+                &command["request"],
+                scope,
+            )
+            .await
+        }
+        "git.worktree.changes.apply" => {
+            worktree_changes::apply(
+                &cwd,
+                &paths::native(command["sourceCwd"].as_js_string().unwrap()),
+                &command["request"],
+                command["token"].as_js_string().unwrap(),
+                scope,
+            )
+            .await
+        }
+        "git.recovery.list" => recovery::list(&cwd, command, scope).await,
+        "git.recovery.preview" => recovery::preview(&cwd, &command["action"], scope).await,
+        "git.recovery.apply" => recovery::apply(&cwd, &command["request"], scope).await,
         "git.status" => status(&cwd, scope).await,
         "git.graph.snapshot" => graph::snapshot(&cwd, command, scope).await,
         "git.graph.metrics" => graph::metrics(&cwd, command, scope).await,

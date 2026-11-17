@@ -296,7 +296,12 @@ pub async fn preview(cwd: &Path, action: &Value, scope: &Scope) -> Result<Value>
         &json!({"action":action,"stashes":selected,"destructive":matches!(action["type"].as_str(),Some("pop"|"drop"|"clear"|"branch")),"token":token,"warnings":warnings}),
     )
 }
-async fn checkpoint(cwd: &Path, head: &str, token: &str, scope: &Scope) -> Result<String> {
+pub(super) async fn checkpoint(
+    cwd: &Path,
+    head: &str,
+    token: &str,
+    scope: &Scope,
+) -> Result<String> {
     let dirty = !status::status(cwd, scope).await?["files"]
         .as_array()
         .unwrap()

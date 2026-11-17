@@ -929,6 +929,11 @@ export const contractRoots = [
   "gitGraphSnapshotSchema",
   "gitGraphMetricsSchema",
   "gitGraphCommitOverlaySchema",
+  "gitWorktreeChangesMovePreviewSchema",
+  "gitWorktreeChangesMoveResultSchema",
+  "gitRecoveryCandidateListSchema",
+  "gitRecoveryPreviewSchema",
+  "gitRecoveryResultSchema",
 ];
 
 export const projectExportContractRoots = [
