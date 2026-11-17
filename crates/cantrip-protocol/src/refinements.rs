@@ -7,6 +7,9 @@ pub(super) fn apply(
     path: &[Value],
     message: Option<&str>,
 ) -> Result<(), ValidationError> {
+    if super::repository_operations::refine(tag, result, path)? {
+        return Ok(());
+    }
     if super::attachments::refine(tag, result, path)? {
         return Ok(());
     }

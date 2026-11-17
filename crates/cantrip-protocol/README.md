@@ -1,8 +1,8 @@
 # cantrip-protocol
 
 Cantrip's native protocol validators, refinements, normalization, and error
-shapes. The server uses this library through its existing `wire` facade; a future
-worker can use the same contracts without server routing or database dependencies.
+shapes. The server uses this library through its existing `wire` facade; the Rust
+worker uses the same contracts without server routing or database dependencies.
 
 `parse` validates a named generated root against an optional `cantrip_wire::Value`.
 Missing and null inputs retain their different semantics. `ValidationError`
@@ -31,3 +31,9 @@ the existing shared error classification and length-prefixed UTF-16 identity key
 its key helpers expect validated identities and do not authorize them. `history`
 supplies canonical item keys and protected-event IDs. Their callers still own
 ingestion, persistence, reconciliation, and execution authority.
+
+`repository_operations` supplies the current repository access classification and
+metadata-field names, plus generated metadata-record refinements. The routing
+registry and encrypted operation adapter share those rules. The development
+repository oracle compares every access classification with the authoritative
+TypeScript function; these rules do not authorize execution.

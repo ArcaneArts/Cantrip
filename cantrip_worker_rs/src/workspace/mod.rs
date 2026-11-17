@@ -1,10 +1,12 @@
 //! Actual workspace repository discovery and import validation. Public command
 //! paths/results cross the worker routing registry, never the Server in clear.
+mod attachment;
 mod discovery;
 mod origin;
 mod paths;
 mod process;
 use anyhow::Result;
+pub use attachment::attach_root;
 use cantrip_wire::{JsString, Value, value::json};
 pub use discovery::{Limits, discover, validate_import};
 pub use origin::{classify_origin, parse_github_origin};

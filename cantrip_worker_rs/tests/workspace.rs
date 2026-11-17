@@ -5,6 +5,76 @@ use cantrip_worker::{
 };
 use std::time::Duration;
 #[tokio::test]
+async fn attachment_canonicalizes_accessible_roots_and_never_changes_the_checkout() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(directory.path()).unwrap();
+    let requested = root.join("private-root");
+    std::fs::create_dir(&requested).unwrap();
+    let file = requested.join("dirty.txt");
+    std::fs::write(&file, "untouched\n").unwrap();
+    let registry = Registry::new(&root.join("profile"));
+    let scope = Scope::default();
+    let result = workspace::attach_root(&requested.to_str().unwrap().into(), &registry, &scope)
+        .await
+        .unwrap();
+    let metadata =
+        json!({"rootPath":result["rootPathHandle"],"displayPath":result["displayHandle"]});
+    assert_eq!(
+        Registry::new(&root.join("profile"))
+            .resolve_metadata(&metadata)
+            .await
+            .unwrap(),
+        json!({"rootPath":requested.to_str().unwrap(),"displayPath":requested.to_str().unwrap()})
+    );
+    assert_eq!(
+        std::fs::read_to_string(file.clone()).unwrap(),
+        "untouched\n"
+    );
+    for (path, code) in [
+        ("relative".to_owned(), "invalid-root"),
+        (
+            root.join("missing").to_str().unwrap().to_owned(),
+            "root-unavailable",
+        ),
+        (file.to_str().unwrap().to_owned(), "invalid-root"),
+    ] {
+        assert_eq!(
+            workspace::attach_root(&path.into(), &registry, &scope)
+                .await
+                .unwrap_err()
+                .downcast_ref::<workspace::WorkspaceError>()
+                .unwrap()
+                .code,
+            code
+        );
+    }
+    #[cfg(unix)]
+    {
+        let alias = root.join("alias");
+        std::os::unix::fs::symlink(&requested, &alias).unwrap();
+        assert_eq!(
+            workspace::attach_root(&alias.to_str().unwrap().into(), &registry, &scope)
+                .await
+                .unwrap(),
+            result
+        );
+    }
+}
+
+#[test]
+fn repository_replay_reserves_before_open_and_ignores_response_direction() {
+    let mut guard = cantrip_worker::protected_content::RepositoryOperationReplayGuard::default();
+    let mut context = json!({"serverId":"server","projectId":"project","worktreeId":"worker","operationId":"11111111-1111-4111-8111-111111111111","direction":"request"});
+    guard.reserve(&context).unwrap();
+    context["direction"] = json!("response");
+    assert_eq!(
+        guard.reserve(&context).unwrap_err().to_string(),
+        "Protected repository operation was already completed."
+    );
+    context["worktreeId"] = json!("other-worker");
+    guard.reserve(&context).unwrap();
+}
+#[tokio::test]
 async fn routing_records_reopen_with_stable_field_scoped_tokens_and_private_writes() {
     let directory = tempfile::tempdir().unwrap();
     let registry = Registry::new(directory.path());

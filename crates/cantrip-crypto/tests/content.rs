@@ -4,6 +4,57 @@ fn context() -> Value {
     json!({"ownerId":"owner-content","component":"provider-credential","table":"model_providers","rowId":"provider-1","field":"protected_api_key","keyRevision":1})
 }
 #[test]
+fn repository_operations_authenticate_every_route_and_direction() {
+    let key = [7; 32];
+    let context = json!({"ownerId":"owner", "keyRevision":1, "context":json!({"serverId":"server", "projectId":"project", "worktreeId":"worker", "operationId":"11111111-1111-4111-8111-111111111111", "direction":"request"})});
+    let opaque = encrypt_repository_operation(&key, &context, b"private").unwrap();
+    assert_eq!(
+        decrypt_repository_operation(&key, &context, &opaque)
+            .unwrap()
+            .as_slice(),
+        b"private"
+    );
+    for (field, value) in [
+        ("serverId", "other"),
+        ("projectId", "other"),
+        ("worktreeId", "other"),
+        ("operationId", "22222222-2222-4222-8222-222222222222"),
+        ("direction", "response"),
+    ] {
+        let mut changed = context.clone();
+        changed["context"][field] = json!(value);
+        assert!(
+            decrypt_repository_operation(&key, &changed, &opaque)
+                .unwrap_err()
+                .is::<DecryptionError>()
+        );
+    }
+    let mut changed = context.clone();
+    changed["ownerId"] = json!("other-owner");
+    assert!(
+        decrypt_repository_operation(&key, &changed, &opaque)
+            .unwrap_err()
+            .is::<DecryptionError>()
+    );
+    let mut changed = opaque.clone();
+    changed["envelope"]["keyRevision"] = json!(2);
+    assert!(
+        decrypt_repository_operation(&key, &context, &changed)
+            .unwrap_err()
+            .is::<DecryptionError>()
+    );
+    assert!(
+        encrypt_repository_operation(
+            &key,
+            &context,
+            &vec![0; REPOSITORY_OPERATION_BYTES_LIMIT + 1]
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("too large")
+    );
+}
+#[test]
 fn secret_decoder_validates_authenticated_plaintext_and_accepts_utf8_bom() {
     let key = [7; 32];
     let context = context();

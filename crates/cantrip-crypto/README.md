@@ -16,6 +16,8 @@ Implemented from `packages/crypto`:
 - Component/field/lookup HKDF-SHA256 derivation and blind HMAC-SHA256 tags.
 - Protected secrets, endpoint payloads, private display labels and attachment
   metadata/chunks, including existing AAD bindings and encoded byte limits.
+- Repository-operation payloads, including server/project/worktree/operation and
+  direction bindings and the existing 16-MiB plaintext limit.
 - JSON surface streams, binary remote-surface streams and tunnel data frames,
   including their distinct route/context bindings, limits and error boundaries.
 
@@ -54,7 +56,7 @@ TypeScript implementations in both directions using disposable synthetic data.
 
 Other domain-specific protected content, replay/counter state and encrypted
 resource adapters remain worker-port work. The native worker now supplies the
-endpoint/surface content helpers and surface reserve/accept/release replay guard;
+endpoint/surface/repository content helpers and their distinct replay guards;
 the owning resource services still enforce authorization and retirement.
 The crypto crate reuses `cantrip-framing` for the existing remote-surface binary
 payload layout, with no server or transport-runtime dependency. Password/recovery
