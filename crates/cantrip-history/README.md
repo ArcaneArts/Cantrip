@@ -42,6 +42,14 @@ of provider execution and the server application or database.
   canonical receipt. Reopen pending transactions without projecting again.
   Durable encrypted rebase plans retain accepted prefixes and the exact original
   source range across repeated permanent rejections and interrupted replacement.
+- `canonical`: full item evidence and turn metadata protection/opening, native
+  turn preparation/usage attribution, canonical message preparation and exact
+  preservation of an already protected GUI input. These helpers never reserve a
+  new identity, dispatch native input or choose a projection revision.
+- `archive`: authenticated item, turn and batch page opening. Preserve historical
+  evidence revision/currentness, original source bindings and explicit missing
+  source. Batch digests reuse the existing sorted payload digest. These helpers
+  do not select a winning revision or advance a local checkpoint.
 
 `Encryption` supplies live account/server identity and an atomic copied grant.
 The worker adapter uses its real authorized encryption service. Keys, derived
@@ -79,12 +87,11 @@ node --import tsx scripts/worker-rust/history-source-compatibility.mjs \
   --binary /absolute/shared-target/aarch64-apple-darwin/debug/examples/history-source-fixture
 ```
 
-Runtime observation/capture, retry pumps, canonical identity/rendering/protection,
-attachment processing and end-to-end delivery remain worker port work. The
-authenticated HTTP client is implemented in the worker's `history::client`,
-outside this storage crate. Coherent archive decryption/recovery and production
-orchestration still need implementation. These library APIs alone advertise no
-new worker capability.
+Runtime observation/capture, retry pumps, canonical projector/ID orchestration,
+rendering and attachment processing remain worker port work. The authenticated
+HTTP client and coherent multi-resource recovery are implemented in the worker's
+`history::client` and `history::recovery`, outside this crate. Production runtime
+integration remains pending. These APIs alone advertise no new worker capability.
 
 The reducer accepts an optional previous state and the verified journal page;
 it does not advance a source cursor or authorize execution. It parses previous
@@ -154,4 +161,23 @@ This runs the actual Node/native projection implementations over real encrypted
 journals and outboxes with a controlled durable receiver. It covers lost replies,
 partial commits, repeated rebases, actual process restart, filesystem obstruction,
 explicit cancellation and abandoned responses. The receiver is fixture data;
-this is not evidence for the pending production HTTP integration.
+this controlled-receiver check does not exercise the separate HTTP adapter.
+
+Canonical preparation uses the original item/turn associated-data domains,
+including immutable binding and public telemetry. Legacy omitted telemetry keeps
+the original AAD; adding, removing or relabeling protected analytics invalidates
+authentication. Historical keys come from the authorized service. Turn timestamps
+retain seconds-to-milliseconds conversion and reject overflow before serialization.
+
+Archive opening accepts an optional explicit cancellation check. Coherent network
+collection and retry policy stay in the worker: it pins every page/resource to
+one committed snapshot and starts decryption only after collection succeeds.
+
+Additional focused local verification:
+
+```sh
+node --import tsx scripts/worker-rust/history-content-contracts.mjs
+node scripts/worker-rust/cargo.mjs build --example history-source-fixture
+node --import tsx scripts/worker-rust/history-content-compatibility.mjs --binary /absolute/path/to/history-source-fixture
+node --import tsx scripts/worker-rust/history-recovery-compatibility.mjs --binary /absolute/path/to/history-source-fixture
+```

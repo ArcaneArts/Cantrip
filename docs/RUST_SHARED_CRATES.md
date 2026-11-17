@@ -222,6 +222,8 @@ The worker port adds `cantrip-crypto` for endpoint cryptography and
 immutable publication, native history validation, cursor-gap recovery and pure
 source-to-state reduction, the durable batch outbox/receipt ledger and frozen
 projection/checkpoint/rebase transactions.
+It also supplies complete protected item/turn preparation, canonical messages and
+authenticated archive opening. The worker owns coherent HTTP collection/retry.
 History depends on crypto, protocol, wire and host; it has no dependency on the
 server application, databases, routing or provider/runtime orchestration. The
 worker supplies its authorized key service. See the crate README and
@@ -232,3 +234,8 @@ It consumes the existing protocol contracts, history rejection/digest checks and
 `cantrip-transport::lifecycle::owned` for accepted request lifetimes. Network
 authentication, scoped pagination and metadata retry/cancellation remain worker
 policy. The storage crate gains no HTTP/server dependency or execution authority.
+
+The existing server's pure usage reconciliation moved into `cantrip-protocol`.
+Both server and worker supply their existing locale comparator. SQL/accounting,
+ownership checks and ingestion transactions remain server-owned; worker evidence
+extraction stays in the worker/history adapters. No Cargo dependency changed.

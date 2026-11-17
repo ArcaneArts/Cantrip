@@ -1,6 +1,6 @@
 // Native HTTP client and native durable transactions against the real Rust server.
-// Controlled enrollment/control worker and prepared canonical content are reference
-// fixtures. This does not exercise the pending production capture/provider runtime.
+// Enrollment/control and rendered input are controlled fixtures. Preparation,
+// encryption, transactions and recovery execute natively; capture/runtime is pending.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
@@ -14,7 +14,7 @@ import {
   settingsWorker,
 } from "../server-rust/native-settings-http-fixture.mjs";
 import { NativeHistoryClient } from "../../cantrip_worker/src/native-history-client.ts";
-import { prepareNativeHistoryRenderedItem } from "../../cantrip_worker/src/native-history-prepare-item.ts";
+import { readNativeHistoryRecovery } from "../../cantrip_worker/src/native-history-recovery.ts";
 const { values } = parseArgs({
   options: {
     client: { type: "string" },
@@ -188,8 +188,12 @@ try {
     origin: { generation: "fixture", sequence: 1, kind: "snapshot" },
     conflicts: [],
   };
-  const item = await prepareNativeHistoryRenderedItem({
-    service: encryption,
+  await local({
+    op: "identity",
+    state: { owner: h.owner, server: h.serverId, revision: 1 },
+  });
+  const item = await local({
+    op: "content.prepare",
     binding,
     mapping,
     revision: 1,
@@ -205,7 +209,58 @@ try {
       },
     },
   });
-  const batch = { items: [item], turns: [] };
+  const counts = {
+    totalTokens: 8,
+    inputTokens: 3,
+    cachedInputTokens: 1,
+    cacheWriteInputTokens: 0,
+    outputTokens: 5,
+    reasoningOutputTokens: 2,
+  };
+  const turn = await local({
+    op: "content.turn.prepare",
+    binding,
+    turnId: identity.turnId,
+    revision: 1,
+    snapshot: {
+      thread: {
+        id: "thread",
+        parentThreadId: null,
+        forkedFromId: null,
+        turns: [
+          {
+            id: identity.turnId,
+            status: "completed",
+            items: [],
+            startedAt: 1,
+            completedAt: 2,
+          },
+        ],
+      },
+      history: {
+        turns: [
+          {
+            turnId: identity.turnId,
+            retention: "complete",
+            cantripModelAttribution: {
+              threadId: "thread",
+              turnId: identity.turnId,
+              isRoot: true,
+              reasoningEffort: null,
+              selection: { status: "unavailable" },
+            },
+            usage: {
+              responses: [
+                { threadId: "thread", responseId: "response", usage: counts },
+              ],
+              conflictingResponseIds: [],
+            },
+          },
+        ],
+      },
+    },
+  });
+  const batch = { items: [item], turns: [turn] };
   assert.equal(JSON.stringify(batch).includes(marker), false);
   const scope = {
     workerId: settingsWorker,
@@ -323,6 +378,26 @@ try {
   const finalArchive = await invoke("archiveBatches", archive);
   assert.equal(finalArchive.batches.length, 1);
   assert.deepEqual(finalArchive.batches[0].receipt, accepted);
+  const recovered = await local({
+    op: "content.recovery",
+    binding,
+    serverUrl: origin,
+    token: h.credential,
+    pageSize: 1,
+    batchPageSize: 1,
+  });
+  const expectedRecovery = await readNativeHistoryRecovery({
+    binding,
+    client: reference,
+    service: encryption,
+    pageSize: 1,
+    batchPageSize: 1,
+  });
+  assert.deepEqual(recovered.snapshot, expectedRecovery);
+  assert.equal(recovered.snapshot.items[0].source.body.text, marker);
+  assert.equal(recovered.snapshot.turns.length, 1);
+  assert.equal(recovered.snapshot.batches.length, 1);
+  assert.equal(JSON.stringify(deliveries).includes(marker), false);
   const invalid = await client.call({
     serverUrl: origin,
     workerId: settingsWorker,
@@ -339,13 +414,15 @@ try {
       actualRustServer: true,
       actualNativeClient: true,
       nativeProjectionAndOutbox: true,
+      nativeContentPreparation: true,
+      nativeCoherentArchiveRecovery: true,
       canonicalAckLostAndRecovered: true,
       nativeAndServerProcessRestart: true,
       exactFrozenRetry: true,
       archiveReaders: 3,
       canonicalBatchCount: 1,
       scope:
-        "controlled canonical preparation and control worker; production capture/runtime integration pending",
+        "controlled rendered input and control worker; production capture/runtime integration pending",
       runtime: "macOS ARM64",
       rootRemovedOnExit: true,
     }),

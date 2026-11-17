@@ -122,7 +122,7 @@ loaded by a production service.
 | Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | Native endpoint/surface/repository formats, all private surface records and scoped grant helpers                                                                                                                                                                                                                                                                                                        | Private-state interop covers 12 resource contexts and six content kinds. Remaining protected domains and serving resource lifetimes are pending. Initial surface-grant refresh now completes real host terminal-service reconciliation; delegated OS services remain pending.                                                    |
 | Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Workspace/folders/routing, nine protected host Explorer operations and bound file-document text read/write                                                                                                                                                                                                                                                                                              | Actual Rust worker/server persists encrypted resources, resolves opaque roots, saves files, rejects replay/mismatched document paths and reopens after restart. Paged readers, media/tail, transfers, activity/watches and delegated OS execution remain pending.                                                                |
 | Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub catalog, issue detail/mutations, issue/PR search, inspection, creation, reviews, lifecycle, checkout preparation, agent context, inbox, Actions/releases and replica provisioning/synchronization/removal/link repair | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, exports/sharing and delegated OS Git remain pending |
-| History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter and authenticated history HTTP client                                                                                                                                                                                                                       | Journal/outbox/projection and authenticated HTTP delivery pass focused checks; capture/retry orchestration, archive decryption/attachments and canonical rendering/protection remain pending                                                                                                                                                    |
+| History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter, authenticated HTTP client, canonical content preparation and coherent archive recovery                                                                                                                                                                                                                       | Journal/outbox/projection, native protected preparation and coherent HTTP archive recovery pass focused checks; canonical projector/rendering, attachments and capture/retry/runtime orchestration remain pending                                                                                                                                                    |
 | Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Actual provider protocol fixtures, streaming/media/usage, refresh, cancellation, failure and paid-work bounds                                                                                                                                                                                                                    |
 | Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Manifest verification/probe, native app-server processes, queue ownership, acceptance/commit and restart recovery                                                                                                                                                                                                                |
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
@@ -2720,3 +2720,83 @@ Next history work includes native canonical identity/rendering/protection and
 attachments, coherent archive recovery, capture/retry pumps and actual runtime
 integration. These are followed by the remaining execution/provider, terminal,
 transport/browser/OS/helper and packaging/default-cutover/Node-retirement work.
+
+
+## Cycle 45: native protected history content and coherent recovery
+
+Reference: current `a1cd719592a9d17834fcb75cec357e5d261e3e64` / PR #3207.
+This cycle ports full item-evidence and turn-metadata codecs, canonical prepared
+items/messages, archive opening and coherent recovery from their current Node
+implementations. Current origin/main and relevant contracts were inspected; no
+intervening source churn was present.
+
+`cantrip-crypto::content::Communication` implements the six existing protected
+communication formats: messages, queued prompts, composer drafts, plans and
+interaction requests/responses. It preserves the exact table/field/row domains,
+plaintext schemas/refinements, public classification matching and encoded limits.
+It uses the existing maintained payload/KDF implementation and system entropy.
+No new runtime or Cargo dependency is introduced.
+
+`cantrip-history::canonical` seals/opens complete reduced item evidence and turn
+metadata, prepares full native turn observations and canonical prepared items,
+and protects/opens messages. Original GUI message ciphertext remains exact while
+transformed native evidence is protected separately. Item/turn AAD retains owner,
+server, source binding, historical identity and revision. Turn analytics and public
+chronology are authenticated, with legacy omission retaining the old AAD. Timestamp
+multiplication overflow is rejected before JSON serialization can normalize it.
+
+The existing server's pure usage reconciliation is shared in `cantrip-protocol`;
+server and worker supply their existing locale comparator. Server ingestion SQL,
+accounting and authorization stay in their original adapter. Worker extraction
+keeps immutable model attribution, filters copied ancestor usage, deduplicates
+response IDs and retains conflicts/overflow rather than inventing totals.
+
+`cantrip-history::archive` opens item, turn and accepted-batch candidates with
+original evidence bindings and explicit missing source. Older evidence remains
+separate from canonical revision/currentness; no winner is inferred across workers.
+The HTTP client reuses the same authenticated batch-content validation.
+`cantrip_worker::history::recovery` collects all paginated resources under one
+committed snapshot before decrypting. A real snapshot-changed 409 discards the
+partial collection and retries; other errors propagate. Cancellation stays live,
+reporting errors are ignored and recovery grants no input/checkpoint authority.
+
+Local validation on macOS ARM64:
+
+- 102 actual Node/native comparisons cover all six communication formats in both
+  directions, private item/turn/message interoperability, context/revision/tamper
+  failures, historical keys, encoded limits/refinements, retained GUI ciphertext,
+  complete native source and chronology, turn analytics AAD, timestamp overflow,
+  existing usage-reconciliation cases and archive missing-source/cancellation.
+- Six actual loopback HTTP recovery scenarios compare complete values and exact
+  request sequences: multi-page success, changed-head retry, permanent rejection,
+  unrelated binding, decryption failure and in-flight cancellation. A discarded
+  partial page intentionally has invalid ciphertext; successful retry proves no
+  premature decryption. Reporting deliberately fails without stopping recovery.
+- The actual Rust-server/PGlite smoke now performs native item/message/turn
+  preparation and coherent plaintext recovery in addition to native source,
+  projection, outbox and HTTP delivery. A real canonical ACK is lost, both native
+  and server processes restart, exact frozen bytes retry and exactly one canonical
+  batch remains. All three archive readers and complete recovery match Node; only
+  endpoints see the private marker. Rendered input and the enrollment/control
+  worker remain fixtures, not production capture/provider acceptance.
+- The 56 HTTP-client and 74 projection regression comparisons pass. Twenty
+  selected original Node turn-content, preparation and usage tests pass, as do
+  five native history and three metadata lifetime unit tests. Native crypto has
+  no separate library unit cases; its codecs are exercised by the interoperability
+  fixtures. Worker/examples and affected server/repository example builds,
+  all-target worker/history/crypto/protocol Clippy, formatting and diff checks pass.
+- Seventeen existing protocol contract files remain unchanged; the security
+  graph reproduces byte-for-byte. A separate graph adds 26 actual plaintext roots /
+  640 nodes, with no root-name overlap. It is generated from authoritative protocol
+  and worker schemas; no validation is replaced by an approximate JSON shape.
+
+No hosted Actions, provider charges, containers, physical devices or deployment
+were used. Native fixture children use a system-only PATH. Disposable profiles
+are removed; the shared build cache remains approximately 28.5 GiB. Windows/Linux
+runtime was not exercised. The production worker remains Node and installed
+native outer command handlers remain 59.
+
+Next work is native rendering/canonical projector and identity orchestration,
+attachment materialization, capture/retry pumps and runtime execution integration.
+The remaining provider, terminal, transport/browser, OS/helper, upgrade and
+packaging/default-cutover/Node-retirement requirements remain part of the goal.

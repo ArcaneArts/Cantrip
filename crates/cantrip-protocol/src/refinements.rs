@@ -10,6 +10,9 @@ pub(super) fn apply(
     if super::history_source::refine(tag, result, path)? {
         return Ok(());
     }
+    if super::history_content::refine(tag, result, path, message)? {
+        return Ok(());
+    }
     if super::repository_operations::refine(tag, result, path)? {
         return Ok(());
     }

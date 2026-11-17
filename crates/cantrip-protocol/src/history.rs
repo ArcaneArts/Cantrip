@@ -1,5 +1,6 @@
 //! Stable history item keys and protected-event identities shared with workers.
-//! These functions assign no ownership and perform no ingestion or reconciliation.
+//! Pure usage reconciliation accepts caller locale policy. No function here
+//! assigns ownership, admits execution or performs durable ingestion.
 use cantrip_wire::{Value, payload_digest, value::json};
 use sha2::{Digest, Sha256};
 
@@ -22,3 +23,6 @@ pub fn event_id(chat: &str, key: &str) -> String {
     bytes[8] = (bytes[8] & 63) | 128;
     uuid::Uuid::from_bytes(bytes).to_string()
 }
+
+mod usage;
+pub use usage::reconcile as reconcile_usage;

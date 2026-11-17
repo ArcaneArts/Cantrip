@@ -23,6 +23,10 @@ Implemented from `packages/crypto`:
 - Private surface records for terminals, Explorer, file documents, browsers,
   desktop state and desktop inventory: existing resource/table/field bindings,
   persistent/ephemeral contexts, classifications and four-MiB encoded limit.
+- Communication payloads for messages, queued prompts, drafts, plans and
+  interaction requests/responses: original table/field bindings, exact plaintext
+  contracts, matching public classification and encoded byte limits. These
+  stateless codecs do not authorize publication or run an interaction service.
 
 HPKE uses `hpke` 0.14.1, including its KEM zeroization fixes, with only the
 alloc/AES/NIST-curve/system-random features. The suite remains P-256; the upstream
