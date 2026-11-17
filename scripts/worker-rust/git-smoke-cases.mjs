@@ -6,6 +6,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import * as c from "../../packages/crypto/dist/index.js";
 import * as p from "../../packages/protocol/dist/index.js";
+import { handleGitCommand } from "../../cantrip_worker/src/commands/git.ts";
 import {
   managedOperationRecord,
   RepositoryManagedOperationStore,
@@ -148,6 +149,12 @@ export async function verifyGit({
     },
   });
   await store.put(scope, active);
+  const activeHistory = await operation({
+    type: "git.history",
+    arguments: { limit: 1 },
+  });
+  assert.equal(activeHistory.ok, true, JSON.stringify(activeHistory));
+  assert.equal(activeHistory.result.head, checked.head);
   assert.deepEqual(await action({ type: "stage", paths: [mutable] }), {
     ok: false,
     error: "Finish or abort the active Git operation first.",
@@ -186,6 +193,37 @@ export async function verifyGit({
   });
   assert.equal(committed.ok, true, JSON.stringify(committed));
   assert.notEqual(committed.result.status.head, checked.head);
+  const revision = committed.result.status.head;
+  const queries = [
+    ["git.history", { limit: 1, options: { filters: { message: "Native" } } }],
+    ["git.file.history", { path: mutable, revision }],
+    ["git.file.blame", { path: mutable, revision, limit: 2 }],
+    ["git.commit.search", { query: { message: "Native" } }],
+    ["git.commit.get", { revision }],
+    ["git.commit.signature.get", { revision }],
+    ["git.refs.list", {}],
+    ["git.compare", { left: checked.head, right: revision, mode: "direct" }],
+    [
+      "git.revision.diff",
+      { revision, baseRevision: checked.head, path: mutable },
+    ],
+  ];
+  for (const [type, arguments_] of queries) {
+    const outcome = await operation({ type, arguments: arguments_ });
+    const expected = await handleGitCommand(
+      p.workerCommandSchema.parse({ ...arguments_, type, cwd: checkout }),
+    );
+    assert.deepEqual(outcome, { ok: true, result: expected }, type);
+  }
+  const wrongHistory = await operation(
+    { type: "git.history", arguments: {} },
+    { access: "write" },
+    502,
+  );
+  assert.equal(
+    wrongHistory.error,
+    "Repository operation access metadata is invalid.",
+  );
   assert.equal(
     committed.result.status.files.find((file) => file.path === "untouched.txt")
       .staged,
@@ -236,6 +274,11 @@ export async function verifyGit({
     error: "Stored repository operation is invalid.",
   });
   assert.equal(await readFile(journal, "utf8"), "{malformed-owned-fixture");
+  assert.deepEqual(
+    await operation({ type: "git.history", arguments: {} }),
+    invalid,
+    "history preserves the existing journal validation path",
+  );
   return async () => {
     const reopened = await operation({ type: "git.status", arguments: {} });
     assert.deepEqual(

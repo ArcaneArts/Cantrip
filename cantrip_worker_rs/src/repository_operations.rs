@@ -90,7 +90,18 @@ impl RepositoryOperations {
                     attachment = Some(result.clone());
                     Ok(result)
                 }
-                "git.status" | "git.diff" | "git.action" => {
+                "git.status"
+                | "git.diff"
+                | "git.action"
+                | "git.history"
+                | "git.file.history"
+                | "git.file.blame"
+                | "git.commit.search"
+                | "git.commit.get"
+                | "git.commit.signature.get"
+                | "git.refs.list"
+                | "git.compare"
+                | "git.revision.diff" => {
                     let (directory, worker) = self.profile.as_ref().ok_or_else(|| {
                         anyhow::anyhow!("Repository worker profile is not configured.")
                     })?;

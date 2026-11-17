@@ -6,9 +6,9 @@ use cantrip_crypto::checked;
 use cantrip_wire::{JsString, Value, value::json};
 use std::path::Path;
 const IMAGE_LIMIT: u64 = 2 * 1024 * 1024;
-const PATCH_LIMIT: usize = 2_000_000;
+pub(super) const PATCH_LIMIT: usize = 2_000_000;
 
-fn safe(path: &JsString) -> bool {
+pub(super) fn safe(path: &JsString) -> bool {
     let p = path.units();
     !p.is_empty()
         && p[0] != 47
@@ -47,7 +47,7 @@ fn side(
 ) -> Value {
     json!({"kind":kind,"size":size,"mimeType":mime,"base64":base64,"truncated":truncated})
 }
-async fn object(
+pub(super) async fn object(
     cwd: &Path,
     object: Option<String>,
     path: &JsString,
