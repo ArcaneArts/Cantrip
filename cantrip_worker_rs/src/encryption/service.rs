@@ -91,6 +91,11 @@ impl Service {
             component,
         })
     }
+    /// Grant-free atomic account/server identity for durable history discovery.
+    pub fn bound_identity(&self) -> Result<(JsString, Value), ServiceError> {
+        let state = self.state.lock().unwrap();
+        Ok((state.owner_id()?, state.server_identity()?))
+    }
     pub fn registration(&self) -> Value {
         self.state.lock().unwrap().identity.registration()
     }

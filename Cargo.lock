@@ -412,6 +412,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "cantrip-history"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "cantrip-crypto",
+ "cantrip-host",
+ "cantrip-protocol",
+ "cantrip-wire",
+ "sha2 0.11.1",
+ "tempfile",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "cantrip-host"
 version = "0.0.0"
 dependencies = [
@@ -580,6 +595,7 @@ dependencies = [
  "cantrip-config",
  "cantrip-crypto",
  "cantrip-framing",
+ "cantrip-history",
  "cantrip-host",
  "cantrip-logging",
  "cantrip-protocol",

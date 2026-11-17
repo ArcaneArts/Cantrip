@@ -1737,7 +1737,7 @@ function constantMessage(error, where) {
   return message;
 }
 
-export function buildContractManifest(rootNames = contractRoots) {
+export function buildContractManifest(rootNames = contractRoots, local = {}) {
   const nodes = [];
   const ids = new Map();
   const names = new Map(
@@ -1829,7 +1829,9 @@ export function buildContractManifest(rootNames = contractRoots) {
         const tag =
           c.fn?.name === "hasCanonicalTrailingBits"
             ? "canonical-base64url"
-            : (explicitChecks.get(check) ?? refinements.get(schema));
+            : (explicitChecks.get(check) ??
+              local.refinements?.get(schema) ??
+              refinements.get(schema));
         if (!tag) throw new Error(`Unimplemented native refinement: ${where}`);
         const message = constantMessage(c.error, where);
         return {
@@ -1900,7 +1902,10 @@ export function buildContractManifest(rootNames = contractRoots) {
   return {
     schemaVersion: 1,
     roots: Object.fromEntries(
-      rootNames.map((name) => [name, visit(sourceContractSchema(name), name)]),
+      rootNames.map((name) => [
+        name,
+        visit(local.schemas?.[name] ?? sourceContractSchema(name), name),
+      ]),
     ),
     nodes,
   };
