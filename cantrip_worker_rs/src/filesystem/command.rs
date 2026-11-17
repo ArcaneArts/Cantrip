@@ -42,10 +42,20 @@ impl Scope {
         args: &[OsString],
         maximum: usize,
     ) -> Result<Captured> {
+        self.capture_environment(program, args, maximum, &[]).await
+    }
+    pub(crate) async fn capture_environment(
+        &self,
+        program: &OsStr,
+        args: &[OsString],
+        maximum: usize,
+        environment: &[(OsString, OsString)],
+    ) -> Result<Captured> {
         self.check()?;
         let mut command = Command::new(program);
         command
             .args(args)
+            .envs(environment.iter().map(|(key, value)| (key, value)))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())

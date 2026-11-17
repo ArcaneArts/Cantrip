@@ -1,12 +1,17 @@
 // Production encrypted repository operations against the owned smoke checkout.
 import assert from "node:assert/strict";
-import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rm, stat } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import * as c from "../../packages/crypto/dist/index.js";
 import * as p from "../../packages/protocol/dist/index.js";
 import { handleGitCommand } from "../../cantrip_worker/src/commands/git.ts";
+import {
+  inspectGitManagedOperation,
+  previewGitManagedOperation,
+  startGitManagedOperation,
+} from "../../cantrip_worker/src/git.ts";
 import {
   managedOperationRecord,
   RepositoryManagedOperationStore,
@@ -302,6 +307,146 @@ export async function verifyGit({
       (await workerStatus()).files.find((file) => file.path === "untouched.txt")
         .staged,
       false,
+    );
+    // Resume actual Node-created state after native journal refresh/restart.
+    const git = (...args) =>
+      execFileSync("git", ["-C", checkout, ...args], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      }).trim();
+    const file = "native-managed.txt";
+    async function commit(text, message) {
+      await writeFile(path.join(checkout, file), text);
+      git("add", file);
+      git("commit", "--quiet", "-m", message);
+      return git("rev-parse", "HEAD");
+    }
+    await commit("base\n", "Managed base");
+    git("checkout", "--quiet", "-b", "native-managed-feature");
+    const feature = await commit("feature\n", "Managed feature");
+    git("checkout", "--quiet", "main");
+    const main = await commit("main\n", "Managed main");
+    assert.throws(() => git("merge", "--no-ff", "native-managed-feature"));
+    const context = p.gitManagedOperationContextSchema.parse({
+      type: "merge",
+      originalHead: main,
+      sourceRef: "native-managed-feature",
+      sourceRevision: feature,
+      targetRef: "refs/heads/main",
+      targetRevision: main,
+      pendingCommits: [feature],
+      totalSteps: 1,
+      checkpointRef: null,
+    });
+    const legacy = managedOperationRecord({
+      scope,
+      state: await inspectGitManagedOperation(checkout, context),
+    });
+    await store.put(scope, legacy);
+    const current = await operation({
+      type: "git.operation.current",
+      arguments: {},
+    });
+    assert.equal(current.ok, true, JSON.stringify(current));
+    assert.equal(current.result.operation.state, "conflicted");
+    assert.equal(current.result.operation.id, legacy.id);
+    assert.equal(current.result.operation.createdAt, legacy.createdAt);
+    assert.deepEqual(
+      await store.get(scope),
+      current.result.operation,
+      "Node reopens native journal writes",
+    );
+    if (process.platform !== "win32")
+      assert.equal((await stat(journal)).mode & 0o777, 0o600);
+    assert.deepEqual(
+      await operation({
+        type: "git.operation.control",
+        arguments: { operationId: crypto.randomUUID(), action: "abort" },
+      }),
+      { ok: false, error: "Git operation not found." },
+    );
+    assert.equal(git("rev-parse", "--verify", "MERGE_HEAD"), feature);
+    await restartWorker();
+    const aborted = await operation({
+      type: "git.operation.control",
+      arguments: {
+        operationId: legacy.id,
+        action: "abort",
+        context: { ...context, originalHead: feature },
+      },
+    });
+    assert.equal(aborted.ok, true, JSON.stringify(aborted));
+    assert.equal(aborted.result.operation.state, "aborted");
+    assert.equal(
+      git("rev-parse", "HEAD"),
+      main,
+      "control takes its context from the scoped journal",
+    );
+    assert.equal(aborted.result.operation.id, legacy.id);
+    const completedBytes = await readFile(journal, "utf8");
+    assert.deepEqual(
+      await operation({ type: "git.operation.current", arguments: {} }),
+      aborted,
+    );
+    assert.equal(
+      await readFile(journal, "utf8"),
+      completedBytes,
+      "terminal records are not refreshed",
+    );
+    // The legacy scripts remain present, but the native worker PATH contains
+    // only Git. An edit followed by a reword must use the native editor entry.
+    const upstream = git("rev-parse", "HEAD");
+    const edits = [];
+    for (const name of ["A", "B"]) {
+      const name_ = `native-rebase-${name}.txt`;
+      await writeFile(path.join(checkout, name_), `${name}\n`);
+      git("add", name_);
+      git("commit", "--quiet", "-m", `Rebase ${name}`);
+      edits.push(git("rev-parse", "HEAD"));
+    }
+    // Preserve the original dirty sentinel: only these owned files are shelved
+    // temporarily so the existing reviewed rebase can start on a clean tree.
+    git(
+      "stash",
+      "push",
+      "--include-untracked",
+      "--message",
+      "Owned smoke sentinel",
+    );
+    const rebaseAction = {
+      type: "interactiveRebase",
+      upstreamRef: upstream,
+      todo: [
+        { action: "edit", revision: edits[0], message: null },
+        {
+          action: "reword",
+          revision: edits[1],
+          message: "Native queued reword 🧙",
+        },
+      ],
+    };
+    const planned = await previewGitManagedOperation(checkout, rebaseAction);
+    const started = await startGitManagedOperation(
+      checkout,
+      rebaseAction,
+      planned.token,
+    );
+    assert.equal(started.pausedAction, "edit");
+    const edit = managedOperationRecord({ scope, state: started });
+    await store.put(scope, edit);
+    await restartWorker();
+    const amended = await operation({
+      type: "git.operation.amend",
+      arguments: { operationId: edit.id, message: "Native amended edit" },
+    });
+    assert.equal(amended.ok, true, JSON.stringify(amended));
+    assert.equal(amended.result.operation.state, "completed");
+    assert.equal(git("log", "-1", "--format=%s"), "Native queued reword 🧙");
+    assert.deepEqual(await store.get(scope), amended.result.operation);
+    git("stash", "pop");
+    assert.equal(
+      await readFile(path.join(checkout, "untouched.txt"), "utf8"),
+      "private dirty content\n",
     );
   };
 }

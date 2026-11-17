@@ -1,6 +1,9 @@
 use anyhow::{Result, bail};
 use std::path::PathBuf;
 fn main() -> Result<()> {
+    if cantrip_worker::git::editor::run(std::env::args_os())? {
+        return Ok(());
+    }
     #[cfg(target_os = "linux")]
     codex_utils_pty::init_spawn_helper(std::env::args_os());
     let mut stdin = false;

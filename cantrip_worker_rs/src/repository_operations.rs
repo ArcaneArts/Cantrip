@@ -101,20 +101,66 @@ impl RepositoryOperations {
                 | "git.commit.signature.get"
                 | "git.refs.list"
                 | "git.compare"
-                | "git.revision.diff" => {
+                | "git.revision.diff"
+                | "git.stash.list"
+                | "git.operation.current"
+                | "git.operation.control"
+                | "git.operation.amend" => {
                     let (directory, worker) = self.profile.as_ref().ok_or_else(|| {
                         anyhow::anyhow!("Repository worker profile is not configured.")
                     })?;
                     let owner = Value::String(service.owner_id()?);
-                    let stored = crate::git::stored::read(
+                    let mut stored = crate::git::stored::read(
                         directory,
                         &command,
                         &owner,
                         &Value::String(worker.clone()),
                     )
                     .await?;
+                    let worker = Value::String(worker.clone());
+                    if kind == "git.operation.current" {
+                        if crate::git::stored::active(stored.as_ref()) {
+                            let state = crate::git::managed::inspect(
+                                &crate::filesystem::paths::native(
+                                    command["cwd"].as_js_string().unwrap(),
+                                ),
+                                &checked(
+                                    "gitManagedOperationContextSchema",
+                                    stored.as_ref().unwrap(),
+                                )?,
+                                &"".into(),
+                                None,
+                                scope,
+                            )
+                            .await?;
+                            let record = crate::git::stored::record(
+                                &command,
+                                &worker,
+                                &state,
+                                stored.as_ref(),
+                                None,
+                                None,
+                            )?;
+                            crate::git::stored::put(directory, &command, &owner, &worker, &record)
+                                .await?;
+                            stored = Some(record);
+                        }
+                        return checked(
+                            "gitManagedOperationResponseSchema",
+                            &json!({"operation":stored}),
+                        );
+                    }
                     if kind == "git.action" && crate::git::stored::active(stored.as_ref()) {
                         bail!("Finish or abort the active Git operation first.");
+                    }
+                    let control = matches!(kind, "git.operation.control" | "git.operation.amend");
+                    if control
+                        && (!crate::git::stored::active(stored.as_ref())
+                            || stored.as_ref().is_none_or(|record| {
+                                request["arguments"]["operationId"] != record["id"]
+                            }))
+                    {
+                        bail!("Git operation not found.");
                     }
                     if command
                         .get("peerWorktree")
@@ -125,8 +171,30 @@ impl RepositoryOperations {
                     let mut trusted = request["arguments"].clone();
                     trusted["type"] = request["type"].clone();
                     trusted["cwd"] = command["cwd"].clone();
+                    if control {
+                        trusted["context"] =
+                            checked("gitManagedOperationContextSchema", stored.as_ref().unwrap())?;
+                    }
                     let trusted = checked("workerCommandSchema", &trusted)?;
-                    crate::git::execute(&trusted, scope).await
+                    let result = crate::git::execute(&trusted, scope).await?;
+                    if control {
+                        let record = crate::git::stored::record(
+                            &command,
+                            &worker,
+                            &checked("gitManagedOperationWorkerStateSchema", &result)?,
+                            stored.as_ref(),
+                            Some(&command["operationId"]),
+                            None,
+                        )?;
+                        crate::git::stored::put(directory, &command, &owner, &worker, &record)
+                            .await?;
+                        checked(
+                            "gitManagedOperationResponseSchema",
+                            &json!({"operation":record}),
+                        )
+                    } else {
+                        Ok(result)
+                    }
                 }
                 _ => bail!("Repository operation is not implemented by the native worker."),
             }

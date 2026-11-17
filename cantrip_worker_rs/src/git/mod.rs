@@ -2,10 +2,13 @@
 //! recovery protocol. No Node worker is invoked.
 mod actions;
 mod diff;
+pub mod editor;
 mod history;
 mod inspection;
+pub mod managed;
 mod process;
 mod signatures;
+mod stashes;
 mod status;
 pub mod stored;
 use crate::filesystem::{Scope, paths};
@@ -32,6 +35,28 @@ pub async fn execute(command: &Value, scope: &Scope) -> Result<Value> {
     let cwd = paths::native(command["cwd"].as_js_string().unwrap());
     match command["type"].as_str().unwrap() {
         "git.status" => status(&cwd, scope).await,
+        "git.stash.list" => stashes::list(&cwd, scope).await,
+        "git.operation.inspect" => {
+            managed::inspect(&cwd, &command["context"], &"".into(), None, scope).await
+        }
+        "git.operation.control" => {
+            managed::control(
+                &cwd,
+                &command["context"],
+                command["action"].as_str().unwrap(),
+                scope,
+            )
+            .await
+        }
+        "git.operation.amend" => {
+            managed::amend(
+                &cwd,
+                &command["context"],
+                command["message"].as_js_string(),
+                scope,
+            )
+            .await
+        }
         "git.history" => history::history(&cwd, command, scope).await,
         "git.file.history" => history::file_history(&cwd, command, scope).await,
         "git.file.blame" => history::blame(&cwd, command, scope).await,

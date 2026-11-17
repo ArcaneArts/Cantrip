@@ -13,6 +13,9 @@ use std::io::{self, BufRead};
 use std::sync::Arc;
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<()> {
+    if cantrip_worker::git::editor::run(std::env::args_os())? {
+        return Ok(());
+    }
     let mut registry: Option<Registry> = None;
     let mut service: Option<Arc<Service>> = None;
     let mut operations = RepositoryOperations::default();
@@ -40,6 +43,23 @@ async fn main() -> Result<()> {
                     Ok(Value::Null)
                 }
                 "git" => cantrip_worker::git::execute(&input["command"], &scope).await,
+                "git-record" => cantrip_worker::git::stored::record(
+                    &input["command"],
+                    &input["workerId"],
+                    &input["state"],
+                    input.get("existing").filter(|v| !v.is_null()),
+                    input.get("id"),
+                    input["now"].as_str(),
+                ),
+                "git-put" => cantrip_worker::git::stored::put(
+                    std::path::Path::new(input["directory"].as_str().unwrap()),
+                    &input["command"],
+                    &input["ownerId"],
+                    &input["workerId"],
+                    &input["record"],
+                )
+                .await
+                .map(|_| Value::Null),
                 "git-stored" => cantrip_worker::git::stored::read(
                     std::path::Path::new(input["directory"].as_str().unwrap()),
                     &input["command"],
