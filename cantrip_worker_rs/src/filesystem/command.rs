@@ -32,6 +32,7 @@ pub(crate) struct Captured {
     pub stderr: Vec<u8>,
     pub code: Option<i32>,
     pub overflow: Option<&'static str>,
+    pub timed_out: bool,
 }
 impl Scope {
     /// Capture bytes and nonzero exits for Git's binary object/diff protocols.
@@ -64,6 +65,28 @@ impl Scope {
         environment: &[(OsString, OsString)],
         input: Option<&[u8]>,
     ) -> Result<Captured> {
+        self.capture_options(program, args, maximum, environment, input, None)
+            .await
+    }
+    pub(crate) async fn capture_timeout(
+        &self,
+        program: &OsStr,
+        args: &[OsString],
+        maximum: usize,
+        timeout: Duration,
+    ) -> Result<Captured> {
+        self.capture_options(program, args, maximum, &[], None, Some(timeout))
+            .await
+    }
+    async fn capture_options(
+        &self,
+        program: &OsStr,
+        args: &[OsString],
+        maximum: usize,
+        environment: &[(OsString, OsString)],
+        input: Option<&[u8]>,
+        timeout: Option<Duration>,
+    ) -> Result<Captured> {
         self.check()?;
         let mut command = Command::new(program);
         command
@@ -82,6 +105,14 @@ impl Scope {
         #[cfg(windows)]
         command.creation_flags(0x08000000);
         let mut child = command.spawn()?;
+        let deadline = async {
+            if let Some(timeout) = timeout {
+                tokio::time::sleep(timeout).await
+            } else {
+                std::future::pending::<()>().await
+            }
+        };
+        let mut deadline = Box::pin(deadline);
         let stdin = child.stdin.take();
         let writing = async {
             if let Some(mut stdin) = stdin
@@ -101,6 +132,7 @@ impl Scope {
             stderr: Vec::new(),
             code: None,
             overflow: None,
+            timed_out: false,
         };
         let mut out_chunk = [0; 8192];
         let mut err_chunk = [0; 8192];
@@ -116,6 +148,7 @@ impl Scope {
                 let (name, buffer, chunk, count) = tokio::select! {
                     biased;
                     _=self.stopped()=>return Err(anyhow!("Worker workspace operation stopped.")),
+                    _=&mut deadline=>{captured.timed_out=true;break;},
                     result=&mut writing,if !input_done=>{ result?; input_done=true; continue; },
                     read=stdout.read(&mut out_chunk),if out_open=>{
                         let count=read?;out_open=count!=0;
@@ -138,7 +171,7 @@ impl Scope {
                     break;
                 }
             }
-            if captured.overflow.is_some() {
+            if captured.overflow.is_some() || captured.timed_out {
                 #[cfg(unix)]
                 let _ = cantrip_host::process::signal_owned(
                     &child,
@@ -152,6 +185,14 @@ impl Scope {
             let status = tokio::select! {
                 biased;
                 _=self.stopped()=>return Err(anyhow!("Worker workspace operation stopped.")),
+                _=&mut deadline,if !captured.timed_out=>{
+                    captured.timed_out=true;
+                    #[cfg(unix)]
+                    let _=cantrip_host::process::signal_owned(&child,libc::SIGKILL,true,"Owned Git child");
+                    #[cfg(windows)]
+                    let _=child.start_kill();
+                    child.wait().await?
+                },
                 status=child.wait()=>status?,
             };
             captured.code = status.code();
@@ -404,6 +445,45 @@ async fn bounded(mut reader: impl AsyncRead + Unpin, maximum: usize) -> Result<V
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn deadline_retains_output_and_reaps_owned_child_with_open_or_closed_pipes() {
+        for close in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let marker = root.path().join("owned-pid");
+            let script = format!(
+                "printf '%s' \"$$\" > \"$1\"; printf ready; printf warning >&2; {} exec /bin/sleep 30",
+                if close { "exec 1>&- 2>&-;" } else { "" }
+            );
+            let args = vec![
+                "-c".into(),
+                script.into(),
+                "fixture".into(),
+                marker.as_os_str().to_owned(),
+            ];
+            let captured = tokio::time::timeout(
+                Duration::from_secs(3),
+                Scope::default().capture_timeout(
+                    OsStr::new("/bin/sh"),
+                    &args,
+                    1024,
+                    Duration::from_millis(300),
+                ),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            assert!(captured.timed_out);
+            assert_eq!(captured.stdout, b"ready");
+            assert_eq!(captured.stderr, b"warning");
+            let pid = tokio::fs::read_to_string(marker)
+                .await
+                .unwrap()
+                .parse::<i32>()
+                .unwrap();
+            assert_eq!(unsafe { libc::kill(pid, 0) }, -1);
+        }
+    }
 
     #[tokio::test]
     async fn capture_input_drains_output_while_writing_and_bounds_both_streams() {
