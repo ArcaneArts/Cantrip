@@ -875,7 +875,8 @@
     "gitManagedOperationContextSchema": 4871,
     "gitManagedOperationWorkerStateSchema": 13199,
     "gitManagedOperationResponseSchema": 13206,
-    "gitStashListSchema": 13208
+    "gitStashListSchema": 13208,
+    "gitManagedOperationPreviewSchema": 13231
   },
   "nodes": [
     {
@@ -79822,6 +79823,118 @@
       ]
     },
     { "type": "boolean", "checks": [] },
-    { "type": "boolean", "checks": [] }
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "gitManagedOperationPreviewSchema",
+      "shape": {
+        "action": 4848,
+        "token": 13232,
+        "destructive": 13233,
+        "summary": 13234,
+        "warnings": 13235,
+        "context": 4871,
+        "commits": 13237,
+        "files": 13238,
+        "patch": 13239,
+        "patchTruncated": 13240,
+        "wouldConflict": 13241,
+        "todo": 13242,
+        "todoText": 13244,
+        "publishedRefs": 13246
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{64}$/u"
+        }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 10000, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 13236,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "array",
+      "element": 13175,
+      "checks": [{ "check": "max_length", "maximum": 10000, "when": "length" }]
+    },
+    {
+      "type": "array",
+      "element": 13142,
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 2000000, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13243,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 4858,
+      "checks": [{ "check": "max_length", "maximum": 10000, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13245,
+      "defaultValue": "",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 2000000, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13247,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 13248,
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1024, "when": "length" }
+      ]
+    }
   ]
 }

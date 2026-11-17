@@ -6,6 +6,14 @@ use cantrip_wire::{Value, value::json};
 use icu_collator::{Collator, options::CollatorOptions};
 use std::path::Path;
 
+pub(super) fn collator() -> Result<icu_collator::CollatorBorrowed<'static>> {
+    let locale: icu_locale_core::Locale = cantrip_wire::environment::locale()
+        .unwrap_or("en-US")
+        .parse()
+        .unwrap_or_else(|_| "en-US".parse().unwrap());
+    Collator::try_new(locale.into(), CollatorOptions::default())
+        .map_err(|e| anyhow!("Git branch sorting locale: {e}"))
+}
 pub async fn status(cwd: &Path, scope: &Scope) -> Result<Value> {
     let (branch, head, upstream, porcelain, branches) = tokio::join!(
         text(cwd, &["branch", "--show-current"], scope),
@@ -90,12 +98,7 @@ pub async fn status(cwd: &Path, scope: &Scope) -> Result<Value> {
         if values.len()<3||values[0].is_empty()||values[1].is_empty()||values[2].is_empty()||values.get(5).is_some_and(|s|!s.is_empty()){return None;}
         Some(json!({"name":values[1],"kind":if values[0].starts_with("refs/remotes/"){"remote"}else{"local"},"current":values.get(4)==Some(&"*"),"hash":values[2],"upstream":values.get(3).filter(|s|!s.is_empty()).copied()}))
     }).collect::<Vec<_>>();
-    let locale: icu_locale_core::Locale = cantrip_wire::environment::locale()
-        .unwrap_or("en-US")
-        .parse()
-        .unwrap_or_else(|_| "en-US".parse().unwrap());
-    let collator = Collator::try_new(locale.into(), CollatorOptions::default())
-        .map_err(|e| anyhow!("Git branch sorting locale: {e}"))?;
+    let collator = collator()?;
     branches.sort_by(|left, right| {
         (right["current"] == true)
             .cmp(&(left["current"] == true))

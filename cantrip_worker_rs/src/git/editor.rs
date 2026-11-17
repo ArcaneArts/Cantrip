@@ -109,6 +109,13 @@ pub(super) async fn environment(
         ]);
     }
     let root = root(cwd, context, scope).await?;
+    environment_at(cwd, &root, scope).await
+}
+async fn environment_at(
+    cwd: &Path,
+    root: &Path,
+    scope: &Scope,
+) -> Result<Vec<(OsString, OsString)>> {
     let done = process::text(
         cwd,
         &["rev-parse", "--git-path", "rebase-merge/done"],
@@ -139,6 +146,50 @@ pub(super) async fn environment(
         ),
         ("LC_ALL".into(), "C".into()),
     ])
+}
+pub(super) async fn prepare(
+    cwd: &Path,
+    action: &Value,
+    context: &Value,
+    storage: Option<&Path>,
+    scope: &Scope,
+) -> Result<Vec<(OsString, OsString)>> {
+    let root = match storage {
+        Some(root) => root.to_owned(),
+        None => root(cwd, context, scope).await?,
+    };
+    tokio::fs::create_dir_all(&root).await?;
+    let todo = action["todo"].as_array().unwrap();
+    let text = todo
+        .iter()
+        .map(|item| {
+            format!(
+                "{} {}",
+                item["action"].as_str().unwrap(),
+                item["revision"].as_str().unwrap()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
+    let messages = Value::object(todo.iter().filter(|item| item["action"] == "reword").map(
+        |item| {
+            (
+                item["revision"].as_js_string().unwrap().clone(),
+                item["message"].clone(),
+            )
+        },
+    ));
+    let todo_path = root.join("todo");
+    let messages_path = root.join("reword-messages.json");
+    let (a, b) = tokio::join!(
+        tokio::fs::write(todo_path, text),
+        tokio::fs::write(messages_path, messages.stringify())
+    );
+    a?;
+    b?;
+    scope.check()?;
+    environment_at(cwd, &root, scope).await
 }
 pub(super) async fn cleanup(cwd: &Path, context: &Value, scope: &Scope) -> Result<()> {
     if interactive(context) {

@@ -43,6 +43,24 @@ async fn main() -> Result<()> {
                     Ok(Value::Null)
                 }
                 "git" => cantrip_worker::git::execute(&input["command"], &scope).await,
+                "git-preview-stop"=> {
+                    let (stop,receiver)=tokio::sync::watch::channel(false);
+                    let scope=Scope::with_stop(receiver);
+                    let mut query=Box::pin(cantrip_worker::git::execute(&input["command"],&scope));
+                    let ready=input["ready"].as_str().unwrap();
+                    tokio::select! {
+                        result=&mut query=>result,
+                        observed=tokio::time::timeout(std::time::Duration::from_secs(10),async {
+                            while !tokio::fs::try_exists(ready).await? {tokio::time::sleep(std::time::Duration::from_millis(5)).await;}
+                            Ok::<_,std::io::Error>(())
+                        })=>{
+                            stop.send(true)?;
+                            let result=query.await;
+                            observed??;
+                            result
+                        }
+                    }
+                }
                 "git-record" => cantrip_worker::git::stored::record(
                     &input["command"],
                     &input["workerId"],

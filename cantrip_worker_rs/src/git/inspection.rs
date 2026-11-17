@@ -9,7 +9,7 @@ use std::path::Path;
 const FILE_LIMIT: usize = 100_000;
 const MESSAGE_LIMIT: usize = 1_000_000;
 
-fn status(code: &str) -> &'static str {
+pub(super) fn status(code: &str) -> &'static str {
     match code.as_bytes().first() {
         Some(b'A') => "added",
         Some(b'M') => "modified",
@@ -21,12 +21,17 @@ fn status(code: &str) -> &'static str {
         _ => "unknown",
     }
 }
-struct Files {
-    files: Vec<Value>,
-    total: usize,
-    truncated: bool,
+pub(super) struct Files {
+    pub files: Vec<Value>,
+    pub total: usize,
+    pub truncated: bool,
 }
-async fn files(cwd: &Path, base: Option<&str>, hash: &str, scope: &Scope) -> Result<Files> {
+pub(super) async fn files(
+    cwd: &Path,
+    base: Option<&str>,
+    hash: &str,
+    scope: &Scope,
+) -> Result<Files> {
     let args = |format| {
         let mut args = if base.is_some() {
             vec!["diff"]

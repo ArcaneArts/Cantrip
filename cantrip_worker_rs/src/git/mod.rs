@@ -6,7 +6,9 @@ pub mod editor;
 mod history;
 mod inspection;
 pub mod managed;
+mod plans;
 mod process;
+mod review;
 mod signatures;
 mod stashes;
 mod status;
@@ -35,6 +37,16 @@ pub async fn execute(command: &Value, scope: &Scope) -> Result<Value> {
     let cwd = paths::native(command["cwd"].as_js_string().unwrap());
     match command["type"].as_str().unwrap() {
         "git.status" => status(&cwd, scope).await,
+        "git.operation.preview" => plans::preview(&cwd, &command["action"], scope).await,
+        "git.operation.start" => {
+            plans::start(
+                &cwd,
+                &command["action"],
+                command["token"].as_js_string().unwrap(),
+                scope,
+            )
+            .await
+        }
         "git.stash.list" => stashes::list(&cwd, scope).await,
         "git.operation.inspect" => {
             managed::inspect(&cwd, &command["context"], &"".into(), None, scope).await
