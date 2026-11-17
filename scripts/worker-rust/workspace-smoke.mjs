@@ -89,6 +89,8 @@ let server,
   completion,
   diagnostics = "";
 let master, componentKey, surfaceKey;
+let workerStarts = 0;
+let failure;
 async function eventually(read, accept, label) {
   const until = Date.now() + 25000;
   for (;;) {
@@ -151,11 +153,19 @@ function startWorker(code) {
     child.once("error", reject);
     child.once("close", (code) => resolve(code));
   });
-  const capture = (chunk) => {
-    diagnostics = (diagnostics + chunk).slice(-24000);
+  const capture = () => {
+    let partial = "";
+    return (chunk) => {
+      diagnostics = (diagnostics + chunk).slice(-24000);
+      const lines = (partial + chunk).split("\n");
+      partial = lines.pop();
+      workerStarts += lines.filter((line) =>
+        /event=worker\.startup\.started\b/u.test(line),
+      ).length;
+    };
   };
-  child.stdout.on("data", capture);
-  child.stderr.on("data", capture);
+  child.stdout.on("data", capture());
+  child.stderr.on("data", capture());
 }
 async function stopWorker() {
   if (!child) return;
@@ -173,6 +183,19 @@ async function ready() {
     () => call("GET", `/api/workers/${workerId}/version`),
     (value) => assert.equal(value.status, 200),
     "actual worker command socket ready",
+  );
+}
+async function restartWorker() {
+  const before = workerStarts;
+  const restarted = await call("POST", `/api/workers/${workerId}/restart`, {});
+  assert.equal(restarted.status, 202, JSON.stringify(restarted));
+  await eventually(
+    () => call("GET", `/api/workers/${workerId}/version`),
+    (value) => {
+      assert.equal(value.status, 200);
+      assert.ok(workerStarts > before, "actual native runtime restarted");
+    },
+    "native runtime restart and command socket readiness",
   );
 }
 async function repositoryClient() {
@@ -484,6 +507,7 @@ try {
     workerId,
     workerDirectory,
     checkout,
+    restartWorker,
   });
   await verifyManagedFolders({
     call,
@@ -532,9 +556,7 @@ try {
   } finally {
     metadataKey.fill(0);
   }
-  const restarted = await call("POST", `/api/workers/${workerId}/restart`, {});
-  assert.equal(restarted.status, 202, JSON.stringify(restarted));
-  await ready();
+  await restartWorker();
   await reopenExplorer();
   await reopenTerminals();
   await reopenGit();
@@ -560,16 +582,37 @@ try {
       surfaceGrantTerminalServiceReconciliation: true,
       realTerminalServiceEnableRestartAndRecovery: true,
       encryptedGitStatusAndDiff: true,
+      encryptedGitActionsAndRestartGuard: true,
       nodeAbsentFromWorkerPath: true,
       scope:
-        "Fresh attachment, discovery/import, managed/existing folders, encrypted host Explorer/file-document and Git status/diff queries, and host terminal-service lifecycle; other worker domains remain pending.",
+        "Fresh attachment, discovery/import, managed/existing folders, encrypted host Explorer/file-document and Git queries/basic actions, and host terminal-service lifecycle; other worker domains remain pending.",
     }),
   );
+} catch (error) {
+  failure = error;
 } finally {
-  await stopWorker();
-  await server?.close();
   master?.fill(0);
   componentKey?.fill(0);
   surfaceKey?.fill(0);
-  await rm(root, { recursive: true, force: true });
+  const errors = [];
+  for (const close of [
+    stopWorker,
+    () => server?.close(),
+    () => rm(root, { recursive: true, force: true }),
+  ]) {
+    try {
+      await close();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length) {
+    if (failure)
+      console.error(
+        "Owned fixture cleanup errors",
+        errors.map((error) => error.message),
+      );
+    else failure = new AggregateError(errors, "Owned fixture cleanup failed");
+  }
 }
+if (failure) throw failure;

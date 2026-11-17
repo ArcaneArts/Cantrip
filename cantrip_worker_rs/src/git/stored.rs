@@ -1,10 +1,18 @@
-//! Read existing Node operation records before dispatching a Git query. No
+//! Read existing Node operation records before Git dispatch. No
 //! journal is rewritten, discarded, or inferred inactive by this adapter.
 use anyhow::{Result, bail};
 use cantrip_crypto::checked;
 use cantrip_wire::{Value, parse_json_text, value::json};
 use sha2::{Digest, Sha256};
 use std::path::Path;
+pub fn active(record: Option<&Value>) -> bool {
+    record.is_some_and(|record| {
+        !matches!(
+            record["state"].as_str(),
+            Some("completed" | "failed" | "aborted")
+        )
+    })
+}
 pub async fn read(
     directory: &Path,
     command: &Value,

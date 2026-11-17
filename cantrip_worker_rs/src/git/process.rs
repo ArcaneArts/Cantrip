@@ -11,14 +11,17 @@ pub(super) struct Output {
     pub overflow: bool,
     pub code: Option<i32>,
     pub error: String,
+    pub stderr: Vec<u8>,
 }
 pub(super) async fn capture(cwd: &Path, args: &[&str], scope: &Scope) -> Result<Output> {
     let arguments: Vec<OsString> = std::iter::once(OsString::from("-C"))
         .chain(std::iter::once(cwd.as_os_str().to_owned()))
         .chain(args.iter().map(OsString::from))
         .collect();
-    let result = scope
-        .capture(OsStr::new("git"), &arguments, MAXIMUM)
+    // The collector owns two I/O buffers. Keep that state on the heap instead
+    // of duplicating it through each joined status/action future and its poll
+    // stack frames on the worker's normal runtime threads.
+    let result = Box::pin(scope.capture(OsStr::new("git"), &arguments, MAXIMUM))
         .await
         .map_err(|error| {
             if let Some(io) = error.downcast_ref::<std::io::Error>() {
@@ -43,6 +46,7 @@ pub(super) async fn capture(cwd: &Path, args: &[&str], scope: &Scope) -> Result<
     };
     Ok(Output {
         bytes: result.stdout,
+        stderr: result.stderr,
         overflow: result.overflow.is_some(),
         code: result.code,
         error,
@@ -63,4 +67,26 @@ pub(super) fn trim(text: &str) -> String {
 }
 pub(super) async fn text(cwd: &Path, args: &[&str], scope: &Scope) -> Result<String> {
     Ok(trim(&raw(cwd, args, scope).await?))
+}
+/// Preserve the action helper's stdout+stderr output and error priority; query
+/// helpers above retain their original execFile-style failure messages.
+pub(super) async fn run(cwd: &Path, args: &[&str], scope: &Scope) -> Result<String> {
+    let output = capture(cwd, args, scope).await?;
+    let stdout = String::from_utf8_lossy(&output.bytes);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if output.code != Some(0) || output.overflow {
+        let stderr = trim(&stderr);
+        let stdout = trim(&stdout);
+        bail!(
+            "{}",
+            if !stderr.is_empty() {
+                stderr
+            } else if !stdout.is_empty() {
+                stdout
+            } else {
+                output.error
+            }
+        );
+    }
+    Ok(trim(&format!("{stdout}{stderr}")))
 }
