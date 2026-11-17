@@ -1,5 +1,15 @@
 use cantrip_wire::JsString;
 use std::path::{Path, PathBuf};
+pub fn absolute(path: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        path.has_root()
+    }
+    #[cfg(not(windows))]
+    {
+        path.is_absolute()
+    }
+}
 pub fn native(value: &JsString) -> PathBuf {
     #[cfg(windows)]
     {

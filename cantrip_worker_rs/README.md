@@ -9,7 +9,7 @@ The native `cantrip-worker` executable currently supports configuration,
 version-1 identity/credential persistence, logging/archive lifecycle, enrollment,
 heartbeat, WebSocket readiness/reconnect, version queries, credential rotation,
 in-process restart, log reads, authenticated encryption-grant refresh and workspace
-repository discovery/import validation. It opens
+repository discovery/import validation and encrypted workspace-root attachment. It opens
 and retains compatible endpoint
 encryption identities using native P-256/HPKE and private version-2 records. Remaining domains fail explicitly and advertise
 unavailable capabilities. This is not yet the complete production replacement.
@@ -67,9 +67,12 @@ bounded output/timeouts and are stopped/joined with their runtime.
 `routing` reopens version-1 `repository-routing.json`, resolves opaque handles and
 publishes field-scoped tokens through private atomic snapshots. The workspace
 adapter protects paths/results/errors before they leave the worker. Only the
-discovery capability is enabled: new encrypted workspace-root attachment, managed
-folder creation/removal and other repository commands remain pending. Existing
-attached profiles can discover and import through the production Rust server.
+discovery and root-attachment capabilities are enabled. `repository_operations`
+serves encrypted root attachment and repository metadata registration/resolution,
+with replay reservation, current-key selection and protected outcomes. Managed
+folder creation/removal, Git/GitHub operations and other domains remain pending.
+Fresh and existing attached profiles can discover and import through the
+production Rust server.
 
 The configuration, HTTP, crypto, grant, content and workspace examples are development-only differential drivers
 that emit synthetic secrets. Never run them against real profiles.

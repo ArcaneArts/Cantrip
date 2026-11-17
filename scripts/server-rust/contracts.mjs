@@ -859,6 +859,13 @@ export const contractRoots = [
   "terminalSnapshotRequestContentSchema",
   "terminalSnapshotContentSchema",
   "projectGithubConversionRepositorySchema",
+  "repositoryOperationContextSchema",
+  "repositoryOperationRequestContentSchema",
+  "repositoryOperationOutcomeContentSchema",
+  "workspaceRootAttachmentSchema",
+  "workspaceRootAttachArgumentsSchema",
+  "repositoryMetadataValuesSchema",
+  "repositoryMetadataResultSchema",
 ];
 
 export const projectExportContractRoots = [
@@ -1294,6 +1301,10 @@ registerChecks(protocol.encryptedProjectWorkspaceUpdateSchema, [
 ]);
 registerChecks(protocol.repositoryOperationWireRequestSchema, [
   "repository-agent-model",
+]);
+registerChecks(protocol.repositoryMetadataValuesSchema, [
+  "repository-metadata-fields",
+  "repository-metadata-count",
 ]);
 registerChecks(protocol.repositoryWorkerOperationWireRequestSchema, [
   "repository-agent-model",

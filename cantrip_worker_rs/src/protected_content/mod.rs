@@ -2,6 +2,7 @@
 //! authorization and cancellation remain with the owning execution adapters.
 mod endpoint;
 mod replay;
+mod repository;
 mod surface;
 use crate::encryption::BoundComponentKey;
 use anyhow::{Result, anyhow};
@@ -9,6 +10,7 @@ use cantrip_crypto::{DecryptionError, Zeroizing, checked};
 use cantrip_wire::{Value, parse_json_text, value::json};
 pub use endpoint::*;
 pub use replay::SurfaceStreamReplayGuard;
+pub use repository::*;
 pub use surface::*;
 
 fn context(grant: &BoundComponentKey, binding: &Value) -> Value {

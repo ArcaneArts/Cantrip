@@ -2,13 +2,20 @@
 use anyhow::{Result, anyhow};
 use cantrip_wire::{Value, parse_json_text, value::json};
 use cantrip_worker::{
+    encryption::{Identity, Service},
+    protected_content,
+    repository_operations::RepositoryOperations,
     routing::Registry,
     workspace::{self, Limits, Scope},
 };
 use std::io::{self, BufRead};
+use std::sync::Arc;
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<()> {
     let mut registry: Option<Registry> = None;
+    let mut service: Option<Arc<Service>> = None;
+    let operations = RepositoryOperations::default();
+    let mut replay = protected_content::RepositoryOperationReplayGuard::default();
     let scope = Scope::default();
     for line in io::stdin().lock().lines() {
         let input = parse_json_text(&line?).map_err(|e| anyhow!("{}", e.lossy()))?;
@@ -18,7 +25,100 @@ async fn main() -> Result<()> {
                     .as_ref()
                     .ok_or_else(|| anyhow!("Fixture registry not open"))
             };
+            let encryption = || {
+                service
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("Fixture encryption not open"))
+            };
             match input["op"].as_str().unwrap_or("") {
+                "open-service" => {
+                    if let Some(service) = service.take() {
+                        service.close().await?;
+                    }
+                    let url = input["serverUrl"].as_str().unwrap();
+                    let identity = Identity::open(
+                        std::path::Path::new(input["directory"].as_str().unwrap()),
+                        url,
+                        input["workerId"].as_js_string().unwrap(),
+                        false,
+                    )?;
+                    let created = Service::new(identity, url, cantrip_worker::http::client()?)?;
+                    let registration = created.registration();
+                    service = Some(created);
+                    Ok(registration)
+                }
+                "accept" => Ok(encryption()?.accept_bootstrap(&input["payload"])?),
+                "lock" => {
+                    encryption()?.lock();
+                    Ok(Value::Null)
+                }
+                "repository-command" => {
+                    operations
+                        .execute(&input["command"], encryption()?, opened()?, &scope)
+                        .await
+                }
+                "worker-repository-protect" => protected_content::protect_repository_content(
+                    encryption()?,
+                    &input["context"],
+                    &input["content"],
+                    input["schema"].as_str().unwrap(),
+                ),
+                "worker-repository-open" => protected_content::open_repository_content(
+                    encryption()?,
+                    &input["context"],
+                    &input["encrypted"],
+                    input["schema"].as_str().unwrap(),
+                    input["historical"] == true,
+                ),
+                "repository-aad" => {
+                    cantrip_crypto::content::repository_operation_associated_data(&input["context"])
+                }
+                "repository-encrypt" => cantrip_crypto::content::encrypt_repository_operation(
+                    &cantrip_crypto::decode(input["key"].as_str().unwrap())?,
+                    &input["context"],
+                    &cantrip_crypto::decode(input["bytes"].as_str().unwrap())?,
+                ),
+                "repository-decrypt" => Ok(json!(cantrip_crypto::encode(
+                    &cantrip_crypto::content::decrypt_repository_operation(
+                        &cantrip_crypto::decode(input["key"].as_str().unwrap())?,
+                        &input["context"],
+                        &input["encrypted"]
+                    )?
+                ))),
+                "replay-reserve" => {
+                    replay.reserve(&input["context"])?;
+                    Ok(Value::Null)
+                }
+                "operation-access" => Ok(json!(
+                    input["types"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(
+                            |kind| cantrip_protocol::repository_operations::operation_access(
+                                kind.as_str().unwrap()
+                            )
+                        )
+                        .collect::<Vec<_>>()
+                )),
+                "schema-validate" => Ok(
+                    match cantrip_protocol::parse(
+                        input["schema"].as_str().unwrap(),
+                        input.get("value"),
+                    ) {
+                        Ok(value) => json!({"ok":value}),
+                        Err(cantrip_protocol::ValidationError::Invalid(issues)) => {
+                            json!({"issues":issues})
+                        }
+                        Err(cantrip_protocol::ValidationError::Operation) => {
+                            anyhow::bail!("Unsupported fixture schema")
+                        }
+                    },
+                ),
+                "attach" => {
+                    workspace::attach_root(input["root"].as_js_string().unwrap(), opened()?, &scope)
+                        .await
+                }
                 "open-registry" => {
                     registry = Some(Registry::new(std::path::Path::new(
                         input["directory"].as_str().unwrap(),
@@ -96,6 +196,9 @@ async fn main() -> Result<()> {
             "{}",
             json!({"id":input["requestId"],"result":result}).stringify()
         );
+    }
+    if let Some(service) = service {
+        service.close().await?;
     }
     Ok(())
 }

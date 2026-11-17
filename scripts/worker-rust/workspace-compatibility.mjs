@@ -404,7 +404,7 @@ try {
       localeOrdering: true,
       opaqueCommandResults: true,
       scope:
-        "Workspace discovery/import validation and routing; encrypted new-root attachment and project execution remain pending.",
+        "Workspace discovery/import validation and routing; other filesystem and project execution remain pending.",
     }),
   );
 } finally {

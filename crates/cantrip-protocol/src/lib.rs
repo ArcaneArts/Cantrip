@@ -24,6 +24,7 @@ mod projects;
 mod public_chats;
 mod refinements;
 mod remote_surfaces;
+pub mod repository_operations;
 pub mod response;
 mod run_configurations;
 mod tasks;

@@ -835,7 +835,14 @@
     "terminalOutputContentSchema": 12549,
     "terminalSnapshotRequestContentSchema": 12553,
     "terminalSnapshotContentSchema": 12557,
-    "projectGithubConversionRepositorySchema": 1434
+    "projectGithubConversionRepositorySchema": 1434,
+    "repositoryOperationContextSchema": 12566,
+    "repositoryOperationRequestContentSchema": 12572,
+    "repositoryOperationOutcomeContentSchema": 12578,
+    "workspaceRootAttachmentSchema": 8240,
+    "workspaceRootAttachArgumentsSchema": 12589,
+    "repositoryMetadataValuesSchema": 12592,
+    "repositoryMetadataResultSchema": 12599
   },
   "nodes": [
     {
@@ -76106,6 +76113,282 @@
       "checks": [
         { "check": "number_format", "format": "safeint", "abort": false }
       ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "repositoryOperationContextSchema",
+      "shape": {
+        "serverId": 12567,
+        "projectId": 12568,
+        "worktreeId": 12569,
+        "operationId": 5015,
+        "direction": 12570
+      },
+      "catchall": 12571,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "repositoryOperationDirectionSchema",
+      "values": ["request", "response"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "repositoryOperationRequestContentSchema",
+      "shape": { "type": 12573, "arguments": 12574 },
+      "catchall": 12577,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "repositoryOperationTypeSchema",
+      "values": [
+        "git.history",
+        "git.change-summary",
+        "git.graph.snapshot",
+        "git.graph.metrics",
+        "git.graph.commit-overlay",
+        "git.file.history",
+        "git.file.blame",
+        "git.commit.search",
+        "git.recovery.list",
+        "git.recovery.preview",
+        "git.recovery.apply",
+        "git.commit.get",
+        "git.commit.signature.get",
+        "git.refs.list",
+        "git.compare",
+        "git.revision.diff",
+        "git.status",
+        "git.diff",
+        "git.patch.preview",
+        "git.patch.apply",
+        "git.stash.list",
+        "git.stash.create",
+        "git.stash.diff",
+        "git.stash.action.preview",
+        "git.stash.action.apply",
+        "git.branch.list",
+        "git.branch.action.preview",
+        "git.branch.action.apply",
+        "git.remote.list",
+        "git.remote.action.preview",
+        "git.remote.action.apply",
+        "git.submodule.list",
+        "git.submodule.action.preview",
+        "git.submodule.action.apply",
+        "git.lfs.status",
+        "git.lfs.action.preview",
+        "git.lfs.action.apply",
+        "git.tag.list",
+        "git.tag.get",
+        "git.tag.action.preview",
+        "git.tag.action.apply",
+        "git.commit.action.preview",
+        "git.commit.action.apply",
+        "git.worktree.changes.preview",
+        "git.worktree.changes.apply",
+        "git.operation.current",
+        "git.operation.preview",
+        "git.operation.start",
+        "git.operation.control",
+        "git.operation.amend",
+        "git.conflicts.list",
+        "git.conflicts.get",
+        "git.conflicts.preview",
+        "git.conflicts.apply",
+        "git.action",
+        "git.force-push.preview",
+        "git.force-push.apply",
+        "git.agent.generate",
+        "worktree.status",
+        "repository.metadata.register",
+        "repository.metadata.resolve",
+        "workspace.root.attach",
+        "github.auth.status",
+        "github.repositories.cached",
+        "github.repositories.list",
+        "github.repository-owners.list",
+        "github.repositories.create",
+        "github.issues.list",
+        "github.inbox.list",
+        "github.issue.get",
+        "github.issue.create",
+        "github.issue.comment",
+        "github.issue.close",
+        "github.pull-requests.list",
+        "github.pull-request.get",
+        "github.pull-request.agent-context",
+        "github.pull-request.create",
+        "github.pull-request.comment",
+        "github.pull-request.review.submit",
+        "github.pull-request.review.comment",
+        "github.pull-request.review.reply",
+        "github.pull-request.review.mutate",
+        "github.pull-request.lifecycle.preview",
+        "github.pull-request.lifecycle.apply",
+        "github.pull-request.checkout.prepare",
+        "github.actions.overview",
+        "github.actions.run.get",
+        "github.actions.run.logs",
+        "github.actions.workflow.dispatch",
+        "github.actions.run.action",
+        "github.actions.run.checkout.prepare",
+        "github.releases.list",
+        "github.release.get",
+        "github.release.create"
+      ],
+      "checks": []
+    },
+    { "type": "record", "keyType": 12575, "valueType": 12576, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "repositoryOperationOutcomeContentSchema",
+      "options": [12579, 12583],
+      "discriminator": "ok",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "ok": 12580, "result": 12581 },
+      "catchall": 12582,
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    { "type": "unknown", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "ok": 12584, "error": 12585, "code": 12586 },
+      "catchall": 12588,
+      "checks": []
+    },
+    { "type": "literal", "values": [false], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 12587,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "flags": "u",
+          "displayPattern": "/^[a-z0-9]+(?:-[a-z0-9]+)*$/u"
+        },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "workspaceRootAttachArgumentsSchema",
+      "shape": { "rootPath": 12590 },
+      "catchall": 12591,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "record",
+      "name": "repositoryMetadataValuesSchema",
+      "keyType": 12593,
+      "valueType": 12594,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "repository-metadata-fields",
+          "messageAfterPath": true,
+          "message": "Repository metadata contains an unsupported field."
+        },
+        {
+          "check": "refinement",
+          "tag": "repository-metadata-count",
+          "messageAfterPath": true,
+          "message": "Repository metadata is too large."
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 120, "when": "length" }
+      ]
+    },
+    { "type": "union", "options": [12595, 12596, 12598], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 32768, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 12597,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 32768, "when": "length" }
+      ]
+    },
+    { "type": "null", "checks": [] },
+    {
+      "type": "object",
+      "name": "repositoryMetadataResultSchema",
+      "shape": { "values": 12592 },
+      "catchall": 12600,
+      "checks": []
     },
     { "type": "never", "checks": [] }
   ]

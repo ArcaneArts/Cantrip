@@ -1,6 +1,5 @@
-// Actual production Rust worker/server RPC over an existing attached-workspace
-// profile. The seed tool prepares only stopped, owned fixture state; no handlers
-// or production endpoints are replaced. New encrypted root attachment is pending.
+// Actual production Rust worker/server: fresh encrypted root attachment, then
+// restart and discover/import the persisted workspace. No seed or fake handlers.
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import {
@@ -20,16 +19,17 @@ import { fixtureEnvironment, startServer } from "../server-rust/process.mjs";
 import { WorkerRoutingRegistry } from "../../cantrip_worker/src/routing-registry.ts";
 import { projectLabel } from "../server-rust/security-fixtures.mjs";
 import { discoveryWireFixtures } from "../server-rust/discovery-wire-fixtures.mjs";
+import * as cryptoClient from "../../packages/crypto/dist/index.js";
+import * as protocol from "../../packages/protocol/dist/index.js";
 const { values } = parseArgs({
   options: {
     worker: { type: "string" },
     server: { type: "string" },
-    seed: { type: "string" },
   },
 });
 assert.ok(
-  values.worker && values.server && values.seed,
-  "Pass linked --worker, --server and --seed binaries",
+  values.worker && values.server,
+  "Pass linked --worker and --server binaries",
 );
 const root = await realpath(
   await mkdtemp(path.join(tmpdir(), "cantrip-native-workspace-")),
@@ -71,11 +71,6 @@ execFileSync(git, [
 ]);
 const sentinel = path.join(checkout, "untouched.txt");
 await writeFile(sentinel, "private dirty content\n");
-const registry = new WorkerRoutingRegistry(workerDirectory),
-  handles = await registry.protectMetadata({
-    rootPath: attached,
-    displayPath: attached,
-  });
 const workerId = "native-workspace-worker",
   workspaceId = "88888888-8888-4888-8888-000000000007",
   projectId = "99999999-9999-4999-8999-000000000007";
@@ -86,6 +81,7 @@ let server,
   child,
   completion,
   diagnostics = "";
+let master, componentKey;
 async function eventually(read, accept, label) {
   const until = Date.now() + 25000;
   for (;;) {
@@ -172,24 +168,147 @@ async function ready() {
     "actual worker command socket ready",
   );
 }
-async function seed(input) {
-  const process = spawn(path.resolve(values.seed), [serverDirectory], {
-    env: environment,
-    stdio: ["pipe", "pipe", "pipe"],
+async function repositoryClient() {
+  const ownerId = "00000000-0000-0000-0000-000000000001";
+  const encryptionPath = path.join(
+    workerDirectory,
+    "worker-encryption-key.json",
+  );
+  const identity = JSON.parse(await readFile(encryptionPath, "utf8"));
+  master = cryptoClient.generateAccountMasterKey();
+  const client = await cryptoClient.generateHpkeKeyPair();
+  const publicKey = await cryptoClient.publicKeyForPair(client);
+  const clientId = "77777777-7777-4777-8777-777777777777";
+  const wrappedMasterKey = await cryptoClient.wrapAccountMasterKeyForClient({
+    ownerId,
+    clientId,
+    accountMasterKey: master,
+    masterKeyRevision: 1,
+    clientPublicKey: publicKey,
   });
-  let errors = "";
-  process.stderr.on("data", (chunk) => {
-    errors = (errors + chunk).slice(-16000);
+  const initialized = await call("POST", "/api/encryption/profile/initialize", {
+    profile: {
+      formatVersion: 1,
+      activeMasterKeyRevision: 1,
+      passwordKdf: null,
+      passwordWrappedMasterKey: null,
+      payloadMigrationStatus: "pending",
+    },
+    initialClient: {
+      id: clientId,
+      label: "Native workspace client",
+      publicKey,
+      wrappedMasterKey,
+    },
   });
-  process.stdout.on("data", (chunk) => {
-    errors = (errors + chunk).slice(-16000);
+  assert.equal(initialized.status, 201, JSON.stringify(initialized));
+  const pending = await call(
+    "POST",
+    `/api/workers/${workerId}/encryption/refresh`,
+    { component: "repository-content", keyRevision: 1 },
+  );
+  assert.equal(pending.status, 200, JSON.stringify(pending));
+  const principals = await call("GET", "/api/encryption/principals");
+  assert.equal(principals.status, 200);
+  const principal = principals.body.find(
+    (principal) => principal.id === identity.principalId,
+  );
+  assert.ok(principal);
+  const approved = await call(
+    "POST",
+    `/api/encryption/principals/${principal.id}/approve`,
+    { expectedRevision: principal.revision },
+  );
+  assert.equal(approved.status, 200, JSON.stringify(approved));
+  componentKey = cryptoClient.deriveComponentKey({
+    accountMasterKey: master,
+    ownerId,
+    component: "repository-content",
+    keyRevision: 1,
   });
-  const done = new Promise((resolve, reject) => {
-    process.once("error", reject);
-    process.once("close", resolve);
+  const wrappedKey = await cryptoClient.wrapComponentKeyForWorker({
+    ownerId,
+    workerId,
+    component: "repository-content",
+    keyRevision: 1,
+    componentKey,
+    workerPublicKey: identity.publicKey,
   });
-  process.stdin.write(JSON.stringify(input) + "\n");
-  assert.equal(await done, 0, errors);
+  const granted = await call(
+    "POST",
+    `/api/encryption/principals/${principal.id}/grants`,
+    { component: "repository-content", keyRevision: 1, wrappedKey },
+  );
+  assert.equal(granted.status, 201, JSON.stringify(granted));
+  const refreshed = await call(
+    "POST",
+    `/api/workers/${workerId}/encryption/refresh`,
+    { component: "repository-content", keyRevision: 1 },
+  );
+  assert.equal(refreshed.status, 200, JSON.stringify(refreshed));
+  assert.equal(refreshed.body.status.state, "ready");
+  const serverId = JSON.parse(await readFile(encryptionPath, "utf8")).serverId;
+  assert.equal(typeof serverId, "string");
+  return async (id, rootPath, nameProtection) => {
+    const operationId = crypto.randomUUID();
+    const context = {
+      serverId,
+      projectId: id,
+      worktreeId: workerId,
+      operationId,
+      direction: "request",
+    };
+    const plaintext = new TextEncoder().encode(
+      JSON.stringify(
+        protocol.repositoryOperationRequestContentSchema.parse({
+          type: "workspace.root.attach",
+          arguments: { rootPath },
+        }),
+      ),
+    );
+    let protectedRequest;
+    try {
+      protectedRequest = await cryptoClient.encryptRepositoryOperationPayload({
+        ownerId,
+        context,
+        keyRevision: 1,
+        componentKey,
+        plaintext,
+      });
+    } finally {
+      plaintext.fill(0);
+    }
+    const result = await call("POST", "/api/workspaces/attached", {
+      id,
+      nameProtection,
+      storage: { kind: "attached", workerId },
+      operationId,
+      protectedRequest,
+    });
+    assert.equal(
+      JSON.stringify(result).includes(rootPath),
+      false,
+      "root plaintext is private",
+    );
+    assert.ok(result.body.operation, JSON.stringify(result));
+    const opened = await cryptoClient.decryptRepositoryOperationPayload({
+      ownerId,
+      context: { ...context, direction: "response" },
+      keyRevision: 1,
+      componentKey,
+      opaque: result.body.operation.protectedResponse,
+    });
+    try {
+      return {
+        ...result,
+        outcome: protocol.repositoryOperationOutcomeContentSchema.parse(
+          JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(opened)),
+        ),
+      };
+    } finally {
+      opened.fill(0);
+    }
+  };
 }
 try {
   await start();
@@ -201,25 +320,42 @@ try {
   assert.equal(enrollment.status, 201);
   startWorker(enrollment.body.code);
   await ready();
-  await stopWorker();
-  await server.close();
-  server = undefined;
+  const attach = await repositoryClient();
   const nameProtection =
     discoveryWireFixtures(projectLabel).encryptedProjectWorkspaceCreateSchema[0]
       .nameProtection;
-  await seed({
-    owner: "00000000-0000-0000-0000-000000000001",
-    workspace: {
-      id: workspaceId,
-      nameProtection,
-      storage: {
-        kind: "attached",
-        workerId,
-        rootPathHandle: handles.rootPath,
-        displayHandle: handles.displayPath,
-      },
+  const rejected = await attach(
+    "88888888-8888-4888-8888-000000000008",
+    path.join(checkout, "untouched.txt"),
+    nameProtection,
+  );
+  assert.equal(rejected.status, 200, JSON.stringify(rejected));
+  assert.equal(rejected.body.workspace, null);
+  assert.equal(rejected.outcome.ok, false);
+  assert.equal(rejected.outcome.code, "invalid-root");
+  const created = await attach(workspaceId, attached, nameProtection);
+  assert.equal(created.status, 201, JSON.stringify(created));
+  assert.equal(created.outcome.ok, true);
+  assert.deepEqual(
+    created.outcome.result,
+    created.body.operation.workspaceRootAttachment,
+  );
+  assert.equal(created.body.workspace.id, workspaceId);
+  assert.equal(
+    created.body.workspace.storage.rootPathHandle,
+    created.outcome.result.rootPathHandle,
+  );
+  await eventually(
+    () => call("GET", `/api/workspaces/${workspaceId}/repository-discovery`),
+    (value) => {
+      assert.equal(value.status, 200);
+      assert.equal(value.body.job.state, "succeeded");
     },
-  });
+    "initial discovery after fresh encrypted attachment",
+  );
+  await stopWorker();
+  await server.close();
+  server = undefined;
   await start(port);
   startWorker();
   await ready();
@@ -293,16 +429,21 @@ try {
       passed: true,
       realWorkerAndServer: true,
       existingAttachedProfile: true,
+      freshEncryptedRootAttachment: true,
+      authenticatedClientAndGrants: true,
+      encryptedRootErrors: true,
       opaquePaths: true,
       realGitDiscovery: true,
       actualImportValidationAndCommit: true,
       nodeAbsentFromWorkerPath: true,
       scope:
-        "Existing attached workspace; new encrypted root attachment and other worker domains remain pending.",
+        "Fresh encrypted attachment and persisted discovery/import; other worker domains remain pending.",
     }),
   );
 } finally {
   await stopWorker();
   await server?.close();
+  master?.fill(0);
+  componentKey?.fill(0);
   await rm(root, { recursive: true, force: true });
 }
