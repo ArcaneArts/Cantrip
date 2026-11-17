@@ -10,6 +10,7 @@ anyhow = "1"
 base64 = "0.22"
 cantrip-crypto = { path = "../crates/cantrip-crypto" }
 cantrip-framing = { path = "../crates/cantrip-framing" }
+cantrip-transport = { path = "../crates/cantrip-transport" }
 zeroize = "1"
 cantrip-config = { path = "../crates/cantrip-config" }
 cantrip-history = { path = "../crates/cantrip-history" }

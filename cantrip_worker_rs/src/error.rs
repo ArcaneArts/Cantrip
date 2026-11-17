@@ -9,6 +9,9 @@ impl std::fmt::Display for WireError {
 }
 impl std::error::Error for WireError {}
 pub fn message(error: &anyhow::Error) -> JsString {
+    if error.is::<crate::metadata::DelayAborted>() {
+        return error.to_string().into();
+    }
     error
         .downcast_ref::<WireError>()
         .map_or_else(|| error.to_string().into(), |error| error.0.clone())

@@ -81,8 +81,10 @@ node --import tsx scripts/worker-rust/history-source-compatibility.mjs \
 
 Runtime observation/capture, retry pumps, canonical identity/rendering/protection,
 attachment processing and end-to-end delivery remain worker port work. The
-authenticated delivery/recovery client and production orchestration still need
-implementation. These library APIs alone advertise no new worker capability.
+authenticated HTTP client is implemented in the worker's `history::client`,
+outside this storage crate. Coherent archive decryption/recovery and production
+orchestration still need implementation. These library APIs alone advertise no
+new worker capability.
 
 The reducer accepts an optional previous state and the verified journal page;
 it does not advance a source cursor or authorize execution. It parses previous

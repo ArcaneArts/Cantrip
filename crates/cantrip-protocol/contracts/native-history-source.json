@@ -25,7 +25,9 @@
     "nativeHistoryProjectionPayloadSchema": 309,
     "nativeHistoryProjectionCommitSchema": 408,
     "nativeHistoryProjectionRebaseHeaderSchema": 413,
-    "nativeHistoryProjectionRebasePayloadSchema": 418
+    "nativeHistoryProjectionRebasePayloadSchema": 418,
+    "nativeHistoryBindingOpenResultSchema": 422,
+    "nativeHistoryResolveResultSchema": 432
   },
   "nodes": [
     {
@@ -2037,6 +2039,133 @@
     },
     { "type": "array", "element": 278, "checks": [] },
     { "type": "json", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeHistoryBindingOpenResultSchema",
+      "shape": { "binding": 423 },
+      "catchall": 431,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "nativeHistoryBindingSchema",
+      "shape": {
+        "id": 266,
+        "chatId": 266,
+        "workerId": 266,
+        "threadId": 266,
+        "projectId": 266,
+        "worktreeId": 266,
+        "modelRouteId": 424,
+        "providerAccountId": 425,
+        "createdFromOperationId": 426,
+        "ancestorThreadIds": 427,
+        "createdAt": 429
+      },
+      "catchall": 430,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 266, "checks": [] },
+    { "type": "nullable", "innerType": 266, "checks": [] },
+    { "type": "nullable", "innerType": 266, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 428,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 266,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 31, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeHistoryResolveResultSchema",
+      "shape": { "items": 433 },
+      "catchall": 442,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 434,
+      "checks": [{ "check": "max_length", "maximum": 512, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "nativeHistoryItemMappingSchema",
+      "shape": {
+        "key": 435,
+        "identity": 317,
+        "messageId": 436,
+        "idempotencyKey": 437,
+        "preservedInput": 438,
+        "attachments": 439
+      },
+      "catchall": 441,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-f0-9]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[a-f0-9]{64}$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 325, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 440,
+      "checks": []
+    },
+    { "type": "array", "element": 344, "checks": [] },
+    { "type": "never", "checks": [] },
     { "type": "never", "checks": [] }
   ]
 }

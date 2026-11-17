@@ -55,6 +55,9 @@ impl BatchRejected {
             rejection: baseline::verify_rejection(raw, request, code)?,
         })
     }
+    pub fn rejection(&self) -> &Value {
+        &self.rejection
+    }
 }
 impl std::fmt::Display for BatchRejected {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -13,6 +13,7 @@ pub mod history;
 pub mod http;
 pub mod installation;
 pub mod logging;
+pub mod metadata;
 pub mod platform;
 pub mod protected_content;
 pub mod protected_secrets;
