@@ -599,6 +599,7 @@ dependencies = [
  "cantrip-host",
  "cantrip-logging",
  "cantrip-protocol",
+ "cantrip-transport",
  "cantrip-wire",
  "chrono",
  "codex-utils-pty",

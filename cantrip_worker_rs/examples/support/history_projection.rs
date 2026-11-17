@@ -248,6 +248,22 @@ impl Engine {
                         deliver: Arc::new(move |scope, record, body| {
                             let context = deliver_context.clone();
                             Box::pin(async move {
+                                let config = context.config.lock().unwrap().clone();
+                                if let Some(server_url) = config["serverUrl"].as_str() {
+                                    let token = config["token"].as_str().unwrap().to_owned();
+                                    let client = cantrip_worker::history::client::Client::new(
+                                        cantrip_worker::history::client::Options {
+                                            server_url: server_url.to_owned(),
+                                            worker_id: config["workerId"]
+                                                .as_js_string()
+                                                .unwrap()
+                                                .clone(),
+                                            token: Arc::new(move || Ok(token.clone())),
+                                            metadata_signal: None,
+                                        },
+                                    )?;
+                                    return client.deliver(&scope, &record, &body, None).await;
+                                }
                                 tokio::task::spawn_blocking(move || {
                                     context.deliver(scope, record, body)
                                 })

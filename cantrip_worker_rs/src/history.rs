@@ -1,6 +1,7 @@
 //! Bridge native history to the real worker-held encryption grants. Execution
 //! capture/projector orchestration is delivered separately; no new capability
 //! is advertised by the source-journal implementation alone.
+pub mod client;
 use crate::encryption::Service;
 use anyhow::{Result, anyhow};
 use cantrip_history::content::{Encryption, Material};

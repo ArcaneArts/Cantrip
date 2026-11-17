@@ -8,7 +8,11 @@ import * as journal from "../../cantrip_worker/src/native-history-source-journal
 import * as native from "../../cantrip_worker/src/codex/native-history.ts";
 
 import * as state from "../../cantrip_worker/src/native-history-state.ts";
-import { nativeInitialTurnSettingsSchema } from "../../packages/protocol/dist/index.js";
+import {
+  nativeInitialTurnSettingsSchema,
+  nativeHistoryBindingOpenResultSchema,
+  nativeHistoryResolveResultSchema,
+} from "../../packages/protocol/dist/index.js";
 
 import * as outbox from "../../cantrip_worker/src/native-history-outbox.ts";
 import * as mutation from "../../cantrip_worker/src/native-history-outbox-mutations.ts";
@@ -56,6 +60,8 @@ export const schemas = {
     rebase.nativeHistoryProjectionRebaseHeaderSchema,
   nativeHistoryProjectionRebasePayloadSchema:
     rebase.nativeHistoryProjectionRebasePayloadSchema,
+  nativeHistoryBindingOpenResultSchema,
+  nativeHistoryResolveResultSchema,
 };
 const refinements = new Map([
   [native.nativeHistorySequenceSchema, "history-source-native-sequence"],

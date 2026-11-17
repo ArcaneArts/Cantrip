@@ -12,12 +12,14 @@ in-process restart, log reads, authenticated encryption-grant refresh and worksp
 repository discovery/import validation, encrypted workspace-root attachment and
 managed-folder creation/attachment/deletion. It opens
 and retains compatible endpoint
-encryption identities using native P-256/HPKE and private version-2 records. Remaining domains fail explicitly and advertise
-unavailable capabilities. This is not yet the complete production replacement.
+encryption identities using native P-256/HPKE and private version-2 records. The
+ledger also records delivered host Explorer/file-document, Git/GitHub, worktree,
+terminal-service and replica operations. Unimplemented domains fail explicitly and
+advertise unavailable capabilities. This is not yet the complete production replacement.
 
 The implementation reuses `cantrip-config`, `cantrip-wire`, `cantrip-host`,
-`cantrip-logging`, `cantrip-protocol`, `cantrip-framing` and `cantrip-crypto`, without a server or
-database dependency.
+`cantrip-logging`, `cantrip-protocol`, `cantrip-framing`, `cantrip-crypto`,
+`cantrip-history` and `cantrip-transport`, without a server or database dependency.
 The worker also uses the same pure vendored ICU library as the server for Node
 locale ordering, without linking the server application or database.
 Other shared foundations will be integrated with their owning domains. Credentials
@@ -95,5 +97,41 @@ calls retain the existing absent timeout and 32-MiB output limit. Both belong to
 an owned stop/join scope. The original workspace Scope/ProcessError exports remain
 compatible. Future native run-configuration/process services must integrate their
 pre-deletion stop hooks before production cutover; those runtimes do not exist in
-the current native implementation. Explorer, file documents and other filesystem
-services remain pending.
+the current native implementation. Basic host Explorer and file-document text
+operations are implemented; paged readers, transfers, watches, media and other
+filesystem services remain pending. See the ledger for current coverage.
+
+## Native history transport
+
+`history::client::Client` implements binding open, canonical item resolution,
+prepared-batch ingest/delivery, and item/turn/batch archive readers using the
+existing authenticated HTTP endpoints. Callbacks supply the current credential
+on every attempt and the metadata publication lifetime. It never dispatches
+native input or grants execution authority.
+
+Only open/resolve metadata retries transient HTTP/network failures, with the
+original parsed body, a 30-second deadline and the existing 250ms-to-2s backoff.
+Batch ingestion and archive reads do not retry implicitly. Strict response
+contracts, correlated canonical receipts, matched permanent rejection proofs,
+archive scope/snapshot/cursor/content integrity and UTF-8 turn ordering remain
+compatible. Redirects are rejected; private response bodies are not echoed.
+
+Public calls start owned requests using `cantrip-transport`; abandoning a response
+does not stop accepted work. Explicit caller/metadata signals cancel the actual
+network wait. Metadata backoff cancellation retains Node's AbortError wrapper
+and cause. The runtime owner must finish/cancel accepted work before shutdown.
+
+Focused local verification:
+
+```sh
+node scripts/worker-rust/cargo.mjs build --example history-client-fixture --example history-source-fixture
+node --import tsx scripts/worker-rust/history-client-compatibility.mjs --binary /absolute/shared-target/aarch64-apple-darwin/debug/examples/history-client-fixture
+node --import tsx scripts/worker-rust/history-client-smoke.mjs --client /absolute/path/to/history-client-fixture --history /absolute/path/to/history-source-fixture --server /absolute/path/to/cantrip-server --repository /absolute/path/to/project-repository-fixture
+```
+
+The smoke runs the actual native client/projection/outbox against Rust-server
+history routes and loses a real canonical ACK before restarting both processes.
+Canonical content preparation and the enrollment/control worker remain reference
+fixtures. Production capture, canonical rendering/protection, coherent archive
+recovery and execution integration remain pending; the production worker still
+selects Node.

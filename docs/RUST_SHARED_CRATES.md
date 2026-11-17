@@ -226,3 +226,9 @@ History depends on crypto, protocol, wire and host; it has no dependency on the
 server application, databases, routing or provider/runtime orchestration. The
 worker supplies its authorized key service. See the crate README and
 [Rust worker ledger](RUST_WORKER_PORT.md) for implemented and pending behavior.
+
+The worker's authenticated history HTTP client remains outside the history crate.
+It consumes the existing protocol contracts, history rejection/digest checks and
+`cantrip-transport::lifecycle::owned` for accepted request lifetimes. Network
+authentication, scoped pagination and metadata retry/cancellation remain worker
+policy. The storage crate gains no HTTP/server dependency or execution authority.
