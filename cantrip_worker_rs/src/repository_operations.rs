@@ -111,7 +111,9 @@ impl RepositoryOperations {
                 | "git.conflicts.list"
                 | "git.conflicts.get"
                 | "git.conflicts.preview"
-                | "git.conflicts.apply" => {
+                | "git.conflicts.apply"
+                | "git.commit.action.preview"
+                | "git.commit.action.apply" => {
                     let (directory, worker) = self.profile.as_ref().ok_or_else(|| {
                         anyhow::anyhow!("Repository worker profile is not configured.")
                     })?;
@@ -158,7 +160,11 @@ impl RepositoryOperations {
                     }
                     if matches!(
                         kind,
-                        "git.action" | "git.operation.preview" | "git.operation.start"
+                        "git.action"
+                            | "git.operation.preview"
+                            | "git.operation.start"
+                            | "git.commit.action.preview"
+                            | "git.commit.action.apply"
                     ) && crate::git::stored::active(stored.as_ref())
                     {
                         bail!("Finish or abort the active Git operation first.");
@@ -206,6 +212,20 @@ impl RepositoryOperations {
                             "gitManagedOperationResponseSchema",
                             &json!({"operation":record}),
                         )
+                    } else if kind == "git.commit.action.apply" {
+                        if let Some(state) = crate::git::commits::managed_state(&result)? {
+                            let record = crate::git::stored::record(
+                                &command,
+                                &worker,
+                                &state,
+                                None,
+                                Some(&command["operationId"]),
+                                None,
+                            )?;
+                            crate::git::stored::put(directory, &command, &owner, &worker, &record)
+                                .await?;
+                        }
+                        Ok(result)
                     } else if kind == "git.conflicts.apply"
                         && crate::git::stored::active(stored.as_ref())
                     {

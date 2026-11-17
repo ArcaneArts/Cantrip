@@ -904,6 +904,8 @@ export const contractRoots = [
   "gitConflictDetailSchema",
   "gitConflictResolutionPreviewSchema",
   "gitConflictResolutionResultSchema",
+  "gitCommitActionPreviewSchema",
+  "gitCommitActionResultSchema",
 ];
 
 export const projectExportContractRoots = [

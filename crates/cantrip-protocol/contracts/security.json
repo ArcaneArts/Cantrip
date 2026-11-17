@@ -880,7 +880,9 @@
     "gitConflictListSchema": 13249,
     "gitConflictDetailSchema": 13252,
     "gitConflictResolutionPreviewSchema": 13273,
-    "gitConflictResolutionResultSchema": 13281
+    "gitConflictResolutionResultSchema": 13281,
+    "gitCommitActionPreviewSchema": 13284,
+    "gitCommitActionResultSchema": 13298
   },
   "nodes": [
     {
@@ -80101,6 +80103,167 @@
       "checks": []
     },
     { "type": "boolean", "checks": [] },
+    {
+      "type": "array",
+      "element": 2733,
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "gitCommitActionPreviewSchema",
+      "shape": {
+        "action": 4810,
+        "token": 13285,
+        "destructive": 13286,
+        "summary": 13287,
+        "warnings": 13288,
+        "resolvedRevisions": 13290,
+        "commits": 13291,
+        "files": 13292,
+        "patch": 13293,
+        "patchTruncated": 13294,
+        "wouldConflict": 13295,
+        "checkpointRef": 13296
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{64}$/u"
+        }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 10000, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 13289,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "array",
+      "element": 2722,
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "array",
+      "element": 13175,
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "array",
+      "element": 2688,
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 2000000, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 13297, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1024, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "gitCommitActionResultSchema",
+      "shape": {
+        "output": 13299,
+        "status": 2679,
+        "headBefore": 2722,
+        "headAfter": 2722,
+        "checkpointRef": 13300,
+        "operation": 13302
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 13301, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1024, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 13303, "checks": [] },
+    {
+      "type": "object",
+      "name": "gitOperationSummarySchema",
+      "shape": {
+        "type": 13304,
+        "state": 13305,
+        "originalHead": 2722,
+        "currentHead": 2722,
+        "sourceRevisions": 13306,
+        "currentStep": 13307,
+        "totalSteps": 13308,
+        "conflictedPaths": 13309
+      },
+      "checks": []
+    },
+    { "type": "enum", "values": ["cherry-pick", "revert"], "checks": [] },
+    {
+      "type": "enum",
+      "values": [
+        "queued",
+        "running",
+        "conflicted",
+        "awaiting-user-action",
+        "completed",
+        "failed",
+        "aborted"
+      ],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 2722,
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 1000, "inclusive": true }
+      ]
+    },
     {
       "type": "array",
       "element": 2733,
