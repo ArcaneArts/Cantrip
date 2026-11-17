@@ -916,6 +916,10 @@ export const contractRoots = [
   "gitRemoteListSchema",
   "gitRemoteActionPreviewSchema",
   "gitRemoteMutationResultSchema",
+  "gitTagListSchema",
+  "gitTagDetailSchema",
+  "gitTagActionPreviewSchema",
+  "gitTagMutationResultSchema",
 ];
 
 export const projectExportContractRoots = [

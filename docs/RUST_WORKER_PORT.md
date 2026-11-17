@@ -19,7 +19,7 @@ heartbeat HTTP, a reconnecting WebSocket control connection and authenticated
 encryption-grant lifecycle, encrypted root attachment and workspace discovery/import
 validation, managed folders, encrypted host Explorer/file-document operations,
 host terminal-service supervision, encrypted Git working-tree queries/basic actions,
-Git history/inspection, reviewed branch/remote management, partial-patch editing, stash selection/recovery, reviewed commit mutations/conflict
+Git history/inspection, reviewed branch/remote/tag management, partial-patch editing, stash selection/recovery, reviewed commit mutations/conflict
 resolution and managed-operation creation/recovery.
 Fourteen real native outer command handlers are installed:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
@@ -30,7 +30,8 @@ eleven basic Git actions, nine history/inspection queries, stash creation/diffs/
 and reviewed previews/starts plus current/control/amend recovery and four conflict
 inspection/resolution operations, plus reviewed cherry-pick/revert/amend/fixup and
 partial stage/unstage/discard, plus branch inventory/eight reviewed branch actions
-and remote inventory/five reviewed remote actions),
+and remote inventory/five reviewed remote actions, plus tag inventory/detail and
+four reviewed tag actions),
 `project.folder.materialize`, `project.folder.delete`, `explorer.operation`
 (nine host operations), `file-document.operation` (text read/write),
 `terminal.services.reconcile` and `terminal.service.restart` (host services).
@@ -1387,6 +1388,69 @@ direct legacy dispatch/protection remain required, together with execution/histo
 interactive terminals, browser/data planes, MCP/OS, Node-free upgrades, packaging,
 default cutover and Node retirement. The full goal remains active.
 
+## Native reviewed Git tags subcycle
+
+This cycle uses branch `agent/manual/rust-worker-git-tags` and reference commit
+`b025a6bdc` (#3186). Encrypted `repository.operation` now supports `git.tag.list`,
+`git.tag.get`, `git.tag.action.preview` and `git.tag.action.apply`. All four actions
+are native: lightweight/annotated creation, push, local delete and remote delete.
+The fourteen outer handlers and production Node default remain unchanged.
+
+Inventory preserves ref-format fallback for older Git, peeled object metadata,
+commit/tree/blob/tag targets, timestamp/name locale ordering, the 10,000-tag cap,
+remote availability/errors and UTF-16-sorted published remote names. Detail retains
+the raw message format and one-million-UTF-16-unit truncation. Preview summaries,
+warnings, target/ref validation and exact Node action/tag/remote-check/workspace
+JSON/SHA-256 tokens are preserved. Published status remains name-based; real Git
+decides whether a push would replace a conflicting remote object.
+
+Annotated signatures are verified against immutable tag object IDs, independently
+of signed target commits. Lightweight tags remain unsigned. At most four tag
+verifiers run concurrently and results retain inventory order. Trust-file changes
+are rechecked without reusing the commit-signature cache. Verifier classification
+preserves anchored GPG status records, SSH invalid/unknown-principal results,
+missing key/config/tool distinctions and full-output classification before display
+truncation. Existing commit signature classification is reused without changing
+its cache policy. On stop, the inventory drains accepted verification futures so
+each owned process group is terminated and reaped before returning the error.
+
+Remote advertisement, verification and remote mutations reuse the existing
+30-second bounded Git runner and error-redaction policy, now shared with remote
+configuration. Tag mutations preserve the managed-operation journal and encrypted
+apply retains the active-record guard. List/detail/preview remain readable during
+an active operation. No Node fallback, dependency or lockfile changes occur.
+
+Four existing protocol roots are appended: `gitTagListSchema`, `gitTagDetailSchema`,
+`gitTagActionPreviewSchema` and `gitTagMutationResultSchema`. The manifest has
+896 roots and 13,458 nodes, adding 35 nodes while preserving all previous nodes
+and root indices. Public TypeScript contracts remain unchanged.
+
+Local macOS ARM64 evidence: 68 actual Node/native comparisons pass across all
+four actions, exact tokens, commit/tree/blob/nested targets, Unicode names/messages,
+publication/conflicting pushes, unavailable remotes, stale reviews and unborn
+behavior. Actual SSH fixtures cover signed/tampered/unsigned tags, signed
+lightweight targets, option-like refs, missing configuration/tool, changed trust
+and existing commit signatures. Message limits preserve UTF-16 slicing. Ten native
+worker unit tests and 27 focused existing Node Git/signature/journal tests pass.
+A cancellation fixture starts four actual Git verifier children, stops inventory
+and confirms their owned groups terminate. Earlier
+compile and fixture failures are retained; the final run uses the rebuilt binary
+and actual source schema/target constraints.
+
+The production Rust worker/server smoke passes encrypted inventory/detail,
+Node-produced review tokens after restart, all four tag actions, configured native
+signing, trust changes and persisted journal guards. Earlier scenarios, including
+remote configuration, still pass with Node absent from the worker PATH. Linked
+worker/server/example builds, workspace all-target Clippy with warnings denied,
+formatting/diff and source/contract checks pass. No GitHub Actions, external remote
+connections, full-suite/device/VM/image campaign, release signing or deployment ran.
+
+Submodules/LFS, Git graphs, observations, worktrees/recovery, GitHub, delegated OS
+Git and direct legacy dispatch/protection remain required, along with execution/
+history/providers, interactive terminals, browser/data planes, MCP/OS, Node-free
+upgrades, packaging, default cutover and Node retirement. Windows job/tree ownership
+and actual Windows/Linux runtime checks remain pending. The full goal stays active.
+
 ## Local development and validation
 
 ```sh
@@ -1415,6 +1479,7 @@ node --import tsx scripts/worker-rust/git-stashes-compatibility.mjs --binary /ab
 node --import tsx scripts/worker-rust/git-patches-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/git-branches-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/git-remotes-compatibility.mjs --binary /absolute/path/to/workspace-fixture
+node --import tsx scripts/worker-rust/git-tags-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/folder-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/explorer-compatibility.mjs --binary /absolute/path/to/explorer-fixture
 node --import tsx scripts/worker-rust/private-state-compatibility.mjs --binary /absolute/path/to/content-fixture
