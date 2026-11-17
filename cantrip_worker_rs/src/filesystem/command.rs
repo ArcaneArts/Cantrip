@@ -1,4 +1,4 @@
-//! Owned read-only Git/gh children, with bounded buffered output or incremental
+//! Owned Git/gh children, with bounded buffered output or incremental
 //! history records. Dropping an HTTP response never cancels an accepted
 //! operation; only its runtime stop receiver does.
 use anyhow::{Result, anyhow};
@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    io::{AsyncRead, AsyncReadExt},
+    io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
     process::Command,
     sync::watch,
 };
@@ -51,12 +51,29 @@ impl Scope {
         maximum: usize,
         environment: &[(OsString, OsString)],
     ) -> Result<Captured> {
+        self.capture_input(program, args, maximum, environment, None)
+            .await
+    }
+    /// Input and both output pipes progress together so a child can write before
+    /// consuming its input. Patch commands retain their combined output bound.
+    pub(crate) async fn capture_input(
+        &self,
+        program: &OsStr,
+        args: &[OsString],
+        maximum: usize,
+        environment: &[(OsString, OsString)],
+        input: Option<&[u8]>,
+    ) -> Result<Captured> {
         self.check()?;
         let mut command = Command::new(program);
         command
             .args(args)
             .envs(environment.iter().map(|(key, value)| (key, value)))
-            .stdin(std::process::Stdio::null())
+            .stdin(if input.is_some() {
+                std::process::Stdio::piped()
+            } else {
+                std::process::Stdio::null()
+            })
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .kill_on_drop(true);
@@ -65,6 +82,18 @@ impl Scope {
         #[cfg(windows)]
         command.creation_flags(0x08000000);
         let mut child = command.spawn()?;
+        let stdin = child.stdin.take();
+        let writing = async {
+            if let Some(mut stdin) = stdin
+                && let Err(error) = stdin.write_all(input.unwrap()).await
+                && error.kind() != std::io::ErrorKind::BrokenPipe
+            {
+                return Err(error);
+            }
+            Ok::<_, std::io::Error>(())
+        };
+        let mut writing = Box::pin(writing);
+        let mut input_done = input.is_none();
         let mut stdout = child.stdout.take().unwrap();
         let mut stderr = child.stderr.take().unwrap();
         let mut captured = Captured {
@@ -78,10 +107,16 @@ impl Scope {
         let mut out_open = true;
         let mut err_open = true;
         let result = async {
-            while out_open || err_open {
+            while out_open || err_open || !input_done {
+                let maximum = if input.is_some() {
+                    maximum.saturating_sub(captured.stdout.len() + captured.stderr.len())
+                } else {
+                    maximum
+                };
                 let (name, buffer, chunk, count) = tokio::select! {
                     biased;
                     _=self.stopped()=>return Err(anyhow!("Worker workspace operation stopped.")),
+                    result=&mut writing,if !input_done=>{ result?; input_done=true; continue; },
                     read=stdout.read(&mut out_chunk),if out_open=>{
                         let count=read?;out_open=count!=0;
                         ("stdout",&mut captured.stdout,&out_chunk,count)
@@ -91,10 +126,15 @@ impl Scope {
                         ("stderr",&mut captured.stderr,&err_chunk,count)
                     },
                 };
-                let accepted = count.min(maximum.saturating_sub(buffer.len()));
+                let available = if input.is_some() {
+                    maximum
+                } else {
+                    maximum.saturating_sub(buffer.len())
+                };
+                let accepted = count.min(available);
                 buffer.extend_from_slice(&chunk[..accepted]);
                 if accepted != count {
-                    captured.overflow = Some(name);
+                    captured.overflow = Some(if input.is_some() { "combined" } else { name });
                     break;
                 }
             }
@@ -366,6 +406,34 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn capture_input_drains_output_while_writing_and_bounds_both_streams() {
+        let scope = Scope::default();
+        let input = vec![b'x'; 256 * 1024];
+        let args = vec![
+            "-c".into(),
+            "/bin/dd if=/dev/zero bs=8192 count=32 2>/dev/null; /bin/cat".into(),
+        ];
+        let captured = tokio::time::timeout(
+            Duration::from_secs(5),
+            scope.capture_input(OsStr::new("/bin/sh"), &args, 1024 * 1024, &[], Some(&input)),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(captured.code, Some(0));
+        assert_eq!(captured.stdout.len(), 512 * 1024);
+        assert!(captured.stdout[..256 * 1024].iter().all(|&b| b == 0));
+        assert_eq!(&captured.stdout[256 * 1024..], &input);
+        let args = vec!["-c".into(), "printf 1234; printf 5678 >&2".into()];
+        let captured = scope
+            .capture_input(OsStr::new("/bin/sh"), &args, 6, &[], Some(b"unused"))
+            .await
+            .unwrap();
+        assert_eq!(captured.overflow, Some("combined"));
+        assert_eq!(captured.stdout.len() + captured.stderr.len(), 6);
+    }
+
+    #[tokio::test]
     async fn captured_git_bytes_exit_and_overflow_are_retained() {
         let scope = Scope::default();
         let result = scope
@@ -397,42 +465,51 @@ mod tests {
 
     #[tokio::test]
     async fn stopping_capture_reaps_the_actual_owned_child() {
-        let temp = tempfile::tempdir().unwrap();
-        let marker = temp.path().join("owned-pid");
-        let (stop, receive) = watch::channel(false);
-        let scope = Scope::with_stop(receive);
-        let arguments = vec![
-            "-c".into(),
-            "printf '%s' \"$$\" > \"$1\"; exec /bin/sleep 30".into(),
-            "fixture".into(),
-            marker.as_os_str().to_owned(),
-        ];
-        let task =
-            tokio::spawn(
-                async move { scope.capture(OsStr::new("/bin/sh"), &arguments, 1024).await },
-            );
-        let pid = tokio::time::timeout(Duration::from_secs(5), async {
-            loop {
-                if let Ok(value) = tokio::fs::read_to_string(&marker).await
-                    && let Ok(pid) = value.parse::<i32>()
-                {
-                    break pid;
+        for input in [None, Some(vec![b'x'; 256 * 1024])] {
+            let temp = tempfile::tempdir().unwrap();
+            let marker = temp.path().join("owned-pid");
+            let (stop, receive) = watch::channel(false);
+            let scope = Scope::with_stop(receive);
+            let arguments = vec![
+                "-c".into(),
+                "printf '%s' \"$$\" > \"$1\"; exec /bin/sleep 30".into(),
+                "fixture".into(),
+                marker.as_os_str().to_owned(),
+            ];
+            let task = tokio::spawn(async move {
+                scope
+                    .capture_input(
+                        OsStr::new("/bin/sh"),
+                        &arguments,
+                        1024,
+                        &[],
+                        input.as_deref(),
+                    )
+                    .await
+            });
+            let pid = tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    if let Ok(value) = tokio::fs::read_to_string(&marker).await
+                        && let Ok(pid) = value.parse::<i32>()
+                    {
+                        break pid;
+                    }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
                 }
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }
-        })
-        .await
-        .unwrap();
-        stop.send_replace(true);
-        assert!(
-            tokio::time::timeout(Duration::from_secs(5), task)
-                .await
-                .unwrap()
-                .unwrap()
-                .is_err()
-        );
-        // Existence probe only; termination above uses the owned child handle.
-        assert_eq!(unsafe { libc::kill(pid, 0) }, -1);
+            })
+            .await
+            .unwrap();
+            stop.send_replace(true);
+            assert!(
+                tokio::time::timeout(Duration::from_secs(5), task)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .is_err()
+            );
+            // Existence probe only; termination above uses the owned child handle.
+            assert_eq!(unsafe { libc::kill(pid, 0) }, -1);
+        }
     }
 
     #[tokio::test]

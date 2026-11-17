@@ -113,7 +113,11 @@ impl RepositoryOperations {
                 | "git.conflicts.preview"
                 | "git.conflicts.apply"
                 | "git.commit.action.preview"
-                | "git.commit.action.apply" => {
+                | "git.commit.action.apply"
+                | "git.stash.create"
+                | "git.stash.diff"
+                | "git.stash.action.preview"
+                | "git.stash.action.apply" => {
                     let (directory, worker) = self.profile.as_ref().ok_or_else(|| {
                         anyhow::anyhow!("Repository worker profile is not configured.")
                     })?;
@@ -165,6 +169,9 @@ impl RepositoryOperations {
                             | "git.operation.start"
                             | "git.commit.action.preview"
                             | "git.commit.action.apply"
+                            | "git.stash.create"
+                            | "git.stash.action.preview"
+                            | "git.stash.action.apply"
                     ) && crate::git::stored::active(stored.as_ref())
                     {
                         bail!("Finish or abort the active Git operation first.");
@@ -214,6 +221,25 @@ impl RepositoryOperations {
                         )
                     } else if kind == "git.commit.action.apply" {
                         if let Some(state) = crate::git::commits::managed_state(&result)? {
+                            let record = crate::git::stored::record(
+                                &command,
+                                &worker,
+                                &state,
+                                None,
+                                Some(&command["operationId"]),
+                                None,
+                            )?;
+                            crate::git::stored::put(directory, &command, &owner, &worker, &record)
+                                .await?;
+                        }
+                        Ok(result)
+                    } else if kind == "git.stash.action.apply" {
+                        if !result["operation"].is_null() {
+                            let mut state = result["operation"].clone();
+                            state["state"] = json!("conflicted");
+                            state["output"] = result["output"].clone();
+                            state["status"] = result["status"].clone();
+                            let state = checked("gitManagedOperationWorkerStateSchema", &state)?;
                             let record = crate::git::stored::record(
                                 &command,
                                 &worker,

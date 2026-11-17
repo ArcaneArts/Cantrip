@@ -592,6 +592,7 @@ try {
       encryptedManagedGitPreviewAndStart: true,
       encryptedGitConflictResolutionAndContinue: true,
       encryptedReviewedCommitMutationsAndRecovery: true,
+      encryptedStashSelectionsAndRecovery: true,
       nodeAbsentFromWorkerPath: true,
       scope:
         "Fresh attachment, discovery/import, managed/existing folders, encrypted host Explorer/file-document, Git queries/basic actions and managed recovery with native rebase editors, and host terminal-service lifecycle; other worker domains remain pending.",
