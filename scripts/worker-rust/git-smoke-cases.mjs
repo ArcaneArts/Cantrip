@@ -11,6 +11,7 @@ import { verifyCommitActions } from "./git-commit-smoke-cases.mjs";
 import { verifyStashes } from "./git-stash-smoke-cases.mjs";
 import { verifyPartialPatches } from "./git-patch-smoke-cases.mjs";
 import { verifyBranches } from "./git-branch-smoke-cases.mjs";
+import { verifyRemotes } from "./git-remote-smoke-cases.mjs";
 import {
   inspectGitManagedOperation,
   previewGitManagedOperation,
@@ -639,6 +640,14 @@ export async function verifyGit({
     journal,
   });
   await verifyBranches({
+    operation,
+    checkout,
+    restartWorker,
+    store,
+    scope,
+    journal,
+  });
+  await verifyRemotes({
     operation,
     checkout,
     restartWorker,

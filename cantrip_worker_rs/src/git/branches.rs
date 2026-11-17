@@ -7,7 +7,7 @@ use cantrip_wire::{JsString, Value, value::json};
 use indexmap::{IndexMap, IndexSet};
 use std::path::{Path, PathBuf};
 
-fn render(pattern: &str, args: &[&JsString]) -> JsString {
+pub(super) fn render(pattern: &str, args: &[&JsString]) -> JsString {
     let mut parts = pattern.split("{}");
     let mut units = parts.next().unwrap().encode_utf16().collect::<Vec<_>>();
     for (arg, part) in args.iter().zip(parts) {

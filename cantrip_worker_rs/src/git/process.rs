@@ -12,6 +12,7 @@ pub(super) struct Output {
     pub code: Option<i32>,
     pub error: String,
     pub stderr: Vec<u8>,
+    pub timed_out: bool,
 }
 pub(super) async fn capture(cwd: &Path, args: &[&str], scope: &Scope) -> Result<Output> {
     capture_environment(cwd, args, scope, &[]).await
@@ -31,6 +32,24 @@ async fn capture_input(
     environment: &[(OsString, OsString)],
     input: Option<&[u8]>,
 ) -> Result<Output> {
+    capture_options(cwd, args, scope, environment, input, None).await
+}
+pub(super) async fn bounded(
+    cwd: &Path,
+    args: &[&str],
+    scope: &Scope,
+    timeout: std::time::Duration,
+) -> Result<Output> {
+    capture_options(cwd, args, scope, &[], None, Some(timeout)).await
+}
+async fn capture_options(
+    cwd: &Path,
+    args: &[&str],
+    scope: &Scope,
+    environment: &[(OsString, OsString)],
+    input: Option<&[u8]>,
+    timeout: Option<std::time::Duration>,
+) -> Result<Output> {
     let arguments: Vec<OsString> = std::iter::once(OsString::from("-C"))
         .chain(std::iter::once(cwd.as_os_str().to_owned()))
         .chain(args.iter().map(OsString::from))
@@ -38,7 +57,9 @@ async fn capture_input(
     // The collector owns two I/O buffers. Keep that state on the heap instead
     // of duplicating it through each joined status/action future and its poll
     // stack frames on the worker's normal runtime threads.
-    let captured = if input.is_some() {
+    let captured = if let Some(timeout) = timeout {
+        Box::pin(scope.capture_timeout(OsStr::new("git"), &arguments, MAXIMUM, timeout)).await
+    } else if input.is_some() {
         Box::pin(scope.capture_input(OsStr::new("git"), &arguments, MAXIMUM, environment, input))
             .await
     } else if environment.is_empty() {
@@ -74,6 +95,7 @@ async fn capture_input(
         overflow: result.overflow.is_some(),
         code: result.code,
         error,
+        timed_out: result.timed_out,
     })
 }
 pub(super) async fn raw_environment(

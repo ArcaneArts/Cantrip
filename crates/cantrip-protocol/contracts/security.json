@@ -889,7 +889,10 @@
     "gitPartialPatchPreviewSchema": 13345,
     "gitBranchListSchema": 13352,
     "gitBranchActionPreviewSchema": 13394,
-    "gitBranchMutationResultSchema": 13401
+    "gitBranchMutationResultSchema": 13401,
+    "gitRemoteListSchema": 13403,
+    "gitRemoteActionPreviewSchema": 13414,
+    "gitRemoteMutationResultSchema": 13421
   },
   "nodes": [
     {
@@ -80864,6 +80867,123 @@
       "type": "object",
       "name": "gitBranchMutationResultSchema",
       "shape": { "output": 13402, "status": 2679, "branches": 13352 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "gitRemoteListSchema",
+      "shape": { "remotes": 13404, "generatedAt": 13413 },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 13405,
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "gitRemoteSummarySchema",
+      "shape": {
+        "name": 13406,
+        "fetchUrl": 13407,
+        "fetchUrlRedacted": 13408,
+        "pushUrl": 13409,
+        "pushUrlRedacted": 13410,
+        "defaultFetch": 13411,
+        "defaultPush": 13412
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "gitRemoteActionPreviewSchema",
+      "shape": {
+        "action": 4696,
+        "token": 13415,
+        "destructive": 13416,
+        "summary": 13417,
+        "warnings": 13418,
+        "remote": 13420
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{64}$/u"
+        }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 10000, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 13419,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 13405, "checks": [] },
+    {
+      "type": "object",
+      "name": "gitRemoteMutationResultSchema",
+      "shape": { "output": 13422, "status": 2679, "remotes": 13403 },
       "checks": []
     },
     {

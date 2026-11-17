@@ -19,7 +19,7 @@ heartbeat HTTP, a reconnecting WebSocket control connection and authenticated
 encryption-grant lifecycle, encrypted root attachment and workspace discovery/import
 validation, managed folders, encrypted host Explorer/file-document operations,
 host terminal-service supervision, encrypted Git working-tree queries/basic actions,
-Git history/inspection, reviewed branch management, partial-patch editing, stash selection/recovery, reviewed commit mutations/conflict
+Git history/inspection, reviewed branch/remote management, partial-patch editing, stash selection/recovery, reviewed commit mutations/conflict
 resolution and managed-operation creation/recovery.
 Fourteen real native outer command handlers are installed:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
@@ -29,7 +29,8 @@ Fourteen real native outer command handlers are installed:
 eleven basic Git actions, nine history/inspection queries, stash creation/diffs/mutations
 and reviewed previews/starts plus current/control/amend recovery and four conflict
 inspection/resolution operations, plus reviewed cherry-pick/revert/amend/fixup and
-partial stage/unstage/discard, plus branch inventory and eight reviewed branch actions),
+partial stage/unstage/discard, plus branch inventory/eight reviewed branch actions
+and remote inventory/five reviewed remote actions),
 `project.folder.materialize`, `project.folder.delete`, `explorer.operation`
 (nine host operations), `file-document.operation` (text read/write),
 `terminal.services.reconcile` and `terminal.service.restart` (host services).
@@ -1330,6 +1331,62 @@ upgrades, packaging and default cutover. Windows child-tree ownership and Window
 Linux runtime checks remain pending. No full-suite/device/VM/image campaign,
 signing or deployment is claimed. The full goal remains active.
 
+## Native reviewed Git remote configuration subcycle
+
+This cycle uses branch `agent/manual/rust-worker-git-remotes` and reference
+commit `d64435540` (#3185). Encrypted `repository.operation` now supports
+`git.remote.list`, `git.remote.action.preview` and `git.remote.action.apply`.
+All five actions are native: add, edit, remove, set/clear fetch/push defaults and
+fetch/prune. The fourteen outer handlers and production Node default remain.
+
+Inventory preserves JavaScript UTF-16 name ordering, fetch/push URL lookup and
+fallbacks, branch/config/origin default selection, timestamps and credential
+redaction flags. Display and failure redaction retain the existing URL/query and
+UTF-16 regex policy, including duplicate query keys and Unicode case folding.
+The native URL adapter also preserves Node's final opaque-path-space escaping.
+Remote displays redact URL user information and query keys matching that policy.
+
+Review tokens preserve the exact Node JSON/SHA-256 construction over action,
+displayed remotes, workspace fingerprint and the raw remote-configuration digest.
+Changing hidden credentials invalidates the old review even when the displayed
+URLs are identical. Apply recomputes the review and uses the original Git
+arguments. URL replacement warnings, default unsets and fetch/prune outputs
+remain compatible. Remote operations preserve the managed journal; encrypted
+apply retains its active-record guard while inventory/preview remain readable.
+
+Fetch keeps the existing 30-second deadline and bounded output. The owned native
+collector retains output on timeout, terminates its owned Unix process group and
+waits for the child. Existing cancellation/overflow paths remain covered. Windows
+currently terminates its direct owned child; full job/tree ownership remains
+unfinished worker work, not a claim established by the macOS tests.
+
+Three existing protocol roots are appended: `gitRemoteListSchema`,
+`gitRemoteActionPreviewSchema` and `gitRemoteMutationResultSchema`. The manifest
+has 892 roots and 13,423 nodes, adding 20 nodes while preserving every previous
+node and root index. No TypeScript contract, dependency or lockfile changes occur.
+
+Local macOS ARM64 evidence: 75 actual Node/native comparisons pass across all
+five actions, exact tokens, UTF-16 inputs, URL canonicalization/redaction, default
+selection, stale workspace/configuration, hidden-credential changes and real
+local fetch/prune/failure state. One focused existing Node remote test and six
+journal/dispatch tests pass. Five native process tests pass, including timeout
+with retained output and owned-child reaping with open or closed output pipes.
+The initial comparison failure is retained; the rebuilt fixture passes with the
+Node-compatible opaque-path correction.
+
+The production Rust worker/server smoke passes encrypted inventory/previews,
+Node-produced tokens across restart, all five remote actions, default reopening,
+hidden-credential token invalidation, journal preservation and the active-record
+guard. Earlier scenarios pass with Node absent from the worker PATH. Actual
+worker/server/example linking, workspace all-target Clippy with warnings denied,
+formatting/diff and source/contract checks pass. No hosted checks, external remote
+connections, full-suite/device/VM/image campaign, signing or deployment ran.
+
+Tag mutations, Git graphs, observations, worktrees, GitHub, delegated OS Git and
+direct legacy dispatch/protection remain required, together with execution/history,
+interactive terminals, browser/data planes, MCP/OS, Node-free upgrades, packaging,
+default cutover and Node retirement. The full goal remains active.
+
 ## Local development and validation
 
 ```sh
@@ -1357,6 +1414,7 @@ node --import tsx scripts/worker-rust/git-commits-compatibility.mjs --binary /ab
 node --import tsx scripts/worker-rust/git-stashes-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/git-patches-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/git-branches-compatibility.mjs --binary /absolute/path/to/workspace-fixture
+node --import tsx scripts/worker-rust/git-remotes-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/folder-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/explorer-compatibility.mjs --binary /absolute/path/to/explorer-fixture
 node --import tsx scripts/worker-rust/private-state-compatibility.mjs --binary /absolute/path/to/content-fixture

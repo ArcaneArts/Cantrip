@@ -12,6 +12,8 @@ pub mod managed;
 mod patches;
 mod plans;
 mod process;
+mod remote_text;
+mod remotes;
 mod review;
 mod signatures;
 mod stash_actions;
@@ -42,6 +44,17 @@ pub async fn execute(command: &Value, scope: &Scope) -> Result<Value> {
     let cwd = paths::native(command["cwd"].as_js_string().unwrap());
     match command["type"].as_str().unwrap() {
         "git.status" => status(&cwd, scope).await,
+        "git.remote.list" => remotes::list(&cwd, scope).await,
+        "git.remote.action.preview" => remotes::preview(&cwd, &command["action"], scope).await,
+        "git.remote.action.apply" => {
+            remotes::apply(
+                &cwd,
+                &command["action"],
+                command["token"].as_js_string().unwrap(),
+                scope,
+            )
+            .await
+        }
         "git.branch.list" => branches::list(&cwd, scope).await,
         "git.branch.action.preview" => branches::preview(&cwd, &command["action"], scope).await,
         "git.branch.action.apply" => {
