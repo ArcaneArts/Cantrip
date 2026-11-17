@@ -11,6 +11,7 @@ anyhow = "1"
 aes-gcm = { version = "=0.11.1", default-features = false, features = ["aes", "alloc", "zeroize"] }
 base64 = "0.22"
 cantrip-protocol = { path = "../cantrip-protocol" }
+cantrip-framing = { path = "../cantrip-framing" }
 cantrip-wire = { path = "../cantrip-wire" }
 getrandom = "0.3"
 hkdf = "0.13"

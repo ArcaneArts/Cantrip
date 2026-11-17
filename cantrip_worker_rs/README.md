@@ -14,7 +14,7 @@ encryption identities using native P-256/HPKE and private version-2 records. Rem
 unavailable capabilities. This is not yet the complete production replacement.
 
 The implementation reuses `cantrip-config`, `cantrip-wire`, `cantrip-host`,
-`cantrip-logging`, `cantrip-protocol` and `cantrip-crypto`, without a server or
+`cantrip-logging`, `cantrip-protocol`, `cantrip-framing` and `cantrip-crypto`, without a server or
 database dependency.
 Other shared foundations will be integrated with their owning domains. Credentials
 omit `Debug`. Initialization loads the optional environment file synchronously
@@ -43,9 +43,17 @@ owner/server binding. The helpers preserve the Node worker's latest-key selectio
 policy; they do not implement provider execution or MCP processes.
 
 `cantrip-crypto::content` supplies protected secret, endpoint, display-label and
-attachment formats. Remaining domain/stream adapters, replay state and resource
-revocation hooks are still pending. A stored identity alone never authorizes a
-component key, and stateless chunk crypto alone does not authorize a transfer.
+attachment formats plus surface/remote-surface streams and tunnel data AEAD.
+`protected_content` adapts endpoint bytes/JSON and surface streams to real grants.
+Endpoint opening selects an explicitly granted historical revision; surface
+opening requires the latest grant. Decrypted UTF-8, BOM/JSON and content-schema
+errors preserve the reference's distinct authentication boundary.
+
+The surface replay guard consumes a sequence at reservation, validates acceptance,
+retains bounded completed operations and supports explicit release. Resource
+services must own/reset it with their authorization lifetime. Remaining domain
+adapters, serving transports and revocation hooks are still pending. A stored
+identity or stateless chunk crypto alone does not authorize a transfer.
 
 The configuration, HTTP, crypto, grant and content examples are development-only differential drivers
 that emit synthetic secrets. Never run them against real profiles.

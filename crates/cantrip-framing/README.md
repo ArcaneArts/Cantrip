@@ -7,7 +7,13 @@ transports, extracted without changing their wire formats:
   assembly with the caller's existing incomplete-frame replacement policy.
 - `tunnel`: CTTN data-plane frames, plaintext/protected payload limits, and credit
   constants. Protected bytes remain opaque; the codec performs no encryption.
-- `remote_surface`: CTRS headers and payloads.
+- `remote_surface`: CTRS headers/payloads and the endpoint-protected binary
+  payload codec (version byte, big-endian revision, nonce and ciphertext).
+
+The protected-payload codec borrows decoded slices and preserves exact size,
+version and revision errors. Its eight-byte revision field still validates the
+existing protocol revision bounds. It performs no AEAD, key lookup or replay
+admission; `cantrip-crypto` supplies endpoint authentication.
 
 Creation validates and serializes headers using `cantrip-protocol`. Decoding
 retains the supplied immutable `Arc<[u8]>`, including the original header bytes.

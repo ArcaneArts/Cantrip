@@ -4,6 +4,8 @@ mod attachments;
 mod endpoint;
 mod labels;
 mod secrets;
+mod streams;
+mod tunnel;
 use crate::{checked, decrypt_payload, decryption_error, derive_field_key, encrypt_payload};
 use anyhow::{Result, bail};
 pub use attachments::*;
@@ -11,6 +13,8 @@ use cantrip_wire::{Value, parse_json_text, value::json};
 pub use endpoint::*;
 pub use labels::*;
 pub use secrets::*;
+pub use streams::*;
+pub use tunnel::*;
 use zeroize::Zeroizing;
 
 pub(crate) fn aad(

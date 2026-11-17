@@ -3,6 +3,7 @@
 import * as protocol from "../../packages/protocol/dist/index.js";
 import * as computerUsePreview from "../../packages/protocol/dist/computer-use-preview.js";
 import * as attachmentContent from "../../packages/protocol/dist/attachment-content.js";
+import * as remoteSurfaceStream from "../../packages/protocol/dist/remote-surface-stream.js";
 import * as runDefinitions from "../../packages/protocol/dist/run-configuration-definitions.js";
 import * as runSecrets from "../../packages/protocol/dist/run-configuration-secrets.js";
 import * as runConfigurationOperations from "../../packages/protocol/dist/run-configuration-operations.js";
@@ -849,6 +850,14 @@ export const contractRoots = [
   "privateDisplayLabelOpaqueSchema",
   "privateDisplayLabelProtectedContentSchema",
   "attachmentMetadataProtectedContentSchema",
+  "surfaceStreamContextSchema",
+  "surfaceStreamOpaqueSchema",
+  "remoteSurfaceStreamContextSchema",
+  "tunnelDataProtectionConfigurationSchema",
+  "terminalInputContentSchema",
+  "terminalOutputContentSchema",
+  "terminalSnapshotRequestContentSchema",
+  "terminalSnapshotContentSchema",
 ];
 
 export const projectExportContractRoots = [
@@ -1010,6 +1019,7 @@ export function sourceContractSchema(name) {
           .strict()
       : undefined) ??
     protocol[name] ??
+    remoteSurfaceStream[name] ??
     computerUsePreview[name] ??
     computerUseAgent[name] ??
     customizationContent[name] ??

@@ -136,9 +136,12 @@ not implement HPKE, component keys, endpoint encryption or worker decryption.
 The worker port adds `cantrip-crypto` with native payload/HPKE/KDF primitives
 and endpoint key persistence. The worker now supplies authenticated grant
 refresh and revision/revocation handling. Protected secret, endpoint, label and
-attachment formats and worker provider/MCP secret helpers are now native;
-remaining domain/stream adapters and replay/resource lifetimes remain ongoing
-work. This new endpoint crate is consumed by the worker,
+attachment formats and worker provider/MCP secret helpers are now native.
+Endpoint/surface worker content helpers, surface replay admission and JSON/binary
+surface and tunnel data protection are also native. The crypto crate consumes the
+shared framing crate's protected remote-surface payload codec. Remaining domain
+adapters and serving resource lifetimes remain ongoing work.
+This new endpoint crate is consumed by the worker,
 not the server.
 
 The existing `cantrip-interaction` library already supplies geometry, cursor,
