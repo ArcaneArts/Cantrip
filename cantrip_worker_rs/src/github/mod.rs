@@ -1,11 +1,15 @@
-//! Native GitHub catalog, issues and pull-request workflows. The protected dispatcher supplies
-//! trusted repository bindings; only the catalog operations are worker scoped.
+//! Native GitHub catalog, inbox, issues, PRs, Actions and releases. Protected
+//! dispatch supplies repository bindings; only catalog operations are worker scoped.
+mod actions;
 mod api;
 mod catalog;
+mod common;
+mod inbox;
 mod issues;
 mod process;
 mod pulls;
 mod reads;
+mod releases;
 mod search;
 use crate::filesystem::Scope;
 use anyhow::{Result, bail};
@@ -51,6 +55,16 @@ impl Client {
                 | "github.pull-request.lifecycle.apply"
                 | "github.pull-request.checkout.prepare"
                 | "github.pull-request.agent-context"
+                | "github.inbox.list"
+                | "github.actions.overview"
+                | "github.actions.run.get"
+                | "github.actions.run.logs"
+                | "github.actions.workflow.dispatch"
+                | "github.actions.run.action"
+                | "github.actions.run.checkout.prepare"
+                | "github.releases.list"
+                | "github.release.get"
+                | "github.release.create"
         )
     }
     pub fn requires_checkout(kind: &str) -> bool {
@@ -100,6 +114,17 @@ impl Client {
             "github.pull-request.lifecycle.apply" => self.apply_pull(command, scope).await,
             "github.pull-request.checkout.prepare" => self.checkout_pull(command, scope).await,
             "github.pull-request.agent-context" => self.agent_pull(command, scope).await,
+            "github.inbox.list" => self.inbox(command, scope).await,
+            "github.actions.overview" => self.actions_overview(command, scope).await,
+            "github.actions.run.get" => self.actions_run(command, scope).await,
+            "github.actions.run.logs" => self.actions_logs(command, scope).await,
+            "github.actions.workflow.dispatch" | "github.actions.run.action" => {
+                self.actions_mutate(command, scope).await
+            }
+            "github.actions.run.checkout.prepare" => self.actions_checkout(command, scope).await,
+            "github.releases.list" | "github.release.get" | "github.release.create" => {
+                self.releases(command, scope).await
+            }
             _ => bail!("Native GitHub command is not implemented."),
         }
     }

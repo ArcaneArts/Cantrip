@@ -951,6 +951,22 @@ export const contractRoots = [
   "githubPullRequestCreateResultSchema",
   "githubPullRequestLifecyclePreviewSchema",
   "githubPullRequestAgentContextSchema",
+  "githubInboxListSchema",
+  "githubInboxItemSchema",
+  "githubActionsWorkflowSchema",
+  "githubActionsRunSchema",
+  "githubActionsJobSchema",
+  "githubActionsRunnerSchema",
+  "githubActionsArtifactSchema",
+  "githubActionsOverviewSchema",
+  "githubActionsRunDetailSchema",
+  "githubActionsRunLogsSchema",
+  "githubActionsWorkflowDispatchSchema",
+  "githubActionsRunActionSchema",
+  "githubActionsMutationResultSchema",
+  "githubActionsRunCheckoutPreparedSchema",
+  "githubReleaseSummarySchema",
+  "githubReleaseListSchema",
 ];
 
 export const projectExportContractRoots = [

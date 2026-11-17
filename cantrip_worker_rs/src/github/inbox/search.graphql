@@ -1,0 +1,30 @@
+
+  query CantripInbox($searchQuery: String!, $first: Int!, $after: String) {
+    search(query: $searchQuery, type: ISSUE, first: $first, after: $after) {
+      issueCount
+      pageInfo { endCursor hasNextPage }
+      nodes {
+        ... on Issue {
+          __typename number title state url author { login }
+          comments { totalCount }
+          labels(first: 20) { nodes { name color } }
+          assignees(first: 20) { nodes { login } }
+          createdAt updatedAt closedAt
+        }
+        ... on PullRequest {
+          __typename number title state url author { login }
+          comments { totalCount }
+          labels(first: 20) { nodes { name color } }
+          assignees(first: 20) { nodes { login } }
+          createdAt updatedAt closedAt
+          isDraft headRefName baseRefName mergeable reviewDecision
+          reviewRequests(first: 100) {
+            nodes { requestedReviewer { ... on User { login } } }
+          }
+          commits(last: 1) {
+            nodes { commit { statusCheckRollup { state } } }
+          }
+        }
+      }
+    }
+  }
