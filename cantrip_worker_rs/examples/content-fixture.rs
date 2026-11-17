@@ -23,6 +23,15 @@ fn operate(
     let maximum = input["maximum"].as_u64().map(|n| n as usize);
     let service = || service.ok_or_else(|| anyhow!("Content fixture service not open"));
     match input["op"].as_str().unwrap_or("") {
+        "terminal-service-config" => {
+            let config = cantrip_worker::terminal_services::Configuration::open_host(
+                &input["input"],
+                service()?,
+            )?;
+            Ok(
+                json!({"cwd":cantrip_worker::filesystem::paths::text(&config.cwd),"serviceCommand":config.command}),
+            )
+        }
         "private-state-aad" => surface_private_state_associated_data(context),
         "private-state-encrypt" => {
             encrypt_surface_private_state(&key()?, context, &input["content"])

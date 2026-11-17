@@ -17,14 +17,15 @@ locating changes but are not behavioral proof or a runtime gate.
 configuration/profile identity, worker logging/archive lifetimes, enrollment and
 heartbeat HTTP, a reconnecting WebSocket control connection and authenticated
 encryption-grant lifecycle, encrypted root attachment and workspace discovery/import
-validation, managed folders and encrypted host Explorer/file-document operations.
-Twelve real native command handlers are installed:
+validation, managed folders, encrypted host Explorer/file-document operations
+and host terminal-service supervision. Fourteen real native command handlers are installed:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
 `diagnostics.logs.read`, `worker.encryption.refresh`,
 `workspace.repositories.discover`, `workspace.repository-import.validate`,
 `repository.operation` (root attachment and metadata operations only),
 `project.folder.materialize`, `project.folder.delete`, `explorer.operation`
-(nine host operations) and `file-document.operation` (text read/write).
+(nine host operations), `file-document.operation` (text read/write),
+`terminal.services.reconcile` and `terminal.service.restart` (host services).
 Explorer implements navigation, search, Git commit lookup and text/entry editing.
 Paged reads, transfers, watches, media/tail and delegated OS execution are pending.
 Other commands fail explicitly;
@@ -70,7 +71,8 @@ publication call sites. It currently identifies 323 distinct command names acros
 Follow constructors, nested handlers, callbacks and dynamic routing manually.
 The five control handlers, two discovery/import handlers and encrypted
 attachment/metadata adapter, two folder handlers and the limited Explorer/file-document
-handlers above are implemented. Other indexed commands remain pending; the source
+handlers and two host terminal-service handlers above are implemented. Other
+indexed commands remain pending; the source
 index itself grants no implementation credit.
 
 Regenerate deliberately with `node scripts/worker-rust/inventory.mjs`. It uses
@@ -83,14 +85,14 @@ loaded by a production service.
 | Configuration and profile identity | `config.ts`, `credential-store.ts`, `codex/bundled-runtime.ts`                                                                            | `config`, `credentials`, `installation` modules                                                            | Local Node differential checks, private file/rotation tests. Resolution only; Codex manifest verification/probing still pending                                                                                                                                                                                  |
 | Logging and process lifetime       | `logger.ts`, `log-stream.ts`, `runtime-loop.ts`, `process-guard.ts`, `index.ts` startup/stop                                              | Native logging adapter and owned runtime cycles                                                            | Archive/options/privacy buffer, subscriptions, retained restart cursors, signal/stdin shutdown and actor teardown tested. Remote log-stream leases, full command log context and native child/execution retirement remain pending                                                                                |
 | Enrollment/control transport       | `enrollment.ts`, `heartbeat.ts`, `transport.ts`, routing/observation adapters                                                             | Native enrollment/replacement, heartbeat, readiness/reconnect and credential lifecycle                     | Actual Rust-server round trip, rotation/reconnect, restart/revocation and HTTP oracles pass. Execution lifetime/admission fencing, reconnect-grace resource callbacks, notifications/events/task acknowledgments, data-plane adapters, congestion fidelity and deployment TLS/proxy configuration remain pending |
-| Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | Native endpoint/surface/repository formats, all private surface records and scoped grant helpers           | Private-state interop covers 12 resource contexts and six content kinds. Remaining protected domains and serving resource lifetimes are pending. Initial surface-grant refresh still fails at unported terminal reconciliation after loading the key.                                                            |
+| Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | Native endpoint/surface/repository formats, all private surface records and scoped grant helpers           | Private-state interop covers 12 resource contexts and six content kinds. Remaining protected domains and serving resource lifetimes are pending. Initial surface-grant refresh now completes real host terminal-service reconciliation; delegated OS services remain pending.                                    |
 | Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Workspace/folders/routing, nine protected host Explorer operations and bound file-document text read/write | Actual Rust worker/server persists encrypted resources, resolves opaque roots, saves files, rejects replay/mismatched document paths and reopens after restart. Paged readers, media/tail, transfers, activity/watches and delegated OS execution remain pending.                                                |
 | Git/projects/GitHub                | `commands/{git,worktree,github}.ts`, `git.ts`, `worktrees.ts`, replicas, repository operations, exports and shares                        | Encrypted metadata registration/resolution; Git/GitHub execution pending                                   | Owned repositories; command-specific differential tests, operation identity/recovery and actual Git/GitHub protocol boundaries                                                                                                                                                                                   |
 | History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | Pending                                                                                                    | Replay/crash/reopen, stable UTF-16 keys/digests, outbox acknowledgments and history reducer/projection fixtures; no cursor resets or uncertain effect replay                                                                                                                                                     |
 | Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Pending                                                                                                    | Actual provider protocol fixtures, streaming/media/usage, refresh, cancellation, failure and paid-work bounds                                                                                                                                                                                                    |
 | Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Pending                                                                                                    | Manifest verification/probe, native app-server processes, queue ownership, acceptance/commit and restart recovery                                                                                                                                                                                                |
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                    | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                      |
-| Terminals/run supervision          | terminal manager/canonical/private state, run-configuration providers and supervisors                                                     | Pending                                                                                                    | PTY resize/replay/serialization, encrypted streams, owned process trees, output/redaction and run reconciliation                                                                                                                                                                                                 |
+| Terminals/run supervision          | Terminal manager/canonical/private state, run-configuration providers and supervisors                                                     | Native host service reconciliation/restart and owned PTY supervision                                       | Actual encrypted server/worker service enable, idempotence, restart, recovery and disable pass. Interactive commands, canonical terminal/replay, attachment/input/resize, CLI broker environments, run providers and delegated OS services remain pending.                                                       |
 | WorkerLink/direct/tunnels          | gateways/peer/WebRTC/direct broker, tunnel protection/routing/adapters                                                                    | Native framing/tunnel crypto; serving adapters pending                                                     | Existing frame fixtures plus actual ICE/TURN/WebRTC interoperability, bounded backpressure, stale grant/session and disconnect behavior                                                                                                                                                                          |
 | Browsers/surfaces/computer use     | browser/desktop adapters, remote surfaces, computer-use services, web service and managed Playwright/SearXNG                              | Native stream protection; execution/resources pending                                                      | Native replacements for Node driver/helpers; selectors/snapshots/input/capture/network restrictions; permission/approval revocation; no dropped features                                                                                                                                                         |
 | MCP/CLI/CodeGraph                  | `mcp/*`, CLI broker, computer-use MCP, codegraph/runtime/supervisor                                                                       | Pending                                                                                                    | Native stdio/HTTP helpers, generated/persisted launch commands, binding/generation scopes, CLI and managed-runtime fixtures                                                                                                                                                                                      |
@@ -651,13 +653,12 @@ routing, keys and saved files reopen. The worker PATH contains only Git; no Node
 service/helper executes in this flow. Existing managed-folder/root/import checks
 continue passing with their disposable dirty checkout preserved.
 
-**Unfinished integration:** the first `surface-private-state` grant refresh loads
-the key, then the server's existing follow-up fails because
-`terminal.services.reconcile` is not implemented. The focused fixture explicitly
-records only that known failure and proves subsequent encrypted operations; it
-does not establish complete grant readiness or terminal support. Implement real
-terminal/run-service reconciliation before cutover. No fake empty reconciler or
-Node fallback was installed to hide this gap.
+At this subcycle's delivery, the first `surface-private-state` grant refresh
+loaded the key but its terminal-service follow-up was unimplemented. The host
+terminal-service subcycle below resolves that gap with real reconciliation and
+PTYs. The current smoke fixture requires successful grant refresh; the previous
+allowance for that known HTTP 502 is removed. Full terminal and delegated OS
+service support still remain required.
 
 Paged binary/text previews, imports/binary saves, media/tail and activity/watch
 services remain required, followed by the other Git, execution/history, terminal,
@@ -665,6 +666,72 @@ browser/transport, MCP/OS, upgrade and packaging work. Production still selects
 Node. No hosted Actions, full-suite/device/VM/image campaign, signing or deployment
 ran, and Windows/Linux runtime behavior was not exercised. The full goal remains
 unfinished.
+
+## Host terminal-service supervision subcycle
+
+This cycle uses branch `agent/manual/rust-worker-terminal-services` and reference
+commit `9cbc7afef` (#3174). The Node worker source and production launch selection
+remain unchanged. Two real production handlers are added: `terminal.services.reconcile`
+and `terminal.service.restart`.
+
+`terminal_services` opens authenticated terminal private state with the current
+scoped grant and existing terminal plaintext schema, resolves the opaque root,
+and validates all configurations before changing services. Host directories use
+lexical containment, preserving the source's intentional symlink behavior.
+Delegated OS configurations and blank commands retain the existing rejection.
+The generated protocol exposes one existing terminal plaintext schema root;
+all previous root indices and schema nodes are unchanged.
+
+The manager supervises actual native PTYs through the existing `codex-utils-pty`
+library. It preserves the default 80x24 terminal, shell command arguments,
+TERM/COLORTERM/terminal identity, last-duplicate configuration ordering,
+idempotent reconciliation and five-second retry policy. Config changes and
+explicit restart stop the previous owned process before launching its replacement.
+Failed starts retry; disabling cancels pending retries. Rapid disable/re-enable
+retains restart intent even if watch updates coalesce. A command acknowledges
+the initial actual spawn attempt rather than claiming process readiness.
+
+Services survive control-socket reconnects within a runtime, while worker restart
+and shutdown close and join their actors. Unix teardown first requests hangup;
+an owned process ignoring it is forcibly retired after one second. Native process
+cleanup explicitly joins reaping and I/O helpers after output receivers are
+drained/dropped. It never authorizes termination using a persisted PID.
+
+A real missing-directory test found portable-pty's HOME substitution. The new
+strict spawn entry point uses actual chdir/exec failure on Unix, including Linux
+when the optional setup helper cannot launch. The worker registers the existing
+Linux setup helper before initialization. Windows ConPTY preserves explicit cwd
+so CreateProcessW reports the actual failure instead of substituting USERPROFILE.
+Existing Unix Codex launch APIs retain their previous fallback policy. The worker
+adds the existing Codex crate plus its required dependencies without upgrading
+existing locked package versions or importing the whole Codex workspace.
+Isolated Windows compilation exposed an implicit `winapi/std` feature previously
+supplied by the full Codex workspace; the PTY crate now declares that dependency
+feature itself.
+
+Output has bounded UTF-16 storage with incremental UTF-8 decoding. It is internal
+process output, not a canonical snapshot or new plaintext endpoint. Terminal
+attachments, input, resize, xterm-equivalent state/serialization, exact terminal
+exit/signal wire metadata, native CLI-broker environment integration, run providers
+and delegated OS lifecycle remain unfinished.
+
+Local macOS ARM64 evidence includes three real-PTY lifecycle tests (reconcile,
+restart/config replacement, hangup, disable/re-enable, natural exit/retry,
+missing-cwd recovery and forced cleanup), a split-UTF-8 unit test, 76 comparisons
+against actual Node private-state/path helpers and three existing Node private-state
+tests. Actual linked Rust worker/server smoke now requires HTTP 200 on initial
+surface grant refresh and exercises an encrypted nonempty service: enable,
+corrupt-state rejection without replacing the accepted configuration, idempotent
+restore, restart, worker-restart recovery and disable. The worker PATH contains
+Git and no Node executable. Disposable repositories/profiles are cleaned up.
+Workspace all-target Clippy with warnings denied and direct PTY-library compile
+checks for Linux ARM64 GNU and Windows x64 MSVC pass. These cross checks establish
+compilation only; no Windows/Linux runtime qualification is claimed.
+
+Other file/Git, history/execution, terminal, browser/transport, MCP/OS, upgrade and
+packaging work remains. No production cutover, hosted Actions, full-suite/device/
+VM/image campaign, signing or deployment is part of this cycle. Windows/Linux
+runtime behavior is not claimed by macOS tests. The full goal remains unfinished.
 
 ## Local development and validation
 

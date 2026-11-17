@@ -880,6 +880,7 @@ export const contractRoots = [
   "fileDocumentPrivateStateProtectedContentSchema",
   "explorerOperationRequestContentSchema",
   "surfaceOperationOutcomeContentSchema",
+  "terminalPrivateStateProtectedContentSchema",
 ];
 
 export const projectExportContractRoots = [

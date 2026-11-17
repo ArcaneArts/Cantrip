@@ -241,9 +241,9 @@ fn resolve_current_directory(cmd: &CommandBuilder) -> Option<Vec<u16>> {
     let home = cmd
         .get_env("USERPROFILE")
         .and_then(|path| Path::new(path).is_dir().then(|| path.to_owned()));
-    let cwd = cmd
-        .get_cwd()
-        .and_then(|path| Path::new(path).is_dir().then(|| path.to_owned()));
+    // Let CreateProcessW report an unavailable explicit directory. Substituting
+    // USERPROFILE would execute a command outside its authorized placement.
+    let cwd = cmd.get_cwd().cloned();
     let dir = cwd.or(home)?;
 
     let mut wide = Vec::new();

@@ -1,6 +1,8 @@
 use anyhow::{Result, bail};
 use std::path::PathBuf;
 fn main() -> Result<()> {
+    #[cfg(target_os = "linux")]
+    codex_utils_pty::init_spawn_helper(std::env::args_os());
     let mut stdin = false;
     let mut env_file = PathBuf::from(".env");
     for argument in std::env::args().skip(1) {

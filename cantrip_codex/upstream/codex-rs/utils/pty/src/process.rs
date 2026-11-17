@@ -49,6 +49,12 @@ pub(crate) fn exit_code_from_status(status: ExitStatus) -> i32 {
 }
 
 pub(crate) trait ChildTerminator: Send + Sync {
+    fn hangup(&mut self) -> io::Result<()> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "process hangup is not supported by this backend",
+        ))
+    }
     fn signal(&mut self, signal: ProcessSignal) -> io::Result<()>;
 
     fn kill(&mut self) -> io::Result<()>;
@@ -250,6 +256,22 @@ impl ProcessHandle {
         result
     }
 
+    /// Request carrier loss on this live owned PTY. Pipe/driver backends and
+    /// Windows may report Unsupported so their owner can use normal teardown.
+    pub fn hangup(&self) -> io::Result<()> {
+        if self.has_exited() {
+            return Ok(());
+        }
+        let mut killer = self
+            .killer
+            .lock()
+            .map_err(|_| io::Error::other("failed to lock process killer"))?;
+        match killer.as_mut() {
+            Some(killer) => killer.hangup(),
+            None => Ok(()),
+        }
+    }
+
     /// Attempts to kill the child and abort I/O helper tasks.
     pub fn terminate(&self) {
         self.request_terminate();
@@ -270,6 +292,45 @@ impl ProcessHandle {
         {
             // Even a queued PTY waiter must run to reap the terminated child.
             drop(handle);
+        }
+    }
+
+    /// Retire this owned process and join its helpers. Resource managers should
+    /// use this at explicit shutdown instead of relying on asynchronous Drop
+    /// cleanup. Callers must drop/drain their output receivers first.
+    pub async fn terminate_and_wait(&mut self) {
+        if self.has_exited() {
+            // The child was reaped: never signal a cached group identifier after
+            // its ownership lifetime. Closing the owned PTY retires its console.
+            if let Ok(mut killer) = self.killer.lock() {
+                killer.take();
+            }
+        } else {
+            self.request_terminate();
+        }
+        self.close_stdin();
+        if let Ok(mut handles) = self._pty_handles.lock() {
+            handles.take();
+        }
+        let mut joins = Vec::new();
+        for reader in [&mut self.stdout_reader, &mut self.stderr_reader] {
+            if let Some(reader) = reader.take() {
+                reader.abort();
+                joins.push(reader);
+            }
+        }
+        if let Ok(mut writer) = self.writer_handle.lock()
+            && let Some(writer) = writer.take()
+        {
+            writer.abort();
+            joins.push(writer);
+        }
+        let waiter = self.wait_handle.lock().ok().and_then(|mut h| h.take());
+        if let Some(waiter) = waiter {
+            let _ = waiter.await;
+        }
+        for helper in joins {
+            let _ = helper.await;
         }
     }
 }
