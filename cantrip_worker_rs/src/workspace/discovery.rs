@@ -2,7 +2,6 @@ use super::{ProcessError, Scope, classify_origin, error, paths, string};
 use anyhow::{Result, anyhow};
 use cantrip_wire::{JsString, Value, value::json};
 use icu_collator::{Collator, options::CollatorOptions};
-use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -168,10 +167,7 @@ impl Inspection<'_> {
     }
 }
 fn candidate(path: &Path, root: &Path, common: &Path, classification: &Value) -> Value {
-    let fingerprint = Sha256::digest(paths::text(common).lossy().as_bytes())
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
+    let fingerprint = crate::filesystem::repository::fingerprint(common);
     json!({"canonicalPath":paths::text(path),"classification":classification["classification"],"diagnosticCode":classification["diagnosticCode"],"gitCommonDirectory":paths::text(common),"github":classification["github"],"originUrl":classification["originUrl"],"relativePath":paths::relative(root,path),"repositoryFingerprint":fingerprint})
 }
 #[derive(Default)]

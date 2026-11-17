@@ -18,6 +18,8 @@ cantrip-protocol = { path = "../crates/cantrip-protocol" }
 chrono = "0.4"
 futures = "0.3"
 indexmap = "2.14"
+idna = "=1.1.0"
+percent-encoding = "=2.3.2"
 icu_collator = { version = "=2.1.1", path = "../cantrip_server_rs/third-party/icu_collator" }
 icu_locale_core = "2.4"
 regress = { version = "0.12", features = ["utf16"] }

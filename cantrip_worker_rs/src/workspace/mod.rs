@@ -3,14 +3,13 @@
 mod attachment;
 mod discovery;
 mod origin;
-mod paths;
-mod process;
+use crate::filesystem::paths;
+pub use crate::filesystem::{ProcessError, Scope};
 use anyhow::Result;
 pub use attachment::attach_root;
 use cantrip_wire::{JsString, Value, value::json};
 pub use discovery::{Limits, discover, validate_import};
 pub use origin::{classify_origin, parse_github_origin};
-pub use process::{ProcessError, Scope};
 
 #[derive(Debug)]
 pub struct WorkspaceError {

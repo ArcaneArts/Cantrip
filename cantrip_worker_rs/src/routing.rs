@@ -79,7 +79,12 @@ pub fn protect_error(kind: &str, error: anyhow::Error) -> anyhow::Error {
     }
     let code = error
         .downcast_ref::<crate::workspace::WorkspaceError>()
-        .map(|error| error.code);
+        .map(|error| error.code)
+        .or_else(|| {
+            error
+                .downcast_ref::<crate::filesystem::folders::AttachmentError>()
+                .map(|error| error.code)
+        });
     ProtectedError { code }.into()
 }
 fn field(value: &JsString) -> bool {

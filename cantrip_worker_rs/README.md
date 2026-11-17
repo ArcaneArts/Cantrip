@@ -9,7 +9,8 @@ The native `cantrip-worker` executable currently supports configuration,
 version-1 identity/credential persistence, logging/archive lifecycle, enrollment,
 heartbeat, WebSocket readiness/reconnect, version queries, credential rotation,
 in-process restart, log reads, authenticated encryption-grant refresh and workspace
-repository discovery/import validation and encrypted workspace-root attachment. It opens
+repository discovery/import validation, encrypted workspace-root attachment and
+managed-folder creation/attachment/deletion. It opens
 and retains compatible endpoint
 encryption identities using native P-256/HPKE and private version-2 records. Remaining domains fail explicitly and advertise
 unavailable capabilities. This is not yet the complete production replacement.
@@ -66,13 +67,33 @@ bounded output/timeouts and are stopped/joined with their runtime.
 
 `routing` reopens version-1 `repository-routing.json`, resolves opaque handles and
 publishes field-scoped tokens through private atomic snapshots. The workspace
-adapter protects paths/results/errors before they leave the worker. Only the
-discovery and root-attachment capabilities are enabled. `repository_operations`
+adapter protects paths/results/errors before they leave the worker. Managed-folder
+creation/removal, existing attachment and workspace-scoped placement are also
+enabled. `repository_operations`
 serves encrypted root attachment and repository metadata registration/resolution,
-with replay reservation, current-key selection and protected outcomes. Managed
-folder creation/removal, Git/GitHub operations and other domains remain pending.
+with replay reservation, current-key selection and protected outcomes. Git/GitHub
+operations and other domains remain pending.
 Fresh and existing attached profiles can discover and import through the
 production Rust server.
 
 The configuration, HTTP, crypto, grant, content and workspace examples are development-only differential drivers
 that emit synthetic secrets. Never run them against real profiles.
+
+`filesystem` owns the reusable OS path/child helpers, project-source normalization,
+workspace storage placement, checkout inspection and managed-folder service.
+`folders::Manager` creates, resolves and deletes Cantrip-owned UUID directories;
+it attaches existing directories without taking ownership. The public command adapter
+uses the existing private routing registry and typed attachment errors. System,
+legacy and attached storage retain worker-level placement; managed workspaces get
+isolated roots with verified directory boundaries. Existing file URLs and native
+Windows drive/UNC/namespace representations are normalized without filesystem
+probing; actual attachment uses canonical directory metadata.
+
+Git checkout inspection preserves linked-worktree common-directory fingerprints
+and actual gh lookup behavior. Git calls retain ten-second/one-MiB limits; gh API
+calls retain the existing absent timeout and 32-MiB output limit. Both belong to
+an owned stop/join scope. The original workspace Scope/ProcessError exports remain
+compatible. Future native run-configuration/process services must integrate their
+pre-deletion stop hooks before production cutover; those runtimes do not exist in
+the current native implementation. Explorer, file documents and other filesystem
+services remain pending.

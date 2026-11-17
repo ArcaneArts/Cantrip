@@ -61,6 +61,18 @@ impl Scope {
         maximum: usize,
         timeout_ms: u64,
     ) -> Result<String> {
+        self.run_with_timeout(program, args, maximum, Some(timeout_ms))
+            .await
+    }
+    /// A missing timeout preserves the current gh API behavior. Output remains
+    /// bounded, and the child still belongs to its runtime's stop/join lifetime.
+    pub async fn run_with_timeout(
+        &self,
+        program: &OsStr,
+        args: &[OsString],
+        maximum: usize,
+        timeout_ms: Option<u64>,
+    ) -> Result<String> {
         self.check()?;
         let mut command = Command::new(program);
         command
@@ -82,11 +94,12 @@ impl Scope {
         })?;
         let stdout = child.stdout.take().unwrap();
         let stderr = child.stderr.take().unwrap();
-        let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms.max(1));
+        let deadline =
+            timeout_ms.map(|ms| tokio::time::Instant::now() + Duration::from_millis(ms.max(1)));
         let output = tokio::select! {
             biased;
             _=self.stopped()=>Err(anyhow!("Worker workspace operation stopped.")),
-            _=tokio::time::sleep_until(deadline)=>Err(anyhow!(ProcessError{missing:false,exit:None,reason:"Workspace subprocess timed out."})),
+            _=expired(deadline)=>Err(anyhow!(ProcessError{missing:false,exit:None,reason:"Workspace subprocess timed out."})),
             result=async{tokio::try_join!(bounded(stdout,maximum),bounded(stderr,maximum))}=>result,
         };
         let result = match output {
@@ -94,7 +107,7 @@ impl Scope {
                 let waited = tokio::select! {
                     biased;
                     _=self.stopped()=>Err(anyhow!("Worker workspace operation stopped.")),
-                    _=tokio::time::sleep_until(deadline)=>Err(anyhow!(ProcessError{missing:false,exit:None,reason:"Workspace subprocess timed out."})),
+                    _=expired(deadline)=>Err(anyhow!(ProcessError{missing:false,exit:None,reason:"Workspace subprocess timed out."})),
                     result=child.wait()=>result.map_err(anyhow::Error::from),
                 };
                 match waited {
@@ -128,6 +141,12 @@ impl Scope {
             let _ = child.wait().await;
         }
         result
+    }
+}
+async fn expired(deadline: Option<tokio::time::Instant>) {
+    match deadline {
+        Some(deadline) => tokio::time::sleep_until(deadline).await,
+        None => std::future::pending::<()>().await,
     }
 }
 async fn bounded(mut reader: impl AsyncRead + Unpin, maximum: usize) -> Result<Vec<u8>> {

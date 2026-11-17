@@ -3,6 +3,7 @@ use anyhow::{Result, anyhow};
 use cantrip_wire::{Value, parse_json_text, value::json};
 use cantrip_worker::{
     encryption::{Identity, Service},
+    filesystem::{folders, repository, source_path, storage},
     protected_content,
     repository_operations::RepositoryOperations,
     routing::Registry,
@@ -31,6 +32,64 @@ async fn main() -> Result<()> {
                     .ok_or_else(|| anyhow!("Fixture encryption not open"))
             };
             match input["op"].as_str().unwrap_or("") {
+                "folder-location" => Ok(storage::folder_location(
+                    std::path::Path::new(input["directory"].as_str().unwrap()),
+                    input["projectId"].as_js_string().unwrap(),
+                    &input["storage"],
+                )?
+                .value()),
+                "source-path" => Ok(json!(source_path::normalize(
+                    input["path"].as_js_string().unwrap(),
+                    input["windows"] == true
+                )?)),
+                "github-origin-name" => Ok(repository::github_repository_from_remote(
+                    input["origin"].as_js_string().unwrap(),
+                )
+                .map(Value::String)
+                .unwrap_or(Value::Null)),
+                "folder-inspect" => {
+                    repository::inspect_checkout(
+                        std::path::Path::new(input["path"].as_str().unwrap()),
+                        &scope,
+                    )
+                    .await
+                }
+                "folder-materialize" => {
+                    folders::Manager::new(std::path::Path::new(
+                        input["directory"].as_str().unwrap(),
+                    ))
+                    .materialize(&input["input"], &scope)
+                    .await
+                }
+                "folder-resolve" => {
+                    folders::Manager::new(std::path::Path::new(
+                        input["directory"].as_str().unwrap(),
+                    ))
+                    .resolve(
+                        input["projectId"].as_js_string().unwrap(),
+                        &input["storage"],
+                        &scope,
+                    )
+                    .await
+                }
+                "folder-delete" => {
+                    folders::Manager::new(std::path::Path::new(
+                        input["directory"].as_str().unwrap(),
+                    ))
+                    .delete(
+                        input["projectId"].as_js_string().unwrap(),
+                        &input["storage"],
+                        &scope,
+                    )
+                    .await
+                }
+                "folder-command" => {
+                    folders::Manager::new(std::path::Path::new(
+                        input["directory"].as_str().unwrap(),
+                    ))
+                    .execute_routed(&input["command"], opened()?, &scope)
+                    .await
+                }
                 "open-service" => {
                     if let Some(service) = service.take() {
                         service.close().await?;
@@ -182,8 +241,13 @@ async fn main() -> Result<()> {
             Ok(value) => json!({"ok":true,"value":value}),
             Err(error) => {
                 let code = error
-                    .downcast_ref::<workspace::WorkspaceError>()
+                    .downcast_ref::<folders::AttachmentError>()
                     .map(|e| e.code)
+                    .or_else(|| {
+                        error
+                            .downcast_ref::<workspace::WorkspaceError>()
+                            .map(|e| e.code)
+                    })
                     .or_else(|| {
                         error
                             .downcast_ref::<cantrip_worker::routing::ProtectedError>()
