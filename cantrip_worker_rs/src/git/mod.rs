@@ -1,6 +1,7 @@
 //! Native Git queries and basic actions. Managed mutations retain their own
 //! recovery protocol. No Node worker is invoked.
 mod actions;
+mod branches;
 pub(crate) mod commits;
 mod conflicts;
 mod diff;
@@ -41,6 +42,17 @@ pub async fn execute(command: &Value, scope: &Scope) -> Result<Value> {
     let cwd = paths::native(command["cwd"].as_js_string().unwrap());
     match command["type"].as_str().unwrap() {
         "git.status" => status(&cwd, scope).await,
+        "git.branch.list" => branches::list(&cwd, scope).await,
+        "git.branch.action.preview" => branches::preview(&cwd, &command["action"], scope).await,
+        "git.branch.action.apply" => {
+            branches::apply(
+                &cwd,
+                &command["action"],
+                command["token"].as_js_string().unwrap(),
+                scope,
+            )
+            .await
+        }
         "git.patch.preview" => patches::preview(&cwd, &command["request"], scope).await,
         "git.patch.apply" => {
             patches::apply(

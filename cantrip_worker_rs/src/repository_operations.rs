@@ -119,7 +119,10 @@ impl RepositoryOperations {
                 | "git.stash.action.preview"
                 | "git.stash.action.apply"
                 | "git.patch.preview"
-                | "git.patch.apply" => {
+                | "git.patch.apply"
+                | "git.branch.list"
+                | "git.branch.action.preview"
+                | "git.branch.action.apply" => {
                     let (directory, worker) = self.profile.as_ref().ok_or_else(|| {
                         anyhow::anyhow!("Repository worker profile is not configured.")
                     })?;
@@ -175,6 +178,7 @@ impl RepositoryOperations {
                             | "git.stash.action.preview"
                             | "git.stash.action.apply"
                             | "git.patch.apply"
+                            | "git.branch.action.apply"
                     ) && crate::git::stored::active(stored.as_ref())
                     {
                         bail!("Finish or abort the active Git operation first.");
