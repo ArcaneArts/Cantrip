@@ -874,6 +874,12 @@ export const contractRoots = [
   "explorerEntryNameSchema",
   "explorerEntryRenameSchema",
   "explorerEntryMutationResultSchema",
+  "surfacePrivateStateContextSchema",
+  "surfacePrivateStateOpaqueSchema",
+  "surfacePrivateStateProtectedContentSchema",
+  "fileDocumentPrivateStateProtectedContentSchema",
+  "explorerOperationRequestContentSchema",
+  "surfaceOperationOutcomeContentSchema",
 ];
 
 export const projectExportContractRoots = [

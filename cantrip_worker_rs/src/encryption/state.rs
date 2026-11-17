@@ -10,6 +10,13 @@ pub struct ComponentKey {
     pub key: Zeroizing<Vec<u8>>,
     pub key_revision: u64,
 }
+/// Preserve domain-specific error precedence while taking status, account and
+/// key material under one lock. Copied secrets are zeroized even on early errors.
+pub(crate) struct ComponentView {
+    pub status: Value,
+    pub owner_id: Result<JsString, ServiceError>,
+    pub component: Result<ComponentKey, ServiceError>,
+}
 
 /// One atomic view of the account/server binding and a copied component key.
 /// Existing operations own this snapshot; resource cancellation is caller policy.

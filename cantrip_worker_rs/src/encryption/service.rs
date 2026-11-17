@@ -70,6 +70,14 @@ impl Service {
     pub fn status(&self) -> Value {
         self.state.lock().unwrap().status()
     }
+    pub(crate) fn component_view(&self, scope: &str) -> super::state::ComponentView {
+        let state = self.state.lock().unwrap();
+        super::state::ComponentView {
+            status: state.status(),
+            owner_id: state.owner_id(),
+            component: state.component_key(scope, None),
+        }
+    }
     pub fn bound_component(
         &self,
         scope: &str,

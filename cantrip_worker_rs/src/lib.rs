@@ -4,6 +4,7 @@ pub mod config;
 pub mod connection;
 pub mod credentials;
 pub mod encryption;
+pub mod explorer_operations;
 pub mod filesystem;
 pub mod http;
 pub mod installation;

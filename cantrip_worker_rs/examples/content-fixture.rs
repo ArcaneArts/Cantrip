@@ -23,6 +23,25 @@ fn operate(
     let maximum = input["maximum"].as_u64().map(|n| n as usize);
     let service = || service.ok_or_else(|| anyhow!("Content fixture service not open"));
     match input["op"].as_str().unwrap_or("") {
+        "private-state-aad" => surface_private_state_associated_data(context),
+        "private-state-encrypt" => {
+            encrypt_surface_private_state(&key()?, context, &input["content"])
+        }
+        "private-state-decrypt" => {
+            decrypt_surface_private_state(&key()?, context, &input["encrypted"])
+        }
+        "worker-private-state-protect" => streams::protect_private_state(
+            service()?,
+            input["ownerId"].as_js_string().unwrap(),
+            context,
+            &input["content"],
+        ),
+        "worker-private-state-open" => streams::open_private_state(
+            service()?,
+            input["ownerId"].as_js_string().unwrap(),
+            context,
+            &input["encrypted"],
+        ),
         "secret-aad" => secret_associated_data(context),
         "endpoint-aad" => endpoint_associated_data(context),
         "surface-aad" => surface_stream_associated_data(context),
@@ -170,6 +189,8 @@ fn operate(
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<()> {
     let mut service: Option<Arc<Service>> = None;
+    let mut registry: Option<cantrip_worker::routing::Registry> = None;
+    let explorer = cantrip_worker::explorer_operations::ExplorerOperations::default();
     let mut replay = streams::SurfaceStreamReplayGuard::default();
     for line in io::stdin().lock().lines() {
         let input = parse_json_text(&line?).map_err(|e| anyhow!("{}", e.lossy()))?;
@@ -189,15 +210,38 @@ async fn main() -> Result<()> {
                 cantrip_worker::http::client()?,
             )?;
             let registration = created.registration();
+            registry = Some(cantrip_worker::routing::Registry::new(
+                std::path::Path::new(input["directory"].as_str().unwrap()),
+            ));
             service = Some(created);
             Ok(registration)
+        } else if input["op"] == "explorer-command" {
+            let command = cantrip_crypto::checked("workerCommandSchema", &input["command"]);
+            match command {
+                Ok(command) => {
+                    explorer
+                        .execute(
+                            &command,
+                            service.as_ref().unwrap(),
+                            registry.as_ref().unwrap(),
+                            &cantrip_worker::filesystem::Scope::default(),
+                        )
+                        .await
+                }
+                Err(error) => Err(error),
+            }
         } else {
             operate(&input, service.as_ref(), &mut replay)
         };
         let result = match result {
             Ok(value) => json!({"ok":true,"value":value}),
             Err(error) => {
-                json!({"ok":false,"error":error.to_string(),"decryption":error.is::<DecryptionError>()})
+                let mut result = json!({"ok":false,"error":error.to_string(),"decryption":error.is::<DecryptionError>()});
+                if let Some(error) = error.downcast_ref::<streams::SurfacePrivateStateWorkerError>()
+                {
+                    result["state"] = json!(error.state);
+                }
+                result
             }
         };
         println!(

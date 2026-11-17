@@ -26,6 +26,32 @@ function at(schema, path) {
   return schema;
 }
 export function registerWorkerCommandContracts(register) {
+  register(
+    variant(
+      p.explorerOperationRequestContentSchema,
+      "type",
+      "explorer.binary.read",
+    ),
+    0,
+    "worker-command-binary-read",
+  );
+  register(p.explorerBinaryPageSchema, 0, "worker-command-binary-page");
+  register(p.binaryWriteReceiptSchema, 0, "worker-command-binary-receipt");
+  register(
+    p.terminalPrivateDirectorySchema.options[1].shape.path,
+    0,
+    "worker-command-private-directory",
+  );
+  register(
+    p.fileDocumentPrivateStateProtectedContentSchema.shape.path,
+    0,
+    "worker-command-nul-free",
+  );
+  register(
+    p.browserPrivateStateProtectedContentSchema.shape.url,
+    0,
+    "worker-command-private-http-url",
+  );
   register(p.explorerEntryNameSchema, 0, "worker-command-explorer-name");
   register(p.cantripOsPackageArtifactsSchema, 0, "cantrip-os-unique-packages");
   register(

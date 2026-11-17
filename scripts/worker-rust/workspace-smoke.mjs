@@ -22,6 +22,10 @@ import { discoveryWireFixtures } from "../server-rust/discovery-wire-fixtures.mj
 import * as cryptoClient from "../../packages/crypto/dist/index.js";
 import * as protocol from "../../packages/protocol/dist/index.js";
 import { verifyManagedFolders } from "./folder-smoke-cases.mjs";
+import {
+  assertSurfaceGrantRefresh,
+  verifyExplorer,
+} from "./explorer-smoke-cases.mjs";
 const { values } = parseArgs({
   options: {
     worker: { type: "string" },
@@ -82,7 +86,7 @@ let server,
   child,
   completion,
   diagnostics = "";
-let master, componentKey;
+let master, componentKey, surfaceKey;
 async function eventually(read, accept, label) {
   const until = Date.now() + 25000;
   for (;;) {
@@ -248,6 +252,36 @@ async function repositoryClient() {
   );
   assert.equal(refreshed.status, 200, JSON.stringify(refreshed));
   assert.equal(refreshed.body.status.state, "ready");
+  surfaceKey = cryptoClient.deriveComponentKey({
+    accountMasterKey: master,
+    ownerId,
+    component: "surface-private-state",
+    keyRevision: 1,
+  });
+  const surfaceWrappedKey = await cryptoClient.wrapComponentKeyForWorker({
+    ownerId,
+    workerId,
+    component: "surface-private-state",
+    keyRevision: 1,
+    componentKey: surfaceKey,
+    workerPublicKey: identity.publicKey,
+  });
+  const surfaceGranted = await call(
+    "POST",
+    `/api/encryption/principals/${principal.id}/grants`,
+    {
+      component: "surface-private-state",
+      keyRevision: 1,
+      wrappedKey: surfaceWrappedKey,
+    },
+  );
+  assert.equal(surfaceGranted.status, 201, JSON.stringify(surfaceGranted));
+  const surfaceRefreshed = await call(
+    "POST",
+    `/api/workers/${workerId}/encryption/refresh`,
+    { component: "surface-private-state", keyRevision: 1 },
+  );
+  assertSurfaceGrantRefresh(surfaceRefreshed);
   const serverId = JSON.parse(await readFile(encryptionPath, "utf8")).serverId;
   assert.equal(typeof serverId, "string");
   async function operation(id, content, route, body) {
@@ -447,9 +481,37 @@ try {
     projectLabel,
     workspaceName: nameProtection,
   });
+  const metadataKey = cryptoClient.deriveComponentKey({
+    accountMasterKey: master,
+    ownerId: "00000000-0000-0000-0000-000000000001",
+    component: "private-surface-metadata",
+    keyRevision: 1,
+  });
+  let reopenExplorer;
+  try {
+    const identity = JSON.parse(
+      await readFile(
+        path.join(workerDirectory, "worker-encryption-key.json"),
+        "utf8",
+      ),
+    );
+    reopenExplorer = await verifyExplorer({
+      call,
+      serverId: identity.serverId,
+      ownerId: identity.ownerId,
+      surfaceKey,
+      metadataKey,
+      projectId,
+      workerId,
+      checkout,
+    });
+  } finally {
+    metadataKey.fill(0);
+  }
   const restarted = await call("POST", `/api/workers/${workerId}/restart`, {});
   assert.equal(restarted.status, 202, JSON.stringify(restarted));
   await ready();
+  await reopenExplorer();
   await stopWorker();
   await server.close();
   server = undefined;
@@ -467,9 +529,13 @@ try {
       actualImportValidationAndCommit: true,
       managedFolderCreateAndDelete: true,
       existingFolderRetryAndPreservation: true,
+      encryptedExplorerAndFileDocument: true,
+      fileDocumentBindingAndWorkerRestart: true,
+      surfaceGrantTerminalServiceReconciliation:
+        "pending native terminal services",
       nodeAbsentFromWorkerPath: true,
       scope:
-        "Fresh encrypted attachment, persisted discovery/import and managed/existing folders; other worker domains remain pending.",
+        "Fresh attachment, discovery/import, managed/existing folders and host Explorer/file-document commands; other worker domains remain pending.",
     }),
   );
 } finally {
@@ -477,5 +543,6 @@ try {
   await server?.close();
   master?.fill(0);
   componentKey?.fill(0);
+  surfaceKey?.fill(0);
   await rm(root, { recursive: true, force: true });
 }

@@ -71,11 +71,21 @@ pub(super) fn refine(
     let mut custom = |suffix: &[Value], message: JsString| {
         let mut at = path.to_vec();
         at.extend_from_slice(suffix);
-        issues.push(Value::object([
-            ("code", Value::String("custom".into())),
-            ("message", Value::String(message)),
-            ("path", Value::Array(at)),
-        ]));
+        // This callback explicitly supplies path before message; property order
+        // is also observable inside ZodError.message's serialized issue array.
+        issues.push(if tag == "binary-read" {
+            Value::object([
+                ("code", Value::String("custom".into())),
+                ("path", Value::Array(at)),
+                ("message", Value::String(message)),
+            ])
+        } else {
+            Value::object([
+                ("code", Value::String("custom".into())),
+                ("message", Value::String(message)),
+                ("path", Value::Array(at)),
+            ])
+        });
     };
     macro_rules! issue {
         ($suffix:expr, $message:expr) => {
@@ -83,6 +93,66 @@ pub(super) fn refine(
         };
     }
     let invalid = match tag {
+        "binary-read" => {
+            if value["offset"].as_f64().unwrap_or(f64::NAN) > 0. && !truth(value.get("version")) {
+                issue!(
+                    &[json!("version")],
+                    "A binary range requires its snapshot version."
+                );
+            }
+            false
+        }
+        "binary-page" => {
+            let data = text(&value["data"])?;
+            let bytes = data.len() as f64 / 4. * 3.
+                - if data.units().ends_with(&[61, 61]) {
+                    2.
+                } else if data.units().ends_with(&[61]) {
+                    1.
+                } else {
+                    0.
+                };
+            let size = value["size"].as_f64().unwrap_or(f64::NAN);
+            let offset = value["offset"].as_f64().unwrap_or(f64::NAN);
+            let next = value["nextOffset"].as_f64().unwrap_or(f64::NAN);
+            if offset > size
+                || next < offset
+                || next > size
+                || next - offset != bytes
+                || bytes > 256. * 1024.
+                || value["eof"] != json!(next == size)
+                || (!truth(value.get("eof")) && bytes == 0.)
+            {
+                issue!(&[], "Binary page bounds do not match its content.");
+            }
+            false
+        }
+        "binary-receipt" => {
+            if value["state"] == "committed"
+                && (!truth(value.get("sha256"))
+                    || !truth(value.get("version"))
+                    || value["size"].is_null())
+            {
+                issue!(&[], "A committed binary write requires a complete receipt.");
+            }
+            false
+        }
+        "private-directory" => {
+            let units = text(value)?.units();
+            units.first() == Some(&47)
+                || units.contains(&0)
+                || (units.first().is_some_and(|u| matches!(u,65..=90|97..=122))
+                    && units.get(1) == Some(&58)
+                    && units.get(2).is_some_and(|u| matches!(u, 47 | 92)))
+                || units
+                    .split(|u| matches!(u, 47 | 92))
+                    .any(|part| part == [46, 46])
+        }
+        "private-http-url" => {
+            let units = text(value)?.units();
+            !units.starts_with(&[104, 116, 116, 112, 58, 47, 47])
+                && !units.starts_with(&[104, 116, 116, 112, 115, 58, 47, 47])
+        }
         "explorer-name" => {
             value == "."
                 || value == ".."

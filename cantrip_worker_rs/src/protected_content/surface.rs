@@ -1,4 +1,4 @@
-use super::{authentication_error, context, decode_content, encode_content};
+use super::{authentication_error, context, decode_content_with_input, encode_content};
 use crate::encryption::{BoundComponentKey, Service};
 use anyhow::{Result, anyhow, bail};
 use cantrip_crypto::{Zeroizing, checked, content::*};
@@ -42,6 +42,17 @@ pub fn open_surface_content(
     opaque: &Value,
     schema: &str,
 ) -> Result<Value> {
+    open_surface_content_with_input(service, binding, opaque, schema).map(|(parsed, _)| parsed)
+}
+/// Preserve source fields where JavaScript normalization affects later behavior
+/// (for example, a trimmed search query's locale-casing path). Both values remain
+/// worker-local; consumers must execute only the validated first value.
+pub fn open_surface_content_with_input(
+    service: &Service,
+    binding: &Value,
+    opaque: &Value,
+    schema: &str,
+) -> Result<(Value, Value)> {
     let opaque = checked("surfaceStreamOpaqueSchema", opaque)?;
     let grant = material(service, opaque["keyRevision"].as_u64(), false)?;
     let plaintext =
@@ -53,7 +64,7 @@ pub fn open_surface_content(
                 )
             },
         )?;
-    decode_content(schema, &plaintext)
+    decode_content_with_input(schema, &plaintext)
 }
 pub fn protect_remote_surface(
     service: &Service,
