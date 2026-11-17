@@ -19,6 +19,7 @@ async fn main() -> Result<()> {
     let mut registry: Option<Registry> = None;
     let mut service: Option<Arc<Service>> = None;
     let mut operations = RepositoryOperations::default();
+    let mut worktrees: Option<Arc<cantrip_worker::git::worktrees::Manager>> = None;
     let mut replay = protected_content::RepositoryOperationReplayGuard::default();
     let scope = Scope::default();
     for line in io::stdin().lock().lines() {
@@ -35,6 +36,42 @@ async fn main() -> Result<()> {
                     .ok_or_else(|| anyhow!("Fixture encryption not open"))
             };
             match input["op"].as_str().unwrap_or("") {
+                "worktree-open"=>{
+                    worktrees=Some(Arc::new(cantrip_worker::git::worktrees::Manager::new(
+                        &cantrip_worker::filesystem::paths::native(input["directory"].as_js_string().unwrap())
+                    )));
+                    Ok(Value::Null)
+                }
+                "worktree"=>worktrees.as_ref().ok_or_else(||anyhow!("Worktree manager not open"))?
+                    .execute(&input["command"],&scope,None).await,
+                "worktree-remove-hook"=>{
+                    let marker=cantrip_worker::filesystem::paths::native(input["marker"].as_js_string().unwrap());
+                    let fail=input["fail"]==true;
+                    let callback=move |path:std::path::PathBuf|->futures::future::BoxFuture<'static,Result<()>> {
+                        let marker=marker.clone();
+                        Box::pin(async move {
+                            tokio::fs::write(marker,cantrip_worker::filesystem::paths::text(&path).lossy().as_bytes()).await?;
+                            if fail {return Err(anyhow!("Owned removal hook failed."));}
+                            Ok(())
+                        })
+                    };
+                    worktrees.as_ref().ok_or_else(||anyhow!("Worktree manager not open"))?
+                        .execute(&input["command"],&scope,Some(&callback)).await
+                }
+                "worktree-batch"=>{
+                    let manager=worktrees.as_ref().ok_or_else(||anyhow!("Worktree manager not open"))?;
+                    let results=futures::future::join_all(input["commands"].as_array().unwrap().iter().map(|command|manager.execute(command,&scope,None))).await;
+                    Ok(json!(results.into_iter().map(|result|match result {
+                        Ok(value)=>json!({"ok":true,"value":value}),
+                        Err(error)=>json!({"ok":false,"error":error.to_string()}),
+                    }).collect::<Vec<_>>()))
+                }
+                "worktree-authorize"=>worktrees.as_ref().ok_or_else(||anyhow!("Worktree manager not open"))?
+                    .authorize_targets(
+                        &cantrip_worker::filesystem::paths::native(input["sourcePath"].as_js_string().unwrap()),
+                        &input["paths"].as_array().unwrap().iter().map(|path|cantrip_worker::filesystem::paths::native(path.as_js_string().unwrap())).collect::<Vec<_>>(),
+                        &scope,
+                    ).await.map(|value|json!(value)),
                 "git-context" => {
                     operations = RepositoryOperations::new(
                         std::path::Path::new(input["directory"].as_str().unwrap()),

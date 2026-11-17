@@ -1,13 +1,11 @@
+import { nodeGit } from "./git-node-reference.mjs";
 // Actual encrypted branch management against an owned local bare remote.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  readGitBranches,
-  previewGitBranchAction,
-} from "../../cantrip_worker/src/git.ts";
+import { readGitBranches } from "../../cantrip_worker/src/git.ts";
 function normalize(v, key) {
   if (key === "generatedAt") {
     assert.ok(Number.isFinite(Date.parse(v)));
@@ -52,7 +50,9 @@ export async function verifyBranches({
     return result.result;
   }
   async function preview(action) {
-    const expected = await previewGitBranchAction(checkout, action);
+    const expected = await nodeGit(checkout, "git.branch.action.preview", {
+      action,
+    });
     const result = await operation({
       type: "git.branch.action.preview",
       arguments: { action },

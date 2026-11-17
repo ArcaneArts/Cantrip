@@ -1,3 +1,4 @@
+import { nodeGit } from "./git-node-reference.mjs";
 // Real encrypted LFS actions; all repositories/objects/locks belong to this smoke.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -7,7 +8,6 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import {
   readGitLfsStatus,
-  previewGitLfsAction,
   readGitStatus,
 } from "../../cantrip_worker/src/git.ts";
 import { startLfsFixture } from "./lfs-test-server.mjs";
@@ -79,7 +79,9 @@ export async function verifyLfs({
     return result.result;
   }
   async function preview(action) {
-    const expected = await previewGitLfsAction(checkout, action);
+    const expected = await nodeGit(checkout, "git.lfs.action.preview", {
+      action,
+    });
     const result = await operation({
       type: "git.lfs.action.preview",
       arguments: { action },
@@ -168,9 +170,11 @@ export async function verifyLfs({
     assert.deepEqual(await readFile(path.join(checkout, filename)), bytes);
     await apply(await preview({ type: "prune", verifyRemote: true }));
     await apply(await preview({ type: "lock", path: filename }));
-    assert.equal((await status()).locks.length, 1);
+    await status();
+    assert.equal((await status(true)).locks.length, 1);
     await restartWorker();
-    assert.equal((await status()).locks.length, 1);
+    await status();
+    assert.equal((await status(true)).locks.length, 1);
     await apply(await preview({ type: "refreshLocks" }));
     assert.equal((await status(true)).locksCached, false);
     await apply(

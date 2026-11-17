@@ -16,6 +16,8 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import { fixtureEnvironment, startServer } from "../server-rust/process.mjs";
+import { repositoryFixture } from "../server-rust/repository-fixture.mjs";
+import { literal } from "../server-rust/project-target-state.mjs";
 import { WorkerRoutingRegistry } from "../../cantrip_worker/src/routing-registry.ts";
 import { projectLabel } from "../server-rust/security-fixtures.mjs";
 import { discoveryWireFixtures } from "../server-rust/discovery-wire-fixtures.mjs";
@@ -28,6 +30,11 @@ import {
 } from "./explorer-smoke-cases.mjs";
 import { verifyTerminalServices } from "./terminal-services-smoke.mjs";
 import { verifyGit } from "./git-smoke-cases.mjs";
+import { verifyNativeWorktrees } from "./worktree-smoke-cases.mjs";
+// Every Git remote in this owned fixture is local. Preserve production Git
+// policy while explicitly allowing this test's local submodule clones.
+const previousGitProtocol = process.env.GIT_ALLOW_PROTOCOL;
+process.env.GIT_ALLOW_PROTOCOL = "file";
 const { values } = parseArgs({
   options: {
     worker: { type: "string" },
@@ -520,6 +527,7 @@ try {
     checkout,
     restartWorker,
   });
+
   await verifyManagedFolders({
     call,
     eventually,
@@ -570,7 +578,48 @@ try {
   await restartWorker();
   await reopenExplorer();
   await reopenTerminals();
-  await reopenGit();
+  const gitRuntimeCoverage = await reopenGit();
+  // Match the existing actual-project-worktrees catalog fixture. Production
+  // servers and workers are stopped while the owned profile is seeded natively.
+  const worktreePort = Number(new URL(server.origin).port);
+  await stopWorker();
+  await server.close();
+  server = undefined;
+  const seed = await repositoryFixture({
+    kind: "rust",
+    root,
+    dataDirectory: serverDirectory,
+    executable: path.join(
+      path.dirname(path.resolve(values.server)),
+      "examples",
+      "project-repository-fixture" +
+        (process.platform === "win32" ? ".exe" : ""),
+    ),
+    databaseMode: "pglite",
+  });
+  try {
+    await seed.seed(
+      "UPDATE projects SET origin_kind='github',folder_management=NULL,git_capability=true,github_capability=true,worktree_policy='agent-managed',github_repository_blind_index='native-worktree-fixture' WHERE id=" +
+        literal(projectId),
+    );
+  } finally {
+    await seed.close();
+  }
+  await start(worktreePort);
+  startWorker();
+  await ready();
+  await verifyNativeWorktrees({
+    call,
+    ownerId: repository.ownerId,
+    serverId: repository.serverId,
+    componentKey,
+    projectId,
+    workerId,
+    workerDirectory,
+    checkout,
+    restartWorker,
+    registerMetadata: repository.registerMetadata,
+  });
   await stopWorker();
   await server.close();
   server = undefined;
@@ -608,6 +657,8 @@ try {
       encryptedReviewedNestedSubmodulesAndRecovery: true,
       encryptedReviewedLfsObjectsAndLocks: true,
       encryptedGitGraphMetricsBlameAndOverlays: true,
+      completedGitRuntimeChecks: gitRuntimeCoverage.completedRuntimeChecks,
+      nativeWorktreeApiLifecycleAndEncryptedStatus: true,
       nodeAbsentFromWorkerPath: true,
       scope:
         "Fresh attachment, discovery/import, managed/existing folders, encrypted host Explorer/file-document, Git queries/basic actions and managed recovery with native rebase editors, and host terminal-service lifecycle; other worker domains remain pending.",
@@ -639,5 +690,7 @@ try {
       );
     else failure = new AggregateError(errors, "Owned fixture cleanup failed");
   }
+  if (previousGitProtocol === undefined) delete process.env.GIT_ALLOW_PROTOCOL;
+  else process.env.GIT_ALLOW_PROTOCOL = previousGitProtocol;
 }
 if (failure) throw failure;

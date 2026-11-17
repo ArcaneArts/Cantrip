@@ -125,6 +125,7 @@ async fn cycle(
         &config.data_directory,
         &worker,
     ));
+    let worktrees = repository_operations.worktrees()?;
     let surface_replay = Arc::new(Mutex::new(
         crate::protected_content::SurfaceStreamReplayGuard::default(),
     ));
@@ -242,6 +243,14 @@ async fn cycle(
                     let operations=repository_operations.clone();let encryption=encryption.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::workspace::Scope::with_stop(stop_rx.clone());
                     commands.spawn(async move {
                         let result=operations.execute(&request["command"],&encryption,&routing,&scope).await;
+                        finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
+                if matches!(kind,"worktree.list"|"worktree.reconcile"|"worktree.create"|"worktree.remove"|"worktree.lock"|"worktree.unlock"|"worktree.prune"|"worktree.status") {
+                    let worktrees=worktrees.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let result=worktrees.execute_routed(&request["command"],&routing,&scope).await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);
                     });
                     continue;

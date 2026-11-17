@@ -1,9 +1,9 @@
+import { nodeGit } from "./git-node-reference.mjs";
 // Encrypted commit mutations and durable conflict recovery in the real worker.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { previewGitCommitAction } from "../../cantrip_worker/src/git.ts";
 
 export async function verifyCommitActions({
   operation,
@@ -20,7 +20,9 @@ export async function verifyCommitActions({
     }).trim();
   const write = (file, value) => writeFile(path.join(checkout, file), value);
   async function preview(action) {
-    const source = await previewGitCommitAction(checkout, action);
+    const source = await nodeGit(checkout, "git.commit.action.preview", {
+      action,
+    });
     const native = await operation({
       type: "git.commit.action.preview",
       arguments: { action },

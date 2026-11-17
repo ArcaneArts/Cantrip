@@ -1,14 +1,11 @@
+import { nodeGit } from "./git-node-reference.mjs";
 // Production encrypted remote management with real Git and owned local remotes.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  previewGitRemoteAction,
-  readGitRemotes,
-  readGitStatus,
-} from "../../cantrip_worker/src/git.ts";
+import { readGitRemotes, readGitStatus } from "../../cantrip_worker/src/git.ts";
 
 function normalize(value, key) {
   if (key === "generatedAt") {
@@ -62,7 +59,9 @@ export async function verifyRemotes({
     return result.result;
   }
   async function preview(action) {
-    const expected = await previewGitRemoteAction(checkout, action);
+    const expected = await nodeGit(checkout, "git.remote.action.preview", {
+      action,
+    });
     const result = await operation({
       type: "git.remote.action.preview",
       arguments: { action },
