@@ -244,3 +244,10 @@ export async function readCodexNativeHistory(
   }
   return parseCodexNativeHistory(response, threadId);
 }
+
+// Development exporter consumes these exact worker-local contracts.
+export {
+  nativeSequence as nativeHistorySequenceSchema,
+  historyMetadataSchema,
+  nativeHistorySchema,
+};

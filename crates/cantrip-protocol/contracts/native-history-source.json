@@ -1,0 +1,721 @@
+{
+  "schemaVersion": 1,
+  "roots": {
+    "nativeHistorySourceScopeSchema": 0,
+    "nativeHistorySourceManifestSchema": 3,
+    "nativeHistorySourceRecordSchema": 7,
+    "nativeHistorySourceFrameSchema": 21,
+    "historySourceOrdinalSchema": 38,
+    "historySourcePositiveSchema": 9,
+    "historySourcePageLimitSchema": 43,
+    "codexNativeHistorySnapshotSchema": 44,
+    "codexNativeHistoryCursorSchema": 29
+  },
+  "nodes": [
+    {
+      "type": "object",
+      "shape": {
+        "ownerId": 1,
+        "serverId": 1,
+        "workerId": 1,
+        "chatId": 1,
+        "bindingId": 1,
+        "threadId": 1
+      },
+      "catchall": 2,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "version": 4, "scope": 0, "journalId": 5 },
+      "catchall": 6,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "version": 8,
+        "sequence": 9,
+        "recordId": 10,
+        "sourceKey": 11,
+        "previousDigest": 12,
+        "envelope": 13,
+        "digest": 11
+      },
+      "catchall": 20,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-f0-9]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[a-f0-9]{64}$/u"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 11, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "version": 14,
+        "algorithm": 15,
+        "keyRevision": 16,
+        "nonce": 17,
+        "ciphertext": 18
+      },
+      "catchall": 19,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    { "type": "literal", "values": ["AES-256-GCM"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 2147483647, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "messageAfterPath": true,
+          "message": "Value is not canonical unpadded base64url."
+        },
+        { "check": "length_equals", "length": 16, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "messageAfterPath": true,
+          "message": "Value is not canonical unpadded base64url."
+        },
+        { "check": "max_length", "maximum": 22369643, "when": "length" },
+        { "check": "min_length", "minimum": 22, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "options": [22, 35],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "generation": 1,
+        "threadId": 1,
+        "receivedAtMs": 23,
+        "kind": 24,
+        "sequence": 9,
+        "method": 1,
+        "params": 25,
+        "nativeCursor": 28
+      },
+      "catchall": 34,
+      "checks": []
+    },
+    { "type": "number", "checks": [] },
+    { "type": "literal", "values": ["notification"], "checks": [] },
+    { "type": "record", "keyType": 26, "valueType": 27, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 29,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "epoch": 30, "sequence": 31, "previousSequence": 32 },
+      "catchall": 33,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 20, "when": "length" },
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "flags": "u",
+          "displayPattern": "/^(0|[1-9][0-9]*)$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "history-source-native-sequence",
+          "messageAfterPath": true,
+          "message": "Native history sequence exceeds u64."
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 31, "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "generation": 1,
+        "threadId": 1,
+        "receivedAtMs": 23,
+        "kind": 36,
+        "id": 37,
+        "readBarrierSequence": 38,
+        "completedSequence": 38,
+        "snapshot": 39
+      },
+      "catchall": 42,
+      "checks": []
+    },
+    { "type": "literal", "values": ["snapshot"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    { "type": "record", "keyType": 40, "valueType": 41, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 512, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "thread": 45, "history": 78 },
+      "catchall": 183,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 46,
+        "forkedFromId": 47,
+        "parentThreadId": 50,
+        "status": 53,
+        "turns": 56
+      },
+      "catchall": 77,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 48,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 49, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 51,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 52, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "object", "shape": { "type": 54 }, "catchall": 55, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "unknown", "checks": [] },
+    { "type": "array", "element": 57, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 58,
+        "status": 59,
+        "items": 60,
+        "itemsView": 65,
+        "startedAt": 67,
+        "completedAt": 70,
+        "durationMs": 73
+      },
+      "catchall": 76,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "values": ["inProgress", "completed", "failed", "interrupted"],
+      "checks": []
+    },
+    { "type": "array", "element": 61, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "id": 62, "type": 63 },
+      "catchall": 64,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "unknown", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 66,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["notLoaded", "summary", "full"],
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 68,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 69, "checks": [] },
+    { "type": "number", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 71,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 72, "checks": [] },
+    { "type": "number", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 74,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 75, "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 79,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 80, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "version": 81,
+        "currentTurnId": 82,
+        "currentTurnState": 84,
+        "live": 85,
+        "turns": 98
+      },
+      "catchall": 182,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    { "type": "nullable", "innerType": 83, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "enum", "values": ["live", "notLoaded"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 86,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "epoch": 87, "throughSequence": 31, "items": 88 },
+      "catchall": 97,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "history-source-live-boundary",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "array", "element": 89, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "turnId": 90,
+        "item": 61,
+        "state": 91,
+        "cursor": 29,
+        "startedAtMs": 92,
+        "completedAtMs": 94
+      },
+      "catchall": 96,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "enum", "values": ["started", "completed"], "checks": [] },
+    { "type": "nullable", "innerType": 93, "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "nullable", "innerType": 95, "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "array", "element": 99, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "turnId": 100,
+        "source": 101,
+        "retention": 102,
+        "contexts": 103,
+        "initialSettings": 115,
+        "initialSettingsConflict": 129,
+        "items": 131,
+        "usage": 140,
+        "warnings": 161,
+        "errors": 164
+      },
+      "catchall": 181,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "enum", "values": ["canonical", "legacy"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["complete", "partial", "unavailable"],
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 104,
+      "checks": []
+    },
+    { "type": "array", "element": 105, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "cwd": 106,
+        "model": 107,
+        "collaborationMode": 108,
+        "reasoningEffort": 110,
+        "rootTurnId": 112
+      },
+      "catchall": 114,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 109, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 111, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 113, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "unknown", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 116,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "model": 117,
+        "modelProvider": 118,
+        "reasoningEffort": 119,
+        "effectiveReasoningEffort": 121,
+        "serviceTier": 123,
+        "effectiveServiceTier": 125,
+        "collaborationMode": 127
+      },
+      "catchall": 128,
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 120, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 122, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 124, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 126, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 130,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "array", "element": 132, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "itemId": 133,
+        "state": 134,
+        "startedAtMs": 135,
+        "completedAtMs": 137
+      },
+      "catchall": 139,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "values": ["started", "completed", "unknown"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 136, "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "nullable", "innerType": 138, "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    { "type": "nullable", "innerType": 141, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "responses": 142,
+        "total": 157,
+        "conflictingResponseIds": 158
+      },
+      "catchall": 160,
+      "checks": []
+    },
+    { "type": "array", "element": 143, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "responseId": 144,
+        "threadId": 145,
+        "sessionId": 146,
+        "rootTurnId": 147,
+        "usage": 148
+      },
+      "catchall": 156,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "totalTokens": 149,
+        "inputTokens": 150,
+        "cachedInputTokens": 151,
+        "cacheWriteInputTokens": 152,
+        "outputTokens": 153,
+        "reasoningOutputTokens": 154
+      },
+      "catchall": 155,
+      "checks": []
+    },
+    { "type": "number", "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    { "type": "nullable", "innerType": 148, "checks": [] },
+    { "type": "array", "element": 159, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    { "type": "nullable", "innerType": 162, "checks": [] },
+    { "type": "array", "element": 163, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 165, "checks": [] },
+    { "type": "array", "element": 166, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "message": 167,
+        "codexErrorInfo": 168,
+        "additionalDetails": 174,
+        "misalignment": 176
+      },
+      "catchall": 180,
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 169, "checks": [] },
+    { "type": "union", "options": [170, 171], "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "record", "keyType": 172, "valueType": 173, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    { "type": "nullable", "innerType": 175, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 177, "checks": [] },
+    { "type": "record", "keyType": 178, "valueType": 179, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    { "type": "unknown", "checks": [] }
+  ]
+}

@@ -9,6 +9,7 @@ pub mod explorer_operations;
 pub mod filesystem;
 pub mod git;
 pub mod github;
+pub mod history;
 pub mod http;
 pub mod installation;
 pub mod logging;

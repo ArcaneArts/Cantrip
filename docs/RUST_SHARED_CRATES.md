@@ -46,7 +46,7 @@ config and logging each depend on wire. Scheduling depends on wire. There is no
 shared-crate dependency on server startup, routing, repositories, PostgreSQL,
 PGlite, Redis, or an HTTP runtime.
 
-The root Cargo workspace contains the server, native worker package and these eight crates. It
+The root Cargo workspace contains the server, native worker package and the shared crates. It
 shares the original lockfile, dependency patches, release profile, and Rust 1.93
 baseline. Desktop, CLI, interaction, CUA, vendored Codex and other third-party
 workspaces remain separately owned. `cargo build` defaults to the server; the
@@ -214,3 +214,13 @@ and local Node worker development dependencies. It creates its own disposable
 profile and worker credentials and removes them after orderly server shutdown.
 Run only the tests relevant to a future change; this extraction does not establish
 a new mandatory broad QA gate. GitHub Actions remains for releases/deployments.
+
+## Worker history implementation
+
+The worker port adds `cantrip-crypto` for endpoint cryptography and
+[cantrip-history](../crates/cantrip-history) for encrypted source journals,
+immutable publication, native history validation and cursor-gap recovery.
+History depends on crypto, protocol, wire and host; it has no dependency on the
+server application, databases, routing or provider/runtime orchestration. The
+worker supplies its authorized key service. See the crate README and
+[Rust worker ledger](RUST_WORKER_PORT.md) for implemented and pending behavior.

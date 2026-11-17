@@ -27,6 +27,7 @@ type Source = NativeHistoryNotification | NativeHistorySnapshotObservation;
 const id = z.string().min(1);
 const ordinal = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const positive = ordinal.positive();
+const pageLimit = z.number().int().min(1).max(512);
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
 const common = {
   generation: id,
@@ -401,7 +402,7 @@ export class NativeHistorySourceJournal {
     limit = 128,
   ): Promise<Array<{ sequence: number; recordId: string; frame: Source }>> {
     ordinal.parse(afterSequence);
-    z.number().int().min(1).max(512).parse(limit);
+    pageLimit.parse(limit);
     return serializeHistoryOperation(this.directory, async () => {
       await this.refresh();
       if (afterSequence > this.headers.length)
@@ -428,3 +429,14 @@ export class NativeHistorySourceJournal {
     });
   }
 }
+
+// Native history persistence uses these same contracts, without a Node runtime.
+export {
+  scopeSchema,
+  manifestSchema,
+  recordSchema,
+  sourceSchema,
+  ordinal as historySourceOrdinalSchema,
+  positive as historySourcePositiveSchema,
+};
+export { pageLimit as historySourcePageLimitSchema };

@@ -8,6 +8,7 @@ pub use cantrip_wire::coercion;
 mod contract_blocks;
 mod external_chats;
 pub mod history;
+mod history_source;
 mod intersections;
 use cantrip_wire::date as js_date;
 mod json_contract;

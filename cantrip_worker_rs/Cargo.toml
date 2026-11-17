@@ -12,6 +12,7 @@ cantrip-crypto = { path = "../crates/cantrip-crypto" }
 cantrip-framing = { path = "../crates/cantrip-framing" }
 zeroize = "1"
 cantrip-config = { path = "../crates/cantrip-config" }
+cantrip-history = { path = "../crates/cantrip-history" }
 cantrip-host = { path = "../crates/cantrip-host" }
 cantrip-wire = { path = "../crates/cantrip-wire" }
 cantrip-logging = { path = "../crates/cantrip-logging" }
