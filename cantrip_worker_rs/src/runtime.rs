@@ -146,7 +146,7 @@ async fn cycle(
     ));
     let mut heartbeat = http::heartbeat(&config, host.platform, host.architecture, &started)?;
     heartbeat["projectReplicas"] = json!({
-        "provision":true,"synchronize":false,"remove":false,"exactRevision":true,
+        "provision":true,"synchronize":true,"remove":true,"exactRevision":true,
         "directPlacement":true,"managedLinkPlacement":crate::replicas::placement::probe_managed_link(&config.data_directory).await,
         "attachExisting":true,"recursiveParentCreation":true,"workspaceScopedRoots":true,
     });
@@ -249,7 +249,7 @@ async fn cycle(
                     });
                     continue;
                 }
-                if matches!(kind,"project.replica.provision"|"project.replica.link.repair") {
+                if matches!(kind,"project.replica.provision"|"project.replica.link.repair"|"project.replica.synchronize"|"project.replica.remove") {
                     let replicas=replicas.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
                     commands.spawn(async move {
                         let command=&request["command"];

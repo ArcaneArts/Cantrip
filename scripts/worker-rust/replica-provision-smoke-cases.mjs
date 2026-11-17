@@ -6,6 +6,8 @@ import path from "node:path";
 import { WorkerRoutingRegistry } from "../../cantrip_worker/src/routing-registry.ts";
 import { projectLabel } from "../server-rust/security-fixtures.mjs";
 export async function verifyReplicaProvision({
+  lifecycle,
+  seedSiblings,
   call,
   fixture,
   workerId,
@@ -83,7 +85,13 @@ export async function verifyReplicaProvision({
     });
     assert.equal(result.status, 202, JSON.stringify(result));
     privateWire(result.body);
-    return { id, target, mode };
+    return {
+      id,
+      target,
+      mode,
+      repository: registered.nameWithOwner,
+      placementPath: registered.path,
+    };
   }
   async function ready(project) {
     const settled = await job(project.id);
@@ -208,7 +216,19 @@ export async function verifyReplicaProvision({
     3,
     "interrupted clone follows existing reconnect retry and explicit blocked-job retry",
   );
+  const extra = lifecycle
+    ? await lifecycle({
+        call,
+        fixture,
+        workerId,
+        root,
+        completed,
+        seedSiblings,
+        eventually,
+      })
+    : {};
   return {
+    ...extra,
     durableProvisionJobs: 4,
     allPlacementModes: true,
     realNativeCloneAndFetch: true,

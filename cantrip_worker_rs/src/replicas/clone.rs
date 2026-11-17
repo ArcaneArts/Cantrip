@@ -158,6 +158,16 @@ pub(super) async fn repository(
         .args(["--", "--progress"]);
     run(command, scope, progress, Timing::default()).await
 }
+fn inactive(last: i64, now: i64, limit: Duration) -> bool {
+    i128::from(now) - i128::from(last) >= limit.as_millis() as i128
+}
+#[test]
+fn inactivity_uses_signed_wall_clock_elapsed() {
+    assert!(!inactive(1000, 900, Duration::from_millis(500)));
+    assert!(!inactive(1000, 1499, Duration::from_millis(500)));
+    assert!(inactive(1000, 1500, Duration::from_millis(500)));
+    assert!(inactive(1000, 100000, Duration::from_millis(500)));
+}
 async fn until(deadline: Option<Instant>) {
     if let Some(deadline) = deadline {
         tokio::time::sleep_until(deadline).await
@@ -238,11 +248,11 @@ async fn run(
     let mut output = JsString::new(Vec::new());
     let mut output_bytes = 0usize;
     let mut current = 30;
-    let mut last_activity = Instant::now();
-    let mut heartbeat =
-        tokio::time::interval_at(last_activity + timing.heartbeat, timing.heartbeat);
+    let started = Instant::now();
+    let mut last_activity = chrono::Utc::now().timestamp_millis();
+    let mut heartbeat = tokio::time::interval_at(started + timing.heartbeat, timing.heartbeat);
     heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    let mut maximum = Some(last_activity + timing.maximum);
+    let mut maximum = Some(started + timing.maximum);
     let mut force_kill = None;
     let mut termination: Option<&'static str> = None;
     let result=async {
@@ -261,7 +271,7 @@ async fn run(
                 },
                 _=heartbeat.tick()=>{
                     progress(json!({"stage":"materializing","percent":current}));
-                    if termination.is_none()&&last_activity.elapsed()>=timing.inactivity {
+                    if termination.is_none()&&inactive(last_activity,chrono::Utc::now().timestamp_millis(),timing.inactivity) {
                         termination=Some("Repository clone stopped after five minutes without network or Git progress.");
                         signal(&mut child,false);force_kill=Some(Instant::now()+timing.grace);
                     }
@@ -290,7 +300,7 @@ async fn run(
                 },
             };
             if chunk.is_empty(){continue}
-            last_activity=Instant::now();
+            last_activity=chrono::Utc::now().timestamp_millis();
             output_bytes=output_bytes.saturating_add(chunk.len());
             if output_bytes>32*1024*1024 {
                 if termination.is_none() {

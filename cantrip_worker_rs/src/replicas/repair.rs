@@ -83,7 +83,7 @@ impl Manager {
             }
         })
     }
-    async fn validate_managed(&self, input: &Value, scope: &Scope) -> Result<PathBuf> {
+    pub(super) async fn validate_managed(&self, input: &Value, scope: &Scope) -> Result<PathBuf> {
         let root = self.directory.join("repositories");
         let target =
             source_path::normalize(input["sourcePath"].as_js_string().unwrap(), cfg!(windows))
