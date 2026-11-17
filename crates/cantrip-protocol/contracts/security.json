@@ -902,7 +902,10 @@
     "gitSubmoduleMutationResultSchema": 13482,
     "gitLfsStatusSchema": 13484,
     "gitLfsActionPreviewSchema": 13519,
-    "gitLfsMutationResultSchema": 13525
+    "gitLfsMutationResultSchema": 13525,
+    "gitGraphSnapshotSchema": 13527,
+    "gitGraphMetricsSchema": 13555,
+    "gitGraphCommitOverlaySchema": 13593
   },
   "nodes": [
     {
@@ -81626,6 +81629,478 @@
       "checks": [
         { "check": "max_length", "maximum": 1000000, "when": "length" }
       ]
-    }
+    },
+    {
+      "type": "object",
+      "name": "gitGraphSnapshotSchema",
+      "shape": {
+        "analyzerVersion": 13528,
+        "revision": 13529,
+        "branch": 13531,
+        "rootPath": 13533,
+        "rootId": 13534,
+        "nodes": 13535,
+        "totalNodes": 13549,
+        "truncated": 13550,
+        "analyzedAt": 13551,
+        "analysis": 13552
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 13530, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{40,64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{40,64}$/u"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 13532, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 2733, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 4200, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 13536,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "gitGraphNodeSchema",
+      "shape": {
+        "id": 13534,
+        "path": 13537,
+        "parentId": 13538,
+        "name": 13539,
+        "kind": 13540,
+        "objectId": 13541,
+        "byteSize": 13543,
+        "extension": 13545,
+        "language": 13547
+      },
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 2733, "checks": [] },
+    { "type": "nullable", "innerType": 13534, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 4096, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "gitGraphNodeKindSchema",
+      "values": ["directory", "file", "symlink", "submodule"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 13542, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{40,64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{40,64}$/u"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 13544, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 13546, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 13548, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "gitGraphAnalysisStateSchema",
+      "shape": {
+        "structure": 13553,
+        "lines": 13554,
+        "history": 13554,
+        "blame": 13554
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["ready"], "checks": [] },
+    {
+      "type": "enum",
+      "name": "gitGraphMetricStateSchema",
+      "values": ["pending", "ready", "deferred", "unavailable"],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "gitGraphMetricsSchema",
+      "shape": {
+        "analyzerVersion": 13556,
+        "revision": 13557,
+        "rootPath": 13559,
+        "historyScope": 13560,
+        "renameAware": 13561,
+        "blameCoverage": 13562,
+        "nodes": 13568,
+        "analyzedAt": 13592,
+        "analysis": 13552
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 13558, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{40,64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{40,64}$/u"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 2733, "checks": [] },
+    { "type": "enum", "values": ["current-branch", "none"], "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13563,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 13564, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "analyzedFiles": 13565,
+        "totalFiles": 13566,
+        "truncated": 13567
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "array",
+      "element": 13569,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "gitGraphNodeMetricsSchema",
+      "shape": {
+        "nodeId": 13534,
+        "path": 13570,
+        "lineCount": 13571,
+        "binary": 13573,
+        "commitTouches": 13575,
+        "additions": 13576,
+        "deletions": 13577,
+        "churn": 13578,
+        "binaryCommitTouches": 13579,
+        "firstChangedAt": 13580,
+        "lastChangedAt": 13582,
+        "dominantAuthorName": 13584,
+        "dominantAuthorEmail": 13586,
+        "dominantAuthorShare": 13588,
+        "averageBlameAgeDays": 13590
+      },
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 2733, "checks": [] },
+    { "type": "nullable", "innerType": 13572, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 13574, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 13581, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 13583, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 13585, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 13587, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 13589, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 13591, "checks": [] },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "gitGraphCommitOverlaySchema",
+      "shape": {
+        "revision": 13594,
+        "baseRevision": 13595,
+        "rootPath": 13597,
+        "nodes": 13598,
+        "filesChanged": 13608,
+        "additions": 13609,
+        "deletions": 13610,
+        "truncated": 13611
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{40,64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{40,64}$/u"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 13596, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{40,64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{40,64}$/u"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 2733, "checks": [] },
+    {
+      "type": "array",
+      "element": 13599,
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "gitGraphCommitOverlayNodeSchema",
+      "shape": {
+        "path": 2733,
+        "originalPath": 13600,
+        "status": 13144,
+        "additions": 13601,
+        "deletions": 13603,
+        "weight": 13605,
+        "binary": 13606,
+        "ghost": 13607
+      },
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 2733, "checks": [] },
+    { "type": "nullable", "innerType": 13602, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 13604, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] }
   ]
 }

@@ -6,6 +6,7 @@ pub(crate) mod commits;
 mod conflicts;
 mod diff;
 pub mod editor;
+mod graph;
 mod history;
 mod inspection;
 mod lfs;
@@ -47,6 +48,9 @@ pub async fn execute(command: &Value, scope: &Scope) -> Result<Value> {
     let cwd = paths::native(command["cwd"].as_js_string().unwrap());
     match command["type"].as_str().unwrap() {
         "git.status" => status(&cwd, scope).await,
+        "git.graph.snapshot" => graph::snapshot(&cwd, command, scope).await,
+        "git.graph.metrics" => graph::metrics(&cwd, command, scope).await,
+        "git.graph.commit-overlay" => graph::overlay(&cwd, command, scope).await,
         "git.lfs.status" => lfs::status(&cwd, command["refreshLocks"] == true, scope).await,
         "git.lfs.action.preview" => lfs::preview(&cwd, &command["action"], scope).await,
         "git.lfs.action.apply" => {
