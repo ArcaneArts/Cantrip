@@ -1,0 +1,6 @@
+
+  mutation CantripSetReviewThreadUnresolved($threadId: ID!) {
+    unresolveReviewThread(input: { threadId: $threadId }) {
+      thread { id isResolved }
+    }
+  }

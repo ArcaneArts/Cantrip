@@ -948,6 +948,7 @@ export const contractRoots = [
   "githubPullRequestCommitsSchema",
   "githubPullRequestChecksSchema",
   "githubPullRequestDetailSchema",
+  "githubPullRequestCreateResultSchema",
 ];
 
 export const projectExportContractRoots = [

@@ -63,13 +63,14 @@ pub(super) fn parse_issue(value: &Value) -> Result<Value> {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    Ok(
-        json!({"number":number,"title":string(value,"title")?,"state":if value["state"]=="closed" {"closed"}else{"open"},
+    let mut result = json!({"number":number,"title":string(value,"title")?,"state":if value["state"]=="closed" {"closed"}else{"open"},
         "url":string(value,"html_url")?,"author":login(value.get("user")),"commentCount":count_field(value,"comments")?,
         "labels":parsed_labels,"assignees":assignees,
         "milestone":nullable_string(value.get("milestone").filter(|v|v.is_object()||v.is_array()).and_then(|v|v.get("title"))),
-        "createdAt":string(value,"created_at")?,"updatedAt":string(value,"updated_at")?,"closedAt":nullable_string(value.get("closed_at"))}),
-    )
+        "createdAt":string(value,"created_at")?,"updatedAt":string(value,"updated_at")?,"closedAt":nullable_string(value.get("closed_at"))});
+    // Number(undefined) is NaN before Zod validation, not JSON null.
+    result["number"] = number;
+    Ok(result)
 }
 pub(super) fn parse_comment(value: &Value) -> Result<Value> {
     Ok(

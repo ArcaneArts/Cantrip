@@ -1,0 +1,12 @@
+
+  mutation CantripSubmitPendingReview(
+    $reviewId: ID!
+    $event: PullRequestReviewEvent!
+    $body: String
+  ) {
+    submitPullRequestReview(input: {
+      pullRequestReviewId: $reviewId
+      event: $event
+      body: $body
+    }) { pullRequestReview { id state } }
+  }

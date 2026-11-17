@@ -1,0 +1,7 @@
+
+  mutation CantripCreatePendingReview($pullRequestId: ID!, $head: GitObjectID!) {
+    addPullRequestReview(input: {
+      pullRequestId: $pullRequestId
+      commitOID: $head
+    }) { pullRequestReview { id } }
+  }
