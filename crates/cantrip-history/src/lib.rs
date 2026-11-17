@@ -4,6 +4,7 @@ pub mod content;
 pub mod cursor;
 pub mod files;
 pub mod native;
+pub mod reducer;
 pub mod source;
 
 use anyhow::{Result, anyhow};

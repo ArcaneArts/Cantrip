@@ -7,6 +7,9 @@ import { buildContractManifest } from "../server-rust/contracts.mjs";
 import * as journal from "../../cantrip_worker/src/native-history-source-journal.ts";
 import * as native from "../../cantrip_worker/src/codex/native-history.ts";
 
+import * as state from "../../cantrip_worker/src/native-history-state.ts";
+import { nativeInitialTurnSettingsSchema } from "../../packages/protocol/dist/index.js";
+
 export const schemas = {
   nativeHistorySourceScopeSchema: journal.scopeSchema,
   nativeHistorySourceManifestSchema: journal.manifestSchema,
@@ -17,6 +20,8 @@ export const schemas = {
   historySourcePageLimitSchema: journal.historySourcePageLimitSchema,
   codexNativeHistorySnapshotSchema: native.nativeHistorySchema,
   codexNativeHistoryCursorSchema: native.nativeHistoryCursorSchema,
+  nativeHistoryStateSchema: state.nativeHistoryStateSchema,
+  nativeHistoryInitialTurnSettingsSchema: nativeInitialTurnSettingsSchema,
 };
 const refinements = new Map([
   [native.nativeHistorySequenceSchema, "history-source-native-sequence"],
@@ -32,6 +37,9 @@ if (
   const manifest = buildContractManifest(Object.keys(schemas), {
     schemas,
     refinements,
+    recursiveJson: new Set([
+      state.nativeHistoryStateObjectSchema._zod.def.valueType,
+    ]),
   });
   await writeFile(
     new URL(

@@ -17,6 +17,7 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
 import { NativeHistorySourceJournal } from "../../cantrip_worker/src/native-history-source-journal.ts";
+import { reduceNativeHistory } from "../../cantrip_worker/src/native-history-reducer.ts";
 import { NativeHistoryCursorTracker } from "../../cantrip_worker/src/native-history-cursor-tracker.ts";
 import { parseCodexNativeHistory } from "../../cantrip_worker/src/codex/native-history.ts";
 import * as content from "../../cantrip_worker/src/native-history-content.ts";
@@ -349,6 +350,11 @@ try {
   // Node creates the durable identity and first record; native reopens unchanged.
   const journal = await NativeHistorySourceJournal.open(input);
   const first = await journal.append(notification(1));
+  const firstState = reduceNativeHistory(
+    null,
+    await journal.read(0, 1),
+    "thread",
+  );
   same(await open("a"), {
     directory: journal.directory,
     journalId: journal.journalId,
@@ -358,6 +364,11 @@ try {
     { op: "append", frame: notification(1) },
     () => journal.append(notification(1)),
     "deduplicate Node record",
+  );
+  await compare(
+    { op: "reduce-source", limit: 1 },
+    () => firstState,
+    "encrypted source page reduction",
   );
   await identity({ revision: 2 });
   const second = await native({ op: "append", frame: notification(2) });
@@ -413,6 +424,16 @@ try {
     first.recordId,
     "original durable record identity retained",
   );
+  const replayedState = reduceNativeHistory(
+    firstState,
+    await journal.read(1),
+    "thread",
+  );
+  await compare(
+    { op: "reduce-source", previous: firstState, after: 1 },
+    () => replayedState,
+    "incremental encrypted journal reduction",
+  );
   child.stdin.end();
   same(await completion, 0, "owned native process stops");
   start();
@@ -430,6 +451,15 @@ try {
     { op: "read" },
     () => journal.read(),
     "replay after actual native process restart",
+  );
+  await compare(
+    {
+      op: "reduce-source",
+      previous: JSON.parse(JSON.stringify(replayedState)),
+      after: 8,
+    },
+    () => replayedState,
+    "serialized reducer state after journal process restart",
   );
   await identity({ owner: "foreign" });
   await compare({ op: "read" }, () => journal.read());

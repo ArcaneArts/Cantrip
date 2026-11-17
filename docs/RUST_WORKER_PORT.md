@@ -122,7 +122,7 @@ loaded by a production service.
 | Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | Native endpoint/surface/repository formats, all private surface records and scoped grant helpers                                                                                                                                                                                                                                                                                                        | Private-state interop covers 12 resource contexts and six content kinds. Remaining protected domains and serving resource lifetimes are pending. Initial surface-grant refresh now completes real host terminal-service reconciliation; delegated OS services remain pending.                                                    |
 | Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Workspace/folders/routing, nine protected host Explorer operations and bound file-document text read/write                                                                                                                                                                                                                                                                                              | Actual Rust worker/server persists encrypted resources, resolves opaque roots, saves files, rejects replay/mismatched document paths and reopens after restart. Paged readers, media/tail, transfers, activity/watches and delegated OS execution remain pending.                                                                |
 | Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub catalog, issue detail/mutations, issue/PR search, inspection, creation, reviews, lifecycle, checkout preparation, agent context, inbox, Actions/releases and replica provisioning/synchronization/removal/link repair | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, exports/sharing and delegated OS Git remain pending |
-| History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements source journals, native source contracts, six encrypted persistence domains and item cursor recovery; worker encryption adapter                                                                                                                                                                                                                                            | Replay/crash/reopen, stable UTF-16 keys/digests, outbox acknowledgments and history reducer/projection fixtures; no cursor resets or uncertain effect replay                                                                                                                                                                     |
+| History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements source journals, native source contracts, six encrypted persistence domains, item cursor recovery and complete pure history reduction; worker encryption adapter                                                                                                                                                                                                           | 100 journal and 70 reducer comparisons; projection/outbox transactions, archive/attachment processing and durable publication remain pending                                                                                                                                                                                     |
 | Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Actual provider protocol fixtures, streaming/media/usage, refresh, cancellation, failure and paid-work bounds                                                                                                                                                                                                                    |
 | Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Manifest verification/probe, native app-server processes, queue ownership, acceptance/commit and restart recovery                                                                                                                                                                                                                |
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
@@ -2458,3 +2458,56 @@ acknowledgments remain pending. It adds no outer command or capability and does
 not change production selection. Windows/Linux runtime behavior was not exercised;
 Windows keeps file-only fsync, as in the current worker. No hosted CI, device QA,
 container build or deployment was used.
+
+## Cycle 41: native history state reduction
+
+Reference: current `56ef01ab052330618ff4dcd12a429524df36f0a6` / PR #3203.
+This cycle ports the complete current `native-history-reducer.ts` and
+`native-history-state.ts` contracts into `cantrip-history::reducer`, reusing the
+source journal, wire values and generated protocol validation. No relevant
+worker/server source churn intervened.
+
+The implementation preserves canonical/legacy item separation, all turn/item
+revisions and ordinals, historical prefix insertion without deleting live-only
+entries, raw unknown evidence, source replay suppression, native u64 cursor
+ordering, predecessor gaps and cross-runtime uncertainty. It retains live
+assistant text, command output, sparse reasoning summaries and file patches
+through late snapshots; item completion remains independent of turn completion.
+Terminal notification evidence outranks provisional snapshot interruption,
+measured times remain distinct from missing values, and conflicting completions
+or immutable settings/model attribution remain explicit. State parsing and return
+use the actual v1 worker schema. Object-key order remains byte-compatible;
+JavaScript deep equality preserves signed zero and real string-coercion errors.
+
+The worker-local graph now has 11 roots / 243 nodes, including the exact state
+schema and an alias to the existing shared initial-turn-settings schema. The
+prior nine roots / 184 nodes remain identical, including indices; the separate
+944-root / 14,052-node security graph also reproduces unchanged. The exporter can
+register a local recursive JSON leaf through the existing validator, avoiding a
+second JSON/schema engine. The TypeScript service only exposes its existing
+state-body schema for that development export. No Cargo dependency changed.
+
+Local evidence on macOS ARM64:
+
+- The original 21 Node reducer tests plus seven focused boundary tests execute
+  both implementations: 70 full-state/error comparisons, exact JSON bytes and a
+  fresh native process for every transition. The original suite's existing
+  expectations also run on the native result. The comparison owner asserts that
+  the native path actually ran; failures cannot silently become reference-only
+  tests.
+- The real encrypted source-journal fixture passes 100 comparisons, including
+  incremental native reduction and serialized state reuse after actual process
+  restart. It advances no committed projection cursor and sends no model input.
+- Four focused native tests cover immutable publication/FIFO and signed-zero
+  state behavior. Worker/example builds, all-target worker/history Clippy with
+  warnings denied, affected Rust server compilation, formatting and diff checks
+  pass. Native children use a system-only PATH. No hosted CI, paid providers,
+  containers, devices or deployment were used; Windows/Linux runtime was not
+  exercised.
+
+The production worker remains Node and the real native outer handler count
+remains 59. This is a complete pure reducer, not completed history delivery.
+Observation/capture/retry orchestration, canonical item resolution and rendering,
+projection/checkpoint/rebase transactions, prepared-batch outboxes, attachments
+and publication/ACK recovery remain pending, followed by provider/runtime
+execution and the rest of the full worker replacement.

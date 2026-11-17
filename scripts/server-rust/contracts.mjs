@@ -1755,7 +1755,7 @@ export function buildContractManifest(rootNames = contractRoots, local = {}) {
     if (schema._zod.optin === "optional") node.optionalIn = true;
     if (schema._zod.optout === "optional") node.optionalOut = true;
     nodes.push(node);
-    if (recursiveJson.has(schema)) {
+    if (recursiveJson.has(schema) || local.recursiveJson?.has(schema)) {
       node.type = "json";
       node.checks = [];
       return id;
