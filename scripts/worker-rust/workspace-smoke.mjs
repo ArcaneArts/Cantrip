@@ -55,6 +55,10 @@ await symlink(git, path.join(bin, "git"));
 // Git's existing noninteractive editor is the POSIX `true` utility. Keep that
 // native dependency available while excluding Node from the worker's PATH.
 await symlink("/usr/bin/true", path.join(bin, "true"));
+// Git's native submodule shell frontend uses these system utilities. Keep the
+// fixture's explicit native dependencies available while excluding Node.
+for (const name of ["basename", "sed", "uname"])
+  await symlink(`/usr/bin/${name}`, path.join(bin, name));
 execFileSync(git, [
   "-c",
   "init.defaultBranch=main",
@@ -597,6 +601,7 @@ try {
       encryptedReviewedBranchesAndLocalRemote: true,
       encryptedReviewedRemotesDefaultsFetchAndPrune: true,
       encryptedReviewedTagsAndImmutableSignatures: true,
+      encryptedReviewedNestedSubmodulesAndRecovery: true,
       nodeAbsentFromWorkerPath: true,
       scope:
         "Fresh attachment, discovery/import, managed/existing folders, encrypted host Explorer/file-document, Git queries/basic actions and managed recovery with native rebase editors, and host terminal-service lifecycle; other worker domains remain pending.",

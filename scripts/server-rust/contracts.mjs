@@ -920,6 +920,9 @@ export const contractRoots = [
   "gitTagDetailSchema",
   "gitTagActionPreviewSchema",
   "gitTagMutationResultSchema",
+  "gitSubmoduleListSchema",
+  "gitSubmoduleActionPreviewSchema",
+  "gitSubmoduleMutationResultSchema",
 ];
 
 export const projectExportContractRoots = [

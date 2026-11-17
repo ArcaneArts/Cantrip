@@ -19,7 +19,7 @@ heartbeat HTTP, a reconnecting WebSocket control connection and authenticated
 encryption-grant lifecycle, encrypted root attachment and workspace discovery/import
 validation, managed folders, encrypted host Explorer/file-document operations,
 host terminal-service supervision, encrypted Git working-tree queries/basic actions,
-Git history/inspection, reviewed branch/remote/tag management, partial-patch editing, stash selection/recovery, reviewed commit mutations/conflict
+Git history/inspection, reviewed branch/remote/tag/submodule management, partial-patch editing, stash selection/recovery, reviewed commit mutations/conflict
 resolution and managed-operation creation/recovery.
 Fourteen real native outer command handlers are installed:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
@@ -31,7 +31,8 @@ and reviewed previews/starts plus current/control/amend recovery and four confli
 inspection/resolution operations, plus reviewed cherry-pick/revert/amend/fixup and
 partial stage/unstage/discard, plus branch inventory/eight reviewed branch actions
 and remote inventory/five reviewed remote actions, plus tag inventory/detail and
-four reviewed tag actions),
+four reviewed tag actions, plus recursive submodule inventory and four reviewed
+submodule actions),
 `project.folder.materialize`, `project.folder.delete`, `explorer.operation`
 (nine host operations), `file-document.operation` (text read/write),
 `terminal.services.reconcile` and `terminal.service.restart` (host services).
@@ -1451,6 +1452,49 @@ history/providers, interactive terminals, browser/data planes, MCP/OS, Node-free
 upgrades, packaging, default cutover and Node retirement. Windows job/tree ownership
 and actual Windows/Linux runtime checks remain pending. The full goal stays active.
 
+## Native reviewed Git submodules subcycle
+
+This cycle uses branch `agent/manual/rust-worker-git-submodules` and reference
+commit `843af4cb5` (#3187). Encrypted `repository.operation` now supports
+`git.submodule.list`, `git.submodule.action.preview` and
+`git.submodule.action.apply`: initialize, update, sync and deinitialize, including
+recursive selection and remote updates. The fourteen outer handlers and Node
+production default remain unchanged.
+
+Inventory retains `.gitmodules` regular-file checks, lexical slash/path filtering,
+configuration parsing, URL redaction, locale ordering, the 10,000-record bound,
+index/current hashes and clean/uninitialized/changed/conflicted/missing states.
+Nested actions use the nearest containing submodule as command cwd and its
+relative child path. Reviews preserve exact Node action/inventory/workspace
+JSON/SHA-256 tokens, target selection, warnings and dirty/force behavior. Mutations
+reuse the 30-second bounded runner, preserve the managed journal and retain the
+persisted active-record guard; inventory/preview remain readable. Concurrent
+metadata queries drain before propagating stop/errors. No dependency, lockfile,
+public TypeScript contract or production launch selection changes occur.
+
+Three existing schema roots are appended: `gitSubmoduleListSchema`,
+`gitSubmoduleActionPreviewSchema` and `gitSubmoduleMutationResultSchema`.
+All previous roots/nodes remain unchanged; the graph now has 899 roots and
+13,484 nodes, adding 26 nodes.
+
+Local macOS ARM64 evidence: 47 actual Node/native comparisons pass across all four
+actions, nested parent routing, exact/stale tokens, dirty/forced deinitialization,
+local remote updates, URL redaction, missing configurations, lexical escapes,
+symlinked `.gitmodules` and real unmerged gitlink index stages. One existing Node
+submodule test and six journal/dispatch tests pass. The production Rust worker/
+server smoke passes encrypted nested actions, Node-produced tokens after restart,
+dirty/force handling, persisted state and journal guards. Its owned repository
+and held sentinel are restored. The restricted worker PATH adds Git's native
+basename/sed/uname dependencies and continues excluding Node. Linked builds,
+workspace all-target Clippy with warnings denied, formatting/diff and source/
+contract checks pass. No full suite, hosted checks, external remotes, device/VM/
+image campaign, release signing or deployment ran.
+
+LFS, Git graphs/observations/worktrees/recovery/GitHub, delegated OS Git, direct
+legacy protection, execution/history/providers, interactive terminals/data planes,
+browser/MCP/OS, Windows job ownership, Node-free upgrades and packaging/default
+cutover remain required. The full goal stays active.
+
 ## Local development and validation
 
 ```sh
@@ -1480,6 +1524,7 @@ node --import tsx scripts/worker-rust/git-patches-compatibility.mjs --binary /ab
 node --import tsx scripts/worker-rust/git-branches-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/git-remotes-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/git-tags-compatibility.mjs --binary /absolute/path/to/workspace-fixture
+node --import tsx scripts/worker-rust/git-submodules-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/folder-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/explorer-compatibility.mjs --binary /absolute/path/to/explorer-fixture
 node --import tsx scripts/worker-rust/private-state-compatibility.mjs --binary /absolute/path/to/content-fixture

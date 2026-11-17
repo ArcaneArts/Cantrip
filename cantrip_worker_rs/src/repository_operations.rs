@@ -129,7 +129,10 @@ impl RepositoryOperations {
                 | "git.tag.list"
                 | "git.tag.get"
                 | "git.tag.action.preview"
-                | "git.tag.action.apply" => {
+                | "git.tag.action.apply"
+                | "git.submodule.list"
+                | "git.submodule.action.preview"
+                | "git.submodule.action.apply" => {
                     let (directory, worker) = self.profile.as_ref().ok_or_else(|| {
                         anyhow::anyhow!("Repository worker profile is not configured.")
                     })?;
@@ -188,6 +191,7 @@ impl RepositoryOperations {
                             | "git.branch.action.apply"
                             | "git.remote.action.apply"
                             | "git.tag.action.apply"
+                            | "git.submodule.action.apply"
                     ) && crate::git::stored::active(stored.as_ref())
                     {
                         bail!("Finish or abort the active Git operation first.");

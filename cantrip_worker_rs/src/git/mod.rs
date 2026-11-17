@@ -20,6 +20,7 @@ mod stash_actions;
 mod stashes;
 mod status;
 pub mod stored;
+mod submodules;
 mod tags;
 use crate::filesystem::{Scope, paths};
 pub use actions::action;
@@ -45,6 +46,19 @@ pub async fn execute(command: &Value, scope: &Scope) -> Result<Value> {
     let cwd = paths::native(command["cwd"].as_js_string().unwrap());
     match command["type"].as_str().unwrap() {
         "git.status" => status(&cwd, scope).await,
+        "git.submodule.list" => submodules::list(&cwd, scope).await,
+        "git.submodule.action.preview" => {
+            submodules::preview(&cwd, &command["action"], scope).await
+        }
+        "git.submodule.action.apply" => {
+            submodules::apply(
+                &cwd,
+                &command["action"],
+                command["token"].as_js_string().unwrap(),
+                scope,
+            )
+            .await
+        }
         "git.tag.list" => tags::list(&cwd, scope).await,
         "git.tag.get" => tags::detail(&cwd, command["name"].as_js_string().unwrap(), scope).await,
         "git.tag.action.preview" => tags::preview(&cwd, &command["action"], scope).await,

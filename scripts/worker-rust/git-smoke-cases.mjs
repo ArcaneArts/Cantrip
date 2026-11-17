@@ -13,6 +13,7 @@ import { verifyPartialPatches } from "./git-patch-smoke-cases.mjs";
 import { verifyBranches } from "./git-branch-smoke-cases.mjs";
 import { verifyRemotes } from "./git-remote-smoke-cases.mjs";
 import { verifyTags } from "./git-tag-smoke-cases.mjs";
+import { verifySubmodules } from "./git-submodule-smoke-cases.mjs";
 import {
   inspectGitManagedOperation,
   previewGitManagedOperation,
@@ -657,6 +658,14 @@ export async function verifyGit({
     journal,
   });
   await verifyTags({
+    operation,
+    checkout,
+    restartWorker,
+    store,
+    scope,
+    journal,
+  });
+  await verifySubmodules({
     operation,
     checkout,
     restartWorker,
