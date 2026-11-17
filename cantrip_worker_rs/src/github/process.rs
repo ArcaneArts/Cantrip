@@ -18,6 +18,14 @@ pub(super) async fn run(args: &[&str], maximum: usize, scope: &Scope) -> Result<
     .await
 }
 pub(super) async fn run_values(args: &[JsString], maximum: usize, scope: &Scope) -> Result<String> {
+    run_program("gh", args, maximum, scope).await
+}
+pub(super) async fn run_program(
+    program: &str,
+    args: &[JsString],
+    maximum: usize,
+    scope: &Scope,
+) -> Result<String> {
     for (index, argument) in args.iter().enumerate() {
         if argument.units().contains(&0) {
             let prefix = format!(
@@ -37,7 +45,7 @@ pub(super) async fn run_values(args: &[JsString], maximum: usize, scope: &Scope)
         .map(|value| crate::filesystem::paths::native(value).into_os_string())
         .collect::<Vec<_>>();
     // Keep the collector's I/O buffers off nested command poll stacks.
-    let output = Box::pin(scope.capture(OsStr::new("gh"), &arguments, maximum))
+    let output = Box::pin(scope.capture(OsStr::new(program), &arguments, maximum))
         .await
         .map_err(|error| {
             if let Some(io) = error.downcast_ref::<std::io::Error>() {
@@ -46,8 +54,10 @@ pub(super) async fn run_values(args: &[JsString], maximum: usize, scope: &Scope)
                     return anyhow!("spawn E2BIG");
                 }
                 match io.kind() {
-                    std::io::ErrorKind::NotFound => return anyhow!("spawn gh ENOENT"),
-                    std::io::ErrorKind::PermissionDenied => return anyhow!("spawn gh EACCES"),
+                    std::io::ErrorKind::NotFound => return anyhow!("spawn {program} ENOENT"),
+                    std::io::ErrorKind::PermissionDenied => {
+                        return anyhow!("spawn {program} EACCES");
+                    }
                     _ => {}
                 }
             }
@@ -57,7 +67,9 @@ pub(super) async fn run_values(args: &[JsString], maximum: usize, scope: &Scope)
         bail!("{stream} maxBuffer length exceeded");
     }
     if output.code != Some(0) {
-        let mut message = "Command failed: gh ".encode_utf16().collect::<Vec<_>>();
+        let mut message = format!("Command failed: {program} ")
+            .encode_utf16()
+            .collect::<Vec<_>>();
         for (index, argument) in args.iter().enumerate() {
             if index != 0 {
                 message.push(32);

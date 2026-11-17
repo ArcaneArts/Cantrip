@@ -924,7 +924,8 @@
     "githubPullRequestFilesSchema": 13813,
     "githubPullRequestCommitsSchema": 13836,
     "githubPullRequestChecksSchema": 13849,
-    "githubPullRequestDetailSchema": 13869
+    "githubPullRequestDetailSchema": 13869,
+    "githubPullRequestCreateResultSchema": 13870
   },
   "nodes": [
     {
@@ -83662,6 +83663,24 @@
         "checksTruncated": 13866
       },
       "checks": []
+    },
+    {
+      "type": "object",
+      "name": "githubPullRequestCreateResultSchema",
+      "shape": { "pullRequest": 8169, "warnings": 13871 },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 13872,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
     }
   ]
 }

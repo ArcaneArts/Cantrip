@@ -37,6 +37,8 @@ import { githubIssuesFixture } from "./github-issues-fixture.mjs";
 import { verifyGithubIssues } from "./github-issues-smoke-cases.mjs";
 import { pullRequestFixture } from "./pull-request-fixture.mjs";
 import { verifyPullRequest } from "./pull-request-smoke-cases.mjs";
+import { pullRequestActionsFixture } from "./pull-request-actions-fixture.mjs";
+import { verifyPullRequestActions } from "./pull-request-actions-smoke-cases.mjs";
 import { verifyWorktreeRecovery } from "./worktree-recovery-smoke-cases.mjs";
 // Every Git remote in this owned fixture is local. Preserve production Git
 // policy while explicitly allowing this test's local submodule clones.
@@ -51,6 +53,7 @@ const { values } = parseArgs({
     "github-catalog-only": { type: "boolean", default: false },
     "github-issues-only": { type: "boolean", default: false },
     "pull-request-only": { type: "boolean", default: false },
+    "pull-request-actions-only": { type: "boolean", default: false },
   },
 });
 assert.ok(
@@ -81,7 +84,8 @@ for (const name of ["basename", "sed", "uname"])
 if (
   !values["github-catalog-only"] &&
   !values["github-issues-only"] &&
-  !values["pull-request-only"]
+  !values["pull-request-only"] &&
+  !values["pull-request-actions-only"]
 )
   await symlink(
     execFileSync("/usr/bin/which", ["git-lfs"], { encoding: "utf8" }).trim(),
@@ -91,9 +95,11 @@ const githubFixture = values["github-catalog-only"]
   ? await githubCatalogFixture(root, bin)
   : values["github-issues-only"]
     ? await githubIssuesFixture(root, bin)
-    : values["pull-request-only"]
-      ? await pullRequestFixture(root, bin)
-      : undefined;
+    : values["pull-request-actions-only"]
+      ? await pullRequestActionsFixture(root, bin)
+      : values["pull-request-only"]
+        ? await pullRequestFixture(root, bin)
+        : undefined;
 execFileSync(git, [
   "-c",
   "init.defaultBranch=main",
@@ -560,7 +566,8 @@ try {
       !values["observations-only"] &&
       !values["recovery-only"] &&
       !values["github-issues-only"] &&
-      !values["pull-request-only"]
+      !values["pull-request-only"] &&
+      !values["pull-request-actions-only"]
     ) {
       const reopenGit = await verifyGit({
         call,
@@ -655,8 +662,12 @@ try {
     await start(worktreePort);
     startWorker();
     await ready();
-    if (values["pull-request-only"]) {
-      githubCoverage = await verifyPullRequest({
+    if (values["pull-request-actions-only"] || values["pull-request-only"]) {
+      githubCoverage = await (
+        values["pull-request-actions-only"]
+          ? verifyPullRequestActions
+          : verifyPullRequest
+      )({
         call,
         ownerId: repository.ownerId,
         serverId: repository.serverId,
@@ -725,11 +736,13 @@ try {
   if (githubCoverage)
     console.log(
       JSON.stringify({
-        suite: values["pull-request-only"]
-          ? "actual-native-pull-request-worker-server"
-          : values["github-issues-only"]
-            ? "actual-native-github-issues-worker-server"
-            : "actual-native-github-catalog-worker-server",
+        suite: values["pull-request-actions-only"]
+          ? "actual-native-pull-request-actions-worker-server"
+          : values["pull-request-only"]
+            ? "actual-native-pull-request-worker-server"
+            : values["github-issues-only"]
+              ? "actual-native-github-issues-worker-server"
+              : "actual-native-github-catalog-worker-server",
         passed: true,
         realWorkerAndServer: true,
         nodeAbsentFromWorkerPath: true,

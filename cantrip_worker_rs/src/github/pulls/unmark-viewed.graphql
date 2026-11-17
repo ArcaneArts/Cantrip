@@ -1,0 +1,6 @@
+
+  mutation CantripUnmarkFileViewed($pullRequestId: ID!, $path: String!) {
+    unmarkFileAsViewed(input: { pullRequestId: $pullRequestId, path: $path }) {
+      pullRequest { id }
+    }
+  }

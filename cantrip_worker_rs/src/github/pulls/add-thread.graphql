@@ -1,0 +1,20 @@
+
+  mutation CantripAddPendingReviewThread(
+    $reviewId: ID!
+    $body: String!
+    $path: String!
+    $line: Int!
+    $side: DiffSide!
+    $startLine: Int
+    $startSide: DiffSide
+  ) {
+    addPullRequestReviewThread(input: {
+      pullRequestReviewId: $reviewId
+      body: $body
+      path: $path
+      line: $line
+      side: $side
+      startLine: $startLine
+      startSide: $startSide
+    }) { thread { id } }
+  }

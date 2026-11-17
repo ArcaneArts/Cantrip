@@ -1,0 +1,6 @@
+
+  mutation CantripDeletePendingReview($reviewId: ID!) {
+    deletePullRequestReview(input: { pullRequestReviewId: $reviewId }) {
+      pullRequestReview { id }
+    }
+  }
