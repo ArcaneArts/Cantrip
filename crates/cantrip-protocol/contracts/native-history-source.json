@@ -11,14 +11,21 @@
     "codexNativeHistorySnapshotSchema": 44,
     "codexNativeHistoryCursorSchema": 29,
     "nativeHistoryStateSchema": 184,
-    "nativeHistoryInitialTurnSettingsSchema": 230,
-    "nativeHistoryOutboxScopeSchema": 243,
-    "nativeHistoryOutboxManifestSchema": 250,
-    "nativeHistoryOutboxMutationHeaderSchema": 255,
-    "nativeHistoryOutboxMutationPayloadSchema": 264,
-    "nativeHistoryOutboxBaselineSchema": 289,
-    "nativeHistoryOutboxRecordSchema": 267,
-    "nativeHistoryOutboxSequenceSchema": 257
+    "nativeHistoryInitialTurnSettingsSchema": 116,
+    "nativeHistoryOutboxScopeSchema": 230,
+    "nativeHistoryOutboxManifestSchema": 237,
+    "nativeHistoryOutboxMutationHeaderSchema": 242,
+    "nativeHistoryOutboxMutationPayloadSchema": 251,
+    "nativeHistoryOutboxBaselineSchema": 276,
+    "nativeHistoryOutboxRecordSchema": 254,
+    "nativeHistoryOutboxSequenceSchema": 244,
+    "nativeHistoryProjectionCursorSchema": 287,
+    "nativeHistoryProjectionManifestSchema": 292,
+    "nativeHistoryProjectionStageSchema": 302,
+    "nativeHistoryProjectionPayloadSchema": 309,
+    "nativeHistoryProjectionCommitSchema": 408,
+    "nativeHistoryProjectionRebaseHeaderSchema": 413,
+    "nativeHistoryProjectionRebasePayloadSchema": 418
   },
   "nodes": [
     {
@@ -112,6 +119,7 @@
     { "type": "nullable", "innerType": 11, "checks": [] },
     {
       "type": "object",
+      "name": "encryptedPayloadEnvelopeSchema",
       "shape": {
         "version": 14,
         "algorithm": 15,
@@ -122,10 +130,16 @@
       "catchall": 19,
       "checks": []
     },
-    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "literal",
+      "name": "encryptionEnvelopeVersionSchema",
+      "values": [1],
+      "checks": []
+    },
     { "type": "literal", "values": ["AES-256-GCM"], "checks": [] },
     {
       "type": "number",
+      "name": "encryptionKeyRevisionSchema",
       "checks": [
         { "check": "number_format", "format": "safeint", "abort": false },
         { "check": "greater_than", "value": 0, "inclusive": false },
@@ -134,6 +148,7 @@
     },
     {
       "type": "string",
+      "name": "encryptionNonceSchema",
       "checks": [
         {
           "check": "string_format",
@@ -570,6 +585,7 @@
     },
     {
       "type": "object",
+      "name": "nativeInitialTurnSettingsSchema",
       "shape": {
         "model": 117,
         "modelProvider": 118,
@@ -913,41 +929,14 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "name": "nativeInitialTurnSettingsSchema",
       "shape": {
-        "model": 231,
-        "modelProvider": 232,
-        "reasoningEffort": 233,
-        "effectiveReasoningEffort": 235,
-        "serviceTier": 237,
-        "effectiveServiceTier": 239,
-        "collaborationMode": 241
+        "serverId": 231,
+        "ownerId": 232,
+        "workerId": 233,
+        "chatId": 234,
+        "bindingId": 235
       },
-      "catchall": 242,
-      "checks": []
-    },
-    { "type": "string", "checks": [] },
-    { "type": "string", "checks": [] },
-    { "type": "nullable", "innerType": 234, "checks": [] },
-    { "type": "string", "checks": [] },
-    { "type": "nullable", "innerType": 236, "checks": [] },
-    { "type": "string", "checks": [] },
-    { "type": "nullable", "innerType": 238, "checks": [] },
-    { "type": "string", "checks": [] },
-    { "type": "nullable", "innerType": 240, "checks": [] },
-    { "type": "string", "checks": [] },
-    { "type": "string", "checks": [] },
-    { "type": "never", "checks": [] },
-    {
-      "type": "object",
-      "shape": {
-        "serverId": 244,
-        "ownerId": 245,
-        "workerId": 246,
-        "chatId": 247,
-        "bindingId": 248
-      },
-      "catchall": 249,
+      "catchall": 236,
       "checks": []
     },
     {
@@ -974,12 +963,12 @@
     {
       "type": "object",
       "shape": {
-        "version": 251,
-        "scope": 243,
-        "streamId": 252,
-        "baseline": 253
+        "version": 238,
+        "scope": 230,
+        "streamId": 239,
+        "baseline": 240
       },
-      "catchall": 254,
+      "catchall": 241,
       "checks": []
     },
     { "type": "literal", "values": [1], "checks": [] },
@@ -1007,16 +996,16 @@
     {
       "type": "object",
       "shape": {
-        "version": 256,
-        "sequence": 257,
-        "recordId": 258,
-        "previousDigest": 259,
-        "legacyCount": 261,
-        "legacyDigest": 262,
+        "version": 243,
+        "sequence": 244,
+        "recordId": 245,
+        "previousDigest": 246,
+        "legacyCount": 248,
+        "legacyDigest": 249,
         "envelope": 13,
-        "digest": 260
+        "digest": 247
       },
-      "catchall": 263,
+      "catchall": 250,
       "checks": []
     },
     { "type": "literal", "values": [1], "checks": [] },
@@ -1041,7 +1030,7 @@
         }
       ]
     },
-    { "type": "nullable", "innerType": 260, "checks": [] },
+    { "type": "nullable", "innerType": 247, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -1062,33 +1051,33 @@
         { "check": "less_than", "value": 9007199254740991, "inclusive": true }
       ]
     },
-    { "type": "nullable", "innerType": 260, "checks": [] },
+    { "type": "nullable", "innerType": 247, "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "union",
-      "options": [265, 274],
+      "options": [252, 261],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "kind": 266, "record": 267 },
-      "catchall": 273,
+      "shape": { "kind": 253, "record": 254 },
+      "catchall": 260,
       "checks": []
     },
     { "type": "literal", "values": ["append"], "checks": [] },
     {
       "type": "object",
       "shape": {
-        "version": 268,
-        "streamId": 269,
-        "sequence": 257,
-        "recordId": 270,
-        "previousDigest": 271,
+        "version": 255,
+        "streamId": 256,
+        "sequence": 244,
+        "recordId": 257,
+        "previousDigest": 258,
         "envelope": 13,
-        "digest": 260
+        "digest": 247
       },
-      "catchall": 272,
+      "catchall": 259,
       "checks": []
     },
     { "type": "literal", "values": [1], "checks": [] },
@@ -1118,33 +1107,34 @@
         }
       ]
     },
-    { "type": "nullable", "innerType": 260, "checks": [] },
+    { "type": "nullable", "innerType": 247, "checks": [] },
     { "type": "never", "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 275, "rejection": 276, "records": 287 },
-      "catchall": 288,
+      "shape": { "kind": 262, "rejection": 263, "records": 274 },
+      "catchall": 275,
       "checks": []
     },
     { "type": "literal", "values": ["replace"], "checks": [] },
     {
       "type": "object",
+      "name": "nativeHistoryBatchRejectionSchema",
       "shape": {
-        "rejected": 277,
-        "rejectionId": 278,
-        "workerId": 279,
-        "chatId": 279,
-        "bindingId": 279,
-        "streamId": 280,
-        "sequence": 281,
-        "recordId": 282,
-        "digest": 283,
-        "previousDigest": 284,
-        "payloadDigest": 283,
-        "code": 285
+        "rejected": 264,
+        "rejectionId": 265,
+        "workerId": 266,
+        "chatId": 266,
+        "bindingId": 266,
+        "streamId": 267,
+        "sequence": 268,
+        "recordId": 269,
+        "digest": 270,
+        "previousDigest": 271,
+        "payloadDigest": 270,
+        "code": 272
       },
-      "catchall": 286,
+      "catchall": 273,
       "checks": []
     },
     { "type": "literal", "values": [true], "checks": [] },
@@ -1214,7 +1204,7 @@
         }
       ]
     },
-    { "type": "nullable", "innerType": 283, "checks": [] },
+    { "type": "nullable", "innerType": 270, "checks": [] },
     {
       "type": "enum",
       "values": ["item-revision-conflict", "turn-revision-conflict"],
@@ -1223,28 +1213,29 @@
     { "type": "never", "checks": [] },
     {
       "type": "array",
-      "element": 267,
+      "element": 254,
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
     { "type": "never", "checks": [] },
-    { "type": "array", "element": 290, "checks": [] },
+    { "type": "array", "element": 277, "checks": [] },
     {
       "type": "object",
-      "shape": { "receipt": 291, "previousDigest": 297, "payloadDigest": 298 },
-      "catchall": 299,
+      "shape": { "receipt": 278, "previousDigest": 284, "payloadDigest": 285 },
+      "catchall": 286,
       "checks": []
     },
     {
       "type": "object",
+      "name": "nativeHistoryCommitReceiptSchema",
       "shape": {
-        "committed": 292,
-        "streamId": 293,
-        "sequence": 281,
-        "recordId": 294,
-        "digest": 283,
-        "commitId": 295
+        "committed": 279,
+        "streamId": 280,
+        "sequence": 268,
+        "recordId": 281,
+        "digest": 270,
+        "commitId": 282
       },
-      "catchall": 296,
+      "catchall": 283,
       "checks": []
     },
     { "type": "literal", "values": [true], "checks": [] },
@@ -1288,7 +1279,7 @@
       ]
     },
     { "type": "never", "checks": [] },
-    { "type": "nullable", "innerType": 298, "checks": [] },
+    { "type": "nullable", "innerType": 285, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -1301,6 +1292,751 @@
         }
       ]
     },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "sequence": 288, "recordId": 289 },
+      "catchall": 291,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 290, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "version": 293,
+        "ownerId": 294,
+        "serverId": 295,
+        "workerId": 296,
+        "chatId": 297,
+        "bindingId": 298,
+        "sourceId": 299,
+        "streamId": 300
+      },
+      "catchall": 301,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "version": 303,
+        "sequence": 304,
+        "recordId": 305,
+        "previousDigest": 306,
+        "envelope": 13,
+        "digest": 307
+      },
+      "catchall": 308,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 307, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-f0-9]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[a-f0-9]{64}$/u"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "from": 287, "through": 287, "state": 310, "batches": 311 },
+      "catchall": 407,
+      "checks": []
+    },
+    { "type": "json", "checks": [] },
+    {
+      "type": "array",
+      "element": 312,
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": { "recordId": 313, "batch": 314 },
+      "catchall": 406,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "nativeHistoryPreparedBatchSchema",
+      "shape": { "items": 315, "turns": 361, "snapshot": 401 },
+      "catchall": 405,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 316,
+      "checks": [{ "check": "max_length", "maximum": 512, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "identity": 317,
+        "revision": 268,
+        "expectedRevision": 320,
+        "state": 322,
+        "order": 323,
+        "message": 325,
+        "attachments": 343,
+        "evidence": 356
+      },
+      "catchall": 360,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "native-history-evidence-revision",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "nativeHistoryItemIdentitySchema",
+      "shape": {
+        "threadId": 266,
+        "turnId": 266,
+        "itemId": 266,
+        "component": 266,
+        "identityKind": 318
+      },
+      "catchall": 319,
+      "checks": []
+    },
+    { "type": "enum", "values": ["canonical", "legacy"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 321,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": ["started", "completed", "unknown"],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "turn": 321, "item": 321, "component": 321 },
+      "catchall": 324,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "chatMessageOpaqueContentSchema",
+      "shape": {
+        "id": 326,
+        "classification": 327,
+        "protectedContent": 333,
+        "reasoningEffort": 338,
+        "idempotencyKey": 341
+      },
+      "catchall": 342,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "chatMessageProtectedClassificationSchema",
+      "shape": { "role": 328, "mode": 329, "attachmentIds": 330 },
+      "catchall": 332,
+      "checks": []
+    },
+    { "type": "enum", "values": ["user", "assistant", "system"], "checks": [] },
+    { "type": "enum", "values": ["default", "plan", "goal"], "checks": [] },
+    {
+      "type": "array",
+      "element": 331,
+      "checks": [{ "check": "max_length", "maximum": 20, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedChatMessageProtectedContentSchema",
+      "shape": { "formatVersion": 334, "keyRevision": 16, "envelope": 335 },
+      "catchall": 337,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-communication-envelope",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "version": 14,
+        "algorithm": 15,
+        "keyRevision": 16,
+        "nonce": 17,
+        "ciphertext": 336
+      },
+      "catchall": 19,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "messageAfterPath": true,
+          "message": "Value is not canonical unpadded base64url."
+        },
+        { "check": "max_length", "maximum": 22369643, "when": "length" },
+        { "check": "min_length", "minimum": 22, "when": "length" },
+        { "check": "max_length", "maximum": 2796224, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 339,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 340, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "array", "element": 344, "checks": [] },
+    {
+      "type": "object",
+      "name": "workerChatAttachmentSchema",
+      "shape": {
+        "id": 345,
+        "chatId": 346,
+        "sizeBytes": 347,
+        "status": 348,
+        "protectedMetadata": 349,
+        "createdAt": 354
+      },
+      "catchall": 355,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 26214400, "inclusive": true }
+      ]
+    },
+    { "type": "enum", "values": ["ready", "failed"], "checks": [] },
+    {
+      "type": "object",
+      "name": "attachmentProtectedMetadataSchema",
+      "shape": { "formatVersion": 350, "keyRevision": 16, "envelope": 351 },
+      "catchall": 353,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-attachment-envelope",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "version": 14,
+        "algorithm": 15,
+        "keyRevision": 16,
+        "nonce": 17,
+        "ciphertext": 352
+      },
+      "catchall": 19,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "messageAfterPath": true,
+          "message": "Value is not canonical unpadded base64url."
+        },
+        { "check": "max_length", "maximum": 22369643, "when": "length" },
+        { "check": "min_length", "minimum": 22, "when": "length" },
+        { "check": "max_length", "maximum": 43712, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 357,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "nativeHistoryItemEvidenceSchema",
+      "shape": {
+        "version": 358,
+        "bindingId": 266,
+        "workerId": 266,
+        "revision": 268,
+        "content": 13
+      },
+      "catchall": 359,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "element": 362,
+      "checks": [{ "check": "max_length", "maximum": 512, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "nativeHistoryTurnSchema",
+      "shape": {
+        "threadId": 266,
+        "turnId": 266,
+        "revision": 268,
+        "ordinal": 321,
+        "status": 363,
+        "startedAtMs": 364,
+        "completedAtMs": 366,
+        "usage": 368,
+        "modelAttribution": 399,
+        "metadata": 13
+      },
+      "catchall": 400,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["inProgress", "completed", "failed", "interrupted"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 365, "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "nullable", "innerType": 367, "checks": [] },
+    { "type": "number", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 369,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "nativeHistoryUsageSchema",
+      "shape": {
+        "version": 370,
+        "modelAttribution": 371,
+        "responses": 388,
+        "complete": 395,
+        "conflictingResponseIds": 396
+      },
+      "catchall": 398,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 372,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "nativeTurnModelAttributionSchema",
+      "shape": {
+        "threadId": 373,
+        "turnId": 374,
+        "isRoot": 375,
+        "reasoningEffort": 376,
+        "selection": 378
+      },
+      "catchall": 387,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 377, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "union",
+      "name": "nativeModelAttributionSchema",
+      "options": [379, 384],
+      "discriminator": "status",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "status": 380,
+        "workerId": 381,
+        "providerId": 381,
+        "providerAccountId": 382,
+        "modelId": 381,
+        "routeId": 381
+      },
+      "catchall": 383,
+      "checks": []
+    },
+    { "type": "literal", "values": ["resolved"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 381, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "status": 385 },
+      "catchall": 386,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["unavailable", "unmapped", "ambiguous"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "array", "element": 389, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "responseId": 390, "usage": 391 },
+      "catchall": 394,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "nativeResponseUsageCountsSchema",
+      "shape": {
+        "totalTokens": 392,
+        "inputTokens": 392,
+        "cachedInputTokens": 392,
+        "cacheWriteInputTokens": 392,
+        "outputTokens": 392,
+        "reasoningOutputTokens": 392
+      },
+      "catchall": 393,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "array", "element": 397, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 372,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 402,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "readBarrierSequence": 321, "complete": 403 },
+      "catchall": 404,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "sequence": 409,
+        "digest": 307,
+        "receipts": 410,
+        "rebaseDigest": 411
+      },
+      "catchall": 412,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 278,
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 307,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "version": 414,
+        "sequence": 244,
+        "recordId": 415,
+        "previousDigest": 416,
+        "stageDigest": 247,
+        "envelope": 13,
+        "digest": 247
+      },
+      "catchall": 417,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 247, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "rejection": 263,
+        "acceptedReceipts": 419,
+        "replacement": 420
+      },
+      "catchall": 421,
+      "checks": []
+    },
+    { "type": "array", "element": 278, "checks": [] },
+    { "type": "json", "checks": [] },
     { "type": "never", "checks": [] }
   ]
 }

@@ -620,3 +620,12 @@ export class NativeHistoryProjection {
     });
   }
 }
+
+// Development export of the exact projection persistence contracts.
+export {
+  cursorSchema as nativeHistoryProjectionCursorSchema,
+  manifestSchema as nativeHistoryProjectionManifestSchema,
+  stageSchema as nativeHistoryProjectionStageSchema,
+  payloadSchema as nativeHistoryProjectionPayloadSchema,
+  commitSchema as nativeHistoryProjectionCommitSchema,
+};

@@ -1,9 +1,8 @@
 # cantrip-history
 
-Native worker-local evidence from the current `native-history-source-journal.ts`,
-history content helpers, Codex snapshot parser and item cursor tracker. This is
-substantial persistence/replay implementation, independent of provider execution
-and the server application or database.
+Native worker-local history persistence and replay from the current Node source
+journal, reducer, outbox and projection/rebase implementations. This is independent
+of provider execution and the server application or database.
 
 - `source::Journal`: v1 manifests, scope-hashed directories, immutable encrypted
   records, exact ordered hashes, durable identities, same-frame deduplication,
@@ -37,6 +36,12 @@ and the server application or database.
   wire digest, separate from ordered local record hashes.
 - `files`: private files, flush-before-hard-link publication without overwriting
   committed paths, directory flushing and process-local serialization.
+- `projection::Projection`: complete v1 stage/checkpoint/commit and rebase
+  transactions over the real source journal and outbox. Freeze state, batch IDs
+  and ciphertext before delivery; advance a source cursor only after every
+  canonical receipt. Reopen pending transactions without projecting again.
+  Durable encrypted rebase plans retain accepted prefixes and the exact original
+  source range across repeated permanent rejections and interrupted replacement.
 
 `Encryption` supplies live account/server identity and an atomic copied grant.
 The worker adapter uses its real authorized encryption service. Keys, derived
@@ -74,18 +79,18 @@ node --import tsx scripts/worker-rust/history-source-compatibility.mjs \
   --binary /absolute/shared-target/aarch64-apple-darwin/debug/examples/history-source-fixture
 ```
 
-Runtime observation/capture, retries, projections, checkpoints,
-attachment processing and end-to-end delivery remain worker port work.
-The outbox persists receipts; the authenticated delivery/recovery client and
-projection/checkpoint/rebase orchestration still need implementation. This source journal alone advertises no new worker capability.
+Runtime observation/capture, retry pumps, canonical identity/rendering/protection,
+attachment processing and end-to-end delivery remain worker port work. The
+authenticated delivery/recovery client and production orchestration still need
+implementation. These library APIs alone advertise no new worker capability.
 
 The reducer accepts an optional previous state and the verified journal page;
 it does not advance a source cursor or authorize execution. It parses previous
 and returned state through the actual exported worker schema. States remain
 private plaintext in worker memory until the owning projection encrypts them.
 The journal fixture exercises encrypted-page reduction and serialized state
-across an actual native-process restart; this does not implement the pending
-projection/ACK transaction.
+across an actual native-process restart. Production capture and execution must
+still integrate the reducer and projection/ACK transactions.
 
 Reuse the existing Node reducer suite as a differential oracle:
 
@@ -119,3 +124,32 @@ The native fixture's optional key-lookup barrier is development-only coordinatio
 for an actual Node/native cross-process mutation race. It affects only synthetic
 fixture keys, uses ordinary system nonce generation, and is absent from the
 production encryption service and history crate. All profiles are disposable.
+
+`Projection::open` receives an authorized encryption service, matching journal
+and outbox handles, a pure `project` callback, an optional pure `rebase` callback,
+an authenticated `deliver` callback and an optional explicit cancellation check.
+The callback owner supplies canonical IDs, protected prepared batches, HTTP
+authentication and in-flight cancellation. Local storage does not establish
+network authority. `BatchRejected::verified` validates a matched rejection before
+constructing the distinct error that selects rebase; ordinary HTTP/transport
+errors propagate. Projection and rebase callbacks must avoid dispatching native input.
+
+Projection methods use the same owned FIFO as other history APIs. Dropping the
+returned drain future does not stop an accepted transaction. Explicit runtime
+cancellation is checked before delivery, after a remote receipt before local ACK,
+and before committing state. A later owner reconciles the same frozen bytes.
+Missing manifests, replaced source/outbox identities, orphan plans, inconsistent
+hash chains and missing canonical receipts fail rather than reset the cursor.
+
+Additional local projection verification:
+
+```sh
+node --import tsx scripts/worker-rust/history-projection-compatibility.mjs \
+  --binary /absolute/shared-target/aarch64-apple-darwin/debug/examples/history-source-fixture
+```
+
+This runs the actual Node/native projection implementations over real encrypted
+journals and outboxes with a controlled durable receiver. It covers lost replies,
+partial commits, repeated rebases, actual process restart, filesystem obstruction,
+explicit cancellation and abandoned responses. The receiver is fixture data;
+this is not evidence for the pending production HTTP integration.
