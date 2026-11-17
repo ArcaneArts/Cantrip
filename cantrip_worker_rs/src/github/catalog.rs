@@ -22,7 +22,7 @@ fn repository(value: &Value) -> Result<Value> {
         "updatedAt":string(value,"updated_at")?
     }))
 }
-fn collator() -> Result<icu_collator::CollatorBorrowed<'static>> {
+pub(super) fn collator() -> Result<icu_collator::CollatorBorrowed<'static>> {
     let locale: icu_locale_core::Locale = cantrip_wire::environment::locale()
         .unwrap_or("en-US")
         .parse()
