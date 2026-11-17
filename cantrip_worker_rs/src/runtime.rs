@@ -123,6 +123,12 @@ async fn cycle(
     ));
     let repository_operations =
         Arc::new(crate::repository_operations::RepositoryOperations::default());
+    let surface_replay = Arc::new(Mutex::new(
+        crate::protected_content::SurfaceStreamReplayGuard::default(),
+    ));
+    let explorer_operations = Arc::new(
+        crate::explorer_operations::ExplorerOperations::with_replay(surface_replay),
+    );
     let mut heartbeat = http::heartbeat(&config, host.platform, host.architecture, &started)?;
     heartbeat["encryption"] = encryption.status();
     http::enroll(&client, &mut config, &heartbeat, logs).await?;
@@ -203,6 +209,14 @@ async fn cycle(
                     let folders=folders.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
                     commands.spawn(async move {
                         let result=folders.execute_routed(&request["command"],&routing,&scope).await;
+                        finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
+                if matches!(kind,"explorer.operation"|"file-document.operation") {
+                    let operations=explorer_operations.clone();let encryption=encryption.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let result=operations.execute(&request["command"],&encryption,&routing,&scope).await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);
                     });
                     continue;

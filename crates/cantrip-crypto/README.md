@@ -20,6 +20,9 @@ Implemented from `packages/crypto`:
   direction bindings and the existing 16-MiB plaintext limit.
 - JSON surface streams, binary remote-surface streams and tunnel data frames,
   including their distinct route/context bindings, limits and error boundaries.
+- Private surface records for terminals, Explorer, file documents, browsers,
+  desktop state and desktop inventory: existing resource/table/field bindings,
+  persistent/ephemeral contexts, classifications and four-MiB encoded limit.
 
 HPKE uses `hpke` 0.14.1, including its KEM zeroization fixes, with only the
 alloc/AES/NIST-curve/system-random features. The suite remains P-256; the upstream
@@ -53,6 +56,9 @@ Authenticated grant refresh and its HTTP/task ownership live in
 The worker's `protected_secrets` module adapts the real provider and MCP formats
 to that service. The content fixture compares these operations with the actual
 TypeScript implementations in both directions using disposable synthetic data.
+`protected_content` also supplies the private-state worker helper, retaining
+latest-grant selection and missing/corrupt/stale/revoked/recipient error states.
+Those helpers take one atomic status/account/key snapshot from the worker service.
 
 Other domain-specific protected content, replay/counter state and encrypted
 resource adapters remain worker-port work. The native worker now supplies the

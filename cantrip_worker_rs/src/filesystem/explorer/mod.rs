@@ -21,6 +21,16 @@ pub use search::search_files;
 /// advertised worker command handler: the encrypted adapter is still required.
 /// That adapter must validate the decrypted request with the protocol schema.
 pub async fn execute(root: &Path, request: &Value, scope: &Scope) -> Result<Value> {
+    execute_decoded(root, request, request, scope).await
+}
+/// `input` retains normalization provenance from the decrypted request; only
+/// the protocol-validated `request` controls filesystem operations.
+pub async fn execute_decoded(
+    root: &Path,
+    request: &Value,
+    input: &Value,
+    scope: &Scope,
+) -> Result<Value> {
     scope.check()?;
     let path = request["path"].as_js_string();
     let path = || path.ok_or_else(|| anyhow!("Missing Explorer path."));
@@ -31,12 +41,13 @@ pub async fn execute(root: &Path, request: &Value, scope: &Scope) -> Result<Valu
         ),
         "explorer.files.search" => (
             "explorer.files.search",
-            search_files(
+            search::search_files_from_input(
                 root,
                 request["query"]
                     .as_js_string()
                     .ok_or_else(|| anyhow!("Missing Explorer query."))?,
                 request["limit"].as_f64().unwrap_or(100.),
+                input["query"].as_js_string(),
                 scope,
             )
             .await?,

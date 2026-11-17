@@ -144,7 +144,16 @@ pub async fn search_files(
     limit: f64,
     scope: &Scope,
 ) -> Result<Value> {
-    let raw_query = query;
+    search_files_from_input(root, query, limit, None, scope).await
+}
+pub(super) async fn search_files_from_input(
+    root: &Path,
+    query: &JsString,
+    limit: f64,
+    input: Option<&JsString>,
+    scope: &Scope,
+) -> Result<Value> {
+    let raw_query = input.unwrap_or(query);
     let query = query.trim();
     if query.is_empty() {
         bail!("Enter a file name to search for.");

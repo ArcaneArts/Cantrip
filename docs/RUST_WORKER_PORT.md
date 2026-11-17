@@ -17,15 +17,16 @@ locating changes but are not behavioral proof or a runtime gate.
 configuration/profile identity, worker logging/archive lifetimes, enrollment and
 heartbeat HTTP, a reconnecting WebSocket control connection and authenticated
 encryption-grant lifecycle, encrypted root attachment and workspace discovery/import
-validation and managed folders. Ten real native command handlers are installed:
+validation, managed folders and encrypted host Explorer/file-document operations.
+Twelve real native command handlers are installed:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
 `diagnostics.logs.read`, `worker.encryption.refresh`,
 `workspace.repositories.discover`, `workspace.repository-import.validate`,
 `repository.operation` (root attachment and metadata operations only),
-`project.folder.materialize`, and `project.folder.delete`.
-The host Explorer filesystem engine also implements navigation, search, Git
-commit lookup and text/entry editing. Its encrypted command adapter is pending,
-so it adds no installed handlers or advertised capabilities yet.
+`project.folder.materialize`, `project.folder.delete`, `explorer.operation`
+(nine host operations) and `file-document.operation` (text read/write).
+Explorer implements navigation, search, Git commit lookup and text/entry editing.
+Paged reads, transfers, watches, media/tail and delegated OS execution are pending.
 Other commands fail explicitly;
 unimplemented capabilities are reported unavailable. Production packaging still
 selects Node. Nothing invokes the Node worker as a native fallback.
@@ -68,32 +69,33 @@ publication call sites. It currently identifies 323 distinct command names acros
 546 primary/delegated switch sites. These counts earn no implementation credit.
 Follow constructors, nested handlers, callbacks and dynamic routing manually.
 The five control handlers, two discovery/import handlers and encrypted
-attachment/metadata adapter, and two folder handlers above are implemented. Other indexed commands
-remain pending; the source index itself grants no implementation credit.
+attachment/metadata adapter, two folder handlers and the limited Explorer/file-document
+handlers above are implemented. Other indexed commands remain pending; the source
+index itself grants no implementation credit.
 
 Regenerate deliberately with `node scripts/worker-rust/inventory.mjs`. It uses
 existing Babel development dependencies. Review source changes and update this
 ledger rather than treating regeneration as proof of parity. The index is never
 loaded by a production service.
 
-| Area                               | Reference implementations and behavior                                                                                                    | Rust implementation                                                                                                             | Validation / remaining work                                                                                                                                                                                                                                                                                      |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Configuration and profile identity | `config.ts`, `credential-store.ts`, `codex/bundled-runtime.ts`                                                                            | `config`, `credentials`, `installation` modules                                                                                 | Local Node differential checks, private file/rotation tests. Resolution only; Codex manifest verification/probing still pending                                                                                                                                                                                  |
-| Logging and process lifetime       | `logger.ts`, `log-stream.ts`, `runtime-loop.ts`, `process-guard.ts`, `index.ts` startup/stop                                              | Native logging adapter and owned runtime cycles                                                                                 | Archive/options/privacy buffer, subscriptions, retained restart cursors, signal/stdin shutdown and actor teardown tested. Remote log-stream leases, full command log context and native child/execution retirement remain pending                                                                                |
-| Enrollment/control transport       | `enrollment.ts`, `heartbeat.ts`, `transport.ts`, routing/observation adapters                                                             | Native enrollment/replacement, heartbeat, readiness/reconnect and credential lifecycle                                          | Actual Rust-server round trip, rotation/reconnect, restart/revocation and HTTP oracles pass. Execution lifetime/admission fencing, reconnect-grace resource callbacks, notifications/events/task acknowledgments, data-plane adapters, congestion fidelity and deployment TLS/proxy configuration remain pending |
-| Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | `cantrip-crypto::content`, `encryption::{Identity,Service}`, `protected_secrets`, `protected_content`                           | Native primitives/grants, content formats, provider/MCP helpers, endpoint/surface adapters and surface replay guard; remaining protected domains and serving resource lifetimes are pending                                                                                                                      |
-| Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | `workspace`, managed folders/routing and nine host Explorer engine operations; encrypted Explorer/file-document adapter pending | Managed-folder/root flows tested with actual Rust server/worker. Explorer engine compared with actual Node functions; protected command/state integration, watches, paged readers, media and transfers remain pending.                                                                                           |
-| Git/projects/GitHub                | `commands/{git,worktree,github}.ts`, `git.ts`, `worktrees.ts`, replicas, repository operations, exports and shares                        | Encrypted metadata registration/resolution; Git/GitHub execution pending                                                        | Owned repositories; command-specific differential tests, operation identity/recovery and actual Git/GitHub protocol boundaries                                                                                                                                                                                   |
-| History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | Pending                                                                                                                         | Replay/crash/reopen, stable UTF-16 keys/digests, outbox acknowledgments and history reducer/projection fixtures; no cursor resets or uncertain effect replay                                                                                                                                                     |
-| Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Pending                                                                                                                         | Actual provider protocol fixtures, streaming/media/usage, refresh, cancellation, failure and paid-work bounds                                                                                                                                                                                                    |
-| Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Pending                                                                                                                         | Manifest verification/probe, native app-server processes, queue ownership, acceptance/commit and restart recovery                                                                                                                                                                                                |
-| Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                         | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                      |
-| Terminals/run supervision          | terminal manager/canonical/private state, run-configuration providers and supervisors                                                     | Pending                                                                                                                         | PTY resize/replay/serialization, encrypted streams, owned process trees, output/redaction and run reconciliation                                                                                                                                                                                                 |
-| WorkerLink/direct/tunnels          | gateways/peer/WebRTC/direct broker, tunnel protection/routing/adapters                                                                    | Native framing/tunnel crypto; serving adapters pending                                                                          | Existing frame fixtures plus actual ICE/TURN/WebRTC interoperability, bounded backpressure, stale grant/session and disconnect behavior                                                                                                                                                                          |
-| Browsers/surfaces/computer use     | browser/desktop adapters, remote surfaces, computer-use services, web service and managed Playwright/SearXNG                              | Native stream protection; execution/resources pending                                                                           | Native replacements for Node driver/helpers; selectors/snapshots/input/capture/network restrictions; permission/approval revocation; no dropped features                                                                                                                                                         |
-| MCP/CLI/CodeGraph                  | `mcp/*`, CLI broker, computer-use MCP, codegraph/runtime/supervisor                                                                       | Pending                                                                                                                         | Native stdio/HTTP helpers, generated/persisted launch commands, binding/generation scopes, CLI and managed-runtime fixtures                                                                                                                                                                                      |
-| Cantrip OS                         | `cantrip_os/host`, `os-executor/*`, native MCP/run execution                                                                              | Pending                                                                                                                         | Port Node host orchestration, Docker/guest/lifecycle/files/PTY/tunnels/packages/backups/system/checkpoints; retain independent non-Node guest helpers                                                                                                                                                            |
-| Upgrade and packaging              | profile converter/database-transfer, server profile preparation, desktop services/worker, distribution/runtime scripts, worker Dockerfile | Pending                                                                                                                         | Node-free legacy conversion/export/restore, desktop/standalone artifacts, existing-profile reopen and actual child-process/runtime audit                                                                                                                                                                         |
+| Area                               | Reference implementations and behavior                                                                                                    | Rust implementation                                                                                        | Validation / remaining work                                                                                                                                                                                                                                                                                      |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Configuration and profile identity | `config.ts`, `credential-store.ts`, `codex/bundled-runtime.ts`                                                                            | `config`, `credentials`, `installation` modules                                                            | Local Node differential checks, private file/rotation tests. Resolution only; Codex manifest verification/probing still pending                                                                                                                                                                                  |
+| Logging and process lifetime       | `logger.ts`, `log-stream.ts`, `runtime-loop.ts`, `process-guard.ts`, `index.ts` startup/stop                                              | Native logging adapter and owned runtime cycles                                                            | Archive/options/privacy buffer, subscriptions, retained restart cursors, signal/stdin shutdown and actor teardown tested. Remote log-stream leases, full command log context and native child/execution retirement remain pending                                                                                |
+| Enrollment/control transport       | `enrollment.ts`, `heartbeat.ts`, `transport.ts`, routing/observation adapters                                                             | Native enrollment/replacement, heartbeat, readiness/reconnect and credential lifecycle                     | Actual Rust-server round trip, rotation/reconnect, restart/revocation and HTTP oracles pass. Execution lifetime/admission fencing, reconnect-grace resource callbacks, notifications/events/task acknowledgments, data-plane adapters, congestion fidelity and deployment TLS/proxy configuration remain pending |
+| Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | Native endpoint/surface/repository formats, all private surface records and scoped grant helpers           | Private-state interop covers 12 resource contexts and six content kinds. Remaining protected domains and serving resource lifetimes are pending. Initial surface-grant refresh still fails at unported terminal reconciliation after loading the key.                                                            |
+| Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Workspace/folders/routing, nine protected host Explorer operations and bound file-document text read/write | Actual Rust worker/server persists encrypted resources, resolves opaque roots, saves files, rejects replay/mismatched document paths and reopens after restart. Paged readers, media/tail, transfers, activity/watches and delegated OS execution remain pending.                                                |
+| Git/projects/GitHub                | `commands/{git,worktree,github}.ts`, `git.ts`, `worktrees.ts`, replicas, repository operations, exports and shares                        | Encrypted metadata registration/resolution; Git/GitHub execution pending                                   | Owned repositories; command-specific differential tests, operation identity/recovery and actual Git/GitHub protocol boundaries                                                                                                                                                                                   |
+| History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | Pending                                                                                                    | Replay/crash/reopen, stable UTF-16 keys/digests, outbox acknowledgments and history reducer/projection fixtures; no cursor resets or uncertain effect replay                                                                                                                                                     |
+| Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Pending                                                                                                    | Actual provider protocol fixtures, streaming/media/usage, refresh, cancellation, failure and paid-work bounds                                                                                                                                                                                                    |
+| Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Pending                                                                                                    | Manifest verification/probe, native app-server processes, queue ownership, acceptance/commit and restart recovery                                                                                                                                                                                                |
+| Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                    | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                      |
+| Terminals/run supervision          | terminal manager/canonical/private state, run-configuration providers and supervisors                                                     | Pending                                                                                                    | PTY resize/replay/serialization, encrypted streams, owned process trees, output/redaction and run reconciliation                                                                                                                                                                                                 |
+| WorkerLink/direct/tunnels          | gateways/peer/WebRTC/direct broker, tunnel protection/routing/adapters                                                                    | Native framing/tunnel crypto; serving adapters pending                                                     | Existing frame fixtures plus actual ICE/TURN/WebRTC interoperability, bounded backpressure, stale grant/session and disconnect behavior                                                                                                                                                                          |
+| Browsers/surfaces/computer use     | browser/desktop adapters, remote surfaces, computer-use services, web service and managed Playwright/SearXNG                              | Native stream protection; execution/resources pending                                                      | Native replacements for Node driver/helpers; selectors/snapshots/input/capture/network restrictions; permission/approval revocation; no dropped features                                                                                                                                                         |
+| MCP/CLI/CodeGraph                  | `mcp/*`, CLI broker, computer-use MCP, codegraph/runtime/supervisor                                                                       | Pending                                                                                                    | Native stdio/HTTP helpers, generated/persisted launch commands, binding/generation scopes, CLI and managed-runtime fixtures                                                                                                                                                                                      |
+| Cantrip OS                         | `cantrip_os/host`, `os-executor/*`, native MCP/run execution                                                                              | Pending                                                                                                    | Port Node host orchestration, Docker/guest/lifecycle/files/PTY/tunnels/packages/backups/system/checkpoints; retain independent non-Node guest helpers                                                                                                                                                            |
+| Upgrade and packaging              | profile converter/database-transfer, server profile preparation, desktop services/worker, distribution/runtime scripts, worker Dockerfile | Pending                                                                                                    | Node-free legacy conversion/export/restore, desktop/standalone artifacts, existing-profile reopen and actual child-process/runtime audit                                                                                                                                                                         |
 
 The source index includes existing tests with their source hashes. Each port must
 choose relevant behavioral tests, not merely make dispatch registration compile.
@@ -590,6 +592,80 @@ capability, server schema, migration or production packaging changes. Windows/Li
 runtime execution, full-suite/device/VM/image QA, hosted Actions, signing and
 deployment were not performed. The full worker replacement goal remains active.
 
+## Encrypted Explorer and surface-state subcycle
+
+Branch `agent/manual/rust-worker-explorer-encryption` uses reference commit
+`fcbb50ce9`. `cantrip-crypto::content` now implements the existing surface private
+records for all six content kinds and 12 resource contexts. Context validation,
+resource/table/field bindings, persistent versus ephemeral operation IDs,
+inner/outer classification, encoded byte limits and authenticated error behavior
+match the current TypeScript source. Key/plaintext buffers reuse the existing
+zeroizing crypto primitives; no dependencies or algorithms were added.
+
+`protected_content` supplies the real worker private-state helpers, including
+unsupported/missing/corrupt/stale/revoked/wrong-recipient states and latest-only
+grant selection. `Service::component_view` reads status, owner and key under one
+lock while retaining the source's error precedence. Other component consumers
+keep their existing APIs and revision policies.
+
+`ExplorerOperations` is installed in the production runtime for
+`explorer.operation` and `file-document.operation`. It resolves private routing
+before dispatch, reserves sequences before opening requests and seals private
+success/error outcomes before completing replay admission. A shared runtime guard
+is injectable for future terminal/chat-file consumers and retains the existing
+global stream-capacity policy. Jobs use the runtime's owned command/join lifetime.
+Caller disconnect does not abandon accepted filesystem mutations.
+
+File documents independently authenticate their persisted location and compare
+project, worktree, worker, operation kind and exact path before filesystem access.
+Host navigation/editing use the prior engine. Unsupported paged/transfer/media/OS
+operations remain explicit unfinished work. The new decoder also retains source
+input alongside validated content so query trimming preserves the current Node
+locale-casing behavior through the actual encrypted validation path; unvalidated
+input never chooses a filesystem target.
+
+Six roots were appended from the authoritative protocol. All existing 850 roots
+and 12,650 nodes remain unchanged; the manifest now has 856 roots and 13,009 nodes.
+New refinements cover private terminal directories, file paths, browser URLs and
+binary range/page/receipt integrity. Binary readers/writers are not implemented
+merely because those shared outcome contracts now validate. An observed issue-key
+ordering difference in a new validation error was corrected to retain the source's
+serialized Zod error message.
+
+Local macOS ARM64 evidence: 72 private-state comparisons cover bidirectional crypto,
+all resources, classification/context/key/recipient failures, BOM/malformed plaintext,
+the encoded byte limit and worker-helper grant states. Thirty-one comparisons
+against the actual encrypted Node handlers pass in each of en-US and tr-TR,
+including normalization, replay reservation, private errors and document binding.
+The existing 101 stream/helper comparisons, five native grant/replay tests and six
+Node private-state tests pass. Workspace all-target Clippy with warnings denied,
+explicit linked server/worker binary and content-fixture builds, format and diff
+checks pass. The initial example-only build did not rebuild the worker executable;
+the production flow was rerun with explicitly rebuilt binaries.
+
+The production Rust server/worker fixture creates encrypted Explorer/file-document
+records over real HTTP, resolves persisted opaque checkout paths and performs real
+file reads/writes and search. It rejects stale saves, traversal, wrong document
+paths and completed operation replay. After worker restart, persisted records,
+routing, keys and saved files reopen. The worker PATH contains only Git; no Node
+service/helper executes in this flow. Existing managed-folder/root/import checks
+continue passing with their disposable dirty checkout preserved.
+
+**Unfinished integration:** the first `surface-private-state` grant refresh loads
+the key, then the server's existing follow-up fails because
+`terminal.services.reconcile` is not implemented. The focused fixture explicitly
+records only that known failure and proves subsequent encrypted operations; it
+does not establish complete grant readiness or terminal support. Implement real
+terminal/run-service reconciliation before cutover. No fake empty reconciler or
+Node fallback was installed to hide this gap.
+
+Paged binary/text previews, imports/binary saves, media/tail and activity/watch
+services remain required, followed by the other Git, execution/history, terminal,
+browser/transport, MCP/OS, upgrade and packaging work. Production still selects
+Node. No hosted Actions, full-suite/device/VM/image campaign, signing or deployment
+ran, and Windows/Linux runtime behavior was not exercised. The full goal remains
+unfinished.
+
 ## Local development and validation
 
 ```sh
@@ -599,6 +675,7 @@ pnpm worker:rust:test
 node scripts/worker-rust/cargo.mjs build --example config-fixture --example crypto-fixture --example grant-fixture --example content-fixture
 node scripts/worker-rust/cargo.mjs build --example workspace-fixture
 node scripts/worker-rust/cargo.mjs build --example explorer-fixture
+node scripts/server-rust/cargo.mjs build -p cantrip-server -p cantrip-worker --bin cantrip-server --bin cantrip-worker --example content-fixture
 node --import tsx scripts/worker-rust/config-compatibility.mjs --binary /absolute/path/to/config-fixture
 node --import tsx scripts/worker-rust/crypto-compatibility.mjs --binary /absolute/path/to/crypto-fixture
 node --import tsx scripts/worker-rust/grant-compatibility.mjs --binary /absolute/path/to/grant-fixture
@@ -608,6 +685,8 @@ node --import tsx scripts/worker-rust/workspace-compatibility.mjs --binary /abso
 node --import tsx scripts/worker-rust/repository-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/folder-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/explorer-compatibility.mjs --binary /absolute/path/to/explorer-fixture
+node --import tsx scripts/worker-rust/private-state-compatibility.mjs --binary /absolute/path/to/content-fixture
+node --import tsx scripts/worker-rust/explorer-command-compatibility.mjs --binary /absolute/path/to/content-fixture
 node --import tsx scripts/worker-rust/workspace-smoke.mjs --worker /absolute/path/to/cantrip-worker --server /absolute/path/to/cantrip-server
 node scripts/worker-rust/control-smoke.mjs --worker /absolute/path/to/cantrip-worker --server /absolute/path/to/cantrip-server
 ```

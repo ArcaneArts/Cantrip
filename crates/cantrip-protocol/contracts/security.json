@@ -850,7 +850,13 @@
     "explorerFileSchema": 12637,
     "explorerEntryNameSchema": 12643,
     "explorerEntryRenameSchema": 12644,
-    "explorerEntryMutationResultSchema": 12647
+    "explorerEntryMutationResultSchema": 12647,
+    "surfacePrivateStateContextSchema": 12650,
+    "surfacePrivateStateOpaqueSchema": 12657,
+    "surfacePrivateStateProtectedContentSchema": 12658,
+    "fileDocumentPrivateStateProtectedContentSchema": 12682,
+    "explorerOperationRequestContentSchema": 12765,
+    "surfaceOperationOutcomeContentSchema": 12865
   },
   "nodes": [
     {
@@ -76658,6 +76664,1765 @@
       "checks": []
     },
     { "type": "nullable", "innerType": 12645, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "surfacePrivateStateContextSchema",
+      "shape": {
+        "serverId": 12651,
+        "resource": 12652,
+        "resourceId": 12653,
+        "operationId": 12654,
+        "recordKind": 3831
+      },
+      "catchall": 12656,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "surfacePrivateStateResourceSchema",
+      "values": [
+        "terminal-row",
+        "terminal-operation",
+        "explorer-row",
+        "explorer-operation",
+        "file-document-row",
+        "browser-row",
+        "browser-remote-surface",
+        "browser-operation",
+        "remote-desktop-row",
+        "remote-desktop-surface",
+        "remote-desktop-operation",
+        "remote-desktop-inventory"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 12655, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "surfacePrivateStateOpaqueSchema",
+      "shape": { "classification": 3830, "protectedState": 3833 },
+      "catchall": 3838,
+      "checks": []
+    },
+    {
+      "type": "union",
+      "name": "surfacePrivateStateProtectedContentSchema",
+      "options": [12659, 12674, 12682, 12692, 12700, 12723],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "terminalPrivateStateProtectedContentSchema",
+      "shape": {
+        "version": 12660,
+        "classification": 12661,
+        "directory": 12664,
+        "serviceCommand": 12672
+      },
+      "catchall": 12673,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "recordKind": 12662 },
+      "catchall": 12663,
+      "checks": []
+    },
+    { "type": "literal", "values": ["terminal-state"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "terminalPrivateDirectorySchema",
+      "options": [12665, 12668],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 12666 },
+      "catchall": 12667,
+      "checks": []
+    },
+    { "type": "literal", "values": ["project-root"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 12669, "path": 12670 },
+      "catchall": 12671,
+      "checks": []
+    },
+    { "type": "literal", "values": ["relative-path"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 4096, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-private-directory",
+          "messageAfterPath": true,
+          "message": "Expected a safe repository-relative path."
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "explorerPrivateStateProtectedContentSchema",
+      "shape": {
+        "version": 12675,
+        "classification": 12676,
+        "selectedPath": 12679
+      },
+      "catchall": 12681,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "recordKind": 12677 },
+      "catchall": 12678,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer-state"], "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 12680, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "fileDocumentPrivateStateProtectedContentSchema",
+      "shape": {
+        "version": 12683,
+        "classification": 12684,
+        "projectId": 12687,
+        "workerId": 12688,
+        "worktreeId": 12689,
+        "path": 12690
+      },
+      "catchall": 12691,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "recordKind": 12685 },
+      "catchall": 12686,
+      "checks": []
+    },
+    { "type": "literal", "values": ["file-document-state"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
+          "message": "File paths cannot contain NUL."
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "browserPrivateStateProtectedContentSchema",
+      "shape": {
+        "version": 12693,
+        "classification": 12694,
+        "revision": 12697,
+        "url": 12698
+      },
+      "catchall": 12699,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "recordKind": 12695 },
+      "catchall": 12696,
+      "checks": []
+    },
+    { "type": "literal", "values": ["browser-state"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "string_format", "format": "url", "abort": false },
+        { "check": "max_length", "maximum": 4096, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-private-http-url",
+          "messageAfterPath": true,
+          "message": "Protected browser URLs must use HTTP or HTTPS."
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "remoteDesktopPrivateStateProtectedContentSchema",
+      "shape": {
+        "version": 12701,
+        "classification": 12702,
+        "revision": 12705,
+        "target": 12706
+      },
+      "catchall": 12722,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "recordKind": 12703 },
+      "catchall": 12704,
+      "checks": []
+    },
+    { "type": "literal", "values": ["remote-desktop-state"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "remoteDesktopPrivateTargetSchema",
+      "options": [12707, 12714],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 12708, "id": 12709, "name": 12711 },
+      "catchall": 12713,
+      "checks": []
+    },
+    { "type": "literal", "values": ["monitor"], "checks": [] },
+    { "type": "nullable", "innerType": 12710, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 12712, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 12715,
+        "id": 12716,
+        "application": 12718,
+        "title": 12719
+      },
+      "catchall": 12721,
+      "checks": []
+    },
+    { "type": "literal", "values": ["window"], "checks": [] },
+    { "type": "nullable", "innerType": 12717, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 12720, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "remoteDesktopPrivateInventoryProtectedContentSchema",
+      "shape": {
+        "version": 12724,
+        "classification": 12725,
+        "monitors": 12728,
+        "windows": 12739,
+        "requested": 12754,
+        "active": 12756,
+        "launchingApplication": 12758,
+        "message": 12761
+      },
+      "catchall": 12764,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "recordKind": 12726 },
+      "catchall": 12727,
+      "checks": []
+    },
+    { "type": "literal", "values": ["remote-desktop-inventory"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "element": 12729,
+      "checks": [{ "check": "max_length", "maximum": 64, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 12730,
+        "id": 12731,
+        "name": 12732,
+        "x": 12733,
+        "y": 12734,
+        "width": 12735,
+        "height": 12736,
+        "primary": 12737
+      },
+      "catchall": 12738,
+      "checks": []
+    },
+    { "type": "literal", "values": ["monitor"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "element": 12740,
+      "checks": [{ "check": "max_length", "maximum": 2000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 12741,
+        "id": 12742,
+        "application": 12743,
+        "title": 12744,
+        "iconKey": 12745,
+        "x": 12747,
+        "y": 12748,
+        "width": 12749,
+        "height": 12750,
+        "minimized": 12751,
+        "focused": 12752
+      },
+      "catchall": 12753,
+      "checks": []
+    },
+    { "type": "literal", "values": ["window"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 12746, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 128, "when": "length" },
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-zA-Z0-9:_-]+$",
+          "flags": "u",
+          "displayPattern": "/^[a-zA-Z0-9:_-]+$/u"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 12755,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 12706, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 12757,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 12706, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 12759,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 12760, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 12762,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 12763, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 2048, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "explorerOperationRequestContentSchema",
+      "options": [
+        12766, 12775, 12781, 12785, 12788, 12791, 12799, 12802, 12806, 12810,
+        12814, 12821, 12824, 12833, 12839, 12849, 12853, 12856, 12859, 12862
+      ],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "binaryWriteBeginSchema",
+      "shape": {
+        "type": 12767,
+        "path": 12768,
+        "uploadId": 12769,
+        "version": 12770
+      },
+      "catchall": 12774,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": ["explorer.binary.write.begin"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 12771, "checks": [] },
+    {
+      "type": "union",
+      "name": "binaryWriteVersionSchema",
+      "options": [12772, 12773],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^binary-v1:[a-f0-9]{64}$",
+          "flags": "u",
+          "displayPattern": "/^binary-v1:[a-f0-9]{64}$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^binary-sha256:[a-f0-9]{64}$",
+          "flags": "u",
+          "displayPattern": "/^binary-sha256:[a-f0-9]{64}$/u"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "binaryWriteChunkSchema",
+      "shape": {
+        "type": 12776,
+        "path": 12768,
+        "uploadId": 12769,
+        "offset": 12777,
+        "final": 12778,
+        "data": 12779
+      },
+      "catchall": 12780,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": ["explorer.binary.write.chunk"],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 349528, "when": "length" },
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+          "flags": "u",
+          "displayPattern": "/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "binaryWriteCommitSchema",
+      "shape": {
+        "type": 12782,
+        "path": 12768,
+        "uploadId": 12769,
+        "size": 12777,
+        "sha256": 12783
+      },
+      "catchall": 12784,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": ["explorer.binary.write.commit"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-f0-9]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[a-f0-9]{64}$/u"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "binaryWriteStatusSchema",
+      "shape": { "type": 12786, "path": 12768, "uploadId": 12769 },
+      "catchall": 12787,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": ["explorer.binary.write.status"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "binaryWriteAbortSchema",
+      "shape": { "type": 12789, "path": 12768, "uploadId": 12769 },
+      "catchall": 12790,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": ["explorer.binary.write.abort"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "type": 12792,
+        "path": 12793,
+        "name": 12643,
+        "size": 12794,
+        "offset": 12795,
+        "data": 12796,
+        "eof": 12797
+      },
+      "catchall": 12798,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.file.import"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 8192, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 349528, "when": "length" },
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+          "flags": "u",
+          "displayPattern": "/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u"
+        }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12800 },
+      "catchall": 12801,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": ["explorer.file.import.cancel"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12803, "path": 12804 },
+      "catchall": 12805,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.directory.list"], "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12807, "query": 12617, "limit": 12808 },
+      "catchall": 12809,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.files.search"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 100, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12811, "path": 12812 },
+      "catchall": 12813,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": ["explorer.directory.commits"],
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "path": 12815,
+        "offset": 12816,
+        "limit": 12817,
+        "version": 12818,
+        "type": 12819
+      },
+      "catchall": 12820,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-binary-read",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 262144, "inclusive": true }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 12772,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.binary.read"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12822, "path": 12645 },
+      "catchall": 12823,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.file.read"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12825, "path": 12645, "cursor": 12826 },
+      "catchall": 12832,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.file.tail"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 12827,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "logTailCursorSchema",
+      "shape": { "offset": 12828, "identity": 12829, "anchor": 12830 },
+      "catchall": 12831,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-f0-9]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[a-f0-9]{64}$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-f0-9]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[a-f0-9]{64}$/u"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "type": 12834,
+        "path": 12645,
+        "offset": 12835,
+        "version": 12836
+      },
+      "catchall": 12838,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.file.preview"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 10485760, "inclusive": true }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 12837,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-f0-9]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[a-f0-9]{64}$/u"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "type": 12840,
+        "mediaType": 12841,
+        "path": 12645,
+        "offset": 12846,
+        "limit": 12847
+      },
+      "catchall": 12848,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.media.read"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 12842,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 12843, "mimeType": 12844 },
+      "catchall": 12845,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "explorerMediaKindSchema",
+      "values": ["image", "audio", "video"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 262144, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "type": 12850,
+        "path": 12645,
+        "content": 12851,
+        "version": 12642
+      },
+      "catchall": 12852,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.file.write"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 2097152, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12854, "path": 12793 },
+      "catchall": 12855,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": ["explorer.directory.create"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12857, "path": 12793, "name": 12643 },
+      "catchall": 12858,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.file.create"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12860, "path": 12645, "name": 12643 },
+      "catchall": 12861,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.entry.rename"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12863, "path": 12645 },
+      "catchall": 12864,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.entry.delete"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "surfaceOperationOutcomeContentSchema",
+      "options": [12866, 13003],
+      "discriminator": "ok",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "ok": 12867, "result": 12868 },
+      "catchall": 13002,
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    {
+      "type": "union",
+      "options": [12869, 12948, 12557, 12986, 12999],
+      "checks": []
+    },
+    {
+      "type": "union",
+      "name": "explorerOperationResultContentSchema",
+      "options": [
+        12870, 12881, 12888, 12891, 12894, 12897, 12907, 12915, 12926, 12929,
+        12932, 12935, 12945
+      ],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "type": 12871, "value": 12872 },
+      "catchall": 12880,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.binary.write"], "checks": [] },
+    {
+      "type": "object",
+      "name": "binaryWriteReceiptSchema",
+      "shape": {
+        "path": 12768,
+        "uploadId": 12769,
+        "state": 12873,
+        "offset": 12777,
+        "size": 12874,
+        "sha256": 12875,
+        "version": 12876,
+        "error": 12877
+      },
+      "catchall": 12879,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-binary-receipt",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": [
+        "unknown",
+        "uploading",
+        "prepared",
+        "committed",
+        "conflict",
+        "aborted"
+      ],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 12777, "checks": [] },
+    { "type": "nullable", "innerType": 12783, "checks": [] },
+    { "type": "nullable", "innerType": 12771, "checks": [] },
+    { "type": "nullable", "innerType": 12878, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 8192, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12882, "value": 12883 },
+      "catchall": 12887,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.file.imported"], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "offset": 12884, "entry": 12885 },
+      "catchall": 12886,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 12601, "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12889, "value": 12612 },
+      "catchall": 12890,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.directory.list"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12892, "value": 12616 },
+      "catchall": 12893,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.files.search"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12895, "value": 12623 },
+      "catchall": 12896,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": ["explorer.directory.commits"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12898, "value": 12899 },
+      "catchall": 12906,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.file.tail"], "checks": [] },
+    {
+      "type": "object",
+      "name": "explorerLogTailSchema",
+      "shape": {
+        "path": 12900,
+        "content": 12901,
+        "startOffset": 12902,
+        "size": 12903,
+        "reset": 12904,
+        "cursor": 12827
+      },
+      "catchall": 12905,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 262144, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12908, "value": 12909 },
+      "catchall": 12914,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.binary"], "checks": [] },
+    {
+      "type": "object",
+      "name": "explorerBinaryPageSchema",
+      "shape": {
+        "path": 12910,
+        "size": 12816,
+        "offset": 12816,
+        "nextOffset": 12816,
+        "eof": 12911,
+        "version": 12772,
+        "data": 12912
+      },
+      "catchall": 12913,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-binary-page",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 349528, "when": "length" },
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+          "flags": "u",
+          "displayPattern": "/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12916, "value": 12917 },
+      "catchall": 12925,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.file.preview"], "checks": [] },
+    {
+      "type": "object",
+      "name": "explorerTextPreviewPageSchema",
+      "shape": {
+        "path": 12918,
+        "content": 12919,
+        "size": 12920,
+        "offset": 12921,
+        "nextOffset": 12922,
+        "eof": 12923,
+        "version": 12837
+      },
+      "catchall": 12924,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 262144, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 10485760, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 10485760, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 10485760, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12927, "value": 12637 },
+      "catchall": 12928,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.file"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12930, "value": 12601 },
+      "catchall": 12931,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": ["explorer.directory.created"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12933, "value": 12601 },
+      "catchall": 12934,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.file.created"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12936, "value": 12937 },
+      "catchall": 12944,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.media"], "checks": [] },
+    {
+      "type": "object",
+      "name": "explorerMediaFileChunkSchema",
+      "shape": {
+        "path": 12938,
+        "kind": 12843,
+        "mimeType": 12844,
+        "size": 12939,
+        "modifiedAt": 12940,
+        "offset": 12941,
+        "data": 12942,
+        "eof": 12943
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 400000, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12946, "value": 12647 },
+      "catchall": 12947,
+      "checks": []
+    },
+    { "type": "literal", "values": ["explorer.entry.mutated"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "standaloneChatFileOperationResultContentSchema",
+      "options": [12949, 12952, 12955, 12958, 12961, 12964, 12973, 12982],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "type": 12950, "value": 12612 },
+      "catchall": 12951,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": ["chat-files.directory.list"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12953, "value": 12637 },
+      "catchall": 12954,
+      "checks": []
+    },
+    { "type": "literal", "values": ["chat-files.file"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12956, "path": 12645 },
+      "catchall": 12957,
+      "checks": []
+    },
+    { "type": "literal", "values": ["chat-files.path.resolved"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12959, "value": 12937 },
+      "catchall": 12960,
+      "checks": []
+    },
+    { "type": "literal", "values": ["chat-files.media"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12962, "value": 12647 },
+      "catchall": 12963,
+      "checks": []
+    },
+    { "type": "literal", "values": ["chat-files.entry.mutated"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12965, "value": 12966 },
+      "catchall": 12972,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": ["chat-files.download.prepared"],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "standaloneChatFileDownloadPreparedSchema",
+      "shape": {
+        "downloadId": 12967,
+        "fileName": 12968,
+        "mimeType": 12969,
+        "size": 12970
+      },
+      "catchall": 12971,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 167772160, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12974, "value": 12975 },
+      "catchall": 12981,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": ["chat-files.download.chunk"],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "standaloneChatFileDownloadChunkSchema",
+      "shape": {
+        "downloadId": 12976,
+        "offset": 12977,
+        "data": 12978,
+        "eof": 12979
+      },
+      "catchall": 12980,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 400000, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12983, "downloadId": 12984 },
+      "catchall": 12985,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": ["chat-files.download.cancelled"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 12987, "value": 12988 },
+      "catchall": 12998,
+      "checks": []
+    },
+    { "type": "literal", "values": ["chat.files.references"], "checks": [] },
+    {
+      "type": "object",
+      "name": "chatFileReferencesResultContentSchema",
+      "shape": { "root": 12989, "entries": 12990 },
+      "catchall": 12997,
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    { "type": "array", "element": 12991, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "reference": 12992, "path": 12993, "kind": 12994 },
+      "catchall": 12996,
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 12995, "checks": [] },
+    { "type": "enum", "values": ["file", "directory"], "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 13000 },
+      "catchall": 13001,
+      "checks": []
+    },
+    { "type": "literal", "values": ["terminal.input.accepted"], "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "ok": 13004, "error": 13005, "code": 13006 },
+      "catchall": 13008,
+      "checks": []
+    },
+    { "type": "literal", "values": [false], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 13007,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["text-preview-required", "file-version-changed"],
+      "checks": []
+    },
     { "type": "never", "checks": [] }
   ]
 }

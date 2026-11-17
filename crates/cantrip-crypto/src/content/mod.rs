@@ -3,6 +3,7 @@
 mod attachments;
 mod endpoint;
 mod labels;
+mod private_state;
 mod repository;
 mod secrets;
 mod streams;
@@ -13,6 +14,7 @@ pub use attachments::*;
 use cantrip_wire::{Value, parse_json_text, value::json};
 pub use endpoint::*;
 pub use labels::*;
+pub use private_state::*;
 pub use repository::*;
 pub use secrets::*;
 pub use streams::*;
