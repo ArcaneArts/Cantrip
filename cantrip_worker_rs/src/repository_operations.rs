@@ -1,5 +1,6 @@
 //! Encrypted repository command admission and the native attachment/metadata
-//! operations. Git/GitHub execution is added by its owning domain milestones.
+//! operations, plus host Git status/diffs. Remaining Git/GitHub domains are
+//! added by their owning milestones.
 use crate::{
     encryption::Service,
     protected_content::{
@@ -11,13 +12,23 @@ use crate::{
 use anyhow::{Result, bail};
 use cantrip_crypto::checked;
 use cantrip_wire::{JsString, Value, value::json};
-use std::sync::Mutex;
+use std::{
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
 
 #[derive(Default)]
 pub struct RepositoryOperations {
     replay: Mutex<RepositoryOperationReplayGuard>,
+    profile: Option<(PathBuf, JsString)>,
 }
 impl RepositoryOperations {
+    pub fn new(directory: &Path, worker: &JsString) -> Self {
+        Self {
+            replay: Mutex::default(),
+            profile: Some((directory.to_owned(), worker.clone())),
+        }
+    }
     pub async fn execute(
         &self,
         command: &Value,
@@ -79,6 +90,30 @@ impl RepositoryOperations {
                     attachment = Some(result.clone());
                     Ok(result)
                 }
+                "git.status" | "git.diff" => {
+                    let (directory, worker) = self.profile.as_ref().ok_or_else(|| {
+                        anyhow::anyhow!("Repository worker profile is not configured.")
+                    })?;
+                    let owner = Value::String(service.owner_id()?);
+                    let _stored = crate::git::stored::read(
+                        directory,
+                        &command,
+                        &owner,
+                        &Value::String(worker.clone()),
+                    )
+                    .await?;
+                    if command
+                        .get("peerWorktree")
+                        .is_some_and(|v| v != &Value::Null)
+                    {
+                        bail!("A peer worktree is only valid for a worktree changes move.");
+                    }
+                    let mut trusted = request["arguments"].clone();
+                    trusted["type"] = request["type"].clone();
+                    trusted["cwd"] = command["cwd"].clone();
+                    let trusted = checked("workerCommandSchema", &trusted)?;
+                    crate::git::execute(&trusted, scope).await
+                }
                 _ => bail!("Repository operation is not implemented by the native worker."),
             }
         }
@@ -86,7 +121,7 @@ impl RepositoryOperations {
         let outcome = match result {
             Ok(result) => json!({"ok":true,"result":result}),
             Err(error) => {
-                let message: JsString = error.to_string().into();
+                let message = crate::git::error_message(&error);
                 let mut outcome = json!({"ok":false,"error":JsString::new(message.units().iter().take(2000).copied().collect())});
                 if let Some(error) = error.downcast_ref::<WorkspaceError>() {
                     outcome["code"] = json!(error.code);

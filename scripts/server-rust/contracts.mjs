@@ -881,6 +881,9 @@ export const contractRoots = [
   "explorerOperationRequestContentSchema",
   "surfaceOperationOutcomeContentSchema",
   "terminalPrivateStateProtectedContentSchema",
+  "gitStatusSchema",
+  "gitFileDiffSchema",
+  "gitManagedOperationRecordSchema",
 ];
 
 export const projectExportContractRoots = [

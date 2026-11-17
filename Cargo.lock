@@ -576,6 +576,7 @@ name = "cantrip-worker"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "cantrip-config",
  "cantrip-crypto",
  "cantrip-framing",

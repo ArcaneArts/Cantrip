@@ -151,7 +151,7 @@ fn entry(
     )
 }
 
-fn io_error(operation: &str, path: &Path, error: std::io::Error) -> anyhow::Error {
+pub(crate) fn io_error(operation: &str, path: &Path, error: std::io::Error) -> anyhow::Error {
     use std::io::ErrorKind;
     let (code, description) = match error.kind() {
         ErrorKind::NotFound => ("ENOENT", "no such file or directory"),

@@ -121,8 +121,10 @@ async fn cycle(
     let folders = Arc::new(crate::filesystem::folders::Manager::new(
         &config.data_directory,
     ));
-    let repository_operations =
-        Arc::new(crate::repository_operations::RepositoryOperations::default());
+    let repository_operations = Arc::new(crate::repository_operations::RepositoryOperations::new(
+        &config.data_directory,
+        &worker,
+    ));
     let surface_replay = Arc::new(Mutex::new(
         crate::protected_content::SurfaceStreamReplayGuard::default(),
     ));

@@ -15,7 +15,7 @@ use std::sync::Arc;
 async fn main() -> Result<()> {
     let mut registry: Option<Registry> = None;
     let mut service: Option<Arc<Service>> = None;
-    let operations = RepositoryOperations::default();
+    let mut operations = RepositoryOperations::default();
     let mut replay = protected_content::RepositoryOperationReplayGuard::default();
     let scope = Scope::default();
     for line in io::stdin().lock().lines() {
@@ -32,6 +32,22 @@ async fn main() -> Result<()> {
                     .ok_or_else(|| anyhow!("Fixture encryption not open"))
             };
             match input["op"].as_str().unwrap_or("") {
+                "git-context" => {
+                    operations = RepositoryOperations::new(
+                        std::path::Path::new(input["directory"].as_str().unwrap()),
+                        input["workerId"].as_js_string().unwrap(),
+                    );
+                    Ok(Value::Null)
+                }
+                "git" => cantrip_worker::git::execute(&input["command"], &scope).await,
+                "git-stored" => cantrip_worker::git::stored::read(
+                    std::path::Path::new(input["directory"].as_str().unwrap()),
+                    &input["command"],
+                    &input["ownerId"],
+                    &input["workerId"],
+                )
+                .await
+                .map(|v| v.unwrap_or(Value::Null)),
                 "folder-location" => Ok(storage::folder_location(
                     std::path::Path::new(input["directory"].as_str().unwrap()),
                     input["projectId"].as_js_string().unwrap(),
@@ -253,7 +269,7 @@ async fn main() -> Result<()> {
                             .downcast_ref::<cantrip_worker::routing::ProtectedError>()
                             .and_then(|e| e.code)
                     });
-                json!({"ok":false,"error":error.to_string(),"code":code})
+                json!({"ok":false,"error":cantrip_worker::git::error_message(&error),"code":code})
             }
         };
         println!(
