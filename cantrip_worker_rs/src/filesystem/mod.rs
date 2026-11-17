@@ -1,6 +1,7 @@
 //! Worker-owned filesystem paths, storage and child lifetimes. No server or
 //! database implementation is linked into these services.
 mod command;
+pub mod explorer;
 pub mod folders;
 pub mod paths;
 pub mod repository;

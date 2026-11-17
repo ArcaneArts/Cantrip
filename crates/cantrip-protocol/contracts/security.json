@@ -842,7 +842,15 @@
     "workspaceRootAttachmentSchema": 8240,
     "workspaceRootAttachArgumentsSchema": 12589,
     "repositoryMetadataValuesSchema": 12592,
-    "repositoryMetadataResultSchema": 12599
+    "repositoryMetadataResultSchema": 12599,
+    "explorerEntrySchema": 12601,
+    "explorerDirectorySchema": 12612,
+    "explorerFileSearchSchema": 12616,
+    "explorerDirectoryCommitsSchema": 12623,
+    "explorerFileSchema": 12637,
+    "explorerEntryNameSchema": 12643,
+    "explorerEntryRenameSchema": 12644,
+    "explorerEntryMutationResultSchema": 12647
   },
   "nodes": [
     {
@@ -76390,6 +76398,266 @@
       "catchall": 12600,
       "checks": []
     },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "explorerEntrySchema",
+      "shape": {
+        "name": 12602,
+        "path": 12603,
+        "kind": 12604,
+        "size": 12605,
+        "modifiedAt": 12607,
+        "viewable": 12608,
+        "markdown": 12609,
+        "symbolicLink": 12610
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "string", "checks": [] },
+    { "type": "enum", "values": ["directory", "file", "other"], "checks": [] },
+    { "type": "nullable", "innerType": 12606, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 12611,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "explorerDirectorySchema",
+      "shape": { "path": 12613, "entries": 12614, "truncated": 12615 },
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    {
+      "type": "array",
+      "element": 12601,
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "explorerFileSearchSchema",
+      "shape": { "query": 12617, "results": 12618, "truncated": 12622 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 12619,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "explorerFileSearchResultSchema",
+      "shape": { "name": 12620, "path": 12621 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "explorerDirectoryCommitsSchema",
+      "shape": { "path": 12624, "available": 12625, "entries": 12626 },
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "array",
+      "element": 12627,
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "explorerDirectoryCommitEntrySchema",
+      "shape": { "path": 12603, "tracked": 12628, "lastCommit": 12629 },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 12630, "checks": [] },
+    {
+      "type": "object",
+      "name": "explorerLastCommitSchema",
+      "shape": {
+        "hash": 12631,
+        "shortHash": 12632,
+        "subject": 12633,
+        "authorName": 12634,
+        "authorEmail": 12635,
+        "authoredAt": 12636
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{40,64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{40,64}$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 64, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 10000, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "explorerFileSchema",
+      "shape": {
+        "path": 12638,
+        "content": 12639,
+        "size": 12640,
+        "markdown": 12641,
+        "version": 12642
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "string", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-f0-9]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[a-f0-9]{64}$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "name": "explorerEntryNameSchema",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-explorer-name",
+          "messageAfterPath": true,
+          "message": "Expected a single file or folder name."
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "explorerEntryRenameSchema",
+      "shape": { "path": 12645, "name": 12643 },
+      "catchall": 12646,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "explorerEntryMutationResultSchema",
+      "shape": { "path": 12645, "newPath": 12648 },
+      "catchall": 12649,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 12645, "checks": [] },
     { "type": "never", "checks": [] }
   ]
 }

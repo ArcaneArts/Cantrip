@@ -866,6 +866,14 @@ export const contractRoots = [
   "workspaceRootAttachArgumentsSchema",
   "repositoryMetadataValuesSchema",
   "repositoryMetadataResultSchema",
+  "explorerEntrySchema",
+  "explorerDirectorySchema",
+  "explorerFileSearchSchema",
+  "explorerDirectoryCommitsSchema",
+  "explorerFileSchema",
+  "explorerEntryNameSchema",
+  "explorerEntryRenameSchema",
+  "explorerEntryMutationResultSchema",
 ];
 
 export const projectExportContractRoots = [
