@@ -14,6 +14,7 @@ import { verifyBranches } from "./git-branch-smoke-cases.mjs";
 import { verifyRemotes } from "./git-remote-smoke-cases.mjs";
 import { verifyTags } from "./git-tag-smoke-cases.mjs";
 import { verifySubmodules } from "./git-submodule-smoke-cases.mjs";
+import { verifyLfs } from "./git-lfs-smoke-cases.mjs";
 import {
   inspectGitManagedOperation,
   previewGitManagedOperation,
@@ -666,6 +667,14 @@ export async function verifyGit({
     journal,
   });
   await verifySubmodules({
+    operation,
+    checkout,
+    restartWorker,
+    store,
+    scope,
+    journal,
+  });
+  await verifyLfs({
     operation,
     checkout,
     restartWorker,

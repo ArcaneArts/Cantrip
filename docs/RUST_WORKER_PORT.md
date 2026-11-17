@@ -19,7 +19,7 @@ heartbeat HTTP, a reconnecting WebSocket control connection and authenticated
 encryption-grant lifecycle, encrypted root attachment and workspace discovery/import
 validation, managed folders, encrypted host Explorer/file-document operations,
 host terminal-service supervision, encrypted Git working-tree queries/basic actions,
-Git history/inspection, reviewed branch/remote/tag/submodule management, partial-patch editing, stash selection/recovery, reviewed commit mutations/conflict
+Git history/inspection, reviewed branch/remote/tag/submodule/LFS management, partial-patch editing, stash selection/recovery, reviewed commit mutations/conflict
 resolution and managed-operation creation/recovery.
 Fourteen real native outer command handlers are installed:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
@@ -32,7 +32,7 @@ inspection/resolution operations, plus reviewed cherry-pick/revert/amend/fixup a
 partial stage/unstage/discard, plus branch inventory/eight reviewed branch actions
 and remote inventory/five reviewed remote actions, plus tag inventory/detail and
 four reviewed tag actions, plus recursive submodule inventory and four reviewed
-submodule actions),
+submodule actions, plus LFS status and nine reviewed LFS actions),
 `project.folder.materialize`, `project.folder.delete`, `explorer.operation`
 (nine host operations), `file-document.operation` (text read/write),
 `terminal.services.reconcile` and `terminal.service.restart` (host services).
@@ -1495,6 +1495,51 @@ legacy protection, execution/history/providers, interactive terminals/data plane
 browser/MCP/OS, Windows job ownership, Node-free upgrades and packaging/default
 cutover remain required. The full goal stays active.
 
+## Native reviewed Git LFS subcycle
+
+This cycle uses branch `agent/manual/rust-worker-git-lfs` and reference commit
+`838fd654f` (#3188). Encrypted `repository.operation` now supports `git.lfs.status`,
+`git.lfs.action.preview` and `git.lfs.action.apply`: install, track, untrack, fetch,
+pull, prune, refresh locks, lock and unlock/force unlock. The fourteen outer
+handlers and production Node default remain unchanged.
+
+The implementation uses the existing optional native Git LFS executable, matching
+the Node worker. Missing-tool status, cached/refreshed locks, diagnostics, pattern/
+file/pending/lock parsing, raw-entry bounds and missing-object counts are retained.
+Shared wire primitives supply JSON/UTF-16, ECMAScript property order, safe-integer
+handling and date parsing/ISO output. Submodule lexical filtering is reused.
+Reviews preserve the exact stable-status/action/workspace JSON and SHA-256 digest,
+summary text, warnings and destructive flags. LFS CLI calls use the existing
+30-second owned-process collector; parallel status collectors drain before stop/
+error propagation. Mutations preserve the managed journal and active-record guard.
+
+Three existing roots are appended: `gitLfsStatusSchema`,
+`gitLfsActionPreviewSchema` and `gitLfsMutationResultSchema`. All old nodes/root
+indices remain unchanged; the graph has 902 roots and 13,527 nodes, adding 43
+nodes. No public TypeScript contract, dependency or lockfile change occurs.
+
+Local macOS ARM64 evidence: 45 actual Node/native comparisons pass across all
+nine actions, exact/stale tokens, pending/pointer/missing-object state, actual
+object downloads, cached/refreshed/foreign-owner locks, force unlock, unavailable
+loopback endpoint and missing executable. Two native parser tests cover JavaScript
+key order/numbers, malformed data, lock shapes/dates and unpaired UTF-16. One
+existing Node LFS test and six journal/dispatch tests pass. The production Rust
+worker/server smoke passes all nine encrypted actions, Node-produced tokens after
+restart, real downloads/locks and journal guards with Node excluded from worker
+PATH. The native Git LFS tool is explicitly available in that restricted PATH.
+
+Fixtures use real Git LFS against a disposable loopback API, restore the owned
+checkout/sentinel and remove profiles/objects afterward. Initial compile, preview
+wording and fixture assumptions were corrected and earlier logs retained. Linked
+builds, workspace all-target Clippy with warnings denied, formatting/diff and
+source/contract checks pass. No hosted/full-suite/device/VM/image campaign,
+external remote, release signing or deployment ran.
+
+Git graphs/observations/worktrees/recovery/GitHub, delegated OS/direct legacy
+protection, execution/history/providers, interactive terminals/data planes,
+browser/MCP/OS, Windows job ownership, Node-free upgrades and packaging/default
+cutover remain required. The full goal stays active.
+
 ## Local development and validation
 
 ```sh
@@ -1525,6 +1570,7 @@ node --import tsx scripts/worker-rust/git-branches-compatibility.mjs --binary /a
 node --import tsx scripts/worker-rust/git-remotes-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/git-tags-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/git-submodules-compatibility.mjs --binary /absolute/path/to/workspace-fixture
+node --import tsx scripts/worker-rust/git-lfs-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/folder-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/explorer-compatibility.mjs --binary /absolute/path/to/explorer-fixture
 node --import tsx scripts/worker-rust/private-state-compatibility.mjs --binary /absolute/path/to/content-fixture

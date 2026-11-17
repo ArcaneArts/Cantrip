@@ -31,7 +31,7 @@ struct Configuration {
 }
 /// Keep source lexical slash normalization and prefix checks; do not silently
 /// canonicalize configured paths or change their serialized review-token bytes.
-fn safe_path(cwd: &Path, candidate: &str) -> Result<Option<String>> {
+pub(super) fn safe_path(cwd: &Path, candidate: &str) -> Result<Option<String>> {
     let normalized = candidate.replace('\\', "/");
     let normalized = normalized.strip_prefix("./").unwrap_or(&normalized);
     if normalized.is_empty() || normalized == "." {
