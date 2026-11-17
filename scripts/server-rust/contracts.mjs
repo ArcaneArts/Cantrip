@@ -909,6 +909,7 @@ export const contractRoots = [
   "gitStashFileDiffSchema",
   "gitStashActionPreviewSchema",
   "gitStashMutationResultSchema",
+  "gitPartialPatchPreviewSchema",
 ];
 
 export const projectExportContractRoots = [

@@ -9,6 +9,7 @@ import * as p from "../../packages/protocol/dist/index.js";
 import { handleGitCommand } from "../../cantrip_worker/src/commands/git.ts";
 import { verifyCommitActions } from "./git-commit-smoke-cases.mjs";
 import { verifyStashes } from "./git-stash-smoke-cases.mjs";
+import { verifyPartialPatches } from "./git-patch-smoke-cases.mjs";
 import {
   inspectGitManagedOperation,
   previewGitManagedOperation,
@@ -621,6 +622,14 @@ export async function verifyGit({
     journal,
   });
   await verifyStashes({
+    operation,
+    checkout,
+    restartWorker,
+    store,
+    scope,
+    journal,
+  });
+  await verifyPartialPatches({
     operation,
     checkout,
     restartWorker,

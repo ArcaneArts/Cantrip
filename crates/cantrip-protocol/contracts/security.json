@@ -885,7 +885,8 @@
     "gitCommitActionResultSchema": 13298,
     "gitStashFileDiffSchema": 13310,
     "gitStashActionPreviewSchema": 13317,
-    "gitStashMutationResultSchema": 13323
+    "gitStashMutationResultSchema": 13323,
+    "gitPartialPatchPreviewSchema": 13345
   },
   "nodes": [
     {
@@ -80511,6 +80512,63 @@
         { "check": "min_length", "minimum": 1, "when": "length" },
         { "check": "max_length", "maximum": 100000, "when": "length" }
       ]
+    },
+    {
+      "type": "object",
+      "name": "gitPartialPatchPreviewSchema",
+      "shape": {
+        "operation": 4607,
+        "path": 2733,
+        "scope": 4601,
+        "patch": 13346,
+        "token": 13347,
+        "selectedHunks": 13348,
+        "selectedLines": 13349,
+        "warnings": 13350
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000000, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{64}$/u"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 13351,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
     }
   ]
 }
