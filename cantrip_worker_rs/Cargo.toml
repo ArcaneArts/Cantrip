@@ -33,6 +33,7 @@ url = "2.5"
 uuid = { version = "1", features = ["v4"] }
 icu_casemap = "=2.1.1"
 codex-utils-pty = { version = "0.166.0", path = "../cantrip_codex/upstream/codex-rs/utils/pty" }
+tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -42,7 +43,3 @@ windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock"] }
 
 [build-dependencies]
 embed-resource = "3.0.11"
-
-
-[dev-dependencies]
-tempfile = "3"

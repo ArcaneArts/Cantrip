@@ -7,7 +7,7 @@ use cantrip_wire::{JsString, Value, value::json};
 use indexmap::IndexSet;
 use std::{ffi::OsString, path::Path};
 
-async fn path_file(cwd: &Path, relative: &str, scope: &Scope) -> Result<Option<String>> {
+pub(super) async fn path_file(cwd: &Path, relative: &str, scope: &Scope) -> Result<Option<String>> {
     let resolved = process::text(cwd, &["rev-parse", "--git-path", relative], scope).await?;
     let file = cantrip_config::resolve(cwd, Path::new(&resolved));
     let value = tokio::fs::read(file)
@@ -35,12 +35,12 @@ async fn paused(cwd: &Path, context: &Value, scope: &Scope) -> Result<Option<Str
         .contains(&action)
         .then(|| action.to_owned()))
 }
-async fn succeeds(cwd: &Path, args: &[&str], scope: &Scope) -> Result<bool> {
+pub(super) async fn succeeds(cwd: &Path, args: &[&str], scope: &Scope) -> Result<bool> {
     let success = process::bytes(cwd, args, scope).await.is_ok();
     scope.check()?;
     Ok(success)
 }
-async fn marker(cwd: &Path, kind: &str, scope: &Scope) -> Result<bool> {
+pub(super) async fn marker(cwd: &Path, kind: &str, scope: &Scope) -> Result<bool> {
     Ok(match kind {
         "stash" => true,
         "bisect" => path_file(cwd, "BISECT_START", scope).await?.is_some(),
@@ -72,7 +72,7 @@ async fn marker(cwd: &Path, kind: &str, scope: &Scope) -> Result<bool> {
         }
     })
 }
-fn conflicts(status: &Value) -> Vec<Value> {
+pub(super) fn conflicts(status: &Value) -> Vec<Value> {
     status["files"]
         .as_array()
         .unwrap()
@@ -240,7 +240,7 @@ pub async fn inspect(
     result["pausedAction"] = json!(if active { paused } else { None });
     checked("gitManagedOperationWorkerStateSchema", &result)
 }
-async fn outcome(
+pub(super) async fn outcome(
     cwd: &Path,
     args: &[&str],
     environment: &[(OsString, OsString)],

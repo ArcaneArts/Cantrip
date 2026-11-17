@@ -103,6 +103,8 @@ impl RepositoryOperations {
                 | "git.compare"
                 | "git.revision.diff"
                 | "git.stash.list"
+                | "git.operation.preview"
+                | "git.operation.start"
                 | "git.operation.current"
                 | "git.operation.control"
                 | "git.operation.amend" => {
@@ -150,7 +152,11 @@ impl RepositoryOperations {
                             &json!({"operation":stored}),
                         );
                     }
-                    if kind == "git.action" && crate::git::stored::active(stored.as_ref()) {
+                    if matches!(
+                        kind,
+                        "git.action" | "git.operation.preview" | "git.operation.start"
+                    ) && crate::git::stored::active(stored.as_ref())
+                    {
                         bail!("Finish or abort the active Git operation first.");
                     }
                     let control = matches!(kind, "git.operation.control" | "git.operation.amend");
@@ -177,12 +183,16 @@ impl RepositoryOperations {
                     }
                     let trusted = checked("workerCommandSchema", &trusted)?;
                     let result = crate::git::execute(&trusted, scope).await?;
-                    if control {
+                    if control || kind == "git.operation.start" {
                         let record = crate::git::stored::record(
                             &command,
                             &worker,
                             &checked("gitManagedOperationWorkerStateSchema", &result)?,
-                            stored.as_ref(),
+                            if kind == "git.operation.start" {
+                                None
+                            } else {
+                                stored.as_ref()
+                            },
                             Some(&command["operationId"]),
                             None,
                         )?;

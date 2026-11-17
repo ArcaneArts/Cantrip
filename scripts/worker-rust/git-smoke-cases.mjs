@@ -10,7 +10,6 @@ import { handleGitCommand } from "../../cantrip_worker/src/commands/git.ts";
 import {
   inspectGitManagedOperation,
   previewGitManagedOperation,
-  startGitManagedOperation,
 } from "../../cantrip_worker/src/git.ts";
 import {
   managedOperationRecord,
@@ -321,7 +320,7 @@ export async function verifyGit({
       git("commit", "--quiet", "-m", message);
       return git("rev-parse", "HEAD");
     }
-    await commit("base\n", "Managed base");
+    const managedBase = await commit("base\n", "Managed base");
     git("checkout", "--quiet", "-b", "native-managed-feature");
     const feature = await commit("feature\n", "Managed feature");
     git("checkout", "--quiet", "main");
@@ -393,8 +392,68 @@ export async function verifyGit({
       completedBytes,
       "terminal records are not refreshed",
     );
-    // The legacy scripts remain present, but the native worker PATH contains
-    // only Git. An edit followed by a reword must use the native editor entry.
+    // Native previews and starts preserve the terminal legacy record until an
+    // accepted start publishes its new identity. No Node is in the worker PATH.
+    git(
+      "stash",
+      "push",
+      "--include-untracked",
+      "--message",
+      "Owned smoke sentinel",
+    );
+    const mergeAction = { type: "merge", sourceRef: "native-managed-feature" };
+    const mergePlan = await operation({
+      type: "git.operation.preview",
+      arguments: { action: mergeAction },
+    });
+    assert.equal(mergePlan.ok, true, JSON.stringify(mergePlan));
+    assert.equal(mergePlan.result.wouldConflict, true);
+    assert.equal(
+      await readFile(journal, "utf8"),
+      completedBytes,
+      "preview does not publish a journal",
+    );
+    assert.deepEqual(
+      await operation({
+        type: "git.operation.start",
+        arguments: { action: mergeAction, token: "0".repeat(64) },
+      }),
+      {
+        ok: false,
+        error:
+          "The worktree or selected revisions changed after this preview. Review the operation again.",
+      },
+    );
+    assert.equal(
+      await readFile(journal, "utf8"),
+      completedBytes,
+      "rejected start does not replace the record",
+    );
+    const newMerge = await operation({
+      type: "git.operation.start",
+      arguments: {
+        action: mergePlan.result.action,
+        token: mergePlan.result.token,
+      },
+    });
+    assert.equal(newMerge.ok, true, JSON.stringify(newMerge));
+    assert.equal(newMerge.result.operation.state, "conflicted");
+    assert.notEqual(newMerge.result.operation.id, legacy.id);
+    assert.deepEqual(
+      await operation({
+        type: "git.operation.preview",
+        arguments: { action: mergeAction },
+      }),
+      { ok: false, error: "Finish or abort the active Git operation first." },
+    );
+    await restartWorker();
+    const newAbort = await operation({
+      type: "git.operation.control",
+      arguments: { operationId: newMerge.result.operation.id, action: "abort" },
+    });
+    assert.equal(newAbort.ok, true, JSON.stringify(newAbort));
+    assert.equal(newAbort.result.operation.state, "aborted");
+    assert.equal(git("rev-parse", "HEAD"), main);
     const upstream = git("rev-parse", "HEAD");
     const edits = [];
     for (const name of ["A", "B"]) {
@@ -404,15 +463,6 @@ export async function verifyGit({
       git("commit", "--quiet", "-m", `Rebase ${name}`);
       edits.push(git("rev-parse", "HEAD"));
     }
-    // Preserve the original dirty sentinel: only these owned files are shelved
-    // temporarily so the existing reviewed rebase can start on a clean tree.
-    git(
-      "stash",
-      "push",
-      "--include-untracked",
-      "--message",
-      "Owned smoke sentinel",
-    );
     const rebaseAction = {
       type: "interactiveRebase",
       upstreamRef: upstream,
@@ -426,14 +476,23 @@ export async function verifyGit({
       ],
     };
     const planned = await previewGitManagedOperation(checkout, rebaseAction);
-    const started = await startGitManagedOperation(
-      checkout,
-      rebaseAction,
-      planned.token,
+    const nativePlan = await operation({
+      type: "git.operation.preview",
+      arguments: { action: rebaseAction },
+    });
+    assert.deepEqual(
+      nativePlan,
+      { ok: true, result: planned },
+      "Node and Rust agree on the reviewed token",
     );
-    assert.equal(started.pausedAction, "edit");
-    const edit = managedOperationRecord({ scope, state: started });
-    await store.put(scope, edit);
+    const started = await operation({
+      type: "git.operation.start",
+      arguments: { action: nativePlan.result.action, token: planned.token },
+    });
+    assert.equal(started.ok, true, JSON.stringify(started));
+    const edit = started.result.operation;
+    assert.equal(edit.pausedAction, "edit");
+    assert.deepEqual(await store.get(scope), edit);
     await restartWorker();
     const amended = await operation({
       type: "git.operation.amend",
@@ -443,6 +502,31 @@ export async function verifyGit({
     assert.equal(amended.result.operation.state, "completed");
     assert.equal(git("log", "-1", "--format=%s"), "Native queued reword 🧙");
     assert.deepEqual(await store.get(scope), amended.result.operation);
+    const bisectPlan = await operation({
+      type: "git.operation.preview",
+      arguments: {
+        action: {
+          type: "bisect",
+          goodRef: managedBase,
+          badRef: git("rev-parse", "HEAD"),
+        },
+      },
+    });
+    assert.equal(bisectPlan.ok, true, JSON.stringify(bisectPlan));
+    const bisected = await operation({
+      type: "git.operation.start",
+      arguments: {
+        action: bisectPlan.result.action,
+        token: bisectPlan.result.token,
+      },
+    });
+    assert.equal(bisected.ok, true, JSON.stringify(bisected));
+    const reset = await operation({
+      type: "git.operation.control",
+      arguments: { operationId: bisected.result.operation.id, action: "reset" },
+    });
+    assert.equal(reset.ok, true, JSON.stringify(reset));
+    assert.equal(reset.result.operation.state, "completed");
     git("stash", "pop");
     assert.equal(
       await readFile(path.join(checkout, "untouched.txt"), "utf8"),
