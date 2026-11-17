@@ -52,6 +52,9 @@ const git = execFileSync("/usr/bin/which", ["git"], {
   encoding: "utf8",
 }).trim();
 await symlink(git, path.join(bin, "git"));
+// Git's existing noninteractive editor is the POSIX `true` utility. Keep that
+// native dependency available while excluding Node from the worker's PATH.
+await symlink("/usr/bin/true", path.join(bin, "true"));
 execFileSync(git, [
   "-c",
   "init.defaultBranch=main",
@@ -587,6 +590,7 @@ try {
       encryptedManagedGitRecoveryAndRestart: true,
       nativeRebaseEditorWithoutNode: true,
       encryptedManagedGitPreviewAndStart: true,
+      encryptedGitConflictResolutionAndContinue: true,
       nodeAbsentFromWorkerPath: true,
       scope:
         "Fresh attachment, discovery/import, managed/existing folders, encrypted host Explorer/file-document, Git queries/basic actions and managed recovery with native rebase editors, and host terminal-service lifecycle; other worker domains remain pending.",
