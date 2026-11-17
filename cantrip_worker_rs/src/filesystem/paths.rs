@@ -1,5 +1,15 @@
 use cantrip_wire::JsString;
 use std::path::{Path, PathBuf};
+/// Absolute inputs do not require a readable process working directory, just
+/// as Node path.resolve stops once it encounters an absolute argument.
+pub fn resolve(path: &Path) -> std::io::Result<PathBuf> {
+    let cwd = if path.is_absolute() {
+        PathBuf::new()
+    } else {
+        std::env::current_dir()?
+    };
+    Ok(cantrip_config::resolve(&cwd, path))
+}
 pub fn absolute(path: &Path) -> bool {
     #[cfg(windows)]
     {

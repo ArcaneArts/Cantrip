@@ -21,6 +21,7 @@ import { projectLabel } from "../server-rust/security-fixtures.mjs";
 import { discoveryWireFixtures } from "../server-rust/discovery-wire-fixtures.mjs";
 import * as cryptoClient from "../../packages/crypto/dist/index.js";
 import * as protocol from "../../packages/protocol/dist/index.js";
+import { verifyManagedFolders } from "./folder-smoke-cases.mjs";
 const { values } = parseArgs({
   options: {
     worker: { type: "string" },
@@ -249,7 +250,7 @@ async function repositoryClient() {
   assert.equal(refreshed.body.status.state, "ready");
   const serverId = JSON.parse(await readFile(encryptionPath, "utf8")).serverId;
   assert.equal(typeof serverId, "string");
-  return async (id, rootPath, nameProtection) => {
+  async function operation(id, content, route, body) {
     const operationId = crypto.randomUUID();
     const context = {
       serverId,
@@ -260,10 +261,7 @@ async function repositoryClient() {
     };
     const plaintext = new TextEncoder().encode(
       JSON.stringify(
-        protocol.repositoryOperationRequestContentSchema.parse({
-          type: "workspace.root.attach",
-          arguments: { rootPath },
-        }),
+        protocol.repositoryOperationRequestContentSchema.parse(content),
       ),
     );
     let protectedRequest;
@@ -278,25 +276,19 @@ async function repositoryClient() {
     } finally {
       plaintext.fill(0);
     }
-    const result = await call("POST", "/api/workspaces/attached", {
-      id,
-      nameProtection,
-      storage: { kind: "attached", workerId },
+    const result = await call("POST", route, {
+      ...body,
       operationId,
       protectedRequest,
     });
-    assert.equal(
-      JSON.stringify(result).includes(rootPath),
-      false,
-      "root plaintext is private",
-    );
-    assert.ok(result.body.operation, JSON.stringify(result));
+    const response = result.body.operation ?? result.body;
+    assert.ok(response.protectedResponse, JSON.stringify(result));
     const opened = await cryptoClient.decryptRepositoryOperationPayload({
       ownerId,
       context: { ...context, direction: "response" },
       keyRevision: 1,
       componentKey,
-      opaque: result.body.operation.protectedResponse,
+      opaque: response.protectedResponse,
     });
     try {
       return {
@@ -308,6 +300,33 @@ async function repositoryClient() {
     } finally {
       opened.fill(0);
     }
+  }
+  return {
+    async attachRoot(id, rootPath, nameProtection) {
+      const result = await operation(
+        id,
+        { type: "workspace.root.attach", arguments: { rootPath } },
+        "/api/workspaces/attached",
+        { id, nameProtection, storage: { kind: "attached", workerId } },
+      );
+      assert.equal(
+        JSON.stringify(result.body).includes(rootPath),
+        false,
+        "root plaintext is private",
+      );
+      return result;
+    },
+    async registerMetadata(scopeId, values) {
+      const result = await operation(
+        scopeId,
+        { type: "repository.metadata.register", arguments: { values } },
+        `/api/workers/${workerId}/repository-operation`,
+        { scopeId, access: "write", agent: false },
+      );
+      assert.equal(result.status, 200, JSON.stringify(result));
+      assert.equal(result.outcome.ok, true, JSON.stringify(result));
+      return result.outcome.result.values;
+    },
   };
 }
 try {
@@ -320,7 +339,8 @@ try {
   assert.equal(enrollment.status, 201);
   startWorker(enrollment.body.code);
   await ready();
-  const attach = await repositoryClient();
+  const repository = await repositoryClient();
+  const attach = repository.attachRoot;
   const nameProtection =
     discoveryWireFixtures(projectLabel).encryptedProjectWorkspaceCreateSchema[0]
       .nameProtection;
@@ -417,6 +437,16 @@ try {
     "actual native checkout validation and durable import",
   );
   assert.equal(await readFile(sentinel, "utf8"), "private dirty content\n");
+  await verifyManagedFolders({
+    call,
+    eventually,
+    root,
+    workerDirectory,
+    workerId,
+    registerMetadata: repository.registerMetadata,
+    projectLabel,
+    workspaceName: nameProtection,
+  });
   const restarted = await call("POST", `/api/workers/${workerId}/restart`, {});
   assert.equal(restarted.status, 202, JSON.stringify(restarted));
   await ready();
@@ -435,9 +465,11 @@ try {
       opaquePaths: true,
       realGitDiscovery: true,
       actualImportValidationAndCommit: true,
+      managedFolderCreateAndDelete: true,
+      existingFolderRetryAndPreservation: true,
       nodeAbsentFromWorkerPath: true,
       scope:
-        "Fresh encrypted attachment and persisted discovery/import; other worker domains remain pending.",
+        "Fresh encrypted attachment, persisted discovery/import and managed/existing folders; other worker domains remain pending.",
     }),
   );
 } finally {

@@ -4,6 +4,7 @@ pub mod config;
 pub mod connection;
 pub mod credentials;
 pub mod encryption;
+pub mod filesystem;
 pub mod http;
 pub mod installation;
 pub mod logging;

@@ -118,6 +118,9 @@ async fn cycle(
     let started = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let encryption = Service::new(encryption_identity, &config.server_url, client.clone())?;
     let routing = Arc::new(crate::routing::Registry::new(&config.data_directory));
+    let folders = Arc::new(crate::filesystem::folders::Manager::new(
+        &config.data_directory,
+    ));
     let repository_operations =
         Arc::new(crate::repository_operations::RepositoryOperations::default());
     let mut heartbeat = http::heartbeat(&config, host.platform, host.architecture, &started)?;
@@ -192,6 +195,14 @@ async fn cycle(
                             Ok(status)=>http::checked("workerEncryptionRefreshResultSchema",&json!({"component":request["command"]["component"],"keyRevision":request["command"]["keyRevision"],"status":status})),
                             Err(error)=>Err(error.into()),
                         };
+                        finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
+                if matches!(kind,"project.folder.materialize"|"project.folder.delete") {
+                    let folders=folders.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let result=folders.execute_routed(&request["command"],&routing,&scope).await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);
                     });
                     continue;
