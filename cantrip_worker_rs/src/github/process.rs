@@ -20,7 +20,7 @@ pub(super) async fn run(args: &[&str], maximum: usize, scope: &Scope) -> Result<
 pub(super) async fn run_values(args: &[JsString], maximum: usize, scope: &Scope) -> Result<String> {
     run_program("gh", args, maximum, scope).await
 }
-pub(super) async fn run_program(
+pub(crate) async fn run_program(
     program: &str,
     args: &[JsString],
     maximum: usize,

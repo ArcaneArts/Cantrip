@@ -314,7 +314,7 @@ impl Scope {
         }
         Ok(())
     }
-    async fn stopped(&self) {
+    pub(crate) async fn stopped(&self) {
         let Some(mut stop) = self.stop.clone() else {
             std::future::pending::<()>().await;
             return;

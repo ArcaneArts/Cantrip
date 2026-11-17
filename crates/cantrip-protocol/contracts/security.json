@@ -943,7 +943,8 @@
     "githubActionsMutationResultSchema": 14024,
     "githubActionsRunCheckoutPreparedSchema": 14032,
     "githubReleaseSummarySchema": 14037,
-    "githubReleaseListSchema": 14049
+    "githubReleaseListSchema": 14049,
+    "worktreePolicySchema": 1363
   },
   "nodes": [
     {
