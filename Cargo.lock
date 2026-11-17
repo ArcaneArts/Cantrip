@@ -592,6 +592,7 @@ dependencies = [
  "icu_casemap",
  "icu_collator",
  "icu_locale_core",
+ "icu_normalizer",
  "idna",
  "indexmap",
  "libc",

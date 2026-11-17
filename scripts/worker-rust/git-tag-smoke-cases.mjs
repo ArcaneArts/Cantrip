@@ -1,3 +1,4 @@
+import { nodeGit } from "./git-node-reference.mjs";
 // Actual encrypted tag actions, immutable signatures and journal ownership.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -5,7 +6,6 @@ import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
-  previewGitTagAction,
   readGitTags,
   readGitTagDetail,
   readGitStatus,
@@ -78,7 +78,9 @@ export async function verifyTags({
     return result.result;
   }
   async function preview(action) {
-    const expected = await previewGitTagAction(checkout, action);
+    const expected = await nodeGit(checkout, "git.tag.action.preview", {
+      action,
+    });
     const result = await operation({
       type: "git.tag.action.preview",
       arguments: { action },

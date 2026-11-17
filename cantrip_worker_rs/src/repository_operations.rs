@@ -14,20 +14,27 @@ use cantrip_crypto::checked;
 use cantrip_wire::{JsString, Value, value::json};
 use std::{
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{Arc, Mutex},
 };
 
 #[derive(Default)]
 pub struct RepositoryOperations {
     replay: Mutex<RepositoryOperationReplayGuard>,
     profile: Option<(PathBuf, JsString)>,
+    worktrees: Option<Arc<crate::git::worktrees::Manager>>,
 }
 impl RepositoryOperations {
     pub fn new(directory: &Path, worker: &JsString) -> Self {
         Self {
             replay: Mutex::default(),
             profile: Some((directory.to_owned(), worker.clone())),
+            worktrees: Some(Arc::new(crate::git::worktrees::Manager::new(directory))),
         }
+    }
+    pub fn worktrees(&self) -> Result<Arc<crate::git::worktrees::Manager>> {
+        self.worktrees
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Repository worker profile is not configured."))
     }
     pub async fn execute(
         &self,
@@ -97,6 +104,7 @@ impl RepositoryOperations {
                 | "git.graph.snapshot"
                 | "git.graph.metrics"
                 | "git.graph.commit-overlay"
+                | "worktree.status"
                 | "git.file.history"
                 | "git.file.blame"
                 | "git.commit.search"
@@ -221,12 +229,18 @@ impl RepositoryOperations {
                     let mut trusted = request["arguments"].clone();
                     trusted["type"] = request["type"].clone();
                     trusted["cwd"] = command["cwd"].clone();
+                    trusted["sourcePath"] = command["sourcePath"].clone();
+                    trusted["worktreePath"] = command["cwd"].clone();
                     if control {
                         trusted["context"] =
                             checked("gitManagedOperationContextSchema", stored.as_ref().unwrap())?;
                     }
                     let trusted = checked("workerCommandSchema", &trusted)?;
-                    let result = crate::git::execute(&trusted, scope).await?;
+                    let result = if kind == "worktree.status" {
+                        self.worktrees()?.execute(&trusted, scope, None).await?
+                    } else {
+                        crate::git::execute(&trusted, scope).await?
+                    };
                     if control || kind == "git.operation.start" {
                         let record = crate::git::stored::record(
                             &command,

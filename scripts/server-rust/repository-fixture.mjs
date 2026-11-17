@@ -9,6 +9,7 @@ export async function repositoryFixture({
   kind,
   executable,
   root,
+  dataDirectory,
   databaseMode,
   databaseUrl,
   nodeScript = "scripts/server-rust/project-node-fixture.mjs",
@@ -16,7 +17,7 @@ export async function repositoryFixture({
   onReplyLine,
 }) {
   const environment = {
-    ...fixtureEnvironment(path.join(root, kind)),
+    ...fixtureEnvironment(dataDirectory ?? path.join(root, kind)),
     ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
     ...(kind === "rust" && process.env.CANTRIP_FIXTURE_STACK_BYTES
       ? { CANTRIP_FIXTURE_STACK_BYTES: process.env.CANTRIP_FIXTURE_STACK_BYTES }

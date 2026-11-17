@@ -618,77 +618,90 @@ export async function verifyGit({
       await readFile(path.join(checkout, "untouched.txt"), "utf8"),
       "private dirty content\n",
     );
+    await verifyCommitActions({
+      operation,
+      checkout,
+      restartWorker,
+      store,
+      scope,
+      journal,
+    });
+    await verifyStashes({
+      operation,
+      checkout,
+      restartWorker,
+      store,
+      scope,
+      journal,
+    });
+    await verifyPartialPatches({
+      operation,
+      checkout,
+      restartWorker,
+      store,
+      scope,
+      journal,
+    });
+    await verifyBranches({
+      operation,
+      checkout,
+      restartWorker,
+      store,
+      scope,
+      journal,
+    });
+    await verifyRemotes({
+      operation,
+      checkout,
+      restartWorker,
+      store,
+      scope,
+      journal,
+    });
+    await verifyTags({
+      operation,
+      checkout,
+      restartWorker,
+      store,
+      scope,
+      journal,
+    });
+    await verifySubmodules({
+      operation,
+      checkout,
+      restartWorker,
+      store,
+      scope,
+      journal,
+    });
+    await verifyLfs({
+      operation,
+      checkout,
+      restartWorker,
+      store,
+      scope,
+      journal,
+    });
+    await verifyGraph({
+      operation,
+      checkout,
+      restartWorker,
+      store,
+      scope,
+      journal,
+    });
+    return {
+      completedRuntimeChecks: [
+        "commits",
+        "stashes",
+        "partial-patches",
+        "branches",
+        "remotes",
+        "tags",
+        "submodules",
+        "lfs",
+        "graphs",
+      ],
+    };
   };
-  await verifyCommitActions({
-    operation,
-    checkout,
-    restartWorker,
-    store,
-    scope,
-    journal,
-  });
-  await verifyStashes({
-    operation,
-    checkout,
-    restartWorker,
-    store,
-    scope,
-    journal,
-  });
-  await verifyPartialPatches({
-    operation,
-    checkout,
-    restartWorker,
-    store,
-    scope,
-    journal,
-  });
-  await verifyBranches({
-    operation,
-    checkout,
-    restartWorker,
-    store,
-    scope,
-    journal,
-  });
-  await verifyRemotes({
-    operation,
-    checkout,
-    restartWorker,
-    store,
-    scope,
-    journal,
-  });
-  await verifyTags({
-    operation,
-    checkout,
-    restartWorker,
-    store,
-    scope,
-    journal,
-  });
-  await verifySubmodules({
-    operation,
-    checkout,
-    restartWorker,
-    store,
-    scope,
-    journal,
-  });
-  await verifyLfs({
-    operation,
-    checkout,
-    restartWorker,
-    store,
-    scope,
-    journal,
-  });
-  await verifyGraph({
-    operation,
-    checkout,
-    restartWorker,
-    store,
-    scope,
-    journal,
-  });
 }

@@ -24,6 +24,7 @@ mod status;
 pub mod stored;
 mod submodules;
 mod tags;
+pub mod worktrees;
 use crate::filesystem::{Scope, paths};
 pub use actions::action;
 use anyhow::Result;

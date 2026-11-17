@@ -1,10 +1,10 @@
+import { nodeGit } from "./git-node-reference.mjs";
 // Real encrypted stash operations, persisted checkpoints and restart recovery.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
-  previewGitStashAction,
   readGitStashes,
   readGitStashFileDiff,
 } from "../../cantrip_worker/src/git.ts";
@@ -42,7 +42,9 @@ export async function verifyStashes({
   }
   async function preview(stash, type) {
     const action = { type, ref: stash.ref, hash: stash.hash };
-    const source = await previewGitStashAction(checkout, action);
+    const source = await nodeGit(checkout, "git.stash.action.preview", {
+      action,
+    });
     const result = await operation({
       type: "git.stash.action.preview",
       arguments: { action },

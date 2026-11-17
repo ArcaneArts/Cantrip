@@ -1,3 +1,4 @@
+import { nodeGit } from "./git-node-reference.mjs";
 // Encrypted submodule actions against only the smoke's disposable checkout.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -6,7 +7,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   readGitSubmodules,
-  previewGitSubmoduleAction,
   readGitStatus,
 } from "../../cantrip_worker/src/git.ts";
 function normalize(value, key) {
@@ -77,7 +77,9 @@ export async function verifySubmodules({
     return result.result;
   }
   async function preview(action) {
-    const expected = await previewGitSubmoduleAction(checkout, action);
+    const expected = await nodeGit(checkout, "git.submodule.action.preview", {
+      action,
+    });
     const result = await operation({
       type: "git.submodule.action.preview",
       arguments: { action },
