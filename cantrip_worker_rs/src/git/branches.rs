@@ -32,7 +32,7 @@ async fn canonical(path: &Path) -> Result<PathBuf> {
         }
     }
 }
-async fn owners(cwd: &Path, scope: &Scope) -> Result<IndexMap<String, Value>> {
+pub(super) async fn owners(cwd: &Path, scope: &Scope) -> Result<IndexMap<String, Value>> {
     let output = process::raw(cwd, &["worktree", "list", "--porcelain", "-z"], scope).await?;
     let current = canonical(cwd).await?;
     let mut path = "";
