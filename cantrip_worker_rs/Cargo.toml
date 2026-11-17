@@ -35,6 +35,7 @@ icu_casemap = "=2.1.1"
 icu_normalizer = "=2.1.1"
 codex-utils-pty = { version = "0.166.0", path = "../cantrip_codex/upstream/codex-rs/utils/pty" }
 tempfile = "3"
+notify = "=8.2.0"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

@@ -31,6 +31,7 @@ import {
 import { verifyTerminalServices } from "./terminal-services-smoke.mjs";
 import { verifyGit } from "./git-smoke-cases.mjs";
 import { verifyNativeWorktrees } from "./worktree-smoke-cases.mjs";
+import { verifyNativeObservations } from "./observation-smoke-cases.mjs";
 // Every Git remote in this owned fixture is local. Preserve production Git
 // policy while explicitly allowing this test's local submodule clones.
 const previousGitProtocol = process.env.GIT_ALLOW_PROTOCOL;
@@ -39,6 +40,7 @@ const { values } = parseArgs({
   options: {
     worker: { type: "string" },
     server: { type: "string" },
+    "observations-only": { type: "boolean", default: false },
   },
 });
 assert.ok(
@@ -516,69 +518,72 @@ try {
     "actual native checkout validation and durable import",
   );
   assert.equal(await readFile(sentinel, "utf8"), "private dirty content\n");
-  const reopenGit = await verifyGit({
-    call,
-    ownerId: repository.ownerId,
-    serverId: repository.serverId,
-    componentKey,
-    projectId,
-    workerId,
-    workerDirectory,
-    checkout,
-    restartWorker,
-  });
-
-  await verifyManagedFolders({
-    call,
-    eventually,
-    root,
-    workerDirectory,
-    workerId,
-    registerMetadata: repository.registerMetadata,
-    projectLabel,
-    workspaceName: nameProtection,
-  });
-  const metadataKey = cryptoClient.deriveComponentKey({
-    accountMasterKey: master,
-    ownerId: "00000000-0000-0000-0000-000000000001",
-    component: "private-surface-metadata",
-    keyRevision: 1,
-  });
-  let reopenExplorer, reopenTerminals;
-  try {
-    const identity = JSON.parse(
-      await readFile(
-        path.join(workerDirectory, "worker-encryption-key.json"),
-        "utf8",
-      ),
-    );
-    reopenExplorer = await verifyExplorer({
+  let gitRuntimeCoverage;
+  if (!values["observations-only"]) {
+    const reopenGit = await verifyGit({
       call,
-      serverId: identity.serverId,
-      ownerId: identity.ownerId,
-      surfaceKey,
-      metadataKey,
+      ownerId: repository.ownerId,
+      serverId: repository.serverId,
+      componentKey,
       projectId,
       workerId,
+      workerDirectory,
       checkout,
+      restartWorker,
     });
-    reopenTerminals = await verifyTerminalServices({
+
+    await verifyManagedFolders({
       call,
       eventually,
-      ownerId: identity.ownerId,
-      serverId: identity.serverId,
-      surfaceKey,
-      metadataKey,
-      projectId,
-      checkout,
+      root,
+      workerDirectory,
+      workerId,
+      registerMetadata: repository.registerMetadata,
+      projectLabel,
+      workspaceName: nameProtection,
     });
-  } finally {
-    metadataKey.fill(0);
+    const metadataKey = cryptoClient.deriveComponentKey({
+      accountMasterKey: master,
+      ownerId: "00000000-0000-0000-0000-000000000001",
+      component: "private-surface-metadata",
+      keyRevision: 1,
+    });
+    let reopenExplorer, reopenTerminals;
+    try {
+      const identity = JSON.parse(
+        await readFile(
+          path.join(workerDirectory, "worker-encryption-key.json"),
+          "utf8",
+        ),
+      );
+      reopenExplorer = await verifyExplorer({
+        call,
+        serverId: identity.serverId,
+        ownerId: identity.ownerId,
+        surfaceKey,
+        metadataKey,
+        projectId,
+        workerId,
+        checkout,
+      });
+      reopenTerminals = await verifyTerminalServices({
+        call,
+        eventually,
+        ownerId: identity.ownerId,
+        serverId: identity.serverId,
+        surfaceKey,
+        metadataKey,
+        projectId,
+        checkout,
+      });
+    } finally {
+      metadataKey.fill(0);
+    }
+    await restartWorker();
+    await reopenExplorer();
+    await reopenTerminals();
+    gitRuntimeCoverage = await reopenGit();
   }
-  await restartWorker();
-  await reopenExplorer();
-  await reopenTerminals();
-  const gitRuntimeCoverage = await reopenGit();
   // Match the existing actual-project-worktrees catalog fixture. Production
   // servers and workers are stopped while the owned profile is seeded natively.
   const worktreePort = Number(new URL(server.origin).port);
@@ -608,62 +613,86 @@ try {
   await start(worktreePort);
   startWorker();
   await ready();
-  await verifyNativeWorktrees({
-    call,
-    ownerId: repository.ownerId,
-    serverId: repository.serverId,
-    componentKey,
-    projectId,
-    workerId,
-    workerDirectory,
-    checkout,
-    restartWorker,
-    registerMetadata: repository.registerMetadata,
-  });
+  let observationCoverage;
+  if (values["observations-only"]) {
+    observationCoverage = await verifyNativeObservations({
+      call,
+      origin: server.origin,
+      projectId,
+      workerId,
+      workerDirectory,
+      checkout,
+      restartWorker,
+    });
+  } else {
+    await verifyNativeWorktrees({
+      call,
+      ownerId: repository.ownerId,
+      serverId: repository.serverId,
+      componentKey,
+      projectId,
+      workerId,
+      workerDirectory,
+      checkout,
+      restartWorker,
+      registerMetadata: repository.registerMetadata,
+    });
+  }
   await stopWorker();
   await server.close();
   server = undefined;
-  console.log(
-    JSON.stringify({
-      suite: "actual-native-workspace-worker-server",
-      passed: true,
-      realWorkerAndServer: true,
-      existingAttachedProfile: true,
-      freshEncryptedRootAttachment: true,
-      authenticatedClientAndGrants: true,
-      encryptedRootErrors: true,
-      opaquePaths: true,
-      realGitDiscovery: true,
-      actualImportValidationAndCommit: true,
-      managedFolderCreateAndDelete: true,
-      existingFolderRetryAndPreservation: true,
-      encryptedExplorerAndFileDocument: true,
-      fileDocumentBindingAndWorkerRestart: true,
-      surfaceGrantTerminalServiceReconciliation: true,
-      realTerminalServiceEnableRestartAndRecovery: true,
-      encryptedGitStatusAndDiff: true,
-      encryptedGitActionsAndRestartGuard: true,
-      encryptedGitHistoryAndInspection: true,
-      encryptedManagedGitRecoveryAndRestart: true,
-      nativeRebaseEditorWithoutNode: true,
-      encryptedManagedGitPreviewAndStart: true,
-      encryptedGitConflictResolutionAndContinue: true,
-      encryptedReviewedCommitMutationsAndRecovery: true,
-      encryptedStashSelectionsAndRecovery: true,
-      encryptedPartialPatchSelectionsAndRestart: true,
-      encryptedReviewedBranchesAndLocalRemote: true,
-      encryptedReviewedRemotesDefaultsFetchAndPrune: true,
-      encryptedReviewedTagsAndImmutableSignatures: true,
-      encryptedReviewedNestedSubmodulesAndRecovery: true,
-      encryptedReviewedLfsObjectsAndLocks: true,
-      encryptedGitGraphMetricsBlameAndOverlays: true,
-      completedGitRuntimeChecks: gitRuntimeCoverage.completedRuntimeChecks,
-      nativeWorktreeApiLifecycleAndEncryptedStatus: true,
-      nodeAbsentFromWorkerPath: true,
-      scope:
-        "Fresh attachment, discovery/import, managed/existing folders, encrypted host Explorer/file-document, Git queries/basic actions and managed recovery with native rebase editors, and host terminal-service lifecycle; other worker domains remain pending.",
-    }),
-  );
+  if (values["observations-only"])
+    console.log(
+      JSON.stringify({
+        suite: "actual-native-observation-worker-server",
+        passed: true,
+        realWorkerAndServer: true,
+        nodeAbsentFromWorkerPath: true,
+        ...observationCoverage,
+      }),
+    );
+  else
+    console.log(
+      JSON.stringify({
+        suite: "actual-native-workspace-worker-server",
+        passed: true,
+        realWorkerAndServer: true,
+        existingAttachedProfile: true,
+        freshEncryptedRootAttachment: true,
+        authenticatedClientAndGrants: true,
+        encryptedRootErrors: true,
+        opaquePaths: true,
+        realGitDiscovery: true,
+        actualImportValidationAndCommit: true,
+        managedFolderCreateAndDelete: true,
+        existingFolderRetryAndPreservation: true,
+        encryptedExplorerAndFileDocument: true,
+        fileDocumentBindingAndWorkerRestart: true,
+        surfaceGrantTerminalServiceReconciliation: true,
+        realTerminalServiceEnableRestartAndRecovery: true,
+        encryptedGitStatusAndDiff: true,
+        encryptedGitActionsAndRestartGuard: true,
+        encryptedGitHistoryAndInspection: true,
+        encryptedManagedGitRecoveryAndRestart: true,
+        nativeRebaseEditorWithoutNode: true,
+        encryptedManagedGitPreviewAndStart: true,
+        encryptedGitConflictResolutionAndContinue: true,
+        encryptedReviewedCommitMutationsAndRecovery: true,
+        encryptedStashSelectionsAndRecovery: true,
+        encryptedPartialPatchSelectionsAndRestart: true,
+        encryptedReviewedBranchesAndLocalRemote: true,
+        encryptedReviewedRemotesDefaultsFetchAndPrune: true,
+        encryptedReviewedTagsAndImmutableSignatures: true,
+        encryptedReviewedNestedSubmodulesAndRecovery: true,
+        encryptedReviewedLfsObjectsAndLocks: true,
+        encryptedGitGraphMetricsBlameAndOverlays: true,
+        completedGitRuntimeChecks: gitRuntimeCoverage.completedRuntimeChecks,
+        nativeWorktreeApiLifecycleAndEncryptedStatus: true,
+        nodeAbsentFromWorkerPath: true,
+        scope:
+          "Fresh attachment, discovery/import, managed/existing folders, encrypted host Explorer/file-document, Git queries/basic actions and managed recovery with native rebase editors, and host terminal-service lifecycle; other worker domains remain pending.",
+      }),
+    );
 } catch (error) {
   failure = error;
 } finally {

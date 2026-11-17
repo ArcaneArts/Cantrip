@@ -1,6 +1,7 @@
 //! Physical Git worktree authority, inventory and serialized managed mutations.
 mod inventory;
 mod mutations;
+pub mod observations;
 use super::{process, status};
 use crate::{
     filesystem::{Scope, explorer::io_error, paths, storage},
