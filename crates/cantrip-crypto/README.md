@@ -16,6 +16,8 @@ Implemented from `packages/crypto`:
 - Component/field/lookup HKDF-SHA256 derivation and blind HMAC-SHA256 tags.
 - Protected secrets, endpoint payloads, private display labels and attachment
   metadata/chunks, including existing AAD bindings and encoded byte limits.
+- JSON surface streams, binary remote-surface streams and tunnel data frames,
+  including their distinct route/context bindings, limits and error boundaries.
 
 HPKE uses `hpke` 0.14.1, including its KEM zeroization fixes, with only the
 alloc/AES/NIST-curve/system-random features. The suite remains P-256; the upstream
@@ -51,7 +53,11 @@ to that service. The content fixture compares these operations with the actual
 TypeScript implementations in both directions using disposable synthetic data.
 
 Other domain-specific protected content, replay/counter state and encrypted
-stream adapters remain worker-port work. Password/recovery
+resource adapters remain worker-port work. The native worker now supplies the
+endpoint/surface content helpers and surface reserve/accept/release replay guard;
+the owning resource services still enforce authorization and retirement.
+The crypto crate reuses `cantrip-framing` for the existing remote-surface binary
+payload layout, with no server or transport-runtime dependency. Password/recovery
 KDFs and client account-management operations are not implemented here; the
 worker uses granted component keys rather than account passwords/master keys.
 A generic payload operation alone does not establish those domain contracts.

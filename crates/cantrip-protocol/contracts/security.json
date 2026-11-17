@@ -826,7 +826,15 @@
     "endpointContentOpaqueSchema": 3040,
     "privateDisplayLabelOpaqueSchema": 1422,
     "privateDisplayLabelProtectedContentSchema": 12514,
-    "attachmentMetadataProtectedContentSchema": 12518
+    "attachmentMetadataProtectedContentSchema": 12518,
+    "surfaceStreamContextSchema": 12524,
+    "surfaceStreamOpaqueSchema": 2500,
+    "remoteSurfaceStreamContextSchema": 12530,
+    "tunnelDataProtectionConfigurationSchema": 12539,
+    "terminalInputContentSchema": 12545,
+    "terminalOutputContentSchema": 12549,
+    "terminalSnapshotRequestContentSchema": 12553,
+    "terminalSnapshotContentSchema": 12557
   },
   "nodes": [
     {
@@ -75884,6 +75892,218 @@
       "checks": [
         { "check": "min_length", "minimum": 1, "when": "length" },
         { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "surfaceStreamContextSchema",
+      "shape": {
+        "serverId": 12525,
+        "surfaceKind": 12526,
+        "surfaceId": 12527,
+        "operationId": 2498,
+        "direction": 12528,
+        "sequence": 2499
+      },
+      "catchall": 12529,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "surfaceStreamKindSchema",
+      "values": ["terminal", "explorer", "file-document", "chat-files"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "surfaceStreamDirectionSchema",
+      "values": ["request", "response", "input", "output"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "serverId": 12531,
+        "surfaceKind": 12532,
+        "surfaceId": 12533,
+        "attachmentId": 12534,
+        "direction": 12535,
+        "channel": 12536,
+        "sequence": 12537
+      },
+      "catchall": 12538,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    { "type": "enum", "values": ["browser", "desktop"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": ["client-to-worker", "worker-to-client"],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["control", "frame", "cursor", "clipboard", "webrtc-signal"],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "tunnelDataProtectionConfigurationSchema",
+      "shape": {
+        "formatVersion": 12540,
+        "algorithm": 12541,
+        "keyRevision": 12542,
+        "key": 12543
+      },
+      "catchall": 12544,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    { "type": "literal", "values": ["AES-256-GCM"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "length_equals", "length": 43, "when": "length" },
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/u"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "terminalInputContentSchema",
+      "shape": { "type": 12546, "data": 12547 },
+      "catchall": 12548,
+      "checks": []
+    },
+    { "type": "literal", "values": ["terminal.input"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "terminalOutputContentSchema",
+      "shape": { "type": 12550, "data": 12551 },
+      "catchall": 12552,
+      "checks": []
+    },
+    { "type": "literal", "values": ["terminal.output"], "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "terminalSnapshotRequestContentSchema",
+      "shape": { "type": 12554, "maxChars": 12555 },
+      "catchall": 12556,
+      "checks": []
+    },
+    { "type": "literal", "values": ["terminal.snapshot"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 100000, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "terminalSnapshotContentSchema",
+      "shape": {
+        "type": 12558,
+        "terminalId": 12559,
+        "status": 12560,
+        "data": 12561,
+        "truncated": 12562,
+        "exitCode": 12563
+      },
+      "catchall": 12565,
+      "checks": []
+    },
+    { "type": "literal", "values": ["terminal.snapshot"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": ["running", "restarting", "exited", "not-running"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 12564, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false }
       ]
     },
     { "type": "never", "checks": [] }
