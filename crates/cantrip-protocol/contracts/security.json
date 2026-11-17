@@ -915,7 +915,11 @@
     "githubWorkerRepositorySchema": 13678,
     "githubWorkerRepositoryListSchema": 13687,
     "githubRepositoryOwnerListSchema": 13688,
-    "githubRepositoryCreateSchema": 3414
+    "githubRepositoryCreateSchema": 3414,
+    "githubIssueListSchema": 13691,
+    "githubIssueDetailSchema": 13698,
+    "githubIssueCreateSchema": 3494,
+    "githubPullRequestSummarySchema": 8169
   },
   "nodes": [
     {
@@ -82568,6 +82572,128 @@
       "shape": { "login": 3415, "kind": 13690 },
       "checks": []
     },
-    { "type": "enum", "values": ["user", "organization"], "checks": [] }
+    { "type": "enum", "values": ["user", "organization"], "checks": [] },
+    {
+      "type": "object",
+      "name": "githubIssueListSchema",
+      "shape": {
+        "kind": 13692,
+        "state": 3446,
+        "total": 13694,
+        "issues": 13696,
+        "nextCursor": 3447
+      },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13693,
+      "defaultValue": "issue",
+      "checks": []
+    },
+    { "type": "literal", "values": ["issue"], "checks": [] },
+    { "type": "nullable", "innerType": 13695, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "array", "element": 13697, "checks": [] },
+    {
+      "type": "object",
+      "name": "githubIssueSummarySchema",
+      "shape": {
+        "number": 8170,
+        "title": 8171,
+        "state": 3446,
+        "url": 8172,
+        "author": 8173,
+        "commentCount": 8174,
+        "labels": 8175,
+        "assignees": 8179,
+        "milestone": 8182,
+        "createdAt": 8185,
+        "updatedAt": 8186,
+        "closedAt": 8187
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "githubIssueDetailSchema",
+      "shape": {
+        "number": 8170,
+        "title": 8171,
+        "state": 3446,
+        "url": 8172,
+        "author": 8173,
+        "commentCount": 8174,
+        "labels": 8175,
+        "assignees": 8179,
+        "milestone": 8182,
+        "createdAt": 8185,
+        "updatedAt": 8186,
+        "closedAt": 8187,
+        "body": 13699,
+        "comments": 13701
+      },
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 13700, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "array", "element": 13702, "checks": [] },
+    {
+      "type": "object",
+      "name": "githubIssueCommentSchema",
+      "shape": {
+        "id": 13703,
+        "author": 13704,
+        "body": 13705,
+        "url": 13706,
+        "createdAt": 13707,
+        "updatedAt": 13708
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "string", "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "string_format", "format": "url", "abort": false }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    }
   ]
 }

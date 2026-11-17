@@ -1,19 +1,27 @@
-//! GitHub CLI integration. Catalog state belongs to the worker profile; these
-//! worker-scoped operations do not require a checkout or a GitHub origin.
+//! Native GitHub catalog, issues and PR search. The protected dispatcher supplies
+//! trusted repository bindings; only the catalog operations are worker scoped.
+mod api;
 mod catalog;
+mod issues;
 mod process;
+mod reads;
+mod search;
 use crate::filesystem::Scope;
 use anyhow::{Result, bail};
+pub use api::repository_for_checkout;
 use cantrip_wire::Value;
+pub use search::query as search_query;
 use std::path::{Path, PathBuf};
 
 pub struct Client {
     directory: PathBuf,
+    reads: std::sync::Mutex<reads::Reads>,
 }
 impl Client {
     pub fn new(directory: &Path) -> Self {
         Self {
             directory: directory.to_owned(),
+            reads: std::sync::Mutex::default(),
         }
     }
     pub fn supports(kind: &str) -> bool {
@@ -24,7 +32,24 @@ impl Client {
                 | "github.repositories.list"
                 | "github.repository-owners.list"
                 | "github.repositories.create"
+                | "github.issues.list"
+                | "github.pull-requests.list"
+                | "github.issue.get"
+                | "github.issue.create"
+                | "github.issue.comment"
+                | "github.issue.close"
         )
+    }
+    pub fn requires_checkout(kind: &str) -> bool {
+        kind.starts_with("github.")
+            && !matches!(
+                kind,
+                "github.auth.status"
+                    | "github.repositories.cached"
+                    | "github.repositories.list"
+                    | "github.repository-owners.list"
+                    | "github.repositories.create"
+            )
     }
     pub async fn execute(&self, command: &Value, scope: &Scope) -> Result<Value> {
         scope.check()?;
@@ -34,6 +59,21 @@ impl Client {
             "github.repositories.list" => self.repositories(scope).await,
             "github.repository-owners.list" => self.owners(scope).await,
             "github.repositories.create" => self.create(&command["request"], scope).await,
+            "github.issues.list" | "github.pull-requests.list" => {
+                self.list_issues(command, scope).await
+            }
+            "github.issue.get" => {
+                self.get_issue(
+                    command["repository"].as_js_string().unwrap(),
+                    &command["number"],
+                    scope,
+                )
+                .await
+            }
+            "github.issue.create" => self.create_issue(command, scope).await,
+            "github.issue.comment" | "github.issue.close" => {
+                self.mutate_issue(command, scope).await
+            }
             _ => bail!("Native GitHub command is not implemented."),
         }
     }

@@ -82,14 +82,28 @@ impl RepositoryOperations {
             match kind {
                 kind if crate::github::Client::supports(kind) => {
                     let (directory, worker) = self.profile.as_ref().ok_or_else(|| anyhow::anyhow!("Repository worker profile is not configured."))?;
-                    // Source reads the scoped operation journal even for catalog
-                    // requests, but does not require a checkout or idle Git state.
+                    // Source reads the scoped journal for every GitHub request.
+                    // Catalog requests do not require a checkout; GitHub issue
+                    // operations require a trusted repository but no idle Git state.
                     crate::git::stored::read(directory, &command, &Value::String(service.owner_id()?), &Value::String(worker.clone())).await?;
+                    let repository = if crate::github::Client::requires_checkout(kind) {
+                        match command.get("repository").filter(|value|!value.is_null()) {
+                            Some(value)=>value.clone(),
+                            None=>crate::github::repository_for_checkout(&crate::filesystem::paths::native(command["cwd"].as_js_string().unwrap()),scope).await.map(Value::String).unwrap_or(Value::Null),
+                        }
+                    } else { command["repository"].clone() };
+                    if crate::github::Client::requires_checkout(kind) && !cantrip_wire::coercion::truthy(Some(&repository)) {
+                        bail!("This checkout does not have a GitHub origin available to the worker.");
+                    }
                     if command.get("peerWorktree").is_some_and(|value| !value.is_null()) {
                         bail!("A peer worktree is only valid for a worktree changes move.");
                     }
                     let mut trusted = request["arguments"].clone();
                     trusted["type"] = json!(kind);
+                    trusted["repository"] = repository;
+                    trusted["cwd"] = command["cwd"].clone();
+                    trusted["sourcePath"] = command["sourcePath"].clone();
+                    trusted["worktreePath"] = command["cwd"].clone();
                     let trusted = checked("workerCommandSchema", &trusted)?;
                     self.github()?.execute(&trusted, scope).await
                 }

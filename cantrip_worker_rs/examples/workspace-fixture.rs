@@ -19,6 +19,7 @@ async fn main() -> Result<()> {
     let mut registry: Option<Registry> = None;
     let mut service: Option<Arc<Service>> = None;
     let mut operations = RepositoryOperations::default();
+    let mut github: Option<(std::path::PathBuf, cantrip_worker::github::Client)> = None;
     let mut worktrees: Option<Arc<cantrip_worker::git::worktrees::Manager>> = None;
     let mut replay = protected_content::RepositoryOperationReplayGuard::default();
     let scope = Scope::default();
@@ -36,9 +37,19 @@ async fn main() -> Result<()> {
                     .ok_or_else(|| anyhow!("Fixture encryption not open"))
             };
             match input["op"].as_str().unwrap_or("") {
-                "github"=> cantrip_worker::github::Client::new(
-                    &cantrip_worker::filesystem::paths::native(input["directory"].as_js_string().unwrap())
-                ).execute(&input["command"], &scope).await,
+                "github-search"=>cantrip_worker::github::search_query(input["repository"].as_js_string().unwrap(),input["kind"].as_str().unwrap(),input["state"].as_str().unwrap(),&input["filters"],input["now"].as_i64()).map(Value::String),
+                "github"=> {
+                    let directory=cantrip_worker::filesystem::paths::native(input["directory"].as_js_string().unwrap());
+                    if github.as_ref().is_some_and(|(path,_)|*path!=directory) {
+                        github.take().unwrap().1.drain().await?;
+                    }
+                    let (_,client)=github.get_or_insert_with(||(directory.clone(),cantrip_worker::github::Client::new(&directory)));
+                    client.execute(&input["command"], &scope).await
+                }
+                "github-drain"=> {
+                    if let Some((_,client))=&github {client.drain().await?;}
+                    Ok(Value::Null)
+                },
                 "worktree-open"=>{
                     worktrees=Some(Arc::new(cantrip_worker::git::worktrees::Manager::new(
                         &cantrip_worker::filesystem::paths::native(input["directory"].as_js_string().unwrap())
@@ -357,6 +368,12 @@ async fn main() -> Result<()> {
                 .replace('\u{2028}', "\\u2028")
                 .replace('\u{2029}', "\\u2029")
         );
+    }
+    if let Ok(client) = operations.github() {
+        client.drain().await?;
+    }
+    if let Some((_, client)) = github {
+        client.drain().await?;
     }
     if let Some(service) = service {
         service.close().await?;
