@@ -20,7 +20,7 @@ pub fn heartbeat(
     // implementation. Each real subsystem supplies its capabilities when added.
     checked(
         "workerHeartbeatSchema",
-        &json!({"workerId":config.worker_id,"name":config.name,"platform":platform,"architecture":architecture,"codexVersion":Value::Null,"startedAt":started_at}),
+        &json!({"workerId":config.worker_id,"name":config.name,"platform":platform,"architecture":architecture,"codexVersion":Value::Null,"startedAt":started_at,"managedFolders":json!({"create":false,"remove":false,"discoverWorkspaceRepositories":true})}),
     )
 }
 pub fn client() -> Result<reqwest::Client> {

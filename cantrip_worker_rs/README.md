@@ -8,7 +8,8 @@ selecting the Node worker until the complete implementation is ready.
 The native `cantrip-worker` executable currently supports configuration,
 version-1 identity/credential persistence, logging/archive lifecycle, enrollment,
 heartbeat, WebSocket readiness/reconnect, version queries, credential rotation,
-in-process restart, log reads and authenticated encryption-grant refresh. It opens
+in-process restart, log reads, authenticated encryption-grant refresh and workspace
+repository discovery/import validation. It opens
 and retains compatible endpoint
 encryption identities using native P-256/HPKE and private version-2 records. Remaining domains fail explicitly and advertise
 unavailable capabilities. This is not yet the complete production replacement.
@@ -16,6 +17,8 @@ unavailable capabilities. This is not yet the complete production replacement.
 The implementation reuses `cantrip-config`, `cantrip-wire`, `cantrip-host`,
 `cantrip-logging`, `cantrip-protocol`, `cantrip-framing` and `cantrip-crypto`, without a server or
 database dependency.
+The worker also uses the same pure vendored ICU library as the server for Node
+locale ordering, without linking the server application or database.
 Other shared foundations will be integrated with their owning domains. Credentials
 omit `Debug`. Initialization loads the optional environment file synchronously
 before starting Tokio/archive threads. Shutdown joins owned producers and closes
@@ -55,5 +58,18 @@ services must own/reset it with their authorization lifetime. Remaining domain
 adapters, serving transports and revocation hooks are still pending. A stored
 identity or stateless chunk crypto alone does not authorize a transfer.
 
-The configuration, HTTP, crypto, grant and content examples are development-only differential drivers
+`workspace` serves the real `workspace.repositories.discover` and
+`workspace.repository-import.validate` commands. It traverses attached roots,
+classifies actual Git checkouts/origins and rechecks repository fingerprints.
+Progress events use the existing correlation envelope. Git/gh subprocesses have
+bounded output/timeouts and are stopped/joined with their runtime.
+
+`routing` reopens version-1 `repository-routing.json`, resolves opaque handles and
+publishes field-scoped tokens through private atomic snapshots. The workspace
+adapter protects paths/results/errors before they leave the worker. Only the
+discovery capability is enabled: new encrypted workspace-root attachment, managed
+folder creation/removal and other repository commands remain pending. Existing
+attached profiles can discover and import through the production Rust server.
+
+The configuration, HTTP, crypto, grant, content and workspace examples are development-only differential drivers
 that emit synthetic secrets. Never run them against real profiles.

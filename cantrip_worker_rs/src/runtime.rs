@@ -117,6 +117,7 @@ async fn cycle(
     let client = http::client()?;
     let started = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let encryption = Service::new(encryption_identity, &config.server_url, client.clone())?;
+    let routing = Arc::new(crate::routing::Registry::new(&config.data_directory));
     let mut heartbeat = http::heartbeat(&config, host.platform, host.architecture, &started)?;
     heartbeat["encryption"] = encryption.status();
     http::enroll(&client, &mut config, &heartbeat, logs).await?;
@@ -193,6 +194,18 @@ async fn cycle(
                     });
                     continue;
                 }
+                if matches!(kind,"workspace.repositories.discover"|"workspace.repository-import.validate") {
+                    let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::workspace::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let result=crate::workspace::execute_routed(&request["command"],&routing,&scope,|event|{
+                                if let Err(error)=outgoing.send(json!({"kind":"event","requestId":request["requestId"],"event":event})) {
+                                    logs.event("error","Worker command event was rejected",json!({"event":"worker.command.invalid-event","workerId":worker,"error":logging::error(&error)}));
+                                }
+                            }).await;
+                        finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
                 let result=dispatch(command,&configuration,logs);
                 finish(&request,&worker,logs,&outgoing,began,&result);
                 if result.is_ok() && kind=="worker.restart" {
@@ -257,12 +270,20 @@ fn finish(
             json!({"kind":"response","requestId":request["requestId"],"ok":true,"result":result})
         }
         Err(error) => {
-            let error = match error.downcast_ref::<ServiceError>() {
-                Some(error) => match error.code {
-                    Some(code) => json!({"code":code,"message":error.message}),
-                    None => json!({"message":error.message}),
-                },
-                None => json!({"message":error.to_string()}),
+            let error = if let Some(error) = error.downcast_ref::<crate::routing::ProtectedError>()
+            {
+                match error.code {
+                    Some(code) => json!({"message":error.to_string(),"code":code}),
+                    None => json!({"message":error.to_string()}),
+                }
+            } else {
+                match error.downcast_ref::<ServiceError>() {
+                    Some(error) => match error.code {
+                        Some(code) => json!({"code":code,"message":error.message}),
+                        None => json!({"message":error.message}),
+                    },
+                    None => json!({"message":error.to_string()}),
+                }
             };
             json!({"kind":"response","requestId":request["requestId"],"ok":false,"error":error})
         }
