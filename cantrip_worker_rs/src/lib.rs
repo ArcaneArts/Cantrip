@@ -15,5 +15,6 @@ pub mod protected_secrets;
 pub mod repository_operations;
 pub mod routing;
 pub mod runtime;
+pub mod terminal_services;
 pub mod version;
 pub mod workspace;

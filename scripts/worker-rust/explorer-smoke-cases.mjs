@@ -6,19 +6,8 @@ import path from "node:path";
 import * as c from "../../packages/crypto/dist/index.js";
 import * as p from "../../packages/protocol/dist/index.js";
 
-// The real refresh loads the key before the server requests terminal services.
-// Preserve that known, unfinished integration failure explicitly during the port;
-// successful encrypted commands below prove that the worker accepted the key.
-// This does not satisfy final worker acceptance or change production behavior.
 export function assertSurfaceGrantRefresh(result) {
-  if (result.status === 200) return;
-  assert.deepEqual(result, {
-    status: 502,
-    body: {
-      error:
-        "Worker command terminal.services.reconcile is not implemented by the native worker yet.",
-    },
-  });
+  assert.equal(result.status, 200, JSON.stringify(result));
 }
 
 export async function verifyExplorer({

@@ -11,6 +11,7 @@ import * as c from "../../packages/crypto/dist/index.js";
 import * as p from "../../packages/protocol/dist/index.js";
 import * as worker from "../../cantrip_worker/src/surface-private-state-encryption.ts";
 import { WorkerEncryptionService } from "../../cantrip_worker/src/worker-encryption.ts";
+import { openTerminalPrivateState } from "../../cantrip_worker/src/terminal-private-state.ts";
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary, "Pass --binary content-fixture");
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-private-state-"));
@@ -474,6 +475,42 @@ try {
     await native({ op: "accept", payload });
   }
   await authorize([await grant(3, 7)]);
+  for (const directory of [
+    { kind: "project-root" },
+    { kind: "relative-path", path: "src/nested" },
+    { kind: "relative-path", path: "C:relative" },
+    { kind: "relative-path", path: "nested\\literal" },
+  ]) {
+    const terminalId = "terminal-config";
+    const content = {
+      version: 1,
+      classification: { recordKind: "terminal-state" },
+      directory,
+      serviceCommand: "synthetic command",
+    };
+    const stateProtection = await c.encryptSurfacePrivateState({
+      ownerId,
+      context: {
+        serverId: "server",
+        resource: "terminal-row",
+        resourceId: terminalId,
+        operationId: null,
+        recordKind: "terminal-state",
+      },
+      keyRevision: 3,
+      componentKey: key,
+      content,
+    });
+    const input = {
+      serverId: "server",
+      terminalId,
+      worktreePath: path.join(root, "checkout"),
+      stateProtection,
+    };
+    await compare({ op: "terminal-service-config", input }, () =>
+      openTerminalPrivateState({ ...input, service }),
+    );
+  }
   await compare(openInput(), () => open());
   await compare(openInput(encrypted, "other-owner"), () =>
     open(encrypted, "other-owner"),

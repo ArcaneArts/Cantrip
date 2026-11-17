@@ -129,6 +129,13 @@ async fn cycle(
     let explorer_operations = Arc::new(
         crate::explorer_operations::ExplorerOperations::with_replay(surface_replay),
     );
+    let terminals = Arc::new(crate::terminal_services::Manager::new(
+        environment
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+        logs.clone(),
+    ));
     let mut heartbeat = http::heartbeat(&config, host.platform, host.architecture, &started)?;
     heartbeat["encryption"] = encryption.status();
     http::enroll(&client, &mut config, &heartbeat, logs).await?;
@@ -213,6 +220,14 @@ async fn cycle(
                     });
                     continue;
                 }
+                if matches!(kind,"terminal.services.reconcile"|"terminal.service.restart") {
+                    let terminals=terminals.clone();let encryption=encryption.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let result=terminals.execute(&request["command"],&encryption,&routing,&scope).await;
+                        finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
                 if matches!(kind,"explorer.operation"|"file-document.operation") {
                     let operations=explorer_operations.clone();let encryption=encryption.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
                     commands.spawn(async move {
@@ -259,6 +274,7 @@ async fn cycle(
             command_failure.get_or_insert(error);
         }
     }
+    let terminals_closed = terminals.close().await;
     let (heartbeat_done, connection_done) = tokio::join!(
         async {
             match heartbeat_result {
@@ -274,6 +290,7 @@ async fn cycle(
         }
     );
     outgoing.close();
+    terminals_closed?;
     encryption_closed?;
     if let Some(error) = command_failure {
         return Err(anyhow!("Worker command task failed: {error}"));

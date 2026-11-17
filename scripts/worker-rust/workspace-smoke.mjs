@@ -26,6 +26,7 @@ import {
   assertSurfaceGrantRefresh,
   verifyExplorer,
 } from "./explorer-smoke-cases.mjs";
+import { verifyTerminalServices } from "./terminal-services-smoke.mjs";
 const { values } = parseArgs({
   options: {
     worker: { type: "string" },
@@ -487,7 +488,7 @@ try {
     component: "private-surface-metadata",
     keyRevision: 1,
   });
-  let reopenExplorer;
+  let reopenExplorer, reopenTerminals;
   try {
     const identity = JSON.parse(
       await readFile(
@@ -505,6 +506,16 @@ try {
       workerId,
       checkout,
     });
+    reopenTerminals = await verifyTerminalServices({
+      call,
+      eventually,
+      ownerId: identity.ownerId,
+      serverId: identity.serverId,
+      surfaceKey,
+      metadataKey,
+      projectId,
+      checkout,
+    });
   } finally {
     metadataKey.fill(0);
   }
@@ -512,6 +523,7 @@ try {
   assert.equal(restarted.status, 202, JSON.stringify(restarted));
   await ready();
   await reopenExplorer();
+  await reopenTerminals();
   await stopWorker();
   await server.close();
   server = undefined;
@@ -531,11 +543,11 @@ try {
       existingFolderRetryAndPreservation: true,
       encryptedExplorerAndFileDocument: true,
       fileDocumentBindingAndWorkerRestart: true,
-      surfaceGrantTerminalServiceReconciliation:
-        "pending native terminal services",
+      surfaceGrantTerminalServiceReconciliation: true,
+      realTerminalServiceEnableRestartAndRecovery: true,
       nodeAbsentFromWorkerPath: true,
       scope:
-        "Fresh attachment, discovery/import, managed/existing folders and host Explorer/file-document commands; other worker domains remain pending.",
+        "Fresh attachment, discovery/import, managed/existing folders, encrypted host Explorer/file-document commands and host terminal-service lifecycle; other worker domains remain pending.",
     }),
   );
 } finally {

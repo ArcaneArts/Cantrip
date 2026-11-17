@@ -856,7 +856,8 @@
     "surfacePrivateStateProtectedContentSchema": 12658,
     "fileDocumentPrivateStateProtectedContentSchema": 12682,
     "explorerOperationRequestContentSchema": 12765,
-    "surfaceOperationOutcomeContentSchema": 12865
+    "surfaceOperationOutcomeContentSchema": 12865,
+    "terminalPrivateStateProtectedContentSchema": 12659
   },
   "nodes": [
     {
