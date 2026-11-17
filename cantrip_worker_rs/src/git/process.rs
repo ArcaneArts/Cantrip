@@ -1,3 +1,4 @@
+use super::{GitError, remote_text};
 use crate::filesystem::{Scope, paths};
 use anyhow::{Result, anyhow, bail};
 use cantrip_wire::JsString;
@@ -41,6 +42,25 @@ pub(super) async fn bounded(
     timeout: std::time::Duration,
 ) -> Result<Output> {
     capture_options(cwd, args, scope, &[], None, Some(timeout)).await
+}
+/// Source's runGitOutcomeBounded: shared by remotes, tag checks and mutations.
+pub(super) async fn run_bounded(cwd: &Path, args: &[&str], scope: &Scope) -> Result<String> {
+    let output = bounded(cwd, args, scope, std::time::Duration::from_secs(30)).await?;
+    let stdout = String::from_utf8_lossy(&output.bytes);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if output.code == Some(0) && !output.overflow && !output.timed_out {
+        return Ok(trim(&format!("{stdout}{stderr}")));
+    }
+    let stderr = trim(&stderr);
+    let stdout = trim(&stdout);
+    let message = if !stderr.is_empty() {
+        stderr
+    } else if !stdout.is_empty() {
+        stdout
+    } else {
+        output.error
+    };
+    Err(GitError(remote_text::sanitize(&message.into()).0).into())
 }
 async fn capture_options(
     cwd: &Path,

@@ -61,7 +61,39 @@ fn format(text: &str) -> Option<&'static str> {
         None
     }
 }
-fn details(
+pub(super) fn status(code: &str) -> &'static str {
+    match code {
+        "G" => "valid",
+        "U" => "valid-unknown",
+        "B" => "invalid",
+        "X" | "Y" => "expired",
+        "R" => "revoked",
+        "N" => "unsigned",
+        _ => "unverifiable",
+    }
+}
+pub(super) fn verification(code: &str, message: &str) -> &'static str {
+    if code == "N" {
+        "not-applicable"
+    } else if ["G", "U", "B", "X", "Y", "R"].contains(&code) {
+        "available"
+    } else if matches("no public key|unknown key|could not find.*key", message) {
+        "missing-key"
+    } else if matches(
+        "allowedsignersfile|allowed signers|principal.*not found",
+        message,
+    ) {
+        "missing-config"
+    } else if matches(
+        "cannot run|not found|no such file|failed to execute",
+        message,
+    ) {
+        "missing-tool"
+    } else {
+        "error"
+    }
+}
+pub(super) fn details(
     code: &str,
     signer: &str,
     key: &str,
@@ -75,39 +107,10 @@ fn details(
     } else {
         code
     };
-    let status = match code {
-        "G" => "valid",
-        "U" => "valid-unknown",
-        "B" => "invalid",
-        "X" | "Y" => "expired",
-        "R" => "revoked",
-        "N" => "unsigned",
-        _ => "unverifiable",
-    };
+    let status = status(code);
     let message = JsString::from(message).trim();
     let message = JsString::new(message.units().iter().take(10_000).copied().collect());
-    let verification = if code == "N" {
-        "not-applicable"
-    } else if ["G", "U", "B", "X", "Y", "R"].contains(&code) {
-        "available"
-    } else if matches(
-        "no public key|unknown key|could not find.*key",
-        &message.lossy(),
-    ) {
-        "missing-key"
-    } else if matches(
-        "allowedsignersfile|allowed signers|principal.*not found",
-        &message.lossy(),
-    ) {
-        "missing-config"
-    } else if matches(
-        "cannot run|not found|no such file|failed to execute",
-        &message.lossy(),
-    ) {
-        "missing-tool"
-    } else {
-        "error"
-    };
+    let verification = verification(code, &message.lossy());
     json!({"status":status,"signer":(!signer.is_empty()).then_some(signer),"key":(!key.is_empty()).then_some(key),"fingerprint":(!fingerprint.is_empty()).then_some(fingerprint),"format":if status=="unsigned"{None}else{format},"verification":verification,"verificationMessage":(status!="unsigned"&&!message.is_empty()).then_some(message)})
 }
 async fn load(cwd: &Path, hash: &str, scope: &Scope) -> Result<Value> {

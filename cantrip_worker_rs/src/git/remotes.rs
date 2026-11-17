@@ -4,7 +4,7 @@ use crate::filesystem::Scope;
 use anyhow::{Result, bail};
 use cantrip_crypto::checked;
 use cantrip_wire::{JsString, Value, value::json};
-use std::{path::Path, time::Duration};
+use std::path::Path;
 async fn config(cwd: &Path, key: &str, scope: &Scope) -> Result<String> {
     let value = process::text(cwd, &["config", "--get", key], scope)
         .await
@@ -195,24 +195,6 @@ pub async fn preview(cwd: &Path, action: &Value, scope: &Scope) -> Result<Value>
         &json!({"action":action,"token":review::digest(&[header.as_bytes()]),"destructive":kind=="remove"||(kind=="fetch"&&action["prune"]==true),"summary":summary,"warnings":warnings,"remote":remote}),
     )
 }
-async fn fetch(cwd: &Path, args: &[&str], scope: &Scope) -> Result<String> {
-    let output = process::bounded(cwd, args, scope, Duration::from_secs(30)).await?;
-    let stdout = String::from_utf8_lossy(&output.bytes);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    if output.code == Some(0) && !output.overflow && !output.timed_out {
-        return Ok(process::trim(&format!("{stdout}{stderr}")));
-    }
-    let stderr = process::trim(&stderr);
-    let stdout = process::trim(&stdout);
-    let message = if !stderr.is_empty() {
-        stderr
-    } else if !stdout.is_empty() {
-        stdout
-    } else {
-        output.error
-    };
-    Err(GitError(remote_text::sanitize(&message.into()).0).into())
-}
 pub async fn apply(cwd: &Path, action: &Value, token: &JsString, scope: &Scope) -> Result<Value> {
     let preview = preview(cwd, action, scope).await?;
     if preview["token"].as_js_string() != Some(token) {
@@ -274,7 +256,7 @@ pub async fn apply(cwd: &Path, action: &Value, token: &JsString, scope: &Scope) 
             if action["prune"] == true {
                 args.push("--prune");
             }
-            outputs.push(fetch(cwd, &args, scope).await?);
+            outputs.push(process::run_bounded(cwd, &args, scope).await?);
         }
     }
     checked(
