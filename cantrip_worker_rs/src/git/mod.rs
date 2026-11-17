@@ -1,8 +1,11 @@
-//! Native working-tree queries and basic Git actions. History and managed
-//! operations retain their separate protocols. No Node worker is invoked.
+//! Native Git queries and basic actions. Managed mutations retain their own
+//! recovery protocol. No Node worker is invoked.
 mod actions;
 mod diff;
+mod history;
+mod inspection;
 mod process;
+mod signatures;
 mod status;
 pub mod stored;
 use crate::filesystem::{Scope, paths};
@@ -29,6 +32,17 @@ pub async fn execute(command: &Value, scope: &Scope) -> Result<Value> {
     let cwd = paths::native(command["cwd"].as_js_string().unwrap());
     match command["type"].as_str().unwrap() {
         "git.status" => status(&cwd, scope).await,
+        "git.history" => history::history(&cwd, command, scope).await,
+        "git.file.history" => history::file_history(&cwd, command, scope).await,
+        "git.file.blame" => history::blame(&cwd, command, scope).await,
+        "git.commit.search" => history::search(&cwd, command, scope).await,
+        "git.commit.get" => inspection::detail(&cwd, command, scope).await,
+        "git.commit.signature.get" => {
+            signatures::signature(&cwd, command["revision"].as_js_string().unwrap(), scope).await
+        }
+        "git.refs.list" => inspection::candidates(&cwd, scope).await,
+        "git.compare" => inspection::compare(&cwd, command, scope).await,
+        "git.revision.diff" => inspection::revision_diff(&cwd, command, scope).await,
         "git.action" => action(&cwd, &command["action"], scope).await,
         "git.diff" => {
             file_diff(
