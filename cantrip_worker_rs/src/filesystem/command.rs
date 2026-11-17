@@ -1,5 +1,6 @@
-//! Owned bounded read-only Git/gh children. Dropping an HTTP response never
-//! cancels an accepted operation; only its runtime stop receiver does.
+//! Owned read-only Git/gh children, with bounded buffered output or incremental
+//! history records. Dropping an HTTP response never cancels an accepted
+//! operation; only its runtime stop receiver does.
 use anyhow::{Result, anyhow};
 use std::{
     ffi::{OsStr, OsString},
@@ -27,6 +28,97 @@ pub struct Scope {
     stop: Option<watch::Receiver<bool>>,
 }
 impl Scope {
+    /// Stream delimited read-only Git output without buffering the repository's
+    /// entire history. `consume` may stop the owned child after enough records;
+    /// that successful early stop still drains pipes and reaps the process.
+    pub async fn records(
+        &self,
+        program: &OsStr,
+        args: &[OsString],
+        delimiter: u8,
+        final_record: bool,
+        mut consume: impl FnMut(&[u8]) -> bool,
+    ) -> Result<()> {
+        self.check()?;
+        let mut command = Command::new(program);
+        command
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
+        #[cfg(unix)]
+        command.process_group(0);
+        #[cfg(windows)]
+        command.creation_flags(0x08000000);
+        let mut child = command.spawn()?;
+        let mut stdout = child.stdout.take().unwrap();
+        let mut stderr = child.stderr.take().unwrap();
+        let mut buffer = Vec::new();
+        let mut errors = Vec::new();
+        let mut out_chunk = [0; 8192];
+        let mut err_chunk = [0; 8192];
+        let mut early = false;
+        let mut out_open = true;
+        let mut err_open = true;
+        let result = async {
+            while out_open || err_open {
+                tokio::select! {
+                    biased;
+                    _=self.stopped()=>return Err(anyhow!("Worker workspace operation stopped.")),
+                    read=stdout.read(&mut out_chunk),if out_open=>{
+                        let count = read?;
+                        if count == 0 {
+                            out_open = false;
+                            if final_record && !early { early = consume(&buffer); }
+                            buffer.clear();
+                        } else if !early {
+                            buffer.extend_from_slice(&out_chunk[..count]);
+                            let mut start = 0;
+                            for end in 0..buffer.len() {
+                                if buffer[end] == delimiter {
+                                    if consume(&buffer[start..end]) { early = true; break; }
+                                    start = end + 1;
+                                }
+                            }
+                            if early {buffer.clear();}else{buffer.drain(..start);}
+                            if early {
+                                #[cfg(unix)]
+                                let _ = cantrip_host::process::signal_owned(&child,libc::SIGTERM,false,"Owned Explorer Git child");
+                                #[cfg(windows)]
+                                let _ = child.start_kill();
+                            }
+                        }
+                    },
+                    read=stderr.read(&mut err_chunk),if err_open=>{
+                        let count = read?;
+                        err_open = count != 0;
+                        errors.extend_from_slice(&err_chunk[..count]);
+                        if errors.len() > 64 * 1024 {errors.drain(..errors.len()-64*1024);}
+                    },
+                }
+            }
+            let status = tokio::select! {
+                biased;
+                _=self.stopped()=>return Err(anyhow!("Worker workspace operation stopped.")),
+                status=child.wait()=>status?,
+            };
+            if status.success() || early {Ok(())}else{Err(anyhow!("{}",String::from_utf8_lossy(&errors).trim()))}
+        }.await;
+        if result.is_err() && child.id().is_some() {
+            #[cfg(unix)]
+            let _ = cantrip_host::process::signal_owned(
+                &child,
+                libc::SIGKILL,
+                true,
+                "Owned Explorer Git child",
+            );
+            #[cfg(windows)]
+            let _ = child.start_kill();
+            let _ = child.wait().await;
+        }
+        result
+    }
     pub fn with_stop(stop: watch::Receiver<bool>) -> Self {
         Self { stop: Some(stop) }
     }
@@ -165,5 +257,40 @@ async fn bounded(mut reader: impl AsyncRead + Unpin, maximum: usize) -> Result<V
             }));
         }
         bytes.extend_from_slice(&chunk[..count]);
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn streamed_git_children_stop_and_join_on_completion_or_runtime_stop() {
+        let args = ["-c".into(), "printf 'ready\\000'; exec sleep 30".into()];
+        let (stop, receiver) = watch::channel(false);
+        let scope = Scope::with_stop(receiver);
+        let mut observed = Vec::new();
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            scope.records(OsStr::new("sh"), &args, 0, false, |record| {
+                observed.push(record.to_vec());
+                true
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(observed, vec![b"ready".to_vec()]);
+        let stopped = tokio::time::timeout(
+            Duration::from_secs(5),
+            scope.records(OsStr::new("sh"), &args, 0, false, |_| {
+                stop.send(true).unwrap();
+                false
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+        assert_eq!(stopped.to_string(), "Worker workspace operation stopped.");
     }
 }

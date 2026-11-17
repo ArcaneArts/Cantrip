@@ -26,6 +26,7 @@ function at(schema, path) {
   return schema;
 }
 export function registerWorkerCommandContracts(register) {
+  register(p.explorerEntryNameSchema, 0, "worker-command-explorer-name");
   register(p.cantripOsPackageArtifactsSchema, 0, "cantrip-os-unique-packages");
   register(
     p.cantripOsPackageOperationCommandSchema,

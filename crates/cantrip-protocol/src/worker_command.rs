@@ -83,6 +83,14 @@ pub(super) fn refine(
         };
     }
     let invalid = match tag {
+        "explorer-name" => {
+            value == "."
+                || value == ".."
+                || text(value)?
+                    .units()
+                    .iter()
+                    .any(|u| matches!(u, 0 | 47 | 92))
+        }
         "nul-free" => text(value)?.units().contains(&0),
         "not-blank" => text(value)?.trim().is_empty(),
         "no-equals" => text(value)?.units().contains(&61),
