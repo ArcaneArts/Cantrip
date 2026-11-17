@@ -27,6 +27,7 @@ import {
   verifyExplorer,
 } from "./explorer-smoke-cases.mjs";
 import { verifyTerminalServices } from "./terminal-services-smoke.mjs";
+import { verifyGit } from "./git-smoke-cases.mjs";
 const { values } = parseArgs({
   options: {
     worker: { type: "string" },
@@ -337,6 +338,8 @@ async function repositoryClient() {
     }
   }
   return {
+    ownerId,
+    serverId,
     async attachRoot(id, rootPath, nameProtection) {
       const result = await operation(
         id,
@@ -472,6 +475,16 @@ try {
     "actual native checkout validation and durable import",
   );
   assert.equal(await readFile(sentinel, "utf8"), "private dirty content\n");
+  const reopenGit = await verifyGit({
+    call,
+    ownerId: repository.ownerId,
+    serverId: repository.serverId,
+    componentKey,
+    projectId,
+    workerId,
+    workerDirectory,
+    checkout,
+  });
   await verifyManagedFolders({
     call,
     eventually,
@@ -524,6 +537,7 @@ try {
   await ready();
   await reopenExplorer();
   await reopenTerminals();
+  await reopenGit();
   await stopWorker();
   await server.close();
   server = undefined;
@@ -545,9 +559,10 @@ try {
       fileDocumentBindingAndWorkerRestart: true,
       surfaceGrantTerminalServiceReconciliation: true,
       realTerminalServiceEnableRestartAndRecovery: true,
+      encryptedGitStatusAndDiff: true,
       nodeAbsentFromWorkerPath: true,
       scope:
-        "Fresh attachment, discovery/import, managed/existing folders, encrypted host Explorer/file-document commands and host terminal-service lifecycle; other worker domains remain pending.",
+        "Fresh attachment, discovery/import, managed/existing folders, encrypted host Explorer/file-document and Git status/diff queries, and host terminal-service lifecycle; other worker domains remain pending.",
     }),
   );
 } finally {

@@ -6,6 +6,7 @@ pub mod credentials;
 pub mod encryption;
 pub mod explorer_operations;
 pub mod filesystem;
+pub mod git;
 pub mod http;
 pub mod installation;
 pub mod logging;
