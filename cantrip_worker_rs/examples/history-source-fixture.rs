@@ -15,6 +15,9 @@ use std::{
     sync::{Arc, Mutex, atomic::AtomicBool},
 };
 
+#[path = "support/history_outbox.rs"]
+mod history_outbox;
+
 struct Keys(Mutex<Value>);
 impl Encryption for Keys {
     fn identity(&self) -> Result<(JsString, JsString)> {
@@ -25,17 +28,33 @@ impl Encryption for Keys {
         ))
     }
     fn material(&self, revision: Option<u64>) -> Result<Material> {
-        let state = self.0.lock().unwrap();
+        let mut state = self.0.lock().unwrap();
+        let pause = if let Value::Object(fields) = &mut *state {
+            fields.shift_remove("pause")
+        } else {
+            None
+        };
         let revision = revision.unwrap_or(state["revision"].as_u64().unwrap());
         if revision == 99 {
             bail!("Missing historical chat-content key.");
         }
-        Ok(Material {
+        let material = Material {
             owner_id: state["owner"].as_js_string().unwrap().clone(),
             server_id: state["server"].as_js_string().unwrap().clone(),
             key_revision: revision,
             key: Zeroizing::new(vec![revision as u8; 32]),
-        })
+        };
+        drop(state);
+        // Test-only granted-key boundary. The production encryption service has
+        // no gate or deterministic entropy mode. Owned fixtures release it.
+        if let Some(pause) = pause {
+            std::fs::write(pause["ready"].as_str().unwrap(), b"ready")?;
+            let release = std::path::Path::new(pause["release"].as_str().unwrap());
+            while !release.exists() {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+        Ok(material)
     }
 }
 fn field(value: &Value) -> Result<Field> {
@@ -52,10 +71,17 @@ fn field(value: &Value) -> Result<Field> {
 struct Fixture {
     service: Arc<Keys>,
     handles: HashMap<String, Journal>,
+    outboxes: HashMap<String, cantrip_history::outbox::Outbox>,
     tracker: Tracker,
 }
 impl Fixture {
     async fn run(&mut self, input: Value) -> Result<Value> {
+        if input["op"]
+            .as_str()
+            .is_some_and(|op| op.starts_with("outbox."))
+        {
+            return history_outbox::run(&mut self.outboxes, self.service.clone(), &input).await;
+        }
         let handle = input["handle"].as_str().unwrap_or("a").to_owned();
         match input["op"].as_str().unwrap() {
             "identity" => {
@@ -233,6 +259,7 @@ async fn main() -> Result<()> {
             json!({"owner":"owner","server":"server","revision":1}),
         ))),
         handles: HashMap::new(),
+        outboxes: HashMap::new(),
         tracker: Tracker::default(),
     };
     for line in io::stdin().lock().lines() {

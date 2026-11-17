@@ -172,3 +172,9 @@ export async function appendNativeHistoryOutboxMutation(
       "Native history journal advanced concurrently; retry the same record.",
     );
 }
+
+// Shared native validation consumes these exact persisted schemas.
+export {
+  headerSchema as nativeHistoryOutboxMutationHeaderSchema,
+  payloadSchema as nativeHistoryOutboxMutationPayloadSchema,
+};

@@ -10,6 +10,14 @@ import * as native from "../../cantrip_worker/src/codex/native-history.ts";
 import * as state from "../../cantrip_worker/src/native-history-state.ts";
 import { nativeInitialTurnSettingsSchema } from "../../packages/protocol/dist/index.js";
 
+import * as outbox from "../../cantrip_worker/src/native-history-outbox.ts";
+import * as mutation from "../../cantrip_worker/src/native-history-outbox-mutations.ts";
+import { nativeHistoryOutboxBaselineSchema } from "../../cantrip_worker/src/native-history-outbox-baseline.ts";
+import {
+  nativeHistoryOutboxRecordSchema,
+  historySequenceSchema,
+} from "../../cantrip_worker/src/native-history-outbox-record.ts";
+
 export const schemas = {
   nativeHistorySourceScopeSchema: journal.scopeSchema,
   nativeHistorySourceManifestSchema: journal.manifestSchema,
@@ -22,6 +30,15 @@ export const schemas = {
   codexNativeHistoryCursorSchema: native.nativeHistoryCursorSchema,
   nativeHistoryStateSchema: state.nativeHistoryStateSchema,
   nativeHistoryInitialTurnSettingsSchema: nativeInitialTurnSettingsSchema,
+  nativeHistoryOutboxScopeSchema: outbox.nativeHistoryOutboxScopeSchema,
+  nativeHistoryOutboxManifestSchema: outbox.nativeHistoryOutboxManifestSchema,
+  nativeHistoryOutboxMutationHeaderSchema:
+    mutation.nativeHistoryOutboxMutationHeaderSchema,
+  nativeHistoryOutboxMutationPayloadSchema:
+    mutation.nativeHistoryOutboxMutationPayloadSchema,
+  nativeHistoryOutboxBaselineSchema,
+  nativeHistoryOutboxRecordSchema,
+  nativeHistoryOutboxSequenceSchema: historySequenceSchema,
 };
 const refinements = new Map([
   [native.nativeHistorySequenceSchema, "history-source-native-sequence"],
