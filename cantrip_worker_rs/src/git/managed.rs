@@ -273,7 +273,7 @@ async fn stash_source(context: &Value) -> Result<(Option<String>, bool)> {
     }
     bail!("The durable stash operation metadata is invalid.")
 }
-async fn restore_stash(
+pub(super) async fn restore_stash(
     cwd: &Path,
     context: &Value,
     branch: Option<&str>,

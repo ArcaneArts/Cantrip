@@ -22,6 +22,15 @@ pub(super) async fn capture_environment(
     scope: &Scope,
     environment: &[(OsString, OsString)],
 ) -> Result<Output> {
+    capture_input(cwd, args, scope, environment, None).await
+}
+async fn capture_input(
+    cwd: &Path,
+    args: &[&str],
+    scope: &Scope,
+    environment: &[(OsString, OsString)],
+    input: Option<&[u8]>,
+) -> Result<Output> {
     let arguments: Vec<OsString> = std::iter::once(OsString::from("-C"))
         .chain(std::iter::once(cwd.as_os_str().to_owned()))
         .chain(args.iter().map(OsString::from))
@@ -29,7 +38,10 @@ pub(super) async fn capture_environment(
     // The collector owns two I/O buffers. Keep that state on the heap instead
     // of duplicating it through each joined status/action future and its poll
     // stack frames on the worker's normal runtime threads.
-    let captured = if environment.is_empty() {
+    let captured = if input.is_some() {
+        Box::pin(scope.capture_input(OsStr::new("git"), &arguments, MAXIMUM, environment, input))
+            .await
+    } else if environment.is_empty() {
         Box::pin(scope.capture(OsStr::new("git"), &arguments, MAXIMUM)).await
     } else {
         Box::pin(scope.capture_environment(OsStr::new("git"), &arguments, MAXIMUM, environment))
@@ -63,6 +75,47 @@ pub(super) async fn capture_environment(
         code: result.code,
         error,
     })
+}
+pub(super) async fn raw_environment(
+    cwd: &Path,
+    args: &[&str],
+    scope: &Scope,
+    environment: &[(OsString, OsString)],
+) -> Result<String> {
+    let output = capture_environment(cwd, args, scope, environment).await?;
+    if output.code != Some(0) || output.overflow {
+        bail!("{}", output.error);
+    }
+    Ok(String::from_utf8_lossy(&output.bytes).into_owned())
+}
+pub(super) async fn input(
+    cwd: &Path,
+    args: &[&str],
+    text: &str,
+    scope: &Scope,
+    environment: &[(OsString, OsString)],
+) -> Result<String> {
+    let output = capture_input(cwd, args, scope, environment, Some(text.as_bytes())).await?;
+    if output.overflow {
+        bail!("Git patch output exceeded the safety limit.");
+    }
+    let stdout = String::from_utf8_lossy(&output.bytes);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if output.code != Some(0) {
+        let stderr = trim(&stderr);
+        let stdout = trim(&stdout);
+        bail!(
+            "{}",
+            if !stderr.is_empty() {
+                stderr
+            } else if !stdout.is_empty() {
+                stdout
+            } else {
+                "Git patch failed.".into()
+            }
+        );
+    }
+    Ok(trim(&format!("{stdout}{stderr}")))
 }
 pub(super) async fn bytes(cwd: &Path, args: &[&str], scope: &Scope) -> Result<Vec<u8>> {
     let output = capture(cwd, args, scope).await?;
