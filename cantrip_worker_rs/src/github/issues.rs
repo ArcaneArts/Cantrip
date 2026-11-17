@@ -71,7 +71,7 @@ pub(super) fn parse_issue(value: &Value) -> Result<Value> {
         "createdAt":string(value,"created_at")?,"updatedAt":string(value,"updated_at")?,"closedAt":nullable_string(value.get("closed_at"))}),
     )
 }
-fn parse_comment(value: &Value) -> Result<Value> {
+pub(super) fn parse_comment(value: &Value) -> Result<Value> {
     Ok(
         json!({"id":string(value,"id")?,"author":login(value.get("user")),"body":value.get("body").filter(|v|v.is_string()).cloned().unwrap_or_else(||json!("")),
         "url":string(value,"html_url")?,"createdAt":string(value,"created_at")?,"updatedAt":string(value,"updated_at")?}),

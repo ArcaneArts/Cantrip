@@ -24,6 +24,18 @@ impl Client {
         arguments: Vec<JsString>,
         scope: Scope,
     ) -> Result<(Value, Value)> {
+        let left_scope = scope.clone();
+        self.join_reads(
+            async move { api::request(&left, &[], &left_scope).await },
+            async move { api::request(&right, &arguments, &scope).await },
+        )
+        .await
+    }
+    pub(super) async fn join_reads<L, R>(&self, left: L, right: R) -> Result<(Value, Value)>
+    where
+        L: std::future::Future<Output = Result<Value>> + Send + 'static,
+        R: std::future::Future<Output = Result<Value>> + Send + 'static,
+    {
         let (sender, receiver) = oneshot::channel();
         {
             let mut reads = self.reads.lock().unwrap();
@@ -43,10 +55,9 @@ impl Client {
                         None
                     }
                 };
-                let (left, right) = tokio::join!(
-                    async { observe(api::request(&left, &[], &scope).await) },
-                    async { observe(api::request(&right, &arguments, &scope).await) }
-                );
+                let (left, right) = tokio::join!(async { observe(left.await) }, async {
+                    observe(right.await)
+                });
                 if let (Some(left), Some(right)) = (left, right)
                     && let Some(reply) = reply.into_inner().unwrap()
                 {

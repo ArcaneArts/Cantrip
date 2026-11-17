@@ -1,0 +1,34 @@
+
+  query CantripPullRequestReviewContext(
+    $owner: String!
+    $repository: String!
+    $number: Int!
+  ) {
+    viewer { login }
+    repository(owner: $owner, name: $repository) {
+      pullRequest(number: $number) {
+        id
+        isMergeQueueEnabled
+        autoMergeRequest { enabledAt mergeMethod }
+        mergeQueueEntry { id position state }
+        reviews(last: 20, states: [PENDING]) {
+          nodes { id state author { login } comments { totalCount } }
+        }
+        reviewThreads(first: 100) {
+          totalCount
+          nodes {
+            id path line startLine diffSide startDiffSide
+            isResolved isOutdated viewerCanResolve viewerCanUnresolve
+            comments(first: 100) {
+              totalCount
+              nodes {
+                databaseId author { login } body url path line startLine
+                diffHunk createdAt updatedAt replyTo { databaseId }
+                pullRequestReview { databaseId id state }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
