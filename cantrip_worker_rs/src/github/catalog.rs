@@ -1,44 +1,17 @@
-use super::{Client, process};
+use super::{
+    Client,
+    api::{pages, parse, string},
+    process,
+};
 use crate::filesystem::Scope;
 use anyhow::{Result, anyhow, bail};
 use cantrip_crypto::checked;
-use cantrip_wire::{Value, coercion, parse_json_text, value::json};
+use cantrip_wire::{Value, value::json};
 use icu_collator::{Collator, options::CollatorOptions};
 
 const MIB: usize = 1024 * 1024;
 const UNAUTHENTICATED: &str =
     "GitHub is not authenticated on this worker. Run `gh auth login` or set GH_TOKEN.";
-fn parse(raw: &str) -> Result<Value> {
-    parse_json_text(raw).map_err(|e| crate::error::WireError(e).into())
-}
-// JavaScript Array.flat() removes exactly one level here, not arbitrary nesting.
-fn pages(value: &Value) -> Result<Vec<&Value>> {
-    let values = value.as_array().ok_or_else(|| {
-        if value.is_null() {
-            anyhow!("Cannot read properties of null (reading 'flat')")
-        } else {
-            anyhow!("pages.flat is not a function")
-        }
-    })?;
-    Ok(values
-        .iter()
-        .flat_map(|value| {
-            value
-                .as_array()
-                .map_or_else(|| vec![value], |values| values.iter().collect())
-        })
-        .collect())
-}
-fn string(value: &Value, field: &str) -> Result<Value> {
-    if value.is_null() {
-        bail!("Cannot read properties of null (reading '{field}')");
-    }
-    Ok(Value::String(match value.get(field) {
-        Some(value) => coercion::string(value)
-            .map_err(|_| anyhow!("Cannot convert object to primitive value"))?,
-        None => "undefined".into(),
-    }))
-}
 fn repository(value: &Value) -> Result<Value> {
     Ok(json!({
         "id":string(value,"id")?,"name":string(value,"name")?,
@@ -112,7 +85,7 @@ impl Client {
         )
         .await?;
         let value = parse(&raw)?;
-        let mut repositories = pages(&value)?
+        let mut repositories = pages(&value, "pages")?
             .into_iter()
             .map(repository)
             .collect::<Result<Vec<_>>>()?;
@@ -167,7 +140,7 @@ impl Client {
         .await?;
         let value = parse(&raw)?;
         let mut organizations = Vec::new();
-        for organization in pages(&value)? {
+        for organization in pages(&value, "pages")? {
             if organization.is_null() {
                 bail!("Cannot destructure property 'login' of 'object null' as it is null.");
             }

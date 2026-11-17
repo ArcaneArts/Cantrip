@@ -22,8 +22,9 @@ host terminal-service supervision, encrypted Git working-tree queries/basic acti
 Git history/inspection, repository graphs/progressive metrics, reviewed branch/remote/tag/submodule/LFS management, partial-patch editing, stash selection/recovery, reviewed commit mutations/conflict
 resolution, managed-operation creation/recovery, native physical worktree management and
 control-channel worktree observations, reviewed cross-worktree dirty changes and
-checkpointed reflog/lost-commit recovery, and worker-scoped GitHub authentication/repository catalog operations.
-Twenty-eight real native outer command handlers are installed:
+checkpointed reflog/lost-commit recovery, worker-scoped GitHub catalog operations,
+and repository-scoped issue detail/mutations and issue/pull-request search.
+Thirty-four real native outer command handlers are installed:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
 `diagnostics.logs.read`, `worker.encryption.refresh`,
 `workspace.repositories.discover`, `workspace.repository-import.validate`,
@@ -44,7 +45,9 @@ and recovery candidate/preview/apply operations),
 `worktree.lock`, `worktree.unlock`, `worktree.prune`, `worktree.status` and
 `worktree.observation.configure`, `github.auth.status`, `github.repositories.cached`,
 `github.repositories.list`, `github.repository-owners.list` and
-`github.repositories.create`.
+`github.repositories.create`, `github.issues.list`, `github.pull-requests.list`,
+`github.issue.get`, `github.issue.create`, `github.issue.comment` and
+`github.issue.close`.
 Encrypted repository operations also serve worktree status.
 Explorer implements navigation, search, Git commit lookup and text/entry editing.
 Paged reads, transfers, watches, media/tail and delegated OS execution are pending.
@@ -105,7 +108,7 @@ loaded by a production service.
 | Enrollment/control transport       | `enrollment.ts`, `heartbeat.ts`, `transport.ts`, routing/observation adapters                                                             | Native enrollment/replacement, heartbeat, readiness/reconnect and credential lifecycle                                                                                    | Actual Rust-server round trip, rotation/reconnect, restart/revocation and HTTP oracles pass. Execution lifetime/admission fencing, reconnect-grace resource callbacks, notifications/events/task acknowledgments, data-plane adapters, congestion fidelity and deployment TLS/proxy configuration remain pending                         |
 | Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | Native endpoint/surface/repository formats, all private surface records and scoped grant helpers                                                                          | Private-state interop covers 12 resource contexts and six content kinds. Remaining protected domains and serving resource lifetimes are pending. Initial surface-grant refresh now completes real host terminal-service reconciliation; delegated OS services remain pending.                                                            |
 | Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Workspace/folders/routing, nine protected host Explorer operations and bound file-document text read/write                                                                | Actual Rust worker/server persists encrypted resources, resolves opaque roots, saves files, rejects replay/mismatched document paths and reopens after restart. Paged readers, media/tail, transfers, activity/watches and delegated OS execution remain pending.                                                                        |
-| Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub authentication/catalog | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, GitHub issues/PRs and replica/provisioning workflows, exports/sharing and delegated OS Git remain pending |
+| Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub catalog, issue detail/mutations and issue/PR search | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, GitHub inbox, PR detail/reviews/lifecycle and replica/provisioning workflows, exports/sharing and delegated OS Git remain pending |
 | History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | Pending                                                                                                                                                                   | Replay/crash/reopen, stable UTF-16 keys/digests, outbox acknowledgments and history reducer/projection fixtures; no cursor resets or uncertain effect replay                                                                                                                                                                             |
 | Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Pending                                                                                                                                                                   | Actual provider protocol fixtures, streaming/media/usage, refresh, cancellation, failure and paid-work bounds                                                                                                                                                                                                                            |
 | Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Pending                                                                                                                                                                   | Manifest verification/probe, native app-server processes, queue ownership, acceptance/commit and restart recovery                                                                                                                                                                                                                        |
@@ -1857,6 +1860,65 @@ this cycle is local macOS ARM64; Windows/Linux runtime acceptance is not claimed
 The production worker default remains Node. No GitHub Actions, deployment,
 physical-device, VM or image campaign is part of this cycle.
 
+## Native GitHub issues and pull-request search subcycle
+
+Reference: `f6fb2000908a850429eeddd87710ece91d6ec7ef`. Delivery branch:
+`agent/manual/rust-worker-github-issues`.
+
+`github/{api,issues,search}.rs` adds six existing commands: issue and PR lists,
+issue detail, issue creation, commenting and closing. The runtime's native
+GitHub client serves direct commands and encrypted repository operations.
+Catalog commands remain worker scoped. Repository-scoped commands use the
+trusted routing repository or the checkout's current GitHub origin, overwrite
+ciphertext repository/path arguments, and reject missing origins and unrelated
+peers. Journal validation remains in place without adding an idle-Git-state
+restriction to issue operations.
+
+The REST path preserves repository validation, JavaScript coercion, labels,
+assignees, dates, comments and schema normalization. Detail reads execute
+concurrently and return the first observed failure promptly. A profile-owned
+read task retains the sibling independently of its response receiver; shutdown
+signals the runtime scope and drains these tasks after command admission ends.
+Comment/close mutations stop after any failed or malformed response rather than
+continuing with later side effects or retrying uncertain mutations. Creation
+preserves title trimming, default body and empty returned comment history.
+Subprocess arguments and public errors retain UTF-16 and platform conversion.
+
+The GraphQL document is copied exactly from the current worker, with argument
+bytes compared against the real Node implementation. Search preserves escaped
+terms, saved views, PR-only filters, dates, opaque cursors and server-side
+ordering. PR mergeability filtering scans at most ten pages, adjusts each page's
+requested size by matched items and reports no misleading total. Ordinary lists
+retain the provider total and one-page behavior. Review/check-state projections
+and malformed/missing cursor failures retain existing contracts.
+
+Four existing TypeScript roots were appended: issue list/detail/create and PR
+summary. All previous 915 roots and 13,691 nodes remain identical. The new corpus
+has 919 roots and 13,709 nodes; Cargo.lock is unchanged.
+
+Local evidence passed 45 actual handler comparisons plus 11 fixed-clock query
+cases, all 54 existing catalog comparisons, 13 encrypted production worker/server
+commands and three existing Node GitHub tests. Direct and linked builds,
+workspace/all-target Clippy with warnings denied, formatting, diff checks and the
+fresh protocol/source audit pass. The new differential driver compares actual
+Node handlers and native processes, including exact gh arguments,
+Unicode/malformed values, concurrent-read failures, mutations that must stop,
+filters, cursors and bounded scans. A separate fixed-clock query oracle covers
+saved views and invalid issue/PR filter combinations. The catalog comparisons
+are rerun because shared JSON/coercion/pagination helpers moved into `api.rs`.
+The production Rust worker/server fixture exercises encrypted project operations,
+checks origin authority against spoofed ciphertext arguments, preserves private
+issue contents, verifies failure boundaries and rechecks origin after restart.
+A held-read fixture proves that an error replies before its sibling completes;
+actual worker restart retires a held sibling through owned process cleanup.
+All gh calls use an owned, network-free executable with Node absent from native
+child PATH; no live GitHub mutation or user authentication is used.
+
+GitHub inbox, PR creation/detail/reviews/lifecycle/checkout, Actions/releases,
+replica provisioning/synchronization and export/sharing remain pending. The
+production worker remains Node. Runtime evidence is local macOS ARM64; no
+Windows/Linux runtime, device/VM campaign, deployment or hosted Actions is claimed.
+
 ## Local development and validation
 
 ```sh
@@ -1867,6 +1929,8 @@ node scripts/worker-rust/cargo.mjs build --example config-fixture --example cryp
 node scripts/worker-rust/cargo.mjs build --example workspace-fixture --example observations-fixture
 node scripts/worker-rust/cargo.mjs build --example explorer-fixture
 node scripts/server-rust/cargo.mjs build -p cantrip-server -p cantrip-worker --bin cantrip-server --bin cantrip-worker --example content-fixture
+node --import tsx scripts/worker-rust/github-issues-compatibility.mjs --binary /absolute/path/to/workspace-fixture
+node --import tsx scripts/worker-rust/workspace-smoke.mjs --github-issues-only --worker /absolute/path/to/cantrip-worker --server /absolute/path/to/cantrip-server
 node --import tsx scripts/worker-rust/github-catalog-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/workspace-smoke.mjs --github-catalog-only --worker /absolute/path/to/cantrip-worker --server /absolute/path/to/cantrip-server
 node --import tsx scripts/worker-rust/config-compatibility.mjs --binary /absolute/path/to/config-fixture

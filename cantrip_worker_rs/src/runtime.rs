@@ -322,6 +322,7 @@ async fn cycle(
             command_failure.get_or_insert(error);
         }
     }
+    let github_closed = github.drain().await;
     let terminals_closed = terminals.close().await;
     let (heartbeat_done, connection_done) = tokio::join!(
         async {
@@ -339,6 +340,7 @@ async fn cycle(
     );
     outgoing.close();
     terminals_closed?;
+    github_closed?;
     encryption_closed?;
     if let Some(error) = command_failure {
         return Err(anyhow!("Worker command task failed: {error}"));

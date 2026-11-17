@@ -33,6 +33,8 @@ import { verifyGit } from "./git-smoke-cases.mjs";
 import { verifyNativeWorktrees } from "./worktree-smoke-cases.mjs";
 import { githubCatalogFixture } from "./github-catalog-fixture.mjs";
 import { verifyGithubCatalog } from "./github-catalog-smoke-cases.mjs";
+import { githubIssuesFixture } from "./github-issues-fixture.mjs";
+import { verifyGithubIssues } from "./github-issues-smoke-cases.mjs";
 import { verifyWorktreeRecovery } from "./worktree-recovery-smoke-cases.mjs";
 // Every Git remote in this owned fixture is local. Preserve production Git
 // policy while explicitly allowing this test's local submodule clones.
@@ -45,6 +47,7 @@ const { values } = parseArgs({
     "observations-only": { type: "boolean", default: false },
     "recovery-only": { type: "boolean", default: false },
     "github-catalog-only": { type: "boolean", default: false },
+    "github-issues-only": { type: "boolean", default: false },
   },
 });
 assert.ok(
@@ -72,14 +75,16 @@ await symlink("/usr/bin/true", path.join(bin, "true"));
 // fixture's explicit native dependencies available while excluding Node.
 for (const name of ["basename", "sed", "uname"])
   await symlink(`/usr/bin/${name}`, path.join(bin, name));
-if (!values["github-catalog-only"])
+if (!values["github-catalog-only"] && !values["github-issues-only"])
   await symlink(
     execFileSync("/usr/bin/which", ["git-lfs"], { encoding: "utf8" }).trim(),
     path.join(bin, "git-lfs"),
   );
 const githubFixture = values["github-catalog-only"]
   ? await githubCatalogFixture(root, bin)
-  : undefined;
+  : values["github-issues-only"]
+    ? await githubIssuesFixture(root, bin)
+    : undefined;
 execFileSync(git, [
   "-c",
   "init.defaultBranch=main",
@@ -432,7 +437,7 @@ try {
   await ready();
   const repository = await repositoryClient();
   let githubCoverage, gitRuntimeCoverage, observationCoverage, recoveryCoverage;
-  if (githubFixture) {
+  if (values["github-catalog-only"]) {
     githubCoverage = await verifyGithubCatalog({
       operation: repository.operation,
       fixture: githubFixture,
@@ -542,7 +547,11 @@ try {
       "actual native checkout validation and durable import",
     );
     assert.equal(await readFile(sentinel, "utf8"), "private dirty content\n");
-    if (!values["observations-only"] && !values["recovery-only"]) {
+    if (
+      !values["observations-only"] &&
+      !values["recovery-only"] &&
+      !values["github-issues-only"]
+    ) {
       const reopenGit = await verifyGit({
         call,
         ownerId: repository.ownerId,
@@ -636,7 +645,19 @@ try {
     await start(worktreePort);
     startWorker();
     await ready();
-    if (values["recovery-only"]) {
+    if (values["github-issues-only"]) {
+      githubCoverage = await verifyGithubIssues({
+        call,
+        ownerId: repository.ownerId,
+        serverId: repository.serverId,
+        componentKey,
+        projectId,
+        workerId,
+        checkout,
+        fixture: githubFixture,
+        restartWorker,
+      });
+    } else if (values["recovery-only"]) {
       recoveryCoverage = await verifyWorktreeRecovery({
         call,
         ownerId: repository.ownerId,
@@ -682,7 +703,9 @@ try {
   if (githubCoverage)
     console.log(
       JSON.stringify({
-        suite: "actual-native-github-catalog-worker-server",
+        suite: values["github-issues-only"]
+          ? "actual-native-github-issues-worker-server"
+          : "actual-native-github-catalog-worker-server",
         passed: true,
         realWorkerAndServer: true,
         nodeAbsentFromWorkerPath: true,

@@ -20,10 +20,16 @@ pub(super) async fn run(args: &[&str], maximum: usize, scope: &Scope) -> Result<
 pub(super) async fn run_values(args: &[JsString], maximum: usize, scope: &Scope) -> Result<String> {
     for (index, argument) in args.iter().enumerate() {
         if argument.units().contains(&0) {
-            bail!(
-                "The argument 'args[{index}]' must be a string without null bytes. Received {}",
-                inspect(argument)
+            let prefix = format!(
+                "The argument 'args[{index}]' must be a string without null bytes. Received "
             );
+            return Err(WireError(JsString::new(
+                prefix
+                    .encode_utf16()
+                    .chain(inspect(argument).units().iter().copied())
+                    .collect(),
+            ))
+            .into());
         }
     }
     let arguments = args
@@ -35,6 +41,10 @@ pub(super) async fn run_values(args: &[JsString], maximum: usize, scope: &Scope)
         .await
         .map_err(|error| {
             if let Some(io) = error.downcast_ref::<std::io::Error>() {
+                #[cfg(unix)]
+                if io.raw_os_error() == Some(libc::E2BIG) {
+                    return anyhow!("spawn E2BIG");
+                }
                 match io.kind() {
                     std::io::ErrorKind::NotFound => return anyhow!("spawn gh ENOENT"),
                     std::io::ErrorKind::PermissionDenied => return anyhow!("spawn gh EACCES"),
@@ -60,20 +70,39 @@ pub(super) async fn run_values(args: &[JsString], maximum: usize, scope: &Scope)
     }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
-fn inspect(value: &JsString) -> String {
-    let quote = if !value.units().contains(&39) {
+fn inspect(value: &JsString) -> JsString {
+    // Node's ERR_INVALID_ARG_VALUE renders inspect's first 10,000 UTF-16
+    // units, then clips the rendered text to 128 units (which may split a
+    // surrogate pair). Any inspect trailer is beyond that error-message cap.
+    let value = &value.units()[..value.len().min(10_000)];
+    let rendered = if value.len() > 76 {
+        value
+            .split_inclusive(|unit| *unit == 10)
+            .map(quote_string)
+            .collect::<Vec<_>>()
+            .join(" +\n  ")
+    } else {
+        quote_string(value)
+    };
+    let mut units = rendered.encode_utf16().collect::<Vec<_>>();
+    if units.len() > 128 {
+        units.truncate(128);
+        units.extend("...".encode_utf16());
+    }
+    JsString::new(units)
+}
+fn quote_string(value: &[u16]) -> String {
+    let quote = if !value.contains(&39) {
         '\''
-    } else if !value.units().contains(&34) {
+    } else if !value.contains(&34) {
         '"'
-    } else if !value.units().contains(&96)
-        && !value.units().windows(2).any(|pair| pair == [36, 123])
-    {
+    } else if !value.contains(&96) && !value.windows(2).any(|pair| pair == [36, 123]) {
         '`'
     } else {
         '\''
     };
     let mut result = quote.to_string();
-    for ch in std::char::decode_utf16(value.units().iter().copied()) {
+    for ch in std::char::decode_utf16(value.iter().copied()) {
         let ch = match ch {
             Ok(ch) => ch,
             Err(error) => {
