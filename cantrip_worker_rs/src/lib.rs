@@ -15,6 +15,7 @@ pub mod logging;
 pub mod platform;
 pub mod protected_content;
 pub mod protected_secrets;
+pub mod replicas;
 pub mod repository_operations;
 pub mod routing;
 pub mod runtime;

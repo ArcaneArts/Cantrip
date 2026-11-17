@@ -24,7 +24,8 @@ resolution, managed-operation creation/recovery, native physical worktree manage
 control-channel worktree observations, reviewed cross-worktree dirty changes and
 checkpointed reflog/lost-commit recovery, worker-scoped GitHub catalog operations,
 and repository-scoped issue detail/mutations, issue/PR search, PR inspection, creation, reviews, lifecycle, checkout preparation and agent context,
-GitHub inbox, Actions and releases.
+GitHub inbox, Actions and releases. The native replica placement/ownership
+foundation is also implemented; production replica command adapters remain pending.
 Fifty-five real native outer command handlers are installed:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
 `diagnostics.logs.read`, `worker.encryption.refresh`,
@@ -2146,12 +2147,59 @@ ARM64; no Windows/Linux execution, hosted Actions, live GitHub mutation, deploym
 physical-device or VM campaign is claimed. The shared Cargo cache remains 28 GiB;
 owned disposable repositories/profiles are removed after retaining small reports.
 
+## Native replica placement and ownership subcycle
+
+Reference: `e3792cd25a7558c96ebd673653978c2e2b3e8c00`. Delivery branch:
+`agent/manual/rust-worker-replica-placement`.
+
+The native `replicas::placement` manager implements the existing placement
+mechanism: managed/direct/managed-link preparation, canonical parents, exact path
+validation, staging claims/cleanup, private ownership markers, registry records,
+ownership classification/verification, link creation/repair/removal, release and
+forgetting. It reuses wire values, configuration paths and host private files.
+This is the foundation for provisioning/synchronization/removal; those production
+command adapters are not delivered by this cycle, and the outer-handler count
+remains 55. Production still selects Node.
+
+Registry parsing preserves the existing version, field order, optional values and
+failure behavior. Writes serialize without poisoning the queue after rejection.
+Foreign staging, replaced links and retained user storage remain untouched. Release
+persists the released record before attempting marker cleanup, including when a
+damaged marker makes cleanup fail. Marker/registry publication retains exclusive
+private temporary files and atomic rename.
+
+Windows path normalization preserves Node's lexical drive/UNC/namespace, trailing
+separator, reserved-device and UTF-16 behavior. Windows directory links use the
+Windows-only pinned `junction` 2.1.0 dependency with default features disabled.
+Broken junction recognition uses its target reader; cleanup removes the directory
+entry itself instead of clearing only reparse metadata. All 389 previous external
+Cargo package identities/checksums remain unchanged; only this package is added.
+
+Local evidence passes 69 actual Node/native comparisons over an owned filesystem,
+comparing results, exact persisted bytes/key order, modes and link targets. They
+cover all manager methods, placement modes, ownership conflicts, malformed and
+symlinked registries, private markers, staging ownership, retained releases,
+missing/broken/replaced links, a failed marker cleanup after durable release,
+concurrent writes and queue recovery after rejection. Native fixture PATH is
+empty. A focused native unit test covers 32 actual Node 24 Windows-normalization
+vectors, including unpaired UTF-16; all 14 existing Node workspace-link tests pass.
+Worker all-target compilation/Clippy, the native fixture build, formatting and diff
+checks pass. No shared crate behavior, protocol schema or server consumer changes.
+
+Filesystem runtime evidence is macOS ARM64. Windows path arithmetic is exercised
+locally, but Windows junction/process runtime and Linux runtime were not executed.
+No hosted Actions, live remote operation, full repository suite, deployment or
+device/VM campaign was used. Owned fixture directories are removed; the existing
+bounded Cargo cache is reused.
+
 ## Local development and validation
 
 ```sh
 pnpm worker:rust:build
 pnpm worker:rust:check
 pnpm worker:rust:test
+node scripts/worker-rust/cargo.mjs build --example replica-placement-fixture
+node --import tsx scripts/worker-rust/replica-placement-compatibility.mjs --binary /absolute/path/to/replica-placement-fixture
 node scripts/worker-rust/cargo.mjs build --example config-fixture --example crypto-fixture --example grant-fixture --example content-fixture
 node scripts/worker-rust/cargo.mjs build --example workspace-fixture --example observations-fixture
 node scripts/worker-rust/cargo.mjs build --example explorer-fixture
