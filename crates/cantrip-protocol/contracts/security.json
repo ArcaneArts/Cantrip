@@ -925,7 +925,9 @@
     "githubPullRequestCommitsSchema": 13836,
     "githubPullRequestChecksSchema": 13849,
     "githubPullRequestDetailSchema": 13869,
-    "githubPullRequestCreateResultSchema": 13870
+    "githubPullRequestCreateResultSchema": 13870,
+    "githubPullRequestLifecyclePreviewSchema": 13873,
+    "githubPullRequestAgentContextSchema": 13891
   },
   "nodes": [
     {
@@ -83681,6 +83683,200 @@
         { "check": "min_length", "minimum": 1, "when": "length" },
         { "check": "max_length", "maximum": 1000, "when": "length" }
       ]
-    }
+    },
+    {
+      "type": "object",
+      "name": "githubPullRequestLifecyclePreviewSchema",
+      "shape": {
+        "action": 3614,
+        "number": 13874,
+        "title": 13875,
+        "state": 3446,
+        "draft": 13876,
+        "headRef": 13877,
+        "headSha": 13878,
+        "baseRef": 13879,
+        "baseSha": 13880,
+        "mergeable": 13881,
+        "mergeableState": 13883,
+        "checksState": 8204,
+        "reviewDecision": 13884,
+        "destructive": 13885,
+        "confirmationPhrase": 13886,
+        "warnings": 13888,
+        "token": 13890
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 10000, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{40}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{40}$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{40}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{40}$/u"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 13882, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": [
+        "approved",
+        "changes-requested",
+        "review-required",
+        "reviewed",
+        "none",
+        "unknown"
+      ],
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 13887, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 13889,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{64}$/u"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "githubPullRequestAgentContextSchema",
+      "shape": {
+        "intent": 3543,
+        "pullRequest": 13869,
+        "activeReviewThreads": 13892,
+        "failedChecks": 13893
+      },
+      "catchall": 13906,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 13761,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "array",
+      "element": 13894,
+      "checks": [{ "check": "max_length", "maximum": 20, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "githubPullRequestFailedCheckEvidenceSchema",
+      "shape": {
+        "checkId": 13895,
+        "name": 13896,
+        "url": 13897,
+        "summary": 13899,
+        "logExcerpt": 13901,
+        "logUnavailableReason": 13903
+      },
+      "catchall": 13905,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 13898, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "string_format", "format": "url", "abort": false }]
+    },
+    { "type": "nullable", "innerType": 13900, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 13902, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 13904, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 2000, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] }
   ]
 }

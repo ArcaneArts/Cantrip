@@ -1,4 +1,4 @@
-//! Native GitHub catalog, issues, PR inspection/creation and review mutations. The protected dispatcher supplies
+//! Native GitHub catalog, issues and pull-request workflows. The protected dispatcher supplies
 //! trusted repository bindings; only the catalog operations are worker scoped.
 mod api;
 mod catalog;
@@ -47,6 +47,10 @@ impl Client {
                 | "github.pull-request.review.comment"
                 | "github.pull-request.review.reply"
                 | "github.pull-request.review.mutate"
+                | "github.pull-request.lifecycle.preview"
+                | "github.pull-request.lifecycle.apply"
+                | "github.pull-request.checkout.prepare"
+                | "github.pull-request.agent-context"
         )
     }
     pub fn requires_checkout(kind: &str) -> bool {
@@ -90,6 +94,12 @@ impl Client {
             | "github.pull-request.review.comment"
             | "github.pull-request.review.reply"
             | "github.pull-request.review.mutate" => self.mutate_pull(command, scope).await,
+            "github.pull-request.lifecycle.preview" => {
+                self.preview_pull(command, &command["action"], scope).await
+            }
+            "github.pull-request.lifecycle.apply" => self.apply_pull(command, scope).await,
+            "github.pull-request.checkout.prepare" => self.checkout_pull(command, scope).await,
+            "github.pull-request.agent-context" => self.agent_pull(command, scope).await,
             _ => bail!("Native GitHub command is not implemented."),
         }
     }

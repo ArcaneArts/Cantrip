@@ -1,0 +1,7 @@
+
+  mutation CantripEnqueuePullRequest($pullRequestId: ID!, $head: GitObjectID!) {
+    enqueuePullRequest(input: {
+      pullRequestId: $pullRequestId
+      expectedHeadOid: $head
+    }) { mergeQueueEntry { id } }
+  }
