@@ -14,6 +14,14 @@ pub(super) struct Output {
     pub stderr: Vec<u8>,
 }
 pub(super) async fn capture(cwd: &Path, args: &[&str], scope: &Scope) -> Result<Output> {
+    capture_environment(cwd, args, scope, &[]).await
+}
+pub(super) async fn capture_environment(
+    cwd: &Path,
+    args: &[&str],
+    scope: &Scope,
+    environment: &[(OsString, OsString)],
+) -> Result<Output> {
     let arguments: Vec<OsString> = std::iter::once(OsString::from("-C"))
         .chain(std::iter::once(cwd.as_os_str().to_owned()))
         .chain(args.iter().map(OsString::from))
@@ -21,20 +29,24 @@ pub(super) async fn capture(cwd: &Path, args: &[&str], scope: &Scope) -> Result<
     // The collector owns two I/O buffers. Keep that state on the heap instead
     // of duplicating it through each joined status/action future and its poll
     // stack frames on the worker's normal runtime threads.
-    let result = Box::pin(scope.capture(OsStr::new("git"), &arguments, MAXIMUM))
-        .await
-        .map_err(|error| {
-            if let Some(io) = error.downcast_ref::<std::io::Error>() {
-                let code = match io.kind() {
-                    std::io::ErrorKind::NotFound => "ENOENT",
-                    std::io::ErrorKind::PermissionDenied => "EACCES",
-                    _ => return error,
-                };
-                anyhow!("spawn git {code}")
-            } else {
-                error
-            }
-        })?;
+    let captured = if environment.is_empty() {
+        Box::pin(scope.capture(OsStr::new("git"), &arguments, MAXIMUM)).await
+    } else {
+        Box::pin(scope.capture_environment(OsStr::new("git"), &arguments, MAXIMUM, environment))
+            .await
+    };
+    let result = captured.map_err(|error| {
+        if let Some(io) = error.downcast_ref::<std::io::Error>() {
+            let code = match io.kind() {
+                std::io::ErrorKind::NotFound => "ENOENT",
+                std::io::ErrorKind::PermissionDenied => "EACCES",
+                _ => return error,
+            };
+            anyhow!("spawn git {code}")
+        } else {
+            error
+        }
+    })?;
     let error = match result.overflow {
         Some(stream) => format!("{stream} maxBuffer length exceeded"),
         None => format!(
@@ -71,7 +83,15 @@ pub(super) async fn text(cwd: &Path, args: &[&str], scope: &Scope) -> Result<Str
 /// Preserve the action helper's stdout+stderr output and error priority; query
 /// helpers above retain their original execFile-style failure messages.
 pub(super) async fn run(cwd: &Path, args: &[&str], scope: &Scope) -> Result<String> {
-    let output = capture(cwd, args, scope).await?;
+    run_environment(cwd, args, scope, &[]).await
+}
+pub(super) async fn run_environment(
+    cwd: &Path,
+    args: &[&str],
+    scope: &Scope,
+    environment: &[(OsString, OsString)],
+) -> Result<String> {
+    let output = capture_environment(cwd, args, scope, environment).await?;
     let stdout = String::from_utf8_lossy(&output.bytes);
     let stderr = String::from_utf8_lossy(&output.stderr);
     if output.code != Some(0) || output.overflow {

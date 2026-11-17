@@ -895,6 +895,10 @@ export const contractRoots = [
   "gitRevisionCandidateListSchema",
   "gitComparisonSchema",
   "gitRevisionFileDiffSchema",
+  "gitManagedOperationContextSchema",
+  "gitManagedOperationWorkerStateSchema",
+  "gitManagedOperationResponseSchema",
+  "gitStashListSchema",
 ];
 
 export const projectExportContractRoots = [
