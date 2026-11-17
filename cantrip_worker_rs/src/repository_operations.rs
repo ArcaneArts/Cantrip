@@ -22,6 +22,7 @@ pub struct RepositoryOperations {
     replay: Mutex<RepositoryOperationReplayGuard>,
     profile: Option<(PathBuf, JsString)>,
     worktrees: Option<Arc<crate::git::worktrees::Manager>>,
+    github: Option<Arc<crate::github::Client>>,
 }
 impl RepositoryOperations {
     pub fn new(directory: &Path, worker: &JsString) -> Self {
@@ -29,10 +30,16 @@ impl RepositoryOperations {
             replay: Mutex::default(),
             profile: Some((directory.to_owned(), worker.clone())),
             worktrees: Some(Arc::new(crate::git::worktrees::Manager::new(directory))),
+            github: Some(Arc::new(crate::github::Client::new(directory))),
         }
     }
     pub fn worktrees(&self) -> Result<Arc<crate::git::worktrees::Manager>> {
         self.worktrees
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Repository worker profile is not configured."))
+    }
+    pub fn github(&self) -> Result<Arc<crate::github::Client>> {
+        self.github
             .clone()
             .ok_or_else(|| anyhow::anyhow!("Repository worker profile is not configured."))
     }
@@ -73,6 +80,19 @@ impl RepositoryOperations {
             }
             scope.check()?;
             match kind {
+                kind if crate::github::Client::supports(kind) => {
+                    let (directory, worker) = self.profile.as_ref().ok_or_else(|| anyhow::anyhow!("Repository worker profile is not configured."))?;
+                    // Source reads the scoped operation journal even for catalog
+                    // requests, but does not require a checkout or idle Git state.
+                    crate::git::stored::read(directory, &command, &Value::String(service.owner_id()?), &Value::String(worker.clone())).await?;
+                    if command.get("peerWorktree").is_some_and(|value| !value.is_null()) {
+                        bail!("A peer worktree is only valid for a worktree changes move.");
+                    }
+                    let mut trusted = request["arguments"].clone();
+                    trusted["type"] = json!(kind);
+                    let trusted = checked("workerCommandSchema", &trusted)?;
+                    self.github()?.execute(&trusted, scope).await
+                }
                 "repository.metadata.register" | "repository.metadata.resolve" => {
                     let values = checked(
                         "repositoryMetadataValuesSchema",

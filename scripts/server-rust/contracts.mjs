@@ -934,6 +934,11 @@ export const contractRoots = [
   "gitRecoveryCandidateListSchema",
   "gitRecoveryPreviewSchema",
   "gitRecoveryResultSchema",
+  "githubAuthStatusSchema",
+  "githubWorkerRepositorySchema",
+  "githubWorkerRepositoryListSchema",
+  "githubRepositoryOwnerListSchema",
+  "githubRepositoryCreateSchema",
 ];
 
 export const projectExportContractRoots = [

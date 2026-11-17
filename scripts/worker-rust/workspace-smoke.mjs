@@ -31,6 +31,8 @@ import {
 import { verifyTerminalServices } from "./terminal-services-smoke.mjs";
 import { verifyGit } from "./git-smoke-cases.mjs";
 import { verifyNativeWorktrees } from "./worktree-smoke-cases.mjs";
+import { githubCatalogFixture } from "./github-catalog-fixture.mjs";
+import { verifyGithubCatalog } from "./github-catalog-smoke-cases.mjs";
 import { verifyWorktreeRecovery } from "./worktree-recovery-smoke-cases.mjs";
 // Every Git remote in this owned fixture is local. Preserve production Git
 // policy while explicitly allowing this test's local submodule clones.
@@ -42,6 +44,7 @@ const { values } = parseArgs({
     server: { type: "string" },
     "observations-only": { type: "boolean", default: false },
     "recovery-only": { type: "boolean", default: false },
+    "github-catalog-only": { type: "boolean", default: false },
   },
 });
 assert.ok(
@@ -69,10 +72,14 @@ await symlink("/usr/bin/true", path.join(bin, "true"));
 // fixture's explicit native dependencies available while excluding Node.
 for (const name of ["basename", "sed", "uname"])
   await symlink(`/usr/bin/${name}`, path.join(bin, name));
-await symlink(
-  execFileSync("/usr/bin/which", ["git-lfs"], { encoding: "utf8" }).trim(),
-  path.join(bin, "git-lfs"),
-);
+if (!values["github-catalog-only"])
+  await symlink(
+    execFileSync("/usr/bin/which", ["git-lfs"], { encoding: "utf8" }).trim(),
+    path.join(bin, "git-lfs"),
+  );
+const githubFixture = values["github-catalog-only"]
+  ? await githubCatalogFixture(root, bin)
+  : undefined;
 execFileSync(git, [
   "-c",
   "init.defaultBranch=main",
@@ -163,6 +170,7 @@ function startWorker(code) {
     CANTRIP_WORKER_ID: workerId,
     CANTRIP_SERVER_URL: server.origin,
     ...(code ? { CANTRIP_WORKER_ENROLLMENT_CODE: code } : {}),
+    ...(githubFixture ? { GH_TOKEN: "", GITHUB_TOKEN: "" } : {}),
   };
   delete workerEnvironment.CANTRIP_WORKER_TOKEN;
   child = spawn(path.resolve(values.worker), ["--shutdown-on-stdin-close"], {
@@ -382,6 +390,7 @@ async function repositoryClient() {
     }
   }
   return {
+    operation,
     ownerId,
     serverId,
     async attachRoot(id, rootPath, nameProtection) {
@@ -422,243 +431,265 @@ try {
   startWorker(enrollment.body.code);
   await ready();
   const repository = await repositoryClient();
-  const attach = repository.attachRoot;
-  const nameProtection =
-    discoveryWireFixtures(projectLabel).encryptedProjectWorkspaceCreateSchema[0]
-      .nameProtection;
-  const rejected = await attach(
-    "88888888-8888-4888-8888-000000000008",
-    path.join(checkout, "untouched.txt"),
-    nameProtection,
-  );
-  assert.equal(rejected.status, 200, JSON.stringify(rejected));
-  assert.equal(rejected.body.workspace, null);
-  assert.equal(rejected.outcome.ok, false);
-  assert.equal(rejected.outcome.code, "invalid-root");
-  const created = await attach(workspaceId, attached, nameProtection);
-  assert.equal(created.status, 201, JSON.stringify(created));
-  assert.equal(created.outcome.ok, true);
-  assert.deepEqual(
-    created.outcome.result,
-    created.body.operation.workspaceRootAttachment,
-  );
-  assert.equal(created.body.workspace.id, workspaceId);
-  assert.equal(
-    created.body.workspace.storage.rootPathHandle,
-    created.outcome.result.rootPathHandle,
-  );
-  await eventually(
-    () => call("GET", `/api/workspaces/${workspaceId}/repository-discovery`),
-    (value) => {
-      assert.equal(value.status, 200);
-      assert.equal(value.body.job.state, "succeeded");
-    },
-    "initial discovery after fresh encrypted attachment",
-  );
-  await stopWorker();
-  await server.close();
-  server = undefined;
-  await start(port);
-  startWorker();
-  await ready();
-  const queued = await call(
-    "POST",
-    `/api/workspaces/${workspaceId}/repository-discovery`,
-    {},
-  );
-  assert.equal(queued.status, 202, JSON.stringify(queued));
-  const snapshot = await eventually(
-    () => call("GET", `/api/workspaces/${workspaceId}/repository-discovery`),
-    (value) => {
-      assert.equal(value.status, 200);
-      assert.equal(
-        value.body.job.state,
-        "succeeded",
-        JSON.stringify(value.body),
-      );
-      assert.equal(value.body.candidates.length, 1);
-    },
-    "actual native discovery job",
-  );
-  const candidate = snapshot.body.candidates[0];
-  assert.match(candidate.pathHandle, /^ctrr_[A-Za-z0-9_-]{43}$/);
-  assert.equal(candidate.classification, "local-git");
-  assert.equal(snapshot.body.job.counts.candidates, 1);
-  assert.equal(
-    JSON.stringify(snapshot).includes(attached),
-    false,
-    "worker paths remain private",
-  );
-  const reopened = new WorkerRoutingRegistry(workerDirectory);
-  assert.equal(
-    (await reopened.resolveMetadata({ path: candidate.pathHandle })).path,
-    checkout,
-  );
-  const imported = await call(
-    "POST",
-    `/api/workspaces/${workspaceId}/repository-imports`,
-    {
-      expectedStateRevision: snapshot.body.job.stateRevision,
-      candidates: [
-        { candidateId: candidate.id, projectId, nameProtection: projectLabel },
-      ],
-    },
-  );
-  assert.equal(imported.status, 202, JSON.stringify(imported));
-  await eventually(
-    () => call("GET", `/api/workspaces/${workspaceId}/repository-discovery`),
-    (value) => {
-      assert.equal(value.status, 200);
-      assert.equal(
-        value.body.candidates[0].importState,
-        "imported",
-        JSON.stringify(value.body),
-      );
-      assert.equal(value.body.candidates[0].projectId, projectId);
-    },
-    "actual native checkout validation and durable import",
-  );
-  assert.equal(await readFile(sentinel, "utf8"), "private dirty content\n");
-  let gitRuntimeCoverage;
-  if (!values["observations-only"] && !values["recovery-only"]) {
-    const reopenGit = await verifyGit({
-      call,
-      ownerId: repository.ownerId,
-      serverId: repository.serverId,
-      componentKey,
-      projectId,
+  let githubCoverage, gitRuntimeCoverage, observationCoverage, recoveryCoverage;
+  if (githubFixture) {
+    githubCoverage = await verifyGithubCatalog({
+      operation: repository.operation,
+      fixture: githubFixture,
       workerId,
       workerDirectory,
-      checkout,
-      restartWorker,
-    });
-
-    await verifyManagedFolders({
-      call,
-      eventually,
-      root,
-      workerDirectory,
-      workerId,
-      registerMetadata: repository.registerMetadata,
-      projectLabel,
-      workspaceName: nameProtection,
-    });
-    const metadataKey = cryptoClient.deriveComponentKey({
-      accountMasterKey: master,
-      ownerId: "00000000-0000-0000-0000-000000000001",
-      component: "private-surface-metadata",
-      keyRevision: 1,
-    });
-    let reopenExplorer, reopenTerminals;
-    try {
-      const identity = JSON.parse(
-        await readFile(
-          path.join(workerDirectory, "worker-encryption-key.json"),
-          "utf8",
-        ),
-      );
-      reopenExplorer = await verifyExplorer({
-        call,
-        serverId: identity.serverId,
-        ownerId: identity.ownerId,
-        surfaceKey,
-        metadataKey,
-        projectId,
-        workerId,
-        checkout,
-      });
-      reopenTerminals = await verifyTerminalServices({
-        call,
-        eventually,
-        ownerId: identity.ownerId,
-        serverId: identity.serverId,
-        surfaceKey,
-        metadataKey,
-        projectId,
-        checkout,
-      });
-    } finally {
-      metadataKey.fill(0);
-    }
-    await restartWorker();
-    await reopenExplorer();
-    await reopenTerminals();
-    gitRuntimeCoverage = await reopenGit();
-  }
-  // Match the existing actual-project-worktrees catalog fixture. Production
-  // servers and workers are stopped while the owned profile is seeded natively.
-  const worktreePort = Number(new URL(server.origin).port);
-  await stopWorker();
-  await server.close();
-  server = undefined;
-  const seed = await repositoryFixture({
-    kind: "rust",
-    root,
-    dataDirectory: serverDirectory,
-    executable: path.join(
-      path.dirname(path.resolve(values.server)),
-      "examples",
-      "project-repository-fixture" +
-        (process.platform === "win32" ? ".exe" : ""),
-    ),
-    databaseMode: "pglite",
-  });
-  try {
-    await seed.seed(
-      "UPDATE projects SET origin_kind='github',folder_management=NULL,git_capability=true,github_capability=true,worktree_policy='agent-managed',github_repository_blind_index='native-worktree-fixture' WHERE id=" +
-        literal(projectId),
-    );
-  } finally {
-    await seed.close();
-  }
-  await start(worktreePort);
-  startWorker();
-  await ready();
-  let observationCoverage;
-  let recoveryCoverage;
-  if (values["recovery-only"]) {
-    recoveryCoverage = await verifyWorktreeRecovery({
-      call,
-      ownerId: repository.ownerId,
-      serverId: repository.serverId,
-      componentKey,
-      projectId,
-      workerId,
-      workerDirectory,
-      checkout,
-      restartWorker,
-      registerMetadata: repository.registerMetadata,
-    });
-  } else if (values["observations-only"]) {
-    const { verifyNativeObservations } =
-      await import("./observation-smoke-cases.mjs");
-    observationCoverage = await verifyNativeObservations({
-      call,
-      origin: server.origin,
-      projectId,
-      workerId,
-      workerDirectory,
-      checkout,
       restartWorker,
     });
   } else {
-    await verifyNativeWorktrees({
-      call,
-      ownerId: repository.ownerId,
-      serverId: repository.serverId,
-      componentKey,
-      projectId,
-      workerId,
-      workerDirectory,
+    const attach = repository.attachRoot;
+    const nameProtection =
+      discoveryWireFixtures(projectLabel)
+        .encryptedProjectWorkspaceCreateSchema[0].nameProtection;
+    const rejected = await attach(
+      "88888888-8888-4888-8888-000000000008",
+      path.join(checkout, "untouched.txt"),
+      nameProtection,
+    );
+    assert.equal(rejected.status, 200, JSON.stringify(rejected));
+    assert.equal(rejected.body.workspace, null);
+    assert.equal(rejected.outcome.ok, false);
+    assert.equal(rejected.outcome.code, "invalid-root");
+    const created = await attach(workspaceId, attached, nameProtection);
+    assert.equal(created.status, 201, JSON.stringify(created));
+    assert.equal(created.outcome.ok, true);
+    assert.deepEqual(
+      created.outcome.result,
+      created.body.operation.workspaceRootAttachment,
+    );
+    assert.equal(created.body.workspace.id, workspaceId);
+    assert.equal(
+      created.body.workspace.storage.rootPathHandle,
+      created.outcome.result.rootPathHandle,
+    );
+    await eventually(
+      () => call("GET", `/api/workspaces/${workspaceId}/repository-discovery`),
+      (value) => {
+        assert.equal(value.status, 200);
+        assert.equal(value.body.job.state, "succeeded");
+      },
+      "initial discovery after fresh encrypted attachment",
+    );
+    await stopWorker();
+    await server.close();
+    server = undefined;
+    await start(port);
+    startWorker();
+    await ready();
+    const queued = await call(
+      "POST",
+      `/api/workspaces/${workspaceId}/repository-discovery`,
+      {},
+    );
+    assert.equal(queued.status, 202, JSON.stringify(queued));
+    const snapshot = await eventually(
+      () => call("GET", `/api/workspaces/${workspaceId}/repository-discovery`),
+      (value) => {
+        assert.equal(value.status, 200);
+        assert.equal(
+          value.body.job.state,
+          "succeeded",
+          JSON.stringify(value.body),
+        );
+        assert.equal(value.body.candidates.length, 1);
+      },
+      "actual native discovery job",
+    );
+    const candidate = snapshot.body.candidates[0];
+    assert.match(candidate.pathHandle, /^ctrr_[A-Za-z0-9_-]{43}$/);
+    assert.equal(candidate.classification, "local-git");
+    assert.equal(snapshot.body.job.counts.candidates, 1);
+    assert.equal(
+      JSON.stringify(snapshot).includes(attached),
+      false,
+      "worker paths remain private",
+    );
+    const reopened = new WorkerRoutingRegistry(workerDirectory);
+    assert.equal(
+      (await reopened.resolveMetadata({ path: candidate.pathHandle })).path,
       checkout,
-      restartWorker,
-      registerMetadata: repository.registerMetadata,
+    );
+    const imported = await call(
+      "POST",
+      `/api/workspaces/${workspaceId}/repository-imports`,
+      {
+        expectedStateRevision: snapshot.body.job.stateRevision,
+        candidates: [
+          {
+            candidateId: candidate.id,
+            projectId,
+            nameProtection: projectLabel,
+          },
+        ],
+      },
+    );
+    assert.equal(imported.status, 202, JSON.stringify(imported));
+    await eventually(
+      () => call("GET", `/api/workspaces/${workspaceId}/repository-discovery`),
+      (value) => {
+        assert.equal(value.status, 200);
+        assert.equal(
+          value.body.candidates[0].importState,
+          "imported",
+          JSON.stringify(value.body),
+        );
+        assert.equal(value.body.candidates[0].projectId, projectId);
+      },
+      "actual native checkout validation and durable import",
+    );
+    assert.equal(await readFile(sentinel, "utf8"), "private dirty content\n");
+    if (!values["observations-only"] && !values["recovery-only"]) {
+      const reopenGit = await verifyGit({
+        call,
+        ownerId: repository.ownerId,
+        serverId: repository.serverId,
+        componentKey,
+        projectId,
+        workerId,
+        workerDirectory,
+        checkout,
+        restartWorker,
+      });
+
+      await verifyManagedFolders({
+        call,
+        eventually,
+        root,
+        workerDirectory,
+        workerId,
+        registerMetadata: repository.registerMetadata,
+        projectLabel,
+        workspaceName: nameProtection,
+      });
+      const metadataKey = cryptoClient.deriveComponentKey({
+        accountMasterKey: master,
+        ownerId: "00000000-0000-0000-0000-000000000001",
+        component: "private-surface-metadata",
+        keyRevision: 1,
+      });
+      let reopenExplorer, reopenTerminals;
+      try {
+        const identity = JSON.parse(
+          await readFile(
+            path.join(workerDirectory, "worker-encryption-key.json"),
+            "utf8",
+          ),
+        );
+        reopenExplorer = await verifyExplorer({
+          call,
+          serverId: identity.serverId,
+          ownerId: identity.ownerId,
+          surfaceKey,
+          metadataKey,
+          projectId,
+          workerId,
+          checkout,
+        });
+        reopenTerminals = await verifyTerminalServices({
+          call,
+          eventually,
+          ownerId: identity.ownerId,
+          serverId: identity.serverId,
+          surfaceKey,
+          metadataKey,
+          projectId,
+          checkout,
+        });
+      } finally {
+        metadataKey.fill(0);
+      }
+      await restartWorker();
+      await reopenExplorer();
+      await reopenTerminals();
+      gitRuntimeCoverage = await reopenGit();
+    }
+    // Match the existing actual-project-worktrees catalog fixture. Production
+    // servers and workers are stopped while the owned profile is seeded natively.
+    const worktreePort = Number(new URL(server.origin).port);
+    await stopWorker();
+    await server.close();
+    server = undefined;
+    const seed = await repositoryFixture({
+      kind: "rust",
+      root,
+      dataDirectory: serverDirectory,
+      executable: path.join(
+        path.dirname(path.resolve(values.server)),
+        "examples",
+        "project-repository-fixture" +
+          (process.platform === "win32" ? ".exe" : ""),
+      ),
+      databaseMode: "pglite",
     });
+    try {
+      await seed.seed(
+        "UPDATE projects SET origin_kind='github',folder_management=NULL,git_capability=true,github_capability=true,worktree_policy='agent-managed',github_repository_blind_index='native-worktree-fixture' WHERE id=" +
+          literal(projectId),
+      );
+    } finally {
+      await seed.close();
+    }
+    await start(worktreePort);
+    startWorker();
+    await ready();
+    if (values["recovery-only"]) {
+      recoveryCoverage = await verifyWorktreeRecovery({
+        call,
+        ownerId: repository.ownerId,
+        serverId: repository.serverId,
+        componentKey,
+        projectId,
+        workerId,
+        workerDirectory,
+        checkout,
+        restartWorker,
+        registerMetadata: repository.registerMetadata,
+      });
+    } else if (values["observations-only"]) {
+      const { verifyNativeObservations } =
+        await import("./observation-smoke-cases.mjs");
+      observationCoverage = await verifyNativeObservations({
+        call,
+        origin: server.origin,
+        projectId,
+        workerId,
+        workerDirectory,
+        checkout,
+        restartWorker,
+      });
+    } else {
+      await verifyNativeWorktrees({
+        call,
+        ownerId: repository.ownerId,
+        serverId: repository.serverId,
+        componentKey,
+        projectId,
+        workerId,
+        workerDirectory,
+        checkout,
+        restartWorker,
+        registerMetadata: repository.registerMetadata,
+      });
+    }
   }
   await stopWorker();
   await server.close();
   server = undefined;
-  if (values["recovery-only"])
+  if (githubCoverage)
+    console.log(
+      JSON.stringify({
+        suite: "actual-native-github-catalog-worker-server",
+        passed: true,
+        realWorkerAndServer: true,
+        nodeAbsentFromWorkerPath: true,
+        ...githubCoverage,
+      }),
+    );
+  else if (values["recovery-only"])
     console.log(
       JSON.stringify({
         suite: "actual-native-worktree-recovery-worker-server",

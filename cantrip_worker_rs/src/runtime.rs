@@ -126,6 +126,7 @@ async fn cycle(
         &worker,
     ));
     let worktrees = repository_operations.worktrees()?;
+    let github = repository_operations.github()?;
     let surface_replay = Arc::new(Mutex::new(
         crate::protected_content::SurfaceStreamReplayGuard::default(),
     ));
@@ -235,6 +236,14 @@ async fn cycle(
                     let folders=folders.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
                     commands.spawn(async move {
                         let result=folders.execute_routed(&request["command"],&routing,&scope).await;
+                        finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
+                if crate::github::Client::supports(kind) {
+                    let github=github.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let result=github.execute(&request["command"],&scope).await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);
                     });
                     continue;
