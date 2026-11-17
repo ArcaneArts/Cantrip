@@ -8,6 +8,7 @@ pub mod editor;
 mod history;
 mod inspection;
 pub mod managed;
+mod patches;
 mod plans;
 mod process;
 mod review;
@@ -40,6 +41,16 @@ pub async fn execute(command: &Value, scope: &Scope) -> Result<Value> {
     let cwd = paths::native(command["cwd"].as_js_string().unwrap());
     match command["type"].as_str().unwrap() {
         "git.status" => status(&cwd, scope).await,
+        "git.patch.preview" => patches::preview(&cwd, &command["request"], scope).await,
+        "git.patch.apply" => {
+            patches::apply(
+                &cwd,
+                &command["request"],
+                command["token"].as_js_string().unwrap(),
+                scope,
+            )
+            .await
+        }
         "git.stash.create" => stash_actions::create(&cwd, &command["request"], scope).await,
         "git.stash.diff" => stash_actions::file_diff(&cwd, command, scope).await,
         "git.stash.action.preview" => stash_actions::preview(&cwd, &command["action"], scope).await,
