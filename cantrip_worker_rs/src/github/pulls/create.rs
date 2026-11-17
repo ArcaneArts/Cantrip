@@ -4,7 +4,7 @@ use anyhow::Result;
 use cantrip_crypto::checked;
 use cantrip_wire::{JsString, Value, value::json};
 
-async fn git(cwd: JsString, args: Vec<JsString>, scope: Scope) -> Result<Value> {
+pub(super) async fn git(cwd: JsString, args: Vec<JsString>, scope: Scope) -> Result<Value> {
     let mut arguments = vec!["-C".into(), cwd];
     arguments.extend(args);
     Ok(json!(

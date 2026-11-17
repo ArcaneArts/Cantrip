@@ -1,0 +1,6 @@
+
+  mutation CantripDequeuePullRequest($pullRequestId: ID!) {
+    dequeuePullRequest(input: { pullRequestId: $pullRequestId }) {
+      mergeQueueEntry { id }
+    }
+  }

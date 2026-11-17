@@ -1,0 +1,16 @@
+
+  mutation CantripEnableAutoMerge(
+    $pullRequestId: ID!
+    $head: GitObjectID!
+    $method: PullRequestMergeMethod!
+    $title: String
+    $body: String
+  ) {
+    enablePullRequestAutoMerge(input: {
+      pullRequestId: $pullRequestId
+      expectedHeadOid: $head
+      mergeMethod: $method
+      commitHeadline: $title
+      commitBody: $body
+    }) { pullRequest { id } }
+  }

@@ -1,7 +1,10 @@
 //! Pull-request inspection with bounded sections and partial-data warnings.
 mod actions;
+mod checkout;
+mod context;
 mod create;
 mod helpers;
+mod lifecycle;
 mod parse;
 mod review;
 use super::{Client, api, issues};

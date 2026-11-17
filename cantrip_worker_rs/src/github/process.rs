@@ -26,6 +26,15 @@ pub(super) async fn run_program(
     maximum: usize,
     scope: &Scope,
 ) -> Result<String> {
+    Ok(run_output(program, args, maximum, None, scope).await?.0)
+}
+pub(super) async fn run_output(
+    program: &str,
+    args: &[JsString],
+    maximum: usize,
+    timeout: Option<std::time::Duration>,
+    scope: &Scope,
+) -> Result<(String, String)> {
     for (index, argument) in args.iter().enumerate() {
         if argument.units().contains(&0) {
             let prefix = format!(
@@ -45,28 +54,31 @@ pub(super) async fn run_program(
         .map(|value| crate::filesystem::paths::native(value).into_os_string())
         .collect::<Vec<_>>();
     // Keep the collector's I/O buffers off nested command poll stacks.
-    let output = Box::pin(scope.capture(OsStr::new(program), &arguments, maximum))
-        .await
-        .map_err(|error| {
-            if let Some(io) = error.downcast_ref::<std::io::Error>() {
-                #[cfg(unix)]
-                if io.raw_os_error() == Some(libc::E2BIG) {
-                    return anyhow!("spawn E2BIG");
-                }
-                match io.kind() {
-                    std::io::ErrorKind::NotFound => return anyhow!("spawn {program} ENOENT"),
-                    std::io::ErrorKind::PermissionDenied => {
-                        return anyhow!("spawn {program} EACCES");
-                    }
-                    _ => {}
-                }
+    let output = if let Some(timeout) = timeout {
+        Box::pin(scope.capture_timeout(OsStr::new(program), &arguments, maximum, timeout)).await
+    } else {
+        Box::pin(scope.capture(OsStr::new(program), &arguments, maximum)).await
+    }
+    .map_err(|error| {
+        if let Some(io) = error.downcast_ref::<std::io::Error>() {
+            #[cfg(unix)]
+            if io.raw_os_error() == Some(libc::E2BIG) {
+                return anyhow!("spawn E2BIG");
             }
-            error
-        })?;
+            match io.kind() {
+                std::io::ErrorKind::NotFound => return anyhow!("spawn {program} ENOENT"),
+                std::io::ErrorKind::PermissionDenied => {
+                    return anyhow!("spawn {program} EACCES");
+                }
+                _ => {}
+            }
+        }
+        error
+    })?;
     if let Some(stream) = output.overflow {
         bail!("{stream} maxBuffer length exceeded");
     }
-    if output.code != Some(0) {
+    if output.code != Some(0) || output.timed_out {
         let mut message = format!("Command failed: {program} ")
             .encode_utf16()
             .collect::<Vec<_>>();
@@ -80,7 +92,10 @@ pub(super) async fn run_program(
         message.extend(String::from_utf8_lossy(&output.stderr).encode_utf16());
         return Err(WireError(JsString::new(message)).into());
     }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    Ok((
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    ))
 }
 fn inspect(value: &JsString) -> JsString {
     // Node's ERR_INVALID_ARG_VALUE renders inspect's first 10,000 UTF-16
