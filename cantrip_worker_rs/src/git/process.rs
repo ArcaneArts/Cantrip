@@ -71,6 +71,19 @@ pub(super) async fn bytes(cwd: &Path, args: &[&str], scope: &Scope) -> Result<Ve
     }
     Ok(output.bytes)
 }
+/// Source's Buffer collector reports combined output before execFile's message.
+pub(super) async fn buffer(cwd: &Path, args: &[&str], scope: &Scope) -> Result<Vec<u8>> {
+    let output = capture(cwd, args, scope).await?;
+    if output.code != Some(0) || output.overflow {
+        let text = trim(&format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.bytes),
+            String::from_utf8_lossy(&output.stderr)
+        ));
+        bail!("{}", if text.is_empty() { output.error } else { text });
+    }
+    Ok(output.bytes)
+}
 pub(super) async fn raw(cwd: &Path, args: &[&str], scope: &Scope) -> Result<String> {
     Ok(String::from_utf8_lossy(&bytes(cwd, args, scope).await?).into_owned())
 }

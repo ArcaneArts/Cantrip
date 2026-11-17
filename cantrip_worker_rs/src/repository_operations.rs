@@ -107,7 +107,11 @@ impl RepositoryOperations {
                 | "git.operation.start"
                 | "git.operation.current"
                 | "git.operation.control"
-                | "git.operation.amend" => {
+                | "git.operation.amend"
+                | "git.conflicts.list"
+                | "git.conflicts.get"
+                | "git.conflicts.preview"
+                | "git.conflicts.apply" => {
                     let (directory, worker) = self.profile.as_ref().ok_or_else(|| {
                         anyhow::anyhow!("Repository worker profile is not configured.")
                     })?;
@@ -202,6 +206,30 @@ impl RepositoryOperations {
                             "gitManagedOperationResponseSchema",
                             &json!({"operation":record}),
                         )
+                    } else if kind == "git.conflicts.apply"
+                        && crate::git::stored::active(stored.as_ref())
+                    {
+                        let state = crate::git::managed::inspect(
+                            &crate::filesystem::paths::native(
+                                command["cwd"].as_js_string().unwrap(),
+                            ),
+                            &checked("gitManagedOperationContextSchema", stored.as_ref().unwrap())?,
+                            &"".into(),
+                            None,
+                            scope,
+                        )
+                        .await?;
+                        let record = crate::git::stored::record(
+                            &command,
+                            &worker,
+                            &state,
+                            stored.as_ref(),
+                            None,
+                            None,
+                        )?;
+                        crate::git::stored::put(directory, &command, &owner, &worker, &record)
+                            .await?;
+                        Ok(result)
                     } else {
                         Ok(result)
                     }

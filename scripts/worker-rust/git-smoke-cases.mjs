@@ -447,13 +447,90 @@ export async function verifyGit({
       { ok: false, error: "Finish or abort the active Git operation first." },
     );
     await restartWorker();
-    const newAbort = await operation({
-      type: "git.operation.control",
-      arguments: { operationId: newMerge.result.operation.id, action: "abort" },
+    const conflictList = await operation({
+      type: "git.conflicts.list",
+      arguments: {},
     });
-    assert.equal(newAbort.ok, true, JSON.stringify(newAbort));
-    assert.equal(newAbort.result.operation.state, "aborted");
-    assert.equal(git("rev-parse", "HEAD"), main);
+    assert.equal(conflictList.ok, true, JSON.stringify(conflictList));
+    assert.deepEqual(
+      conflictList.result.files.map((item) => item.path),
+      [file],
+    );
+    const conflictDetail = await operation({
+      type: "git.conflicts.get",
+      arguments: { path: file },
+    });
+    assert.equal(conflictDetail.ok, true, JSON.stringify(conflictDetail));
+    assert.equal(conflictDetail.result.ours.content, "main\n");
+    assert.equal(conflictDetail.result.theirs.content, "feature\n");
+    const request = {
+      path: file,
+      strategy: "manual",
+      content: "Native resolved conflict 🧙\n",
+    };
+    const resolutionPlan = await operation({
+      type: "git.conflicts.preview",
+      arguments: { request },
+    });
+    assert.equal(resolutionPlan.ok, true, JSON.stringify(resolutionPlan));
+    const sourcePlan = await handleGitCommand(
+      p.workerCommandSchema.parse({
+        type: "git.conflicts.preview",
+        cwd: checkout,
+        request,
+      }),
+    );
+    assert.deepEqual(
+      resolutionPlan.result,
+      sourcePlan,
+      "exact Node/native conflict token",
+    );
+    const beforeResolve = await readFile(journal, "utf8");
+    assert.deepEqual(
+      await operation({
+        type: "git.conflicts.apply",
+        arguments: { request, token: "0".repeat(64) },
+      }),
+      {
+        ok: false,
+        error:
+          "The conflict or result changed after this preview. Review it again.",
+      },
+    );
+    assert.equal(await readFile(journal, "utf8"), beforeResolve);
+    await restartWorker();
+    const resolution = await operation({
+      type: "git.conflicts.apply",
+      arguments: { request, token: sourcePlan.token },
+    });
+    assert.equal(resolution.ok, true, JSON.stringify(resolution));
+    assert.equal(resolution.result.resolved, true);
+    assert.deepEqual(resolution.result.remainingPaths, []);
+    assert.equal(
+      await readFile(path.join(checkout, file), "utf8"),
+      request.content,
+    );
+    const stagedRecord = await store.get(scope);
+    assert.equal(stagedRecord.id, newMerge.result.operation.id);
+    assert.equal(stagedRecord.createdAt, newMerge.result.operation.createdAt);
+    assert.equal(stagedRecord.state, "awaiting-user-action");
+    assert.deepEqual(stagedRecord.conflictedPaths, []);
+    await restartWorker();
+    const continued = await operation({
+      type: "git.operation.control",
+      arguments: {
+        operationId: newMerge.result.operation.id,
+        action: "continue",
+      },
+    });
+    assert.equal(continued.ok, true, JSON.stringify(continued));
+    assert.equal(
+      continued.result.operation.state,
+      "completed",
+      JSON.stringify(continued),
+    );
+    assert.notEqual(git("rev-parse", "HEAD"), main);
+    assert.equal(git("show", `HEAD:${file}`), request.content.trim());
     const upstream = git("rev-parse", "HEAD");
     const edits = [];
     for (const name of ["A", "B"]) {

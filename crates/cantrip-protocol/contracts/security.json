@@ -876,7 +876,11 @@
     "gitManagedOperationWorkerStateSchema": 13199,
     "gitManagedOperationResponseSchema": 13206,
     "gitStashListSchema": 13208,
-    "gitManagedOperationPreviewSchema": 13231
+    "gitManagedOperationPreviewSchema": 13231,
+    "gitConflictListSchema": 13249,
+    "gitConflictDetailSchema": 13252,
+    "gitConflictResolutionPreviewSchema": 13273,
+    "gitConflictResolutionResultSchema": 13281
   },
   "nodes": [
     {
@@ -79935,6 +79939,172 @@
         { "check": "min_length", "minimum": 1, "when": "length" },
         { "check": "max_length", "maximum": 1024, "when": "length" }
       ]
+    },
+    {
+      "type": "object",
+      "name": "gitConflictListSchema",
+      "shape": { "files": 13250, "truncated": 13251 },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 2732,
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "gitConflictDetailSchema",
+      "shape": {
+        "path": 2733,
+        "code": 2734,
+        "kind": 2735,
+        "baseAvailable": 2736,
+        "oursAvailable": 2737,
+        "theirsAvailable": 2738,
+        "base": 13253,
+        "ours": 13253,
+        "theirs": 13253,
+        "result": 13264
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "gitConflictStageSchema",
+      "shape": {
+        "available": 13254,
+        "oid": 13255,
+        "mode": 13256,
+        "size": 13258,
+        "binary": 13260,
+        "content": 13261,
+        "truncated": 13263
+      },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 2722, "checks": [] },
+    { "type": "nullable", "innerType": 13257, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-7]{6}$",
+          "flags": "u",
+          "displayPattern": "/^[0-7]{6}$/u"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 13259, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 13262, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 2000000, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "exists": 13265,
+        "oid": 13266,
+        "size": 13267,
+        "binary": 13269,
+        "content": 13270,
+        "truncated": 13272
+      },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 2722, "checks": [] },
+    { "type": "nullable", "innerType": 13268, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 13271, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 2000000, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "gitConflictResolutionPreviewSchema",
+      "shape": {
+        "request": 4901,
+        "token": 13274,
+        "resultDeleted": 13275,
+        "resultBinary": 13276,
+        "resultContent": 13277,
+        "warnings": 13279
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{64}$/u"
+        }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 13278, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 2000000, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 13280,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "gitConflictResolutionResultSchema",
+      "shape": {
+        "path": 2733,
+        "resolved": 13282,
+        "remainingPaths": 13283,
+        "status": 2679
+      },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "array",
+      "element": 2733,
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
     }
   ]
 }

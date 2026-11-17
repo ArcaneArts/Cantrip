@@ -87,7 +87,7 @@ pub(super) async fn object(
     };
     Ok(side("image", Some(size), Some(mime), bytes, oversized))
 }
-fn inside(root: &Path, target: &Path) -> bool {
+pub(super) fn inside(root: &Path, target: &Path) -> bool {
     let mut prefix = paths::text(root).units().to_vec();
     prefix.push(std::path::MAIN_SEPARATOR as u16);
     paths::text(target).units().starts_with(&prefix)
