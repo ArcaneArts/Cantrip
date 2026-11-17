@@ -124,6 +124,17 @@ impl Queue {
         self: &Arc<Self>,
         operation: F,
     ) -> impl Future<Output = Result<T>> + Send + use<T, F> {
+        self.run_async(async move {
+            tokio::task::spawn_blocking(operation)
+                .await
+                .map_err(anyhow::Error::from)
+                .and_then(|v| v)
+        })
+    }
+    pub fn run_async<T: Send + 'static, F: Future<Output = Result<T>> + Send + 'static>(
+        self: &Arc<Self>,
+        operation: F,
+    ) -> impl Future<Output = Result<T>> + Send + use<T, F> {
         let (finished, next) = oneshot::channel();
         let previous = self.tail.lock().unwrap().replace(next);
         let (answer, result) = oneshot::channel();
@@ -132,10 +143,7 @@ impl Queue {
             if let Some(previous) = previous {
                 let _ = previous.await;
             }
-            let outcome = tokio::task::spawn_blocking(operation)
-                .await
-                .map_err(anyhow::Error::from)
-                .and_then(|v| v);
+            let outcome = operation.await;
             let _ = answer.send(outcome);
             let _ = finished.send(());
             drop(keep);
@@ -158,6 +166,34 @@ pub(crate) fn queue(directory: &Path) -> Arc<Queue> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn async_recovery_keeps_its_queue_slot_after_response_abandonment() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let queue = queue(root.path());
+        let state = Arc::new(Mutex::new(Vec::new()));
+        let (began, started) = oneshot::channel();
+        let (release, blocked) = oneshot::channel();
+        let first_state = state.clone();
+        let first = queue.run_async(async move {
+            let _ = began.send(());
+            blocked.await?;
+            first_state.lock().unwrap().push(1);
+            Err::<(), _>(anyhow::anyhow!("actual asynchronous recovery failed"))
+        });
+        started.await?;
+        drop(first);
+        let next_state = state.clone();
+        let next = queue.run(move || {
+            next_state.lock().unwrap().push(2);
+            Ok(())
+        });
+        assert!(state.lock().unwrap().is_empty());
+        release.send(()).unwrap();
+        next.await?;
+        assert_eq!(*state.lock().unwrap(), vec![1, 2]);
+        Ok(())
+    }
 
     #[test]
     fn exclusive_publication_keeps_committed_bytes_and_cleans_temporaries() -> Result<()> {

@@ -122,7 +122,7 @@ loaded by a production service.
 | Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | Native endpoint/surface/repository formats, all private surface records and scoped grant helpers                                                                                                                                                                                                                                                                                                        | Private-state interop covers 12 resource contexts and six content kinds. Remaining protected domains and serving resource lifetimes are pending. Initial surface-grant refresh now completes real host terminal-service reconciliation; delegated OS services remain pending.                                                    |
 | Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Workspace/folders/routing, nine protected host Explorer operations and bound file-document text read/write                                                                                                                                                                                                                                                                                              | Actual Rust worker/server persists encrypted resources, resolves opaque roots, saves files, rejects replay/mismatched document paths and reopens after restart. Paged readers, media/tail, transfers, activity/watches and delegated OS execution remain pending.                                                                |
 | Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub catalog, issue detail/mutations, issue/PR search, inspection, creation, reviews, lifecycle, checkout preparation, agent context, inbox, Actions/releases and replica provisioning/synchronization/removal/link repair | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, exports/sharing and delegated OS Git remain pending |
-| History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements source journals, native source contracts, six encrypted persistence domains, item cursor recovery and complete pure history reduction; worker encryption adapter                                                                                                                                                                                                           | 100 journal and 70 reducer comparisons; projection/outbox transactions, archive/attachment processing and durable publication remain pending                                                                                                                                                                                     |
+| History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction and complete outbox/baseline/mutation/receipt storage; worker encryption adapter                                                                                                                                                                                                                       | Journal, reducer and outbox differential replay passed; capture orchestration, projection/rebase transactions, archives/attachments and authenticated delivery remain pending                                                                                                                                                    |
 | Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Actual provider protocol fixtures, streaming/media/usage, refresh, cancellation, failure and paid-work bounds                                                                                                                                                                                                                    |
 | Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Manifest verification/probe, native app-server processes, queue ownership, acceptance/commit and restart recovery                                                                                                                                                                                                                |
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
@@ -2511,3 +2511,68 @@ Observation/capture/retry orchestration, canonical item resolution and rendering
 projection/checkpoint/rebase transactions, prepared-batch outboxes, attachments
 and publication/ACK recovery remain pending, followed by provider/runtime
 execution and the rest of the full worker replacement.
+
+## Cycle 42: native durable history outbox
+
+Reference: current `04c23a20864c7be8c243413e53532f701dd8291c` / PR #3204.
+This cycle ports the complete `native-history-outbox.ts`, baseline, record,
+mutation and rejection-verification behavior. No relevant source churn intervened.
+
+`cantrip-history::outbox` implements all current storage operations: open/recover,
+append, pending, authenticated-body opening, committed receipt lookup, canonical
+ACK persistence, permanent-rejection replacement and supersession lookup. The
+scope-hashed v1 stream identity, original encrypted bytes, record identities and
+hash chains remain compatible. Older batch files remain a fixed immutable prefix;
+new appends and complete pending-tail replacements share one exclusive mutation
+slot. A collision is an actual publication failure: retry uses the same captured
+request, sees the winner and never drops a newly appended dependent tail.
+
+Recovered baselines preserve original stream/commit identities and canonical
+payload digests, including older archives with explicit missing source. Existing
+committed files prevent creating a replacement identity. Recovery runs only for
+a genuinely absent local stream, requires caller-supplied complete authenticated
+archive data, rechecks identity after its actual callback and never fabricates
+batch ciphertext. ACKs correlate stream/sequence/record/digest and remain
+contiguous; lost responses keep the exact batch pending. When supplied, the expected local
+body must match byte-for-byte; recovered receipt bodies use the existing
+canonical content digest. Rejected and superseded bytes
+remain encrypted in the ledger.
+
+The canonical-directory queue now owns async recovery as well as blocking IO.
+Abandoning a response does not release its queue slot or cancel accepted work;
+an error cannot poison the next operation. The worker owner must drain accepted
+work before runtime shutdown, as before. The outbox has no execution or network
+authority and no implicit pruning operation.
+
+Local validation on macOS ARM64:
+
+- 97 actual Node/native outbox comparisons cover native writes reopened by Node,
+  Node mutations read by Rust, historical keys, frozen retries, contiguous and
+  conflicting ACKs, authenticated rejection matching, replacement/supersession,
+  actual native-process restart, baseline recovery, legacy files, storage
+  obstruction/corruption/repair, scoped identities and callback failure/retry.
+- A controlled actual native/Node cross-process race pauses a synthetic granted
+  key lookup after the native ledger view is captured. Node wins the next
+  immutable slot; Rust reports the collision and its same-request retry retains
+  the actual concurrent tail. This is a development fixture only; production
+  code has no test gate or deterministic entropy mode.
+- All 21 existing Node outbox tests pass. Five focused native tests pass, including
+  async FIFO/error settlement after response abandonment. The prior 100 source
+  journal/crypto/reducer comparisons also pass after the queue change.
+- Worker/example builds, all-target worker/history Clippy with warnings denied,
+  affected Rust server compilation, formatting and diff checks pass. The previous
+  11 history roots / 243 nodes and separate 944 security roots / 14,052 nodes
+  reproduce unchanged; seven exported actual outbox schemas add 57 nodes for an
+  18-root / 300-node history graph. No Cargo dependency changed.
+
+No GitHub Actions, paid provider runs, containers, device QA or deployment were
+used. Native fixture children have a system-only PATH. Windows/Linux runtime was
+not exercised; existing Windows file-only flushing behavior remains. Owned
+profiles, helper barriers and worktree artifacts are removed after delivery.
+
+This completes the outbox ledger, not the history pipeline. The production
+worker remains Node and native outer handlers remain 59. Projection/checkpoint/
+rebase transactions, authenticated history clients and delivery pumps, canonical
+identity/rendering/protection, attachments, capture/recovery orchestration and
+native execution remain pending. They must use these real storage APIs before
+packaging/default cutover can complete the full goal.

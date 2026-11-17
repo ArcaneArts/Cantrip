@@ -4,6 +4,7 @@ pub mod content;
 pub mod cursor;
 pub mod files;
 pub mod native;
+pub mod outbox;
 pub mod reducer;
 pub mod source;
 

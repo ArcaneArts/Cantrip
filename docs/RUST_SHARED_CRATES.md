@@ -220,7 +220,7 @@ a new mandatory broad QA gate. GitHub Actions remains for releases/deployments.
 The worker port adds `cantrip-crypto` for endpoint cryptography and
 [cantrip-history](../crates/cantrip-history) for encrypted source journals,
 immutable publication, native history validation, cursor-gap recovery and pure
-source-to-state reduction.
+source-to-state reduction and the durable batch outbox/receipt ledger.
 History depends on crypto, protocol, wire and host; it has no dependency on the
 server application, databases, routing or provider/runtime orchestration. The
 worker supplies its authorized key service. See the crate README and

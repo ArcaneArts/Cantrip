@@ -659,3 +659,9 @@ export class NativeHistoryOutbox {
     };
   }
 }
+
+// Development export of the actual persisted outbox identity contracts.
+export {
+  scopeSchema as nativeHistoryOutboxScopeSchema,
+  manifestSchema as nativeHistoryOutboxManifestSchema,
+};
