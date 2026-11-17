@@ -9,6 +9,12 @@ use anyhow::Result;
 use cantrip_wire::{JsString, Value, value::json};
 use std::path::{Path, PathBuf};
 const OWNER: &str = "cantrip-project-owner.json";
+pub(super) async fn remove_staging(path: &Path) -> Result<()> {
+    io::remove(path, true).await
+}
+pub(super) fn is_link(path: &Path, metadata: &std::fs::Metadata) -> bool {
+    io::link_type(path, metadata)
+}
 #[derive(Debug)]
 pub struct PlacementError {
     pub code: &'static str,

@@ -967,6 +967,7 @@ export const contractRoots = [
   "githubActionsRunCheckoutPreparedSchema",
   "githubReleaseSummarySchema",
   "githubReleaseListSchema",
+  "worktreePolicySchema",
 ];
 
 export const projectExportContractRoots = [

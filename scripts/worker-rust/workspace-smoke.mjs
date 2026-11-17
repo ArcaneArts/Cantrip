@@ -44,6 +44,8 @@ import { verifyPullRequestLifecycle } from "./pull-request-lifecycle-smoke-cases
 import { githubOperationsFixture } from "./github-operations-fixture.mjs";
 import { verifyGithubOperations } from "./github-operations-smoke-cases.mjs";
 import { verifyWorktreeRecovery } from "./worktree-recovery-smoke-cases.mjs";
+import { replicaProvisionFixture } from "./replica-provision-fixture.mjs";
+import { verifyReplicaProvision } from "./replica-provision-smoke-cases.mjs";
 // Every Git remote in this owned fixture is local. Preserve production Git
 // policy while explicitly allowing this test's local submodule clones.
 const previousGitProtocol = process.env.GIT_ALLOW_PROTOCOL;
@@ -60,6 +62,7 @@ const { values } = parseArgs({
     "pull-request-actions-only": { type: "boolean", default: false },
     "pull-request-lifecycle-only": { type: "boolean", default: false },
     "github-operations-only": { type: "boolean", default: false },
+    "replica-provision-only": { type: "boolean", default: false },
   },
 });
 assert.ok(
@@ -93,25 +96,28 @@ if (
   !values["pull-request-only"] &&
   !values["pull-request-actions-only"] &&
   !values["pull-request-lifecycle-only"] &&
-  !values["github-operations-only"]
+  !values["github-operations-only"] &&
+  !values["replica-provision-only"]
 )
   await symlink(
     execFileSync("/usr/bin/which", ["git-lfs"], { encoding: "utf8" }).trim(),
     path.join(bin, "git-lfs"),
   );
-const githubFixture = values["github-catalog-only"]
-  ? await githubCatalogFixture(root, bin)
-  : values["github-issues-only"]
-    ? await githubIssuesFixture(root, bin)
-    : values["github-operations-only"]
-      ? await githubOperationsFixture(root, bin)
-      : values["pull-request-lifecycle-only"]
-        ? await pullRequestLifecycleFixture(root, bin)
-        : values["pull-request-actions-only"]
-          ? await pullRequestActionsFixture(root, bin)
-          : values["pull-request-only"]
-            ? await pullRequestFixture(root, bin)
-            : undefined;
+const githubFixture = values["replica-provision-only"]
+  ? await replicaProvisionFixture(root, git)
+  : values["github-catalog-only"]
+    ? await githubCatalogFixture(root, bin)
+    : values["github-issues-only"]
+      ? await githubIssuesFixture(root, bin)
+      : values["github-operations-only"]
+        ? await githubOperationsFixture(root, bin)
+        : values["pull-request-lifecycle-only"]
+          ? await pullRequestLifecycleFixture(root, bin)
+          : values["pull-request-actions-only"]
+            ? await pullRequestActionsFixture(root, bin)
+            : values["pull-request-only"]
+              ? await pullRequestFixture(root, bin)
+              : undefined;
 execFileSync(git, [
   "-c",
   "init.defaultBranch=main",
@@ -203,6 +209,7 @@ function startWorker(code) {
     CANTRIP_SERVER_URL: server.origin,
     ...(code ? { CANTRIP_WORKER_ENROLLMENT_CODE: code } : {}),
     ...(githubFixture ? { GH_TOKEN: "", GITHUB_TOKEN: "" } : {}),
+    ...(values["replica-provision-only"] ? githubFixture.environment : {}),
   };
   delete workerEnvironment.CANTRIP_WORKER_TOKEN;
   child = spawn(path.resolve(values.worker), ["--shutdown-on-stdin-close"], {
@@ -463,8 +470,23 @@ try {
   startWorker(enrollment.body.code);
   await ready();
   const repository = await repositoryClient();
-  let githubCoverage, gitRuntimeCoverage, observationCoverage, recoveryCoverage;
-  if (values["github-catalog-only"]) {
+  let githubCoverage,
+    gitRuntimeCoverage,
+    observationCoverage,
+    recoveryCoverage,
+    replicaCoverage;
+  if (values["replica-provision-only"]) {
+    replicaCoverage = await verifyReplicaProvision({
+      call,
+      fixture: githubFixture,
+      workerId,
+      workerDirectory,
+      root,
+      registerMetadata: repository.registerMetadata,
+      restartWorker,
+      eventually,
+    });
+  } else if (values["github-catalog-only"]) {
     githubCoverage = await verifyGithubCatalog({
       operation: repository.operation,
       fixture: githubFixture,
@@ -756,7 +778,17 @@ try {
   await stopWorker();
   await server.close();
   server = undefined;
-  if (githubCoverage)
+  if (replicaCoverage)
+    console.log(
+      JSON.stringify({
+        suite: "actual-native-replica-provision-worker-server",
+        passed: true,
+        realWorkerAndServer: true,
+        nodeAbsentFromWorkerPath: true,
+        ...replicaCoverage,
+      }),
+    );
+  else if (githubCoverage)
     console.log(
       JSON.stringify({
         suite: values["github-operations-only"]

@@ -127,6 +127,10 @@ async fn cycle(
     ));
     let worktrees = repository_operations.worktrees()?;
     let github = repository_operations.github()?;
+    let replicas = Arc::new(crate::replicas::Manager::new(
+        &config.data_directory,
+        &worker,
+    ));
     let surface_replay = Arc::new(Mutex::new(
         crate::protected_content::SurfaceStreamReplayGuard::default(),
     ));
@@ -141,6 +145,11 @@ async fn cycle(
         logs.clone(),
     ));
     let mut heartbeat = http::heartbeat(&config, host.platform, host.architecture, &started)?;
+    heartbeat["projectReplicas"] = json!({
+        "provision":true,"synchronize":false,"remove":false,"exactRevision":true,
+        "directPlacement":true,"managedLinkPlacement":crate::replicas::placement::probe_managed_link(&config.data_directory).await,
+        "attachExisting":true,"recursiveParentCreation":true,"workspaceScopedRoots":true,
+    });
     heartbeat["encryption"] = encryption.status();
     http::enroll(&client, &mut config, &heartbeat, logs).await?;
     let configuration = Arc::new(Mutex::new(config));
@@ -236,6 +245,20 @@ async fn cycle(
                     let folders=folders.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
                     commands.spawn(async move {
                         let result=folders.execute_routed(&request["command"],&routing,&scope).await;
+                        finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
+                if matches!(kind,"project.replica.provision"|"project.replica.link.repair") {
+                    let replicas=replicas.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let command=&request["command"];
+                        let result=replicas.execute_routed(command,&routing,&scope,&|progress|{
+                            let event=json!({"type":"project.replica.progress","jobId":command["jobId"],"attempt":command["attempt"],"progress":progress});
+                            if let Err(error)=outgoing.send(json!({"kind":"event","requestId":request["requestId"],"event":event})) {
+                                logs.event("error","Worker command event was rejected",json!({"event":"worker.command.invalid-event","workerId":worker,"error":logging::error(&error)}));
+                            }
+                        }).await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);
                     });
                     continue;

@@ -6,7 +6,7 @@ mod catalog;
 mod common;
 mod inbox;
 mod issues;
-mod process;
+pub(crate) mod process;
 mod pulls;
 mod reads;
 mod releases;
@@ -18,6 +18,17 @@ use cantrip_wire::Value;
 pub use pulls::{group_review_threads, parse_review_context};
 pub use search::query as search_query;
 use std::path::{Path, PathBuf};
+
+pub(crate) fn repository_parts(
+    name: &cantrip_wire::JsString,
+) -> Result<Vec<cantrip_wire::JsString>> {
+    api::repository_path(name)?;
+    Ok(name
+        .units()
+        .split(|unit| *unit == 47)
+        .map(|part| cantrip_wire::JsString::new(part.to_vec()))
+        .collect())
+}
 
 pub struct Client {
     directory: PathBuf,

@@ -24,9 +24,9 @@ resolution, managed-operation creation/recovery, native physical worktree manage
 control-channel worktree observations, reviewed cross-worktree dirty changes and
 checkpointed reflog/lost-commit recovery, worker-scoped GitHub catalog operations,
 and repository-scoped issue detail/mutations, issue/PR search, PR inspection, creation, reviews, lifecycle, checkout preparation and agent context,
-GitHub inbox, Actions and releases. The native replica placement/ownership
-foundation is also implemented; production replica command adapters remain pending.
-Fifty-five real native outer command handlers are installed:
+GitHub inbox, Actions and releases, plus native replica provisioning and
+managed-link repair over the existing placement/ownership records.
+Fifty-seven real native outer command handlers are installed:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
 `diagnostics.logs.read`, `worker.encryption.refresh`,
 `workspace.repositories.discover`, `workspace.repository-import.validate`,
@@ -58,7 +58,8 @@ and recovery candidate/preview/apply operations),
 `github.inbox.list`, `github.actions.overview`, `github.actions.run.get`,
 `github.actions.run.logs`, `github.actions.workflow.dispatch`,
 `github.actions.run.action`, `github.actions.run.checkout.prepare`,
-`github.releases.list`, `github.release.get` and `github.release.create`.
+`github.releases.list`, `github.release.get`, `github.release.create`,
+`project.replica.provision` and `project.replica.link.repair`.
 Encrypted repository operations also serve worktree status.
 Explorer implements navigation, search, Git commit lookup and text/entry editing.
 Paged reads, transfers, watches, media/tail and delegated OS execution are pending.
@@ -119,7 +120,7 @@ loaded by a production service.
 | Enrollment/control transport       | `enrollment.ts`, `heartbeat.ts`, `transport.ts`, routing/observation adapters                                                             | Native enrollment/replacement, heartbeat, readiness/reconnect and credential lifecycle                                                                                                                                                                                                                                                         | Actual Rust-server round trip, rotation/reconnect, restart/revocation and HTTP oracles pass. Execution lifetime/admission fencing, reconnect-grace resource callbacks, notifications/events/task acknowledgments, data-plane adapters, congestion fidelity and deployment TLS/proxy configuration remain pending                                                 |
 | Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | Native endpoint/surface/repository formats, all private surface records and scoped grant helpers                                                                                                                                                                                                                                               | Private-state interop covers 12 resource contexts and six content kinds. Remaining protected domains and serving resource lifetimes are pending. Initial surface-grant refresh now completes real host terminal-service reconciliation; delegated OS services remain pending.                                                                                    |
 | Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Workspace/folders/routing, nine protected host Explorer operations and bound file-document text read/write                                                                                                                                                                                                                                     | Actual Rust worker/server persists encrypted resources, resolves opaque roots, saves files, rejects replay/mismatched document paths and reopens after restart. Paged readers, media/tail, transfers, activity/watches and delegated OS execution remain pending.                                                                                                |
-| Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub catalog, issue detail/mutations, issue/PR search, inspection, creation, reviews, lifecycle, checkout preparation, agent context, inbox, Actions and releases | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, Replica/provisioning workflows, exports/sharing and delegated OS Git remain pending |
+| Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub catalog, issue detail/mutations, issue/PR search, inspection, creation, reviews, lifecycle, checkout preparation, agent context, inbox, Actions/releases and replica provisioning/link repair | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, Replica synchronization/removal, exports/sharing and delegated OS Git remain pending |
 | History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | Pending                                                                                                                                                                                                                                                                                                                                        | Replay/crash/reopen, stable UTF-16 keys/digests, outbox acknowledgments and history reducer/projection fixtures; no cursor resets or uncertain effect replay                                                                                                                                                                                                     |
 | Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Pending                                                                                                                                                                                                                                                                                                                                        | Actual provider protocol fixtures, streaming/media/usage, refresh, cancellation, failure and paid-work bounds                                                                                                                                                                                                                                                    |
 | Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Pending                                                                                                                                                                                                                                                                                                                                        | Manifest verification/probe, native app-server processes, queue ownership, acceptance/commit and restart recovery                                                                                                                                                                                                                                                |
@@ -2192,12 +2193,79 @@ No hosted Actions, live remote operation, full repository suite, deployment or
 device/VM campaign was used. Owned fixture directories are removed; the existing
 bounded Cargo cache is reused.
 
+## Native replica provisioning and managed-link repair subcycle
+
+Reference: `bd6f8ca38d63993a1dd6bcbb0cac281b846761e0`. Delivery branch:
+`agent/manual/rust-worker-replica-provisioning`.
+
+Two production command adapters now serve `project.replica.provision` and
+`project.replica.link.repair`. The runtime resolves input routing handles, protects
+result metadata and errors through the existing registry, correlates progress
+with the request/job/attempt, and joins accepted work during shutdown/restart.
+The outer-handler count is 57. Provisioning capabilities are advertised for exact
+revisions, direct attachment, parent creation, workspace storage and managed links
+when the existing actual link probe succeeds. Synchronization/removal remain
+unavailable; production still selects Node.
+
+Provisioning preserves local-only attachment, dirty-checkout rules, Primary-only
+validation, GitHub origin checks, managed reuse/fetch, unborn/empty repositories,
+immutable revision checkout, staging ownership/cleanup, private direct-checkout
+markers, final fingerprints, placement records, links and bounded worktree-policy
+reads. Per-destination queues also cover normalized repair targets and release
+after rejected operations. Repair validates worker-managed storage (including
+workspace UUID/location and canonical boundaries), current origin/fingerprint,
+persisted ownership and the existing link before recreating only a matching claim.
+
+The owned native clone collector preserves progress parsing, the ten-second
+heartbeat, five-minute inactivity limit, two-hour duration limit, five-second
+termination grace, combined 32-MiB output limit, UTF-16 tails and failure projection.
+On Unix, runtime stop signals the owned process group and joins its child.
+Windows uses the existing child-stop handling; complete job/tree ownership remains
+a broader worker-port requirement. Native code reuses
+wire values, protocol validation, host files/process primitives, workspace paths,
+remote parsing/fingerprints and the existing execFile-compatible process adapter.
+No dependency or Cargo.lock change is introduced.
+
+Local evidence passes 46 actual Node/native command/state comparisons and 32
+clone-helper comparisons. They compare exact gh/Git arguments/order, results,
+stable progress stages/bounds, branches/refs/status, private registry/marker bytes,
+filesystem modes, cleanup/preservation, all placement modes, exact revisions,
+queued/rejected work, managed-link repair and workspace containment. Stream chunk
+boundaries can change progress repetition; individual events remain valid and
+monotonic. Three focused native tests exercise real child processes with shortened
+watchdog intervals, explicit stop with open/closed pipes and the actual 32-MiB cap.
+All 23 selected existing Node placement/provisioning/progress/policy tests pass.
+
+The production Rust server/worker fixture completes four durable import jobs across
+all three placement modes, real native clone/fetch, protected routing metadata,
+Node-compatible persisted-path reopening, successful/idempotent repair and replaced
+link preservation. It observes materializing progress in the durable job, retires
+a held clone on actual restart, preserves the server's reconnect retry, explicitly
+retries the resulting blocked job, and verifies completed clones/identities are
+not replayed. Worker child PATH contains only the owned native tool fixtures.
+
+The generated contract corpus adds only the existing `worktreePolicySchema` root:
+944 roots, with all previous 943 roots and all 14,052 nodes unchanged. Linked
+worker/server/fixture builds, worker host all-target Clippy with warnings denied,
+formatting and diff checks pass. Runtime validation is macOS ARM64 with an owned
+PGlite server profile; Windows/Linux runtime and other database modes were not
+exercised in this cycle. No hosted Actions, live GitHub operation, full repository
+suite, deployment or device/VM campaign was used. The shared Cargo target remains
+28 GiB; owned repositories/profiles are removed and only small reports are kept.
+
+The full worker replacement goal remains active. Replica synchronization/removal,
+remaining project/file services, execution/history/providers, interactive resources,
+data planes, native integrations, Node-free upgrade, packaging and cutover remain.
+
 ## Local development and validation
 
 ```sh
 pnpm worker:rust:build
 pnpm worker:rust:check
 pnpm worker:rust:test
+node scripts/worker-rust/cargo.mjs build --example replica-provision-fixture
+node --import tsx scripts/worker-rust/replica-provision-compatibility.mjs --binary /absolute/path/to/replica-provision-fixture
+node --import tsx scripts/worker-rust/workspace-smoke.mjs --replica-provision-only --worker /absolute/path/to/cantrip-worker --server /absolute/path/to/cantrip-server
 node scripts/worker-rust/cargo.mjs build --example replica-placement-fixture
 node --import tsx scripts/worker-rust/replica-placement-compatibility.mjs --binary /absolute/path/to/replica-placement-fixture
 node scripts/worker-rust/cargo.mjs build --example config-fixture --example crypto-fixture --example grant-fixture --example content-fixture
