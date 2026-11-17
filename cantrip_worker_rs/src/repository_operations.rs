@@ -1,5 +1,5 @@
 //! Encrypted repository command admission and the native attachment/metadata
-//! operations, plus host Git status/diffs. Remaining Git/GitHub domains are
+//! operations, plus host Git queries/basic actions. Remaining Git/GitHub domains are
 //! added by their owning milestones.
 use crate::{
     encryption::Service,
@@ -90,18 +90,21 @@ impl RepositoryOperations {
                     attachment = Some(result.clone());
                     Ok(result)
                 }
-                "git.status" | "git.diff" => {
+                "git.status" | "git.diff" | "git.action" => {
                     let (directory, worker) = self.profile.as_ref().ok_or_else(|| {
                         anyhow::anyhow!("Repository worker profile is not configured.")
                     })?;
                     let owner = Value::String(service.owner_id()?);
-                    let _stored = crate::git::stored::read(
+                    let stored = crate::git::stored::read(
                         directory,
                         &command,
                         &owner,
                         &Value::String(worker.clone()),
                     )
                     .await?;
+                    if kind == "git.action" && crate::git::stored::active(stored.as_ref()) {
+                        bail!("Finish or abort the active Git operation first.");
+                    }
                     if command
                         .get("peerWorktree")
                         .is_some_and(|v| v != &Value::Null)

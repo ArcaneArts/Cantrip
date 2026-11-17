@@ -860,7 +860,8 @@
     "terminalPrivateStateProtectedContentSchema": 12659,
     "gitStatusSchema": 2679,
     "gitFileDiffSchema": 13009,
-    "gitManagedOperationRecordSchema": 13028
+    "gitManagedOperationRecordSchema": 13028,
+    "gitActionResultSchema": 13044
   },
   "nodes": [
     {
@@ -78669,6 +78670,13 @@
       "innerType": 13043,
       "checks": []
     },
-    { "type": "nullable", "innerType": 2728, "checks": [] }
+    { "type": "nullable", "innerType": 2728, "checks": [] },
+    {
+      "type": "object",
+      "name": "gitActionResultSchema",
+      "shape": { "status": 2679, "output": 13045 },
+      "checks": []
+    },
+    { "type": "string", "checks": [] }
   ]
 }
