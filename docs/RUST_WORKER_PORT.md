@@ -19,7 +19,7 @@ heartbeat HTTP, a reconnecting WebSocket control connection and authenticated
 encryption-grant lifecycle, encrypted root attachment and workspace discovery/import
 validation, managed folders, encrypted host Explorer/file-document operations,
 host terminal-service supervision, encrypted Git working-tree queries/basic actions,
-Git history/inspection, partial-patch editing, stash selection/recovery, reviewed commit mutations/conflict
+Git history/inspection, reviewed branch management, partial-patch editing, stash selection/recovery, reviewed commit mutations/conflict
 resolution and managed-operation creation/recovery.
 Fourteen real native outer command handlers are installed:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
@@ -29,7 +29,7 @@ Fourteen real native outer command handlers are installed:
 eleven basic Git actions, nine history/inspection queries, stash creation/diffs/mutations
 and reviewed previews/starts plus current/control/amend recovery and four conflict
 inspection/resolution operations, plus reviewed cherry-pick/revert/amend/fixup and
-partial stage/unstage/discard),
+partial stage/unstage/discard, plus branch inventory and eight reviewed branch actions),
 `project.folder.materialize`, `project.folder.delete`, `explorer.operation`
 (nine host operations), `file-document.operation` (text read/write),
 `terminal.services.reconcile` and `terminal.service.restart` (host services).
@@ -94,7 +94,7 @@ loaded by a production service.
 | Enrollment/control transport       | `enrollment.ts`, `heartbeat.ts`, `transport.ts`, routing/observation adapters                                                             | Native enrollment/replacement, heartbeat, readiness/reconnect and credential lifecycle                     | Actual Rust-server round trip, rotation/reconnect, restart/revocation and HTTP oracles pass. Execution lifetime/admission fencing, reconnect-grace resource callbacks, notifications/events/task acknowledgments, data-plane adapters, congestion fidelity and deployment TLS/proxy configuration remain pending |
 | Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | Native endpoint/surface/repository formats, all private surface records and scoped grant helpers           | Private-state interop covers 12 resource contexts and six content kinds. Remaining protected domains and serving resource lifetimes are pending. Initial surface-grant refresh now completes real host terminal-service reconciliation; delegated OS services remain pending.                                    |
 | Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Workspace/folders/routing, nine protected host Explorer operations and bound file-document text read/write | Actual Rust worker/server persists encrypted resources, resolves opaque roots, saves files, rejects replay/mismatched document paths and reopens after restart. Paged readers, media/tail, transfers, activity/watches and delegated OS execution remain pending.                                                |
-| Git/projects/GitHub                | `commands/{git,worktree,github}.ts`, `git.ts`, `worktrees.ts`, replicas, repository operations, exports and shares                        | Native Git queries, commit/stash/conflict/partial actions and managed recovery                             | Encrypted Git queries/actions/conflicts pass actual Node comparisons and production Rust server/worker tests. Graphs, branch/remote/tag mutations, observations, legacy direct-command dispatch/protection, GitHub and delegated OS Git remain pending                                                           |
+| Git/projects/GitHub                | `commands/{git,worktree,github}.ts`, `git.ts`, `worktrees.ts`, replicas, repository operations, exports and shares                        | Native Git queries, reviewed branch/commit/stash/conflict/patch actions and recovery                       | Encrypted Git queries/actions/conflicts pass actual Node comparisons and production Rust server/worker tests. Graphs, remote configuration/tag mutations, observations, legacy direct-command dispatch/protection, GitHub and delegated OS Git remain pending                                                    |
 | History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | Pending                                                                                                    | Replay/crash/reopen, stable UTF-16 keys/digests, outbox acknowledgments and history reducer/projection fixtures; no cursor resets or uncertain effect replay                                                                                                                                                     |
 | Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Pending                                                                                                    | Actual provider protocol fixtures, streaming/media/usage, refresh, cancellation, failure and paid-work bounds                                                                                                                                                                                                    |
 | Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Pending                                                                                                    | Manifest verification/probe, native app-server processes, queue ownership, acceptance/commit and restart recovery                                                                                                                                                                                                |
@@ -1276,6 +1276,60 @@ Linux runtime checks remain pending. No hosted Actions, full-suite/device/VM/ima
 campaign, signing, deployment or production cutover is claimed. The goal remains
 active.
 
+## Native reviewed Git branches subcycle
+
+This cycle uses branch `agent/manual/rust-worker-git-branches` and reference
+commit `28ac19914` (#3184). Encrypted `repository.operation` now supports
+`git.branch.list`, `git.branch.action.preview` and `git.branch.action.apply`.
+All eight actions are native: create, switch, publish, rename, local/remote delete,
+set/unset upstream and fetch/prune. The fourteen outer handlers and production
+Node worker default are unchanged. Remote configuration editing remains separate.
+
+Inventory preserves local/remote refs, tracking counts and gone upstreams,
+merged status, worktree labels/current ownership, last-commit metadata, default
+remote selection, detached/unborn states, generated timestamps, locale sorting
+and the 20,000-branch cap. Ownership uses actual Git registrations and canonical
+paths with the existing lexical fallback. Default remote-name ordering retains
+JavaScript UTF-16 order. Review tokens preserve the exact Node action/head/ref/
+upstream/worktree/workspace JSON and SHA-256 construction; timestamps do not enter
+the token. Summaries/errors preserve UTF-16 strings.
+
+Existing validation, warnings and worktree ownership restrictions remain intact.
+Apply recomputes the review and executes the original Git arguments. Dirty
+switches and non-fast-forward pushes are decided by real Git. Branch operations
+preserve the managed journal; protected apply retains its active-record guard.
+No Node fallback, new dependency, Cargo.lock change or production cutover occurs.
+
+Three existing protocol roots are appended: `gitBranchListSchema`,
+`gitBranchActionPreviewSchema` and `gitBranchMutationResultSchema`. The manifest
+has 889 roots and 13,403 nodes, adding 51 nodes while preserving every previous
+node and root index. Public TypeScript contracts are unchanged.
+
+Local macOS ARM64 evidence: 92 actual Node/native comparisons cover all eight
+actions, exact tokens, new-commit publication and remote deletion, non-fast-forward
+refusal, fetch/prune/tracking, stale workspace/refs, dirty switches, merged/forced
+deletion, current/foreign/prunable worktree owners, canonical aliases, Unicode
+sorting/strings, detached/unborn behavior and actual checkout/config/ref/bare-
+remote state. Three focused existing Node branch tests and six journal/dispatch
+tests pass. Earlier compile/fixture attempts are retained; the final comparison
+uses the rebuilt binary and the actual Node missing-HEAD behavior for unborn
+previews.
+
+The production Rust server/worker smoke compares encrypted inventories/previews
+with Node, accepts Node-produced tokens after restart, exercises all eight actions
+against an owned local bare remote, reopens remote tracking after restart and
+verifies journal preservation and the persisted active-record guard. Earlier
+scenarios pass with Node absent from the worker PATH. Worker/server/example
+linking, workspace all-target Clippy with warnings denied, formatting/diff and
+source/contract checks pass. No hosted or external-network validation ran.
+
+Remote configuration/tag mutations, Git graphs, observations, worktrees, GitHub,
+delegated OS Git and direct legacy dispatch/protection remain required, along with
+execution/history, interactive terminals, browser/data planes, MCP/OS, Node-free
+upgrades, packaging and default cutover. Windows child-tree ownership and Windows/
+Linux runtime checks remain pending. No full-suite/device/VM/image campaign,
+signing or deployment is claimed. The full goal remains active.
+
 ## Local development and validation
 
 ```sh
@@ -1302,6 +1356,7 @@ node --import tsx scripts/worker-rust/git-conflicts-compatibility.mjs --binary /
 node --import tsx scripts/worker-rust/git-commits-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/git-stashes-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/git-patches-compatibility.mjs --binary /absolute/path/to/workspace-fixture
+node --import tsx scripts/worker-rust/git-branches-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/folder-compatibility.mjs --binary /absolute/path/to/workspace-fixture
 node --import tsx scripts/worker-rust/explorer-compatibility.mjs --binary /absolute/path/to/explorer-fixture
 node --import tsx scripts/worker-rust/private-state-compatibility.mjs --binary /absolute/path/to/content-fixture

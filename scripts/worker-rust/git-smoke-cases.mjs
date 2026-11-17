@@ -10,6 +10,7 @@ import { handleGitCommand } from "../../cantrip_worker/src/commands/git.ts";
 import { verifyCommitActions } from "./git-commit-smoke-cases.mjs";
 import { verifyStashes } from "./git-stash-smoke-cases.mjs";
 import { verifyPartialPatches } from "./git-patch-smoke-cases.mjs";
+import { verifyBranches } from "./git-branch-smoke-cases.mjs";
 import {
   inspectGitManagedOperation,
   previewGitManagedOperation,
@@ -630,6 +631,14 @@ export async function verifyGit({
     journal,
   });
   await verifyPartialPatches({
+    operation,
+    checkout,
+    restartWorker,
+    store,
+    scope,
+    journal,
+  });
+  await verifyBranches({
     operation,
     checkout,
     restartWorker,
