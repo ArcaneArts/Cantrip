@@ -8,6 +8,7 @@ mod diff;
 pub mod editor;
 mod history;
 mod inspection;
+mod lfs;
 pub mod managed;
 mod patches;
 mod plans;
@@ -46,6 +47,17 @@ pub async fn execute(command: &Value, scope: &Scope) -> Result<Value> {
     let cwd = paths::native(command["cwd"].as_js_string().unwrap());
     match command["type"].as_str().unwrap() {
         "git.status" => status(&cwd, scope).await,
+        "git.lfs.status" => lfs::status(&cwd, command["refreshLocks"] == true, scope).await,
+        "git.lfs.action.preview" => lfs::preview(&cwd, &command["action"], scope).await,
+        "git.lfs.action.apply" => {
+            lfs::apply(
+                &cwd,
+                &command["action"],
+                command["token"].as_js_string().unwrap(),
+                scope,
+            )
+            .await
+        }
         "git.submodule.list" => submodules::list(&cwd, scope).await,
         "git.submodule.action.preview" => {
             submodules::preview(&cwd, &command["action"], scope).await

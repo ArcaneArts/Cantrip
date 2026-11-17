@@ -59,6 +59,10 @@ await symlink("/usr/bin/true", path.join(bin, "true"));
 // fixture's explicit native dependencies available while excluding Node.
 for (const name of ["basename", "sed", "uname"])
   await symlink(`/usr/bin/${name}`, path.join(bin, name));
+await symlink(
+  execFileSync("/usr/bin/which", ["git-lfs"], { encoding: "utf8" }).trim(),
+  path.join(bin, "git-lfs"),
+);
 execFileSync(git, [
   "-c",
   "init.defaultBranch=main",
@@ -602,6 +606,7 @@ try {
       encryptedReviewedRemotesDefaultsFetchAndPrune: true,
       encryptedReviewedTagsAndImmutableSignatures: true,
       encryptedReviewedNestedSubmodulesAndRecovery: true,
+      encryptedReviewedLfsObjectsAndLocks: true,
       nodeAbsentFromWorkerPath: true,
       scope:
         "Fresh attachment, discovery/import, managed/existing folders, encrypted host Explorer/file-document, Git queries/basic actions and managed recovery with native rebase editors, and host terminal-service lifecycle; other worker domains remain pending.",
