@@ -37,6 +37,14 @@ pub use status::status;
 // Preserve existing imports while sharing lossless errors with other worker
 // domains. Public responses must not replace unpaired UTF-16 code units.
 pub use crate::error::{WireError as GitError, message as error_message};
+pub(crate) async fn verify_worktree(cwd: &std::path::Path, scope: &Scope) -> Result<()> {
+    let output =
+        process::capture_limit(cwd, &["rev-parse", "--git-dir"], scope, 1024 * 1024).await?;
+    if output.code != Some(0) || output.overflow {
+        anyhow::bail!("{}", output.error);
+    }
+    Ok(())
+}
 pub async fn execute(command: &Value, scope: &Scope) -> Result<Value> {
     let cwd = paths::native(command["cwd"].as_js_string().unwrap());
     match command["type"].as_str().unwrap() {

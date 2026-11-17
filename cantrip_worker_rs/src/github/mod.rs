@@ -4,12 +4,14 @@ mod api;
 mod catalog;
 mod issues;
 mod process;
+mod pulls;
 mod reads;
 mod search;
 use crate::filesystem::Scope;
 use anyhow::{Result, bail};
 pub use api::repository_for_checkout;
 use cantrip_wire::Value;
+pub use pulls::{group_review_threads, parse_review_context};
 pub use search::query as search_query;
 use std::path::{Path, PathBuf};
 
@@ -38,6 +40,7 @@ impl Client {
                 | "github.issue.create"
                 | "github.issue.comment"
                 | "github.issue.close"
+                | "github.pull-request.get"
         )
     }
     pub fn requires_checkout(kind: &str) -> bool {
@@ -74,6 +77,7 @@ impl Client {
             "github.issue.comment" | "github.issue.close" => {
                 self.mutate_issue(command, scope).await
             }
+            "github.pull-request.get" => self.pull_request(command, scope).await,
             _ => bail!("Native GitHub command is not implemented."),
         }
     }

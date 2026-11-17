@@ -919,7 +919,12 @@
     "githubIssueListSchema": 13691,
     "githubIssueDetailSchema": 13698,
     "githubIssueCreateSchema": 3494,
-    "githubPullRequestSummarySchema": 8169
+    "githubPullRequestSummarySchema": 8169,
+    "githubPullRequestOverviewSchema": 13709,
+    "githubPullRequestFilesSchema": 13813,
+    "githubPullRequestCommitsSchema": 13836,
+    "githubPullRequestChecksSchema": 13849,
+    "githubPullRequestDetailSchema": 13869
   },
   "nodes": [
     {
@@ -82694,6 +82699,969 @@
           "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
         }
       ]
+    },
+    {
+      "type": "object",
+      "name": "githubPullRequestOverviewSchema",
+      "shape": {
+        "number": 8170,
+        "title": 8171,
+        "state": 3446,
+        "url": 8172,
+        "author": 8173,
+        "commentCount": 8174,
+        "labels": 8175,
+        "assignees": 8179,
+        "milestone": 8182,
+        "createdAt": 8185,
+        "updatedAt": 8186,
+        "closedAt": 8187,
+        "body": 8189,
+        "draft": 8191,
+        "merged": 8192,
+        "headRef": 8193,
+        "headSha": 8194,
+        "baseRef": 8195,
+        "baseSha": 8196,
+        "mergeable": 13710,
+        "reviewDecision": 13712,
+        "checksState": 8204,
+        "nodeId": 13713,
+        "viewerLogin": 13716,
+        "pendingReview": 13719,
+        "autoMerge": 13724,
+        "mergeQueueEnabled": 13729,
+        "mergeQueueEntry": 13731,
+        "comments": 13738,
+        "commentsTruncated": 13739,
+        "requestedReviewers": 13740,
+        "mergeableState": 13742,
+        "additions": 13743,
+        "deletions": 13744,
+        "changedFileCount": 13745,
+        "commitCount": 13746,
+        "reviews": 13747,
+        "reviewsTruncated": 13759,
+        "reviewThreads": 13760,
+        "reviewThreadsTruncated": 13807,
+        "warnings": 13808
+      },
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 13711, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "enum",
+      "values": [
+        "approved",
+        "changes-requested",
+        "review-required",
+        "reviewed",
+        "none",
+        "unknown"
+      ],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13714,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 13715, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 256, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13717,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 13718, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13720,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 13721, "checks": [] },
+    {
+      "type": "object",
+      "name": "githubPullRequestPendingReviewSchema",
+      "shape": { "id": 13722, "commentCount": 13723 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 256, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13725,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 13726, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "enabledAt": 13727, "method": 13728 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "enum", "values": ["merge", "squash", "rebase"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13730,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13732,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 13733, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "id": 13734, "position": 13735, "state": 13737 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 256, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 13736, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 13702,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "array",
+      "element": 13741,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 13748,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "githubPullRequestReviewSchema",
+      "shape": {
+        "id": 13749,
+        "author": 13750,
+        "state": 13751,
+        "body": 13752,
+        "commitSha": 13753,
+        "submittedAt": 13755,
+        "url": 13757
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "values": [
+        "approved",
+        "changes-requested",
+        "commented",
+        "dismissed",
+        "pending"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 13754, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{40}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{40}$/u"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 13756, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 13758, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "string_format", "format": "url", "abort": false }]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "array",
+      "element": 13761,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "githubPullRequestReviewThreadSchema",
+      "shape": {
+        "id": 13762,
+        "path": 13763,
+        "line": 13764,
+        "side": 13766,
+        "startLine": 13768,
+        "startSide": 13771,
+        "resolved": 13774,
+        "outdated": 13777,
+        "viewerCanResolve": 13779,
+        "viewerCanUnresolve": 13781,
+        "comments": 13783
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 13765, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 13767, "checks": [] },
+    { "type": "enum", "values": ["LEFT", "RIGHT"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13769,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 13770, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13772,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 13773, "checks": [] },
+    { "type": "enum", "values": ["LEFT", "RIGHT"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13775,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 13776, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13778,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13780,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13782,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "array",
+      "element": 13784,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "githubPullRequestReviewCommentSchema",
+      "shape": {
+        "id": 13785,
+        "reviewId": 13786,
+        "author": 13788,
+        "body": 13789,
+        "url": 13790,
+        "path": 13791,
+        "line": 13792,
+        "side": 13794,
+        "startLine": 13796,
+        "startSide": 13798,
+        "diffHunk": 13800,
+        "inReplyToId": 13801,
+        "createdAt": 13803,
+        "updatedAt": 13804,
+        "pending": 13805
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 13787, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "string_format", "format": "url", "abort": false }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 13793, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 13795, "checks": [] },
+    { "type": "enum", "values": ["LEFT", "RIGHT"], "checks": [] },
+    { "type": "nullable", "innerType": 13797, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 13799, "checks": [] },
+    { "type": "enum", "values": ["LEFT", "RIGHT"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 13802, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13806,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13809,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 13810,
+      "checks": [{ "check": "max_length", "maximum": 20, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "githubPullRequestDataWarningSchema",
+      "shape": { "section": 13811, "message": 13812 },
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": [
+        "conversation",
+        "reviews",
+        "review-threads",
+        "files",
+        "commits",
+        "checks"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "githubPullRequestFilesSchema",
+      "shape": { "files": 13814, "filesTruncated": 13833, "warnings": 13834 },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 13815,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "githubPullRequestFileSchema",
+      "shape": {
+        "sha": 13816,
+        "path": 13817,
+        "previousPath": 13818,
+        "status": 13820,
+        "additions": 13821,
+        "deletions": 13822,
+        "changes": 13823,
+        "blobUrl": 13824,
+        "rawUrl": 13825,
+        "patch": 13827,
+        "patchTruncated": 13829,
+        "viewed": 13830
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{40}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{40}$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 13819, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 64, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "string_format", "format": "url", "abort": false }]
+    },
+    { "type": "nullable", "innerType": 13826, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "string_format", "format": "url", "abort": false }]
+    },
+    { "type": "nullable", "innerType": 13828, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13831,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 13832, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13835,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 13810,
+      "checks": [{ "check": "max_length", "maximum": 20, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "githubPullRequestCommitsSchema",
+      "shape": {
+        "commits": 13837,
+        "commitsTruncated": 13846,
+        "warnings": 13847
+      },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 13838,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "githubPullRequestCommitSchema",
+      "shape": {
+        "sha": 13839,
+        "shortSha": 13840,
+        "message": 13841,
+        "author": 13842,
+        "authoredAt": 13843,
+        "url": 13845
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{40}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{40}$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{7,12}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{7,12}$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 13844, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "string_format", "format": "url", "abort": false }]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13848,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 13810,
+      "checks": [{ "check": "max_length", "maximum": 20, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "githubPullRequestChecksSchema",
+      "shape": {
+        "checks": 13850,
+        "checksTruncated": 13866,
+        "checksState": 8204,
+        "warnings": 13867
+      },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 13851,
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "githubPullRequestCheckSchema",
+      "shape": {
+        "id": 13852,
+        "name": 13853,
+        "source": 13854,
+        "status": 13855,
+        "conclusion": 13856,
+        "url": 13858,
+        "startedAt": 13860,
+        "completedAt": 13862,
+        "summary": 13864
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    { "type": "enum", "values": ["check-run", "commit-status"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["queued", "in-progress", "completed"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 13857, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 13859, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "string_format", "format": "url", "abort": false }]
+    },
+    { "type": "nullable", "innerType": 13861, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 13863, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 13865, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 13868,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 13810,
+      "checks": [{ "check": "max_length", "maximum": 20, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "githubPullRequestDetailSchema",
+      "shape": {
+        "number": 8170,
+        "title": 8171,
+        "state": 3446,
+        "url": 8172,
+        "author": 8173,
+        "commentCount": 8174,
+        "labels": 8175,
+        "assignees": 8179,
+        "milestone": 8182,
+        "createdAt": 8185,
+        "updatedAt": 8186,
+        "closedAt": 8187,
+        "body": 8189,
+        "draft": 8191,
+        "merged": 8192,
+        "headRef": 8193,
+        "headSha": 8194,
+        "baseRef": 8195,
+        "baseSha": 8196,
+        "mergeable": 13710,
+        "reviewDecision": 13712,
+        "checksState": 8204,
+        "nodeId": 13713,
+        "viewerLogin": 13716,
+        "pendingReview": 13719,
+        "autoMerge": 13724,
+        "mergeQueueEnabled": 13729,
+        "mergeQueueEntry": 13731,
+        "comments": 13738,
+        "commentsTruncated": 13739,
+        "requestedReviewers": 13740,
+        "mergeableState": 13742,
+        "additions": 13743,
+        "deletions": 13744,
+        "changedFileCount": 13745,
+        "commitCount": 13746,
+        "reviews": 13747,
+        "reviewsTruncated": 13759,
+        "reviewThreads": 13760,
+        "reviewThreadsTruncated": 13807,
+        "warnings": 13808,
+        "commits": 13837,
+        "commitsTruncated": 13846,
+        "files": 13814,
+        "filesTruncated": 13833,
+        "checks": 13850,
+        "checksTruncated": 13866
+      },
+      "checks": []
     }
   ]
 }

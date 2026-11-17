@@ -37,6 +37,8 @@ async fn main() -> Result<()> {
                     .ok_or_else(|| anyhow!("Fixture encryption not open"))
             };
             match input["op"].as_str().unwrap_or("") {
+                "github-review-context"=>cantrip_worker::github::parse_review_context(&input["value"]),
+                "github-review-group"=>cantrip_worker::github::group_review_threads(input["comments"].as_array().unwrap()),
                 "github-search"=>cantrip_worker::github::search_query(input["repository"].as_js_string().unwrap(),input["kind"].as_str().unwrap(),input["state"].as_str().unwrap(),&input["filters"],input["now"].as_i64()).map(Value::String),
                 "github"=> {
                     let directory=cantrip_worker::filesystem::paths::native(input["directory"].as_js_string().unwrap());
