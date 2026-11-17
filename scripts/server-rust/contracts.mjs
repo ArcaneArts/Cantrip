@@ -858,6 +858,7 @@ export const contractRoots = [
   "terminalOutputContentSchema",
   "terminalSnapshotRequestContentSchema",
   "terminalSnapshotContentSchema",
+  "projectGithubConversionRepositorySchema",
 ];
 
 export const projectExportContractRoots = [

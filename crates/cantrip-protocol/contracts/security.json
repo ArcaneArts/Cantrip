@@ -834,7 +834,8 @@
     "terminalInputContentSchema": 12545,
     "terminalOutputContentSchema": 12549,
     "terminalSnapshotRequestContentSchema": 12553,
-    "terminalSnapshotContentSchema": 12557
+    "terminalSnapshotContentSchema": 12557,
+    "projectGithubConversionRepositorySchema": 1434
   },
   "nodes": [
     {
