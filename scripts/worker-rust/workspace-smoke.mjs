@@ -1,5 +1,6 @@
 // Actual production Rust worker/server: fresh encrypted root attachment, then
-// restart and discover/import the persisted workspace. No seed or fake handlers.
+// restart and discover/import the persisted workspace. Owned profiles and native
+// command handlers; selected catalog/admission fixtures seed only stopped profiles.
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import {
@@ -46,6 +47,7 @@ import { verifyGithubOperations } from "./github-operations-smoke-cases.mjs";
 import { verifyWorktreeRecovery } from "./worktree-recovery-smoke-cases.mjs";
 import { replicaProvisionFixture } from "./replica-provision-fixture.mjs";
 import { verifyReplicaProvision } from "./replica-provision-smoke-cases.mjs";
+import { verifyReplicaLifecycleJobs } from "./replica-lifecycle-smoke-cases.mjs";
 // Every Git remote in this owned fixture is local. Preserve production Git
 // policy while explicitly allowing this test's local submodule clones.
 const previousGitProtocol = process.env.GIT_ALLOW_PROTOCOL;
@@ -63,6 +65,7 @@ const { values } = parseArgs({
     "pull-request-lifecycle-only": { type: "boolean", default: false },
     "github-operations-only": { type: "boolean", default: false },
     "replica-provision-only": { type: "boolean", default: false },
+    "replica-lifecycle-only": { type: "boolean", default: false },
   },
 });
 assert.ok(
@@ -97,27 +100,28 @@ if (
   !values["pull-request-actions-only"] &&
   !values["pull-request-lifecycle-only"] &&
   !values["github-operations-only"] &&
-  !values["replica-provision-only"]
+  !(values["replica-provision-only"] || values["replica-lifecycle-only"])
 )
   await symlink(
     execFileSync("/usr/bin/which", ["git-lfs"], { encoding: "utf8" }).trim(),
     path.join(bin, "git-lfs"),
   );
-const githubFixture = values["replica-provision-only"]
-  ? await replicaProvisionFixture(root, git)
-  : values["github-catalog-only"]
-    ? await githubCatalogFixture(root, bin)
-    : values["github-issues-only"]
-      ? await githubIssuesFixture(root, bin)
-      : values["github-operations-only"]
-        ? await githubOperationsFixture(root, bin)
-        : values["pull-request-lifecycle-only"]
-          ? await pullRequestLifecycleFixture(root, bin)
-          : values["pull-request-actions-only"]
-            ? await pullRequestActionsFixture(root, bin)
-            : values["pull-request-only"]
-              ? await pullRequestFixture(root, bin)
-              : undefined;
+const githubFixture =
+  values["replica-provision-only"] || values["replica-lifecycle-only"]
+    ? await replicaProvisionFixture(root, git)
+    : values["github-catalog-only"]
+      ? await githubCatalogFixture(root, bin)
+      : values["github-issues-only"]
+        ? await githubIssuesFixture(root, bin)
+        : values["github-operations-only"]
+          ? await githubOperationsFixture(root, bin)
+          : values["pull-request-lifecycle-only"]
+            ? await pullRequestLifecycleFixture(root, bin)
+            : values["pull-request-actions-only"]
+              ? await pullRequestActionsFixture(root, bin)
+              : values["pull-request-only"]
+                ? await pullRequestFixture(root, bin)
+                : undefined;
 execFileSync(git, [
   "-c",
   "init.defaultBranch=main",
@@ -209,7 +213,9 @@ function startWorker(code) {
     CANTRIP_SERVER_URL: server.origin,
     ...(code ? { CANTRIP_WORKER_ENROLLMENT_CODE: code } : {}),
     ...(githubFixture ? { GH_TOKEN: "", GITHUB_TOKEN: "" } : {}),
-    ...(values["replica-provision-only"] ? githubFixture.environment : {}),
+    ...(values["replica-provision-only"] || values["replica-lifecycle-only"]
+      ? githubFixture.environment
+      : {}),
   };
   delete workerEnvironment.CANTRIP_WORKER_TOKEN;
   child = spawn(path.resolve(values.worker), ["--shutdown-on-stdin-close"], {
@@ -265,6 +271,51 @@ async function restartWorker() {
     },
     "native runtime restart and command socket readiness",
   );
+}
+async function seedReplicaSiblings(entries) {
+  // Owned stopped-profile fixture: an offline sibling source is required by
+  // the production API's last-replica rule. No sibling command is simulated.
+  const port = Number(new URL(server.origin).port);
+  await stopWorker();
+  await server.close();
+  server = undefined;
+  const seed = await repositoryFixture({
+    kind: "rust",
+    root,
+    dataDirectory: serverDirectory,
+    executable: path.join(
+      path.dirname(path.resolve(values.server)),
+      "examples",
+      "project-repository-fixture",
+    ),
+    databaseMode: "pglite",
+  });
+  const backup = "native-retained-replica-fixture";
+  try {
+    await seed.seed(
+      "INSERT INTO workers SELECT (jsonb_populate_record(NULL::workers,to_jsonb(w)||jsonb_build_object('id'," +
+        literal(backup) +
+        ",'name','Retained offline fixture','last_seen_at','2020-01-01T00:00:00Z'))).* FROM workers w WHERE w.id=" +
+        literal(workerId),
+    );
+    for (let index = 0; index < entries.length; index++) {
+      const id =
+        "aaaaaaaa-aaaa-4aaa-8aaa-" + String(index + 1).padStart(12, "0");
+      await seed.seed(
+        "INSERT INTO project_sources SELECT (jsonb_populate_record(NULL::project_sources,to_jsonb(s)||jsonb_build_object('id'," +
+          literal(id) +
+          ",'worker_id'," +
+          literal(backup) +
+          ",'primary_worktree_id',NULL))).* FROM project_sources s WHERE s.id=" +
+          literal(entries[index].source.id),
+      );
+    }
+  } finally {
+    await seed.close();
+  }
+  await start(port);
+  startWorker();
+  await ready();
 }
 async function repositoryClient() {
   const ownerId = "00000000-0000-0000-0000-000000000001";
@@ -475,8 +526,12 @@ try {
     observationCoverage,
     recoveryCoverage,
     replicaCoverage;
-  if (values["replica-provision-only"]) {
+  if (values["replica-provision-only"] || values["replica-lifecycle-only"]) {
     replicaCoverage = await verifyReplicaProvision({
+      seedSiblings: seedReplicaSiblings,
+      lifecycle: values["replica-lifecycle-only"]
+        ? verifyReplicaLifecycleJobs
+        : undefined,
       call,
       fixture: githubFixture,
       workerId,
@@ -781,7 +836,9 @@ try {
   if (replicaCoverage)
     console.log(
       JSON.stringify({
-        suite: "actual-native-replica-provision-worker-server",
+        suite: values["replica-lifecycle-only"]
+          ? "actual-native-replica-lifecycle-worker-server"
+          : "actual-native-replica-provision-worker-server",
         passed: true,
         realWorkerAndServer: true,
         nodeAbsentFromWorkerPath: true,

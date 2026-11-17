@@ -9,6 +9,29 @@ use anyhow::Result;
 use cantrip_wire::{JsString, Value, value::json};
 use std::path::{Path, PathBuf};
 const OWNER: &str = "cantrip-project-owner.json";
+pub(super) fn same_path(left: &JsString, right: &JsString) -> bool {
+    path::equal(&Value::String(left.clone()), &Value::String(right.clone()))
+}
+pub(super) fn resolved_path_text(value: &JsString) -> Result<JsString> {
+    let native = crate::filesystem::paths::native(value);
+    if native.is_absolute() {
+        let mut normalized = path::normalized(value).units().to_vec();
+        loop {
+            let text = JsString::new(normalized.clone());
+            if crate::filesystem::paths::native(&text).parent().is_none()
+                || normalized
+                    .last()
+                    .is_none_or(|u| *u != std::path::MAIN_SEPARATOR as u16)
+            {
+                return Ok(text);
+            }
+            normalized.pop();
+        }
+    }
+    Ok(crate::filesystem::paths::text(
+        &crate::filesystem::paths::resolve(&native)?,
+    ))
+}
 pub(super) async fn remove_staging(path: &Path) -> Result<()> {
     io::remove(path, true).await
 }

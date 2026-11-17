@@ -5,6 +5,37 @@ use crate::{
 use anyhow::Result;
 use cantrip_wire::{JsString, Value};
 use std::path::{Path, PathBuf};
+pub(super) async fn revision(path: &Path, revision: &str, scope: &Scope) -> Result<JsString> {
+    Ok(run(
+        path,
+        &["rev-parse", "--verify", &format!("{revision}^{{commit}}")],
+        1024 * 1024,
+        scope,
+    )
+    .await?
+    .lowercase())
+}
+pub(super) async fn ancestor(
+    path: &Path,
+    ancestor: &str,
+    descendant: &str,
+    scope: &Scope,
+) -> Result<bool> {
+    let args = vec![
+        "-C".into(),
+        paths::text(path),
+        "merge-base".into(),
+        "--is-ancestor".into(),
+        ancestor.into(),
+        descendant.into(),
+    ];
+    let output = process::capture_program("git", &args, 1024 * 1024, None, scope).await?;
+    if output.code == Some(1) && output.overflow.is_none() && !output.timed_out {
+        return Ok(false);
+    }
+    process::check_output("git", &args, &output)?;
+    Ok(true)
+}
 pub(super) async fn run(
     path: &Path,
     arguments: &[&str],

@@ -51,6 +51,25 @@ async fn main() -> Result<()> {
                 ));
             }
             let manager = &owner.as_ref().unwrap().2;
+            if let Some(trace) = input["removalTrace"].as_js_string() {
+                let trace = paths::native(trace);
+                manager.set_removal_lifecycle(Arc::new(move |root, operation| {
+                    let trace = trace.clone();
+                    Box::pin(async move {
+                        use std::io::Write;
+                        let mut file = std::fs::OpenOptions::new().append(true).open(trace)?;
+                        write!(file, "lifecycle\0{}\0\0", root.display())?;
+                        let result = operation.await;
+                        match &result {
+                            Ok(value) => {
+                                write!(file, "settled\0{}\0\0", value["status"].as_str().unwrap())?
+                            }
+                            Err(_) => write!(file, "failed\0\0")?,
+                        }
+                        result
+                    })
+                }));
+            }
             if input["method"] == "batch" {
                 json!(
                     futures::future::join_all(

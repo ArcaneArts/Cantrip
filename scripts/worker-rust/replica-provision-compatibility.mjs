@@ -16,6 +16,7 @@ import {
   readlink,
   symlink,
   realpath,
+  appendFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -27,8 +28,14 @@ import {
 } from "../../cantrip_worker/src/github.ts";
 import { workerEventSchema } from "../../packages/protocol/dist/index.js";
 import { replicaProvisionFixture } from "./replica-provision-fixture.mjs";
+import { verifyReplicaLifecycle } from "./replica-lifecycle-compatibility-cases.mjs";
 const execute = promisify(execFile);
-const { values } = parseArgs({ options: { binary: { type: "string" } } });
+const { values } = parseArgs({
+  options: {
+    binary: { type: "string" },
+    lifecycle: { type: "boolean", default: false },
+  },
+});
 assert.ok(values.binary, "Pass --binary replica-provision-fixture");
 const root = await realpath(
   await mkdtemp(path.join(tmpdir(), "cantrip-replica-provision-")),
@@ -51,7 +58,20 @@ const source = () => {
   const key = directory + "|" + worker;
   if (!sourceClients.has(key))
     sourceClients.set(key, new GithubClient(directory, worker));
-  return sourceClients.get(key);
+  const client = sourceClients.get(key);
+  if (values.lifecycle)
+    client.setReplicaRemovalLifecycle(async (root, remove) => {
+      await appendFile(fixture.trace, "lifecycle\0" + root + "\0\0");
+      try {
+        const result = await remove();
+        await appendFile(fixture.trace, "settled\0" + result.status + "\0\0");
+        return result;
+      } catch (error) {
+        await appendFile(fixture.trace, "failed\0\0");
+        throw error;
+      }
+    });
+  return client;
 };
 const child = spawn(path.resolve(values.binary), [], {
   cwd: root,
@@ -72,6 +92,7 @@ async function native(method, payload) {
       method,
       directory,
       workerId: worker,
+      ...(values.lifecycle ? { removalTrace: fixture.trace } : {}),
       ...payload,
     }) + "\n",
   );
@@ -84,6 +105,23 @@ async function native(method, payload) {
 async function node(command) {
   const progress = [];
   try {
+    if (
+      ["project.replica.synchronize", "project.replica.remove"].includes(
+        command.type,
+      )
+    ) {
+      const input = {
+        ...command,
+        projectId: command.projectId ?? command.jobId,
+        nameWithOwner: command.repository?.nameWithOwner ?? null,
+      };
+      const value = await source()[
+        command.type === "project.replica.synchronize"
+          ? "synchronizeReplica"
+          : "removeReplica"
+      ](input, (event) => progress.push(event));
+      return { ok: true, value, progress };
+    }
     if (command.type === "project.replica.link.repair") {
       return {
         ok: true,
@@ -312,261 +350,296 @@ async function checkout(target) {
   );
 }
 try {
-  for (const output of [
-    "",
-    "Receiving objects: 50%",
-    "receiving OBJECTS:\t99%",
-    "Receiving objects: 101%\rResolving deltas: 75%\nUpdating files: 25%",
-    "Updating files: 100%\nReceiving objects: 0%",
-    "Receiving objects: -2%",
-    "Receiving objects: " + "9".repeat(400) + "%",
-    "notice\nfatal: failed\nerror: gone\nchatter",
-    Array.from({ length: 25 }, (_, i) => "line " + i).join("\r\n"),
-    Array.from({ length: 12 }, (_, i) => "fatal: line " + i).join("\n"),
-    "fatal: " + "x".repeat(4000) + "\ud800",
-    "filename too long",
-    "File name or extension is too long",
-    "path is too long",
-    "unrelated long line",
-    "\u00a0fatal: trimmed\u00a0",
-  ])
-    for (const windows of [false, true]) {
-      const expected = {
-        progress: parseGithubCloneProgress(output),
-        summary: summarizeGithubCloneFailure(output),
-        failure: githubCloneFailureDetails(
-          output,
-          windows ? "win32" : "darwin",
-        ),
-      };
-      assert.deepEqual(await native("helpers", { output, windows }), expected);
-      helperComparisons++;
+  if (values.lifecycle) {
+    const coverage = await verifyReplicaLifecycle({
+      root,
+      fixture,
+      run,
+      compare,
+      command,
+      direct,
+      checkout,
+      getDirectory: () => directory,
+      setDirectory: (value) => {
+        directory = value;
+      },
+    });
+    console.log(
+      JSON.stringify({
+        suite: "native-replica-lifecycle",
+        comparisons,
+        ...coverage,
+        nodeAbsentFromNativePath: true,
+      }),
+    );
+  } else {
+    for (const output of [
+      "",
+      "Receiving objects: 50%",
+      "receiving OBJECTS:\t99%",
+      "Receiving objects: 101%\rResolving deltas: 75%\nUpdating files: 25%",
+      "Updating files: 100%\nReceiving objects: 0%",
+      "Receiving objects: -2%",
+      "Receiving objects: " + "9".repeat(400) + "%",
+      "notice\nfatal: failed\nerror: gone\nchatter",
+      Array.from({ length: 25 }, (_, i) => "line " + i).join("\r\n"),
+      Array.from({ length: 12 }, (_, i) => "fatal: line " + i).join("\n"),
+      "fatal: " + "x".repeat(4000) + "\ud800",
+      "filename too long",
+      "File name or extension is too long",
+      "path is too long",
+      "unrelated long line",
+      "\u00a0fatal: trimmed\u00a0",
+    ])
+      for (const windows of [false, true]) {
+        const expected = {
+          progress: parseGithubCloneProgress(output),
+          summary: summarizeGithubCloneFailure(output),
+          failure: githubCloneFailureDetails(
+            output,
+            windows ? "win32" : "darwin",
+          ),
+        };
+        assert.deepEqual(
+          await native("helpers", { output, windows }),
+          expected,
+        );
+        helperComparisons++;
+      }
+    await compare(command({ repository: null }), { status: "blocked" });
+    await compare(direct(path.join(root, "missing"), { repository: null }), {
+      status: "blocked",
+    });
+    await compare(
+      direct(path.join(root, "missing"), {
+        repository: null,
+        expectedRevision: fixture.revision,
+      }),
+      { status: "blocked" },
+    );
+    await compare(direct("relative"), { status: "blocked" });
+    await writeFile(path.join(root, "occupied"), "preserve this");
+    await compare(direct(path.join(root, "occupied")), { status: "blocked" });
+    const existing = path.join(root, "existing 😀");
+    await checkout(existing);
+    const local = direct(existing, {
+      repository: null,
+      expectedRevision: fixture.revision,
+    });
+    await writeFile(path.join(existing, "user.txt"), "user content\n");
+    assert.equal(
+      (await compare(local)).value.placement.materialization,
+      "attached",
+    );
+    await compare(local);
+    await compare({ ...local, projectId: randomUUID() }, { status: "blocked" });
+    await compare(
+      { ...local, expectedRevision: "f".repeat(40) },
+      { status: "blocked" },
+    );
+    await compare(
+      { ...local, repository: { nameWithOwner: "fixture/other" } },
+      { status: "blocked" },
+    );
+    await compare(
+      { ...local, repository: { nameWithOwner: "fixture/repository" } },
+      { status: "blocked" },
+    );
+    await compare(
+      direct(path.join(existing, ".cantrip"), {
+        repository: null,
+        expectedRevision: fixture.revision,
+      }),
+      { status: "blocked" },
+    );
+    const secondary = path.join(root, "secondary");
+    await run(
+      "-C",
+      existing,
+      "worktree",
+      "add",
+      "--detach",
+      secondary,
+      fixture.revision,
+    );
+    await compare(
+      direct(secondary, {
+        repository: null,
+        expectedRevision: fixture.revision,
+      }),
+      { status: "blocked" },
+    );
+    await compare(command());
+    await compare(command());
+    await compare(command({ expectedRevision: "f".repeat(40) }), {
+      status: "blocked",
+    });
+    await writeFile(
+      path.join(managedTarget(), "README.md"),
+      "preserve dirty managed content\n",
+    );
+    await compare(command(), { status: "blocked" });
+    await run("-C", managedTarget(), "checkout", "--", "README.md");
+    const cloned = direct(path.join(root, "cloned 😀"));
+    assert.equal((await compare(cloned)).value.placement.ownership, "cantrip");
+    assert.equal(
+      (await compare(cloned)).value.placement.materialization,
+      "reused",
+    );
+    const link = command({
+      projectId: randomUUID(),
+      placement: {
+        mode: "managed-link",
+        path: path.join(root, "external", "repository-link"),
+      },
+    });
+    const linked = (await compare(link)).value;
+    await compare(link);
+    const repair = {
+      type: "project.replica.link.repair",
+      projectId: link.projectId,
+      repository: link.repository,
+      sourcePath: linked.path,
+      linkPath: linked.placement.linkPath,
+      repositoryFingerprint: linked.repositoryFingerprint,
+    };
+    await rm(repair.linkPath);
+    assert.equal((await compare(repair)).value.repaired, true);
+    assert.equal((await compare(repair)).value.repaired, false);
+    await compare(
+      { ...repair, repositoryFingerprint: "f".repeat(64) },
+      { status: "blocked" },
+    );
+    await compare(
+      { ...repair, projectId: randomUUID() },
+      { status: "blocked" },
+    );
+    await compare({ ...repair, sourcePath: existing }, { status: "blocked" });
+    await compare({ ...repair, sourcePath: "relative" }, { ok: false });
+    await rm(repair.linkPath);
+    await writeFile(repair.linkPath, "preserve replaced link");
+    await compare(repair, { status: "blocked" });
+    await rm(repair.linkPath);
+    await compare(repair);
+    const managedWorkspace = command({
+      projectId: randomUUID(),
+      workspaceStorage: { kind: "managed", workspaceId: randomUUID() },
+      placement: {
+        mode: "managed-link",
+        path: path.join(root, "external", "workspace-link"),
+      },
+    });
+    const workspace = (await compare(managedWorkspace)).value;
+    await rm(workspace.placement.linkPath);
+    await compare({
+      ...repair,
+      projectId: managedWorkspace.projectId,
+      sourcePath: workspace.path,
+      linkPath: workspace.placement.linkPath,
+      repositoryFingerprint: workspace.repositoryFingerprint,
+    });
+    const invalidWorkspace = path.join(
+      directory,
+      "workspaces",
+      "not-a-uuid",
+      "repositories",
+      "fixture",
+      "repository",
+    );
+    await checkout(invalidWorkspace);
+    await compare(
+      { ...repair, sourcePath: invalidWorkspace },
+      { status: "blocked" },
+    );
+    directory = path.join(root, "worker-pinned");
+    const pinned = direct(path.join(root, "pinned-checkout"), {
+      expectedRevision: fixture.revision,
+    });
+    assert.equal((await compare(pinned)).value.branch, null);
+    await compare(pinned);
+    directory = path.join(root, "worker-missing-revision");
+    await compare(command({ expectedRevision: "f".repeat(40) }), {
+      status: "blocked",
+    });
+    await compare(
+      direct(path.join(root, "direct-missing-revision"), {
+        expectedRevision: "f".repeat(40),
+      }),
+      { status: "blocked" },
+    );
+    await writeFile(fixture.behavior, "fail");
+    directory = path.join(root, "worker-failure");
+    await compare(command(), { status: "blocked" });
+    await compare(direct(path.join(root, "direct-failed")), {
+      status: "blocked",
+    });
+    await writeFile(fixture.behavior, "normal");
+    const occupiedStage = direct(path.join(root, "unowned-clone"));
+    const staging =
+      occupiedStage.placement.path +
+      ".cantrip-provision-" +
+      occupiedStage.jobId;
+    await mkdir(staging);
+    await writeFile(path.join(staging, "user.txt"), "keep unowned staging");
+    await compare(occupiedStage, { status: "blocked" });
+    directory = path.join(root, "worker-empty");
+    await compare(command({ repository: { nameWithOwner: "fixture/empty" } }));
+    directory = path.join(root, "worker-unborn");
+    await mkdir(managedTarget(), { recursive: true });
+    await run("init", "--initial-branch=unborn", managedTarget());
+    await run(
+      "-C",
+      managedTarget(),
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/fixture/repository.git",
+    );
+    await compare(command());
+    directory = path.join(root, "worker-queue");
+    await writeFile(fixture.behavior, "slow");
+    const queued = await compare([command(), command()], { batch: true });
+    assert.equal(queued[0].value.reused, false);
+    assert.equal(queued[1].value.reused, true);
+    await writeFile(fixture.behavior, "normal");
+    const afterRejection = await compare(
+      [{ ...local, expectedRevision: "f".repeat(40) }, local],
+      { batch: true },
+    );
+    assert.equal(afterRejection[0].value.status, "blocked");
+    assert.equal(afterRejection[1].value.status, "ready");
+    // Policy contents are read from a regular bounded file; local dirty checkouts
+    // remain attachable, so these are actual production policy reads.
+    for (const policy of [
+      "invalid",
+      JSON.stringify({ worktreePolicy: "unknown" }),
+      "x".repeat(65537),
+    ]) {
+      await writeFile(path.join(existing, ".cantrip/project.json"), policy);
+      assert.equal((await compare(local)).value.worktreePolicy, null);
     }
-  await compare(command({ repository: null }), { status: "blocked" });
-  await compare(direct(path.join(root, "missing"), { repository: null }), {
-    status: "blocked",
-  });
-  await compare(
-    direct(path.join(root, "missing"), {
-      repository: null,
-      expectedRevision: fixture.revision,
-    }),
-    { status: "blocked" },
-  );
-  await compare(direct("relative"), { status: "blocked" });
-  await writeFile(path.join(root, "occupied"), "preserve this");
-  await compare(direct(path.join(root, "occupied")), { status: "blocked" });
-  const existing = path.join(root, "existing 😀");
-  await checkout(existing);
-  const local = direct(existing, {
-    repository: null,
-    expectedRevision: fixture.revision,
-  });
-  await writeFile(path.join(existing, "user.txt"), "user content\n");
-  assert.equal(
-    (await compare(local)).value.placement.materialization,
-    "attached",
-  );
-  await compare(local);
-  await compare({ ...local, projectId: randomUUID() }, { status: "blocked" });
-  await compare(
-    { ...local, expectedRevision: "f".repeat(40) },
-    { status: "blocked" },
-  );
-  await compare(
-    { ...local, repository: { nameWithOwner: "fixture/other" } },
-    { status: "blocked" },
-  );
-  await compare(
-    { ...local, repository: { nameWithOwner: "fixture/repository" } },
-    { status: "blocked" },
-  );
-  await compare(
-    direct(path.join(existing, ".cantrip"), {
-      repository: null,
-      expectedRevision: fixture.revision,
-    }),
-    { status: "blocked" },
-  );
-  const secondary = path.join(root, "secondary");
-  await run(
-    "-C",
-    existing,
-    "worktree",
-    "add",
-    "--detach",
-    secondary,
-    fixture.revision,
-  );
-  await compare(
-    direct(secondary, { repository: null, expectedRevision: fixture.revision }),
-    { status: "blocked" },
-  );
-  await compare(command());
-  await compare(command());
-  await compare(command({ expectedRevision: "f".repeat(40) }), {
-    status: "blocked",
-  });
-  await writeFile(
-    path.join(managedTarget(), "README.md"),
-    "preserve dirty managed content\n",
-  );
-  await compare(command(), { status: "blocked" });
-  await run("-C", managedTarget(), "checkout", "--", "README.md");
-  const cloned = direct(path.join(root, "cloned 😀"));
-  assert.equal((await compare(cloned)).value.placement.ownership, "cantrip");
-  assert.equal(
-    (await compare(cloned)).value.placement.materialization,
-    "reused",
-  );
-  const link = command({
-    projectId: randomUUID(),
-    placement: {
-      mode: "managed-link",
-      path: path.join(root, "external", "repository-link"),
-    },
-  });
-  const linked = (await compare(link)).value;
-  await compare(link);
-  const repair = {
-    type: "project.replica.link.repair",
-    projectId: link.projectId,
-    repository: link.repository,
-    sourcePath: linked.path,
-    linkPath: linked.placement.linkPath,
-    repositoryFingerprint: linked.repositoryFingerprint,
-  };
-  await rm(repair.linkPath);
-  assert.equal((await compare(repair)).value.repaired, true);
-  assert.equal((await compare(repair)).value.repaired, false);
-  await compare(
-    { ...repair, repositoryFingerprint: "f".repeat(64) },
-    { status: "blocked" },
-  );
-  await compare({ ...repair, projectId: randomUUID() }, { status: "blocked" });
-  await compare({ ...repair, sourcePath: existing }, { status: "blocked" });
-  await compare({ ...repair, sourcePath: "relative" }, { ok: false });
-  await rm(repair.linkPath);
-  await writeFile(repair.linkPath, "preserve replaced link");
-  await compare(repair, { status: "blocked" });
-  await rm(repair.linkPath);
-  await compare(repair);
-  const managedWorkspace = command({
-    projectId: randomUUID(),
-    workspaceStorage: { kind: "managed", workspaceId: randomUUID() },
-    placement: {
-      mode: "managed-link",
-      path: path.join(root, "external", "workspace-link"),
-    },
-  });
-  const workspace = (await compare(managedWorkspace)).value;
-  await rm(workspace.placement.linkPath);
-  await compare({
-    ...repair,
-    projectId: managedWorkspace.projectId,
-    sourcePath: workspace.path,
-    linkPath: workspace.placement.linkPath,
-    repositoryFingerprint: workspace.repositoryFingerprint,
-  });
-  const invalidWorkspace = path.join(
-    directory,
-    "workspaces",
-    "not-a-uuid",
-    "repositories",
-    "fixture",
-    "repository",
-  );
-  await checkout(invalidWorkspace);
-  await compare(
-    { ...repair, sourcePath: invalidWorkspace },
-    { status: "blocked" },
-  );
-  directory = path.join(root, "worker-pinned");
-  const pinned = direct(path.join(root, "pinned-checkout"), {
-    expectedRevision: fixture.revision,
-  });
-  assert.equal((await compare(pinned)).value.branch, null);
-  await compare(pinned);
-  directory = path.join(root, "worker-missing-revision");
-  await compare(command({ expectedRevision: "f".repeat(40) }), {
-    status: "blocked",
-  });
-  await compare(
-    direct(path.join(root, "direct-missing-revision"), {
-      expectedRevision: "f".repeat(40),
-    }),
-    { status: "blocked" },
-  );
-  await writeFile(fixture.behavior, "fail");
-  directory = path.join(root, "worker-failure");
-  await compare(command(), { status: "blocked" });
-  await compare(direct(path.join(root, "direct-failed")), {
-    status: "blocked",
-  });
-  await writeFile(fixture.behavior, "normal");
-  const occupiedStage = direct(path.join(root, "unowned-clone"));
-  const staging =
-    occupiedStage.placement.path + ".cantrip-provision-" + occupiedStage.jobId;
-  await mkdir(staging);
-  await writeFile(path.join(staging, "user.txt"), "keep unowned staging");
-  await compare(occupiedStage, { status: "blocked" });
-  directory = path.join(root, "worker-empty");
-  await compare(command({ repository: { nameWithOwner: "fixture/empty" } }));
-  directory = path.join(root, "worker-unborn");
-  await mkdir(managedTarget(), { recursive: true });
-  await run("init", "--initial-branch=unborn", managedTarget());
-  await run(
-    "-C",
-    managedTarget(),
-    "remote",
-    "add",
-    "origin",
-    "https://github.com/fixture/repository.git",
-  );
-  await compare(command());
-  directory = path.join(root, "worker-queue");
-  await writeFile(fixture.behavior, "slow");
-  const queued = await compare([command(), command()], { batch: true });
-  assert.equal(queued[0].value.reused, false);
-  assert.equal(queued[1].value.reused, true);
-  await writeFile(fixture.behavior, "normal");
-  const afterRejection = await compare(
-    [{ ...local, expectedRevision: "f".repeat(40) }, local],
-    { batch: true },
-  );
-  assert.equal(afterRejection[0].value.status, "blocked");
-  assert.equal(afterRejection[1].value.status, "ready");
-  // Policy contents are read from a regular bounded file; local dirty checkouts
-  // remain attachable, so these are actual production policy reads.
-  for (const policy of [
-    "invalid",
-    JSON.stringify({ worktreePolicy: "unknown" }),
-    "x".repeat(65537),
-  ]) {
-    await writeFile(path.join(existing, ".cantrip/project.json"), policy);
-    assert.equal((await compare(local)).value.worktreePolicy, null);
+    console.log(
+      JSON.stringify({
+        suite: "native-replica-provision",
+        comparisons,
+        helperComparisons,
+        actualNodeAndNative: true,
+        actualOwnedGitRepositories: true,
+        exactCliArgumentsAndOrder: true,
+        samePathsAndFingerprints: true,
+        exactPrivateStateAndFilesystemModes: true,
+        gitRefsStatusAndBranches: true,
+        allPlacementModes: true,
+        stagingCleanupAndUserPreservation: true,
+        sameTargetSerializationAndRejectedQueueRecovery: true,
+        sourceCompatibleProgress: true,
+        boundedPolicyRead: true,
+        managedLinkRepairAndWorkspaceContainment: true,
+        exactRevisionDetach: true,
+        nodeAbsentFromNativePath: true,
+      }),
+    );
   }
-  console.log(
-    JSON.stringify({
-      suite: "native-replica-provision",
-      comparisons,
-      helperComparisons,
-      actualNodeAndNative: true,
-      actualOwnedGitRepositories: true,
-      exactCliArgumentsAndOrder: true,
-      samePathsAndFingerprints: true,
-      exactPrivateStateAndFilesystemModes: true,
-      gitRefsStatusAndBranches: true,
-      allPlacementModes: true,
-      stagingCleanupAndUserPreservation: true,
-      sameTargetSerializationAndRejectedQueueRecovery: true,
-      sourceCompatibleProgress: true,
-      boundedPolicyRead: true,
-      managedLinkRepairAndWorkspaceContainment: true,
-      exactRevisionDetach: true,
-      nodeAbsentFromNativePath: true,
-    }),
-  );
 } finally {
   child.stdin.end();
   assert.equal(await completion, 0);

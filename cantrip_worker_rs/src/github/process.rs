@@ -35,6 +35,31 @@ pub(super) async fn run_output(
     timeout: Option<std::time::Duration>,
     scope: &Scope,
 ) -> Result<(String, String)> {
+    let output = capture_program(program, args, maximum, timeout, scope).await?;
+    check_output(program, args, &output)?;
+    Ok((
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    ))
+}
+#[derive(Debug)]
+pub(crate) struct SpawnError {
+    pub code: &'static str,
+    program: String,
+}
+impl std::fmt::Display for SpawnError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "spawn {} {}", self.program, self.code)
+    }
+}
+impl std::error::Error for SpawnError {}
+pub(crate) async fn capture_program(
+    program: &str,
+    args: &[JsString],
+    maximum: usize,
+    timeout: Option<std::time::Duration>,
+    scope: &Scope,
+) -> Result<crate::filesystem::command::Captured> {
     for (index, argument) in args.iter().enumerate() {
         if argument.units().contains(&0) {
             let prefix = format!(
@@ -66,15 +91,32 @@ pub(super) async fn run_output(
                 return anyhow!("spawn E2BIG");
             }
             match io.kind() {
-                std::io::ErrorKind::NotFound => return anyhow!("spawn {program} ENOENT"),
+                std::io::ErrorKind::NotFound => {
+                    return SpawnError {
+                        code: "ENOENT",
+                        program: program.to_owned(),
+                    }
+                    .into();
+                }
                 std::io::ErrorKind::PermissionDenied => {
-                    return anyhow!("spawn {program} EACCES");
+                    return SpawnError {
+                        code: "EACCES",
+                        program: program.to_owned(),
+                    }
+                    .into();
                 }
                 _ => {}
             }
         }
         error
     })?;
+    Ok(output)
+}
+pub(crate) fn check_output(
+    program: &str,
+    args: &[JsString],
+    output: &crate::filesystem::command::Captured,
+) -> Result<()> {
     if let Some(stream) = output.overflow {
         bail!("{stream} maxBuffer length exceeded");
     }
@@ -92,10 +134,7 @@ pub(super) async fn run_output(
         message.extend(String::from_utf8_lossy(&output.stderr).encode_utf16());
         return Err(WireError(JsString::new(message)).into());
     }
-    Ok((
-        String::from_utf8_lossy(&output.stdout).into_owned(),
-        String::from_utf8_lossy(&output.stderr).into_owned(),
-    ))
+    Ok(())
 }
 fn inspect(value: &JsString) -> JsString {
     // Node's ERR_INVALID_ARG_VALUE renders inspect's first 10,000 UTF-16
