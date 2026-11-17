@@ -1,5 +1,7 @@
 //! Worker-owned encrypted evidence, outboxes and projection transactions.
 //! No server application, database, HTTP client, runtime or process ownership.
+pub mod archive;
+pub mod canonical;
 pub mod content;
 pub mod cursor;
 pub mod files;

@@ -15,6 +15,8 @@ use std::{
     sync::{Arc, Mutex, atomic::AtomicBool},
 };
 
+#[path = "support/history_content.rs"]
+mod history_content;
 #[path = "support/history_outbox.rs"]
 mod history_outbox;
 #[path = "support/history_projection.rs"]
@@ -79,6 +81,12 @@ struct Fixture {
 }
 impl Fixture {
     async fn run(&mut self, input: Value) -> Result<Value> {
+        if input["op"]
+            .as_str()
+            .is_some_and(|op| op.starts_with("content."))
+        {
+            return history_content::run(self.service.clone(), input).await;
+        }
         if input["op"]
             .as_str()
             .is_some_and(|op| op.starts_with("projection."))

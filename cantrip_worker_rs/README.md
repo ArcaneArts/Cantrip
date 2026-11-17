@@ -131,7 +131,15 @@ node --import tsx scripts/worker-rust/history-client-smoke.mjs --client /absolut
 
 The smoke runs the actual native client/projection/outbox against Rust-server
 history routes and loses a real canonical ACK before restarting both processes.
-Canonical content preparation and the enrollment/control worker remain reference
-fixtures. Production capture, canonical rendering/protection, coherent archive
-recovery and execution integration remain pending; the production worker still
-selects Node.
+Content preparation and coherent archive recovery now also execute natively.
+Rendered input and the enrollment/control worker remain fixtures. Production
+rendering/projector, attachment, capture/retry and execution integration remain
+pending; the production worker still selects Node.
+
+`history::preparation` supplies worker locale policy to the shared pure usage
+kernel and native turn preparation. `history::recovery::read` collects pinned item,
+turn and batch pages with the real HTTP client. An actual snapshot-changed 409
+discards partial pages and retries; permanent errors propagate. Decryption starts
+only after every resource is coherent. Caller cancellation remains live through
+fetches, offloaded decryption and the existing 100ms conflict delay. Reporting
+callback errors cannot stop recovery. Recovery never advances a projector cursor.

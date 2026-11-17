@@ -23,6 +23,9 @@ const sourceSchema = z.object({
     .nullable(),
 });
 
+// Development export of the exact retained usage-source contract.
+export { sourceSchema as nativeHistoryUsageSourceSchema };
+
 /** Derive only retained response evidence for this physical turn's thread.
  * Thread cumulative / latest-response notifications are not turn totals. */
 export function nativeHistoryUsageForTurn(

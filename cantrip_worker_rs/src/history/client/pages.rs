@@ -1,5 +1,4 @@
 use super::*;
-use cantrip_history::outbox::baseline::payload_digest;
 type PageContract = (
     &'static str,
     &'static str,
@@ -80,21 +79,6 @@ fn validate_batches(page: &Value, request: &Value) -> bool {
     let batches = array(page, "batches");
     binding_matches(page, request, batches.len())
         && batches.iter().enumerate().all(|(index, entry)| {
-            let batch = &entry["batch"];
-            let valid_content = batch.is_null()
-                || (entry["payloadDigest"] == payload_digest(batch, &entry["previousDigest"])
-                    && array(batch, "items").iter().all(|item| {
-                        item["identity"]["threadId"] == page["binding"]["threadId"]
-                            && array(item, "attachments")
-                                .iter()
-                                .all(|v| v["chatId"] == page["binding"]["chatId"])
-                            && (item["evidence"].is_null()
-                                || (item["evidence"]["bindingId"] == entry["bindingId"]
-                                    && item["evidence"]["workerId"] == entry["workerId"]))
-                    })
-                    && array(batch, "turns")
-                        .iter()
-                        .all(|turn| turn["threadId"] == page["binding"]["threadId"]));
             let previous = index
                 .checked_sub(1)
                 .map(|n| &batches[n]["receipt"])
@@ -109,11 +93,9 @@ fn validate_batches(page: &Value, request: &Value) -> bool {
             let expected = previous
                 .filter(|v| v["streamId"] == receipt["streamId"])
                 .map_or(1, |v| v["sequence"].as_u64().unwrap() + 1);
-            valid_content
-                && previous.is_none_or(|v| {
-                    string(&receipt["streamId"]).units() >= string(&v["streamId"]).units()
-                })
-                && receipt["sequence"].as_u64() == Some(expected)
+            previous.is_none_or(|v| {
+                string(&receipt["streamId"]).units() >= string(&v["streamId"]).units()
+            }) && receipt["sequence"].as_u64() == Some(expected)
         })
         && (page["nextCursor"].is_null()
             || (page["nextCursor"]["snapshotId"] == page["snapshotId"]
@@ -156,6 +138,11 @@ impl Client {
             let page = this
                 .post(action, &request, output_schema, &Guard::request(signal))
                 .await?;
+            let page = if action == "archive-batches" {
+                cantrip_history::archive::validate_batches(&page)?
+            } else {
+                page
+            };
             if !validate(&page, &request) {
                 bail!("{error}");
             }
