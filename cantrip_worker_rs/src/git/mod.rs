@@ -30,23 +30,13 @@ pub mod worktrees;
 use crate::filesystem::{Scope, paths};
 pub use actions::action;
 use anyhow::Result;
-use cantrip_wire::{JsString, Value};
+use cantrip_wire::Value;
 pub use diff::file_diff;
 pub use status::status;
 
-#[derive(Debug)]
-pub struct GitError(pub JsString);
-impl std::fmt::Display for GitError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0.lossy())
-    }
-}
-impl std::error::Error for GitError {}
-pub fn error_message(error: &anyhow::Error) -> JsString {
-    error
-        .downcast_ref::<GitError>()
-        .map_or_else(|| error.to_string().into(), |e| e.0.clone())
-}
+// Preserve existing imports while sharing lossless errors with other worker
+// domains. Public responses must not replace unpaired UTF-16 code units.
+pub use crate::error::{WireError as GitError, message as error_message};
 pub async fn execute(command: &Value, scope: &Scope) -> Result<Value> {
     let cwd = paths::native(command["cwd"].as_js_string().unwrap());
     match command["type"].as_str().unwrap() {

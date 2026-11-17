@@ -910,7 +910,12 @@
     "gitWorktreeChangesMoveResultSchema": 13627,
     "gitRecoveryCandidateListSchema": 13628,
     "gitRecoveryPreviewSchema": 13648,
-    "gitRecoveryResultSchema": 13666
+    "gitRecoveryResultSchema": 13666,
+    "githubAuthStatusSchema": 13673,
+    "githubWorkerRepositorySchema": 13678,
+    "githubWorkerRepositoryListSchema": 13687,
+    "githubRepositoryOwnerListSchema": 13688,
+    "githubRepositoryCreateSchema": 3414
   },
   "nodes": [
     {
@@ -82487,6 +82492,82 @@
         }
       ]
     },
-    { "type": "forward", "innerType": 2679, "checks": [] }
+    { "type": "forward", "innerType": 2679, "checks": [] },
+    {
+      "type": "object",
+      "name": "githubAuthStatusSchema",
+      "shape": { "authenticated": 13674, "login": 13675, "source": 13677 },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 13676, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "enum", "values": ["gh-cli", "token", "none"], "checks": [] },
+    {
+      "type": "object",
+      "name": "githubWorkerRepositorySchema",
+      "shape": {
+        "id": 13679,
+        "name": 13680,
+        "nameWithOwner": 1436,
+        "description": 13681,
+        "isPrivate": 13683,
+        "isFork": 13684,
+        "url": 1437,
+        "defaultBranch": 13685,
+        "updatedAt": 13686
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 13682, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "array",
+      "name": "githubWorkerRepositoryListSchema",
+      "element": 13678,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "name": "githubRepositoryOwnerListSchema",
+      "element": 13689,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "githubRepositoryOwnerSchema",
+      "shape": { "login": 3415, "kind": 13690 },
+      "checks": []
+    },
+    { "type": "enum", "values": ["user", "organization"], "checks": [] }
   ]
 }

@@ -36,6 +36,9 @@ async fn main() -> Result<()> {
                     .ok_or_else(|| anyhow!("Fixture encryption not open"))
             };
             match input["op"].as_str().unwrap_or("") {
+                "github"=> cantrip_worker::github::Client::new(
+                    &cantrip_worker::filesystem::paths::native(input["directory"].as_js_string().unwrap())
+                ).execute(&input["command"], &scope).await,
                 "worktree-open"=>{
                     worktrees=Some(Arc::new(cantrip_worker::git::worktrees::Manager::new(
                         &cantrip_worker::filesystem::paths::native(input["directory"].as_js_string().unwrap())
@@ -349,7 +352,10 @@ async fn main() -> Result<()> {
         };
         println!(
             "{}",
-            json!({"id":input["requestId"],"result":result}).stringify()
+            json!({"id":input["requestId"],"result":result})
+                .stringify()
+                .replace('\u{2028}', "\\u2028")
+                .replace('\u{2029}', "\\u2029")
         );
     }
     if let Some(service) = service {
