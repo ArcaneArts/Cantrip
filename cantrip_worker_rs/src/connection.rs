@@ -26,6 +26,7 @@ use tokio_tungstenite::tungstenite::{
 const PROTOCOLS: &str =
     "cantrip-worker-legacy, cantrip-worker-auth-ready-v1, cantrip-worker-auth-ready-v2";
 const MAX_PENDING: usize = 8 * 1024 * 1024;
+const MAX_BUFFERED_NOTIFICATION_BYTES: usize = 1024 * 1024;
 #[derive(Debug, PartialEq, Eq)]
 pub enum Negotiation {
     Other,
@@ -103,6 +104,7 @@ pub fn reconnect_delay(base_ms: u64, failed_attempts: u32, random: f64) -> Durat
 struct Queue {
     frames: VecDeque<String>,
     bytes: usize,
+    in_flight: usize,
     ready: bool,
     closed: bool,
 }
@@ -116,6 +118,7 @@ impl Default for Outbound {
             queue: Mutex::new(Queue {
                 frames: VecDeque::new(),
                 bytes: 0,
+                in_flight: 0,
                 ready: false,
                 closed: false,
             }),
@@ -124,6 +127,29 @@ impl Default for Outbound {
     }
 }
 impl Outbound {
+    /// Observations are retried by their producer while disconnected or
+    /// congested. They must not be treated as accepted offline responses.
+    pub fn notification(&self, notification: Value) -> Result<bool> {
+        let notification =
+            crate::git::worktrees::observations::notification::for_server(&notification);
+        let encoded = checked(
+            "workerServerEnvelopeSchema",
+            &json!({"kind":"notification","notification":notification}),
+        )?
+        .stringify();
+        let mut queue = self.queue.lock().unwrap();
+        if queue.closed
+            || !queue.ready
+            || queue.bytes + queue.in_flight > MAX_BUFFERED_NOTIFICATION_BYTES
+        {
+            return Ok(false);
+        }
+        queue.bytes += encoded.len();
+        queue.frames.push_back(encoded);
+        drop(queue);
+        self.wake.notify_one();
+        Ok(true)
+    }
     pub fn send(&self, envelope: Value) -> Result<bool> {
         let encoded = checked("workerServerEnvelopeSchema", &envelope)?.stringify();
         let mut queue = self.queue.lock().unwrap();
@@ -154,10 +180,16 @@ impl Outbound {
         let mut queue = self.queue.lock().unwrap();
         let value = queue.frames.pop_front()?;
         queue.bytes -= value.len();
+        queue.in_flight += value.len();
         Some(value)
+    }
+    fn sent(&self, length: usize) {
+        let mut queue = self.queue.lock().unwrap();
+        queue.in_flight = queue.in_flight.saturating_sub(length);
     }
     fn restore(&self, value: String) {
         let mut queue = self.queue.lock().unwrap();
+        queue.in_flight = queue.in_flight.saturating_sub(value.len());
         queue.bytes += value.len();
         queue.frames.push_front(value);
         while queue.bytes > MAX_PENDING {
@@ -170,9 +202,11 @@ impl Outbound {
         q.closed = true;
         q.frames.clear();
         q.bytes = 0;
+        q.in_flight = 0;
         self.wake.notify_one();
     }
 }
+
 pub struct Connection {
     pub configuration: Arc<Mutex<Config>>,
     pub logs: Arc<Logs>,
@@ -268,6 +302,7 @@ impl Connection {
                                 self.outgoing.restore(encoded);
                                 break;
                             }
+                            self.outgoing.sent(encoded.len());
                             continue;
                         }
                         let mut deadline = if handshake.ready {
@@ -415,4 +450,38 @@ async fn close_socket(
         })),
     )
     .await;
+}
+
+#[cfg(test)]
+mod observation_tests {
+    use super::*;
+    fn notification() -> Value {
+        json!({"type":"worktree.filesystem.changed","sourcePath":"/repo","worktreePath":"/repo","changes":vec![json!({"path":"private","kind":"added"})]})
+    }
+    #[test]
+    fn observations_require_readiness_and_strip_private_file_activity() {
+        let outgoing = Outbound::default();
+        assert!(!outgoing.notification(notification()).unwrap());
+        assert!(outgoing.take().is_none());
+        outgoing.ready(true);
+        assert!(outgoing.notification(notification()).unwrap());
+        let frame = parse_json_text(&outgoing.take().unwrap()).unwrap();
+        assert!(frame["notification"].get("changes").is_none());
+        outgoing.close();
+        assert!(!outgoing.notification(notification()).unwrap());
+    }
+    #[test]
+    fn observations_reject_congestion_without_discarding_accepted_responses() {
+        let outgoing = Outbound::default();
+        outgoing.ready(true);
+        assert!(outgoing.send(json!({"kind":"response","requestId":"fixture-response","ok":true,"result":"x".repeat(MAX_BUFFERED_NOTIFICATION_BYTES+1)})).unwrap());
+        assert!(!outgoing.notification(notification()).unwrap());
+        let writing = outgoing.take().unwrap();
+        assert!(
+            !outgoing.notification(notification()).unwrap(),
+            "in-flight bytes still exert backpressure"
+        );
+        outgoing.sent(writing.len());
+        assert!(outgoing.notification(notification()).unwrap());
+    }
 }

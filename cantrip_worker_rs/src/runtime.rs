@@ -144,6 +144,22 @@ async fn cycle(
     http::enroll(&client, &mut config, &heartbeat, logs).await?;
     let configuration = Arc::new(Mutex::new(config));
     let outgoing = Arc::new(Outbound::default());
+    let worktree_observations = Arc::new(crate::git::worktrees::observations::Observations::new(
+        worktrees.clone(),
+        {
+            let outgoing = outgoing.clone();
+            let routing = routing.clone();
+            Arc::new(move |notification| {
+                routing
+                    .protect_notification(&notification)
+                    .ok()
+                    .flatten()
+                    .is_some_and(|notification| {
+                        outgoing.notification(notification).unwrap_or(false)
+                    })
+            })
+        },
+    ));
     let (stop, stop_rx) = watch::channel(false);
     let (registered, mut registration) = watch::channel(false);
     let (requests, mut received) = mpsc::unbounded_channel();
@@ -247,6 +263,17 @@ async fn cycle(
                     });
                     continue;
                 }
+                if kind=="worktree.observation.configure" {
+                    let observations=worktree_observations.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
+                    commands.spawn(async move {
+                        let result=observations.execute_routed(&request["command"],&routing).await;
+                        if result.is_ok() && !request["command"]["targets"].as_array().is_none_or(Vec::is_empty) {
+                            logs.repeated("native-codegraph-observations-pending".into(),"warn","Native CodeGraph observation integration remains unavailable",json!({"event":"codegraph.project.configure-failed","subsystem":"codegraph","operation":"configure-worktrees","reasonCode":"native-integration-pending","status":"degraded"}));
+                        }
+                        finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
                 if matches!(kind,"worktree.list"|"worktree.reconcile"|"worktree.create"|"worktree.remove"|"worktree.lock"|"worktree.unlock"|"worktree.prune"|"worktree.status") {
                     let worktrees=worktrees.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
                     commands.spawn(async move {
@@ -277,6 +304,7 @@ async fn cycle(
     };
     let began = std::time::Instant::now();
     stop.send_replace(true);
+    worktree_observations.close().await;
     timers.abort_all();
     while timers.join_next().await.is_some() {}
     let encryption_closed = encryption.close().await;

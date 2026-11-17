@@ -101,7 +101,22 @@ fn is_token(value: &JsString) -> bool {
 fn reverse(field: &JsString, value: &JsString) -> JsString {
     JsString::new([field.units(), &[0], value.units()].concat())
 }
+
 impl Registry {
+    /// Command resolution loads the registry before observation configuration.
+    /// Contention rejects publication, leaving fingerprints available for retry.
+    pub fn protect_notification(&self, value: &Value) -> Result<Option<Value>> {
+        let Ok(mut state) = self.state.try_lock() else {
+            return Ok(None);
+        };
+        if state.loaded != Some(true) {
+            return Ok(None);
+        }
+        let value = crate::git::worktrees::observations::notification::for_server(value);
+        let result = state.protect_observed(&value, None)?;
+        state.persist(&self.path)?;
+        Ok(Some(result))
+    }
     pub fn new(directory: &Path) -> Self {
         Self {
             path: directory.join("repository-routing.json"),
@@ -151,6 +166,34 @@ impl Registry {
     }
 }
 impl State {
+    fn protect_observed(&mut self, value: &Value, name: Option<&JsString>) -> Result<Value> {
+        match value {
+            Value::String(value) if name.is_some_and(field) => {
+                // Configuration reconciles source/worktree bindings through
+                // the existing path token namespace. Notifications must address
+                // those same stored bindings, including nested inventory paths.
+                let name = name.unwrap();
+                let path = JsString::from("path");
+                let name = if matches!(name.as_str(), Some("sourcePath" | "worktreePath")) {
+                    &path
+                } else {
+                    name
+                };
+                Ok(Value::String(self.token(name, value)?))
+            }
+            Value::Array(items) => items
+                .iter()
+                .map(|value| self.protect_observed(value, name))
+                .collect::<Result<Vec<_>>>()
+                .map(Value::Array),
+            Value::Object(fields) => fields
+                .iter()
+                .map(|(name, value)| Ok((name.clone(), self.protect_observed(value, Some(name))?)))
+                .collect::<Result<Object>>()
+                .map(Value::Object),
+            _ => Ok(value.clone()),
+        }
+    }
     async fn load(&mut self, path: &Path) -> Result<()> {
         match self.loaded {
             Some(true) => return Ok(()),
@@ -348,5 +391,52 @@ impl State {
             let _ = std::fs::remove_file(&temporary);
         }
         result
+    }
+}
+
+#[cfg(test)]
+mod observation_tests {
+    use super::*;
+    #[tokio::test]
+    async fn notifications_reuse_canonical_bindings_and_reopen_without_plaintext_activity() {
+        let directory = tempfile::tempdir().unwrap();
+        let registry = Registry::new(directory.path());
+        let notification = json!({"type":"worktree.filesystem.changed","sourcePath":"/source","worktreePath":"/checkout","changes":vec![json!({"path":"private-file","kind":"added"})]});
+        assert!(
+            registry
+                .protect_notification(&notification)
+                .unwrap()
+                .is_none()
+        );
+        registry.resolve(&Value::Null).await.unwrap();
+        let configured=registry.protect_result("worktree.observation.configure",&json!({"accepted":true,"paths":vec![json!({"sourcePath":"/source","worktreePath":"/checkout"})]})).await.unwrap();
+        let protected = registry
+            .protect_notification(&notification)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            protected["sourcePath"],
+            configured["paths"].as_array().unwrap()[0]["sourcePath"]
+        );
+        assert_eq!(
+            protected["worktreePath"],
+            configured["paths"].as_array().unwrap()[0]["worktreePath"]
+        );
+        assert!(protected.get("changes").is_none());
+        let registry_file =
+            std::fs::read_to_string(directory.path().join("repository-routing.json")).unwrap();
+        assert!(!registry_file.contains("private-file"));
+        let reopened = Registry::new(directory.path());
+        assert_eq!(
+            reopened.resolve(&protected).await.unwrap(),
+            crate::git::worktrees::observations::notification::for_server(&notification)
+        );
+        let _busy = registry.state.lock().await;
+        assert!(
+            registry
+                .protect_notification(&notification)
+                .unwrap()
+                .is_none()
+        );
     }
 }
