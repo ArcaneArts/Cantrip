@@ -926,6 +926,9 @@ export const contractRoots = [
   "gitLfsStatusSchema",
   "gitLfsActionPreviewSchema",
   "gitLfsMutationResultSchema",
+  "gitGraphSnapshotSchema",
+  "gitGraphMetricsSchema",
+  "gitGraphCommitOverlaySchema",
 ];
 
 export const projectExportContractRoots = [

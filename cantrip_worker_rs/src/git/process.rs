@@ -33,7 +33,7 @@ async fn capture_input(
     environment: &[(OsString, OsString)],
     input: Option<&[u8]>,
 ) -> Result<Output> {
-    capture_options(cwd, args, scope, environment, input, None).await
+    capture_options(cwd, args, scope, environment, input, None, MAXIMUM).await
 }
 pub(super) async fn bounded(
     cwd: &Path,
@@ -41,7 +41,16 @@ pub(super) async fn bounded(
     scope: &Scope,
     timeout: std::time::Duration,
 ) -> Result<Output> {
-    capture_options(cwd, args, scope, &[], None, Some(timeout)).await
+    capture_options(cwd, args, scope, &[], None, Some(timeout), MAXIMUM).await
+}
+/// Graph analysis has the source analyzer's larger (128 MiB) output bound.
+pub(super) async fn capture_limit(
+    cwd: &Path,
+    args: &[&str],
+    scope: &Scope,
+    maximum: usize,
+) -> Result<Output> {
+    capture_options(cwd, args, scope, &[], None, None, maximum).await
 }
 /// Source's runGitOutcomeBounded: shared by remotes, tag checks and mutations.
 pub(super) async fn run_bounded(cwd: &Path, args: &[&str], scope: &Scope) -> Result<String> {
@@ -69,6 +78,7 @@ async fn capture_options(
     environment: &[(OsString, OsString)],
     input: Option<&[u8]>,
     timeout: Option<std::time::Duration>,
+    maximum: usize,
 ) -> Result<Output> {
     let arguments: Vec<OsString> = std::iter::once(OsString::from("-C"))
         .chain(std::iter::once(cwd.as_os_str().to_owned()))
@@ -78,14 +88,14 @@ async fn capture_options(
     // of duplicating it through each joined status/action future and its poll
     // stack frames on the worker's normal runtime threads.
     let captured = if let Some(timeout) = timeout {
-        Box::pin(scope.capture_timeout(OsStr::new("git"), &arguments, MAXIMUM, timeout)).await
+        Box::pin(scope.capture_timeout(OsStr::new("git"), &arguments, maximum, timeout)).await
     } else if input.is_some() {
-        Box::pin(scope.capture_input(OsStr::new("git"), &arguments, MAXIMUM, environment, input))
+        Box::pin(scope.capture_input(OsStr::new("git"), &arguments, maximum, environment, input))
             .await
     } else if environment.is_empty() {
-        Box::pin(scope.capture(OsStr::new("git"), &arguments, MAXIMUM)).await
+        Box::pin(scope.capture(OsStr::new("git"), &arguments, maximum)).await
     } else {
-        Box::pin(scope.capture_environment(OsStr::new("git"), &arguments, MAXIMUM, environment))
+        Box::pin(scope.capture_environment(OsStr::new("git"), &arguments, maximum, environment))
             .await
     };
     let result = captured.map_err(|error| {
