@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import * as c from "../../packages/crypto/dist/index.js";
 import * as p from "../../packages/protocol/dist/index.js";
 import { handleGitCommand } from "../../cantrip_worker/src/commands/git.ts";
+import { verifyCommitActions } from "./git-commit-smoke-cases.mjs";
 import {
   inspectGitManagedOperation,
   previewGitManagedOperation,
@@ -610,4 +611,12 @@ export async function verifyGit({
       "private dirty content\n",
     );
   };
+  await verifyCommitActions({
+    operation,
+    checkout,
+    restartWorker,
+    store,
+    scope,
+    journal,
+  });
 }
