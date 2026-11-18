@@ -14,6 +14,7 @@ pub(super) fn observes(method: &Value) -> bool {
         Some(
             "turn/started"
                 | "turn/completed"
+                | "turn/plan/updated"
                 | "item/agentMessage/delta"
                 | "item/completed"
                 | "thread/tokenUsage/updated"
@@ -56,32 +57,17 @@ pub(super) async fn collect(
     let mut staged = None::<(JsString, JsString, Value)>;
     let mut delta = JsString::from("");
     let mut usage = Value::Null;
-    let mut emission_error = None;
-    let mut stream =
-        |id: &JsString, text: &JsString, phase: &Value, streaming: bool, method: &str| {
-            if text.trim().is_empty() {
-                return;
-            }
-            let result = emit(json!({
-                "type": "agent.message",
-                "message": json!({
-                    "id": id, "text": text, "phase": phase,
-                    "streaming": streaming,
-                    "correlation": json!({
-                        "sourceMethod": method, "diagnosticId": Value::Null,
-                        "threadId": thread, "turnId": turn, "itemId": id,
-                    }),
-                }),
-            }));
-            if let Err(error) = result {
-                emission_error.get_or_insert(error);
-            }
-        };
+    let mut publisher = Publisher {
+        thread,
+        turn,
+        emit,
+        error: None,
+    };
     loop {
         let frame = next(events, signal).await?;
         let params = &frame["params"];
         let method = frame["method"].as_str().unwrap_or_default();
-        let native_turn = if method.starts_with("turn/") {
+        let native_turn = if matches!(method, "turn/started" | "turn/completed") {
             &params["turn"]["id"]
         } else {
             &params["turnId"]
@@ -102,7 +88,7 @@ pub(super) async fn collect(
                     .as_ref()
                     .filter(|last| &last.id != id && last.changed)
                 {
-                    stream(
+                    publisher.message(
                         &last.id,
                         &last.text.trim(),
                         &json!("commentary"),
@@ -123,7 +109,7 @@ pub(super) async fn collect(
                     .updated
                     .is_none_or(|updated| updated.elapsed() >= STREAM_INTERVAL)
                 {
-                    stream(id, &pending.text.trim(), &json!("commentary"), true, method);
+                    publisher.message(id, &pending.text.trim(), &json!("commentary"), true, method);
                     pending.updated = Some(Instant::now());
                     pending.changed = false;
                 }
@@ -137,7 +123,7 @@ pub(super) async fn collect(
                     final_text = item["text"].as_js_string().cloned();
                 }
                 if let Some((id, text, _)) = staged.take() {
-                    stream(&id, &text, &json!("commentary"), false, method);
+                    publisher.message(&id, &text, &json!("commentary"), false, method);
                 }
                 if item["type"] != "agentMessage" {
                     continue;
@@ -148,12 +134,16 @@ pub(super) async fn collect(
                     message = message.filter(|last| &last.id != id);
                     let text = text.trim();
                     if item["phase"] == "commentary" {
-                        stream(id, &text, &item["phase"], false, method);
+                        publisher.message(id, &text, &item["phase"], false, method);
                     } else if !text.is_empty() {
                         staged = Some((id.clone(), text, item["phase"].clone()));
                     }
                 }
             }
+            "turn/plan/updated" => publisher.send(json!({
+                "type": "agent.plan.updated", "turnId": turn,
+                "explanation": params["explanation"], "steps": params["plan"],
+            })),
             "thread/tokenUsage/updated" => {
                 let mut total = params["tokenUsage"]["total"].clone();
                 if total.is_object() && total.get("cacheWriteInputTokens").is_none() {
@@ -178,10 +168,10 @@ pub(super) async fn collect(
                     } else {
                         json!("commentary")
                     };
-                    stream(&id, &text, &phase, false, "item/completed");
+                    publisher.message(&id, &text, &phase, false, "item/completed");
                 }
                 if let Some(last) = message.take().filter(|last| last.changed) {
-                    stream(
+                    publisher.message(
                         &last.id,
                         &last.text.trim(),
                         &json!("commentary"),
@@ -191,7 +181,7 @@ pub(super) async fn collect(
                 }
                 match status {
                     Some("completed") => {
-                        if let Some(error) = emission_error {
+                        if let Some(error) = publisher.error {
                             return Err(error);
                         }
                         return checked(
@@ -209,5 +199,42 @@ pub(super) async fn collect(
             }
             _ => {}
         }
+    }
+}
+
+struct Publisher<'a> {
+    thread: &'a JsString,
+    turn: &'a JsString,
+    emit: &'a Emit,
+    error: Option<anyhow::Error>,
+}
+impl Publisher<'_> {
+    fn send(&mut self, event: Value) {
+        if let Err(error) = (self.emit)(event) {
+            self.error.get_or_insert(error);
+        }
+    }
+    fn message(
+        &mut self,
+        id: &JsString,
+        text: &JsString,
+        phase: &Value,
+        streaming: bool,
+        method: &str,
+    ) {
+        if text.trim().is_empty() {
+            return;
+        }
+        self.send(json!({
+            "type": "agent.message",
+            "message": json!({
+                "id": id, "text": text, "phase": phase,
+                "streaming": streaming,
+                "correlation": json!({
+                    "sourceMethod": method, "diagnosticId": Value::Null,
+                    "threadId": self.thread, "turnId": self.turn, "itemId": id,
+                }),
+            }),
+        }));
     }
 }

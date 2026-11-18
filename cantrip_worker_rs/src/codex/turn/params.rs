@@ -1,11 +1,15 @@
-use super::{RPC_TIMEOUT, Runtime};
+use super::{RPC_TIMEOUT, Runtime, protected_mode};
 use anyhow::{Context, Result, bail};
 use cantrip_wire::{JsString, Value, value::json};
 use std::path::Path;
 
 pub(super) fn validate(command: &Value) -> Result<()> {
-    if command["resultMode"]["kind"] != "visible"
-        || !command["prompt"].is_string()
+    let supported_content = if protected_mode(command) {
+        command["protectedPrompt"].is_object()
+    } else {
+        command["resultMode"]["kind"] == "visible" && command["prompt"].is_string()
+    };
+    if !supported_content
         || command["executionProfile"] == "cantrip-os"
         || [
             "computerUseAuthority",
@@ -58,6 +62,7 @@ pub(super) fn preparation(command: &Value) -> Value {
 
 pub(super) async fn native_input(
     command: &Value,
+    prompt: &JsString,
     runtime: &Runtime,
     thread: &JsString,
     permission_profiles: bool,
@@ -127,7 +132,7 @@ pub(super) async fn native_input(
         "cwd": cwd,
         "runtimeWorkspaceRoots": vec![cwd],
         "clientUserMessageId": client_message,
-        "input": vec![json!({"type": "text", "text": command["prompt"]})],
+        "input": vec![json!({"type": "text", "text": prompt})],
         "model": command["model"]["name"],
         "collaborationMode": settings["collaborationMode"],
         "additionalContext": context,

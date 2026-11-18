@@ -233,7 +233,7 @@ async fn cycle(
         skill_root.clone(),
         &codex_compatibility,
     );
-    let turns = crate::codex::turn::Turns::new(thread_preparation.clone());
+    let turns = crate::codex::turn::Turns::new(thread_preparation.clone(), encryption.clone());
     let model_catalog = crate::codex::catalog::Catalog::new(
         codex.clone(),
         provider_access.clone(),
@@ -324,6 +324,17 @@ async fn cycle(
                 let kind=command["type"].as_str().unwrap_or("unknown");
                 let began=std::time::Instant::now();
                 logs.event("debug","Worker command dispatched",json!({"event":"worker.command.dispatched","operation":kind,"requestId":request["requestId"],"workerId":worker}));
+                if matches!(kind, crate::chat_content::MESSAGE | crate::chat_content::MESSAGES | crate::chat_content::REPROTECT | crate::chat_content::TURN) {
+                    let encryption = encryption.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = crate::chat_content::execute(encryption, &request["command"]);
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if matches!(kind, crate::codex::turn::RUN | crate::codex::turn::INTERRUPT) {
                     let turns = turns.clone();
                     let logs = logs.clone();

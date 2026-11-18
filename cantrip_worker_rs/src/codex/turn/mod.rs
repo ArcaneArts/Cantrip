@@ -2,6 +2,7 @@
 //! the native runtime supplies the turn identity and terminal settlement.
 mod output;
 mod params;
+mod protected;
 
 use super::{
     admission::Acquire,
@@ -10,6 +11,7 @@ use super::{
     rpc_requests::Failure,
 };
 use crate::{
+    encryption::Service,
     history::live::observation::{Observer, Runtime as _},
     http::checked,
     inference::admission::Source,
@@ -35,6 +37,7 @@ pub(crate) type Emit = Arc<dyn Fn(Value) -> Result<()> + Send + Sync>;
 #[derive(Clone)]
 pub(crate) struct Turns {
     preparation: Ensurer,
+    encryption: Arc<Service>,
     active: Sessions,
 }
 
@@ -132,9 +135,10 @@ impl Active {
 }
 
 impl Turns {
-    pub(crate) fn new(preparation: Ensurer) -> Self {
+    pub(crate) fn new(preparation: Ensurer, encryption: Arc<Service>) -> Self {
         Self {
             preparation,
+            encryption,
             active: Arc::default(),
         }
     }
@@ -172,6 +176,12 @@ impl Turns {
     }
 
     pub(crate) async fn run(&self, incoming: &Value, emit: Emit) -> Result<Value> {
+        self.run_owned(incoming, emit)
+            .await
+            .map_err(|error| protected::redact(incoming, error))
+    }
+
+    async fn run_owned(&self, incoming: &Value, emit: Emit) -> Result<Value> {
         params::validate(incoming)?;
         let key = self.key(incoming)?;
         let (abort, signal) = Abort::new();
@@ -195,6 +205,16 @@ impl Turns {
             active: active.clone(),
         };
         let command = self.preparation.resolve_routing(incoming).await?;
+        let (prompt, protection) = if protected_mode(&command) {
+            let (prompt, protection) =
+                protected::Protected::open(self.encryption.clone(), &command, &key.0, &key.1)?;
+            (prompt, Some(Arc::new(protection)))
+        } else {
+            (id(&command["prompt"], "native turn prompt")?, None)
+        };
+        let emit = protection
+            .as_ref()
+            .map_or(emit.clone(), |protection| protection.attach(emit));
         let prepared = self
             .preparation
             .prepare(&params::preparation(&command), Intent::Configure)
@@ -242,6 +262,7 @@ impl Turns {
         let result = async {
             let params = params::native_input(
                 &command,
+                &prompt,
                 runtime,
                 thread,
                 self.preparation.supports_permission_profiles(),
@@ -328,7 +349,10 @@ impl Turns {
         source.close();
         result.and_then(|value| {
             cleanup?;
-            Ok(value)
+            match protection {
+                Some(protection) => protection.result(value),
+                None => Ok(value),
+            }
         })
     }
 }
@@ -339,4 +363,8 @@ fn id(value: &Value, name: &str) -> Result<JsString> {
         .filter(|text| !text.is_empty())
         .cloned()
         .with_context(|| format!("Invalid {name}."))
+}
+
+fn protected_mode(command: &Value) -> bool {
+    command["resultMode"]["kind"] == "chat-message-encrypted"
 }
