@@ -399,6 +399,32 @@ impl<'a> Receipt<'a> {
             .await
     }
 
+    pub async fn defer_queue_input(&self, error: &Value) -> Result<()> {
+        let (envelope, digest) = self.seal_result(&json!({"error":error}))?;
+        let mut body = self.body();
+        body["status"] = json!("rejected");
+        body["resultDigest"] = digest;
+        body["protectedResult"] = envelope;
+        body["rejectionCode"] = json!("native-settings-pending");
+        body["executionComplete"] = json!(true);
+        body["executionStatus"] = json!("idle");
+        body["deferred"] = json!({
+            "reason":"pendingSettings","inputConsumed":false,
+            "threadId":self.session["threadId"],"runtimeGeneration":self.session["runtimeGeneration"],
+        });
+        self.settle(body, "rejected").await
+    }
+
+    fn seal_result(&self, content: &Value) -> Result<(Value, Value)> {
+        let grant = self.scope.material(None)?;
+        let (envelope, digest) = protect_native_command_result(
+            &grant.key,
+            &crypto_context(&grant, &self.session["chatId"], &self.operation.operation),
+            content,
+        )?;
+        Ok((envelope, json!(digest)))
+    }
+
     pub async fn uncertain(&self) -> Result<()> {
         self.report("uncertain", None, None, None).await
     }
@@ -421,13 +447,7 @@ impl<'a> Receipt<'a> {
         goal_epoch: Option<&JsString>,
     ) -> Result<()> {
         let (envelope, digest) = if let Some(content) = content {
-            let grant = self.scope.material(None)?;
-            let (envelope, digest) = protect_native_command_result(
-                &grant.key,
-                &crypto_context(&grant, &self.session["chatId"], &self.operation.operation),
-                content,
-            )?;
-            (envelope, json!(digest))
+            self.seal_result(content)?
         } else {
             (Value::Null, Value::Null)
         };

@@ -4548,3 +4548,28 @@ turns and queued clear. Core and the provider are local fixture peers.
 
 Queue wake notifications, scheduling and execution of general queued inputs,
 and cold Goal recovery remain open. Production still selects Node.
+
+## 90. Run Core-claimed queued model turns
+
+Reference commit `4c2d11906f72556dee9a1209031bfa5da5de25d3` (#3252).
+
+Core's existing `chat.turn` path accepts a queued item with its admitted native
+receipt. The worker opens the retained vector using its exact chat and prompt
+identity, strips a native `/plan` prefix while preserving rich items and
+rebasing UTF-8 text spans, and keeps the native client message identity. Worker
+attachments already carried by the vector are excluded from local projection.
+Legacy queued prompts use their protected message and local attachment paths.
+The existing dispatch and History paths produce the native turn acknowledgment
+and canonical output. A native `pendingSettings` response that explicitly
+reports no input consumption records a deferred settlement against the same
+claim.
+
+The macOS ARM64 smoke exercised the real Rust worker and bundled Codex with a
+retained plan vector and image, a legacy queued text turn with a protected file
+reference, queue identity checks, exact receipt retry, and durable History.
+Core and the model provider were local fixture peers. Rust unit tests checked
+byte-span rebasing and the exact native no-consumption discriminator.
+
+Queue wakeups, native queue management and cutover, non-Goal queued settings
+and shell actions, and cold Goal recovery remain open. Production still
+selects Node.

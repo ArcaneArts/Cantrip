@@ -38,7 +38,9 @@ impl Protected {
         {
             bail!("Protected chat input does not match the admitted user message.");
         }
-        if !array(&prompt["classification"]["attachmentIds"])?.is_empty() {
+        if !super::queued::is_queued(command)
+            && !array(&prompt["classification"]["attachmentIds"])?.is_empty()
+        {
             bail!("This native text turn cannot open attachment input.");
         }
         let owner = json!(grant.owner_id);
@@ -59,7 +61,7 @@ impl Protected {
             prompt_text
         };
         let chat = &command["chatId"];
-        let input = if command["threadId"].is_null() {
+        let input = if command["threadId"].is_null() && command["protectedNativeInput"].is_null() {
             let mut history = Vec::new();
             for message in array(&command["protectedHistory"])? {
                 if message["chatId"] != *chat || message["contextKind"] != command["contextKind"] {
