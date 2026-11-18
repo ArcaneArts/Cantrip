@@ -579,6 +579,16 @@ try {
     planType: null,
     weeklyUsage: null,
   });
+  const grokSignedOut = await accountAuth("status", "empty-grok-auth", {
+    providerKind: "grok",
+  });
+  assert.equal(grokSignedOut.ok, true, JSON.stringify(grokSignedOut.error));
+  assert.deepEqual(grokSignedOut.result, signedOut);
+  const grokLogout = await accountAuth("logout", "empty-grok-auth", {
+    providerKind: "grok",
+  });
+  assert.equal(grokLogout.ok, true, JSON.stringify(grokLogout.error));
+  assert.deepEqual(grokLogout.result, { accepted: true });
   const actualLocalStatus = await accountAuth("status", "bundled-codex-auth");
   assert.equal(
     actualLocalStatus.ok,

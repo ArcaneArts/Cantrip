@@ -30,6 +30,7 @@ pub fn supports(command: &str) -> bool {
 pub struct Commands {
     codex: Worker,
     account_auth: account_auth::Commands,
+    grok_auth: crate::grok::Commands,
     access: Access,
     encryption: Arc<Service>,
     data: PathBuf,
@@ -40,6 +41,7 @@ impl Commands {
     pub fn new(
         codex: Worker,
         account_auth: account_auth::Commands,
+        grok_auth: crate::grok::Commands,
         access: Access,
         encryption: Arc<Service>,
         data: PathBuf,
@@ -48,6 +50,7 @@ impl Commands {
         Self {
             codex,
             account_auth,
+            grok_auth,
             access,
             encryption,
             data,
@@ -109,8 +112,9 @@ impl Commands {
                         let pause = this.access.pause(account);
                         let (retired, ()) = tokio::join!(retired, pause.drain());
                         retired?;
-                        if kind == Kind::ChatGpt {
-                            this.account_auth.retire(&home, clear).await?;
+                        match kind {
+                            Kind::ChatGpt => this.account_auth.retire(&home, clear).await?,
+                            Kind::Grok => this.grok_auth.retire(&home, clear).await?,
                         }
                         if clear {
                             discard(&file).await?;
@@ -215,7 +219,7 @@ fn first_string<'a>(value: &'a Value, fallback: &'a Value) -> Option<&'a JsStrin
     nullable(value).or_else(|| nullable(fallback))
 }
 
-async fn read(file: &Path) -> Result<Value> {
+pub(crate) async fn read(file: &Path) -> Result<Value> {
     let metadata = match fs::symlink_metadata(file).await {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Value::Null),
@@ -244,7 +248,7 @@ async fn read(file: &Path) -> Result<Value> {
         .map_err(|_| anyhow!("Legacy provider credential is malformed."))
 }
 
-async fn discard(file: &Path) -> Result<()> {
+pub(crate) async fn discard(file: &Path) -> Result<()> {
     match fs::remove_file(file).await {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),

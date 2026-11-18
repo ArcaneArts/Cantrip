@@ -1,4 +1,5 @@
 use super::*;
+use crate::grok::http::{CLIENT_ID as GROK_CLIENT, TOKEN_URL as GROK_ENDPOINT};
 use base64::{
     Engine, alphabet,
     engine::general_purpose::{GeneralPurpose, NO_PAD},
@@ -6,8 +7,6 @@ use base64::{
 
 const CHATGPT_CLIENT: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const CHATGPT_ENDPOINT: &str = "https://auth.openai.com/oauth/token";
-const GROK_CLIENT: &str = "b1a00492-073a-47ea-816f-4c329264a828";
-const GROK_ENDPOINT: &str = "https://auth.x.ai/oauth2/token";
 
 pub(super) async fn refresh(client: &reqwest::Client, current: &Value) -> Result<Value> {
     let token = nonempty(&current["refreshToken"])

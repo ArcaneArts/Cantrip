@@ -11,6 +11,7 @@ pub mod explorer_operations;
 pub mod filesystem;
 pub mod git;
 pub mod github;
+mod grok;
 pub mod history;
 pub mod http;
 pub mod inference;
