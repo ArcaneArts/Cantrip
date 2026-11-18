@@ -2,7 +2,7 @@
 //! and the native thread. It also installs the idle MCP attachment.
 mod profile;
 
-use super::{Coordinator, Identity, Input, Intent, Target, native};
+use super::{Coordinator, Identify, Identity, Input, Intent, Selection, Target, native};
 use crate::{
     codex::{
         managed::{Runtime, WeakRuntime, Worker},
@@ -47,6 +47,7 @@ struct ThreadOwner {
     session: Option<Value>,
 }
 
+#[derive(Clone)]
 pub(in crate::codex) struct LiveThread {
     pub runtime: Runtime,
     pub session: Option<Value>,
@@ -330,6 +331,42 @@ impl Ensurer {
 
     pub(crate) fn supports_permission_profiles(&self) -> bool {
         self.0.permission_profiles
+    }
+
+    /// Start the native thread without granting authority to run its Goal.
+    pub(in crate::codex) async fn start_host_goal(
+        &self,
+        command: &Value,
+        runtime: &Runtime,
+        model_provider: &str,
+    ) -> Result<JsString> {
+        let cwd = field(command, "cwd")?;
+        let mut configuration = profile::configuration(
+            command,
+            &cwd,
+            json!({}),
+            runtime.generation().into(),
+            model_provider,
+            false,
+            self.0.permission_profiles,
+        )
+        .await?;
+        if let Some(overlay) = &mut configuration.managed_overlay {
+            overlay["canonicalHistory"] = json!(false);
+        }
+        let identify: Identify = Arc::new(|_| Box::pin(async { Ok(()) }));
+        let thread = native::load(
+            runtime,
+            &Selection {
+                thread_id: None,
+                intent: Intent::Preserve,
+                replacement_settings: None,
+            },
+            &configuration,
+            &identify,
+        )
+        .await?;
+        Ok(thread.id().clone())
     }
 
     pub(crate) async fn resolve_routing(&self, incoming: &Value) -> Result<Value> {

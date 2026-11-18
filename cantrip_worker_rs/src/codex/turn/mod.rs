@@ -232,14 +232,7 @@ impl Turns {
             .unwrap_or(Value::Null);
         let receipt = self
             .receipts
-            .admit_goal(
-                scope,
-                session,
-                method,
-                &params,
-                &command["permissionProfileId"],
-                activation,
-            )
+            .admit_goal(scope, session, method, &params, command, activation)
             .await?;
         if let Err(error) = receipt.dispatch().await {
             receipt

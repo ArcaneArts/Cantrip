@@ -390,7 +390,7 @@ async fn cycle(
                             crate::codex::goals::GET => goals.get(command).await,
                             crate::codex::goals::UPDATE => goals.update(command, &turns).await,
                             crate::codex::goals::CLEAR => goals.clear(command, &turns).await,
-                            _ => goals.create(command).await,
+                            _ => goals.create(command, &turns).await,
                         };
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });

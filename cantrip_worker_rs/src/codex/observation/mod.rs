@@ -66,12 +66,21 @@ impl Observer {
         command: &Value,
         binding: &(JsString, Value),
     ) -> Result<Runtime> {
+        field(command, "threadId")?;
+        Ok(self.open_target(command, binding).await?.0)
+    }
+
+    pub(super) async fn open_target(
+        &self,
+        command: &Value,
+        binding: &(JsString, Value),
+    ) -> Result<(Runtime, &'static str)> {
         self.assert_bound(binding)?;
         let (owner, server) = binding;
         let command = self.routing.resolve(command).await?;
-        let thread = field(&command, "threadId")?;
         let chat = field(&command, "chatId")?;
         let provider = open_runtime_provider(&self.encryption, &command["provider"])?;
+        let model_provider = provider::model_provider(&provider);
         let scope = json!({"serverId":server,"ownerId":owner,"workerId":self.worker});
         let execution = command["executionProfile"].as_str().unwrap_or_else(|| {
             if command["session"]["contextKind"] == "standalone" {
@@ -83,7 +92,7 @@ impl Observer {
         let profile = home::profile(
             &self.data,
             &scope,
-            Some(thread),
+            command["threadId"].as_js_string(),
             chat,
             &provider,
             execution,
@@ -101,7 +110,7 @@ impl Observer {
             )
             .await?;
         self.assert_bound(binding)?;
-        Ok(runtime)
+        Ok((runtime, model_provider))
     }
 
     fn assert_bound(&self, binding: &(JsString, Value)) -> Result<()> {

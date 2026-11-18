@@ -353,10 +353,13 @@ impl Client {
         session: Value,
         method: &'static str,
         params: &Value,
-        permission: &Value,
+        command: &Value,
         activation: Value,
     ) -> Result<Receipt<'_>> {
-        let operation = JsString::from(uuid::Uuid::new_v4().to_string());
+        let operation = command["operationId"]
+            .as_js_string()
+            .cloned()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string().into());
         let grant = scope.material(None)?;
         let (envelope, digest) = protect_native_command_request(
             &grant.key,
@@ -365,7 +368,7 @@ impl Client {
         )?;
         let mut intent = json!({
             "scope":"thread", "settingKeys":Vec::<Value>::new(), "expectedTurnId":Value::Null,
-            "permissionProfileId":permission, "workerGeneration":self.generation,
+            "permissionProfileId":command["permissionProfileId"], "workerGeneration":self.generation,
         });
         if let Some(status) = params.get("status") {
             intent["goalStatus"] = status.clone();
@@ -387,7 +390,10 @@ impl Client {
             .await?;
         scope.identity()?;
         let row = &response["receipt"];
-        if response["replayed"] == true || row["status"] != "accepted" {
+        if response["replayed"] == true {
+            bail!("The native Goal operation already has a receipt and cannot be replayed.");
+        }
+        if row["status"] != "accepted" {
             bail!("Core did not admit the native Goal mutation.");
         }
         let control = Receipt {

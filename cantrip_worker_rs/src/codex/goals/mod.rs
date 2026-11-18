@@ -1,5 +1,6 @@
 //! Native Goal commands and authenticated Task projection.
 mod context;
+mod create;
 mod mutate;
 mod projection;
 mod read;
@@ -47,7 +48,14 @@ impl Goals {
         }
     }
 
-    pub(crate) async fn create(&self, command: &Value) -> Result<Value> {
+    pub(crate) async fn create(
+        &self,
+        command: &Value,
+        turns: &super::turn::Turns,
+    ) -> Result<Value> {
+        if let Some(objective) = command["objective"].as_js_string() {
+            return self.create_chat(command, turns, objective).await;
+        }
         if !command["objective"].is_object() || !command["taskContext"].is_object() {
             bail!("This native Goal command requires an encrypted Task.");
         }

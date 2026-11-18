@@ -37,6 +37,7 @@ import { verifyTaskOutcomeRecovery } from "./task-outcome-recovery.mjs";
 import { verifyTaskPreparation } from "./task-preparation-cases.mjs";
 import { verifyDirectTask } from "./direct-task-cases.mjs";
 import { verifyStructuredTasks } from "./structured-task-cases.mjs";
+import { verifyChatGoalCreate } from "./chat-goal-create-cases.mjs";
 import { verifyTaskGoalActivation } from "./task-goal-activation-cases.mjs";
 
 const { values } = parseArgs({
@@ -51,6 +52,7 @@ const { values } = parseArgs({
     directTask: { type: "boolean" },
     structuredTasks: { type: "boolean" },
     taskGoal: { type: "boolean" },
+    chatGoal: { type: "boolean" },
   },
 });
 assert.ok(values.worker && values.codex);
@@ -539,13 +541,15 @@ async function bindings() {
     }),
   );
 }
-async function assertPersistedSettings(threadId) {
+async function withSavedCodex(run) {
   const native = spawn(
     path.resolve(values.codex),
     [
       "app-server",
       "-c",
       'model_provider="cantrip_runtime"',
+      "-c",
+      "features.goals=true",
       "-c",
       'model_providers.cantrip_runtime.name="Fixture"',
       "-c",
@@ -579,6 +583,14 @@ async function assertPersistedSettings(threadId) {
       capabilities: { experimentalApi: true },
     });
     rpc.notify("initialized");
+    return await run(request);
+  } finally {
+    native.stdin.end();
+    assert.deepEqual(await available(done), [0, null]);
+  }
+}
+async function assertPersistedSettings(threadId) {
+  await withSavedCodex(async (request) => {
     await request("thread/resume", {
       threadId,
       managedConfig: {
@@ -597,10 +609,7 @@ async function assertPersistedSettings(threadId) {
       result.threadSettings.activePermissionProfile?.id,
       ":read-only",
     );
-  } finally {
-    native.stdin.end();
-    assert.deepEqual(await available(done), [0, null]);
-  }
+  });
 }
 async function assertIdle(file) {
   const client = new Client({ name: "thread-ensure-fixture", version: "1" });
@@ -1568,6 +1577,29 @@ try {
     console.log(
       "Direct Task claim, native binding, encrypted result, and persistent replay passed.",
     );
+  }
+  if (values.chatGoal) {
+    await verifyChatGoalCreate({
+      ensure,
+      expectThread,
+      expectSuccess,
+      withSavedCodex,
+      start,
+      stop,
+      modelCalls: () => providerCalls,
+      attach: (handler) => {
+        goalMutation = handler;
+      },
+      oracle,
+      workerId,
+      generation: () => workerGeneration,
+      provider: {
+        id: "chat-goal-fixture",
+        kind: "openai-compatible",
+        name: "Fixture",
+        baseUrl: `http://127.0.0.1:${server.address().port}/fixture/v1`,
+      },
+    });
   }
   if (structuredTasks) {
     const attach = ({ dispatch, outcome, answer, cycle } = {}) => {
