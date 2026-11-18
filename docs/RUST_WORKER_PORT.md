@@ -4370,3 +4370,27 @@ acknowledges it.
 Reattaching autonomous Goal authority after a worker restart, Goal state
 projection and controls, pause and restore, Task attachment and policy input,
 and full Rust-server integration remain open. Production still selects Node.
+
+## 83. Read native Goal state and project the encrypted Task
+
+Reference commit `8f5a3c2bfb81fcb725b11889194c65c71f1bdc2d` (#3245).
+
+The Rust worker implements `chat.goal.get` and returns the existing visible,
+Chat-encrypted, and Task-encrypted responses. A prepared conversation uses
+its current native runtime. A saved conversation uses a metadata transport
+for the selected home. The read does not load or resume the thread.
+
+The Task response can include the observed native execution status. Running
+execution clears stale failure input to Task projection, and native Goal
+completion takes precedence over stale failure or pause state. The worker
+preserves the encrypted Task bytes when the projection has no changes.
+
+The macOS ARM64 smoke exercises an absent Goal, a running Goal with a changed
+provider display name, and saved active and completed Goals after worker
+restart. It compares the decrypted Task and objective to the Node reference,
+checks that metadata reads make no model calls, and also verifies Goal outcome
+replay. Core and the provider are disposable local peers.
+
+Goal mutations beyond Task activation, exact native pause proof, live Goal
+resumption, OS-hosted Goal observation, and full Rust-server integration
+remain open. Production still selects Node.

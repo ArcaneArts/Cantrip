@@ -251,7 +251,11 @@ async fn cycle(
         encryption.clone(),
         logs.clone(),
     )?;
-    let goals = crate::codex::goals::Goals::new(thread_preparation.clone(), encryption.clone());
+    let goals = crate::codex::goals::Goals::new(
+        thread_preparation.clone(),
+        chat_observation.clone(),
+        encryption.clone(),
+    );
     let turns = crate::codex::turn::Turns::new(
         thread_preparation.clone(),
         encryption.clone(),
@@ -374,13 +378,18 @@ async fn cycle(
                     });
                     continue;
                 }
-                if kind == crate::codex::goals::CREATE {
+                if matches!(kind, crate::codex::goals::CREATE | crate::codex::goals::GET) {
                     let goals = goals.clone();
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();
                     let worker = worker.clone();
                     commands.spawn(async move {
-                        let result = goals.create(&request["command"]).await;
+                        let command = &request["command"];
+                        let result = if command["type"] == crate::codex::goals::GET {
+                            goals.get(command).await
+                        } else {
+                            goals.create(command).await
+                        };
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
                     continue;

@@ -1,10 +1,15 @@
-//! Server-authorized creation of a Goal from a finalized encrypted Task.
+//! Native Goal commands and authenticated Task projection.
 mod context;
 mod projection;
+mod read;
 
-use super::preparation::{
-    Intent,
-    command::{Ensurer, Prepared},
+use super::{
+    managed::Runtime,
+    observation::Observer,
+    preparation::{
+        Intent,
+        command::{Ensurer, Prepared},
+    },
 };
 use crate::{
     encryption::{BoundComponentKey, Service},
@@ -13,21 +18,28 @@ use crate::{
 };
 use anyhow::{Context, Result, bail};
 use cantrip_crypto::content::{Communication, decrypt_communication};
-use cantrip_wire::{Value, value::json};
+use cantrip_wire::{JsString, Value, value::json};
 use std::{sync::Arc, time::Duration};
 
 pub(crate) const CREATE: &str = "chat.goal.create";
+pub(crate) const GET: &str = "chat.goal.get";
 
 #[derive(Clone)]
 pub(crate) struct Goals {
     preparation: Ensurer,
+    observation: Observer,
     encryption: Arc<Service>,
 }
 
 impl Goals {
-    pub(crate) fn new(preparation: Ensurer, encryption: Arc<Service>) -> Self {
+    pub(crate) fn new(
+        preparation: Ensurer,
+        observation: Observer,
+        encryption: Arc<Service>,
+    ) -> Self {
         Self {
             preparation,
+            observation,
             encryption,
         }
     }
@@ -36,17 +48,7 @@ impl Goals {
         if !command["objective"].is_object() || !command["taskContext"].is_object() {
             bail!("This native Goal command requires an encrypted Task.");
         }
-        let binding = self.encryption.bound_component("task-content", None)?;
-        let chat = &command["chatId"];
-        let scope = json!({"ownerId":binding.owner_id,"keyRevision":binding.component.key_revision,"chatId":chat});
-        let task = &command["taskContext"]["task"];
-        let current = decrypt_communication(
-            Communication::Task,
-            &binding.component.key,
-            &scope,
-            &task["protectedContent"],
-            task.get("classification"),
-        )?;
+        let (binding, scope, current) = self.open_task(command)?;
         let created = self.create_owned(command, &binding, &scope).await;
         self.assert_bound(&binding)?;
         match created {
@@ -65,6 +67,21 @@ impl Goals {
                 &error,
             ),
         }
+    }
+
+    fn open_task(&self, command: &Value) -> Result<(BoundComponentKey, Value, Value)> {
+        let binding = self.encryption.bound_component("task-content", None)?;
+        let chat = &command["chatId"];
+        let scope = json!({"ownerId":binding.owner_id,"keyRevision":binding.component.key_revision,"chatId":chat});
+        let task = &command["taskContext"]["task"];
+        let current = decrypt_communication(
+            Communication::Task,
+            &binding.component.key,
+            &scope,
+            &task["protectedContent"],
+            task.get("classification"),
+        )?;
+        Ok((binding, scope, current))
     }
 
     async fn create_owned(
@@ -180,7 +197,7 @@ impl Goals {
         let result = request(&prepared, "thread/goal/set", json!({
             "threadId":prepared.thread.id(),"objective":direction,"status":"active","tokenBudget":prepare["tokenBudget"],
         })).await?;
-        let goal = verify_goal(&prepared, &result)?;
+        let goal = verify_goal(prepared.thread.id(), &result)?;
         if goal["status"] != "active" || goal["objective"] != json!(direction) {
             bail!("Codex did not apply the requested Goal.");
         }
@@ -203,13 +220,13 @@ async fn native_goal(prepared: &Prepared) -> Result<Value> {
         json!({"threadId":prepared.thread.id()}),
     )
     .await?;
-    verify_goal(prepared, &value)
+    verify_goal(prepared.thread.id(), &value)
 }
 
-fn verify_goal(prepared: &Prepared, value: &Value) -> Result<Value> {
+fn verify_goal(thread: &JsString, value: &Value) -> Result<Value> {
     let result = checked("chatGoalResponseSchema", value)?;
     let goal = &result["goal"];
-    if !goal.is_null() && goal["threadId"].as_js_string() != Some(prepared.thread.id()) {
+    if !goal.is_null() && goal["threadId"].as_js_string() != Some(thread) {
         bail!("Codex returned a Goal from another thread.");
     }
     Ok(goal.clone())
@@ -217,15 +234,19 @@ fn verify_goal(prepared: &Prepared, value: &Value) -> Result<Value> {
 
 async fn request(prepared: &Prepared, method: &str, params: Value) -> Result<Value> {
     prepared.thread.assert_current(&prepared.runtime)?;
-    let result = prepared
-        .runtime
+    let reply = rpc(&prepared.runtime, method, params).await?;
+    prepared.thread.assert_current(&prepared.runtime)?;
+    Ok(reply)
+}
+
+async fn rpc(runtime: &Runtime, method: &str, params: Value) -> Result<Value> {
+    runtime
         .request(
             method.into(),
             Some(params),
             Some(Duration::from_secs(120)),
             None,
         )
-        .await?;
-    prepared.thread.assert_current(&prepared.runtime)?;
-    result.with_context(|| format!("Codex did not return a {method} result."))
+        .await?
+        .with_context(|| format!("Codex did not return a {method} result."))
 }
