@@ -65,7 +65,7 @@ export async function verifyTaskPreparation({
     ["continue-plan", "review", "\uFEFF  " + marker + "  \uFEFF"],
     ["finalize", "review", " \uFEFF "],
   ];
-  let direct;
+  const inputs = {};
   for (const [operationKind, state, additionalDirection] of cases) {
     const operationId = randomUUID();
     const questions =
@@ -148,8 +148,7 @@ export async function verifyTaskPreparation({
       getComponentKey: () => ({ key: key.slice(), keyRevision: 2 }),
       request,
     });
-    if (operationKind === "direct")
-      direct = { operation: node.operation, marker };
+    inputs[operationKind] = { operation: node.operation, marker };
     assert.equal(rust.rowVersion, node.rowVersion);
     assert.equal(rust.operation.operationId, operationId);
     assert.equal(rust.operation.chatId, chatId);
@@ -215,5 +214,5 @@ export async function verifyTaskPreparation({
       }
     }
   }
-  return direct;
+  return inputs;
 }

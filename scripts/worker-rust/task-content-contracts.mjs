@@ -1,6 +1,7 @@
 // Generate the endpoint-only plaintext Task formats from the protocol package.
 import { writeFile } from "node:fs/promises";
 import { format } from "prettier";
+import { boundedJsonObjectSchema } from "../../packages/protocol/dist/bounded-json.js";
 import * as tasks from "../../packages/protocol/dist/tasks.js";
 import { buildContractManifest } from "../server-rust/contracts.mjs";
 
@@ -14,10 +15,22 @@ const names = [
   "taskMessageProtectedClassificationSchema",
   "taskMessageProtectedContentSchema",
   "encryptedTaskMessageProtectedContentSchema",
+  "taskGoalObjectiveProtectedClassificationSchema",
+  "taskGoalObjectiveProtectedContentSchema",
+  "encryptedTaskGoalObjectiveSchema",
+  "taskPlannerResultSchema",
+  "taskFinalizerResultSchema",
 ];
-const schemas = Object.fromEntries(names.map((name) => [name, tasks[name]]));
+const schemas = {
+  ...Object.fromEntries(names.map((name) => [name, tasks[name]])),
+  boundedJsonObjectSchema,
+};
 const refinements = new Map([
   [tasks.taskQuestionSchema, "task-content-question"],
+  [
+    tasks.taskFinalizerResultSchema.shape.goalPrompt,
+    "task-content-goal-prompt",
+  ],
   [tasks.taskQuestionListSchema, "task-content-questions"],
   [tasks.taskQuestionAnswerSchema, "task-content-answer"],
   [tasks.taskQuestionAnswerListSchema, "task-content-answers"],
@@ -39,7 +52,7 @@ const refinements = new Map([
     "worker-wire-task-envelope",
   ],
 ]);
-const manifest = buildContractManifest(names, {
+const manifest = buildContractManifest(Object.keys(schemas), {
   schemas,
   refinements,
   recursiveJson: new Set([
@@ -52,4 +65,19 @@ await writeFile(
     import.meta.url,
   ),
   await format(JSON.stringify(manifest), { parser: "json", tabWidth: 2 }),
+);
+
+await writeFile(
+  new URL(
+    "../../cantrip_worker_rs/src/codex/turn/task/model-output.json",
+    import.meta.url,
+  ),
+  await format(
+    JSON.stringify({
+      planner: tasks.taskPlannerOutputJsonSchema,
+      finalizer: tasks.taskFinalizerOutputJsonSchema,
+      nativeGoalObjectiveLimit: tasks.TASK_NATIVE_GOAL_OBJECTIVE_LIMIT,
+    }),
+    { parser: "json", tabWidth: 2 },
+  ),
 );

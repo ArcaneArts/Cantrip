@@ -1,4 +1,5 @@
-//! Protected direct Task rounds use the same physical turn runner as host Chat.
+//! Protected Task rounds use the same physical turn runner as host Chat.
+mod structured;
 use super::{Emit, Key};
 use crate::{
     encryption::{BoundComponentKey, Service},
@@ -15,12 +16,15 @@ use std::{
 };
 use subtle::ConstantTimeEq;
 
-pub(super) fn direct(command: &Value) -> bool {
+pub(super) fn is_round(command: &Value) -> bool {
     command["resultMode"]["kind"] == "task-encrypted"
-        && command["resultMode"]["operation"]["classification"]["kind"] == "direct"
         && command["taskInferenceInput"].is_object()
         && command["taskInferenceInput"]["kind"].is_null()
         && command["taskResumption"].is_null()
+}
+
+pub(super) fn is_structured(command: &Value) -> bool {
+    is_round(command) && command["resultMode"]["operation"]["classification"]["kind"] != "direct"
 }
 
 pub(super) struct Round {
@@ -28,6 +32,7 @@ pub(super) struct Round {
     binding: BoundComponentKey,
     context: Value,
     input: Value,
+    kind: structured::Kind,
     authorship: Value,
     request: Value,
     output: Mutex<Output>,
@@ -97,6 +102,7 @@ impl Round {
             service,
             binding,
             context,
+            kind: structured::Kind::parse(&input["classification"]["kind"])?,
             input,
             authorship: task["classification"]["planAuthorship"].clone(),
             request: request.clone(),
@@ -104,19 +110,19 @@ impl Round {
         })
     }
 
-    pub(super) fn prompt(&self) -> Result<JsString> {
-        self.input["inputBriefMarkdown"]
-            .as_js_string()
-            .cloned()
-            .context("Missing Task brief.")
+    pub(super) fn prompt(&self) -> JsString {
+        self.kind.prompt(&self.input)
+    }
+
+    pub(super) fn output_schema(&self) -> Option<&'static Value> {
+        self.kind.output_schema()
     }
 
     pub(super) fn events(self: &Arc<Self>, emit: Emit) -> Emit {
         let round = self.clone();
         Arc::new(move |event| {
-            // Direct Task events carry protected agent messages. Chat-specific
-            // plan updates have a different contract and must stay private.
-            if event["type"] != "agent.message" {
+            // Structured responses are published only after endpoint validation.
+            if round.kind.is_structured() || event["type"] != "agent.message" {
                 return Ok(());
             }
             round.publish(&event["message"], &emit)
@@ -185,20 +191,50 @@ impl Round {
 
     pub(super) fn finish(&self, mut result: Value) -> Result<Value> {
         self.assert_bound()?;
-        let ordinal = &self.input["classification"]["ordinal"];
+        let completed = self.kind.complete(&self.input, &result["text"])?;
+        let direct = !self.kind.is_structured();
+        let finalizing = completed.objective.is_some();
+        let state = if direct {
+            "complete"
+        } else if finalizing {
+            "implementing"
+        } else {
+            "review"
+        };
+        let authorship = if state == "review" {
+            json!("agent")
+        } else {
+            self.authorship.clone()
+        };
+        let has_questions = !completed.questions.is_empty();
         let task = json!({
             "version": 1,
             "classification": json!({
-                "state":"complete","stableStateBeforeFailure":Value::Null,"activeOperationKind":Value::Null,
-                "planAuthorship":self.authorship,"planningRound":ordinal,
-                "hasPlan":false,"hasQuestions":false,"hasFinalPlan":false,"hasGoalPrompt":false,"lastError":Value::Null,
+                "state":state,"stableStateBeforeFailure":Value::Null,"activeOperationKind":Value::Null,
+                "planAuthorship":authorship,"planningRound":self.input["classification"]["ordinal"],
+                "hasPlan":!direct,"hasQuestions":has_questions,"hasFinalPlan":finalizing,
+                "hasGoalPrompt":finalizing,"lastError":Value::Null,
             }),
-            "briefMarkdown": self.input["inputBriefMarkdown"], "planMarkdown": Value::Null,
-            "currentQuestions": Vec::<Value>::new(), "currentAnswers": Vec::<Value>::new(),
-            "additionalDirection":"", "finalPlanMarkdown":Value::Null,"goalPrompt":Value::Null,"lastError":Value::Null,
+            "briefMarkdown": self.input["inputBriefMarkdown"], "planMarkdown": completed.plan,
+            "currentQuestions": completed.questions,
+            "currentAnswers": if finalizing { self.input["inputAnswers"].clone() } else { json!(Vec::<Value>::new()) },
+            "additionalDirection": if finalizing { self.input["additionalDirection"].clone() } else { json!("") },
+            "finalPlanMarkdown": if finalizing { completed.plan.clone() } else { Value::Null },
+            "goalPrompt":completed.objective, "lastError":Value::Null,
         });
         let mut round = self.input.clone();
         round["classification"]["status"] = json!("completed");
+        round["classification"]["hasOutputPlan"] = json!(!direct);
+        round["classification"]["hasOutputQuestions"] = json!(has_questions);
+        round["classification"]["hasOutputGoalPrompt"] = json!(finalizing);
+        round["outputPlanMarkdown"] = completed.plan;
+        round["outputQuestions"] = json!(completed.questions);
+        round["outputGoalPrompt"] = json!(completed.objective);
+        let goal = match completed.objective.as_ref() {
+            Some(objective) => self.goal_payload(&result["threadId"], &task, objective)?,
+            None => Value::Null,
+        };
+
         let published = self.output.lock().unwrap().final_message.take();
         let assistant = match published {
             Some(message)
@@ -208,30 +244,12 @@ impl Round {
             {
                 message.cipher
             }
-            _ => {
-                let mut context = self.context.clone();
-                context["messageId"] = json!(uuid::Uuid::new_v4().to_string());
-                let text = result["text"]
-                    .as_js_string()
-                    .context("Invalid Task result text.")?;
-                let text = if text.is_empty() {
-                    json!("The Task completed without a message.")
-                } else {
-                    json!(text)
-                };
-                let idempotency = json!(format!(
-                    "task-result:{}",
-                    self.request["operationId"].as_str().unwrap()
-                ));
-                seal_message(
-                    &self.binding.component.key,
-                    &context,
-                    "assistant",
-                    "default",
-                    &idempotency,
-                    json!({"type":"text","phase":"final_answer","text":text}),
-                )?
-            }
+            _ => self.message(
+                "assistant",
+                if direct { "default" } else { "plan" },
+                "task-result",
+                &completed.assistant,
+            )?,
         };
         let secret = &self.binding.component.key;
         result["text"] = json!("");
@@ -242,9 +260,56 @@ impl Round {
                 "classification":round["classification"],
                 "protectedResult":encrypt_communication(Communication::TaskPlanningRound, secret, &self.context, &round)?,
                 "task":opaque(Communication::Task, secret, &self.context, &task)?,
-                "assistantMessage":assistant,"goal":Value::Null,
+                "assistantMessage":assistant,"goal":goal,
             }),
         )?;
         checked("agentTurnResultSchema", &result)
+    }
+
+    fn message(&self, role: &str, mode: &str, key: &str, text: &JsString) -> Result<Value> {
+        let mut context = self.context.clone();
+        context["messageId"] = json!(uuid::Uuid::new_v4().to_string());
+        let idempotency = json!(format!(
+            "{key}:{}",
+            self.request["operationId"].as_str().unwrap()
+        ));
+        seal_message(
+            &self.binding.component.key,
+            &context,
+            role,
+            mode,
+            &idempotency,
+            json!({"type":"text","phase":"final_answer","text":text}),
+        )
+    }
+
+    fn goal_payload(&self, thread: &Value, task: &Value, objective: &JsString) -> Result<Value> {
+        let mut context = self.context.clone();
+        context["threadId"] = thread.clone();
+        let classification =
+            json!({"chatId":self.context["chatId"],"threadId":thread,"status":"active"});
+        let mut failed = task.clone();
+        let occurred_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let mut error = json!({"code":"task-goal-start-failed","operationKind":"finalize","occurredAt":occurred_at});
+        failed["classification"]["state"] = json!("failed");
+        failed["classification"]["stableStateBeforeFailure"] = json!("review");
+        failed["classification"]["lastError"] = error.clone();
+        error["message"] = json!(
+            "Goal startup failed. Implementation has not started. You can retry implementation without regenerating the saved plan."
+        );
+        failed["lastError"] = error;
+        let prompt = concat(&[
+            objective.clone(),
+            "\n\n## Final implementation plan\n\n".into(),
+            task["finalPlanMarkdown"].as_js_string().unwrap().clone(),
+        ]);
+        let secret = &self.binding.component.key;
+        Ok(json!({
+            "classification":classification,
+            "failureTask":opaque(Communication::Task, secret, &self.context, &failed)?,
+            "protectedObjective":encrypt_communication(Communication::TaskGoalObjective, secret, &context,
+                &json!({"version":1,"classification":classification,"objective":objective}))?,
+            "startMessage":self.message("user", "goal", "task-goal", &prompt)?,
+        }))
     }
 }

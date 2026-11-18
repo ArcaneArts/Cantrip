@@ -29,7 +29,7 @@ pub(crate) const COMMAND: &str = "chat.thread.ensure";
 pub(crate) struct Prepared {
     pub runtime: Runtime,
     pub thread: native::LoadedThread,
-    admission: Value,
+    admission: Option<Value>,
     bound: (JsString, Value),
 }
 
@@ -149,12 +149,17 @@ impl Ensurer {
         {
             open_runtime_provider(&self.0.encryption, &defaults["provider"])?;
         }
-        let user_servers = open_mcp_servers(
-            &self.0.encryption,
-            command["mcpServers"]
-                .as_array()
-                .context("Managed MCP configurations")?,
-        )?;
+        let structured = command["structuredTask"] == true;
+        let user_servers = if structured {
+            Vec::new()
+        } else {
+            open_mcp_servers(
+                &self.0.encryption,
+                command["mcpServers"]
+                    .as_array()
+                    .context("Managed MCP configurations")?,
+            )?
+        };
         let target = Target {
             thread_id: command["threadId"].as_js_string().cloned(),
             cwd: cwd.clone(),
@@ -193,22 +198,27 @@ impl Ensurer {
                     ).await?;
                     let session = &command["session"];
                     let mut mcp = profile::external_servers(user_servers);
-                    let broker = this.broker().await?;
-                    let legacy_root = if standalone {
+                    let admission = if structured {
                         None
                     } else {
-                        Some(this.0.routing.protect_metadata(&json!({"path":cwd})).await?["path"].clone())
+                        let broker = this.broker().await?;
+                        let legacy_root = if standalone {
+                            None
+                        } else {
+                            Some(this.0.routing.protect_metadata(&json!({"path":cwd})).await?["path"].clone())
+                        };
+                        let admission = json!({
+                            "ownerId": bound.0, "workerId": this.0.worker, "chatId": chat,
+                            "contextKind": context_kind, "projectId": session["projectId"],
+                            "worktreeId": session["worktreeId"], "rootKind": session["rootKind"],
+                            "scratchRootId": session["scratchRootId"],
+                            "permissionProfileId": command["permissionProfileId"],
+                            "allowedOperations": vec!["context.get", "tool.help"],
+                        });
+                        let attachment = broker.prepare(admission.clone(), legacy_root).await?;
+                        mcp["cantrip"] = attachment.codex_configuration(&std::env::current_exe()?)?;
+                        Some(admission)
                     };
-                    let admission = json!({
-                        "ownerId": bound.0, "workerId": this.0.worker, "chatId": chat,
-                        "contextKind": context_kind, "projectId": session["projectId"],
-                        "worktreeId": session["worktreeId"], "rootKind": session["rootKind"],
-                        "scratchRootId": session["scratchRootId"],
-                        "permissionProfileId": command["permissionProfileId"],
-                        "allowedOperations": vec!["context.get", "tool.help"],
-                    });
-                    let attachment = broker.prepare(admission.clone(), legacy_root).await?;
-                    mcp["cantrip"] = attachment.codex_configuration(&std::env::current_exe()?)?;
                     let runner = payload_digest(&json!([
                         json!(runtime.generation()), json!(chat), session[placement].clone()
                     ]));
@@ -239,10 +249,12 @@ impl Ensurer {
         Ok(result)
     }
 
-    pub(crate) fn activate(&self, prepared: &Prepared, lane: &Value) -> Result<Activation> {
+    pub(crate) fn activate(&self, prepared: &Prepared, lane: &Value) -> Result<Option<Activation>> {
         self.assert_bound(&prepared.bound)?;
         prepared.thread.assert_current(&prepared.runtime)?;
-        let mut admission = prepared.admission.clone();
+        let Some(mut admission) = prepared.admission.clone() else {
+            return Ok(None);
+        };
         admission["executionLaneId"] = lane.clone();
         self.0
             .broker
@@ -250,6 +262,7 @@ impl Ensurer {
             .context("Cantrip MCP attachment was not prepared.")?
             .activate(&admission)?
             .context("Cantrip MCP attachment no longer matches the admitted turn.")
+            .map(Some)
     }
 
     pub(crate) fn identity(&self) -> Result<(JsString, Value)> {

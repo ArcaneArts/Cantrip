@@ -31,7 +31,7 @@ placement/ownership records. Eighty-one outer command types have native handlers
 `diagnostics.logs.read`, `worker.encryption.refresh`, `chat.sync` (cold host observation),
 `chat.thread.ensure` (managed host attachment), `chat.turn` and `chat.interrupt`
 (host text turns, including protected input, managed GUI receipts and
-canonical History for admitted project turns, plus direct protected Task rounds),
+canonical History for admitted project turns, plus protected Task rounds),
 `chat.message.protect`,
 `chat.messages.protect`, `chat.messages.reprotect`, `chat.turn.protect`,
 `task.message.protect` and `task.operation.prepare` (encrypted Task input),
@@ -4257,3 +4257,30 @@ replays the same pending delivery after restarting the Rust worker.
 This milestone covers direct host text rounds. Structured planning and
 finalization, Task attachments, policy bodies, native pause and resumption,
 and Goal continuations remain open. Production still selects Node.
+
+## 79. Execute structured Task planning and finalization
+
+Reference commit `618dc33718d9ac0468bdff8cc435859b5468aded` (#3241).
+
+The Rust worker now runs initial planning, plan revision, and finalization
+through the same claim, native admission, and durable outcome path as direct
+Task rounds. Codex receives the existing model output schemas and prompt
+material. Planning uses a read-only sandbox with approvals disabled.
+Structured rounds publish the encrypted result after validating the output.
+
+The result contains the reviewed plan and questions or the finalized plan
+and Goal handoff. Finalization seals the objective to its native thread and
+includes the existing encrypted start message and retryable startup failure
+record. Blank plan and Goal prompt fields retain the Node reference's
+fallback behavior.
+
+A local macOS ARM64 smoke uses bundled Codex, an authenticated fixture peer,
+and a loopback model provider. It compares all three prompts, output schemas,
+and decrypted results with the Node reference. The native runtime rejects
+a write to an owned fixture folder even when the turn requests the YOLO
+profile. Revision and finalization reuse the planning thread. The Node
+reference opens the finalized objective, start message, and failure record.
+
+Goal activation after finalization, autonomous continuation, Task
+attachments, effective policy bodies, and pause and resumption remain open.
+Production still selects Node.

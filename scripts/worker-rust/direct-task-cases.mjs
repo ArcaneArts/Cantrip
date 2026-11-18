@@ -29,59 +29,13 @@ export async function verifyDirectTask({
   diagnostics,
 }) {
   const { operation, marker } = source;
-  const chatId = operation.chatId;
-  const projectId = randomUUID();
-  const worktreeId = randomUUID();
-  const lane = randomUUID();
-  const fence = {
-    cycleId: randomUUID(),
-    operationId: operation.operationId,
-    leaseOwner: "rust-task-fixture",
-    fencingToken: 1,
-  };
-  const provider = {
-    id: "direct-task-fixture",
-    kind: "openai-compatible",
-    name: "Direct Task fixture",
-    baseUrl,
-  };
-  const clientMessageId = operation.userMessage.id;
-  const receipt = {
-    operationId: randomUUID(),
-    chatId,
-    clientMessageId,
+  const { command, receipt, fence } = taskTurn({
+    operation,
     workerId,
-    worktreeId,
-    executionLaneId: lane,
-    executionLaneActivatedAt: new Date().toISOString(),
-    providerId: provider.id,
-    modelRouteId: "fixture-route",
-    providerAccountId: null,
-    dispatch: fence,
-  };
-  const command = {
-    type: "chat.turn",
-    executionProfile: "ide",
-    contextKind: "project",
-    chatId,
-    clientMessageId,
-    executionLaneId: lane,
-    worktreeId,
-    scratchRootId: null,
-    rootKind: "folder-root",
-    isPrimary: true,
-    worktreeMode: "agent-managed",
-    worktreePolicy: "direct",
-    policyProjectId: projectId,
-    prompt: "Encrypted Task input",
-    provider,
-    resultMode: { kind: "task-encrypted", operation },
-    taskInferenceInput: receipt,
-    taskDispatchLease: {
-      ...fence,
-      leaseExpiresAt: new Date(Date.now() + 60000).toISOString(),
-    },
-  };
+    baseUrl,
+    providerId: "direct-task-fixture",
+  });
+  const { clientMessageId } = command;
   const phases = [];
   const deliveries = Promise.withResolvers();
   const replay = Promise.withResolvers();
@@ -252,4 +206,66 @@ export async function verifyDirectTask({
   );
   await stop();
   attach(undefined, undefined);
+}
+
+export function taskTurn({
+  operation,
+  workerId,
+  baseUrl,
+  providerId,
+  projectId = randomUUID(),
+  worktreeId = randomUUID(),
+}) {
+  const chatId = operation.chatId;
+  const lane = randomUUID();
+  const fence = {
+    cycleId: randomUUID(),
+    operationId: operation.operationId,
+    leaseOwner: "rust-task-fixture",
+    fencingToken: 1,
+  };
+  const provider = {
+    id: providerId,
+    kind: "openai-compatible",
+    name: "Task fixture",
+    baseUrl,
+  };
+  const clientMessageId = operation.userMessage.id;
+  const receipt = {
+    operationId: randomUUID(),
+    chatId,
+    clientMessageId,
+    workerId,
+    worktreeId,
+    executionLaneId: lane,
+    executionLaneActivatedAt: new Date().toISOString(),
+    providerId: provider.id,
+    modelRouteId: "fixture-route",
+    providerAccountId: null,
+    dispatch: fence,
+  };
+  const command = {
+    type: "chat.turn",
+    executionProfile: "ide",
+    contextKind: "project",
+    chatId,
+    clientMessageId,
+    executionLaneId: lane,
+    worktreeId,
+    scratchRootId: null,
+    rootKind: "folder-root",
+    isPrimary: true,
+    worktreeMode: "agent-managed",
+    worktreePolicy: "direct",
+    policyProjectId: projectId,
+    prompt: "Encrypted Task input",
+    provider,
+    resultMode: { kind: "task-encrypted", operation },
+    taskInferenceInput: receipt,
+    taskDispatchLease: {
+      ...fence,
+      leaseExpiresAt: new Date(Date.now() + 60000).toISOString(),
+    },
+  };
+  return { command, receipt, fence };
 }

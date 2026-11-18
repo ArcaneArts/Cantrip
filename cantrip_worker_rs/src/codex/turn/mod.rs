@@ -278,7 +278,7 @@ impl Turns {
     }
 
     pub(crate) async fn run(&self, incoming: &Value, emit: Emit) -> (Result<Value>, Option<Value>) {
-        if !task::direct(incoming) {
+        if !task::is_round(incoming) {
             let result = self
                 .run_owned(incoming, emit, None)
                 .await
@@ -363,7 +363,7 @@ impl Turns {
                 protected::Protected::open(self.encryption.clone(), &command, &key.0, &key.1)?;
             (prompt, Some(Arc::new(protection)))
         } else if let Some(task) = &task {
-            (task.round.prompt()?, None)
+            (task.round.prompt(), None)
         } else {
             (id(&command["prompt"], "native turn prompt")?, None)
         };
@@ -472,7 +472,7 @@ impl Turns {
             }
         };
         let result = async {
-            let params = params::native_input(
+            let mut params = params::native_input(
                 &command,
                 &prompt,
                 runtime,
@@ -480,6 +480,9 @@ impl Turns {
                 self.preparation.supports_permission_profiles(),
             )
             .await?;
+            if let Some(schema) = task.as_ref().and_then(|task| task.round.output_schema()) {
+                params["outputSchema"] = schema.clone();
+            }
             prepared.thread.assert_current(runtime)?;
             let (observed, mut events) = mpsc::unbounded_channel();
             let subscription = runtime.history().observe(

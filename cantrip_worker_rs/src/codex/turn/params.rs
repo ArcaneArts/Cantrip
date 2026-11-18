@@ -4,7 +4,7 @@ use cantrip_wire::{JsString, Value, value::json};
 use std::path::Path;
 
 pub(super) fn validate(command: &Value) -> Result<()> {
-    let task = super::task::direct(command);
+    let task = super::task::is_round(command);
     let supported_content = if task {
         command["contextKind"] == "project" && command["taskDispatchLease"].is_object()
     } else if protected_mode(command) {
@@ -50,7 +50,8 @@ pub(super) fn preparation(command: &Value) -> Value {
         "cwd": command["cwd"],
         "threadId": command["threadId"],
         "planMode": command["planMode"],
-        "taskOwned": super::task::direct(command),
+        "taskOwned": super::task::is_round(command),
+        "structuredTask": super::task::is_structured(command),
         "model": command["model"],
         "provider": command["provider"],
         "mcpServers": command["mcpServers"],
@@ -79,11 +80,14 @@ pub(super) async fn native_input(
         .to_str()
         .context("Invalid native workspace path")?;
     let standalone = command["contextKind"] == "standalone";
+    let structured = super::task::is_structured(command);
     let primary_read_only = command["rootKind"] == "git-worktree"
         && command["isPrimary"] == true
         && command["worktreePolicy"] == "required-for-writes";
     let (context_key, instructions) = if standalone {
         ("cantrip.standalone-chat", "This is an isolated standalone Chat scratch workspace, not a Cantrip project. Work only with this conversation, the current scratch folder, and the managed Cantrip web tools (`tool_help`, `web_search`, and `web_read`). Project, worktree, Task, Code, CodeGraph, interactive browser, and subagent workflows are unavailable.".into())
+    } else if structured {
+        ("cantrip.worktree-policy", planning_policy(command).into())
     } else {
         (
             "cantrip.worktree-policy",
@@ -107,7 +111,7 @@ pub(super) async fn native_input(
     let permission = command["permissionProfileId"]
         .as_str()
         .context("Missing native permission profile")?;
-    if permission_profiles {
+    if permission_profiles && !structured {
         let expected = if permission == ":yolo" {
             ":danger-full-access"
         } else {
@@ -144,8 +148,11 @@ pub(super) async fn native_input(
     if !command["model"]["reasoningEffort"].is_null() {
         params["effort"] = command["model"]["reasoningEffort"].clone();
     }
-    if !permission_profiles {
-        params["sandboxPolicy"] = if primary_read_only {
+    if structured {
+        params["approvalPolicy"] = json!("never");
+    }
+    if structured || !permission_profiles {
+        params["sandboxPolicy"] = if structured || primary_read_only {
             json!({"type": "readOnly", "networkAccess": false})
         } else {
             json!({
@@ -155,6 +162,14 @@ pub(super) async fn native_input(
         };
     }
     Ok(params)
+}
+
+fn planning_policy(command: &Value) -> &'static str {
+    if command["rootKind"] == "folder-root" {
+        "This is a Cantrip Task planning turn in a worker-managed folder. It is unconditionally read-only: inspect the folder and effective policies, but do not modify files or external systems. The folder has no Git protection, writes in implementation turns occur directly in it, Cantrip worktree commands are unavailable, and running git init does not convert the project automatically."
+    } else {
+        "This is a Cantrip Task planning turn. It is unconditionally read-only: inspect the repository and effective policies, but do not modify files, Git state, GitHub state, or external systems."
+    }
 }
 
 fn worktree_policy(command: &Value, primary_read_only: bool) -> String {
