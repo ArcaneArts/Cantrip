@@ -18,6 +18,8 @@ use std::{
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 #[path = "support/codex_session_driver.rs"]
 mod driver;
+#[path = "support/managed_runtime_cases.rs"]
+mod managed_runtime;
 #[path = "support/codex_ws_peer.rs"]
 mod peer;
 #[path = "support/private_inference_cases.rs"]
@@ -213,6 +215,11 @@ async fn main() -> Result<()> {
     codex_utils_pty::init_spawn_helper(std::env::args_os());
     if std::env::args().any(|v| v == "app-server") {
         return peer::run().await;
+    }
+    if std::env::args().any(|v| v == "--managed-runtime") {
+        let binary = std::env::var_os("CANTRIP_TEST_CODEX")
+            .ok_or_else(|| anyhow!("Set CANTRIP_TEST_CODEX to the installed bundled Codex."))?;
+        return managed_runtime::run(binary.into()).await;
     }
     if std::env::args().any(|v| v == "--private-inference") {
         return private_inference::run().await;
