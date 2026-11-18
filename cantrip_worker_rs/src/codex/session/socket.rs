@@ -15,6 +15,7 @@ pub(super) async fn run(
     mut exit: watch::Receiver<Option<Exit>>,
     events: mpsc::UnboundedSender<Event>,
     history: Hub,
+    threads: ThreadVersions,
     generation: String,
 ) {
     let (mut writer, mut reader) = socket.split();
@@ -56,8 +57,8 @@ pub(super) async fn run(
             changed=exit.changed()=>{if changed.is_err(){break "Codex app-server process observer closed.".into();}}
             error=&mut failure=>break error.unwrap_or_else(|_|"Codex app-server WebSocket closed.".into()),
             message=reader.next()=>match message {
-                Some(Ok(Message::Text(text)))=>observe(&requests, &history, &text, &emit),
-                Some(Ok(Message::Binary(bytes)))=>observe(&requests, &history, &String::from_utf8_lossy(&bytes), &emit),
+                Some(Ok(Message::Text(text)))=>observe(&requests, &history, &threads, &text, &emit),
+                Some(Ok(Message::Binary(bytes)))=>observe(&requests, &history, &threads, &String::from_utf8_lossy(&bytes), &emit),
                 Some(Ok(Message::Ping(bytes)))=>{let _=outgoing.send(Outgoing::Send(Message::Pong(bytes)));}
                 Some(Ok(Message::Close(_)))|None=>break "Codex app-server WebSocket closed.".into(),
                 Some(Err(error))=>break error.to_string().into(),
@@ -97,7 +98,13 @@ pub(super) async fn run(
         }
     }
 }
-fn observe(requests: &Requests, history: &Hub, raw: &str, emit: &impl Fn(EventKind)) {
+fn observe(
+    requests: &Requests,
+    history: &Hub,
+    threads: &ThreadVersions,
+    raw: &str,
+    emit: &impl Fn(EventKind),
+) {
     let Some(message) = rpc_protocol::parse_text(raw) else {
         requests.record(json!({"at":chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis,true),"direction":"from-runtime","kind":"malformed","method":Value::Null,"payload":raw}),Some("Malformed App Server message".into()));
         return;
@@ -121,6 +128,11 @@ fn observe(requests: &Requests, history: &Hub, raw: &str, emit: &impl Fn(EventKi
         && let Some(method) = message["method"].as_js_string()
         && message["params"].is_object()
     {
+        if method.as_str() == Some("thread/closed")
+            && let Some(thread) = message["params"]["threadId"].as_js_string()
+        {
+            threads.closed(thread.clone());
+        }
         history.notification(
             method.clone(),
             &message["params"],
@@ -139,6 +151,7 @@ mod tests {
     async fn history_observation_precedes_reply_without_waiting_for_the_event_consumer()
     -> Result<()> {
         let history = Hub::default();
+        let threads = ThreadVersions::default();
         history.replace(Some("native-generation".into()));
         let (sent, mut wire) = mpsc::unbounded_channel();
         let requests = Requests::new(Ports {
@@ -169,6 +182,7 @@ mod tests {
         observe(
             &requests,
             &history,
+            &threads,
             r#"{"method":"turn/started","params":{"threadId":"thread"}}"#,
             &emit,
         );
@@ -180,7 +194,7 @@ mod tests {
             r#"{"method":"thread/managedExecution/requested","params":{"threadId":"thread","trigger":"inference"}}"#,
             r#"{"method":"turn/completed","params":{"threadId":"thread"},"historyCursor":{"epoch":"epoch","sequence":"42","previousSequence":"41"}}"#,
         ] {
-            observe(&requests, &history, raw, &emit);
+            observe(&requests, &history, &threads, raw, &emit);
         }
         let terminal = frames.try_recv()?;
         assert_eq!(terminal["method"], "turn/completed");
@@ -190,12 +204,21 @@ mod tests {
             r#"{{"id":{},"result":{{"thread":{{"id":"thread","status":{{"type":"idle"}},"turns":[]}}}}}}"#,
             request["id"].stringify()
         );
-        observe(&requests, &history, &reply, &emit);
+        observe(&requests, &history, &threads, &reply, &emit);
         let observed = reading.await?;
         assert_eq!(observed["readBarrierSequence"], json!(1));
         assert_eq!(observed["completedSequence"], json!(2));
         assert_eq!(events.len(), 4);
         assert!(matches!(events.try_recv()?, EventKind::Message(_)));
+        observe(
+            &requests,
+            &history,
+            &threads,
+            r#"{"method":"thread/closed","params":{"threadId":"thread"}}"#,
+            &emit,
+        );
+        assert_eq!(threads.current(&"thread".into()), 1);
+        assert_eq!(threads.current(&"other".into()), 0);
         Ok(())
     }
 }

@@ -9,6 +9,7 @@ use anyhow::{Result, anyhow};
 use cantrip_history::projection::Work;
 use cantrip_wire::{JsString, Value, value::json};
 use std::{
+    collections::HashMap,
     path::PathBuf,
     sync::{
         Arc, Mutex,
@@ -29,6 +30,19 @@ pub struct Event {
     pub generation: String,
     pub kind: EventKind,
 }
+#[derive(Clone, Default)]
+struct ThreadVersions(Arc<Mutex<HashMap<JsString, u64>>>);
+
+impl ThreadVersions {
+    fn closed(&self, thread: JsString) {
+        *self.0.lock().unwrap().entry(thread).or_default() += 1;
+    }
+
+    fn current(&self, thread: &JsString) -> u64 {
+        self.0.lock().unwrap().get(thread).copied().unwrap_or(0)
+    }
+}
+
 enum Outgoing {
     Send(Message),
     Close,
@@ -42,6 +56,7 @@ struct Inner {
     io: Mutex<Option<JoinHandle<()>>>,
     close: tokio::sync::Mutex<()>,
     history: Hub,
+    threads: ThreadVersions,
     generation: String,
 }
 impl Drop for Inner {
@@ -137,6 +152,7 @@ impl Session {
             let generation = uuid::Uuid::new_v4().to_string();
             let history = Hub::default();
             history.replace(Some(generation.as_str().into()));
+            let threads = ThreadVersions::default();
             let io = tokio::spawn(socket::run(
                 socket,
                 receive,
@@ -148,6 +164,7 @@ impl Session {
                 exit,
                 events,
                 history.clone(),
+                threads.clone(),
                 generation.clone(),
             ));
             Ok((
@@ -160,6 +177,7 @@ impl Session {
                     io: Mutex::new(Some(io)),
                     close: tokio::sync::Mutex::new(()),
                     history,
+                    threads,
                     generation,
                 })),
                 observations,
@@ -171,6 +189,9 @@ impl Session {
     }
     pub(super) fn history(&self) -> Hub {
         self.0.history.clone()
+    }
+    pub(super) fn thread_version(&self, thread: &JsString) -> u64 {
+        self.0.threads.current(thread)
     }
     pub fn process_exited(&self) -> bool {
         self.0.exited.load(Ordering::Acquire)

@@ -707,24 +707,25 @@ async fn exercise_grok_turn(portable: bool) -> Result<()> {
     tokio::fs::write(home.join(FILE), json!({
         "version":1,"accessToken":"fixture-access","userId":"fixture-user","expiresAt":Value::Null
     }).stringify()).await?;
-    let mut profile = Profile::new(
-        "grok-runtime".into(),
-        root.path().join("distinct-runtime-home"),
-    );
-    profile.model = Some("grok-fixture".into());
-    profile.grok = Some(GrokAccount {
-        account: crate::provider_access::Account {
-            provider: "fixture".into(),
-            id: account.into(),
-        },
-        credential_home_key: account.into(),
-        provider_name: "Grok Fixture".into(),
-    });
     let worker = &auth.0.codex;
     let outcome = async {
         let (events, mut received) = mpsc::unbounded_channel();
-        let runtime = worker
-            .launch(Launch {
+        let launch = || {
+            let mut profile = Profile::new(
+                "grok-runtime".into(),
+                root.path().join("distinct-runtime-home"),
+            );
+            profile.model = Some("grok-fixture".into());
+            profile.grok = Some(GrokAccount {
+                account: crate::provider_access::Account {
+                    provider: "fixture".into(),
+                    id: account.into(),
+                },
+                credential_home_key: account.into(),
+                provider_name: "Grok Fixture".into(),
+            });
+            let events = events.clone();
+            worker.launch(Launch {
                 profile,
                 private_inference: Hooks {
                     overlay: Arc::new(|_| Context::default()),
@@ -743,18 +744,21 @@ async fn exercise_grok_turn(portable: bool) -> Result<()> {
                     Ok(())
                 }),
             })
-            .await?;
-        let result = runtime
-            .request(
-                "thread/start".into(),
-                Some(json!({"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})),
-                Some(Duration::from_secs(12)),
-                None,
-            )
-            .await?
-            .ok_or_else(|| anyhow!("Expected a real Codex thread start result."))?;
-        assert_eq!(result["modelProvider"], "cantrip_runtime");
-        let thread = result["thread"]["id"].as_js_string().unwrap().clone();
+        };
+        let runtime = launch().await?;
+        let prepared = prepare_managed_fixture(root.path(), runtime.clone(), None, true);
+        let failure = prepared.await.unwrap_err();
+        assert_eq!(failure.to_string(), "Fixture configuration interrupted.");
+        let original_generation = runtime.generation().to_owned();
+        runtime.close().await?;
+        let runtime = launch().await?;
+        assert_ne!(runtime.generation(), original_generation);
+        let thread = prepare_managed_fixture(root.path(), runtime.clone(), None, false).await?;
+        assert_eq!(
+            prepare_managed_fixture(root.path(), runtime.clone(), Some(thread.clone()), false)
+                .await?,
+            thread,
+        );
         *fixture.history_thread.lock().unwrap() = Some(thread.clone());
         let keys = Arc::new(EncryptionService(encryption.clone()));
         let sources_directory = root.path().join("native-history-sources");
@@ -811,7 +815,7 @@ async fn exercise_grok_turn(portable: bool) -> Result<()> {
             .request(
                 "turn/start".into(),
                 Some(json!({
-                    "threadId":result["thread"]["id"],
+                    "threadId":thread,
                     "input":vec![json!({"type":"text","text":"Return the fixture response."})]
                 })),
                 Some(std::time::Duration::from_secs(12)),
@@ -930,6 +934,63 @@ async fn exercise_grok_turn(portable: bool) -> Result<()> {
     outcome?;
     worker_closed?;
     auth_closed
+}
+
+fn prepare_managed_fixture(
+    data: &Path,
+    runtime: crate::codex::managed::Runtime,
+    bound: Option<JsString>,
+    interrupt: bool,
+) -> cantrip_history::projection::Work<JsString> {
+    use crate::codex::preparation::{Coordinator, Identity, Input, Intent, Target, native};
+    Coordinator::new(data).prepare(Input {
+        identity: Identity {
+            server_id: "server".into(), owner_id: "owner".into(), worker_id: "worker".into(),
+            chat_id: "fixture-chat".into(), placement_id: "fixture-worktree".into(),
+            project_id: Some("fixture-project".into()), context_kind: "project",
+        },
+        target: Target {
+            intent: Intent::Preserve,
+            thread_id: bound.clone(), cwd: data.to_string_lossy().into_owned().into(),
+            execution_profile: "ide", model_route_id: "fixture-route".into(), provider_id: "fixture".into(),
+            provider_kind: "grok".into(), provider_account_id: Some("grok-native".into()),
+            credential_home_key: Some("grok-native".into()),
+        },
+        unbound_reuse_key: None,
+        replacement_settings: None,
+        prepare: Box::new(move |selection, identify| Box::pin(async move {
+            assert_eq!(selection.thread_id.is_none(), interrupt);
+            assert_eq!(selection.intent, if bound.is_some() { Intent::Preserve } else { Intent::Configure });
+            let config = native::Configuration {
+                start: json!({
+                    "historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only",
+                    "model":"grok-fixture","modelProvider":"cantrip_runtime"
+                }),
+                configure_existing: json!({"model":"grok-fixture","modelProvider":"cantrip_runtime"}),
+                expected_suspension: None,
+                managed_overlay: Some(json!({
+                    "mcpServers":json!({}), "developerInstructions":"Managed fixture",
+                    "multiAgentEnabled":false,"subagentModel":Value::Null,
+                    "subagentReasoningEffort":Value::Null,"canonicalHistory":true
+                })),
+            };
+            let thread = native::load(&runtime, &selection, &config, &identify).await?;
+            if interrupt {
+                // An empty fixture thread must be persisted before process exit.
+                runtime.request(
+                    "thread/name/set".into(),
+                    Some(json!({"threadId":thread.id(),"name":"Managed preparation fixture"})),
+                    Some(std::time::Duration::from_secs(10)),
+                    None,
+                ).await?;
+                bail!("Fixture configuration interrupted.");
+            }
+            native::configure(&runtime, &thread, selection.intent, &config).await?;
+            Ok(thread.id().clone())
+        })),
+        on_identified: None,
+        on_prepared: None,
+    })
 }
 
 fn command(kind: &str, id: &str, observation: &str) -> Value {
