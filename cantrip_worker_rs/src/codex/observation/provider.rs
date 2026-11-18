@@ -1,16 +1,52 @@
 use super::field;
 use crate::{
     codex::{
-        catalog::PROVIDER_CONFIG,
-        managed::{GrokAccount, Profile},
+        catalog::{PROVIDER_CONFIG, auth::Auth},
+        managed::{GrokAccount, Launch, Profile},
+        private_inference::{Context, Hooks},
     },
-    provider_access::Account,
+    provider_access::{Access, Account},
 };
 use anyhow::{Result, anyhow};
 use cantrip_wire::{Value, value::json};
+use std::sync::Arc;
 use url::Url;
 
-pub(super) fn configure(profile: &mut Profile, provider: &Value) -> Result<Option<Account>> {
+pub(in crate::codex) fn launch(
+    mut profile: Profile,
+    provider: Value,
+    access: Access,
+) -> Result<Launch> {
+    let portable = configure(&mut profile, &provider)?;
+    Ok(Launch {
+        profile,
+        private_inference: Hooks {
+            overlay: Arc::new(|_| Context::default()),
+            provider: Arc::new(move || Some(provider.clone())),
+            before_inference: None,
+        },
+        on_revoked: None,
+        prepare_home: None,
+        external_auth: portable.map(|account| Arc::new(Auth::new(account, access)) as _),
+        observe: Arc::new(|_| Ok(())),
+    })
+}
+
+pub(in crate::codex) fn model_provider(provider: &Value) -> &'static str {
+    match provider["kind"].as_str() {
+        Some("chatgpt") => "openai",
+        Some("ollama")
+            if provider["apiKey"]
+                .as_js_string()
+                .is_none_or(|key| key.is_empty()) =>
+        {
+            "ollama"
+        }
+        _ => "cantrip_runtime",
+    }
+}
+
+fn configure(profile: &mut Profile, provider: &Value) -> Result<Option<Account>> {
     let kind = provider["kind"].as_str().unwrap_or_default();
     let account = provider["accountId"].as_js_string().map(|id| Account {
         provider: provider["id"]

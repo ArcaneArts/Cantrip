@@ -1,12 +1,8 @@
 //! Read the native thread under the existing worker's storage and provider route.
-mod home;
-mod provider;
+pub(super) mod home;
+pub(super) mod provider;
 
-use super::{
-    catalog::auth::Auth,
-    managed::{Launch, Worker},
-    private_inference::{Context, Hooks},
-};
+use super::managed::Worker;
 use crate::{
     encryption::Service, http::checked, protected_secrets::open_runtime_provider,
     provider_access::Access, routing::Registry,
@@ -55,36 +51,23 @@ impl Observer {
         let provider = open_runtime_provider(&self.encryption, &command["provider"])?;
         let scope = json!({"serverId":server,"ownerId":owner,"workerId":self.worker});
         let execution = command["executionProfile"].as_str().unwrap_or("ide");
-        let mut profile = home::profile(
+        let profile = home::profile(
             &self.data,
             &scope,
-            thread,
+            Some(thread),
             chat,
             &provider,
             execution,
             self.skill_root.clone(),
         )
         .await?;
-        let portable = provider::configure(&mut profile, &provider)?;
         let server_id = server.as_js_string().cloned().ok_or_else(|| {
             anyhow!("Worker encryption has not verified the logical server identity.")
         })?;
         let runtime = self
             .codex
             .launch_in_scope(
-                Launch {
-                    profile,
-                    private_inference: Hooks {
-                        overlay: Arc::new(|_| Context::default()),
-                        provider: Arc::new(move || Some(provider.clone())),
-                        before_inference: None,
-                    },
-                    on_revoked: None,
-                    prepare_home: None,
-                    external_auth: portable
-                        .map(|account| Arc::new(Auth::new(account, self.access.clone())) as _),
-                    observe: Arc::new(|_| Ok(())),
-                },
+                provider::launch(profile, provider, self.access.clone())?,
                 Some((server_id, owner.clone())),
             )
             .await?;

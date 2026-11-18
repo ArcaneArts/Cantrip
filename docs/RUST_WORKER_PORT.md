@@ -26,9 +26,10 @@ checkpointed reflog/lost-commit recovery, worker-scoped GitHub catalog operation
 and repository-scoped issue detail/mutations, issue/PR search, PR inspection, creation, reviews, lifecycle, checkout preparation and agent context,
 GitHub inbox, Actions and releases, plus native replica provisioning and
 managed-link repair, synchronization and guarded removal over the existing
-placement/ownership records. Sixty-nine outer command types have native handlers:
+placement/ownership records. Seventy outer command types have native handlers:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
 `diagnostics.logs.read`, `worker.encryption.refresh`, `chat.sync` (cold host observation),
+`chat.thread.ensure` (managed host attachment),
 `model.chatgpt.catalog`,
 `model.grok.catalog` and `provider.quota.read` (Grok),
 `provider.auth.legacy.capture`, `provider.auth.legacy.purge`, `provider.auth.account.clear`,
@@ -3996,3 +3997,33 @@ legacy version-one upstream exchange still needs native interoperability
 coverage. Production managed-thread preparation, additional broker operations,
 Streamable HTTP, CUA and CLI attachment remain open. Production still
 selects Node.
+
+## 70. Prepare managed host threads over the worker command channel
+
+Reference commit `26b5ba2a50456db167c7a0ae146f2ea20a4ecb63` (#3232).
+
+The Rust handler for `chat.thread.ensure` uses the authenticated owner,
+server, worker and chat to load the managed session journal. It starts or
+resumes the native thread in the existing host provider home, isolated
+standalone home, or selected managed namespace. A recovered conversation
+retains its native permission profile and collaboration mode. A new or
+partially configured session waits for the native settings application
+before the worker records preparation as complete.
+
+Preparation opens enabled external MCP configurations with the worker's
+component keys and reserves the first-party MCP names. It installs the local
+native Cantrip MCP command with a private, idle binding. The managed overlay
+keeps the native execution gate in place. A requested recovery observation
+returns the exact thread, transport generation, turn ID and status from
+native history, with transcript content excluded.
+
+The macOS ARM64 smoke exercises the running Rust worker through its command
+socket and bundled Codex. The local server peer supplies the authenticated
+command exchange. Project and standalone threads keep their identities across
+worker replacement, and each worker owns and removes its own attachment
+files. The project test checks that MCP calls remain idle and that existing
+native settings survive reattachment.
+
+The legacy command without a managed session, OS-hosted and held-suspension
+preparation, complete managed tool registration, and execution-owner
+admission remain open. Production still selects Node.

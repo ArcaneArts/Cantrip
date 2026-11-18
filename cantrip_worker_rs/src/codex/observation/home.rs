@@ -11,10 +11,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub(super) async fn profile(
+pub(in crate::codex) async fn profile(
     data: &Path,
     scope: &Value,
-    thread: &JsString,
+    thread: Option<&JsString>,
     chat: &JsString,
     provider: &Value,
     execution: &str,
@@ -46,7 +46,7 @@ pub(super) async fn profile(
         scope["serverId"].clone(),
         scope["ownerId"].clone(),
         scope["workerId"].clone(),
-        Value::String(chat.clone())
+        json!(chat)
     ]));
     let placement = data
         .join("os-agent-placements")
@@ -68,7 +68,9 @@ pub(super) async fn profile(
     let runtime_home = if standalone {
         data.join("codex-standalone-homes")
             .join(sha256(&id.lossy()))
-    } else if let Some((operation, home)) = selection(data, scope, thread, chat, provider).await? {
+    } else if let Some(thread) = thread
+        && let Some((operation, home)) = selection(data, scope, thread, chat, provider).await?
+    {
         id = surround("", &id, &format!(":namespace:{operation}"));
         overlay = Some(configuration_home);
         home
