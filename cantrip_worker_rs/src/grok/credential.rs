@@ -190,7 +190,7 @@ impl Credential {
         Ok(response)
     }
 
-    async fn valid(&mut self, http: &Http, home: &Path, force: bool) -> Result<Value> {
+    pub(super) async fn valid(&mut self, http: &Http, home: &Path, force: bool) -> Result<Value> {
         let credential = self
             .load(home)
             .await?

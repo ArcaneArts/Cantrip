@@ -8,6 +8,7 @@ publish.workspace = true
 [dependencies]
 anyhow = "1"
 base64 = "0.22"
+bytes = "1"
 cantrip-crypto = { path = "../crates/cantrip-crypto" }
 cantrip-framing = { path = "../crates/cantrip-framing" }
 cantrip-transport = { path = "../crates/cantrip-transport" }
@@ -38,6 +39,9 @@ icu_normalizer = "=2.1.1"
 codex-utils-pty = { version = "0.166.0", path = "../cantrip_codex/upstream/codex-rs/utils/pty" }
 tempfile = "3"
 notify = "=8.2.0"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

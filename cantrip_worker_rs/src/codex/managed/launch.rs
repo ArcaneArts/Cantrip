@@ -1,5 +1,13 @@
 use super::*;
 use crate::codex::{discovery, process_transport, provider_errors::Policy};
+use crate::provider_access::Account;
+
+#[derive(Clone)]
+pub struct GrokAccount {
+    pub account: Account,
+    pub credential_home_key: JsString,
+    pub provider_name: JsString,
+}
 
 /// Provider resolution, account leases and native host placement belong to the
 /// command owner. This is the resulting local app-server launch profile.
@@ -16,6 +24,7 @@ pub struct Profile {
     pub extra_skill_roots: Vec<PathBuf>,
     pub native_host: bool,
     pub diagnostic_policy: Policy,
+    pub grok: Option<GrokAccount>,
 }
 
 impl Profile {
@@ -33,6 +42,30 @@ impl Profile {
             extra_skill_roots: Vec::new(),
             native_host: false,
             diagnostic_policy: Policy::default(),
+            grok: None,
+        }
+    }
+
+    pub(super) fn configure_grok(&mut self, name: &JsString, local: &str) {
+        self.provider_arguments.extend([
+            "web_search=\"disabled\"".into(),
+            "features.fast_mode=false".into(),
+            "agents.enabled=true".into(),
+            "features.multi_agent=true".into(),
+            "model_provider=\"cantrip_runtime\"".into(),
+            format!(
+                "model_providers.cantrip_runtime.name={}",
+                json!(name).stringify()
+            ),
+            format!(
+                "model_providers.cantrip_runtime.base_url={}",
+                json!(local).stringify()
+            ),
+            "model_providers.cantrip_runtime.wire_api=\"responses\"".into(),
+        ]);
+        self.diagnostic_policy.secrets.push(local.into());
+        if let Some(capability) = local.split('/').nth(3) {
+            self.diagnostic_policy.secrets.push(capability.into());
         }
     }
 }

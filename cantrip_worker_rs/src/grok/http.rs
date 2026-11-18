@@ -34,7 +34,7 @@ impl Http {
         Ok(Self {
             client: reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
-                .timeout(DEADLINE)
+                .connect_timeout(DEADLINE)
                 .build()?,
             device: Url::parse(DEVICE_URL)?,
             token: Url::parse(TOKEN_URL)?,
@@ -172,6 +172,7 @@ impl Http {
         let mut request = self
             .client
             .post(url)
+            .timeout(DEADLINE)
             .header("content-type", "application/x-www-form-urlencoded")
             .body(body);
         if device {
@@ -195,13 +196,28 @@ impl Http {
         resource: &str,
         credential: &Value,
     ) -> Result<Response> {
+        self.subscription_request(reqwest::Method::GET, resource, credential)?
+            .timeout(DEADLINE)
+            .send()
+            .await
+            .map_err(|_| anyhow!("Grok subscription request failed."))
+    }
+
+    pub(super) fn subscription_request(
+        &self,
+        method: reqwest::Method,
+        resource: &str,
+        credential: &Value,
+    ) -> Result<reqwest::RequestBuilder> {
         let target = self.subscription.join(resource)?;
-        if target.origin() != self.subscription.origin() {
+        if target.origin() != self.subscription.origin()
+            || !target.path().starts_with(self.subscription.path())
+        {
             bail!("Grok credential forwarding escaped the subscription proxy.");
         }
         let mut request = self
             .client
-            .get(target)
+            .request(method, target)
             .bearer_auth(
                 credential["accessToken"]
                     .as_str()
@@ -224,10 +240,7 @@ impl Http {
         {
             request = request.header("x-email", email);
         }
-        request
-            .send()
-            .await
-            .map_err(|_| anyhow!("Grok subscription request failed."))
+        Ok(request)
     }
 }
 
