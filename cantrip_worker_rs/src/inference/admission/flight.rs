@@ -23,6 +23,12 @@ impl Failure {
         crate::error::message(&self.0)
     }
     pub fn error(&self) -> anyhow::Error {
+        if let Some(error) = self
+            .0
+            .downcast_ref::<super::super::withdrawal::Withdrawal>()
+        {
+            return error.clone().into();
+        }
         if let Some(error) = self.0.downcast_ref::<super::AdmissionError>() {
             return error.clone().into();
         }

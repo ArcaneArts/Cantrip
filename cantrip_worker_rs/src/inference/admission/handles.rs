@@ -15,7 +15,26 @@ pub(super) struct LifetimeInner {
 }
 #[derive(Clone)]
 pub struct Lifetime(pub(super) Arc<LifetimeInner>);
+#[derive(Clone)]
+pub(crate) struct WeakLifetime(Weak<LifetimeInner>);
+impl WeakLifetime {
+    pub(crate) fn alive(&self) -> bool {
+        self.0.strong_count() > 0
+    }
+    pub(crate) fn matches(&self, lifetime: &Lifetime) -> bool {
+        self.0.ptr_eq(&Arc::downgrade(&lifetime.0))
+    }
+    pub(crate) fn upgrade(&self) -> Option<Lifetime> {
+        self.0.upgrade().map(Lifetime)
+    }
+}
 impl Lifetime {
+    pub(crate) fn downgrade(&self) -> WeakLifetime {
+        WeakLifetime(Arc::downgrade(&self.0))
+    }
+    pub fn same(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
     pub fn operation_id(&self) -> &JsString {
         &self.0.operation
     }
@@ -140,7 +159,62 @@ pub struct Ticket {
     // Retains exact redelivery metadata after runtime.records releases it.
     pub(super) _lifetime: Lifetime,
 }
+#[derive(Clone)]
+pub(crate) struct WeakTicket {
+    manager: Weak<Inner>,
+    id: Id,
+    lifetime: WeakLifetime,
+}
+impl WeakTicket {
+    pub(crate) fn lease(&self) -> Option<Lease> {
+        self.upgrade().map(Lease)
+    }
+    pub(crate) fn upgrade(&self) -> Option<Ticket> {
+        let lifetime = self.lifetime.upgrade()?;
+        let manager = Manager(self.manager.upgrade()?);
+        let exists = manager
+            .0
+            .state
+            .lock()
+            .unwrap()
+            .tickets
+            .contains_key(&self.id);
+        exists.then_some(Ticket {
+            manager,
+            id: self.id,
+            _lifetime: lifetime,
+        })
+    }
+}
+#[derive(Clone)]
+pub(crate) struct PermissionEpoch(Promise<()>);
 impl Ticket {
+    pub(crate) fn downgrade(&self) -> WeakTicket {
+        WeakTicket {
+            manager: Arc::downgrade(&self.manager.0),
+            id: self.id,
+            lifetime: self._lifetime.downgrade(),
+        }
+    }
+    pub(crate) fn ready_with_epoch(&self) -> (PermissionEpoch, Work<Lease>) {
+        let pending = self.manager.0.state.lock().unwrap().tickets[&self.id]
+            .permission
+            .clone();
+        let epoch = PermissionEpoch(pending.clone());
+        let lease = Lease(self.clone());
+        (
+            epoch,
+            Box::pin(async move {
+                pending.work().await?;
+                Ok(lease)
+            }),
+        )
+    }
+    pub(crate) fn is_current_permission(&self, epoch: &PermissionEpoch) -> bool {
+        self.manager.0.state.lock().unwrap().tickets[&self.id]
+            .permission
+            .same(&epoch.0)
+    }
     pub fn ready(&self) -> Work<Lease> {
         let pending = self.manager.0.state.lock().unwrap().tickets[&self.id]
             .permission
