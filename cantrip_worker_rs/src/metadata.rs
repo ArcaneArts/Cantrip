@@ -20,12 +20,19 @@ impl std::error::Error for Cancelled {
     }
 }
 #[derive(Clone)]
-pub struct Signal(watch::Receiver<Option<Cancelled>>);
+pub struct Signal(Arc<SignalState>);
+enum SignalState {
+    Root(watch::Receiver<Option<Cancelled>>),
+    Any {
+        sources: Vec<Signal>,
+        initial: Option<Cancelled>,
+    },
+}
 pub struct Abort(watch::Sender<Option<Cancelled>>);
 impl Abort {
     pub fn new() -> (Self, Signal) {
         let (send, receive) = watch::channel(None);
-        (Self(send), Signal(receive))
+        (Self(send), Signal(Arc::new(SignalState::Root(receive))))
     }
     pub fn abort(&self, reason: anyhow::Error) {
         let reason = Cancelled {
@@ -43,8 +50,22 @@ impl Abort {
     }
 }
 impl Signal {
+    /// Like AbortSignal.any: initial failures use input order; later failures
+    /// retain their actual chronology. Composition never owns an operation.
+    pub fn any(sources: Vec<Self>) -> Self {
+        let initial = sources.iter().find_map(Self::reason);
+        Self(Arc::new(SignalState::Any { sources, initial }))
+    }
     fn reason(&self) -> Option<Cancelled> {
-        self.0.borrow().clone()
+        match self.0.as_ref() {
+            SignalState::Root(receiver) => receiver.borrow().clone(),
+            SignalState::Any { sources, initial } => initial.clone().or_else(|| {
+                sources
+                    .iter()
+                    .filter_map(Self::reason)
+                    .min_by_key(|reason| reason.at)
+            }),
+        }
     }
     pub fn check(&self) -> Result<()> {
         match self.reason() {
@@ -52,17 +73,36 @@ impl Signal {
             None => Ok(()),
         }
     }
-    pub async fn cancelled(&self) -> Cancelled {
-        let mut receiver = self.0.clone();
-        loop {
-            if let Some(reason) = receiver.borrow_and_update().clone() {
+    pub fn cancelled(&self) -> futures::future::BoxFuture<'static, Cancelled> {
+        let this = self.clone();
+        Box::pin(async move {
+            if let Some(reason) = this.reason() {
                 return reason;
             }
-            if receiver.changed().await.is_err() {
-                // Dropping a controller is not an abort, as with AbortSignal.
-                return std::future::pending().await;
+            match this.0.as_ref() {
+                SignalState::Root(root) => {
+                    let mut receiver = root.clone();
+                    loop {
+                        if let Some(reason) = receiver.borrow_and_update().clone() {
+                            return reason;
+                        }
+                        if receiver.changed().await.is_err() {
+                            // Controller drop does not abort accepted work.
+                            return std::future::pending().await;
+                        }
+                    }
+                }
+                SignalState::Any { sources, .. } => {
+                    if sources.is_empty() {
+                        return std::future::pending().await;
+                    }
+                    let pending = sources.iter().map(Self::cancelled).collect::<Vec<_>>();
+                    let _ = futures::future::select_all(pending).await;
+                    this.reason()
+                        .expect("composed signal observed cancellation")
+                }
             }
-        }
+        })
     }
 }
 #[derive(Debug)]
@@ -180,6 +220,34 @@ impl Guard {
 mod tests {
     use super::*;
     use anyhow::anyhow;
+
+    #[tokio::test]
+    async fn composed_signals_use_live_chronology_and_initial_input_order() {
+        let (first, first_signal) = Abort::new();
+        let (second, second_signal) = Abort::new();
+        let live = Signal::any(vec![first_signal.clone(), second_signal.clone()]);
+        second.abort(anyhow!("older second root"));
+        first.abort(anyhow!("newer first root"));
+        assert_eq!(live.check().unwrap_err().to_string(), "older second root");
+        assert_eq!(live.cancelled().await.to_string(), "older second root");
+        let initial = Signal::any(vec![first_signal, second_signal]);
+        assert_eq!(initial.check().unwrap_err().to_string(), "newer first root");
+    }
+
+    #[tokio::test]
+    async fn dropping_all_composed_controllers_does_not_abort_accepted_work() {
+        let (first, a) = Abort::new();
+        let (second, b) = Abort::new();
+        let signal = Signal::any(vec![a, b]);
+        drop(first);
+        drop(second);
+        signal.check().unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(5), signal.cancelled())
+                .await
+                .is_err()
+        );
+    }
 
     #[tokio::test]
     async fn live_parent_order_and_backoff_cause_survive_late_observation() {

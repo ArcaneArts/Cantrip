@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "roots": {
+    "workerAdmissionConfigurationSchema": 0,
+    "workerAdmissionCatalogSchema": 7,
+    "workerAdmissionNativeExecutionSchema": 9
+  },
+  "nodes": [
+    {
+      "type": "object",
+      "name": "providerInferenceConfigurationSchema",
+      "shape": {
+        "providerId": 1,
+        "maxConcurrentInference": 2,
+        "inferenceConfigRevision": 4,
+        "inferenceCatalogCreatedRevision": 6
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 3,
+      "defaultValue": 8,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "name": "providerInferenceLimitSchema",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 2147483647, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "name": "providerInferenceRevisionSchema",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 2147483647, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "providerInferenceCatalogSchema",
+      "shape": { "catalogRevision": 5, "configurations": 8 },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 0,
+      "checks": [{ "check": "max_length", "maximum": 10000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "inferenceNativeExecutionSchema",
+      "shape": { "threadId": 10, "turnId": 10, "scopeId": 10 },
+      "catchall": 11,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 4096, "when": "length" },
+        {
+          "message": "Admission identifiers must be valid Unicode.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[^\\uD800-\\uDFFF]*$",
+          "flags": "u",
+          "displayPattern": "/^[^\\uD800-\\uDFFF]*$/u"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] }
+  ]
+}

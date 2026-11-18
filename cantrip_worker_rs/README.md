@@ -181,3 +181,37 @@ The compatibility driver uses owned disposable profiles and the real native
 keeper, including real registered Codex app-server retirement without inference.
 Node runs only the development reference; native children have Node absent from
 PATH. Do not point fixtures at an active user profile.
+
+## Worker-wide admission
+
+`inference::admission::Manager` now owns provider-wide FIFO pools across native
+runtimes and direct HTTP execution. It preserves provider configuration/catalog
+revisions, opaque canonical lifetimes, exact redelivery, durable enqueue/grant
+barriers, cancellation versus settlement, parked permission, suspension/resume,
+private no-start withdrawal and previous-generation recovery/adoption.
+
+`Source::claimed` requires an actual one-time canonical claim from its caller;
+an operation ID alone supplies no authority. Direct redelivery joins the original
+execution result. `with_preparation` mints an opaque context only from the actual
+unused native grant, borrows same-provider capacity where allowed and joins all
+accepted child callbacks before native dispatch can continue. Cancellation and
+runtime retirement retain capacity through real callback/body teardown.
+
+The manager uses the existing native keeper/journal and shared protocol/wire/
+transport mechanisms. State transitions reserve capacity synchronously; ordered
+IO prefixes and callbacks run outside the state mutex. Snapshot subscribers and
+diagnostics cannot own admission. The worker cancellation primitive now composes
+signals while retaining initial input order and subsequent cancellation chronology.
+
+This is the worker-wide manager implementation. The Codex admission adapter,
+canonical command phase/source adapters, runtime owner, server reconciliation
+ports and production model/queue/task wiring still need to consume it. Production
+packaging continues selecting Node until the complete worker cutover is ready.
+
+```sh
+node scripts/worker-rust/cargo.mjs test -p cantrip-worker --lib inference::admission::tests
+node scripts/worker-rust/cargo.mjs test -p cantrip-worker --lib metadata::tests
+node scripts/worker-rust/cargo.mjs build --example admission-fixture
+node --import tsx scripts/worker-rust/admission-contracts.mjs
+node --import tsx scripts/worker-rust/admission-compatibility.mjs --binary /absolute/path/to/admission-fixture --codex /absolute/path/to/bundled/codex
+```

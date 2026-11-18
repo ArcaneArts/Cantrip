@@ -123,8 +123,8 @@ loaded by a production service.
 | Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Workspace/folders/routing, nine protected host Explorer operations and bound file-document text read/write                                                                                                                                                                                                                                                                                              | Actual Rust worker/server persists encrypted resources, resolves opaque roots, saves files, rejects replay/mismatched document paths and reopens after restart. Paged readers, media/tail, transfers, activity/watches and delegated OS execution remain pending.                                                                |
 | Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub catalog, issue detail/mutations, issue/PR search, inspection, creation, reviews, lifecycle, checkout preparation, agent context, inbox, Actions/releases and replica provisioning/synchronization/removal/link repair | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, exports/sharing and delegated OS Git remain pending |
 | History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter, authenticated HTTP client, canonical content preparation, coherent archive recovery, native item rendering and canonical projector/bootstrap/rebase orchestration                                                                                                                                                                                                                       | Journal/outbox/projection, native protected preparation and coherent HTTP archive recovery pass focused checks; verified retained-context/child-scope and durable media/attachment adapters are native; live output identity, observation/capture and managed source/projection retry/recovery are native; verified child discovery and the top-level coordinator are native, including production worker startup recovery; live Codex/provider capture integration remains pending                                                                                                                                                    |
-| Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Native provider-error classification/redaction; provider authentication and execution adapters pending | Actual provider protocol fixtures, streaming/media/usage, refresh, cancellation, failure and paid-work bounds                                                                                                                                                                                                                    |
-| Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Native stdio discovery, managed process/WebSocket session, execution RPC tracking, ownership-keeper client and complete journal orchestration; worker-wide/Codex admission and runtime policy integration pending | Manifest verification/probe, real native keeper/journal and registered app-server retirement; queue ownership, acceptance/commit and integrated execution recovery remain pending |
+| Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Native provider-error policy plus worker-wide provider pools, canonical lifetimes, direct HTTP/preparation admission and durable recovery; provider authentication/execution adapters pending | Actual keeper-backed FIFO/recovery and controlled HTTP teardown pass; live provider protocol, media/usage, refresh and integration remain pending |
+| Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Native discovery, managed sessions/RPC, keeper/journal and worker-wide admission manager; Codex admission/runtime policy and command-source adapters still pending | Real keeper grants, no-start withdrawal, cold FIFO recovery and prior registered app-server retirement; integrated execution, queue/settings and task/goal orchestration remain pending |
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
 | Terminals/run supervision          | Terminal manager/canonical/private state, run-configuration providers and supervisors                                                     | Native host service reconciliation/restart and owned PTY supervision                                                                                                                                                                                                                                                                                                                                    | Actual encrypted server/worker service enable, idempotence, restart, recovery and disable pass. Interactive commands, canonical terminal/replay, attachment/input/resize, CLI broker environments, run providers and delegated OS services remain pending.                                                                       |
 | WorkerLink/direct/tunnels          | gateways/peer/WebRTC/direct broker, tunnel protection/routing/adapters                                                                    | Native framing/tunnel crypto; serving adapters pending                                                                                                                                                                                                                                                                                                                                                  | Existing frame fixtures plus actual ICE/TURN/WebRTC interoperability, bounded backpressure, stale grant/session and disconnect behavior                                                                                                                                                                                          |
@@ -3501,3 +3501,82 @@ terminal/data-plane/browser/OS/helper behavior, upgrades, packaging/default cuto
 and Node retirement remain required. No broad suite, hosted development Actions,
 physical devices, Windows/Linux runtime campaign, signing or deployment ran.
 The complete worker replacement goal remains active.
+
+
+## 55. Worker-wide native inference admission
+
+Reference: `fe639673b8f574810c6e9d68283961af7b261ff1` (#3217).
+`inference::admission::Manager` implements the current worker-wide admission
+service around the existing native keeper/journal. It owns shared provider pools,
+revisioned configuration/catalog membership, opaque operation lifetimes and exact
+redelivery, durable enqueue/grant barriers, cancellation versus physical
+settlement, parked permission, FIFO suspension/resume and private withdrawal.
+Three authoritative provider/native-binding schemas add an independent 12-node
+contract graph; existing graphs and persistent formats are unchanged.
+
+Direct HTTP execution shares these same pools. A canonical source rejoins its
+original result instead of starting its callback twice. Native preparation can
+borrow its actual same-provider reservation, yield fairly for independent or
+batched work and reacquire FIFO permission before returning. Its structured
+producer hold joins all accepted child callbacks, including response/body
+teardown after a caller abandons its observation or the native process retires.
+A binding cannot overlap preparation, and cancellation retains running capacity.
+
+Recovery installs previous-generation barriers before grants, reconciles up to
+four metadata records concurrently, groups physical aliases by canonical logical
+input and retains same-provider order through adoption. Goal preparation failure
+changes eligibility only; it does not own or release actual execution. Existing
+retry/backoff, canonical Task/Goal tuple checks, no-start receipts and uncertain
+withdrawal observations retain their original authority boundaries.
+
+State transitions reserve capacity under one mutex. Ordered IO prefixes and
+callbacks run outside it, preventing concurrent tasks from reordering durable
+submissions or reentrant callbacks from deadlocking the registry. Canonical
+lifetimes retain exact released tickets without permanently retaining every old
+operation; accepted metadata tasks have explicit retention through completion.
+Private Task Goal binding validation and withdrawal share one critical section.
+The existing worker cancellation signal now composes parents with initial input
+order and subsequent cancellation chronology. Shared errors retain typed refusal
+and UTF-16 messages.
+
+Focused local validation on macOS ARM64:
+
+- 117 comparisons use the actual production Node admission class and the native
+  manager, including real keeper writes. Provider revisions/defaults/removal,
+  shared FIFO, exact/foreign/changed lifetimes, cancellation, suspension/resume,
+  parked stale grants and private Task Goal no-start receipts are covered.
+- The real keeper commits grant and retirement operations before a development
+  adapter holds their acknowledgements. No permission is issued from a held grant,
+  stale replies cannot revive parked requests and capacity remains occupied until
+  retirement is acknowledged. No model/provider call occurs.
+- Stopped owned profiles reopen under a new worker generation. Reconciled old
+  message aliases block newer work; their actual replacement adopts the old FIFO
+  ordinal and receives permission first. Disposable profiles are removed.
+- Random runtime generations and injected profile paths are independently
+  validated before comparison. Live snapshot revisions must be independently
+  monotonic; observer scheduling/coalescing does not require equal live revision
+  values. Full pool/operation state and timing remain compared.
+- Five native units cover cancellation/replacement capacity, canonical redelivery,
+  direct callback deduplication and real controlled teardown, abandoned structured
+  preparation during retirement, and typed/UTF-16 shared errors. Five metadata
+  cancellation units pass, including two new composition cases.
+- All 14 selected existing pause, Task binding, endpoint-isolation and shutdown
+  tests pass. Worker/fixture builds, worker/protocol all-target Clippy with warnings
+  denied, affected server compilation, byte-stable schema regeneration, formatting
+  and diff checks pass.
+
+The fixture was corrected to release an artificially held batch acknowledgement
+before awaiting a pause receipt in that batch. Compatible mutation coalescing can
+combine different entries into one response. A provider replacement unit now
+establishes the actual creation stamp instead of assuming an unknown legacy pool
+can be resurrected. These corrections preserve production policy.
+
+The production worker still needs its Codex admission adapter and runtime owner,
+canonical command phase/source adapters, actual server reconciliation ports and
+execution/queue/settings/task/goal wiring. The native manager is exercised through
+its real library APIs; this does not claim production model execution or a default
+cutover. Native outer handlers remain 59 and packaging still selects Node.
+Remaining providers, terminals, data planes, browsers, OS/helpers, Node-free
+upgrades and packaging/default cutover remain required. No broad suite, hosted
+development Actions, physical devices, Windows/Linux runtime campaign, signing or
+deployment ran. The complete worker replacement goal remains active.

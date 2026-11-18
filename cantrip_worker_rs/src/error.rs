@@ -9,6 +9,12 @@ impl std::fmt::Display for WireError {
 }
 impl std::error::Error for WireError {}
 pub fn message(error: &anyhow::Error) -> JsString {
+    if let Some(error) = error.downcast_ref::<crate::inference::admission::Failure>() {
+        return error.message();
+    }
+    if let Some(error) = error.downcast_ref::<crate::inference::admission::AdmissionError>() {
+        return error.message.clone();
+    }
     if let Some(error) = error.downcast_ref::<crate::codex::rpc_requests::Failure>() {
         return error.message.clone();
     }
