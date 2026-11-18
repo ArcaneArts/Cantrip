@@ -127,7 +127,7 @@ impl Hub {
             read,
         })
     }
-    pub fn notification(&self, method: JsString, params: Value, cursor: Option<&Value>) {
+    pub fn notification(&self, method: JsString, params: &Value, cursor: Option<&Value>) {
         if !params.is_object() {
             return;
         }
@@ -332,14 +332,14 @@ mod tests {
         )?;
         hub.notification(
             "item/completed".into(),
-            obj([("threadId", s("thread"))]),
+            &obj([("threadId", s("thread"))]),
             None,
         );
         assert_eq!(retired.load(Ordering::SeqCst), 0);
         assert!(next.lock().unwrap().is_empty());
         hub.notification(
             "item/completed".into(),
-            obj([("threadId", s("thread"))]),
+            &obj([("threadId", s("thread"))]),
             None,
         );
         let events = next.lock().unwrap();

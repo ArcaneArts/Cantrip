@@ -14,6 +14,7 @@ pub(super) async fn run(
     process: Arc<tokio::sync::Mutex<Option<Process>>>,
     mut exit: watch::Receiver<Option<Exit>>,
     events: mpsc::UnboundedSender<Event>,
+    history: Hub,
     generation: String,
 ) {
     let (mut writer, mut reader) = socket.split();
@@ -55,8 +56,8 @@ pub(super) async fn run(
             changed=exit.changed()=>{if changed.is_err(){break "Codex app-server process observer closed.".into();}}
             error=&mut failure=>break error.unwrap_or_else(|_|"Codex app-server WebSocket closed.".into()),
             message=reader.next()=>match message {
-                Some(Ok(Message::Text(text)))=>observe(&requests,&text, &emit),
-                Some(Ok(Message::Binary(bytes)))=>observe(&requests,&String::from_utf8_lossy(&bytes), &emit),
+                Some(Ok(Message::Text(text)))=>observe(&requests, &history, &text, &emit),
+                Some(Ok(Message::Binary(bytes)))=>observe(&requests, &history, &String::from_utf8_lossy(&bytes), &emit),
                 Some(Ok(Message::Ping(bytes)))=>{let _=outgoing.send(Outgoing::Send(Message::Pong(bytes)));}
                 Some(Ok(Message::Close(_)))|None=>break "Codex app-server WebSocket closed.".into(),
                 Some(Err(error))=>break error.to_string().into(),
@@ -65,6 +66,7 @@ pub(super) async fn run(
         }
     };
     closed.store(true, Ordering::Release);
+    history.replace(None);
     requests.reject_all(lost.clone());
     emit(EventKind::TransportLost(lost));
     // Complete the native peer's close handshake before retiring the writer.
@@ -95,7 +97,7 @@ pub(super) async fn run(
         }
     }
 }
-fn observe(requests: &Requests, raw: &str, emit: &impl Fn(EventKind)) {
+fn observe(requests: &Requests, history: &Hub, raw: &str, emit: &impl Fn(EventKind)) {
     let Some(message) = rpc_protocol::parse_text(raw) else {
         requests.record(json!({"at":chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis,true),"direction":"from-runtime","kind":"malformed","method":Value::Null,"payload":raw}),Some("Malformed App Server message".into()));
         return;
@@ -110,7 +112,90 @@ fn observe(requests: &Requests, raw: &str, emit: &impl Fn(EventKind)) {
     }
     let payload = requests.diagnostic_payload(&message);
     requests.record(json!({"at":chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis,true),"direction":"from-runtime","kind":"message","method":message.get("method").cloned().unwrap_or(Value::Null),"payload":payload}),None);
-    if !requests.handle_response(&message, &payload) {
-        emit(EventKind::Message(message));
+    if requests.handle_response(&message, &payload) {
+        return;
+    }
+    // Capture before reading the next frame so a snapshot reply cannot
+    // overtake earlier native notifications on the same connection.
+    if message.get("id").is_none()
+        && let Some(method) = message["method"].as_js_string()
+        && message["params"].is_object()
+    {
+        history.notification(
+            method.clone(),
+            &message["params"],
+            message.get("historyCursor"),
+        );
+    }
+    emit(EventKind::Message(message));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::history::live::observation::Observer;
+
+    #[tokio::test]
+    async fn history_observation_precedes_reply_without_waiting_for_the_event_consumer()
+    -> Result<()> {
+        let history = Hub::default();
+        history.replace(Some("native-generation".into()));
+        let (sent, mut wire) = mpsc::unbounded_channel();
+        let requests = Requests::new(Ports {
+            send: Arc::new(move |frame| Ok(sent.send(frame)?)),
+            record: Arc::new(|_, _| {}),
+            policy: Default::default(),
+            runtime_id: None,
+            logs: None,
+        });
+        let (captured, mut frames) = mpsc::unbounded_channel();
+        let reader = requests.clone();
+        let subscription = history.subscribe(
+            "thread".into(),
+            Observer {
+                capture: Arc::new(move |frame| {
+                    captured.send(frame)?;
+                    Ok(None)
+                }),
+                on_error: Arc::new(|error, _| Err(error.error())),
+            },
+            Arc::new(move || {
+                let request = reader.request("thread/read".into(), None, None, None);
+                Box::pin(async move { request.await?.ok_or_else(|| anyhow!("Missing reply.")) })
+            }),
+        )?;
+        let (send, mut events) = mpsc::unbounded_channel();
+        let emit = |kind| send.send(kind).unwrap();
+        observe(
+            &requests,
+            &history,
+            r#"{"method":"turn/started","params":{"threadId":"thread"}}"#,
+            &emit,
+        );
+        assert_eq!(frames.try_recv()?["sequence"], json!(1));
+        let reading = subscription.read_snapshot();
+        let request = wire.recv().await.unwrap();
+        for raw in [
+            r#"{"id":"native","method":"item/commandExecution/requestApproval","params":{"threadId":"thread"}}"#,
+            r#"{"method":"thread/managedExecution/requested","params":{"threadId":"thread","trigger":"inference"}}"#,
+            r#"{"method":"turn/completed","params":{"threadId":"thread"},"historyCursor":{"epoch":"epoch","sequence":"42","previousSequence":"41"}}"#,
+        ] {
+            observe(&requests, &history, raw, &emit);
+        }
+        let terminal = frames.try_recv()?;
+        assert_eq!(terminal["method"], "turn/completed");
+        assert_eq!(terminal["nativeCursor"]["sequence"], "42");
+        assert!(frames.try_recv().is_err());
+        let reply = format!(
+            r#"{{"id":{},"result":{{"thread":{{"id":"thread","status":{{"type":"idle"}},"turns":[]}}}}}}"#,
+            request["id"].stringify()
+        );
+        observe(&requests, &history, &reply, &emit);
+        let observed = reading.await?;
+        assert_eq!(observed["readBarrierSequence"], json!(1));
+        assert_eq!(observed["completedSequence"], json!(2));
+        assert_eq!(events.len(), 4);
+        assert!(matches!(events.try_recv()?, EventKind::Message(_)));
+        Ok(())
     }
 }

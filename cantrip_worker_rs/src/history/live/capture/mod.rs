@@ -119,16 +119,7 @@ impl Capture {
             Observer {
                 capture: Arc::new(move |frame| {
                     if let Some(inner) = capture.upgrade() {
-                        let this = Self(inner);
-                        this.enqueue(frame.clone(), None);
-                        let reconcile = this.0.state.lock().unwrap().cursors.notification(&frame)
-                            || matches!(
-                                frame["method"].as_str(),
-                                Some("thread/started" | "turn/started" | "turn/completed")
-                            );
-                        if reconcile {
-                            this.reconcile(None);
-                        }
+                        Self(inner).notification(frame);
                     }
                     Ok(None)
                 }),
@@ -215,13 +206,25 @@ impl Capture {
         self.schedule(Kind::Read, 0);
         response(receive)
     }
-    fn enqueue(&self, frame: Value, revision: Option<u64>) {
-        {
+    fn notification(&self, frame: Value) {
+        let reconcile = {
             let mut state = self.0.state.lock().unwrap();
-            if state.stopped {
+            if !state.observing || state.stopped {
                 return;
             }
-            state.pending.push_back(Pending { frame, revision });
+            let reconcile = state.cursors.notification(&frame)
+                || matches!(
+                    frame["method"].as_str(),
+                    Some("thread/started" | "turn/started" | "turn/completed")
+                );
+            state.pending.push_back(Pending {
+                frame,
+                revision: None,
+            });
+            reconcile
+        };
+        if reconcile {
+            self.reconcile(None);
         }
         self.schedule(Kind::Write, 0);
     }

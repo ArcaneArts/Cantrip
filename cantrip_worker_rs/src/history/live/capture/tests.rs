@@ -50,7 +50,7 @@ async fn timers_claim_one_writer_while_notifications_arrive_on_another_thread() 
     for _ in 0..50 {
         hub.notification(
             "item/completed".into(),
-            obj([("threadId", s("thread"))]),
+            &obj([("threadId", s("thread"))]),
             None,
         );
     }

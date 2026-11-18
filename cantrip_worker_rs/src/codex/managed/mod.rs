@@ -11,6 +11,7 @@ use super::{
     session::{Event, EventKind, Session},
 };
 use crate::{
+    history::live::observation::RuntimeHub,
     inference::admission::{Manager, Promise},
     logging::Logs,
 };
@@ -52,6 +53,7 @@ struct Inner {
     id: JsString,
     generation: String,
     session: Session,
+    history: Arc<RuntimeHub>,
     adapter: Adapter,
     router: Router,
     retirement: Promise<()>,
@@ -172,9 +174,10 @@ impl Runtime {
             session.clone(),
             external_auth.clone(),
         ));
-        let runtime = Self(Arc::new(Inner {
+        let runtime = Self(Arc::new_cyclic(|inner| Inner {
             id: profile.id.clone(),
             generation,
+            history: history::source(session.history(), inner.clone()),
             session,
             adapter,
             router,

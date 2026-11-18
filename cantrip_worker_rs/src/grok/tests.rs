@@ -1,5 +1,6 @@
 use super::*;
 use crate::codex::managed::Host;
+use cantrip_wire::JsString;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
@@ -24,6 +25,8 @@ struct Fixture {
     reject_local_model: AtomicBool,
     forwarded: Mutex<Vec<(HashMap<String, String>, Value)>>,
     stream_release: Notify,
+    history_thread: Mutex<Option<JsString>>,
+    history_opens: AtomicUsize,
 }
 
 impl Fixture {
@@ -87,6 +90,34 @@ impl Fixture {
                     Some(record) => ("200 OK", record.clone()),
                     None => ("404 Not Found", json!({"code":"migration-needed"})),
                 }
+            }
+            "/api/internal/native-history/open" => {
+                assert_eq!(
+                    header("authorization"),
+                    Some(format!("Bearer {WORKER_TOKEN}").as_str())
+                );
+                let input = crate::http::checked(
+                    "nativeHistoryBindingOpenSchema",
+                    &cantrip_wire::parse_json_text(&String::from_utf8_lossy(&body))
+                        .map_err(|error| anyhow!("{}", error.lossy()))?,
+                )?;
+                assert_eq!(input["workerId"], "worker");
+                assert_eq!(input["chatId"], "fixture-chat");
+                assert_eq!(input["provenance"]["kind"], "current");
+                assert_eq!(
+                    input["threadId"].as_js_string(),
+                    self.history_thread.lock().unwrap().as_ref()
+                );
+                self.history_opens.fetch_add(1, Ordering::SeqCst);
+                (
+                    "200 OK",
+                    json!({"binding":json!({
+                        "id":"fixture-binding","chatId":input["chatId"],"workerId":input["workerId"],
+                        "threadId":input["threadId"],"projectId":"fixture-project","worktreeId":"fixture-worktree",
+                        "modelRouteId":"fixture-route","providerAccountId":"grok-native",
+                        "createdFromOperationId":Value::Null,"createdAt":"2026-08-24T00:00:00.000Z"
+                    })}),
+                )
             }
             "/oauth2/device/code" => {
                 assert_eq!(form["client_id"], http::CLIENT_ID);
@@ -432,10 +463,24 @@ async fn catalog_service(
     let registration = encryption.registration();
     let owner = json!("fixture-owner");
     let stamp = "2026-08-24T00:00:00.000Z";
-    let component = "provider-credential";
-    let grant = json!({"workerId":worker_id,"keyRevision":1,"component":component});
-    let wrapped =
-        cantrip_crypto::wrap_component_key(&[23; 32], &registration["publicKey"], &owner, &grant)?;
+    let grants = [("provider-credential", 23), ("chat-content", 41)]
+        .into_iter()
+        .map(|(component, key)| {
+            let context = json!({"workerId":worker_id,"keyRevision":1,"component":component});
+            let wrapped = cantrip_crypto::wrap_component_key(
+                &[key; 32],
+                &registration["publicKey"],
+                &owner,
+                &context,
+            )?;
+            Ok(json!({
+                "id":uuid::Uuid::new_v4().to_string(),"ownerId":owner,
+                "principalId":registration["principalId"],"component":component,"keyRevision":1,
+                "wrappedKey":wrapped,"state":"active","revision":1,"revokedAt":Value::Null,
+                "revokedReason":Value::Null,"createdAt":stamp,"updatedAt":stamp
+            }))
+        })
+        .collect::<Result<Vec<_>>>()?;
     encryption.accept_bootstrap(&json!({
         "serverId":uuid::Uuid::new_v4().to_string(),"ownerId":owner,
         "principal":json!({
@@ -444,12 +489,7 @@ async fn catalog_service(
             "state":"approved","revision":1,"approvedAt":stamp,"revokedAt":Value::Null,
             "revokedReason":Value::Null,"createdAt":stamp,"updatedAt":stamp
         }),
-        "grants":vec![json!({
-            "id":uuid::Uuid::new_v4().to_string(),"ownerId":owner,
-            "principalId":registration["principalId"],"component":component,"keyRevision":1,
-            "wrappedKey":wrapped,"state":"active","revision":1,"revokedAt":Value::Null,
-            "revokedReason":Value::Null,"createdAt":stamp,"updatedAt":stamp
-        })]
+        "grants":grants
     }))?;
     let environment = HashMap::from([
         ("CANTRIP_WORKER_ID".into(), "worker".into()),
@@ -483,7 +523,7 @@ async fn catalog_service(
                 ("HOME".into(), root.to_string_lossy().into_owned()),
                 ("PATH".into(), std::env::var("PATH").unwrap_or_default()),
             ]),
-            compatibility: Value::Null,
+            compatibility: json!({"initialize":json!({"experimentalApi":true})}),
             logs: None,
         },
         root.into(),
@@ -621,11 +661,16 @@ async fn bundled_codex_uses_the_grok_proxy_and_logout_retires_both() -> Result<(
 }
 
 async fn exercise_grok_turn(portable: bool) -> Result<()> {
-    use crate::codex::{
-        managed::{GrokAccount, Launch, Profile},
-        private_inference::{Context, Hooks},
-        session::EventKind,
+    use crate::{
+        codex::{
+            managed::{GrokAccount, Launch, Profile},
+            private_inference::{Context, Hooks},
+            session::EventKind,
+        },
+        history::{EncryptionService, client, managed::sources},
     };
+    use cantrip_history::source::{Journal, scope};
+    use std::time::Duration;
     let root = tempfile::tempdir()?;
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let endpoint = url::Url::parse(&format!("http://{}/", listener.local_addr()?))?;
@@ -702,13 +747,66 @@ async fn exercise_grok_turn(portable: bool) -> Result<()> {
         let result = runtime
             .request(
                 "thread/start".into(),
-                Some(json!({"ephemeral":true})),
-                Some(std::time::Duration::from_secs(12)),
+                Some(json!({"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})),
+                Some(Duration::from_secs(12)),
                 None,
             )
             .await?
             .ok_or_else(|| anyhow!("Expected a real Codex thread start result."))?;
         assert_eq!(result["modelProvider"], "cantrip_runtime");
+        let thread = result["thread"]["id"].as_js_string().unwrap().clone();
+        *fixture.history_thread.lock().unwrap() = Some(thread.clone());
+        let keys = Arc::new(EncryptionService(encryption.clone()));
+        let sources_directory = root.path().join("native-history-sources");
+        let errors = Arc::new(Mutex::new(Vec::new()));
+        let diagnostics = errors.clone();
+        let sources = sources::Sources::new(sources::Options {
+            directory: sources_directory.clone(),
+            worker_id: "worker".into(),
+            service: keys.clone(),
+            client: Arc::new(client::Client::new(client::Options {
+                server_url: endpoint.as_str().into(),
+                worker_id: "worker".into(),
+                token: Arc::new(|| Ok(WORKER_TOKEN.into())),
+                metadata_signal: None,
+            })?),
+            on_error: Some(Arc::new(move |error, context| {
+                diagnostics
+                    .lock()
+                    .unwrap()
+                    .push(format!("{context:?}: {error}"));
+                Ok(())
+            })),
+            timing: Default::default(),
+            binding_timeout_ms: None,
+            on_persisted: None,
+        })?;
+        let source = runtime.history();
+        assert!(Arc::ptr_eq(&source, &runtime.history()));
+        let capture = sources.bind(sources::Input {
+            chat_id: "fixture-chat".into(),
+            thread_id: thread.clone(),
+            runtime: source,
+            provenance: None,
+        })?;
+        let initial = tokio::time::timeout(Duration::from_secs(10), capture.snapshot())
+            .await
+            .map_err(|error| {
+                anyhow!(
+                    "Initial history snapshot {error}: {:?}",
+                    errors.lock().unwrap()
+                )
+            })??;
+        assert_eq!(
+            initial.observation["generation"].as_str(),
+            Some(runtime.generation())
+        );
+        assert!(
+            initial.observation["snapshot"]["thread"]["turns"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
         runtime
             .request(
                 "turn/start".into(),
@@ -735,6 +833,22 @@ async fn exercise_grok_turn(portable: bool) -> Result<()> {
         .await?;
         assert_eq!(transcript.1, "completed");
         assert_eq!(transcript.0, "native grok fixture");
+        let completed = tokio::time::timeout(Duration::from_secs(10), capture.snapshot())
+            .await
+            .map_err(|error| {
+                anyhow!(
+                    "Completed history snapshot {error}: {:?}",
+                    errors.lock().unwrap()
+                )
+            })??;
+        let retained = &completed.observation["snapshot"]["thread"]["turns"]
+            .as_array()
+            .unwrap()[0];
+        assert_eq!(retained["status"], "completed");
+        assert!(retained["items"].as_array().unwrap().iter().any(|item| {
+            item["type"] == "agentMessage" && item["text"] == "native grok fixture"
+        }));
+        assert_eq!(fixture.history_opens.load(Ordering::SeqCst), 1);
         let actual_bearer =
             fixture.forwarded.lock().unwrap().first().unwrap().0["authorization"].clone();
         assert_eq!(
@@ -759,6 +873,49 @@ async fn exercise_grok_turn(portable: bool) -> Result<()> {
         assert_eq!(fixture.models.load(Ordering::SeqCst), 1);
         auth.execute(command(LOGOUT, account, "")).await?;
         assert!(!runtime.is_live());
+        assert!(capture.signal().check().is_err());
+        tokio::time::timeout(Duration::from_secs(10), sources.close()).await??;
+        {
+            let errors = errors.lock().unwrap();
+            assert!(errors.is_empty(), "{errors:?}");
+        }
+        let journal = Journal::open(
+            sources_directory,
+            scope(
+                keys.as_ref(),
+                &"worker".into(),
+                &"fixture-chat".into(),
+                &"fixture-binding".into(),
+                &thread,
+            )?,
+            keys,
+        )
+        .await?;
+        let recovered = journal.read(0, 100).await?;
+        let terminal = recovered
+            .iter()
+            .find(|record| {
+                record["frame"]["method"] == "turn/completed"
+                    && record["frame"]["params"]["turn"]["status"] == "completed"
+            })
+            .ok_or_else(|| {
+                anyhow!("Committed history is missing the native terminal notification.")
+            })?;
+        assert!(
+            terminal["frame"]["sequence"].as_u64()
+                <= completed.observation["readBarrierSequence"].as_u64()
+        );
+        assert!(terminal["sequence"].as_u64() < completed.record["sequence"].as_u64());
+        assert!(recovered.iter().any(|record| {
+            record["frame"]["method"] == "item/completed"
+                && record["frame"]["params"]["item"]["text"] == "native grok fixture"
+        }));
+        let mut files = tokio::fs::read_dir(journal.directory()).await?;
+        while let Some(file) = files.next_entry().await? {
+            let contents = tokio::fs::read_to_string(file.path()).await?;
+            assert!(!contents.contains("native grok fixture"));
+            assert!(!contents.contains("Return the fixture response."));
+        }
         assert!(client.get(format!("{proxy}/models")).send().await.is_err());
         assert!(!tokio::fs::try_exists(home.join(FILE)).await?);
         Ok::<_, anyhow::Error>(())

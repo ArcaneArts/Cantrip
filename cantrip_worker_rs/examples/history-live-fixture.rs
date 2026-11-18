@@ -127,7 +127,7 @@ impl Fixture {
             "notification" => {
                 self.hub.notification(
                     string(&input, "method"),
-                    input["params"].clone(),
+                    &input["params"],
                     input.get("cursor"),
                 );
                 Ok(self.state())
@@ -136,7 +136,7 @@ impl Fixture {
                 for event in input["entries"].as_array().unwrap() {
                     self.hub.notification(
                         string(event, "method"),
-                        event["params"].clone(),
+                        &event["params"],
                         event.get("cursor"),
                     );
                 }
