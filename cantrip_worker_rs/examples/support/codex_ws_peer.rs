@@ -42,6 +42,14 @@ pub async fn run() -> Result<()> {
     }
     let (stream, _) = listener.accept().await?;
     let mut socket = tokio_tungstenite::accept_async(stream).await?;
+    let catalog = config["catalog"].as_object().and_then(|catalog| {
+        let home = std::env::var("CODEX_HOME").ok()?;
+        let key = std::path::Path::new(&home).file_name()?.to_str()?;
+        catalog.get(key).cloned()
+    });
+    let mut portable = false;
+    let mut quota_waiting_for_refresh = None;
+    let mut refresh_probed = false;
     let mut held = Vec::new();
     let mut received = Vec::new();
     while let Some(message) = socket.next().await {
@@ -53,6 +61,23 @@ pub async fn run() -> Result<()> {
             continue;
         }
         let frame = parse_json_text(message.to_text()?).map_err(|e| anyhow!("{}", e.lossy()))?;
+        if frame["id"] == "catalog-refresh" && frame.get("method").is_none() {
+            let id = quota_waiting_for_refresh
+                .take()
+                .expect("pending quota fixture request");
+            assert_eq!(frame["error"]["code"], json!(-32602));
+            assert_eq!(
+                frame["error"]["message"],
+                "Cantrip could not refresh the ChatGPT access lease."
+            );
+            let quota = &catalog.as_ref().unwrap()["quota"];
+            socket
+                .send(Message::Text(
+                    json!({"id":id,"result":quota}).stringify().into(),
+                ))
+                .await?;
+            continue;
+        }
         if frame.get("id").is_none() || frame.get("method").is_none() {
             received.push(frame);
             continue;
@@ -63,6 +88,54 @@ pub async fn run() -> Result<()> {
         let result = match method {
             "initialize" => {
                 json!({"userAgent":"native-fixture/0.166.0","platformFamily":"unix","platformOs":"macos","observedCapabilities":params["capabilities"]})
+            }
+            "skills/extraRoots/set" if catalog.is_some() => {
+                assert_eq!(params["extraRoots"].as_array().unwrap().len(), 1);
+                json!({})
+            }
+            "account/login/start" if catalog.is_some() => {
+                let expected = &catalog.as_ref().unwrap()["login"];
+                if expected.is_null() || params != expected {
+                    bail!("The catalog fixture received a mismatched account login.");
+                }
+                portable = true;
+                json!({"type":"chatgptAuthTokens"})
+            }
+            "model/list" if catalog.is_some() => {
+                let catalog = catalog.as_ref().unwrap();
+                if portable == catalog["login"].is_null()
+                    || params["includeHidden"] != true
+                    || params["limit"] != json!(100)
+                {
+                    bail!(
+                        "The catalog fixture received an unauthorized or malformed model request."
+                    );
+                }
+                if params["cursor"].is_null() {
+                    assert!(params.get("cursor").is_some());
+                    catalog["firstPage"].clone()
+                } else if params["cursor"] == "next-page" {
+                    catalog["secondPage"].clone()
+                } else {
+                    bail!("The catalog fixture received an unexpected cursor.");
+                }
+            }
+            "account/rateLimits/read" if catalog.is_some() => {
+                let catalog = catalog.as_ref().unwrap();
+                assert!(frame.get("params").is_none());
+                if portable && catalog["probeRefresh"] == true && !refresh_probed {
+                    refresh_probed = true;
+                    quota_waiting_for_refresh = Some(id);
+                    socket.send(Message::Text(json!({"id":"catalog-refresh","method":"account/chatgptAuthTokens/refresh",
+                        "params":json!({"reason":"unauthorized","previousAccountId":catalog["login"]["chatgptAccountId"]})
+                    }).stringify().into())).await?;
+                    continue;
+                }
+                if catalog["quotaError"] == true {
+                    socket.send(Message::Text(json!({"id":id,"error":json!({"code":-32000,"message":"Quota unavailable"})}).stringify().into())).await?;
+                    continue;
+                }
+                catalog["quota"].clone()
             }
             "fixture/echo" | "cantrip/inference" => {
                 let mut reply = json!({"id":id});

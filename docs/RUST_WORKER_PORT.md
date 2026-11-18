@@ -26,9 +26,9 @@ checkpointed reflog/lost-commit recovery, worker-scoped GitHub catalog operation
 and repository-scoped issue detail/mutations, issue/PR search, PR inspection, creation, reviews, lifecycle, checkout preparation and agent context,
 GitHub inbox, Actions and releases, plus native replica provisioning and
 managed-link repair, synchronization and guarded removal over the existing
-placement/ownership records. Fifty-nine real native outer command handlers are installed:
+placement/ownership records. Sixty real native outer command handlers are installed:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
-`diagnostics.logs.read`, `worker.encryption.refresh`,
+`diagnostics.logs.read`, `worker.encryption.refresh`, `model.chatgpt.catalog`,
 `workspace.repositories.discover`, `workspace.repository-import.validate`,
 `repository.operation` (root attachment, metadata, host Git status/file diffs and
 eleven basic Git actions, nine history/inspection queries, stash creation/diffs/mutations
@@ -123,7 +123,7 @@ loaded by a production service.
 | Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Workspace/folders/routing, nine protected host Explorer operations and bound file-document text read/write                                                                                                                                                                                                                                                                                              | Actual Rust worker/server persists encrypted resources, resolves opaque roots, saves files, rejects replay/mismatched document paths and reopens after restart. Paged readers, media/tail, transfers, activity/watches and delegated OS execution remain pending.                                                                |
 | Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub catalog, issue detail/mutations, issue/PR search, inspection, creation, reviews, lifecycle, checkout preparation, agent context, inbox, Actions/releases and replica provisioning/synchronization/removal/link repair | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, exports/sharing and delegated OS Git remain pending |
 | History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter, authenticated HTTP client, canonical content preparation, coherent archive recovery, native item rendering and canonical projector/bootstrap/rebase orchestration                                                                                                                                                                                                                       | Journal/outbox/projection, native protected preparation and coherent HTTP archive recovery pass focused checks; verified retained-context/child-scope and durable media/attachment adapters are native; live output identity, observation/capture and managed source/projection retry/recovery are native; verified child discovery and the top-level coordinator are native, including production worker startup recovery; live Codex/provider capture integration remains pending                                                                                                                                                    |
-| Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Native provider-error policy plus worker-wide provider pools, canonical lifetimes, direct HTTP/preparation admission and durable recovery; provider authentication/execution adapters pending | Actual keeper-backed FIFO/recovery and controlled HTTP teardown pass; live provider protocol, media/usage, refresh and integration remain pending |
+| Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Native provider-error policy plus worker-wide provider pools, canonical lifetimes, direct HTTP/preparation admission, durable recovery, portable provider credential access and ChatGPT catalog discovery; provider sign-in, account clearing and execution adapters pending | Actual keeper-backed FIFO/recovery and controlled HTTP teardown pass; live provider protocol, media/usage, refresh and integration remain pending |
 | Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Native discovery, managed sessions/RPC, keeper/journal, worker-wide admission manager, Codex admission adapter, private RPC routing and worker-scoped runtime owner; command-source adapters still pending | Real keeper grants, no-start withdrawal, cold FIFO recovery and prior registered app-server retirement; integrated execution, queue/settings and task/goal orchestration remain pending |
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
 | Terminals/run supervision          | Terminal manager/canonical/private state, run-configuration providers and supervisors                                                     | Native host service reconciliation/restart and owned PTY supervision                                                                                                                                                                                                                                                                                                                                    | Actual encrypted server/worker service enable, idempotence, restart, recovery and disable pass. Interactive commands, canonical terminal/replay, attachment/input/resize, CLI broker environments, run providers and delegated OS services remain pending.                                                                       |
@@ -3689,3 +3689,39 @@ Command launch profiles, managed thread and Task/Goal ports, live
 provider/account refresh and history integrations still need to call this
 registry. This cycle adds no outer command or advertised execution capability.
 Production continues to launch Node.
+
+## 59. Account-backed ChatGPT catalog command
+
+Reference: `73477166a72583fda095c03e06eaed321f88374a` (#3221).
+The native command dispatcher now serves `model.chatgpt.catalog` through the
+managed Codex registry. It opens the existing hashed account home, paginates
+the native model list with the same cursor/size rules, and retains Codex
+quota buckets and the canonical weekly projection. An unavailable quota
+still permits model discovery. The selected catalog home cannot be reused
+under a different provider account.
+
+The worker reads the authenticated provider credential endpoint, opens its
+protected envelope under the exact account binding and caches the short
+in-memory lease. Portable startup passes the real login parameters to native
+Codex. A migration/unavailable response selects the existing local account
+home. The shared refresh path checks the returned provider identity, seals
+rotated credentials, and uses expected-revision upload and conflict recovery.
+The native session can answer the existing refresh request, and refreshed
+access tokens enter the same diagnostic redactor before returning to Core.
+The lease validator is generated from the existing TypeScript contract.
+
+The active native dispatcher has 60 outer handlers. Account sign-in/sign-out
+and runtime clearing, other catalogs, and full native model execution remain
+separate work. Production packaging continues to select Node.
+
+Local macOS ARM64 validation drove the production Rust worker dispatcher
+over its authenticated control socket with a loopback server and Codex peer,
+and used the installed bundled Codex for discovery and real keeper ownership.
+It verified concurrent portable login and credential reuse, actual account
+request/reply shapes, native refresh refusal when no refresh token is
+available, the legacy fallback home, wrong-account rejection, pagination
+and Node quota/contract parity. Two native OAuth-response tests and seven
+existing Node tests passed, as did 166 session comparisons, worker/protocol
+all-target Clippy, affected server compilation, schema regeneration,
+formatting and diff checks. No external OAuth exchanges, model calls or
+hosted development Actions ran.

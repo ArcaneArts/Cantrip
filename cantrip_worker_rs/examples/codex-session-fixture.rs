@@ -42,6 +42,7 @@ fn policy(input: &Value) -> Policy {
             .unwrap_or_default(),
         zai: input["zai"] == true,
         endpoint: input["endpoint"] == true,
+        refreshed_secrets: Default::default(),
     }
 }
 use driver::{Ticket, Track, recorder};
@@ -213,6 +214,19 @@ impl Fixture {
 async fn main() -> Result<()> {
     #[cfg(target_os = "linux")]
     codex_utils_pty::init_spawn_helper(std::env::args_os());
+    #[cfg(unix)]
+    if std::env::var_os("CANTRIP_CATALOG_FIXTURE").is_some()
+        && std::env::args()
+            .any(|arg| arg == "cantrip-runtime-owner" || arg == "stdio://" || arg == "--version")
+    {
+        use std::os::unix::process::CommandExt;
+        let binary = std::env::var_os("CANTRIP_TEST_CODEX")
+            .ok_or_else(|| anyhow!("Set CANTRIP_TEST_CODEX to the installed bundled Codex."))?;
+        return Err(std::process::Command::new(binary)
+            .args(std::env::args_os().skip(1))
+            .exec()
+            .into());
+    }
     if std::env::args().any(|v| v == "app-server") {
         return peer::run().await;
     }

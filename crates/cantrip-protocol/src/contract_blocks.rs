@@ -82,6 +82,10 @@ pub(super) fn load() -> Contracts {
         serde_json::from_str(include_str!("../contracts/worker-admission.json"))
             .expect("embedded worker admission contracts"),
     );
+    contracts.append(
+        serde_json::from_str(include_str!("../contracts/worker-provider-access.json"))
+            .expect("embedded worker provider access contracts"),
+    );
     contracts.compile_patterns();
     contracts
 }

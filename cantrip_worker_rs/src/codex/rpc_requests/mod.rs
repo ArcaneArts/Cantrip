@@ -208,11 +208,18 @@ impl Requests {
             message.clone()
         }
     }
+    pub fn remember_secret(&self, secret: JsString) {
+        self.0.ports.policy.remember_secret(secret);
+    }
+
     pub fn record(&self, diagnostic: Value, warning: Option<JsString>) {
         (self.0.ports.record)(
             self.0.ports.policy.diagnostic(&diagnostic),
             warning.map(|v| {
-                super::diagnostics::redact(&Value::String(v), &self.0.ports.policy.secrets, 0)
+                self.0
+                    .ports
+                    .policy
+                    .redact(&Value::String(v))
                     .as_js_string()
                     .unwrap()
                     .clone()

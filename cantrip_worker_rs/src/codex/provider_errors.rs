@@ -28,12 +28,27 @@ pub(super) fn surround(prefix: &str, value: &JsString, suffix: &str) -> JsString
 #[derive(Clone, Default)]
 pub struct Policy {
     pub secrets: Vec<JsString>,
+    pub refreshed_secrets: std::sync::Arc<std::sync::Mutex<Vec<JsString>>>,
     pub zai: bool,
     pub endpoint: bool,
 }
 impl Policy {
+    pub fn remember_secret(&self, secret: JsString) {
+        let mut secrets = self.refreshed_secrets.lock().unwrap();
+        if !secrets.contains(&secret) {
+            secrets.push(secret);
+        }
+    }
+
+    pub fn redact(&self, value: &Value) -> Value {
+        let mut secrets = self.secrets.clone();
+        secrets.extend(self.refreshed_secrets.lock().unwrap().iter().cloned());
+        diagnostics::redact(value, &secrets, 0)
+    }
+
     pub fn readable(&self, message: &JsString) -> JsString {
-        let sanitized = diagnostics::redact(&Value::String(message.clone()), &self.secrets, 0)
+        let sanitized = self
+            .redact(&Value::String(message.clone()))
             .as_js_string()
             .unwrap()
             .clone();
@@ -107,7 +122,7 @@ impl Policy {
         } else {
             value.clone()
         };
-        diagnostics::redact(&safe, &self.secrets, 0)
+        self.redact(&safe)
     }
 }
 pub fn token_expired(message: &JsString) -> bool {
