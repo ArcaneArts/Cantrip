@@ -235,8 +235,10 @@ async fn main() -> Result<()> {
     }
     #[cfg(unix)]
     if std::env::var_os("CANTRIP_CATALOG_FIXTURE").is_some()
-        && std::env::args()
+        && (std::env::args()
             .any(|arg| arg == "cantrip-runtime-owner" || arg == "stdio://" || arg == "--version")
+            || std::env::var_os("CANTRIP_TEST_REAL_OBSERVATION_HOME")
+                .is_some_and(|home| std::env::var_os("CODEX_HOME").as_ref() == Some(&home)))
     {
         use std::os::unix::process::CommandExt;
         let binary = std::env::var_os("CANTRIP_TEST_CODEX")

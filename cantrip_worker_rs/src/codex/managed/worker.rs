@@ -111,10 +111,22 @@ impl Worker {
             .map_err(|_| anyhow!("Grok proxy is already configured."))
     }
 
-    pub fn launch(&self, mut launch: Launch) -> Work<Runtime> {
+    pub fn launch(&self, launch: Launch) -> Work<Runtime> {
+        self.launch_in_scope(launch, None)
+    }
+
+    pub(in crate::codex) fn launch_in_scope(
+        &self,
+        mut launch: Launch,
+        binding: Option<(JsString, JsString)>,
+    ) -> Work<Runtime> {
         let this = self.clone();
         owned(async move {
             let scope = this.scope()?;
+            if binding.is_some_and(|(server, owner)| scope.server != server || scope.owner != owner)
+            {
+                bail!("The worker binding changed before native runtime launch.");
+            }
             let key = Key {
                 scope,
                 profile: launch.profile.id.clone(),

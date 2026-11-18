@@ -47,6 +47,20 @@ pub async fn run() -> Result<()> {
         let key = std::path::Path::new(&home).file_name()?.to_str()?;
         catalog.get(key).cloned()
     });
+    let observation = config["observation"].as_object().and_then(|observations| {
+        let home = std::env::var("CODEX_HOME").ok()?;
+        let key = std::path::Path::new(&home).file_name()?.to_str()?;
+        observations.get(key).cloned()
+    });
+    if let Some(route) = &observation {
+        assert_eq!(
+            std::env::var("CANTRIP_CODEX_USER_CONFIG_FILE")
+                .ok()
+                .as_deref(),
+            route["configuration"].as_str(),
+        );
+    }
+    let mut awaiting_metadata_retry = None;
     let mut portable = false;
     let mut quota_waiting_for_refresh = None;
     let mut refresh_probed = false;
@@ -89,8 +103,46 @@ pub async fn run() -> Result<()> {
             "initialize" => {
                 json!({"userAgent":"native-fixture/0.166.0","platformFamily":"unix","platformOs":"macos","observedCapabilities":params["capabilities"]})
             }
-            "skills/extraRoots/set" if catalog.is_some() => {
+            "thread/read" if observation.is_some() => {
+                let thread = params["threadId"].as_str().expect("native thread ID");
+                let spec = &observation.as_ref().unwrap()["threads"][thread];
+                assert!(!spec.is_null(), "unexpected observation for {thread}");
+                assert_eq!(params["includeTurns"], true);
+                match params.get("includeHistoryMetadata") {
+                    Some(value) => {
+                        assert_eq!(*value, true);
+                        assert!(awaiting_metadata_retry.is_none());
+                        let message = if spec["metadataUnsupported"] == true {
+                            awaiting_metadata_retry = Some(thread.to_owned());
+                            Some("Unknown field includeHistoryMetadata")
+                        } else {
+                            spec["error"].as_str()
+                        };
+                        if let Some(message) = message {
+                            socket
+                                .send(Message::Text(
+                                    json!({
+                                        "id":id,"error":json!({"code":-32602,"message":message})
+                                    })
+                                    .stringify()
+                                    .into(),
+                                ))
+                                .await?;
+                            continue;
+                        }
+                    }
+                    None => assert_eq!(awaiting_metadata_retry.take().as_deref(), Some(thread)),
+                }
+                json!({"thread":spec["thread"]})
+            }
+            method if observation.is_some() && method.starts_with("thread/") => {
+                bail!("A read-only observation called {method}.");
+            }
+            "skills/extraRoots/set" if catalog.is_some() || observation.is_some() => {
                 assert_eq!(params["extraRoots"].as_array().unwrap().len(), 1);
+                if let Some(observation) = &observation {
+                    assert!(observation["threads"]["standalone-thread"].is_null());
+                }
                 json!({})
             }
             "account/login/start" if catalog.is_some() => {

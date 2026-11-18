@@ -1,4 +1,5 @@
 //! Owns each managed Codex child, its RPC session and native inference router.
+mod history;
 mod launch;
 mod worker;
 
