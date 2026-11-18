@@ -1,5 +1,6 @@
 //! Server-owned host turns. The command channel supplies the execution lane;
 //! the native runtime supplies the turn identity and terminal settlement.
+pub(crate) mod autonomous;
 mod control;
 mod output;
 mod params;
@@ -221,6 +222,13 @@ impl Turns {
         {
             bail!("The worker binding changed before the Goal mutation.");
         }
+        let gate = session["threadId"]
+            .as_js_string()
+            .and_then(|thread| runtime.inference_router().goal_mutations(thread));
+        let _mutation = match gate {
+            Some(gate) => Some(gate.lock_owned().await),
+            None => None,
+        };
         let activation = self
             .active
             .lock()
@@ -239,6 +247,16 @@ impl Turns {
                 .rejected(&json!({"code":-32000,"message":"Native dispatch did not complete."}))
                 .await?;
             return Err(error);
+        }
+        if method == "thread/goal/clear" || params["status"] == "paused" {
+            let active = self.active.lock().unwrap().active.get(&key).cloned();
+            if let Some(active) = active
+                && matches!(*active.phase.lock().unwrap(), Phase::Preparing(_))
+            {
+                active
+                    .preparation
+                    .abort(anyhow!("The Goal was stopped before native dispatch."));
+            }
         }
         let reply = runtime
             .request(method.into(), Some(params), Some(RPC_TIMEOUT), None)

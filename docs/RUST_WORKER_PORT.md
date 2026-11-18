@@ -4471,3 +4471,31 @@ Core and provider fixtures.
 
 Ordinary Goal autonomous admission and queue handoff, live Goal recovery,
 and OS-hosted Goal support remain open. Production still selects Node.
+
+## 87. Run autonomous managed Project Goal turns
+
+Reference commit `106112c71160cf97bb87e0ce935b52f82885a818` (#3249).
+
+A prepared project conversation registers the exact native Goal runner.
+Before releasing a producer request, the Rust worker checks its native
+settings against the selected workspace and permission profile, reads the
+canonical queue, and obtains Core admission and dispatch for that attempt.
+A matching first-cycle queue claim is carried into admission. Local provider
+capacity, MCP authority, and the actual native thread and turn stay bound to
+the admitted operation. A later cycle waits for the preceding settlement.
+
+The worker publishes protected Chat events with canonical History identities
+and seals the terminal result in the existing native-command receipt format.
+The native producer response is recorded separately from terminal evidence.
+A request that never reached the native producer can close as rejected. An
+explicit native decline must match the outstanding runner, attempt, turn, and
+operation generation.
+
+The macOS ARM64 smoke runs two actual Codex Goal turns, holds Core dispatch
+and the first terminal acknowledgment, and checks the matching queue handoff,
+protected events, exact receipt retry, and durable History source. Core and
+the provider are disposable local peers.
+
+Queued Goal mutation dispatch, cold recovery of live or unsettled Goals,
+provider transfer, and broader OS-hosted/interaction parity remain open.
+Production still selects Node.

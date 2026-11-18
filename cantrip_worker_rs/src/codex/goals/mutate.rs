@@ -71,6 +71,12 @@ impl Goals {
                 session: managed.then(|| native_session(command, &prepared.runtime, thread)),
                 runtime: prepared.runtime,
             }
+        } else if managed && command["status"] == "active" {
+            let (prepared, owner) = self.chat_goal_thread(command, bound).await?;
+            if &prepared != thread {
+                bail!("The native Goal resume belongs to a different thread.");
+            }
+            owner
         } else {
             self.metadata_thread(command, bound, thread).await?
         };

@@ -7,6 +7,7 @@ use crate::{
     codex::{
         managed::{Runtime, WeakRuntime, Worker},
         observation::{home, provider},
+        turn::autonomous::{Autonomous, Runner},
     },
     config::Config,
     encryption::Service,
@@ -18,6 +19,7 @@ use crate::{
 };
 use anyhow::{Context, Result, bail};
 use cantrip_wire::{JsString, Value, payload_digest, value::json};
+use std::sync::OnceLock;
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -66,6 +68,7 @@ struct Inner {
     preparation: Coordinator,
     broker: OnceCell<Broker>,
     permission_profiles: bool,
+    autonomous: OnceLock<Autonomous>,
 }
 
 impl Ensurer {
@@ -97,6 +100,7 @@ impl Ensurer {
             worker,
             preparation,
             broker: OnceCell::new(),
+            autonomous: OnceLock::new(),
             permission_profiles,
         }))
     }
@@ -125,6 +129,13 @@ impl Ensurer {
         }
         self.assert_bound(&prepared.bound)?;
         Ok(result)
+    }
+
+    pub(crate) fn configure_autonomous(&self, autonomous: Autonomous) -> Result<()> {
+        self.0
+            .autonomous
+            .set(autonomous)
+            .map_err(|_| anyhow::anyhow!("Native Goal producer is already configured."))
     }
 
     pub(crate) async fn prepare(&self, incoming: &Value, intent: Intent) -> Result<Prepared> {
@@ -275,9 +286,30 @@ impl Ensurer {
                     if let Some(delivery) = delivery {
                         delivery.select(&bound, &thread_id, runtime.generation(), &chat, task);
                     }
+                    let native_session = (!task).then(|| native_session(&command, &runtime, loaded.id()));
+                    if let (Some(autonomous), Some(session)) = (this.0.autonomous.get(), native_session.as_ref())
+                        && context_kind == "project"
+                    {
+                        let broker = Arc::downgrade(&this.0);
+                        let authority = bound.clone();
+                        let admission = admission.clone();
+                        let activate = Arc::new(move |lane: &Value| {
+                            broker.upgrade().context("The managed MCP broker has closed.")?
+                                .activate(&authority, admission.as_ref(), lane)
+                        });
+                        runtime.inference_router().register_goal_producer(
+                            thread_id.clone(), runner.clone(), Arc::new(autonomous.producer(Runner {
+                                runtime: runtime.downgrade(), thread: loaded.clone(), session: session.clone(),
+                                bound: bound.clone(), cwd: cwd.clone(), provider: command["provider"].clone(),
+                                permission: command["permissionProfileId"].clone(), activate,
+                            })),
+                        );
+                    } else {
+                        runtime.inference_router().remove_goal_producer(&thread_id);
+                    }
                     let owner = ThreadOwner {
                         runtime: runtime.downgrade(), thread: loaded.clone(), bound: bound.clone(),
-                        session: (command["taskOwned"] != true).then(|| native_session(&command, &runtime, loaded.id())),
+                        session: native_session,
                     };
                     this.0.live_threads.lock().unwrap().insert(chat, owner);
                     *prepared.lock().unwrap() = Some(Prepared { runtime, thread: loaded, codex_home, runner_generation: runner, admission, bound });

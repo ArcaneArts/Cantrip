@@ -100,6 +100,21 @@ impl Protected {
         ))
     }
 
+    pub(super) fn autonomous(scope: Scope, chat: Value) -> Arc<Self> {
+        Arc::new(Self {
+            scope,
+            chat,
+            response: Value::Null,
+            plan: Mutex::new(
+                json!({"explanation":Value::Null,"steps":Vec::<Value>::new(),"question":Value::Null}),
+            ),
+        })
+    }
+
+    pub(super) fn scope(&self) -> &Scope {
+        &self.scope
+    }
+
     pub(super) fn attach(self: &Arc<Self>, downstream: Emit) -> Emit {
         let protection = self.clone();
         Arc::new(move |event| {
@@ -115,6 +130,18 @@ impl Protected {
         downstream: Emit,
         identity: identity::Managed,
     ) -> (Emit, Work<()>) {
+        self.publish_canonical_with(identity, move |event| std::future::ready(downstream(event)))
+    }
+
+    pub(super) fn publish_canonical_with<F, P>(
+        self: &Arc<Self>,
+        identity: identity::Managed,
+        downstream: F,
+    ) -> (Emit, Work<()>)
+    where
+        F: Fn(Value) -> P + Send + Sync + 'static,
+        P: Future<Output = Result<()>> + Send,
+    {
         let (send, mut receive) = tokio::sync::mpsc::unbounded_channel::<Value>();
         let emit: Emit = Arc::new(move |event| {
             send.send(event)
@@ -132,7 +159,7 @@ impl Protected {
                     } else {
                         None
                     };
-                    downstream(protection.event(&event, resolved.as_ref())?)
+                    downstream(protection.event(&event, resolved.as_ref())?).await
                 }
                 .await;
                 if let Err(cause) = result {

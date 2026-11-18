@@ -16,6 +16,14 @@ pub fn protect_native_command_result(
     protect(component_key, context, "result", content)
 }
 
+pub fn protect_native_command_terminal_result(
+    component_key: &[u8],
+    context: &Value,
+    content: &Value,
+) -> Result<(Value, String)> {
+    protect(component_key, context, "terminal-result", content)
+}
+
 pub fn protect_native_command_request(
     component_key: &[u8],
     context: &Value,

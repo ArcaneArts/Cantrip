@@ -17,7 +17,10 @@ use cantrip_wire::{Value, parse_json_text, value::json};
 pub use communication::*;
 pub use endpoint::*;
 pub use labels::*;
-pub use native_command::{protect_native_command_request, protect_native_command_result};
+pub use native_command::{
+    protect_native_command_request, protect_native_command_result,
+    protect_native_command_terminal_result,
+};
 pub use private_state::*;
 pub use repository::*;
 pub use secrets::*;
