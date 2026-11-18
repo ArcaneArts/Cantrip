@@ -123,6 +123,9 @@ pub struct ProcessHandle {
     wait_handle: StdMutex<Option<JoinHandle<()>>>,
     exit_status: Arc<AtomicBool>,
     exit_code: Arc<StdMutex<Option<i32>>>,
+    // Pipe consumers sometimes need to distinguish exit(130) from SIGINT.
+    // Preserve the actual observed status without changing the legacy code API.
+    native_exit_status: Option<Arc<StdMutex<Option<ExitStatus>>>>,
     // PtyHandles must be preserved because the process will receive Control+C if the
     // slave is closed
     _pty_handles: StdMutex<Option<PtyHandles>>,
@@ -160,6 +163,7 @@ impl ProcessHandle {
             wait_handle: StdMutex::new(Some(wait_handle)),
             exit_status,
             exit_code,
+            native_exit_status: None,
             _pty_handles: StdMutex::new(pty_handles),
             resizer: StdMutex::new(resizer),
         }
@@ -194,6 +198,25 @@ impl ProcessHandle {
     /// Returns the exit code if known.
     pub fn exit_code(&self) -> Option<i32> {
         self.exit_code.lock().ok().and_then(|guard| *guard)
+    }
+
+    /// Actual reaped status for a local pipe child. Driver/PTY backends that
+    /// expose only a numeric code return None. This is evidence, not PID lookup.
+    pub fn native_exit_status(&self) -> Option<ExitStatus> {
+        self.native_exit_status
+            .as_ref()?
+            .lock()
+            .ok()?
+            .as_ref()
+            .copied()
+    }
+
+    pub(crate) fn with_native_exit_status(
+        mut self,
+        status: Arc<StdMutex<Option<ExitStatus>>>,
+    ) -> Self {
+        self.native_exit_status = Some(status);
+        self
     }
 
     /// Resize the PTY in character cells.
