@@ -48,7 +48,7 @@ fn spread(left: &Value, right: &Value) -> Value {
 }
 /// Node isDeepStrictEqual on JSON values: object keys are unordered; signed
 /// zero remains distinct. Use a stack, retaining the shared UTF-16 key semantics.
-fn equal(left: &Value, right: &Value) -> bool {
+pub fn equal(left: &Value, right: &Value) -> bool {
     let mut pending = vec![(left, right)];
     while let Some((a, b)) = pending.pop() {
         match (a, b) {

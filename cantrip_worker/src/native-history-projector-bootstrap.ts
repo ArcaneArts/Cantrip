@@ -22,6 +22,8 @@ const turnContent = z
     evidence: nativeHistoryStateSchema.shape.evidence,
   })
   .strict();
+// Development export of the exact persisted v2 turn content contract.
+export { turnContent as nativeHistoryProjectorTurnContentSchema };
 const identityKey = (identity: {
   threadId: string;
   turnId: string;

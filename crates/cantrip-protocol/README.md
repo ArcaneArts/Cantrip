@@ -46,3 +46,9 @@ worker-local plaintext schemas. It includes communication refinements, reduced
 item evidence, turn headers and retained response usage. Plaintext validation
 executes only where a caller supplies plaintext; this adds no server decryption
 or new network surface. Existing graphs and their node indices remain unchanged.
+
+
+The separate `native-history-projector.json` graph is generated from the actual
+worker projector state and v2 turn content schemas. It adds no wire route or
+server plaintext handling. Canonical orchestration, archive bootstrap and source
+replay live in the worker; transaction persistence stays in `cantrip-history`.
