@@ -31,6 +31,9 @@ export async function verifyHistoryRuntimeRecovery({
       CANTRIP_WORKER_DATA_DIR: directory,
       CANTRIP_WORKER_ID: workerId,
       CANTRIP_SERVER_URL: serverUrl,
+      ...(process.env.CANTRIP_CODEX_TEST_BINARY
+        ? { CANTRIP_CODEX_BIN: process.env.CANTRIP_CODEX_TEST_BINARY }
+        : {}),
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -157,6 +160,11 @@ export async function verifyHistoryRuntimeRecovery({
       diagnostics.includes("Worker stopped"),
       "production lifecycle completed",
     );
+    if (process.env.CANTRIP_CODEX_TEST_BINARY) {
+      assert.ok(diagnostics.includes("codex.runtime.discovered"), diagnostics);
+      assert.ok(diagnostics.includes("version.semantic=0.166.0"), diagnostics);
+      assert.ok(diagnostics.includes("compatibility=compatible"), diagnostics);
+    }
     return {
       passed: true,
       actualWorkerServer: true,
@@ -164,6 +172,9 @@ export async function verifyHistoryRuntimeRecovery({
       startupSourceScanAndPublication: true,
       shutdownBeforeKeyRelease: true,
       nodeAbsentFromWorkerPath: true,
+      ...(process.env.CANTRIP_CODEX_TEST_BINARY
+        ? { actualBundledCodexStartupDiscovery: true }
+        : {}),
     };
   } finally {
     master?.fill(0);

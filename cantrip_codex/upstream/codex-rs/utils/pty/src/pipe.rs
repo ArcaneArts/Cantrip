@@ -248,6 +248,8 @@ async fn spawn_process_with_stdin_mode(
     let wait_exit_status = Arc::clone(&exit_status);
     let exit_code = Arc::new(StdMutex::new(None));
     let wait_exit_code = Arc::clone(&exit_code);
+    let native_exit_status = Arc::new(StdMutex::new(None));
+    let observed_status = Arc::clone(&native_exit_status);
     #[cfg(windows)]
     let wait_job = match &windows_terminator {
         WindowsChildTerminator::Job(job) => Some(Arc::clone(job)),
@@ -256,6 +258,9 @@ async fn spawn_process_with_stdin_mode(
     let wait_handle: JoinHandle<()> = tokio::spawn(async move {
         let code = match child.wait().await {
             Ok(status) => {
+                if let Ok(mut observed) = observed_status.lock() {
+                    *observed = Some(status);
+                }
                 #[cfg(windows)]
                 if let Some(job) = wait_job
                     && let Err(err) = job.preserve_descendants()
@@ -291,7 +296,8 @@ async fn spawn_process_with_stdin_mode(
         exit_code,
         /*pty_handles*/ None,
         /*resizer*/ None,
-    );
+    )
+    .with_native_exit_status(native_exit_status);
 
     Ok(SpawnedProcess {
         session: handle,

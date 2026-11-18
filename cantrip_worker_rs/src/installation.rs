@@ -3,6 +3,7 @@
 use cantrip_config::resolve;
 use cantrip_wire::{Value, value::json};
 use std::path::{Path, PathBuf};
+pub mod verify;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Installation {

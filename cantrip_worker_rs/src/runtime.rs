@@ -108,6 +108,7 @@ async fn cycle(
     let generation = uuid::Uuid::new_v4().to_string();
     logs.event("info","Cantrip Worker startup began",json!({"event":"worker.startup.started","subsystem":"worker-startup","operation":"start","status":"started","version":version::value()["version"],"workerGeneration":generation}));
     logs.event("info","Worker configuration loaded",json!({"event":"worker.configuration.loaded","workerId":worker,"credentialState":config.token_source}));
+    let _codex = crate::codex::startup::prepare(&config, cwd, environment, logs).await?;
     let encryption_identity = crate::encryption::Identity::open(
         &config.data_directory,
         &config.server_url,
