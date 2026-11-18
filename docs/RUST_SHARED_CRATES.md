@@ -239,3 +239,12 @@ The existing server's pure usage reconciliation moved into `cantrip-protocol`.
 Both server and worker supply their existing locale comparator. SQL/accounting,
 ownership checks and ingestion transactions remain server-owned; worker evidence
 extraction stays in the worker/history adapters. No Cargo dependency changed.
+
+
+Native retained-item rendering and thread-item activity normalization now live in
+`cantrip_worker::history::render` and `cantrip_worker::native_items`. They reuse
+wire values, protocol validation and endpoint preparation without adding a server
+or database dependency. Authorized attachment parts remain caller inputs;
+canonical identity resolution, materialization and runtime capture remain separate
+worker policy. `cantrip-wire::coercion::entries` exposes the existing ECMAScript
+entry ordering for raw documents and collaboration states.

@@ -98,7 +98,8 @@ fn key_order(key: &JsString) -> (bool, u32) {
 pub(super) fn keys_in_order(object: &Object) -> bool {
     object.keys().map(key_order).is_sorted()
 }
-pub(super) fn entries(object: &Object) -> Vec<(&JsString, &Value)> {
+/// ECMAScript Object.entries order: canonical array indices precede other keys.
+pub fn entries(object: &Object) -> Vec<(&JsString, &Value)> {
     let mut entries: Vec<_> = object.iter().collect();
     if !keys_in_order(object) {
         entries.sort_by_key(|(key, _)| key_order(key));

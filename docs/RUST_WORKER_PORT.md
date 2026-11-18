@@ -122,7 +122,7 @@ loaded by a production service.
 | Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | Native endpoint/surface/repository formats, all private surface records and scoped grant helpers                                                                                                                                                                                                                                                                                                        | Private-state interop covers 12 resource contexts and six content kinds. Remaining protected domains and serving resource lifetimes are pending. Initial surface-grant refresh now completes real host terminal-service reconciliation; delegated OS services remain pending.                                                    |
 | Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Workspace/folders/routing, nine protected host Explorer operations and bound file-document text read/write                                                                                                                                                                                                                                                                                              | Actual Rust worker/server persists encrypted resources, resolves opaque roots, saves files, rejects replay/mismatched document paths and reopens after restart. Paged readers, media/tail, transfers, activity/watches and delegated OS execution remain pending.                                                                |
 | Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub catalog, issue detail/mutations, issue/PR search, inspection, creation, reviews, lifecycle, checkout preparation, agent context, inbox, Actions/releases and replica provisioning/synchronization/removal/link repair | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, exports/sharing and delegated OS Git remain pending |
-| History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter, authenticated HTTP client, canonical content preparation and coherent archive recovery                                                                                                                                                                                                                       | Journal/outbox/projection, native protected preparation and coherent HTTP archive recovery pass focused checks; canonical projector/rendering, attachments and capture/retry/runtime orchestration remain pending                                                                                                                                                    |
+| History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter, authenticated HTTP client, canonical content preparation, coherent archive recovery and native item rendering                                                                                                                                                                                                                       | Journal/outbox/projection, native protected preparation and coherent HTTP archive recovery pass focused checks; canonical projector/identity orchestration, attachments and capture/retry/runtime orchestration remain pending                                                                                                                                                    |
 | Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Actual provider protocol fixtures, streaming/media/usage, refresh, cancellation, failure and paid-work bounds                                                                                                                                                                                                                    |
 | Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Manifest verification/probe, native app-server processes, queue ownership, acceptance/commit and restart recovery                                                                                                                                                                                                                |
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
@@ -2800,3 +2800,72 @@ Next work is native rendering/canonical projector and identity orchestration,
 attachment materialization, capture/retry pumps and runtime execution integration.
 The remaining provider, terminal, transport/browser, OS/helper, upgrade and
 packaging/default-cutover/Node-retirement requirements remain part of the goal.
+
+
+## Cycle 46: native retained-item rendering and activity normalizers
+
+Reference: current `2d8d1d53ce5e158fea8ab41592c30f858d897527` / PR #3208.
+
+`cantrip_worker::history::render::item` now implements the full retained-item
+renderer and pinned display-item rules. It preserves canonical/legacy identity,
+exact assistant text and phase, independent item lifecycle, child-agent scope,
+conflicts and unresolved notices. Authorized input/output parts are supplied by
+index; rendering reads no files, reserves no canonical IDs and dispatches no
+native input. Opaque agent communication and unsupported media remain explicit
+without exposing their private payload in display content. Full source evidence
+is returned independently of presentation.
+
+`cantrip_worker::native_items` implements the existing thread-item activity
+normalizer for command/file/plan/reasoning, MCP/dynamic/collaboration tools,
+subagents, web search, image view, review and compaction. The public normalizer
+retains independent timestamps, command telemetry/status overrides and file-change
+previews. It is reusable by later live execution adapters; this does not yet
+integrate native event subscriptions or complete turn/session normalization.
+
+Command tails retain the original VT/control stripping and UTF-8 bound while
+transcript previews use their distinct UTF-16 limit. History then restores exact
+full command output and plan text. Raw trajectory capture uses its own existing
+redaction policy, image omission, depth bound, binary-document digests and
+independent request/response byte limits. Parsed JSON RPC documents and explicit
+binary bodies use separate native inputs; there is no JavaScript object runtime.
+Explicit undefined fields constructed by the Node capture helper retain their
+`"undefined"` text. Truncation preserves TextDecoder BOM behavior; an untruncated
+string retains its original UTF-16, including lone surrogates.
+
+The independently generated `native-history-render.json` supplies five actual
+shared presentation roots / 408 nodes. Existing graph files are unchanged.
+`cantrip-wire::coercion::entries` exposes the existing object-entry ordering
+without changing its implementation. No Cargo dependencies, shared TypeScript
+contracts, Node worker implementation, server routes or database modes changed.
+
+Local validation on macOS ARM64:
+
+- 219 actual Node/native comparisons cover every supported retained item and
+  lifecycle, authorized child/input materialization, conflicting/unknown evidence,
+  tool errors, redaction, command tails, file previews, Unicode and encoded bounds.
+  Rendered messages pass the real content codec in both directions. Comparisons
+  of optional undefined helper fields use their actual JSON serialization boundary.
+- 42 unchanged original renderer, file-preview, CUA raw-capture and selected
+  app-server tests pass through a native differential adapter: 91 real native
+  calls, each in a fresh process. The 77 unrelated app-server tests are filtered,
+  not reported as passing.
+- All 102 protected-content/preparation/archive comparisons pass again.
+- The real Rust-server/PGlite history check now renders natively before content
+  preparation, encryption, outbox/projection and HTTP ingest. A proxy drops an
+  actual successful ACK; server and native processes restart; frozen bytes and
+  receipts match on retry and exactly one canonical batch remains. All three
+  archive readers and coherent plaintext recovery match Node. Unauthorized
+  credentials fail and the private marker is absent from server/proxy diagnostics.
+  Source observations and enrollment/control are fixtures; production capture,
+  canonical projector orchestration and provider execution are not exercised.
+- Worker/source/client-fixture and actual server/repository-fixture builds pass,
+  as do worker all-target Clippy with warnings denied, four existing wire unit
+  tests, Rust formatting and diff checks. No hosted development Actions, paid
+  provider, device/VM/container campaign, signing or deployment was performed.
+
+Production still selects Node and installed native outer handlers remain 59.
+Canonical projector/ID orchestration, attachment materialization and capture/retry
+runtime integration are next, followed by the other execution/provider, terminal,
+transport/browser, OS/helper, upgrade and packaging/Node-retirement requirements.
+Windows/Linux runtime validation was not performed. The full replacement goal
+remains active.

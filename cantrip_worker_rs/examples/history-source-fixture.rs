@@ -19,6 +19,8 @@ use std::{
 mod history_content;
 #[path = "support/history_outbox.rs"]
 mod history_outbox;
+#[path = "support/history_presentation.rs"]
+mod history_presentation;
 #[path = "support/history_projection.rs"]
 mod history_projection;
 
@@ -81,6 +83,12 @@ struct Fixture {
 }
 impl Fixture {
     async fn run(&mut self, input: Value) -> Result<Value> {
+        if input["op"]
+            .as_str()
+            .is_some_and(|op| op.starts_with("presentation."))
+        {
+            return history_presentation::run(&input);
+        }
         if input["op"]
             .as_str()
             .is_some_and(|op| op.starts_with("content."))
