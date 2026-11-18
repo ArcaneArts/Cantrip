@@ -108,7 +108,8 @@ async fn cycle(
     let generation = uuid::Uuid::new_v4().to_string();
     logs.event("info","Cantrip Worker startup began",json!({"event":"worker.startup.started","subsystem":"worker-startup","operation":"start","status":"started","version":version::value()["version"],"workerGeneration":generation}));
     logs.event("info","Worker configuration loaded",json!({"event":"worker.configuration.loaded","workerId":worker,"credentialState":config.token_source}));
-    let _codex = crate::codex::startup::prepare(&config, cwd, environment, logs).await?;
+    let codex_compatibility =
+        crate::codex::startup::prepare(&config, cwd, environment, logs).await?;
     let encryption_identity = crate::encryption::Identity::open(
         &config.data_directory,
         &config.server_url,
@@ -153,6 +154,22 @@ async fn cycle(
     });
     heartbeat["encryption"] = encryption.status();
     http::enroll(&client, &mut config, &heartbeat, logs).await?;
+    let codex = crate::codex::managed::Worker::bound_to_encryption(
+        crate::codex::managed::Host {
+            binary: config.codex_installation.binary.clone(),
+            cwd: cwd.into(),
+            environment: environment
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect(),
+            compatibility: codex_compatibility,
+            logs: Some(logs.clone()),
+        },
+        config.data_directory.clone(),
+        worker.clone(),
+        generation.clone().into(),
+        encryption.clone(),
+    );
     let configuration = Arc::new(Mutex::new(config));
     let outgoing = Arc::new(Outbound::default());
     let worktree_observations = Arc::new(crate::git::worktrees::observations::Observations::new(
@@ -345,6 +362,7 @@ async fn cycle(
     worktree_observations.close().await;
     timers.abort_all();
     while timers.join_next().await.is_some() {}
+    let codex_stopped = codex.close().await;
     let history_stopped = history.stop().await;
     let encryption_closed = encryption.close().await;
     while let Some(result) = commands.join_next().await {
@@ -372,6 +390,7 @@ async fn cycle(
     terminals_closed?;
     github_closed?;
     encryption_closed?;
+    codex_stopped?;
     for pending in history_stopped? {
         logs.event("warn", "Native history source frames remain unsaved", json!({"event":"codex.history.source-unsaved","subsystem":"codex","operation":"shutdown","chatId":pending["chatId"],"threadId":pending["threadId"],"counts":json!({"pendingRecords":pending["pendingRecords"]})}));
     }
