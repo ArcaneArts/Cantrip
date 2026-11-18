@@ -1,0 +1,194 @@
+{
+  "payload": {
+    "data": [
+      null,
+      {
+        "name": "unaddressable"
+      },
+      {
+        "model": " hidden ",
+        "hidden": true
+      },
+      {
+        "name": " Camera ",
+        "description": " description ",
+        "contextWindow": 0,
+        "context_window": 123,
+        "max_output_tokens": 2048,
+        "outputModalities": [],
+        "reasoning_efforts": [
+          "low",
+          {
+            "value": "low",
+            "label": " quick "
+          },
+          {
+            "effort": "high"
+          },
+          false,
+          " "
+        ],
+        "_meta": {
+          "modelId": " vision ",
+          "architecture": {
+            "input_modalities": [
+              "TEXT",
+              " Text "
+            ],
+            "output_modalities": [
+              "TEXT",
+              "AUDIO"
+            ]
+          },
+          "contextWindow": 8192,
+          "reasoningEffort": "high",
+          "capabilities": {
+            "image_input": true
+          }
+        }
+      },
+      {
+        "id": "fixed",
+        "supportsReasoningEffort": false,
+        "reasoningEfforts": [
+          "low"
+        ],
+        "supportsVision": false
+      }
+    ]
+  },
+  "models": [
+    {
+      "id": "hidden",
+      "displayName": "hidden",
+      "description": null,
+      "contextWindow": null,
+      "maxOutputTokens": null,
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "supportedReasoningEfforts": [],
+      "defaultReasoningEffort": null,
+      "supportsReasoning": false,
+      "hidden": true,
+      "isDefault": false,
+      "rawMetadata": {
+        "model": " hidden ",
+        "hidden": true
+      }
+    },
+    {
+      "id": "vision",
+      "displayName": "Camera",
+      "description": "description",
+      "contextWindow": 8192,
+      "maxOutputTokens": 2048,
+      "inputModalities": [
+        "text",
+        "image"
+      ],
+      "outputModalities": [
+        "text",
+        "audio"
+      ],
+      "supportedReasoningEfforts": [
+        {
+          "effort": "low",
+          "description": "quick"
+        },
+        {
+          "effort": "high",
+          "description": null
+        }
+      ],
+      "defaultReasoningEffort": "high",
+      "supportsReasoning": true,
+      "hidden": false,
+      "isDefault": true,
+      "rawMetadata": {
+        "name": " Camera ",
+        "description": " description ",
+        "contextWindow": 0,
+        "context_window": 123,
+        "max_output_tokens": 2048,
+        "outputModalities": [],
+        "reasoning_efforts": [
+          "low",
+          {
+            "value": "low",
+            "label": " quick "
+          },
+          {
+            "effort": "high"
+          },
+          false,
+          " "
+        ],
+        "_meta": {
+          "modelId": " vision ",
+          "architecture": {
+            "input_modalities": [
+              "TEXT",
+              " Text "
+            ],
+            "output_modalities": [
+              "TEXT",
+              "AUDIO"
+            ]
+          },
+          "contextWindow": 8192,
+          "reasoningEffort": "high",
+          "capabilities": {
+            "image_input": true
+          }
+        }
+      }
+    },
+    {
+      "id": "fixed",
+      "displayName": "fixed",
+      "description": null,
+      "contextWindow": null,
+      "maxOutputTokens": null,
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "supportedReasoningEfforts": [
+        {
+          "effort": "low",
+          "description": null
+        }
+      ],
+      "defaultReasoningEffort": null,
+      "supportsReasoning": false,
+      "hidden": false,
+      "isDefault": false,
+      "rawMetadata": {
+        "id": "fixed",
+        "supportsReasoningEffort": false,
+        "reasoningEfforts": [
+          "low"
+        ],
+        "supportsVision": false
+      }
+    }
+  ],
+  "billing": {
+    "config": {
+      "currentPeriod": {
+        "type": "USAGE_PERIOD_TYPE_WEEKLY",
+        "end": "2026-08-24T00:00:00+00:00"
+      }
+    }
+  },
+  "weekly": {
+    "usedPercent": 0,
+    "resetsAt": 1787529600
+  }
+}

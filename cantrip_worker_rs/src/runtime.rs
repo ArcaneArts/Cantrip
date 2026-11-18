@@ -198,6 +198,12 @@ async fn cycle(
         encryption.clone(),
         client.clone(),
     );
+    let grok_catalog = crate::grok::catalog::Catalog::new(
+        grok_auth.clone(),
+        provider_access.clone(),
+        encryption.clone(),
+        logs.clone(),
+    );
     let provider_credentials = crate::provider_credentials::Commands::new(
         codex.clone(),
         account_auth.clone(),
@@ -299,6 +305,14 @@ async fn cycle(
                 logs.event("debug","Worker command dispatched",json!({"event":"worker.command.dispatched","operation":kind,"requestId":request["requestId"],"workerId":worker}));
                 if kind==crate::codex::catalog::COMMAND {
                     let catalog=model_catalog.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
+                    commands.spawn(async move {
+                        let result=catalog.execute(request["command"].clone()).await;
+                        finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
+                if crate::grok::catalog::supports(command) {
+                    let catalog=grok_catalog.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
                     commands.spawn(async move {
                         let result=catalog.execute(request["command"].clone()).await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);

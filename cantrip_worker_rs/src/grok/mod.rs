@@ -1,6 +1,8 @@
 //! Worker-owned Grok device authorization and account state.
+pub(crate) mod catalog;
 mod credential;
 pub(crate) mod http;
+mod models;
 
 use self::{
     credential::{Credential, FILE},
@@ -211,6 +213,7 @@ struct State {
     credential: Credential,
     login: Option<Login>,
     login_error: Option<String>,
+    portable_quota: Option<catalog::CachedQuota>,
 }
 
 #[derive(Default)]

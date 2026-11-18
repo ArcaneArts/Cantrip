@@ -248,7 +248,8 @@ async function respond(request, response) {
       `/api/internal/workers/providers/${providerId}/accounts/${account}/credential`,
     );
     counts.set(account, (counts.get(account) ?? 0) + 1);
-    if (account === local) send(404, { code: "migration-needed" });
+    if (account === local || account === "empty-grok-auth")
+      send(404, { code: "migration-needed" });
     else if (account === portable && portableSignedOut)
       send(409, { code: "reauth-required" });
     else send(200, credential);
@@ -589,6 +590,26 @@ try {
   });
   assert.equal(grokLogout.ok, true, JSON.stringify(grokLogout.error));
   assert.deepEqual(grokLogout.result, { accepted: true });
+  const grokProvider = {
+    id: providerId,
+    kind: "grok",
+    name: "Fixture",
+    baseUrl: "https://example.invalid",
+    accountId: "empty-grok-auth",
+    credentialHomeKey: home("empty-grok-auth"),
+  };
+  const grokQuota = await command({
+    type: "provider.quota.read",
+    provider: grokProvider,
+  });
+  assert.equal(grokQuota.ok, true, JSON.stringify(grokQuota.error));
+  assert.deepEqual(grokQuota.result.windows, []);
+  const emptyGrokModels = await command({
+    type: "model.grok.catalog",
+    provider: grokProvider,
+  });
+  assert.equal(emptyGrokModels.ok, false);
+  assert.match(emptyGrokModels.error.message, /Grok account is not signed in/);
   const actualLocalStatus = await accountAuth("status", "bundled-codex-auth");
   assert.equal(
     actualLocalStatus.ok,
