@@ -1578,6 +1578,7 @@ try {
               ...input,
               ownerId,
               key: taskKey,
+              chatKey,
               invoke: ensure,
               directory,
               serverId,

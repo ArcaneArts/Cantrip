@@ -22,7 +22,7 @@ use cantrip_wire::{JsString, Value, value::json};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
     time::{Duration, Instant},
 };
 use tokio::{sync::mpsc, task::JoinSet};
@@ -76,7 +76,19 @@ impl Drop for Inner {
 #[derive(Clone)]
 pub struct Runtime(Arc<Inner>);
 
+pub(in crate::codex) struct WeakRuntime(Weak<Inner>);
+
+impl WeakRuntime {
+    pub(in crate::codex) fn upgrade(&self) -> Option<Runtime> {
+        self.0.upgrade().map(Runtime)
+    }
+}
+
 impl Runtime {
+    pub(in crate::codex) fn downgrade(&self) -> WeakRuntime {
+        WeakRuntime(Arc::downgrade(&self.0))
+    }
+
     pub fn launch(host: Host, manager: Manager, launch: Launch) -> Work<Self> {
         owned(async move {
             let started = Instant::now();

@@ -5,7 +5,7 @@ mod profile;
 use super::{Coordinator, Identity, Input, Intent, Target, native};
 use crate::{
     codex::{
-        managed::{Runtime, Worker},
+        managed::{Runtime, WeakRuntime, Worker},
         observation::{home, provider},
     },
     config::Config,
@@ -19,6 +19,7 @@ use crate::{
 use anyhow::{Context, Result, bail};
 use cantrip_wire::{JsString, Value, payload_digest, value::json};
 use std::{
+    collections::HashMap,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -39,8 +40,15 @@ pub(crate) struct Prepared {
 #[derive(Clone)]
 pub(crate) struct Ensurer(Arc<Inner>);
 
+struct ThreadOwner {
+    runtime: WeakRuntime,
+    thread: native::LoadedThread,
+    bound: (JsString, Value),
+}
+
 struct Inner {
     codex: Worker,
+    live_threads: Mutex<HashMap<JsString, ThreadOwner>>,
     access: Access,
     settings: Arc<Mutex<Config>>,
     encryption: Arc<Service>,
@@ -72,6 +80,7 @@ impl Ensurer {
             && codex_compatibility["methods"]["permissionProfile/list"] == "available";
         Self(Arc::new(Inner {
             codex,
+            live_threads: Mutex::default(),
             access,
             settings,
             encryption,
@@ -247,6 +256,10 @@ impl Ensurer {
                     loaded.assert_current(&runtime)?;
                     this.assert_bound(&bound)?;
                     let thread_id = loaded.id().clone();
+                    let owner = ThreadOwner {
+                        runtime: runtime.downgrade(), thread: loaded.clone(), bound: bound.clone(),
+                    };
+                    this.0.live_threads.lock().unwrap().insert(chat, owner);
                     *prepared.lock().unwrap() = Some(Prepared { runtime, thread: loaded, codex_home, runner_generation: runner, admission, bound });
                     Ok(thread_id)
                 })
@@ -279,6 +292,24 @@ impl Ensurer {
                 .context("The managed MCP broker has closed.")?
                 .activate(&identity, admission.as_ref(), &lane)
         })
+    }
+
+    /// Prefer the last prepared owner of this exact chat and native thread.
+    /// A closed runtime falls back to a fresh, non-resuming metadata transport.
+    pub(in crate::codex) fn live_runtime(
+        &self,
+        chat: &JsString,
+        thread: &JsString,
+        bound: &(JsString, Value),
+    ) -> Option<Runtime> {
+        let owners = self.0.live_threads.lock().unwrap();
+        let owner = owners.get(chat)?;
+        if owner.thread.id() != thread || &owner.bound != bound {
+            return None;
+        }
+        let runtime = owner.runtime.upgrade()?;
+        owner.thread.assert_current(&runtime).ok()?;
+        Some(runtime)
     }
 
     pub(crate) fn identity(&self) -> Result<(JsString, Value)> {

@@ -2,7 +2,7 @@
 pub(super) mod home;
 pub(super) mod provider;
 
-use super::managed::Worker;
+use super::managed::{Runtime, Worker};
 use crate::{
     encryption::Service, http::checked, protected_secrets::open_runtime_provider,
     provider_access::Access, routing::Registry,
@@ -44,7 +44,30 @@ impl Observer {
     }
 
     pub(crate) async fn sync(&self, command: &Value) -> Result<Value> {
-        let (owner, server) = self.encryption.bound_identity()?;
+        let binding = self.encryption.bound_identity()?;
+        let thread = field(command, "threadId")?;
+        let runtime = self.open_runtime(command, &binding).await?;
+        let snapshot = runtime.read_history(thread).await?;
+        self.assert_bound(&binding)?;
+        let status = status(&snapshot["thread"]);
+        // A cold observer has no attached external-console baseline. Never
+        // re-emit native messages already owned by history or import.
+        checked(
+            "agentThreadSyncSchema",
+            &json!({
+                "threadId":thread,"status":status,"statusSource":"native-thread","turns":Vec::<Value>::new()
+            }),
+        )
+    }
+
+    /// Start the selected storage transport without loading or changing a conversation.
+    pub(super) async fn open_runtime(
+        &self,
+        command: &Value,
+        binding: &(JsString, Value),
+    ) -> Result<Runtime> {
+        self.assert_bound(binding)?;
+        let (owner, server) = binding;
         let command = self.routing.resolve(command).await?;
         let thread = field(&command, "threadId")?;
         let chat = field(&command, "chatId")?;
@@ -71,19 +94,15 @@ impl Observer {
                 Some((server_id, owner.clone())),
             )
             .await?;
-        let snapshot = runtime.read_history(thread).await?;
-        if self.encryption.bound_identity()? != (owner, server) {
+        self.assert_bound(binding)?;
+        Ok(runtime)
+    }
+
+    fn assert_bound(&self, binding: &(JsString, Value)) -> Result<()> {
+        if &self.encryption.bound_identity()? != binding {
             bail!("The worker binding changed during native observation.");
         }
-        let status = status(&snapshot["thread"]);
-        // A cold observer has no attached external-console baseline. Never
-        // re-emit native messages already owned by history or import.
-        checked(
-            "agentThreadSyncSchema",
-            &json!({
-                "threadId":thread,"status":status,"statusSource":"native-thread","turns":Vec::<Value>::new()
-            }),
-        )
+        Ok(())
     }
 }
 

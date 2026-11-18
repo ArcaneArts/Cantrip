@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { goalCycles } from "./task-goal-cycle-cases.mjs";
+import { observeTaskGoal } from "./task-goal-observation-cases.mjs";
 import {
   decryptTaskGoalObjective,
   decryptTaskMessageProtectedContent,
@@ -20,6 +21,7 @@ export async function verifyTaskGoalActivation({
   result,
   ownerId,
   key,
+  chatKey,
   invoke,
   directory,
   modelCalls,
@@ -83,7 +85,18 @@ export async function verifyTaskGoalActivation({
       message: control,
     },
   };
+  const observer = observeTaskGoal({
+    invoke,
+    command,
+    binding,
+    chatKey,
+    threadId,
+    task,
+    modelCalls,
+    diagnostics,
+  });
   const calls = modelCalls();
+  await observer.beforeActivation();
   const reply = await invoke(activation);
   assert.equal(reply.ok, true, JSON.stringify(reply));
   const started = taskGoalWorkerResultSchema.parse(reply.result);
@@ -163,6 +176,16 @@ export async function verifyTaskGoalActivation({
     failed.finalPlanMarkdown,
     plan.split("## Final implementation plan\n\n").at(-1),
   );
+  await observer.active();
+  await stop();
+  await start();
+  const saved = await observer.activeWithoutOwner();
+  assert.equal(saved.createdAt, started.goal.createdAt);
+  // An explicit activation retry restores the first-input latch. Reading the
+  // saved Goal must leave the native execution untouched.
+  const reactivated = await invoke(activation);
+  assert.equal(reactivated.ok, true, JSON.stringify(reactivated));
+  assert.equal(reactivated.result.goal.createdAt, saved.createdAt);
   assert.equal(
     modelCalls(),
     calls,
@@ -312,6 +335,7 @@ export async function verifyTaskGoalActivation({
         item.content?.some(({ text }) => text === promptText),
     ),
   );
+  await observer.running();
   model.finish();
 
   await available(Promise.race([attempted.promise, earlyReply]));
@@ -379,4 +403,5 @@ export async function verifyTaskGoalActivation({
     stop,
     start,
   });
+  await observer.afterRestart();
 }
