@@ -17,6 +17,7 @@ pub mod http;
 pub mod inference;
 pub mod installation;
 pub mod logging;
+pub mod mcp;
 pub mod metadata;
 pub mod native_items;
 pub mod platform;

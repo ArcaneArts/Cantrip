@@ -241,6 +241,10 @@ export function createCantripMcpServer(
   gateway: CantripMcpOperationGateway,
   profile: CantripMcpProfile = "ide",
   allowedToolNames?: readonly string[],
+  inspectTool?: (
+    name: string,
+    config: { inputSchema?: unknown; outputSchema?: unknown },
+  ) => void,
 ) {
   const profileToolNames =
     profile === "standalone-web"
@@ -260,6 +264,7 @@ export function createCantripMcpServer(
     { instructions: cantripMcpInstructions(profile) },
   );
   const registerTool: McpServer["registerTool"] = (name, config, callback) => {
+    inspectTool?.(name, config);
     const tool = server.registerTool(name, config, callback);
     if (!availableToolNames.has(name)) tool.disable();
     return tool;

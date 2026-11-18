@@ -127,7 +127,7 @@ impl Contracts {
         self.nodes.extend(block.nodes);
     }
 
-    fn compile_patterns(&mut self) {
+    pub(super) fn compile_patterns(&mut self) {
         for node in &mut self.nodes {
             for check in &mut node.checks {
                 if let Some(pattern) = &check.pattern {

@@ -16,6 +16,7 @@ mod json_contract;
 pub use cantrip_wire::parse_json_text;
 pub mod live;
 mod mcp;
+pub mod mcp_host;
 mod native_suspensions;
 mod project_automations;
 pub mod project_capabilities;

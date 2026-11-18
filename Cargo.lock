@@ -605,6 +605,7 @@ dependencies = [
  "chrono",
  "codex-utils-pty",
  "embed-resource",
+ "flate2",
  "futures",
  "getrandom 0.3.4",
  "http-body-util",

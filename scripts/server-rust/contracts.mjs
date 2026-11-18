@@ -1821,6 +1821,7 @@ export function buildContractManifest(rootNames = contractRoots, local = {}) {
         const tag = new Map([
           ["(input) => input.trim()", "trim"],
           ["(input) => input.toLowerCase()", "lowercase"],
+          ["(value) => value.toLowerCase()", "lowercase"],
         ]).get(c.tx.toString());
         if (!tag) throw new Error(`Unimplemented native transform: ${where}`);
         return { check: tag };
