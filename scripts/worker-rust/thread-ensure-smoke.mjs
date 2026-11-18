@@ -41,6 +41,7 @@ import { verifyProjectGoalDelivery } from "./project-goal-delivery-cases.mjs";
 import { verifyAutonomousGoal } from "./autonomous-goal-cases.mjs";
 import { verifyChatGoalCreate } from "./chat-goal-create-cases.mjs";
 import { verifyTaskGoalActivation } from "./task-goal-activation-cases.mjs";
+import { verifyQueuedTurns } from "./queued-turn-cases.mjs";
 
 const { values } = parseArgs({
   options: {
@@ -57,6 +58,7 @@ const { values } = parseArgs({
     chatGoal: { type: "boolean" },
     projectGoals: { type: "boolean" },
     autonomousGoal: { type: "boolean" },
+    queuedTurn: { type: "boolean" },
   },
 });
 assert.ok(values.worker && values.codex);
@@ -103,12 +105,15 @@ const privateStep = "Private plan step.";
 const privateQuestion = "Private retained plan question.";
 const chatKey = new Uint8Array(32).fill(41);
 const taskKey = new Uint8Array(32).fill(37);
+const attachmentKey = new Uint8Array(32).fill(43);
 const oracle = {
   ownerId: () => ownerId,
   serverIdentity: () => serverId,
   componentKey: (scope) => {
     if (scope === "task-content")
       return { key: taskKey.slice(), keyRevision: 2 };
+    if (scope === "attachment-content")
+      return { key: attachmentKey.slice(), keyRevision: 3 };
     assert.equal(scope, "chat-content");
     return { key: chatKey.slice(), keyRevision: 1 };
   },
@@ -332,6 +337,7 @@ const server = createServer(async (request, response) => {
           values.chatGoal ||
           values.projectGoals ||
           values.autonomousGoal ||
+          values.queuedTurn ||
           values.taskPreparation ||
           values.directTask ||
           structuredTasks
@@ -340,6 +346,15 @@ const server = createServer(async (request, response) => {
                   component: "chat-content",
                   keyRevision: 1,
                   componentKey: chatKey,
+                },
+              ]
+            : []),
+          ...(values.queuedTurn
+            ? [
+                {
+                  component: "attachment-content",
+                  keyRevision: 3,
+                  componentKey: attachmentKey,
                 },
               ]
             : []),
@@ -1634,6 +1649,32 @@ try {
         kind: "openai-compatible",
         name: "Fixture",
         baseUrl: `http://127.0.0.1:${server.address().port}/fixture/v1`,
+      },
+    });
+  }
+  if (values.queuedTurn) {
+    await verifyQueuedTurns({
+      start,
+      stop,
+      request: ensure,
+      expectThread,
+      expectSuccess,
+      untilProvider,
+      modelCalls: () => providerCalls,
+      attach: (receipts, history) => {
+        guiPeer = receipts;
+        guiHistory = history;
+      },
+      workerId,
+      generation: () => workerGeneration,
+      directory,
+      oracle,
+      stamp,
+      provider: {
+        id: "queued-turn-fixture",
+        kind: "openai-compatible",
+        name: "Fixture",
+        baseUrl: "http://127.0.0.1:" + server.address().port + "/fixture/v1",
       },
     });
   }

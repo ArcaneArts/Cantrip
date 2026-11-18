@@ -105,7 +105,8 @@ export class GuiHistoryPeer {
         const preservedInput =
           association.kind === "observed-input" &&
           association.clientUserMessageId ===
-            "cantrip:" + this.fields.protectedPrompt.id
+            (this.fields.nativeClientUserMessageId ??
+              "cantrip:" + this.fields.protectedPrompt.id)
             ? this.fields.protectedPrompt
             : null;
         const mapping = {

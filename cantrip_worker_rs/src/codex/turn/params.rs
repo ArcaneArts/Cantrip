@@ -5,6 +5,7 @@ use std::path::Path;
 
 pub(super) fn validate(command: &Value) -> Result<()> {
     let task = super::task::is_round(command) || super::task::is_goal(command);
+    let queued = super::queued::is_queued(command);
     let supported_content = if task {
         command["contextKind"] == "project" && command["taskDispatchLease"].is_object()
     } else if protected_mode(command) {
@@ -13,27 +14,30 @@ pub(super) fn validate(command: &Value) -> Result<()> {
         command["resultMode"]["kind"] == "visible" && command["prompt"].is_string()
     };
     if !supported_content
+        || (queued
+            && (task || !protected_mode(command) || !command["nativeCommandReceipt"].is_object()))
+        || (!queued && !command["protectedNativeInput"].is_null())
         || command["executionProfile"] == "cantrip-os"
         || (!task
             && (!command["taskDispatchLease"].is_null()
                 || !command["taskInferenceInput"].is_null()))
         || [
             "computerUseAuthority",
-            "protectedNativeInput",
-            "queuedPromptId",
             "taskResumption",
             "initialLabel",
             "subagentDefaults",
         ]
         .iter()
         .any(|field| command.get(field).is_some_and(|value| !value.is_null()))
-        || ["attachments", "skillNames", "chatSkillAudienceKeys"]
-            .iter()
-            .any(|field| {
-                command[*field]
-                    .as_array()
-                    .is_some_and(|value| !value.is_empty())
-            })
+        || (!queued
+            && command["attachments"]
+                .as_array()
+                .is_some_and(|items| !items.is_empty()))
+        || ["skillNames", "chatSkillAudienceKeys"].iter().any(|field| {
+            command[*field]
+                .as_array()
+                .is_some_and(|value| !value.is_empty())
+        })
         || ["policies", "standalonePolicies"].iter().any(|field| {
             command[*field]["policies"]
                 .as_array()
@@ -68,7 +72,7 @@ pub(super) fn preparation(command: &Value) -> Value {
 
 pub(super) async fn native_input(
     command: &Value,
-    prompt: &JsString,
+    input: Vec<Value>,
     runtime: &Runtime,
     thread: &JsString,
     permission_profiles: bool,
@@ -141,7 +145,7 @@ pub(super) async fn native_input(
         "cwd": cwd,
         "runtimeWorkspaceRoots": vec![cwd],
         "clientUserMessageId": client_message,
-        "input": vec![json!({"type": "text", "text": prompt})],
+        "input": input,
         "model": command["model"]["name"],
         "collaborationMode": settings["collaborationMode"],
         "additionalContext": context,

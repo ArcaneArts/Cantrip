@@ -126,15 +126,19 @@ pub(crate) fn native_text(items: &[Value]) -> Result<JsString> {
 }
 
 pub(crate) fn slash_argument(text: &JsString, command: &str) -> Option<JsString> {
+    let start = slash_prefix_len(text, command)?;
+    Some(JsString::new(text.units()[start..].to_vec()).trim())
+}
+
+pub(crate) fn slash_prefix_len(text: &JsString, command: &str) -> Option<usize> {
     let (prefix, suffix) = text.units().split_at_checked(command.len())?;
+    let space = |unit| char::from_u32(u32::from(unit)).is_some_and(whitespace);
     if !prefix.iter().copied().eq(command.encode_utf16())
-        || suffix
-            .first()
-            .is_some_and(|&unit| !char::from_u32(u32::from(unit)).is_some_and(whitespace))
+        || suffix.first().is_some_and(|&unit| !space(unit))
     {
         return None;
     }
-    Some(JsString::new(suffix.to_vec()).trim())
+    Some(prefix.len() + suffix.iter().take_while(|&&unit| space(unit)).count())
 }
 
 fn classify(

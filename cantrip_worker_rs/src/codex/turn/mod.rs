@@ -5,6 +5,7 @@ mod control;
 mod output;
 mod params;
 mod protected;
+mod queued;
 pub(super) use protected::runtime_text;
 mod receipt;
 pub(in crate::codex) mod task;
@@ -17,6 +18,7 @@ use super::{
     task_inputs,
 };
 use crate::{
+    attachments::{Store, content::ServiceKeys},
     chat_content::Scope,
     config::Config,
     encryption::Service,
@@ -62,6 +64,7 @@ pub(crate) struct Turns {
     active: Sessions,
     receipts: receipt::Client,
     history: History,
+    attachments: Store,
     task_inputs: task_inputs::Client,
     task_outcomes: Arc<TaskDelivery>,
 }
@@ -184,12 +187,14 @@ impl Turns {
         task_inputs: task_inputs::Client,
         task_outcomes: Arc<TaskDelivery>,
     ) -> Result<Self> {
+        let attachments = Store::new(&configuration.lock().unwrap().data_directory, None)?;
         Ok(Self {
             preparation,
             encryption,
             active: Arc::default(),
             receipts: receipt::Client::new(configuration, generation)?,
             history,
+            attachments,
             task_inputs,
             task_outcomes,
         })
@@ -466,6 +471,16 @@ impl Turns {
         } else {
             (id(&command["prompt"], "native turn prompt")?, None)
         };
+        let is_queued = queued::is_queued(&command);
+        let retained = if is_queued {
+            let scope = protection
+                .as_ref()
+                .context("Missing protected queue scope.")?
+                .scope();
+            queued::open(&command, &prompt, scope)?
+        } else {
+            None
+        };
         if let Some(task) = &mut task {
             self.task_inputs
                 .authorize(
@@ -571,9 +586,23 @@ impl Turns {
             }
         };
         let result = async {
+            let input = if is_queued {
+                queued::inputs(
+                    &command,
+                    &prompt,
+                    retained,
+                    runtime,
+                    &self.attachments,
+                    &ServiceKeys(self.encryption.clone()),
+                    protection.as_ref().unwrap().scope(),
+                )
+                .await?
+            } else {
+                vec![json!({"type":"text","text":prompt})]
+            };
             let mut params = params::native_input(
                 &command,
-                &prompt,
+                input,
                 runtime,
                 thread,
                 self.preparation.supports_permission_profiles(),
@@ -653,9 +682,12 @@ impl Turns {
                             execution.settled().await?;
                             if let Some(receipt) = &receipt {
                                 let failure = error.downcast_ref::<Failure>().unwrap();
-                                receipt
-                                    .rejected(failure.native_error.as_ref().unwrap())
-                                    .await?;
+                                let native = failure.native_error.as_ref().unwrap();
+                                if is_queued && queued::deferred(native) {
+                                    receipt.defer_queue_input(native).await?;
+                                } else {
+                                    receipt.rejected(native).await?;
+                                }
                             }
                             return Err(error);
                         }
