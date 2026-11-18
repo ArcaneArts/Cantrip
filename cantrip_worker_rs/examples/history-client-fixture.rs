@@ -62,6 +62,31 @@ async fn run(input: &Value) -> Result<Value> {
         }),
         metadata_signal: Some(Arc::new(move || transport.clone())),
     })?;
+    if input["action"] == "liveOutput" {
+        use cantrip_worker::history::live::{identity, mode};
+        let scope = input["input"]["scope"].clone();
+        let snapshot = input["input"]["snapshot"].clone();
+        let mode = mode::Resolver::new(
+            Arc::new(move |thread| {
+                let snapshot = snapshot.clone();
+                Box::pin(async move { cantrip_history::native::snapshot(&snapshot, &thread) })
+            }),
+            None,
+        );
+        let resolver = identity::Managed::new(identity::Options {
+            client: Arc::new(client),
+            scope: Arc::new(move |_, _| {
+                let scope = scope.clone();
+                Box::pin(async { Ok(Some(scope)) })
+            }),
+            mode: identity::with_mode(mode),
+            signal: caller,
+        });
+        let first = resolver.resolve(input["input"]["output"].clone());
+        let second = resolver.resolve(input["input"]["output"].clone());
+        let (first, second) = futures::try_join!(first, second)?;
+        return Ok(json!({"outputs":vec![first,second],"requests":calls.load(Ordering::SeqCst)}));
+    }
     let body = &input["input"];
     let pending = match input["action"].as_str().unwrap() {
         "open" => client.open(body, caller),

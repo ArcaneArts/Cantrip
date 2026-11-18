@@ -122,7 +122,7 @@ loaded by a production service.
 | Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | Native endpoint/surface/repository formats, all private surface records and scoped grant helpers                                                                                                                                                                                                                                                                                                        | Private-state interop covers 12 resource contexts and six content kinds. Remaining protected domains and serving resource lifetimes are pending. Initial surface-grant refresh now completes real host terminal-service reconciliation; delegated OS services remain pending.                                                    |
 | Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Workspace/folders/routing, nine protected host Explorer operations and bound file-document text read/write                                                                                                                                                                                                                                                                                              | Actual Rust worker/server persists encrypted resources, resolves opaque roots, saves files, rejects replay/mismatched document paths and reopens after restart. Paged readers, media/tail, transfers, activity/watches and delegated OS execution remain pending.                                                                |
 | Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub catalog, issue detail/mutations, issue/PR search, inspection, creation, reviews, lifecycle, checkout preparation, agent context, inbox, Actions/releases and replica provisioning/synchronization/removal/link repair | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, exports/sharing and delegated OS Git remain pending |
-| History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter, authenticated HTTP client, canonical content preparation, coherent archive recovery, native item rendering and canonical projector/bootstrap/rebase orchestration                                                                                                                                                                                                                       | Journal/outbox/projection, native protected preparation and coherent HTTP archive recovery pass focused checks; verified retained-context/child-scope and durable media/attachment adapters are native; live output identity and capture/retry/runtime orchestration remain pending                                                                                                                                                    |
+| History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter, authenticated HTTP client, canonical content preparation, coherent archive recovery, native item rendering and canonical projector/bootstrap/rebase orchestration                                                                                                                                                                                                                       | Journal/outbox/projection, native protected preparation and coherent HTTP archive recovery pass focused checks; verified retained-context/child-scope and durable media/attachment adapters are native; live output identity and independent observation/capture are native; managed capture/projection retry and runtime integration remain pending                                                                                                                                                    |
 | Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Actual provider protocol fixtures, streaming/media/usage, refresh, cancellation, failure and paid-work bounds                                                                                                                                                                                                                    |
 | Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Manifest verification/probe, native app-server processes, queue ownership, acceptance/commit and restart recovery                                                                                                                                                                                                                |
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
@@ -3039,3 +3039,86 @@ Next work is live output identity, capture/subscription and managed retry/recove
 orchestration, followed by execution/providers, terminals, transports/browsers,
 OS/helpers, upgrades, packaging/default cutover and Node retirement. The full
 goal remains active.
+
+## Cycle 49: live identity, original mode and independent source capture
+
+Reference: current `f98e3b085c807cfa5c439bf696951ee02be51de1` / PR #3211.
+
+`history::live` now ports the actual output-identity, original-mode,
+transport-observation and source-capture implementations. These APIs neither
+admit native input nor grant execution/CUA authority. Production worker selection
+and the 59 installed native outer command handlers remain unchanged.
+
+The observation hub owns transport generations and sequence barriers. It captures
+thread-scoped unknown/late notifications before normalization, validates cursors
+with the existing native cursor contract, isolates consumer values and reports
+consumer failures without raw parameters. Replacement retires old subscriptions;
+read snapshots retain both the start barrier and completion sequence. Atomic snapshot
+boundaries prevent native threads from crossing replacement/close notification
+intervals. Reentrant replacement cannot deliver an old frame to a new subscriber.
+
+`capture::Capture` subscribes synchronously and runs independent read, ordered
+append and coalesced projector-wake jobs. It retries actual failures with bounded
+backoff and repairs per-item predecessor gaps using the existing cursor tracker.
+A stale successful snapshot does not prove recovery. An explicit snapshot waits
+for a read begun for its own request and for its durable source header. Uncertain
+successful writes retry the exact captured frame. Storage never serializes native
+input or snapshot observation behind its retries.
+
+Graceful close detaches observation and drains accepted records and wakeups.
+Forced stop rejects drains and reports unsaved memory accurately. In-flight append
+and wake callbacks finish before `when_stopped` resolves; a detached native read
+cannot enqueue more data and does not retain that teardown boundary. Timer jobs
+claim their busy state atomically, including on the multithreaded worker runtime.
+
+Bound output resolvers cache immutable successful identity mappings per sealer
+lifetime and retry failed lookups. They validate unique related mappings and
+preserve root/child output association. The managed resolver requires dispatched
+scope, shares binding opens and selects canonical identity only from real item
+correlation. Original mode comes from retained turn context, never current GUI
+settings. Missing context can wait for actual history changes; closed/replaced
+observations reject that wait. This delays publication rather than native input.
+Successful mode reads share a per-thread/turn cache; failures remain retryable.
+Shared failures retain causes and important native wire/cancellation/HTTP types;
+`ServerRequestError` adds `Clone` without changing HTTP behavior.
+
+Local evidence on macOS ARM64:
+
+- 81 focused compatibility comparisons use actual Node implementations and native
+  recovery assertions over real encrypted journals. They cover snapshot barriers,
+  transport retirement, failure isolation, disk obstruction/recovery, uncertain
+  acknowledgements, held reads/storage/wakeups, fresh snapshot requests,
+  graceful/forced teardown, stale gap reads, mapping caches and original-mode waits.
+- All 26 existing observation/capture/output-identity reference tests and three
+  native unit tests pass. The native tests exercise two-thread writer ownership,
+  reentrant replacement and scheduling bounds.
+- All 56 actual loopback HTTP client comparisons still pass, including metadata
+  retry, cancellation, compression and response abandonment.
+- The real Rust-server/PGlite integration now obtains its initial source record
+  through the native observation/capture jobs, then runs native verified context,
+  reduction/projector, encryption, outbox and canonical HTTP publication. Lost
+  ACK, restart/frozen retry and actual revision-conflict recovery still produce
+  three accepted batches, final item revision 3 and no pending local outbox.
+- The native managed live-output resolver opens/resolves through the real server.
+  Concurrent outputs share exactly one open and one resolve, match the actual
+  Node resolver's ID/idempotency/mode, and preserve a real HTTP 401 classification.
+- Worker/live/source/client builds, all-target worker Clippy with warnings denied,
+  formatting, diff and native-file-size checks pass. There are no new Cargo
+  dependencies, generated contracts, server routes or persistence formats.
+
+Native fixture children run without Node on PATH. Snapshot RPC, later mutation
+observations, keys and the enrollment/control worker remain controlled fixtures.
+The integrated server executable and repository helper are the previously built,
+unchanged Rust-server consumers; this cycle changes worker code and fixtures.
+No production provider/Codex execution or Windows/Linux runtime acceptance is
+claimed. No hosted development Actions, devices, paid providers, VM/container
+campaign, signing or deployment were used.
+
+The integration driver now also requires `--live <history-live-fixture>`. Build it
+with `node scripts/worker-rust/cargo.mjs build -p cantrip-worker --example history-live-fixture`.
+The focused compatibility driver is `scripts/worker-rust/history-live-compatibility.mjs`.
+
+Next is managed capture/binding retirement and durable projection/recovery pumps,
+followed by the remaining runtime/execution/provider, terminal, transport/browser,
+OS/helper, upgrade and packaging/default-cutover/Node-retirement work. The full
+goal remains active; production still uses the Node worker.

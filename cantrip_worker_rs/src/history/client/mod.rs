@@ -25,7 +25,7 @@ pub struct Client {
     options: Arc<Options>,
     http: reqwest::Client,
 }
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ServerRequestError {
     pub status: u16,
     pub code: Option<JsString>,
