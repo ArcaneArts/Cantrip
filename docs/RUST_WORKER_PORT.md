@@ -4313,3 +4313,30 @@ another provider request. Core and the provider are disposable local peers.
 The canonical first Goal turn, autonomous continuation, Goal observation and
 controls, Task attachment and policy input, and pause and resumption remain
 open. Production still selects Node.
+
+## 81. Dispatch and commit the first Task Goal turn
+
+The Rust worker opens the encrypted first Goal message under the bound
+account and claims the existing Task input receipt. It takes Codex's native
+root producer hold, retires a parked request for the same input, and waits
+for the root to become idle before sending the explicit turn. The actual
+thread, turn, and scope are bound to the receipt before the provider is
+called. Live messages and the final relay are encrypted under the Task
+grant.
+
+The terminal result is persisted in the existing Goal outcome format. The
+command waits for a matching canonical commitment or retirement. A receipt
+for a different input leaves the original delivery pending for replay.
+
+The macOS ARM64 smoke uses bundled Codex, an authenticated fixture peer,
+and a loopback provider. It holds provider admission until the native
+binding is acknowledged, opens the Goal response in Node, and verifies
+that a mismatched acknowledgment keeps the command pending while the
+worker retries the unchanged outbox record.
+
+Autonomous Goal execution remains parked pending cycle authority, outcome
+production, and settlement. Goal controls and observation, Task attachments
+and policy input, pause and resumption, and full Rust-server integration
+remain open. First-turn failures use the generic protected error until the
+native Task retry categories are shared with the worker. Production still
+selects Node.

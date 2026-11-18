@@ -30,6 +30,7 @@ pub(crate) struct Prepared {
     pub runtime: Runtime,
     pub thread: native::LoadedThread,
     pub codex_home: PathBuf,
+    pub runner_generation: JsString,
     admission: Option<Value>,
     bound: (JsString, Value),
 }
@@ -221,12 +222,12 @@ impl Ensurer {
                         mcp["cantrip"] = attachment.codex_configuration(&std::env::current_exe()?)?;
                         Some(admission)
                     };
-                    let runner = payload_digest(&json!([
+                    let runner: JsString = payload_digest(&json!([
                         json!(runtime.generation()), json!(chat), session[placement].clone()
-                    ]));
+                    ])).into();
                     let first_message = command["taskGoalFirstInput"].as_js_string();
                     if let (Some(message), Some(thread)) = (first_message, selection.thread_id.as_ref()) {
-                        runtime.inference_router().reserve_task_first_input(thread.clone(), runner.clone().into(), message.clone());
+                        runtime.inference_router().reserve_task_first_input(thread.clone(), runner.clone(), message.clone());
                     }
                     let configuration = profile::configuration(
                         &command, &cwd, mcp, runner.clone(), model_provider, standalone,
@@ -239,13 +240,13 @@ impl Ensurer {
                         profile::apply_plan_mode(&runtime, &loaded, &command).await?;
                     }
                     if let Some(message) = first_message {
-                        runtime.inference_router().reserve_task_first_input(loaded.id().clone(), runner.into(), message.clone());
+                        runtime.inference_router().reserve_task_first_input(loaded.id().clone(), runner.clone(), message.clone());
                         profile::apply_goal_permissions(&runtime, &loaded, &command, this.0.permission_profiles).await?;
                     }
                     loaded.assert_current(&runtime)?;
                     this.assert_bound(&bound)?;
                     let thread_id = loaded.id().clone();
-                    *prepared.lock().unwrap() = Some(Prepared { runtime, thread: loaded, codex_home, admission, bound });
+                    *prepared.lock().unwrap() = Some(Prepared { runtime, thread: loaded, codex_home, runner_generation: runner, admission, bound });
                     Ok(thread_id)
                 })
             }),

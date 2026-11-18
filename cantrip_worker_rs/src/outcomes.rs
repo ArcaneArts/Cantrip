@@ -6,6 +6,7 @@ use cantrip_history::files::{ensure_directory, flush_directory, read_json, write
 use cantrip_wire::{JsString, Value, parse_json_text, value::json};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::HashMap,
     ffi::OsStr,
     io::ErrorKind,
     path::{Path, PathBuf},
@@ -15,7 +16,7 @@ use std::{
 use tokio::{
     fs,
     io::AsyncReadExt,
-    sync::{Notify, watch},
+    sync::{Notify, oneshot, watch},
 };
 
 pub(crate) fn chat(command: &Value, response: &Value) -> Result<Option<Value>> {
@@ -73,6 +74,7 @@ pub(crate) struct TaskDelivery {
     worker: JsString,
     http: reqwest::Client,
     wake: Notify,
+    commits: Mutex<HashMap<String, oneshot::Sender<()>>>,
     stop: watch::Receiver<bool>,
     logs: Arc<Logs>,
 }
@@ -109,6 +111,7 @@ impl TaskDelivery {
             worker,
             http,
             wake: Notify::new(),
+            commits: Mutex::default(),
             stop,
             logs,
         })
@@ -129,7 +132,7 @@ impl TaskDelivery {
         self.wake.notify_one();
     }
 
-    pub(crate) async fn round(
+    pub(crate) async fn task(
         &self,
         owner: &JsString,
         server: &JsString,
@@ -144,11 +147,16 @@ impl TaskDelivery {
             let note = notification(command, outcome)?;
             let scope = Scope { owner: owner.clone(), server: server.clone() };
             let delivery = uuid::Uuid::new_v4().to_string();
+            let goal = command["taskInferenceInput"]["kind"] == "goal";
             let record = checked("taskGoalOutcomeDeliverySchema", &json!({
-                "version": 1, "deliveryId": delivery, "inputKind": "round",
+                "version": 1, "deliveryId": delivery, "inputKind": if goal { "goal" } else { "round" },
                 "ownerId": owner, "serverId": server, "workerId": self.worker, "notification": note,
             }))?;
-            self.append(&scope, &delivery, record.stringify()).await?;
+            if goal {
+                self.append_and_commit(&scope, &delivery, record.stringify()).await?;
+            } else {
+                self.append(&scope, &delivery, record.stringify()).await?;
+            }
             Ok::<_, anyhow::Error>(note)
         }.await;
         match append {
@@ -159,6 +167,27 @@ impl TaskDelivery {
                 None
             }
         }
+    }
+
+    async fn append_and_commit(&self, scope: &Scope, delivery: &str, body: String) -> Result<()> {
+        let (committed, receipt) = oneshot::channel();
+        self.commits
+            .lock()
+            .unwrap()
+            .insert(delivery.to_owned(), committed);
+        let mut stop = self.stop.clone();
+        let result = async {
+            self.append(scope, delivery, body).await?;
+            if *stop.borrow() {
+                bail!("Task outcome delivery stopped before commit acknowledgment.");
+            }
+            tokio::select! {
+                result = receipt => result.context("Task outcome commit waiter was closed."),
+                _ = stop.changed() => bail!("Task outcome delivery stopped before commit acknowledgment."),
+            }
+        }.await;
+        self.commits.lock().unwrap().remove(delivery);
+        result
     }
 
     async fn append(&self, scope: &Scope, delivery: &str, body: String) -> Result<()> {
@@ -306,6 +335,13 @@ impl TaskDelivery {
             .await;
             if let Err(error) = cleanup {
                 failure.get_or_insert(error);
+            }
+            // The authoritative server receipt has committed even if local
+            // unlink or directory sync failed. An uncleared file retries the
+            // same durable delivery identity.
+            let delivery = path.file_stem().and_then(OsStr::to_str).unwrap();
+            if let Some(committed) = self.commits.lock().unwrap().remove(delivery) {
+                let _ = committed.send(());
             }
         }
         failure.map_or(Ok(()), Err)

@@ -1,10 +1,11 @@
 //! Protected Task rounds use the same physical turn runner as host Chat.
+pub(super) mod first_input;
 mod structured;
 use super::{Emit, Key};
 use crate::{
     encryption::{BoundComponentKey, Service},
     http::checked,
-    native_items::concat,
+    native_items::{concat, join},
     task_content::{fingerprint, opaque, seal_message},
 };
 use anyhow::{Context, Result, bail};
@@ -23,18 +24,81 @@ pub(super) fn is_round(command: &Value) -> bool {
         && command["taskResumption"].is_null()
 }
 
+pub(super) fn is_goal(command: &Value) -> bool {
+    command["resultMode"]["kind"] == "task-message-encrypted"
+        && command["taskInferenceInput"]["kind"] == "goal"
+        && command["threadId"].is_string()
+        && command["taskResumption"].is_null()
+}
+
+pub(super) enum Turn {
+    Round(Round),
+    Goal(Goal),
+}
+
+impl Turn {
+    pub(super) fn open(service: Arc<Service>, command: &Value, key: &Key) -> Result<Self> {
+        if is_goal(command) {
+            Goal::open(service, command, key).map(Self::Goal)
+        } else {
+            Round::open(service, command, key).map(Self::Round)
+        }
+    }
+
+    pub(super) fn prompt(&self) -> JsString {
+        match self {
+            Self::Goal(goal) => goal.prompt.clone(),
+            Self::Round(round) => round.kind.prompt(&round.input),
+        }
+    }
+
+    pub(super) fn output_schema(&self) -> Option<&'static Value> {
+        match self {
+            Self::Goal(_) => None,
+            Self::Round(round) => round.kind.output_schema(),
+        }
+    }
+
+    pub(super) fn events(&self, emit: Emit) -> Emit {
+        match self {
+            Self::Goal(goal) => goal.messages.events(emit),
+            Self::Round(round) if !round.kind.is_structured() => round.messages.events(emit),
+            // Structured responses are published only after endpoint validation.
+            Self::Round(_) => Arc::new(|_| Ok(())),
+        }
+    }
+
+    pub(super) fn finish(&self, result: Value) -> Result<Value> {
+        match self {
+            Self::Goal(goal) => goal.finish(result),
+            Self::Round(round) => round.finish(result),
+        }
+    }
+}
+
 pub(super) fn is_structured(command: &Value) -> bool {
     is_round(command) && command["resultMode"]["operation"]["classification"]["kind"] != "direct"
 }
 
 pub(super) struct Round {
-    service: Arc<Service>,
-    binding: BoundComponentKey,
-    context: Value,
+    messages: Arc<Messages>,
     input: Value,
     kind: structured::Kind,
     authorship: Value,
     request: Value,
+}
+
+pub(super) struct Goal {
+    messages: Arc<Messages>,
+    prompt: JsString,
+    response: Value,
+}
+
+struct Messages {
+    service: Arc<Service>,
+    binding: BoundComponentKey,
+    context: Value,
+    mode: &'static str,
     output: Mutex<Output>,
 }
 
@@ -53,10 +117,7 @@ struct FinalMessage {
 
 impl Round {
     pub(super) fn open(service: Arc<Service>, command: &Value, key: &Key) -> Result<Self> {
-        let binding = service.bound_component("task-content", None)?;
-        if binding.owner_id != key.0 || binding.server_id.as_js_string() != Some(&key.1) {
-            bail!("The worker binding changed before Task preparation.");
-        }
+        let binding = task_key(&service, key)?;
         let request = &command["resultMode"]["operation"];
         let receipt = &command["taskInferenceInput"];
         if request["operationId"] != receipt["dispatch"]["operationId"]
@@ -99,33 +160,37 @@ impl Round {
             bail!("The encrypted Task operation fingerprint is invalid.");
         }
         Ok(Self {
-            service,
-            binding,
-            context,
+            messages: Arc::new(Messages {
+                service,
+                binding,
+                context,
+                mode: "default",
+                output: Mutex::new(Output::default()),
+            }),
             kind: structured::Kind::parse(&input["classification"]["kind"])?,
             input,
             authorship: task["classification"]["planAuthorship"].clone(),
             request: request.clone(),
-            output: Mutex::new(Output::default()),
         })
     }
+}
 
-    pub(super) fn prompt(&self) -> JsString {
-        self.kind.prompt(&self.input)
+fn task_key(service: &Service, key: &Key) -> Result<BoundComponentKey> {
+    let binding = service.bound_component("task-content", None)?;
+    if binding.owner_id != key.0 || binding.server_id.as_js_string() != Some(&key.1) {
+        bail!("The worker binding changed before Task preparation.");
     }
+    Ok(binding)
+}
 
-    pub(super) fn output_schema(&self) -> Option<&'static Value> {
-        self.kind.output_schema()
-    }
-
-    pub(super) fn events(self: &Arc<Self>, emit: Emit) -> Emit {
-        let round = self.clone();
+impl Messages {
+    fn events(self: &Arc<Self>, emit: Emit) -> Emit {
+        let messages = self.clone();
         Arc::new(move |event| {
-            // Structured responses are published only after endpoint validation.
-            if round.kind.is_structured() || event["type"] != "agent.message" {
+            if event["type"] != "agent.message" {
                 return Ok(());
             }
-            round.publish(&event["message"], &emit)
+            messages.publish(&event["message"], &emit)
         })
     }
 
@@ -171,7 +236,7 @@ impl Round {
             &self.binding.component.key,
             &context,
             "assistant",
-            "default",
+            self.mode,
             &json!(key),
             content,
         )?;
@@ -189,8 +254,130 @@ impl Round {
         Ok(())
     }
 
-    pub(super) fn finish(&self, mut result: Value) -> Result<Value> {
+    fn final_message(&self, result: &Value) -> Option<Value> {
+        self.output
+            .lock()
+            .unwrap()
+            .final_message
+            .take()
+            .filter(|message| {
+                message.turn == result["turnId"]
+                    && message.thread == result["threadId"]
+                    && message.text == result["text"]
+            })
+            .map(|message| message.cipher)
+    }
+
+    fn seal(
+        &self,
+        message_id: &Value,
+        idempotency: &Value,
+        role: &str,
+        mode: &str,
+        text: &JsString,
+    ) -> Result<Value> {
         self.assert_bound()?;
+        let mut context = self.context.clone();
+        context["messageId"] = message_id.clone();
+        seal_message(
+            &self.binding.component.key,
+            &context,
+            role,
+            mode,
+            idempotency,
+            json!({"type":"text","phase":"final_answer","text":text}),
+        )
+    }
+}
+
+impl Goal {
+    fn open(service: Arc<Service>, command: &Value, key: &Key) -> Result<Self> {
+        let binding = task_key(&service, key)?;
+        let prompt = &command["protectedTaskPrompt"];
+        if prompt["id"] != command["clientMessageId"]
+            || prompt["classification"]["mode"] != "goal"
+            || !prompt["classification"]["attachmentIds"]
+                .as_array()
+                .is_some_and(Vec::is_empty)
+        {
+            bail!("Protected Goal input does not match its admitted host message.");
+        }
+        let context = json!({
+            "ownerId":key.0, "chatId":key.2, "keyRevision":binding.component.key_revision, "messageId":prompt["id"],
+        });
+        let content = decrypt_communication(
+            Communication::TaskMessage,
+            &binding.component.key,
+            &context,
+            &prompt["protectedContent"],
+            prompt.get("classification"),
+        )?;
+        let input = checked("chatMessageContentSchema", &content["content"])?;
+        let text = join(
+            input
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|item| item["type"] == "text")
+                .filter_map(|item| item["text"].as_js_string().cloned()),
+            "\n\n",
+        )
+        .trim();
+        let prompt = if text.is_empty() {
+            "Review the attached files and respond to the user.".into()
+        } else {
+            text
+        };
+        Ok(Self {
+            messages: Arc::new(Messages {
+                service,
+                binding,
+                context,
+                mode: "goal",
+                output: Mutex::new(Output::default()),
+            }),
+            prompt,
+            response: command["resultMode"].clone(),
+        })
+    }
+
+    fn finish(&self, mut result: Value) -> Result<Value> {
+        self.messages.assert_bound()?;
+        let final_message = if self.response["reusePublishedResponse"] == true {
+            self.messages.final_message(&result)
+        } else {
+            None
+        };
+        let message = match final_message {
+            Some(message) => message,
+            None => {
+                let text = result["text"]
+                    .as_js_string()
+                    .context("Missing native Goal output")?;
+                let text = if text.is_empty() {
+                    "The Task Goal completed without a message.".into()
+                } else {
+                    text.clone()
+                };
+                self.messages.seal(
+                    &self.response["messageId"],
+                    &self.response["idempotencyKey"],
+                    "assistant",
+                    "goal",
+                    &text,
+                )?
+            }
+        };
+        result["text"] = json!("");
+        result["structuredResult"] =
+            checked("taskMessageRelayResultSchema", &json!({"message":message}))?;
+        checked("agentTurnResultSchema", &result)
+    }
+}
+
+impl Round {
+    fn finish(&self, mut result: Value) -> Result<Value> {
+        self.messages.assert_bound()?;
         let completed = self.kind.complete(&self.input, &result["text"])?;
         let direct = !self.kind.is_structured();
         let finalizing = completed.objective.is_some();
@@ -235,31 +422,24 @@ impl Round {
             None => Value::Null,
         };
 
-        let published = self.output.lock().unwrap().final_message.take();
-        let assistant = match published {
-            Some(message)
-                if message.turn == result["turnId"]
-                    && message.thread == result["threadId"]
-                    && message.text == result["text"] =>
-            {
-                message.cipher
-            }
-            _ => self.message(
+        let assistant = match self.messages.final_message(&result) {
+            Some(message) => message,
+            None => self.message(
                 "assistant",
                 if direct { "default" } else { "plan" },
                 "task-result",
                 &completed.assistant,
             )?,
         };
-        let secret = &self.binding.component.key;
+        let secret = &self.messages.binding.component.key;
         result["text"] = json!("");
         result["structuredResult"] = checked(
             "taskOperationRelayResultSchema",
             &json!({
                 "chatId":self.request["chatId"],"operationId":self.request["operationId"],"fingerprint":self.request["fingerprint"],
                 "classification":round["classification"],
-                "protectedResult":encrypt_communication(Communication::TaskPlanningRound, secret, &self.context, &round)?,
-                "task":opaque(Communication::Task, secret, &self.context, &task)?,
+                "protectedResult":encrypt_communication(Communication::TaskPlanningRound, secret, &self.messages.context, &round)?,
+                "task":opaque(Communication::Task, secret, &self.messages.context, &task)?,
                 "assistantMessage":assistant,"goal":goal,
             }),
         )?;
@@ -267,27 +447,19 @@ impl Round {
     }
 
     fn message(&self, role: &str, mode: &str, key: &str, text: &JsString) -> Result<Value> {
-        let mut context = self.context.clone();
-        context["messageId"] = json!(uuid::Uuid::new_v4().to_string());
+        let id = json!(uuid::Uuid::new_v4().to_string());
         let idempotency = json!(format!(
             "{key}:{}",
             self.request["operationId"].as_str().unwrap()
         ));
-        seal_message(
-            &self.binding.component.key,
-            &context,
-            role,
-            mode,
-            &idempotency,
-            json!({"type":"text","phase":"final_answer","text":text}),
-        )
+        self.messages.seal(&id, &idempotency, role, mode, text)
     }
 
     fn goal_payload(&self, thread: &Value, task: &Value, objective: &JsString) -> Result<Value> {
-        let mut context = self.context.clone();
+        let mut context = self.messages.context.clone();
         context["threadId"] = thread.clone();
         let classification =
-            json!({"chatId":self.context["chatId"],"threadId":thread,"status":"active"});
+            json!({"chatId":self.messages.context["chatId"],"threadId":thread,"status":"active"});
         let mut failed = task.clone();
         let occurred_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let mut error = json!({"code":"task-goal-start-failed","operationKind":"finalize","occurredAt":occurred_at});
@@ -303,10 +475,10 @@ impl Round {
             "\n\n## Final implementation plan\n\n".into(),
             task["finalPlanMarkdown"].as_js_string().unwrap().clone(),
         ]);
-        let secret = &self.binding.component.key;
+        let secret = &self.messages.binding.component.key;
         Ok(json!({
             "classification":classification,
-            "failureTask":opaque(Communication::Task, secret, &self.context, &failed)?,
+            "failureTask":opaque(Communication::Task, secret, &self.messages.context, &failed)?,
             "protectedObjective":encrypt_communication(Communication::TaskGoalObjective, secret, &context,
                 &json!({"version":1,"classification":classification,"objective":objective}))?,
             "startMessage":self.message("user", "goal", "task-goal", &prompt)?,
