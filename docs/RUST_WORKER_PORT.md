@@ -3915,3 +3915,29 @@ also checks ordering against the RPC reply while the ordinary event consumer
 is idle. Connecting the history source to production managed chat preparation
 and validating canonical publication through the Rust server remain open.
 Production still selects Node.
+
+## 67. Recover managed thread preparation across runtime replacement
+
+Reference: `36e0b873628936fc6d24d59d4d3aae12bde62b3c` (#3229).
+The Rust managed-session coordinator serializes requests by authenticated chat
+scope and reads the existing `managed-chat-sessions` journal. It writes the
+native thread ID before later configuration or server acknowledgment, and
+retains that ID in memory if the journal write fails. It upgrades matching
+version-one associations and separates account migrations from same-account
+model routing changes. Explicit server bindings remain authoritative. A
+replacement can redirect a predecessor only after canonical commitment.
+
+Native preparation starts or resumes the exact thread, applies the managed
+overlay and checks the native acknowledgment. Preserving attachment inherits
+native security and subagent settings. The worker retries the specific
+active-writer rejection during detached process recovery and fences replies
+with the transport generation and native thread close version.
+
+Local macOS ARM64 validation forced an interruption after thread identification,
+replaced the app-server process, resumed the same persisted thread and later
+attached by its canonical ID. Bundled Codex then streamed a real turn through
+a loopback provider and retained it in encrypted history. The scoped setup was
+exercised with both local and portable Grok credentials. Production
+`chat.thread.ensure` still needs the managed MCP, settings, and execution-owner
+configuration that supplies this preparation path, plus canonical History
+publication through the server. Production still selects Node.

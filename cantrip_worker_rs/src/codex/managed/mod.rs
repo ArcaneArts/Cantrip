@@ -208,6 +208,10 @@ impl Runtime {
             && self.0.session.generation() == Some(self.generation())
     }
 
+    pub(super) fn thread_version(&self, thread: &JsString) -> u64 {
+        self.0.session.thread_version(thread)
+    }
+
     pub fn admission(&self) -> &Adapter {
         &self.0.adapter
     }
