@@ -251,6 +251,7 @@ async fn cycle(
         encryption.clone(),
         logs.clone(),
     )?;
+    let goals = crate::codex::goals::Goals::new(thread_preparation.clone(), encryption.clone());
     let turns = crate::codex::turn::Turns::new(
         thread_preparation.clone(),
         encryption.clone(),
@@ -369,6 +370,17 @@ async fn cycle(
                         let result = tokio::task::spawn_blocking(move || {
                             crate::task_content::execute(&encryption, &command)
                         }).await.unwrap_or_else(|error| Err(error.into()));
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
+                if kind == crate::codex::goals::CREATE {
+                    let goals = goals.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = goals.create(&request["command"]).await;
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
                     continue;
@@ -592,6 +604,7 @@ async fn cycle(
         }
     }
     drop(turns);
+    drop(goals);
     let preparation_closed = thread_preparation.close().await;
     let github_closed = github.drain().await;
     let terminals_closed = terminals.close().await;

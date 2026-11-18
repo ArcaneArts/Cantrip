@@ -163,6 +163,91 @@ pub(super) async fn apply_plan_mode(
         "mode": mode,
         "settings": json!({"model": model, "reasoning_effort": effort, "developer_instructions": Value::Null}),
     });
+    apply_settings(
+        runtime,
+        thread,
+        json!({"collaborationMode":collaboration}),
+        |settings| {
+            let actual = &settings["collaborationMode"];
+            if actual["mode"] != *mode
+                || actual["settings"]["model"] != *model
+                || actual["settings"]["reasoning_effort"] != effort
+            {
+                bail!("Native preparation applied different collaboration settings.");
+            }
+            Ok(())
+        },
+    )
+    .await
+}
+
+pub(super) async fn apply_goal_permissions(
+    runtime: &Runtime,
+    thread: &LoadedThread,
+    command: &Value,
+    named: bool,
+) -> Result<()> {
+    let target = &command["permissionProfileId"];
+    let yolo = named && target == ":yolo";
+    let approval = if yolo { "never" } else { "on-request" };
+    let permissions = if yolo {
+        json!(":danger-full-access")
+    } else {
+        target.clone()
+    };
+    if named {
+        let observed = call(
+            runtime,
+            "thread/settings/read",
+            json!({"threadId":thread.id()}),
+        )
+        .await?;
+        thread.assert_current(runtime)?;
+        if observed["threadId"].as_js_string() != Some(thread.id()) {
+            bail!("Native Goal settings read returned another thread.");
+        }
+        let actual = &observed["threadSettings"];
+        if actual["approvalPolicy"] == approval
+            && actual["activePermissionProfile"]["id"] == permissions
+        {
+            return Ok(());
+        }
+    }
+    let mut settings = json!({"approvalPolicy":approval});
+    if named {
+        settings["permissions"] = permissions.clone();
+    } else {
+        let cwd = Path::new(
+            command["cwd"]
+                .as_str()
+                .context("Invalid native workspace")?,
+        );
+        let cwd = std::path::absolute(cwd)?;
+        let cwd = cwd.to_str().context("Invalid native workspace path")?;
+        settings["sandboxPolicy"] = if target == ":read-only" {
+            json!({"type":"readOnly","networkAccess":false})
+        } else {
+            json!({"type":"workspaceWrite","networkAccess":false,"writableRoots":vec![cwd],
+                   "excludeTmpdirEnvVar":false,"excludeSlashTmp":false})
+        };
+    }
+    apply_settings(runtime, thread, settings, |actual| {
+        if actual["approvalPolicy"] != approval
+            || (named && actual["activePermissionProfile"]["id"] != permissions)
+        {
+            bail!("Native Goal did not apply the selected implementation permissions.");
+        }
+        Ok(())
+    })
+    .await
+}
+
+async fn apply_settings(
+    runtime: &Runtime,
+    thread: &LoadedThread,
+    mut updates: Value,
+    verify: impl FnOnce(&Value) -> Result<()>,
+) -> Result<()> {
     let operation = uuid::Uuid::new_v4().to_string();
     let (events, mut received) = tokio::sync::mpsc::unbounded_channel();
     let observer = runtime.history().observe(
@@ -187,9 +272,9 @@ pub(super) async fn apply_plan_mode(
     let signal = observer.signal();
     let applied = async {
         thread.assert_current(runtime)?;
-        let ack = call(runtime, "thread/settings/update", json!({
-            "threadId": thread.id(), "operationId": operation, "collaborationMode": collaboration,
-        })).await?;
+        updates["threadId"] = json!(thread.id());
+        updates["operationId"] = json!(operation);
+        let ack = call(runtime, "thread/settings/update", updates).await?;
         thread.assert_current(runtime)?;
         if ack["operationId"] != operation {
             bail!("Codex acknowledged a different preparation settings operation.");
@@ -220,14 +305,7 @@ pub(super) async fn apply_plan_mode(
             if frame["params"]["submissionId"].as_js_string() != Some(submission) {
                 continue;
             }
-            let actual = &frame["params"]["threadSettings"]["collaborationMode"];
-            if actual["mode"] != *mode
-                || actual["settings"]["model"] != *model
-                || actual["settings"]["reasoning_effort"] != effort
-            {
-                bail!("Native preparation applied different settings.");
-            }
-            return Ok(());
+            return verify(&frame["params"]["threadSettings"]);
         }
     };
     let result = tokio::select! {

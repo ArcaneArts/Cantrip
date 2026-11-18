@@ -4,6 +4,7 @@ pub mod admission;
 pub mod catalog;
 pub mod diagnostics;
 pub mod discovery;
+pub(crate) mod goals;
 pub mod managed;
 pub(crate) mod observation;
 pub mod preparation;

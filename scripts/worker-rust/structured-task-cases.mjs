@@ -34,6 +34,7 @@ export async function verifyStructuredTasks({
   available,
   attach,
   diagnostics,
+  activate,
 }) {
   const binding = { ownerId, keyRevision: 2, componentKey: key };
   const privatePlan = "Private structured plan result 🧪";
@@ -247,6 +248,7 @@ export async function verifyStructuredTasks({
         return { objective, startMessage, failure };
       };
       assert.deepEqual(await openGoal(reply.result), await openGoal(reference));
+      await activate?.({ command, result: reply.result });
     }
   }
   await stop();

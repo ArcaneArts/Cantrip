@@ -26,7 +26,7 @@ checkpointed reflog/lost-commit recovery, worker-scoped GitHub catalog operation
 and repository-scoped issue detail/mutations, issue/PR search, PR inspection, creation, reviews, lifecycle, checkout preparation and agent context,
 GitHub inbox, Actions and releases, plus native replica provisioning and
 managed-link repair, synchronization and guarded removal over the existing
-placement/ownership records. Eighty-one outer command types have native handlers:
+placement/ownership records. Eighty-two outer command types have native handlers:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
 `diagnostics.logs.read`, `worker.encryption.refresh`, `chat.sync` (cold host observation),
 `chat.thread.ensure` (managed host attachment), `chat.turn` and `chat.interrupt`
@@ -35,6 +35,7 @@ canonical History for admitted project turns, plus protected Task rounds),
 `chat.message.protect`,
 `chat.messages.protect`, `chat.messages.reprotect`, `chat.turn.protect`,
 `task.message.protect` and `task.operation.prepare` (encrypted Task input),
+`chat.goal.create` (activation from an encrypted Task finalization),
 `chat.native-logical.cancel`, `chat.native-logical.complete` and
 `chat.native-control` (interrupt for active managed host text turns),
 `model.chatgpt.catalog`,
@@ -4284,3 +4285,31 @@ reference opens the finalized objective, start message, and failure record.
 Goal activation after finalization, autonomous continuation, Task
 attachments, effective policy bodies, and pause and resumption remain open.
 Production still selects Node.
+
+
+## 80. Activate the native Goal from finalized Task state
+
+Reference commit `ef2f8f1fdcb56c268076a980fd2017971719b88f` (#3242).
+
+The Rust worker handles the encrypted Task form of `chat.goal.create`.
+It authenticates the finalizer's objective and start message, restores the
+selected implementation permissions on the destination Codex thread, and
+places the complete plan in the existing private, immutable attachment
+layout. The native Goal objective references that file. The worker returns
+the encrypted Goal snapshot and any requested control message. A startup
+failure returns encrypted retryable Task state with its plan retained.
+
+The worker reserves the first-input identity before reattaching an existing
+thread, and parks automatic Goal inference for that exact native runner
+while the canonical input is pending. An activation retry reads existing
+native state and reuses a matching active Goal.
+
+The local macOS ARM64 smoke finalizes a Task with bundled Codex and activates
+the resulting Goal on the same thread. It opens the encrypted snapshot and
+start message in Node, verifies plan bytes and private permissions, preserves
+timestamps on retry, and rejects a mismatched source thread without making
+another provider request. Core and the provider are disposable local peers.
+
+The canonical first Goal turn, autonomous continuation, Goal observation and
+controls, Task attachment and policy input, and pause and resumption remain
+open. Production still selects Node.
