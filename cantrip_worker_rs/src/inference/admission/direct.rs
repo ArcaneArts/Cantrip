@@ -22,7 +22,20 @@ struct SourceInner {
 /// alone is not authorization; native transport binding remains one-time.
 #[derive(Clone)]
 pub struct Source(Arc<SourceInner>);
+#[derive(Clone)]
+pub(crate) struct WeakSource(std::sync::Weak<SourceInner>);
+impl WeakSource {
+    pub(crate) fn alive(&self) -> bool {
+        self.0.strong_count() > 0
+    }
+    pub(crate) fn matches(&self, source: &Source) -> bool {
+        self.0.ptr_eq(&Arc::downgrade(&source.0))
+    }
+}
 impl Source {
+    pub(crate) fn downgrade(&self) -> WeakSource {
+        WeakSource(Arc::downgrade(&self.0))
+    }
     pub fn claimed(operation: JsString, parent: Option<Signal>) -> Self {
         let (abort, signal) = Abort::new();
         let signal = Signal::any(parent.into_iter().chain(std::iter::once(signal)).collect());
@@ -45,7 +58,14 @@ impl Source {
         self.0.signal.clone()
     }
     pub fn released(&self) -> Work<()> {
-        self.0.released.work()
+        let pending = self.0.released.clone();
+        Box::pin(async move {
+            match pending.work().await {
+                Ok(()) => Ok(()),
+                // Observation loss is not explicit canonical source release.
+                Err(_) => std::future::pending().await,
+            }
+        })
     }
     pub fn assert_current(&self) -> Result<()> {
         self.0.signal.check()?;
