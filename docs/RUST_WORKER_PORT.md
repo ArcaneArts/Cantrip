@@ -4526,3 +4526,25 @@ with the real Rust worker and bundled Codex.
 
 Queue preparation and wake notifications, general queued commands and model
 inputs, and cold Goal recovery remain open. Production still selects Node.
+
+## 89. Prepare edits to retained native queue inputs
+
+Reference commit `5ce2aab1a0975e753d57f6cc863b75810064b767` (#3251).
+
+The Rust worker accepts Core's `chat.queue.prepare` command for encrypted
+queue edits. It opens the pending native vector against the selected server,
+chat, and prompt, reconciles changed text and attachments, and preserves
+unedited GUI and retained terminal input. Edits can change Goal, plan, and
+shell classification. Any mode change updates both protected display and
+pending message envelopes while preserving the queue and message identities.
+Queue preparation and Goal execution share the native vector decoder and the
+generated contract for the existing encrypted format.
+
+The local macOS ARM64 command-socket fixture compares the opened Rust result
+with the Node codec for edited text and media, native spans, attachment
+selection, slash mappings, and legacy prompts. It hands the normalized
+encrypted Goal to the real Rust worker and bundled Codex for two autonomous
+turns and queued clear. Core and the provider are local fixture peers.
+
+Queue wake notifications, scheduling and execution of general queued inputs,
+and cold Goal recovery remain open. Production still selects Node.

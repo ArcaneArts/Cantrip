@@ -87,6 +87,10 @@ pub(super) fn load() -> Contracts {
             .expect("embedded worker provider access contracts"),
     );
     contracts.append(
+        serde_json::from_str(include_str!("../contracts/worker-queue-input.json"))
+            .expect("embedded retained worker queue input contract"),
+    );
+    contracts.append(
         serde_json::from_str(include_str!("../contracts/worker-task-content.json"))
             .expect("embedded worker Task content contracts"),
     );

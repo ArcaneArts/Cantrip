@@ -1,12 +1,8 @@
 import assert from "node:assert/strict";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
-import {
-  decryptChatMessageProtectedContent,
-  deriveFieldKey,
-  encryptPayload,
-} from "../../packages/crypto/dist/index.js";
+import { decryptChatMessageProtectedContent } from "../../packages/crypto/dist/index.js";
 import {
   managedQueueReadSchema,
   managedQueueSnapshotSchema,
@@ -21,6 +17,7 @@ import {
   protectNativeCommandContent,
 } from "../../cantrip_worker/src/native-command-content.ts";
 import { GuiHistoryPeer } from "./gui-history-cases.mjs";
+import { verifyQueuePreparation } from "./queue-prepare-cases.mjs";
 import { protectChatMessage } from "../../cantrip_worker/src/chat-message-encryption.ts";
 
 export async function verifyAutonomousGoal({
@@ -102,44 +99,14 @@ export async function verifyAutonomousGoal({
       },
       service: oracle,
     });
-  const { key, keyRevision } = oracle.componentKey("chat-content");
-  const associatedData = {
-    ownerId: oracle.ownerId(),
-    component: "chat-content",
-    table: "managed-queue",
-    rowId: createHash("sha256")
-      .update(
-        JSON.stringify([
-          oracle.serverIdentity(),
-          session.chatId,
-          claim.promptId,
-        ]),
-      )
-      .digest("hex"),
-    field: "native-input",
-    formatVersion: 1,
-    keyRevision,
-  };
-  const retainedText = "/goal The previous version of the project objective.";
-  const protectedNativeInput = await encryptPayload({
-    key: deriveFieldKey({ componentKey: key, ...associatedData }),
-    associatedData,
-    plaintext: new TextEncoder().encode(
-      JSON.stringify({
-        version: 1,
-        input: [
-          { type: "text", text: retainedText, text_elements: [] },
-          {
-            type: "image",
-            url: `data:image/png;base64,${media.toString("base64")}`,
-          },
-        ],
-        action: "parseSlash",
-        executionMethod: "thread/goal/set",
-        displayText: retainedText,
-        attachmentMap: [],
-      }),
-    ),
+  const prepared = await verifyQueuePreparation({
+    request,
+    expectSuccess,
+    oracle,
+    chatId: session.chatId,
+    goalId: claim.promptId,
+    goalText,
+    media,
   });
   const queued = {
     ...enter,
@@ -147,10 +114,10 @@ export async function verifyAutonomousGoal({
     subagentDefaults: null,
     queueClaim: { id: claim.id, promptRevision: claim.promptRevision },
     queuedPromptId: claim.promptId,
-    nativeAction: "parseSlash",
-    executionMethod: "thread/goal/set",
-    protectedPrompt: await pending(`/goal ${goalText}`),
-    protectedNativeInput,
+    nativeAction: prepared.nativeAction,
+    executionMethod: prepared.executionMethod,
+    protectedPrompt: prepared.pendingMessage,
+    protectedNativeInput: prepared.protectedNativeInput,
   };
   let history;
   let next = 0;
