@@ -34,6 +34,7 @@ import { protectChatPlanState } from "../../cantrip_worker/src/chat-plan-encrypt
 import { admit, GuiReceiptPeer, logical } from "./gui-receipt-cases.mjs";
 import { GuiHistoryPeer } from "./gui-history-cases.mjs";
 import { verifyTaskOutcomeRecovery } from "./task-outcome-recovery.mjs";
+import { verifyTaskPreparation } from "./task-preparation-cases.mjs";
 
 const { values } = parseArgs({
   options: {
@@ -43,6 +44,7 @@ const { values } = parseArgs({
     protected: { type: "boolean" },
     receipts: { type: "boolean" },
     outcomes: { type: "boolean" },
+    taskPreparation: { type: "boolean" },
   },
 });
 assert.ok(values.worker && values.codex);
@@ -77,10 +79,13 @@ const priorText = "Private preceding assistant message.";
 const privateStep = "Private plan step.";
 const privateQuestion = "Private retained plan question.";
 const chatKey = new Uint8Array(32).fill(41);
+const taskKey = new Uint8Array(32).fill(37);
 const oracle = {
   ownerId: () => ownerId,
   serverIdentity: () => serverId,
   componentKey: (scope) => {
+    if (scope === "task-content")
+      return { key: taskKey.slice(), keyRevision: 2 };
     assert.equal(scope, "chat-content");
     return { key: chatKey.slice(), keyRevision: 1 };
   },
@@ -225,32 +230,48 @@ const server = createServer(async (request, response) => {
         createdAt: stamp,
         updatedAt: stamp,
       },
-      grants:
-        values.protected || values.receipts
-          ? [
-              {
-                id: randomUUID(),
-                ownerId,
-                principalId,
-                component: "chat-content",
-                keyRevision: 1,
-                state: "active",
-                revision: 1,
-                revokedAt: null,
-                revokedReason: null,
-                createdAt: stamp,
-                updatedAt: stamp,
-                wrappedKey: await wrapComponentKeyForWorker({
-                  ownerId,
-                  workerId,
+      grants: await Promise.all(
+        [
+          ...(values.protected || values.receipts || values.taskPreparation
+            ? [
+                {
                   component: "chat-content",
                   keyRevision: 1,
                   componentKey: chatKey,
-                  workerPublicKey: publicKey,
-                }),
-              },
-            ]
-          : [],
+                },
+              ]
+            : []),
+          ...(values.taskPreparation
+            ? [
+                {
+                  component: "task-content",
+                  keyRevision: 2,
+                  componentKey: taskKey,
+                },
+              ]
+            : []),
+        ].map(async ({ component, keyRevision, componentKey }) => ({
+          id: randomUUID(),
+          ownerId,
+          principalId,
+          component,
+          keyRevision,
+          state: "active",
+          revision: 1,
+          revokedAt: null,
+          revokedReason: null,
+          createdAt: stamp,
+          updatedAt: stamp,
+          wrappedKey: await wrapComponentKeyForWorker({
+            ownerId,
+            workerId,
+            component,
+            keyRevision,
+            componentKey,
+            workerPublicKey: publicKey,
+          }),
+        })),
+      ),
     });
   } else if (url.pathname === "/api/internal/workers/heartbeat") send({});
   else if (
@@ -399,7 +420,8 @@ async function ensure(fields, event = () => {}, requestId = randomUUID()) {
       requestId,
       command:
         fields.type === "chat.native-control" ||
-        fields.type?.startsWith("chat.native-logical.")
+        fields.type?.startsWith("chat.native-logical.") ||
+        fields.type?.startsWith("task.")
           ? fields
           : {
               type: "chat.thread.ensure",
@@ -1366,6 +1388,17 @@ try {
     scratchRootId: "isolated",
   };
   await start();
+  if (values.taskPreparation) {
+    await verifyTaskPreparation({
+      dispatch: ensure,
+      ownerId,
+      oracle,
+      key: taskKey,
+    });
+    console.log(
+      "Native Task message conversion and four encrypted operation preparations match the Node reference.",
+    );
+  }
   const { threadId } = await expectThread({ session, planMode: "plan" });
   const idle = await bindings();
   assert.equal(idle.length, 1);

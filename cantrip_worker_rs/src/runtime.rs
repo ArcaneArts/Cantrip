@@ -349,6 +349,20 @@ async fn cycle(
                     });
                     continue;
                 }
+                if crate::task_content::supports(kind) {
+                    let encryption = encryption.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let command = request["command"].clone();
+                        let result = tokio::task::spawn_blocking(move || {
+                            crate::task_content::execute(&encryption, &command)
+                        }).await.unwrap_or_else(|error| Err(error.into()));
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if matches!(kind, crate::codex::turn::COMPLETE | crate::codex::turn::CANCEL) {
                     let result = turns.logical(command);
                     finish(&request, &worker, logs, &outgoing, began, &result);
