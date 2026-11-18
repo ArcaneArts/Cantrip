@@ -1,5 +1,6 @@
 //! Server-owned host turns. The command channel supplies the execution lane;
 //! the native runtime supplies the turn identity and terminal settlement.
+mod control;
 mod output;
 mod params;
 mod protected;
@@ -25,7 +26,7 @@ use cantrip_wire::{JsString, Value, payload_digest, value::json};
 use std::{
     collections::{HashMap, HashSet},
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
         atomic::{AtomicBool, Ordering},
     },
     time::Duration,
@@ -34,6 +35,7 @@ use tokio::sync::{mpsc, watch};
 
 pub(crate) const RUN: &str = "chat.turn";
 pub(crate) const INTERRUPT: &str = "chat.interrupt";
+pub(crate) const CONTROL: &str = "chat.native-control";
 pub(crate) const COMPLETE: &str = "chat.native-logical.complete";
 pub(crate) const CANCEL: &str = "chat.native-logical.cancel";
 const RPC_TIMEOUT: Duration = Duration::from_secs(120);
@@ -57,7 +59,8 @@ pub(crate) struct Turns {
 }
 
 struct Active {
-    root: Option<receipt::Root>,
+    root: Option<receipt::Operation>,
+    control: OnceLock<control::Binding>,
     logical_finished: AtomicBool,
     preparation: Abort,
     phase: Mutex<Phase>,
@@ -72,6 +75,7 @@ enum Phase {
         thread: JsString,
         turn: JsString,
     },
+    Terminal,
     Finished,
 }
 
@@ -139,7 +143,14 @@ impl Active {
                     .await;
                 return match result {
                     Ok(_) => Ok(true),
-                    Err(_) if matches!(*self.phase.lock().unwrap(), Phase::Finished) => Ok(false),
+                    Err(_)
+                        if matches!(
+                            *self.phase.lock().unwrap(),
+                            Phase::Terminal | Phase::Finished
+                        ) =>
+                    {
+                        Ok(false)
+                    }
                     Err(error) => Err(error),
                 };
             }
@@ -254,11 +265,12 @@ impl Turns {
     async fn run_owned(&self, incoming: &Value, emit: Emit) -> Result<Value> {
         params::validate(incoming)?;
         let key = self.key(incoming)?;
-        let root = receipt::Root::read(incoming)?;
+        let root = receipt::Operation::read(incoming)?;
         let (abort, signal) = Abort::new();
         let active = Arc::new(Active {
             logical_finished: AtomicBool::new(root.is_none()),
             root: root.clone(),
+            control: OnceLock::new(),
             preparation: abort,
             phase: Mutex::new(Phase::Preparing(
                 incoming["threadId"].as_js_string().cloned(),
@@ -326,6 +338,10 @@ impl Turns {
             .transpose()?;
         if let Some(receipt) = &receipt {
             receipt.prepare().await?;
+            let _ = active.control.set(control::Binding::new(
+                receipt.session().clone(),
+                command["permissionProfileId"].clone(),
+            ));
         }
         signal.check()?;
         prepared.thread.assert_current(runtime)?;
@@ -429,7 +445,7 @@ impl Turns {
                         if let Some(receipt) = &receipt {
                             let failure = error.downcast_ref::<Failure>().unwrap();
                             receipt
-                                .result(&json!({"error": failure.native_error}), None)
+                                .rejected(failure.native_error.as_ref().unwrap())
                                 .await?;
                         }
                         return Err(error);
@@ -459,15 +475,23 @@ impl Turns {
                     turn: turn.clone(),
                 });
                 let applied = async {
-                    if let (Some(receipt), Some(reply)) = (&receipt, &reply) {
-                        receipt.result(reply, Some(&turn)).await?;
-                    }
-                    Ok::<_, anyhow::Error>(())
+                    let Some(receipt) = &receipt else {
+                        return Ok(());
+                    };
+                    let result = match &reply {
+                        Some(reply) => receipt.applied(reply, Some(&turn)).await,
+                        None => receipt.observed(&turn, None).await,
+                    };
+                    active.control.get().unwrap().published(result.is_ok());
+                    result
                 };
-                let (result, applied) = tokio::join!(
-                    output::collect(&mut events, &transport, thread, &turn, &emit),
-                    applied,
-                );
+                let observe = async {
+                    let result =
+                        output::collect(&mut events, &transport, thread, &turn, &emit).await;
+                    active.set(Phase::Terminal);
+                    result
+                };
+                let (result, applied) = tokio::join!(observe, applied);
                 if transport.check().is_err() {
                     runtime.retired().await?;
                 }
@@ -475,7 +499,7 @@ impl Turns {
                 bound?;
                 let settled = result?;
                 if let Some(receipt) = &receipt {
-                    receipt.terminal(&turn, settled.status).await?;
+                    receipt.observed(&turn, Some(settled.status)).await?;
                 }
                 applied?;
                 settled.result

@@ -13,6 +13,23 @@ pub fn protect_native_command_result(
     context: &Value,
     content: &Value,
 ) -> Result<(Value, String)> {
+    protect(component_key, context, "result", content)
+}
+
+pub fn protect_native_command_request(
+    component_key: &[u8],
+    context: &Value,
+    content: &Value,
+) -> Result<(Value, String)> {
+    protect(component_key, context, "request", content)
+}
+
+fn protect(
+    component_key: &[u8],
+    context: &Value,
+    field: &str,
+    content: &Value,
+) -> Result<(Value, String)> {
     let row = Sha256::digest(
         json!([
             context["serverId"].clone(),
@@ -28,7 +45,7 @@ pub fn protect_native_command_result(
         &json!("chat-content"),
         &json!("native-command-admission"),
         &json!(row),
-        &json!("result"),
+        &json!(field),
     )?;
     let key = derive_field_key(component_key, &associated)?;
     let bytes = Zeroizing::new(content.stringify().into_bytes());
