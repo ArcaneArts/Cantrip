@@ -123,8 +123,8 @@ loaded by a production service.
 | Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Workspace/folders/routing, nine protected host Explorer operations and bound file-document text read/write                                                                                                                                                                                                                                                                                              | Actual Rust worker/server persists encrypted resources, resolves opaque roots, saves files, rejects replay/mismatched document paths and reopens after restart. Paged readers, media/tail, transfers, activity/watches and delegated OS execution remain pending.                                                                |
 | Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub catalog, issue detail/mutations, issue/PR search, inspection, creation, reviews, lifecycle, checkout preparation, agent context, inbox, Actions/releases and replica provisioning/synchronization/removal/link repair | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, exports/sharing and delegated OS Git remain pending |
 | History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter, authenticated HTTP client, canonical content preparation, coherent archive recovery, native item rendering and canonical projector/bootstrap/rebase orchestration                                                                                                                                                                                                                       | Journal/outbox/projection, native protected preparation and coherent HTTP archive recovery pass focused checks; verified retained-context/child-scope and durable media/attachment adapters are native; live output identity, observation/capture and managed source/projection retry/recovery are native; verified child discovery and the top-level coordinator are native, including production worker startup recovery; live Codex/provider capture integration remains pending                                                                                                                                                    |
-| Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Actual provider protocol fixtures, streaming/media/usage, refresh, cancellation, failure and paid-work bounds                                                                                                                                                                                                                    |
-| Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Native stdio RPC, installed/bundled discovery and startup verification; managed execution pending | Manifest verification/probe, native app-server processes, queue ownership, acceptance/commit and restart recovery                                                                                                                                                                                                                |
+| Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Native provider-error classification/redaction; provider authentication and execution adapters pending | Actual provider protocol fixtures, streaming/media/usage, refresh, cancellation, failure and paid-work bounds                                                                                                                                                                                                                    |
+| Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Native stdio discovery plus owned managed process/WebSocket session and execution RPC request tracking; execution policy/admission integration pending | Manifest verification/probe, native app-server processes, queue ownership, acceptance/commit and restart recovery                                                                                                                                                                                                                |
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
 | Terminals/run supervision          | Terminal manager/canonical/private state, run-configuration providers and supervisors                                                     | Native host service reconciliation/restart and owned PTY supervision                                                                                                                                                                                                                                                                                                                                    | Actual encrypted server/worker service enable, idempotence, restart, recovery and disable pass. Interactive commands, canonical terminal/replay, attachment/input/resize, CLI broker environments, run providers and delegated OS services remain pending.                                                                       |
 | WorkerLink/direct/tunnels          | gateways/peer/WebRTC/direct broker, tunnel protection/routing/adapters                                                                    | Native framing/tunnel crypto; serving adapters pending                                                                                                                                                                                                                                                                                                                                                  | Existing frame fixtures plus actual ICE/TURN/WebRTC interoperability, bounded backpressure, stale grant/session and disconnect behavior                                                                                                                                                                                          |
@@ -3350,3 +3350,84 @@ Production packaging still selects Node; native outer handlers remain 59.
 Windows/Linux runtime execution, hosted development Actions, physical devices,
 VM/container campaigns, signing and deployment were not performed. The complete
 worker replacement goal remains active.
+
+
+## 53. Managed Codex process transport and execution RPC
+
+Reference: `e94cf70507a5dab72f74ed1c9c83a33b831f8296` (#3215).
+`codex::process_transport` now owns native managed app-server launch, stdout/stderr
+endpoint discovery, the existing sanitized startup diagnostic ring and actual
+reaped-process evidence. `codex::session` connects the WebSocket, preserves the
+100 MiB frame/message limits, supplies the existing initialization capabilities
+and 120-second deadline, forwards server requests/notifications and retires its
+socket and child with joined cleanup. Session observations carry an immutable
+generation; transport loss makes the current generation unavailable.
+
+`codex::rpc_requests` implements pending observations independently from native
+settlement. A timeout rejects its waiter but retains settlement observers and
+private-inference IDs until a matching reply. Transport loss rejects observations
+without claiming settlement. Only a synchronous send rejection calls `not_sent`.
+Observer failure cannot prevent the original reply from resolving. Reentrant
+callbacks run outside registry locks; registration and deadline admission share
+the lock so a timer cannot run before its request exists. Missing response values
+remain distinct from explicit JSON null through `Response = Option<Value>`.
+Typed native failures retain the original error/data and request method for the
+owner, while their displayed message uses the native provider-error policy.
+
+Private late inference responses enter diagnostics only as status markers.
+Native resource-protection and inference-admission controls bypass the general
+diagnostic pipeline and go directly to the owning adapter, preserving the Node
+runtime's ordering. Endpoint diagnostics retain known error classifications
+without echoing arbitrary backend bodies. Provider errors preserve secret
+redaction, Z.ai status/reset hints and ChatGPT expired-token detection.
+UTF-16 diagnostic messages and unknown RPC payload fields are retained.
+
+A closed socket, failed wait channel or attempted signal never proves process
+exit. The monitor publishes a separate confirmation bit obtained from the actual
+SDK exit status. Only confirmed status produces `ProcessExited`; explicit close
+reports failure if reaping could not be confirmed. The existing SDK accessor is
+reused without another vendor/dependency change.
+
+Focused local validation on macOS ARM64:
+
+- 164 comparisons use the actual Node parser/provider functions and request
+  class, then actual Node/native clients against owned native WebSocket peers.
+  They cover deadlines, late/private replies, send rejection, failing settlement
+  callbacks, abandoned responses, missing/null results, Unicode, malformed
+  frames, server requests, notifications, private controls and repeated close.
+- A peer closes its socket while holding its native process alive until the
+  fixture explicitly releases it. Both implementations reject observations
+  without settlement, invalidate the generation and report process exit only
+  after the real child exits. This uses explicit fixture synchronization rather
+  than a timing assumption. Startup failure and endpoint deadline cleanup also
+  exercise actual owned children.
+- The existing native Codex 0.166.0 bundle opens real managed WebSocket sessions,
+  initializes and lists empty local thread histories through both clients.
+  Each process has a separate owned profile; its reported `codexHome` is checked
+  against that profile's actual realpath before comparing the injected path
+  difference. Both native children are reaped. No inference or paid provider
+  calls occur.
+- All 25 selected existing provider-error and RPC parser/endpoint/startup tests
+  pass; 78 unrelated tests in the same file are intentionally not selected.
+- Three native units cover concurrent reentrant replies, private late settlement
+  and a canceled native wait channel never becoming confirmed exit evidence.
+- Worker/fixture builds, all-target worker Clippy with warnings denied,
+  formatting and diff checks pass. No Cargo dependencies, protocol contracts,
+  server routes or persistent formats change.
+
+Fixture corrections created the real runtime's required home directories and
+compared its reported home against each separate profile instead of expecting
+identical injected paths. The console-only oracle still uses Node; native
+fixture, peer and bundled Codex processes have Node absent from PATH.
+
+These are real native worker-library implementations with real managed Codex
+acceptance, not completed inference/admission orchestration. Production startup
+still uses the discovery integration from #3215; the runtime owner must next
+connect managed sessions to protected execution preparation, admission/tickets,
+queues/settings, history observations, providers and task/goal recovery. No new
+execution capability is advertised. Production packaging still selects Node and
+native outer command handlers remain 59. Remaining terminals, data planes,
+browsers, OS/helpers, upgrades and packaging/default cutover are still required.
+No full Cantrip-server integration suite, Windows/Linux runtime campaign, hosted
+development Actions, physical devices, signing or deployment ran for this cycle.
+The complete worker replacement goal remains active.
