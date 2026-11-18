@@ -155,11 +155,16 @@ impl cantrip_worker::history::projector::Resolver for ClientContext {
     }
 }
 impl live::identity::ClientApi for ClientContext {
-    fn open(&self, input: Value, _: Option<cantrip_worker::metadata::Signal>) -> Work<Value> {
+    fn open(&self, input: Value, signal: Option<cantrip_worker::metadata::Signal>) -> Work<Value> {
         let running = self.0.begin("open", input);
         let this = self.0.clone();
         cantrip_transport::lifecycle::owned(async move {
-            running.await?;
+            if let Some(signal) = signal {
+                signal.check()?;
+                tokio::select! { result=running=>result?, reason=signal.cancelled()=>return Err(reason.into()) }
+            } else {
+                running.await?;
+            }
             let config = this.config.lock().unwrap();
             Ok(config
                 .get("openResult")

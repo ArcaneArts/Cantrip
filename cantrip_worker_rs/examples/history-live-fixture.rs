@@ -18,7 +18,10 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 #[path = "support/history_live_context.rs"]
 mod context;
 use context::{ClientContext, Context, Keys};
+#[path = "support/history_managed.rs"]
+mod history_managed;
 struct Fixture {
+    manager: history_managed::Engine,
     hub: Hub,
     context: Arc<Context>,
     subscriptions: HashMap<String, Subscription>,
@@ -48,6 +51,12 @@ impl Fixture {
     }
     async fn run(&mut self, input: Value) -> Result<Value> {
         let op = input["op"].as_str().unwrap();
+        if op.starts_with("manager.") {
+            return self
+                .manager
+                .run(&input, self.hub.clone(), self.context.clone())
+                .await;
+        }
         let name = input["name"].as_str().unwrap_or("a").to_owned();
         match op {
             "init" => {
@@ -333,6 +342,7 @@ impl Fixture {
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let mut fixture = Fixture {
+        manager: history_managed::Engine::default(),
         hub: Hub::new(Arc::new(|| 1000.)),
         context: Context::new(json!({})),
         subscriptions: HashMap::new(),

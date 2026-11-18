@@ -122,7 +122,7 @@ loaded by a production service.
 | Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | Native endpoint/surface/repository formats, all private surface records and scoped grant helpers                                                                                                                                                                                                                                                                                                        | Private-state interop covers 12 resource contexts and six content kinds. Remaining protected domains and serving resource lifetimes are pending. Initial surface-grant refresh now completes real host terminal-service reconciliation; delegated OS services remain pending.                                                    |
 | Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Workspace/folders/routing, nine protected host Explorer operations and bound file-document text read/write                                                                                                                                                                                                                                                                                              | Actual Rust worker/server persists encrypted resources, resolves opaque roots, saves files, rejects replay/mismatched document paths and reopens after restart. Paged readers, media/tail, transfers, activity/watches and delegated OS execution remain pending.                                                                |
 | Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub catalog, issue detail/mutations, issue/PR search, inspection, creation, reviews, lifecycle, checkout preparation, agent context, inbox, Actions/releases and replica provisioning/synchronization/removal/link repair | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, exports/sharing and delegated OS Git remain pending |
-| History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter, authenticated HTTP client, canonical content preparation, coherent archive recovery, native item rendering and canonical projector/bootstrap/rebase orchestration                                                                                                                                                                                                                       | Journal/outbox/projection, native protected preparation and coherent HTTP archive recovery pass focused checks; verified retained-context/child-scope and durable media/attachment adapters are native; live output identity and independent observation/capture are native; managed capture/projection retry and runtime integration remain pending                                                                                                                                                    |
+| History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter, authenticated HTTP client, canonical content preparation, coherent archive recovery, native item rendering and canonical projector/bootstrap/rebase orchestration                                                                                                                                                                                                                       | Journal/outbox/projection, native protected preparation and coherent HTTP archive recovery pass focused checks; verified retained-context/child-scope and durable media/attachment adapters are native; live output identity, observation/capture and managed source/projection retry/recovery are native; child discovery, top-level history integration and execution runtime integration remain pending                                                                                                                                                    |
 | Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Actual provider protocol fixtures, streaming/media/usage, refresh, cancellation, failure and paid-work bounds                                                                                                                                                                                                                    |
 | Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Manifest verification/probe, native app-server processes, queue ownership, acceptance/commit and restart recovery                                                                                                                                                                                                                |
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
@@ -3122,3 +3122,82 @@ Next is managed capture/binding retirement and durable projection/recovery pumps
 followed by the remaining runtime/execution/provider, terminal, transport/browser,
 OS/helper, upgrade and packaging/default-cutover/Node-retirement work. The full
 goal remains active; production still uses the Node worker.
+
+## Cycle 50: managed source ownership and durable recovery pumps
+
+Reference: `6ae142f8197cf8428cc33ae10fe9fa3229eabbbf` / PR #3212.
+
+`history::managed::sources` now owns captures per worker/chat/thread and native
+transport generation. Views of the same runtime reuse their capture. Binding opens
+and encrypted journal creation run independently of native input; an admitted
+provenance update applies to binding retries. Each binding attempt has its own
+deadline. Expiring that request does not retire the observation or retry model
+input. Transport replacement drains the original capture's exact frames, even
+after storage fails, while replacement observations use their own generation.
+
+Ownership is installed before timers activate on the multithreaded runtime.
+Retirement installs its shared completion before synchronously closing the
+subscription, so recursive retirement is safe. Final stop aborts metadata I/O,
+joins accepted persistence callbacks and reports actual remaining source frames.
+Repeated stops join the earlier cohort. Entries and callbacks avoid a manager/
+capture ownership cycle; callers must still explicitly stop their owned services.
+
+`history::managed::projection::Pump` accepts journal wakeups and independently
+scans encrypted sources at startup. It owns per-binding drains, bounded retry,
+flush/close and final cancellation. The production canonical factory connects the
+actual authorized HTTP client, verified context/attachment adapters, authenticated
+archive recovery, outbox, projector, projection checkpoints and conflict rebase.
+One initialization archive snapshot serves outbox recovery and bootstrap and is
+released after the first attempt, including empty or already-staged drains.
+
+A damaged journal is reported independently and retried; known healthy journals
+are skipped on later scans. Typed HTTP 404 `chat-not-found`/`binding-not-found`
+destinations are parked while encrypted sources are retained. Other failures
+remain retryable. Stop rejects unconfirmed flushes and waits for running scans
+and drains before encryption can be released. Native transport retirement does
+not retire durable projection.
+
+Local evidence on macOS ARM64:
+
+- 27 focused actual Node/native managed-source comparisons cover shared views,
+  provenance retry, encrypted records, real disk obstruction/repair across two
+  transport generations, per-attempt timeout, held binding cancellation and
+  persistence-callback shutdown. Separate owned profiles are removed on exit.
+- All 17 existing managed-source/projection reference tests pass. Six focused
+  native history tests pass, including a new two-thread bind test proving one
+  read/open and repeated-stop joining of an accepted callback.
+- The existing 81 live-history comparisons and 56 actual loopback client
+  comparisons remain regression checks for the touched capture/deadline APIs.
+- Real Rust-server/PGlite integration runs native managed capture through the
+  production canonical pump. Its first ingest commits but loses its ACK. A new
+  native process scans the retained encrypted source without binding any runtime
+  and retries the exact frozen bytes. The new item remains revision 1; the
+  existing three-batch conflict/rebase scenario plus this delivery leave four
+  canonical batches. A damaged sibling is retried without duplicating healthy
+  delivery. Actual HTTP request counts show one shared items/turns/batches
+  initialization read.
+- Controlled typed HTTP 404 responses through the loopback proxy verify both
+  parking classifications without deleting source files. This is not evidence
+  of actual server-side destination deletion. After native stop, the actual Node
+  projection reopens the same profile sequentially and publishes no duplicate.
+- Worker/live/client/source builds, worker all-target Clippy with warnings denied,
+  formatting, diff and new native-file-size checks pass. No Cargo dependency,
+  generated contract, server route or persisted format changes.
+
+The Node development driver controls snapshot RPC, keys and enrollment/control;
+native fixture children run with Node absent from PATH. This validates actual
+managed history services and their server boundary, not production provider/Codex
+execution. The unchanged server and repository helper use their existing native
+builds. No Windows/Linux runtime execution, hosted development Actions, physical
+devices, paid providers, VM/container campaign, signing or deployment ran.
+
+The focused driver is `scripts/worker-rust/history-managed-compatibility.mjs`
+with `--binary <history-live-fixture>`. The existing history-client smoke invokes
+the managed pump scenarios through `history-managed-smoke.mjs`; its binary
+arguments are unchanged from cycle 49.
+
+Next are child-thread discovery and the top-level managed history facade/runtime
+integration, then the remaining runtime/execution/provider, terminal,
+transport/browser, OS/helper, upgrade and packaging/default-cutover/Node-retirement
+work. Production still selects Node, installed native outer handlers remain 59,
+and the full replacement goal remains active.

@@ -62,6 +62,9 @@ impl Default for Hub {
     }
 }
 impl Hub {
+    pub fn generation(&self) -> Option<JsString> {
+        self.0.state.lock().unwrap().generation.clone()
+    }
     pub fn new(clock: Arc<dyn Fn() -> f64 + Send + Sync>) -> Self {
         Self(Arc::new(Inner {
             state: Mutex::new(State {

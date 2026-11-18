@@ -1,7 +1,7 @@
 //! Live history observation and publication identity. None of these mechanisms
 //! admits native input, grants execution, or acknowledges canonical history.
 pub mod capture;
-mod flight;
+pub(crate) mod flight;
 pub mod identity;
 pub mod mode;
 pub mod observation;

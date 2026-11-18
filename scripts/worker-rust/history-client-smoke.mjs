@@ -24,6 +24,7 @@ import { restoreNativeHistoryProjectorState } from "../../cantrip_worker/src/nat
 import { parseCodexNativeHistory } from "../../cantrip_worker/src/codex/native-history.ts";
 import { createManagedNativeOutputIdentityResolver } from "../../cantrip_worker/src/native-history-output-identity.ts";
 import { createNativeHistoryOutputModeResolver } from "../../cantrip_worker/src/native-history-output-mode.ts";
+import { verifyManagedHistory } from "./history-managed-smoke.mjs";
 const { values } = parseArgs({
   options: {
     client: { type: "string" },
@@ -77,6 +78,9 @@ function driver(binary) {
 let h, history, client, proxy, live;
 let dropIngest = true,
   accepted;
+let missingOpen,
+  historyOpens = 0,
+  historyArchives = 0;
 const deliveries = [];
 try {
   h = await settingsHttpFixture({
@@ -92,6 +96,21 @@ try {
     try {
       let body = "";
       for await (const chunk of req) body += chunk;
+      if (/\/native-history\/archive(?:-turns|-batches)?$/.test(req.url))
+        historyArchives++;
+      if (req.url.endsWith("/native-history/open")) {
+        historyOpens++;
+        if (missingOpen) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify({
+              error: "Controlled missing history destination",
+              code: missingOpen,
+            }),
+          );
+          return;
+        }
+      }
       const response = await fetch(h.fixture.server.origin + req.url, {
         method: req.method,
         headers: {
@@ -695,6 +714,29 @@ try {
   });
   assert.equal(invalid.ok, false);
   assert.equal(invalid.status, 401);
+  const managedResult = await verifyManagedHistory({
+    spawn: () => driver(values.live),
+    root,
+    serverUrl: origin,
+    token: enrollment.credential,
+    workerId: concurrentWorker,
+    ownerId: h.owner,
+    serverId: h.serverId,
+    chatId: settingsChat,
+    binding: concurrentBinding,
+    snapshot,
+    deliveries,
+    fault: {
+      dropNext: () => {
+        dropIngest = true;
+      },
+      missing: (code) => {
+        missingOpen = code;
+      },
+      opens: () => historyOpens,
+      archives: () => historyArchives,
+    },
+  });
   assert.equal(h.fixture.server.diagnostics().includes(marker), false);
   console.log(
     JSON.stringify({
@@ -718,6 +760,7 @@ try {
       canonicalBatchCount: 3,
       nativeCanonicalRebaseFromActualRejection: true,
       canonicalItemRevisionAfterRebase: 3,
+      managed: managedResult,
       scope:
         "native initial capture with controlled snapshot RPC and later observations; control worker and production runtime integration pending",
       runtime: "macOS ARM64",
