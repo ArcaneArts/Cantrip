@@ -26,11 +26,12 @@ checkpointed reflog/lost-commit recovery, worker-scoped GitHub catalog operation
 and repository-scoped issue detail/mutations, issue/PR search, PR inspection, creation, reviews, lifecycle, checkout preparation and agent context,
 GitHub inbox, Actions and releases, plus native replica provisioning and
 managed-link repair, synchronization and guarded removal over the existing
-placement/ownership records. Seventy-two outer command types have native handlers:
+placement/ownership records. Seventy-six outer command types have native handlers:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
 `diagnostics.logs.read`, `worker.encryption.refresh`, `chat.sync` (cold host observation),
 `chat.thread.ensure` (managed host attachment), `chat.turn` and `chat.interrupt`
-(visible host text turns),
+(visible and protected host text turns), `chat.message.protect`,
+`chat.messages.protect`, `chat.messages.reprotect` and `chat.turn.protect`,
 `model.chatgpt.catalog`,
 `model.grok.catalog` and `provider.quota.read` (Grok),
 `provider.auth.legacy.capture`, `provider.auth.legacy.purge`, `provider.auth.account.clear`,
@@ -4058,3 +4059,31 @@ Protected inputs and results, native command receipts, approvals, Task and
 Goal execution, complete turn telemetry, and canonical History and outcome
 delivery remain open. This cycle exercises the production worker dispatcher
 with a disposable server peer. Production still selects Node.
+
+## 72. Execute protected host chat turns
+
+Reference commit `178bfc1b346ef475e56c8f411aabf235b50c2070` (#3234).
+
+The worker opens protected host text turns for the authenticated owner and
+logical server, using shared Cantrip history and crypto crates with the
+worker's current component grants. It authenticates the submitted message,
+continuation history, and existing plan before dispatch. A new native thread
+receives the authenticated continuation once. A recovered thread receives
+the current prompt.
+
+The worker seals provisional and settled messages with the existing message
+identities, seals plan changes while preserving a pending question, and
+returns the final reply in the existing encrypted relay result. The four
+chat protection commands produce the existing message and queued-turn
+envelopes through the same worker key authority.
+
+On macOS ARM64, a running Rust worker accepted authenticated commands from
+a disposable local peer and used bundled Codex with a loopback Responses
+provider. The Node reference code opened the Rust ciphertext and matched
+streamed identities. The test also exercised all four protection commands,
+verified that invalid envelopes failed before provider dispatch, and checked
+the socket and worker diagnostics for fixture plaintext.
+
+Protected attachment delivery at native turn dispatch, command receipts,
+approvals, Task and Goal execution, canonical History and durable outcome
+delivery remain open. Production still selects Node.

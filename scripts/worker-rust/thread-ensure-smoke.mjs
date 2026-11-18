@@ -4,7 +4,14 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter, once } from "node:events";
-import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -12,12 +19,25 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { nativeTurnRecoveryObservationSchema } from "../../packages/protocol/dist/index.js";
 import { CodexRpcClient } from "../../cantrip_worker/src/codex/rpc-client.ts";
+import {
+  decryptChatMessageProtectedContent,
+  decryptChatPlanProtectedContent,
+  decryptQueuedPromptProtectedContent,
+  wrapComponentKeyForWorker,
+} from "../../packages/crypto/dist/index.js";
+import {
+  EncryptedChatEventSealer,
+  openEncryptedChatTurn,
+  protectChatMessage,
+} from "../../cantrip_worker/src/chat-message-encryption.ts";
+import { protectChatPlanState } from "../../cantrip_worker/src/chat-plan-encryption.ts";
 
 const { values } = parseArgs({
   options: {
     worker: { type: "string" },
     codex: { type: "string" },
     turns: { type: "boolean" },
+    protected: { type: "boolean" },
   },
 });
 assert.ok(values.worker && values.codex);
@@ -45,6 +65,19 @@ const upstream = new EventEmitter();
 const contextCalls = [];
 let providerCalls = 0;
 const outputText = "Native host turn fixture.";
+const privatePrompt = "Protected input fixture, only for the worker.";
+const priorText = "Private preceding assistant message.";
+const privateStep = "Private plan step.";
+const privateQuestion = "Private retained plan question.";
+const chatKey = new Uint8Array(32).fill(41);
+const oracle = {
+  ownerId: () => ownerId,
+  componentKey: (scope) => {
+    assert.equal(scope, "chat-content");
+    return { key: chatKey.slice(), keyRevision: 1 };
+  },
+};
+
 async function requestBody(request) {
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
@@ -55,12 +88,26 @@ async function responses(request, response) {
   assert.equal(body.model, "gpt-5");
   const number = ++providerCalls;
   const id = "assistant-" + number;
-  const item = {
-    id,
-    type: "message",
-    role: "assistant",
-    content: [{ type: "output_text", text: outputText }],
-  };
+  const plan =
+    JSON.stringify(body.input).includes(privatePrompt) &&
+    !body.input.some((item) => item.type === "function_call_output");
+  const item = plan
+    ? {
+        id,
+        type: "function_call",
+        name: "update_plan",
+        call_id: "fixture-plan",
+        arguments: JSON.stringify({
+          explanation: "Protected model plan",
+          plan: [{ step: privateStep, status: "in_progress" }],
+        }),
+      }
+    : {
+        id,
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: outputText }],
+      };
   const closed = once(response, "close");
   const write = (type, fields) =>
     response.write(
@@ -69,9 +116,10 @@ async function responses(request, response) {
   response.writeHead(200, { "content-type": "text/event-stream" });
   write("response.created", { response: { id: "response-" + number } });
   write("response.output_item.added", { item });
-  write("response.output_text.delta", { delta: outputText });
+  if (!plan) write("response.output_text.delta", { delta: outputText });
   upstream.emit("request", {
     number,
+    plan,
     body,
     closed,
     finish: () => {
@@ -129,7 +177,31 @@ const server = createServer(async (request, response) => {
         createdAt: stamp,
         updatedAt: stamp,
       },
-      grants: [],
+      grants: values.protected
+        ? [
+            {
+              id: randomUUID(),
+              ownerId,
+              principalId,
+              component: "chat-content",
+              keyRevision: 1,
+              state: "active",
+              revision: 1,
+              revokedAt: null,
+              revokedReason: null,
+              createdAt: stamp,
+              updatedAt: stamp,
+              wrappedKey: await wrapComponentKeyForWorker({
+                ownerId,
+                workerId,
+                component: "chat-content",
+                keyRevision: 1,
+                componentKey: chatKey,
+                workerPublicKey: publicKey,
+              }),
+            },
+          ]
+        : [],
     });
   } else if (url.pathname === "/api/internal/workers/heartbeat") send({});
   else if (
@@ -396,6 +468,16 @@ async function assertIdle(file) {
     await client.close();
   }
 }
+const untilProvider = () =>
+  available(
+    Promise.race([
+      once(upstream, "request").then(([request]) => request),
+      once(upstream, "failure").then(([error]) => {
+        throw error;
+      }),
+    ]),
+  );
+
 async function verifyTurns() {
   const session = {
     contextKind: "project",
@@ -439,15 +521,6 @@ async function verifyTurns() {
         ...extra,
       },
       (event) => events.push(event),
-    );
-  const untilProvider = () =>
-    available(
-      Promise.race([
-        once(upstream, "request").then(([request]) => request),
-        once(upstream, "failure").then(([error]) => {
-          throw error;
-        }),
-      ]),
     );
   const observed = untilProvider();
   const first = issuedTurn("admitted-lane");
@@ -552,6 +625,337 @@ async function verifyTurns() {
   console.log("Native host turn, streaming, MCP lane, and exact Stop passed.");
 }
 
+function actualMessage(message) {
+  return decryptChatMessageProtectedContent({
+    ownerId,
+    messageId: message.id,
+    keyRevision: 1,
+    componentKey: chatKey,
+    encrypted: message.protectedContent,
+    publicClassification: message.classification,
+  });
+}
+function summary(message, chatId, sequence) {
+  return {
+    ...message.classification,
+    id: message.id,
+    chatId,
+    worktreeId: "prior-worktree",
+    contextKind: "project",
+    scratchRootId: null,
+    executionLaneId: null,
+    sequence,
+    protectedContent: message.protectedContent,
+    modelId: null,
+    modelRouteId: null,
+    providerId: null,
+    providerName: null,
+    providerModelName: null,
+    reasoningEffort: null,
+    appliedReasoningEffort: null,
+    reasoningAdjusted: false,
+    idempotencyKey: message.idempotencyKey,
+    createdAt: stamp,
+  };
+}
+
+async function verifyProtectedTurns() {
+  const home = path.join(directory, "codex-home");
+  await mkdir(home, { recursive: true });
+  await writeFile(
+    path.join(home, "config.toml"),
+    "\n[tools.update_plan]\nenabled = true\n",
+    { flag: "a" },
+  );
+  await start();
+  const chatId = randomUUID(),
+    projectId = randomUUID(),
+    worktreeId = randomUUID();
+  const provider = {
+    id: "protected-turn-fixture",
+    kind: "openai-compatible",
+    name: "Fixture",
+    baseUrl: `http://127.0.0.1:${server.address().port}/fixture/v1`,
+  };
+  const responseMessage = {
+    id: randomUUID(),
+    idempotencyKey: "protected-terminal-result",
+  };
+  const previous = {
+    id: randomUUID(),
+    role: "assistant",
+    mode: "default",
+    idempotencyKey: "prior-protected-message",
+    content: [{ type: "text", text: priorText }],
+  };
+  const [historyEnvelope] = await expectSuccess({
+    type: "chat.messages.protect",
+    messages: [previous],
+  });
+  assert.deepEqual(
+    (await actualMessage(historyEnvelope)).content,
+    previous.content,
+  );
+  const [copied] = await expectSuccess({
+    type: "chat.messages.reprotect",
+    messages: [
+      {
+        source: summary(historyEnvelope, chatId, 1),
+        id: randomUUID(),
+        idempotencyKey: "copy",
+      },
+    ],
+  });
+  assert.notEqual(copied.id, historyEnvelope.id);
+  assert.deepEqual((await actualMessage(copied)).content, previous.content);
+
+  const issued = {
+    type: "chat.turn.protect",
+    promptId: randomUUID(),
+    messageId: randomUUID(),
+    text: privatePrompt,
+    mode: "default",
+    modelId: "gpt-5",
+    reasoningEffort: null,
+    idempotencyKey: "protected-client-input",
+  };
+  const prepared = await expectSuccess(issued);
+  const queued = await decryptQueuedPromptProtectedContent({
+    ownerId,
+    promptId: issued.promptId,
+    keyRevision: 1,
+    componentKey: chatKey,
+    encrypted: prepared.queuedPrompt.protectedContent,
+    publicClassification: prepared.queuedPrompt.classification,
+  });
+  assert.equal(queued.text, privatePrompt);
+  assert.deepEqual(prepared.queuedPrompt.pendingMessage, prepared.message);
+
+  const message = {
+    id: issued.messageId,
+    role: "user",
+    mode: "default",
+    idempotencyKey: issued.idempotencyKey,
+    content: [{ type: "text", text: privatePrompt }],
+  };
+  const workerInput = await expectSuccess({
+    type: "chat.message.protect",
+    message,
+  });
+  assert.deepEqual(
+    await actualMessage(workerInput),
+    await actualMessage(prepared.message),
+  );
+
+  const prompt = await protectChatMessage({
+    id: message.id,
+    message,
+    service: oracle,
+  });
+  const oldQuestion = {
+    id: "prior-question",
+    threadId: "prior-thread",
+    turnId: "prior-turn",
+    itemId: "prior-item",
+    createdAt: stamp,
+    questions: [
+      {
+        id: "input",
+        header: "Previous",
+        question: privateQuestion,
+        isOther: false,
+        isSecret: false,
+        options: null,
+      },
+    ],
+  };
+  const oldPlan = await protectChatPlanState({
+    chatId,
+    service: oracle,
+    state: { explanation: null, steps: [], question: oldQuestion },
+  });
+  // The server can resend the already-committed user row as recent history.
+  const history = [
+    summary(historyEnvelope, chatId, 1),
+    summary(workerInput, chatId, 2),
+  ];
+  const expectedInput = await openEncryptedChatTurn({
+    history,
+    prompt,
+    service: oracle,
+    threadId: null,
+  });
+  const fields = {
+    type: "chat.turn",
+    contextKind: "project",
+    executionProfile: "ide",
+    chatId,
+    clientMessageId: prompt.id,
+    executionLaneId: "protected-lane",
+    worktreeId,
+    scratchRootId: null,
+    rootKind: "folder-root",
+    isPrimary: true,
+    worktreeMode: "agent-managed",
+    worktreePolicy: "direct",
+    policyProjectId: projectId,
+    threadId: null,
+    provider,
+    protectedPrompt: prompt,
+    protectedHistory: history,
+    protectedPlan: oldPlan,
+    resultMode: {
+      kind: "chat-message-encrypted",
+      messageId: responseMessage.id,
+      idempotencyKey: responseMessage.idempotencyKey,
+    },
+  };
+  const before = providerCalls;
+  const altered = await ensure({
+    ...fields,
+    protectedPrompt: {
+      ...prompt,
+      classification: { ...prompt.classification, mode: "plan" },
+    },
+  });
+  assert.equal(altered.ok, false);
+  assert.match(altered.error.message, /authenticate protected chat input/);
+  const wrongChat = await ensure({ ...fields, chatId: randomUUID() });
+  assert.equal(wrongChat.ok, false);
+  assert.match(wrongChat.error.message, /belongs to another conversation/);
+  const badPlan = await ensure({
+    ...fields,
+    protectedPlan: { ...oldPlan, classification: { hasQuestion: false } },
+  });
+  assert.equal(badPlan.ok, false);
+  assert.match(badPlan.error.message, /authenticate protected chat plan/);
+  assert.equal(providerCalls, before);
+
+  const events = [];
+  const observed = untilProvider();
+  const pending = ensure(fields, (event) => events.push(event));
+  const providerInput = await Promise.race([
+    observed,
+    pending.then((reply) => {
+      throw new Error(JSON.stringify(reply) + "\n" + diagnostics);
+    }),
+  ]);
+  assert.ok(providerInput.plan);
+  assert.ok(
+    providerInput.body.tools.some((tool) => tool.name === "update_plan"),
+    "The fixture provider must see the native plan tool.",
+  );
+  assert.ok(
+    providerInput.body.input
+      .flatMap((item) => item.content ?? [])
+      .some((part) => part.text === expectedInput),
+  );
+  const follow = untilProvider();
+  providerInput.finish();
+  const response = await Promise.race([
+    follow,
+    pending.then((reply) => {
+      throw new Error(JSON.stringify(reply) + "\n" + diagnostics);
+    }),
+  ]);
+  assert.equal(response.plan, false);
+  response.finish();
+  const completed = await pending;
+  assert.equal(
+    completed.ok,
+    true,
+    JSON.stringify(completed) + "\n" + diagnostics,
+  );
+  assert.equal(completed.result.text, "");
+  const result = completed.result.structuredResult.message;
+  assert.equal(result.id, responseMessage.id);
+  assert.equal(result.idempotencyKey, responseMessage.idempotencyKey);
+  assert.deepEqual((await actualMessage(result)).content, [
+    { type: "text", phase: "final_answer", text: outputText },
+  ]);
+
+  const planEvent = events.find(
+    (event) => event.type === "agent.plan.protected",
+  );
+  assert.ok(
+    planEvent,
+    "The worker must publish the native plan as ciphertext.",
+  );
+  const nextPlan = await decryptChatPlanProtectedContent({
+    ownerId,
+    chatId,
+    keyRevision: 1,
+    componentKey: chatKey,
+    encrypted: planEvent.state.protectedContent,
+    publicClassification: planEvent.state.classification,
+  });
+  assert.deepEqual(nextPlan.question, oldQuestion);
+  assert.deepEqual(nextPlan.steps, [
+    { step: privateStep, status: "inProgress" },
+  ]);
+  const messages = events.filter(
+    (event) => event.type === "agent.protected-message",
+  );
+  assert.ok(messages.some((event) => event.telemetry.streaming));
+  assert.ok(messages.some((event) => !event.telemetry.streaming));
+  const legacy = new EncryptedChatEventSealer(oracle, chatId, {
+    explanation: null,
+    steps: [],
+    question: null,
+  });
+  for (const event of messages) {
+    const [text] = (await actualMessage(event.message)).content;
+    assert.equal(text.text, outputText);
+    const reference = await legacy.message({
+      id: text.correlation.itemId,
+      text: text.text,
+      phase: text.phase,
+      streaming: text.streaming,
+      correlation: text.correlation,
+    });
+    assert.equal(event.message.id, reference.message.id);
+    assert.equal(
+      event.message.idempotencyKey,
+      reference.message.idempotencyKey,
+    );
+    assert.deepEqual(event.telemetry, reference.telemetry);
+  }
+  const wire = JSON.stringify({
+    events,
+    completed,
+    altered,
+    wrongChat,
+    badPlan,
+  });
+  for (const privateValue of [
+    privatePrompt,
+    priorText,
+    outputText,
+    privateStep,
+    privateQuestion,
+  ]) {
+    assert.ok(
+      !wire.includes(privateValue),
+      "Protected plaintext appeared on the command socket.",
+    );
+    assert.ok(
+      !diagnostics.includes(privateValue),
+      "Protected plaintext appeared in worker output.",
+    );
+  }
+  await stop();
+  assert.deepEqual(await bindings(), []);
+  console.log(
+    "Protected host turn, legacy identities, encrypted plan and Node interoperability passed.",
+  );
+}
+
+async function expectSuccess(fields) {
+  const reply = await ensure(fields);
+  assert.equal(reply.ok, true, JSON.stringify(reply) + "\n" + diagnostics);
+  return reply.result;
+}
+
 try {
   await mkdir(path.join(root, "scratch"));
   const session = {
@@ -629,6 +1033,7 @@ try {
     "Native project and standalone preparation, MCP, and restart recovery passed.",
   );
   if (values.turns) await verifyTurns();
+  if (values.protected) await verifyProtectedTurns();
 } finally {
   if (child && child.exitCode === null && child.signalCode === null) {
     child.kill("SIGTERM");
@@ -638,5 +1043,6 @@ try {
   sockets.close();
   server.closeAllConnections();
   server.close();
+  chatKey.fill(0);
   await rm(root, { recursive: true, force: true });
 }
