@@ -4573,3 +4573,27 @@ byte-span rebasing and the exact native no-consumption discriminator.
 Queue wakeups, native queue management and cutover, non-Goal queued settings
 and shell actions, and cold Goal recovery remain open. Production still
 selects Node.
+
+## 91. Wake native Project Goals from Core queue notifications
+
+Reference commit `7fe0a71d217f5c5939ae5756d3174824bed550d8` (#3253).
+
+The Rust worker accepts `chat.queue.changed` for ordinary host queue delivery.
+It wakes the bound inference recovery manager and reads Core's latest queue
+for the current native Goal owner. It observes Pause and runnable FIFO items
+and preserves the first cycle of a settled queued Goal setter. Before using
+the snapshot it verifies the same thread, runtime, and runner generation.
+The worker awaits the native wake response when a wake is due and returns a
+failure when the queue read or wake fails, so Core retains the revision.
+
+The macOS ARM64 smoke denied a real native attempt while the queue was paused,
+received a queue notification after unpausing, and ran two native Goal turns.
+It checked the original first-turn claim against a later runnable item and
+retried the same revision after a failed Core read. The fixture used the real
+worker and bundled Codex with local Core and provider peers. A Rust unit test
+covered FIFO eligibility, a stale rejected revision, and the first-cycle
+claim conditions.
+
+Task pause notifications, native queue management and cutover, non-Goal
+queued actions, and saved Goal recovery remain open. Production still
+selects Node.

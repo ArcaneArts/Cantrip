@@ -58,6 +58,7 @@ const { values } = parseArgs({
     chatGoal: { type: "boolean" },
     projectGoals: { type: "boolean" },
     autonomousGoal: { type: "boolean" },
+    queueWake: { type: "boolean" },
     queuedTurn: { type: "boolean" },
   },
 });
@@ -337,6 +338,7 @@ const server = createServer(async (request, response) => {
           values.chatGoal ||
           values.projectGoals ||
           values.autonomousGoal ||
+          values.queueWake ||
           values.queuedTurn ||
           values.taskPreparation ||
           values.directTask ||
@@ -540,6 +542,7 @@ async function ensure(fields, event = () => {}, requestId = randomUUID()) {
       command:
         fields.type === "chat.native-control" ||
         fields.type === "chat.queue.prepare" ||
+        fields.type === "chat.queue.changed" ||
         fields.type?.startsWith("chat.native-logical.") ||
         fields.type?.startsWith("task.")
           ? fields
@@ -706,10 +709,14 @@ function waitForFrame(predicate) {
     outcomeFrames.on("frame", receive);
   });
 }
-async function waitForTurnOutcomeLog(requestId) {
-  const evidence =
-    "event=worker.command.completed operation=chat.turn requestId=" + requestId;
+async function waitForLog(evidence) {
   while (!diagnostics.includes(evidence)) await once(upstream, "log");
+}
+
+function waitForTurnOutcomeLog(requestId) {
+  return waitForLog(
+    "event=worker.command.completed operation=chat.turn requestId=" + requestId,
+  );
 }
 
 async function verifyTurns() {
@@ -1678,7 +1685,7 @@ try {
       },
     });
   }
-  if (values.autonomousGoal) {
+  if (values.autonomousGoal || values.queueWake) {
     await verifyAutonomousGoal({
       expectThread,
       expectSuccess,
@@ -1687,6 +1694,9 @@ try {
       stop,
       available,
       untilProvider,
+      waitForGoalDenial: values.queueWake
+        ? () => waitForLog("Native inference admission failed")
+        : undefined,
       directory,
       root,
       oracle,

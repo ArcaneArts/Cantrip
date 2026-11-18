@@ -5,6 +5,7 @@ mod control;
 mod output;
 mod params;
 mod protected;
+pub(crate) mod queue_wake;
 mod queued;
 pub(super) use protected::runtime_text;
 mod receipt;

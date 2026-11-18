@@ -165,8 +165,13 @@ impl Client {
             .map_err(|_| unacknowledged().into())
     }
 
-    pub async fn goal_queue(&self, scope: &Scope, session: &Value) -> Result<Value> {
+    pub async fn queue_snapshot(&self, scope: &Scope, session: &Value) -> Result<Value> {
         scope.identity()?;
+        let mut session = session.clone();
+        session["connectionId"] = json!(crate::native_items::concat(&[
+            "queue-owner:".into(),
+            id(&session["runtimeGeneration"], "queue owner runtime")?,
+        ]));
         let input = checked(
             "managedQueueReadSchema",
             &json!({

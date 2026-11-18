@@ -447,6 +447,18 @@ async fn cycle(
                     });
                     continue;
                 }
+                if kind == crate::codex::turn::queue_wake::CHANGED {
+                    let turns = turns.clone();
+                    let codex = codex.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = turns.queue_changed(&request["command"], &codex).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if kind == crate::codex::preparation::command::COMMAND {
                     let preparation=thread_preparation.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
                     commands.spawn(async move {

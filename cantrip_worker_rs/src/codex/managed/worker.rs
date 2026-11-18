@@ -134,6 +134,22 @@ impl Worker {
         self.0.project_goals.get().map(Arc::as_ref)
     }
 
+    pub(in crate::codex) fn wake_recovery(
+        &self,
+        owner: &JsString,
+        server: &JsString,
+        chat: &JsString,
+    ) {
+        let scope = Scope {
+            owner: owner.clone(),
+            server: server.clone(),
+        };
+        let manager = self.0.state.lock().unwrap().managers.get(&scope).cloned();
+        if let Some(manager) = manager {
+            manager.wake_recovery(Some(chat.clone()));
+        }
+    }
+
     pub fn launch(&self, launch: Launch) -> Work<Runtime> {
         self.launch_in_scope(launch, None)
     }

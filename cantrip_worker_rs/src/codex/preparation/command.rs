@@ -354,17 +354,29 @@ impl Ensurer {
         thread: &JsString,
         bound: &(JsString, Value),
     ) -> Option<LiveThread> {
+        let (selected, live) = self.selected_live_thread(chat, bound)?;
+        (selected == *thread).then_some(live)
+    }
+
+    pub(in crate::codex) fn selected_live_thread(
+        &self,
+        chat: &JsString,
+        bound: &(JsString, Value),
+    ) -> Option<(JsString, LiveThread)> {
         let owners = self.0.live_threads.lock().unwrap();
         let owner = owners.get(chat)?;
-        if owner.thread.id() != thread || &owner.bound != bound {
+        if &owner.bound != bound {
             return None;
         }
         let runtime = owner.runtime.upgrade()?;
         owner.thread.assert_current(&runtime).ok()?;
-        Some(LiveThread {
-            runtime,
-            session: owner.session.clone(),
-        })
+        Some((
+            owner.thread.id().clone(),
+            LiveThread {
+                runtime,
+                session: owner.session.clone(),
+            },
+        ))
     }
 
     pub(crate) fn identity(&self) -> Result<(JsString, Value)> {

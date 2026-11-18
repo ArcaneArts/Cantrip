@@ -18,7 +18,10 @@ import {
 } from "../../cantrip_worker/src/native-command-content.ts";
 import { GuiHistoryPeer } from "./gui-history-cases.mjs";
 import { verifyQueuePreparation } from "./queue-prepare-cases.mjs";
-import { protectChatMessage } from "../../cantrip_worker/src/chat-message-encryption.ts";
+import {
+  protectChatMessage,
+  protectChatTurn,
+} from "../../cantrip_worker/src/chat-message-encryption.ts";
 
 export async function verifyAutonomousGoal({
   expectThread,
@@ -28,6 +31,7 @@ export async function verifyAutonomousGoal({
   stop,
   available,
   untilProvider,
+  waitForGoalDenial,
   directory,
   root,
   oracle,
@@ -119,6 +123,29 @@ export async function verifyAutonomousGoal({
     protectedPrompt: prepared.pendingMessage,
     protectedNativeInput: prepared.protectedNativeInput,
   };
+  let paused = Boolean(waitForGoalDenial);
+  let queueRevision = 2;
+  let readUnavailable = false;
+  let items = [];
+  const queueChanged = (revision) => ({
+    type: "chat.queue.changed",
+    chatId: session.chatId,
+    revision,
+  });
+  const waiting = waitForGoalDenial
+    ? (
+        await protectChatTurn({
+          service: oracle,
+          modelId: "gpt-5",
+          mode: "default",
+          reasoningEffort: null,
+          promptId: randomUUID(),
+          messageId: randomUUID(),
+          idempotencyKey: randomUUID(),
+          text: "The next queued user input.",
+        })
+      ).queuedPrompt
+    : undefined;
   let history;
   let next = 0;
   let settled = 0;
@@ -138,11 +165,13 @@ export async function verifyAutonomousGoal({
       claim.goalEpoch,
       "The setter receipt must settle before queue read.",
     );
+    if (readUnavailable)
+      throw new Error("The canonical queue read is temporarily unavailable.");
     steps.push("queue");
     return managedQueueSnapshotSchema.parse({
-      revision: 2,
-      paused: false,
-      items: [],
+      revision: queueRevision,
+      paused,
+      items,
       claims: [claim],
     });
   };
@@ -450,11 +479,50 @@ export async function verifyAutonomousGoal({
   attachCurrent();
   try {
     const before = modelCalls();
+    if (waitForGoalDenial) {
+      assert.deepEqual(
+        await expectSuccess({ ...queueChanged(0), chatId: randomUUID() }),
+        { acknowledged: true },
+      );
+    }
     const foreign = await request({ ...queued, queuedPromptId: randomUUID() });
     assert.equal(foreign.ok, false);
     assert.deepEqual(steps, []);
-    const first = untilProvider();
+    let first = waitForGoalDenial ? undefined : untilProvider();
     const launch = expectSuccess(queued);
+    if (waitForGoalDenial) {
+      await launch;
+      await available(waitForGoalDenial());
+      assert.deepEqual(steps, ["setter", "setter committed", "queue"]);
+      assert.deepEqual(await expectSuccess(queueChanged(2)), {
+        acknowledged: true,
+      });
+      assert.equal(modelCalls(), before);
+
+      paused = false;
+      queueRevision = 3;
+      items = [
+        {
+          ...waiting,
+          chatId: session.chatId,
+          revision: 1,
+          position: 1,
+          state: "pending",
+          createdAt: stamp,
+          updatedAt: stamp,
+        },
+      ];
+      readUnavailable = true;
+      const unavailable = await request(queueChanged(3));
+      assert.equal(unavailable.ok, false);
+      assert.match(unavailable.error.message, /queue read/);
+      readUnavailable = false;
+
+      first = untilProvider();
+      assert.deepEqual(await expectSuccess(queueChanged(3)), {
+        acknowledged: true,
+      });
+    }
     const advance = async (ordinal, pending) => {
       const dispatch = await available(
         Promise.race([
@@ -473,6 +541,11 @@ export async function verifyAutonomousGoal({
     assert.equal(modelCalls(), before + 1);
     assert.equal(next, 1);
     const second = untilProvider();
+    if (waitForGoalDenial) {
+      // The unrelated input was removed while the first Goal cycle ran.
+      items = [];
+      queueRevision = 4;
+    }
     firstResult.acknowledge();
     const end = await advance(1, second);
     const final = untilProvider();
@@ -542,6 +615,7 @@ export async function verifyAutonomousGoal({
     assert.deepEqual(steps, [
       "setter",
       "setter committed",
+      ...(waitForGoalDenial ? ["queue", "queue", "queue"] : []),
       "queue",
       "admit 0",
       "dispatch 0",
@@ -558,6 +632,11 @@ export async function verifyAutonomousGoal({
     await stop();
   } finally {
     attach();
+  }
+  if (waitForGoalDenial) {
+    console.log(
+      "A paused native Goal woke from Core's queue notification, preserving its first-turn claim ahead of later input.",
+    );
   }
   console.log(
     "Queued Project Goal setter and clear, edited encrypted rich input, two Core-dispatched autonomous turns, canonical History and exact receipt retry passed.",
