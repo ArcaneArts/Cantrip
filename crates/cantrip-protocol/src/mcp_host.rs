@@ -47,6 +47,15 @@ pub(super) fn refine(
     };
     let invalid = |text| issue(&[], message.unwrap_or(text));
     match tag {
+        "stdio-mcp-capability-unique" => {
+            let values = value.as_array().ok_or(ValidationError::Operation)?;
+            let mut unique = HashSet::new();
+            if values.iter().any(|value| !unique.insert(value.stringify())) {
+                result
+                    .issues
+                    .push(invalid("Cantrip MCP capabilities must be unique."));
+            }
+        }
         "stdio-mcp-policy-keys" => {
             let policies = value.as_array().ok_or(ValidationError::Operation)?;
             let mut keys = HashSet::new();

@@ -114,7 +114,12 @@
     "mcpStdioOutput/chat_send": 16,
     "mcpStdioInput/chat_wait": 1516,
     "mcpStdioOutput/chat_wait": 16,
-    "mcpStdioStandaloneToolHelpInput": 1521
+    "mcpStdioStandaloneToolHelpInput": 1521,
+    "cantripMcpBindingSchema": 1526,
+    "workerCantripMcpServerCapabilitiesSchema": 1548,
+    "cantripMcpToolHelpInputSchema": 1554,
+    "cantripMcpContextGetInputSchema": 47,
+    "mcpHostSessionClaims": 1556
   },
   "nodes": [
     {
@@ -14845,6 +14850,415 @@
     },
     {
       "type": "never",
+      "checks": []
+    },
+    {
+      "type": "union",
+      "name": "cantripMcpBindingSchema",
+      "options": [
+        1527,
+        1541
+      ],
+      "discriminator": "contextKind",
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "mcp-binding-dates",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "bindingId": 1528,
+        "ownerId": 1529,
+        "chatId": 1530,
+        "executionLaneId": 1531,
+        "workerId": 1532,
+        "permissionProfileId": 72,
+        "allowedOperations": 1533,
+        "issuedAt": 1534,
+        "expiresAt": 1535,
+        "contextKind": 1536,
+        "projectId": 1537,
+        "worktreeId": 1538,
+        "rootKind": 74,
+        "scratchRootId": 1539
+      },
+      "catchall": 1540,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 200,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 200,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 200,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 200,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 10,
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 56,
+          "when": "length"
+        },
+        {
+          "check": "refinement",
+          "tag": "worker-command-unique",
+          "messageAfterPath": true,
+          "message": "Cantrip MCP binding operations must be unique."
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "literal",
+      "values": [
+        "project"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 200,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 200,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "null",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "bindingId": 1528,
+        "ownerId": 1529,
+        "chatId": 1530,
+        "executionLaneId": 1531,
+        "workerId": 1532,
+        "permissionProfileId": 72,
+        "allowedOperations": 1533,
+        "issuedAt": 1534,
+        "expiresAt": 1535,
+        "contextKind": 1542,
+        "projectId": 1543,
+        "worktreeId": 1544,
+        "rootKind": 1545,
+        "scratchRootId": 1546
+      },
+      "catchall": 1547,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "standalone"
+      ],
+      "checks": []
+    },
+    {
+      "type": "null",
+      "checks": []
+    },
+    {
+      "type": "null",
+      "checks": []
+    },
+    {
+      "type": "null",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 200,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "workerCantripMcpServerCapabilitiesSchema",
+      "shape": {
+        "bindingProtocolVersions": 1549,
+        "operations": 1551
+      },
+      "catchall": 1553,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 1550,
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 10,
+          "when": "length"
+        },
+        {
+          "check": "refinement",
+          "tag": "stdio-mcp-capability-unique",
+          "messageAfterPath": true,
+          "message": "Cantrip MCP binding protocol versions must be unique."
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 1,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 100,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 1552,
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 100,
+          "when": "length"
+        },
+        {
+          "check": "refinement",
+          "tag": "stdio-mcp-capability-unique",
+          "messageAfterPath": true,
+          "message": "Cantrip MCP server operations must be unique."
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 100,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "cantripMcpToolHelpInputSchema",
+      "shape": {
+        "tool": 135
+      },
+      "catchall": 1555,
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "union",
+      "options": [
+        1557,
+        1558
+      ],
+      "discriminator": "contextKind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "ownerId": 1529,
+        "chatId": 1530,
+        "workerId": 1532,
+        "permissionProfileId": 72,
+        "allowedOperations": 1533,
+        "contextKind": 1536,
+        "projectId": 1537,
+        "worktreeId": 1538,
+        "rootKind": 74,
+        "scratchRootId": 1539
+      },
+      "catchall": 1540,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "ownerId": 1529,
+        "chatId": 1530,
+        "workerId": 1532,
+        "permissionProfileId": 72,
+        "allowedOperations": 1533,
+        "contextKind": 1542,
+        "projectId": 1543,
+        "worktreeId": 1544,
+        "rootKind": 1545,
+        "scratchRootId": 1546
+      },
+      "catchall": 1547,
       "checks": []
     }
   ]

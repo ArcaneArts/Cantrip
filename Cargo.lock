@@ -624,6 +624,7 @@ dependencies = [
  "regress",
  "reqwest",
  "sha2 0.11.1",
+ "subtle",
  "tempfile",
  "tokio",
  "tokio-tungstenite 0.29.0",
