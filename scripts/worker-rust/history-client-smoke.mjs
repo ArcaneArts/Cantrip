@@ -1,6 +1,6 @@
 // Native HTTP client and native durable transactions against the real Rust server.
 // Enrollment/control and source observations are controlled fixtures. Rendering,
-// preparation, encryption, transactions and recovery are native; capture is pending.
+// initial capture, preparation, encryption, transactions and recovery are native.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
@@ -22,15 +22,18 @@ import { readNativeHistoryRecovery } from "../../cantrip_worker/src/native-histo
 import { createNativeHistoryProjector } from "../../cantrip_worker/src/native-history-projector.ts";
 import { restoreNativeHistoryProjectorState } from "../../cantrip_worker/src/native-history-projector-bootstrap.ts";
 import { parseCodexNativeHistory } from "../../cantrip_worker/src/codex/native-history.ts";
+import { createManagedNativeOutputIdentityResolver } from "../../cantrip_worker/src/native-history-output-identity.ts";
+import { createNativeHistoryOutputModeResolver } from "../../cantrip_worker/src/native-history-output-mode.ts";
 const { values } = parseArgs({
   options: {
     client: { type: "string" },
+    live: { type: "string" },
     history: { type: "string" },
     server: { type: "string" },
     repository: { type: "string" },
   },
 });
-for (const key of ["client", "history", "server", "repository"])
+for (const key of ["client", "history", "server", "repository", "live"])
   assert.ok(values[key], `Pass --${key}`);
 const root = await mkdtemp(
   path.join(tmpdir(), "cantrip-native-history-client-"),
@@ -71,7 +74,7 @@ function driver(binary) {
     },
   };
 }
-let h, history, client, proxy;
+let h, history, client, proxy, live;
 let dropIngest = true,
   accepted;
 const deliveries = [];
@@ -309,20 +312,36 @@ try {
     });
   }
   const projection = await reopen();
-  await local({
-    op: "append",
-    handle: "http",
-    frame: {
-      kind: "snapshot",
-      id: randomUUID(),
-      generation: "fixture",
+  live = driver(values.live);
+  async function captureCall(input) {
+    const response = await live.call(input);
+    assert.equal(response.ok, true, response.error);
+    return response.value;
+  }
+  await captureCall({
+    op: "init",
+    generation: "fixture",
+    directory: path.join(root, "source"),
+    sourceScope: {
+      ownerId: h.owner,
+      serverId: h.serverId,
+      ...scope,
       threadId: "thread",
-      receivedAtMs: 1,
-      readBarrierSequence: 0,
-      completedSequence: 0,
-      snapshot,
     },
+    keyByte: 1,
+    config: { snapshot, snapshotDelayMs: 0 },
   });
+  await captureCall({ op: "capture.start" });
+  const captured = await captureCall({ op: "capture.flush" });
+  assert.equal(captured.pendingRecords, 0);
+  assert.equal(
+    captured.trace.filter((entry) => entry.kind === "append").length,
+    1,
+  );
+  await captureCall({ op: "capture.close.start" });
+  await captureCall({ op: "await" });
+  await live.stop();
+  live = null;
   const first = await history.call({ op: "projection.drain", handle: "http" });
   assert.equal(first.ok, false);
   assert.equal(first.error, "fetch failed");
@@ -608,6 +627,65 @@ try {
   );
   assert.equal(rebasedRecovery.snapshot.batches.length, 3);
   assert.equal(JSON.stringify(deliveries).includes(marker), false);
+  const liveScope = {
+    chatId: settingsChat,
+    threadId: identity.threadId,
+    provenance: { kind: "current" },
+  };
+  const liveOutput = {
+    kind: "message",
+    message: {
+      id: identity.itemId,
+      text: "controlled live output",
+      correlation: {
+        sourceMethod: "item/completed",
+        threadId: identity.threadId,
+        turnId: identity.turnId,
+        itemId: identity.itemId,
+        diagnosticId: null,
+      },
+    },
+  };
+  const liveResult = await client.call({
+    serverUrl: origin,
+    workerId: concurrentWorker,
+    token: enrollment.credential,
+    action: "liveOutput",
+    input: { scope: liveScope, snapshot, output: liveOutput },
+  });
+  assert.equal(liveResult.ok, true, liveResult.error);
+  const liveReference = createManagedNativeOutputIdentityResolver({
+    client: new NativeHistoryClient({
+      serverUrl: origin,
+      workerId: concurrentWorker,
+      token: () => enrollment.credential,
+    }),
+    scope: () => liveScope,
+    mode: createNativeHistoryOutputModeResolver(async () => snapshot),
+  });
+  assert.deepEqual(
+    liveResult.value.outputs,
+    await Promise.all([liveReference(liveOutput), liveReference(liveOutput)]),
+  );
+  assert.equal(
+    liveResult.value.requests,
+    2,
+    "one actual binding open and one actual identity resolution",
+  );
+  assert.equal(liveResult.value.outputs[0].mode, "default");
+  const invalidLive = await client.call({
+    serverUrl: origin,
+    workerId: concurrentWorker,
+    token: "not-enrolled",
+    action: "liveOutput",
+    input: { scope: liveScope, snapshot, output: liveOutput },
+  });
+  assert.equal(invalidLive.ok, false);
+  assert.equal(
+    invalidLive.status,
+    401,
+    "shared identity errors retain native HTTP classification",
+  );
   const invalid = await client.call({
     serverUrl: origin,
     workerId: settingsWorker,
@@ -629,6 +707,8 @@ try {
       nativeArchiveBootstrap: true,
       nativeItemRendering: true,
       nativeVerifiedContextAdapters: true,
+      nativeLiveOutputIdentityAndOriginalMode: true,
+      nativeSourceCaptureIntoCanonicalPipeline: true,
       nativeCoherentArchiveRecovery: true,
       canonicalAckLostAndRecovered: true,
       nativeAndServerProcessRestart: true,
@@ -639,12 +719,13 @@ try {
       nativeCanonicalRebaseFromActualRejection: true,
       canonicalItemRevisionAfterRebase: 3,
       scope:
-        "controlled source observations and control worker; production capture/runtime integration pending",
+        "native initial capture with controlled snapshot RPC and later observations; control worker and production runtime integration pending",
       runtime: "macOS ARM64",
       rootRemovedOnExit: true,
     }),
   );
 } finally {
+  if (live) await live.stop();
   if (history) await history.stop();
   if (client) await client.stop();
   if (proxy) {
