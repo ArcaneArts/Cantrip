@@ -91,9 +91,7 @@ impl Autonomous {
             transport.check()?;
             runner.thread.assert_current(&runtime)?;
             authorize_settings(&runner, &attempt.request["input"]["threadSettings"]).await?;
-            let mut queue_session = session.clone();
-            queue_session["connectionId"] = json!(format!("queue-owner:{}", runtime.generation()));
-            let queue = self.receipts.goal_queue(&scope, &queue_session).await?;
+            let queue = self.receipts.queue_snapshot(&scope, &session).await?;
             if queue["paused"] == true {
                 bail!("Managed autonomy is paused.");
             }

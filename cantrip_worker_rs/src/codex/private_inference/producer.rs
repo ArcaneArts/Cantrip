@@ -108,6 +108,16 @@ impl Router {
         self.0.producers.lock().unwrap().handlers.remove(thread);
     }
 
+    pub(in crate::codex) fn goal_runner(&self, thread: &JsString) -> Option<JsString> {
+        self.0
+            .producers
+            .lock()
+            .unwrap()
+            .handlers
+            .get(thread)
+            .map(|owner| owner.runner.clone())
+    }
+
     pub(in crate::codex) fn goal_mutations(
         &self,
         thread: &JsString,
