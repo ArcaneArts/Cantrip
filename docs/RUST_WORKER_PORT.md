@@ -26,10 +26,11 @@ checkpointed reflog/lost-commit recovery, worker-scoped GitHub catalog operation
 and repository-scoped issue detail/mutations, issue/PR search, PR inspection, creation, reviews, lifecycle, checkout preparation and agent context,
 GitHub inbox, Actions and releases, plus native replica provisioning and
 managed-link repair, synchronization and guarded removal over the existing
-placement/ownership records. Sixty-three native outer command handlers are installed:
+placement/ownership records. Sixty-six outer command types have native handlers:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
 `diagnostics.logs.read`, `worker.encryption.refresh`, `model.chatgpt.catalog`,
 `provider.auth.legacy.capture`, `provider.auth.legacy.purge`, `provider.auth.account.clear`,
+`codex.auth.status`, `codex.auth.login.start` and `codex.auth.logout` (ChatGPT),
 `workspace.repositories.discover`, `workspace.repository-import.validate`,
 `repository.operation` (root attachment, metadata, host Git status/file diffs and
 eleven basic Git actions, nine history/inspection queries, stash creation/diffs/mutations
@@ -124,7 +125,7 @@ loaded by a production service.
 | Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Workspace/folders/routing, nine protected host Explorer operations and bound file-document text read/write                                                                                                                                                                                                                                                                                              | Actual Rust worker/server persists encrypted resources, resolves opaque roots, saves files, rejects replay/mismatched document paths and reopens after restart. Paged readers, media/tail, transfers, activity/watches and delegated OS execution remain pending.                                                                |
 | Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub catalog, issue detail/mutations, issue/PR search, inspection, creation, reviews, lifecycle, checkout preparation, agent context, inbox, Actions/releases and replica provisioning/synchronization/removal/link repair | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, exports/sharing and delegated OS Git remain pending |
 | History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter, authenticated HTTP client, canonical content preparation, coherent archive recovery, native item rendering and canonical projector/bootstrap/rebase orchestration                                                                                                                                                                                                                       | Journal/outbox/projection, native protected preparation and coherent HTTP archive recovery pass focused checks; verified retained-context/child-scope and durable media/attachment adapters are native; live output identity, observation/capture and managed source/projection retry/recovery are native; verified child discovery and the top-level coordinator are native, including production worker startup recovery; live Codex/provider capture integration remains pending                                                                                                                                                    |
-| Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Native provider-error policy plus worker-wide provider pools, canonical lifetimes, direct HTTP/preparation admission, durable recovery, portable provider credential access, ChatGPT catalog discovery, legacy credential migration and scoped account clearing | Actual keeper-backed FIFO/recovery, controlled HTTP teardown and sealed credential migration pass. Provider sign-in/status/logout, additional catalogs and execution adapters remain pending |
+| Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Native provider-error policy plus worker-wide provider pools, canonical lifetimes, direct HTTP/preparation admission, durable recovery, portable provider credential access, ChatGPT catalog and device sign-in, legacy credential migration and scoped account clearing | Keeper-backed recovery, sealed credential migration and ChatGPT account status/device lifecycle pass locally. Grok device auth, additional catalogs and execution adapters remain pending |
 | Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Native discovery, managed sessions/RPC, keeper/journal, worker-wide admission manager, Codex admission adapter, private RPC routing and worker-scoped runtime owner; command-source adapters still pending | Real keeper grants, no-start withdrawal, cold FIFO recovery and prior registered app-server retirement; integrated execution, queue/settings and task/goal orchestration remain pending |
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
 | Terminals/run supervision          | Terminal manager/canonical/private state, run-configuration providers and supervisors                                                     | Native host service reconciliation/restart and owned PTY supervision                                                                                                                                                                                                                                                                                                                                    | Actual encrypted server/worker service enable, idempotence, restart, recovery and disable pass. Interactive commands, canonical terminal/replay, attachment/input/resize, CLI broker environments, run providers and delegated OS services remain pending.                                                                       |
@@ -3757,3 +3758,32 @@ could not establish process exit. Two Rust refresh tests,
 three existing Node credential tests, all-target worker Clippy, formatting
 and diff checks passed. No upstream provider requests, hosted development
 Actions, Windows or Linux runtime tests ran.
+
+## 61. ChatGPT account status, device sign-in and logout
+
+Reference: `d826695a9324654d4584ad9ecefaa86b4e3210ed` (#3223).
+The Rust worker dispatches the three existing `codex.auth.*` commands for
+ChatGPT. It opens Codex's stdio authentication service with the existing
+hashed account home and file credential store. It reads account details
+without token refresh, preserves the 30-second weekly usage cache, handles
+login completions arriving before the start response, and cancels a pending
+login before direct logout. Legacy capture and server-authorized account
+clearing still use the existing credential format. Purge and clear wait for
+the home-local authentication child to exit before changing that file.
+
+The worker emits the existing provider auth observation envelope with a
+sequence, bounded expiration, safe sign-in state and reconnect replay.
+Authentication child stderr and upstream OAuth error text stay out of the
+worker's report. Device authorization values travel only in the existing
+login-start command response.
+
+The local macOS ARM64 dispatcher fixture read signed-out status from bundled
+Codex and exercised event-driven success and early expiry with a stdio peer.
+It verified Node weekly usage/schema parity, pending-login cancellation,
+clearing during authorization, redaction and replay over a real reconnect.
+The 122 Node/Rust stdio and discovery comparisons, six existing Node
+observation and legacy credential tests, worker Clippy, formatting and diff
+checks passed locally. Upstream authorization, Windows and Linux runtime
+validation are outside this cycle's evidence. Grok
+sign-in, status and logout still require their native provider implementation.
+Production packaging continues to select Node.

@@ -17,6 +17,7 @@ struct State {
     requests: IndexMap<u64, Pending>,
     waiters: IndexMap<u64, Waiting>,
     notifications: VecDeque<Value>,
+    observe: Option<Observe>,
 }
 impl State {
     fn reject(&mut self, message: JsString) {
@@ -61,6 +62,10 @@ impl State {
         let mut notification = json!({"method":method});
         if let Some(params) = message.get("params") {
             notification["params"] = params.clone();
+        }
+        if let Some(observe) = &self.observe {
+            observe(&notification);
+            return;
         }
         let matching = self
             .waiters
@@ -130,6 +135,7 @@ pub(super) async fn run(
     mut exit: oneshot::Receiver<i32>,
     timeout: Duration,
     observed: Arc<dyn Fn() -> Option<std::process::ExitStatus> + Send + Sync>,
+    observe: Option<Observe>,
 ) {
     let (outgoing, mut writes) = mpsc::unbounded_channel::<Value>();
     let writer = tokio::spawn(async move {
@@ -143,7 +149,13 @@ pub(super) async fn run(
             }
         }
     });
-    let mut state = State::default();
+    let auth = observe.is_some();
+    let mut state = State {
+        observe,
+        requests: IndexMap::new(),
+        waiters: IndexMap::new(),
+        notifications: VecDeque::new(),
+    };
     let mut lines = Lines {
         bytes: Vec::new(),
         cr: false,
@@ -153,7 +165,7 @@ pub(super) async fn run(
     while out || err || code.is_none() {
         tokio::select! {
             chunk=stdout.recv(),if out=>match chunk {Some(bytes)=>lines.feed(&bytes,&mut state),None=>{out=false;if !lines.bytes.is_empty(){state.line(&lines.bytes);lines.bytes.clear();}}},
-            chunk=stderr.recv(),if err=>match chunk {Some(bytes)=>{let mut units=tail.units().to_vec();units.extend(String::from_utf8_lossy(&bytes).encode_utf16());if units.len()>16384{units.drain(..units.len()-16384);}tail=JsString::new(units);},None=>err=false},
+            chunk=stderr.recv(),if err=>match chunk {Some(bytes) if !auth=>{let mut units=tail.units().to_vec();units.extend(String::from_utf8_lossy(&bytes).encode_utf16());if units.len()>16384{units.drain(..units.len()-16384);}tail=JsString::new(units);}, Some(_)=>{},None=>err=false},
             status=&mut exit,if code.is_none()=>code=Some(status.unwrap_or(-1)),
             operation=operations.recv()=>{
                 let Some(operation)=operation else{break;};
@@ -187,7 +199,11 @@ pub(super) async fn run(
     let code = observed()
         .map(|status| status.code().unwrap_or(1))
         .unwrap_or(code.unwrap_or(-1));
-    state.reject(diagnostics::exit_message(code, &tail));
+    state.reject(if auth {
+        "Codex authentication service exited.".into()
+    } else {
+        diagnostics::exit_message(code, &tail)
+    });
     writer.abort();
     let _ = writer.await;
 }

@@ -18,6 +18,7 @@ use tokio::{
     task::JoinHandle,
 };
 pub type Predicate = Arc<dyn Fn(&Value) -> bool + Send + Sync>;
+pub(super) type Observe = Arc<dyn Fn(&Value) + Send + Sync>;
 type Reply = std::result::Result<Value, JsString>;
 enum Operation {
     Request {
@@ -48,6 +49,8 @@ struct Inner {
     session: Arc<Mutex<Option<ProcessHandle>>>,
     io: Mutex<Option<JoinHandle<()>>>,
     close_guard: tokio::sync::Mutex<()>,
+    confirm_exit: bool,
+    exit_unconfirmed: AtomicBool,
     timeout: Duration,
 }
 #[derive(Clone)]
@@ -68,25 +71,61 @@ impl Client {
         environment: &HashMap<String, String>,
         timeout: Duration,
     ) -> Result<Self> {
-        let mut environment = environment.clone();
-        environment.insert("CODEX_HOME".into(), home.to_string_lossy().into_owned());
-        let child = codex_utils_pty::spawn_pipe_process(
+        Self::spawn_inner(binary, home, cwd, environment, timeout, None).await
+    }
+
+    pub(super) async fn spawn_auth(
+        binary: &Path,
+        home: &Path,
+        cwd: &Path,
+        environment: &HashMap<String, String>,
+        observe: Observe,
+    ) -> Result<Self> {
+        Self::spawn_inner(
             binary,
-            &["app-server".into(), "--listen".into(), "stdio://".into()],
+            home,
             cwd,
-            &environment,
-            &None,
-            &[],
+            environment,
+            Duration::from_secs(30),
+            Some(observe),
         )
-        .await?;
+        .await
+    }
+
+    async fn spawn_inner(
+        binary: &Path,
+        home: &Path,
+        cwd: &Path,
+        environment: &HashMap<String, String>,
+        timeout: Duration,
+        observe: Option<Observe>,
+    ) -> Result<Self> {
+        let mut environment = environment.clone();
+        if cfg!(windows) {
+            environment.retain(|key, _| !key.eq_ignore_ascii_case("CODEX_HOME"));
+        }
+        environment.insert("CODEX_HOME".into(), home.to_string_lossy().into_owned());
+        let auth = observe.is_some();
+        let mut args = vec!["app-server".into(), "--listen".into(), "stdio://".into()];
+        if auth {
+            args.extend([
+                "-c".into(),
+                "model_provider=\"openai\"".into(),
+                "-c".into(),
+                "cli_auth_credentials_store=\"file\"".into(),
+            ]);
+        }
+        let child =
+            codex_utils_pty::spawn_pipe_process(binary, &args, cwd, &environment, &None, &[])
+                .await?;
         let (send, receive) = mpsc::unbounded_channel();
         let closed = Arc::new(AtomicBool::new(false));
         let writer = child.session.writer_sender();
         let session = Arc::new(Mutex::new(Some(child.session)));
-        let observe = Arc::downgrade(&session);
+        let process = Arc::downgrade(&session);
         let observed: Arc<dyn Fn() -> Option<std::process::ExitStatus> + Send + Sync> =
             Arc::new(move || {
-                let owner = observe.upgrade()?;
+                let owner = process.upgrade()?;
                 owner.lock().ok()?.as_ref()?.native_exit_status()
             });
         let io = tokio::spawn(actor::run(
@@ -99,6 +138,7 @@ impl Client {
             child.exit_rx,
             timeout,
             observed,
+            observe,
         ));
         Ok(Self(Arc::new(Inner {
             operations: send,
@@ -108,8 +148,13 @@ impl Client {
             session,
             io: Mutex::new(Some(io)),
             close_guard: tokio::sync::Mutex::new(()),
+            confirm_exit: auth,
+            exit_unconfirmed: AtomicBool::new(false),
             timeout,
         })))
+    }
+    pub(super) fn is_closed(&self) -> bool {
+        self.0.closed.load(Ordering::Acquire)
     }
     pub fn request(&self, method: JsString, params: Option<Value>) -> Work<Value> {
         let id = self.0.next.fetch_add(1, Ordering::Relaxed);
@@ -181,6 +226,12 @@ impl Client {
                 } else {
                     session.terminate_and_wait().await;
                 }
+                if this.0.confirm_exit && session.native_exit_status().is_none() {
+                    this.0.exit_unconfirmed.store(true, Ordering::Release);
+                }
+            }
+            if this.0.exit_unconfirmed.load(Ordering::Acquire) {
+                anyhow::bail!("Could not confirm Codex authentication process exit.");
             }
             Ok(())
         })

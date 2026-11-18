@@ -214,6 +214,7 @@ pub struct Connection {
     pub requests: mpsc::UnboundedSender<Value>,
     pub stop: watch::Receiver<bool>,
     pub generation: String,
+    pub on_ready: Arc<dyn Fn() + Send + Sync>,
 }
 impl Connection {
     pub async fn run(mut self) -> Result<()> {
@@ -420,6 +421,7 @@ impl Connection {
     }
     fn connected(&self, worker: &cantrip_wire::JsString, attempt: u32, negotiation: &str) {
         self.outgoing.ready(true);
+        (self.on_ready)();
         self.logs.event("info","Worker command channel connected",json!({"event":"worker.connection.connected","subsystem":"worker-connection","operation":"connect","status":"completed","workerId":worker,"attempt":attempt,"negotiation":negotiation}));
     }
     fn invalid(&self, worker: &cantrip_wire::JsString) {

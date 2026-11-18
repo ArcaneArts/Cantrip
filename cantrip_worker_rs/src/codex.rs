@@ -1,4 +1,5 @@
 //! Native Codex integration. Discovery does not admit execution or model input.
+pub(crate) mod account_auth;
 pub mod admission;
 pub mod catalog;
 pub mod diagnostics;
