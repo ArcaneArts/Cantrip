@@ -4,6 +4,7 @@ use super::{
     process_transport::{Options, Process},
     rpc_requests::{Failure, Ports, Requests, Response, Settlement},
 };
+use crate::history::live::observation::Hub;
 use anyhow::{Result, anyhow};
 use cantrip_history::projection::Work;
 use cantrip_wire::{JsString, Value, value::json};
@@ -40,11 +41,13 @@ struct Inner {
     process: Arc<tokio::sync::Mutex<Option<Process>>>,
     io: Mutex<Option<JoinHandle<()>>>,
     close: tokio::sync::Mutex<()>,
+    history: Hub,
     generation: String,
 }
 impl Drop for Inner {
     fn drop(&mut self) {
         self.closed.store(true, Ordering::Release);
+        self.history.replace(None);
         self.requests
             .reject_all("Codex app-server client closed.".into());
         let _ = self.outgoing.send(Outgoing::Close);
@@ -132,6 +135,8 @@ impl Session {
                 logs: options.logs,
             });
             let generation = uuid::Uuid::new_v4().to_string();
+            let history = Hub::default();
+            history.replace(Some(generation.as_str().into()));
             let io = tokio::spawn(socket::run(
                 socket,
                 receive,
@@ -142,6 +147,7 @@ impl Session {
                 process.clone(),
                 exit,
                 events,
+                history.clone(),
                 generation.clone(),
             ));
             Ok((
@@ -153,6 +159,7 @@ impl Session {
                     process,
                     io: Mutex::new(Some(io)),
                     close: tokio::sync::Mutex::new(()),
+                    history,
                     generation,
                 })),
                 observations,
@@ -161,6 +168,9 @@ impl Session {
     }
     pub fn generation(&self) -> Option<&str> {
         (!self.0.closed.load(Ordering::Acquire)).then_some(self.0.generation.as_str())
+    }
+    pub(super) fn history(&self) -> Hub {
+        self.0.history.clone()
     }
     pub fn process_exited(&self) -> bool {
         self.0.exited.load(Ordering::Acquire)
@@ -206,6 +216,7 @@ impl Session {
     }
     pub fn close(&self) -> Work<()> {
         self.0.closed.store(true, Ordering::Release);
+        self.0.history.replace(None);
         self.0
             .requests
             .reject_all("Codex app-server client closed.".into());

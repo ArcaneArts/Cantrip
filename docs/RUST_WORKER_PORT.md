@@ -3894,3 +3894,24 @@ thread and namespace identities, and an OS placement that could not fall back
 to the host. External-console attachment, server-dispatched turn execution,
 live history publication and OS-hosted observation remain open. Production
 still selects Node.
+
+## 66. Capture live Codex history through the managed transport
+
+Reference: `d5ec55aefd95c3f8d113b0667eb963cc785d5b43` (#3228).
+Managed runtimes now expose a stable history source for their WebSocket
+generation. The socket captures notifications before processing later RPC
+replies, so a `thread/read` snapshot can reconcile the earlier frames. The
+source retains valid native cursors and excludes replies, native server
+requests, and private inference controls. Closing the transport retires its
+subscriptions, and the history capture drains accepted records independently
+of the native child.
+
+Local macOS ARM64 validation used the bundled Codex and a loopback Grok
+provider. Two persisted turns streamed real assistant output through the
+native runtime. The Rust worker obtained authorized history bindings from
+the fixture server, captured output and terminal notifications, and read back
+the encrypted journals after logout closed the transport. A socket-level test
+also checks ordering against the RPC reply while the ordinary event consumer
+is idle. Connecting the history source to production managed chat preparation
+and validating canonical publication through the Rust server remain open.
+Production still selects Node.

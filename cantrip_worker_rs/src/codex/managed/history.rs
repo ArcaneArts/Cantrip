@@ -1,8 +1,30 @@
 use super::*;
 use crate::codex::rpc_requests::Failure;
-use std::sync::OnceLock;
+use crate::history::live::observation::Hub;
+use std::sync::{OnceLock, Weak};
+
+pub(super) fn source(hub: Hub, runtime: Weak<Inner>) -> Arc<RuntimeHub> {
+    Arc::new(RuntimeHub {
+        hub,
+        read: Arc::new(move |thread| {
+            let runtime = runtime.upgrade().map(Runtime);
+            Box::pin(async move {
+                runtime
+                    .ok_or_else(|| anyhow!("Native history runtime has closed."))?
+                    .read_history(&thread)
+                    .await
+            })
+        }),
+    })
+}
 
 impl Runtime {
+    /// Stable observation identity for the lifetime of this native transport.
+    /// History retains its own subscriptions without keeping the child alive.
+    pub fn history(&self) -> Arc<RuntimeHub> {
+        self.0.history.clone()
+    }
+
     /// Observe the existing thread without loading, resuming or configuring it.
     pub async fn read_history(&self, thread: &JsString) -> Result<Value> {
         let read = |include_metadata| {
