@@ -4,7 +4,16 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  symlink,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -12,6 +21,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import {
   computeBlindLookupTag,
+  decryptProtectedSecret,
   deriveLookupKey,
   encryptProtectedSecret,
   wrapComponentKeyForWorker,
@@ -20,6 +30,10 @@ import { chatGptModelInventorySchema } from "../../packages/protocol/dist/index.
 import { providerCredentialProtectedContentSchema } from "../../packages/protocol/dist/protected-secrets.js";
 import { quotaSnapshotFromRateLimits } from "../../cantrip_worker/src/codex/rate-limits.ts";
 import { codexAccountHome } from "../../cantrip_worker/src/codex/account-home.ts";
+import {
+  captureLegacyProviderCredential,
+  legacyProviderCredentialSubject,
+} from "../../cantrip_worker/src/legacy-provider-credentials.ts";
 
 const require = createRequire(
   new URL("../../cantrip_worker/package.json", import.meta.url),
@@ -153,6 +167,7 @@ const credential = {
 subjectKey.fill(0);
 const counts = new Map();
 let httpFailure;
+let portableSignedOut = false;
 async function respond(request, response) {
   const url = new URL(request.url, "http://127.0.0.1");
   assert.equal(request.headers.authorization, "Bearer " + token);
@@ -218,6 +233,8 @@ async function respond(request, response) {
     );
     counts.set(account, (counts.get(account) ?? 0) + 1);
     if (account === local) send(404, { code: "migration-needed" });
+    else if (account === portable && portableSignedOut)
+      send(409, { code: "reauth-required" });
     else send(200, credential);
   } else send(404, {});
 }
@@ -301,24 +318,14 @@ try {
     const frame = JSON.parse(raw);
     if (frame.kind === "response") pending.get(frame.requestId)?.(frame);
   });
-  async function catalog(accountId, credentialHomeKey = home(accountId)) {
+  async function command(command) {
     const requestId = randomUUID();
     const result = new Promise((resolve) => pending.set(requestId, resolve));
     socket.send(
       JSON.stringify({
         kind: "request",
         requestId,
-        command: {
-          type: "model.chatgpt.catalog",
-          provider: {
-            id: providerId,
-            kind: "chatgpt",
-            name: "Fixture",
-            baseUrl: "https://example.invalid",
-            accountId,
-            credentialHomeKey,
-          },
-        },
+        command,
       }),
     );
     try {
@@ -326,6 +333,29 @@ try {
     } finally {
       pending.delete(requestId);
     }
+  }
+  function catalog(accountId, credentialHomeKey = home(accountId)) {
+    return command({
+      type: "model.chatgpt.catalog",
+      provider: {
+        id: providerId,
+        kind: "chatgpt",
+        name: "Fixture",
+        baseUrl: "https://example.invalid",
+        accountId,
+        credentialHomeKey,
+      },
+    });
+  }
+  function credentials(type, providerAccountId, providerKind, extra = {}) {
+    return command({
+      type: "provider.auth." + type,
+      providerId,
+      providerAccountId,
+      providerKind,
+      credentialHomeKey: home(providerAccountId),
+      ...extra,
+    });
   }
   const [a, b] = await Promise.all([catalog(portable), catalog(portable)]);
   for (const response of [a, b]) {
@@ -363,6 +393,127 @@ try {
   const homes = await readdir(path.join(data, "codex-accounts"));
   for (const id of [portable, local])
     assert.ok(homes.includes(path.basename(codexAccountHome(data, home(id)))));
+
+  const localHome = codexAccountHome(data, home(local));
+  const localAuth = path.join(localHome, "auth.json");
+  const grok = "grok-account";
+  const grokHome = codexAccountHome(data, home(grok));
+  const grokAuth = path.join(grokHome, "grok-auth.json");
+  const jwt = (claims) =>
+    "fixture." +
+    Buffer.from(JSON.stringify(claims)).toString("base64") +
+    ".signature";
+  const chatgptTokens = JSON.stringify({
+    tokens: {
+      access_token: jwt({ exp: 2_000_000_000 }),
+      id_token: jwt({
+        "https://api.openai.com/auth": {
+          chatgpt_account_id: "worker-local-subject",
+          user_id: "worker-local-user",
+          chatgpt_plan_type: "fixture",
+        },
+        "https://api.openai.com/profile": { email: "local@example.invalid" },
+      }),
+      refresh_token: "synthetic-legacy-refresh",
+    },
+  });
+  await mkdir(grokHome, { recursive: true });
+  const missing = await credentials("legacy.capture", grok, "grok");
+  assert.equal(missing.ok, true, JSON.stringify(missing.error));
+  assert.deepEqual(missing.result, { status: "missing" });
+  await writeFile(localAuth, chatgptTokens);
+  await symlink(localAuth, grokAuth);
+  const symlinkCapture = await credentials("legacy.capture", grok, "grok");
+  assert.equal(symlinkCapture.ok, true, JSON.stringify(symlinkCapture.error));
+  assert.deepEqual(symlinkCapture.result, { status: "malformed" });
+  await unlink(grokAuth);
+  await writeFile(
+    grokAuth,
+    JSON.stringify({
+      accessToken: "synthetic-legacy-grok-access",
+      userId: "local-grok",
+      email: "",
+      expiresAt: 2_000_000_000_000,
+      version: 1,
+    }),
+  );
+  const migrationLookup = deriveLookupKey({ ...aad, field: "subject" });
+  for (const [account, kind, directory] of [
+    [local, "chatgpt", localHome],
+    [grok, "grok", grokHome],
+  ]) {
+    const node = await captureLegacyProviderCredential(directory, kind);
+    assert.equal(node.status, "available");
+    const result = await credentials("legacy.capture", account, kind);
+    assert.equal(result.ok, true, JSON.stringify(result.error));
+    assert.equal(result.result.status, "available");
+    assert.equal(result.result.portableAuth, true);
+    const blind = computeBlindLookupTag(
+      migrationLookup,
+      legacyProviderCredentialSubject(node.credential),
+    );
+    assert.equal(result.result.credential.subjectBlindIndex, blind);
+    assert.equal(
+      result.result.metadata.expiresAt,
+      new Date(node.credential.expiresAt).toISOString(),
+    );
+    const decrypted = await decryptProtectedSecret({
+      ...aad,
+      rowId: account,
+      field: "protected_credential",
+      encrypted: result.result.credential.protectedCredential,
+      contentSchema: providerCredentialProtectedContentSchema,
+    });
+    assert.deepEqual(decrypted, node.credential);
+  }
+  migrationLookup.fill(0);
+
+  const portableAuth = path.join(
+    codexAccountHome(data, home(portable)),
+    "auth.json",
+  );
+  await writeFile(portableAuth, chatgptTokens);
+  const mismatch = await credentials("account.clear", foreign, "chatgpt", {
+    credentialHomeKey: home(portable),
+  });
+  assert.equal(mismatch.ok, false);
+  assert.match(mismatch.error.message, /different account/);
+  assert.equal(await readFile(portableAuth, "utf8"), chatgptTokens);
+  portableSignedOut = true;
+  const cleared = await credentials("account.clear", portable, "chatgpt");
+  assert.equal(cleared.ok, true, JSON.stringify(cleared.error));
+  assert.deepEqual(cleared.result, { accepted: true });
+  await assert.rejects(readFile(portableAuth), { code: "ENOENT" });
+  const afterClear = await catalog(portable);
+  assert.equal(afterClear.ok, false);
+  assert.match(afterClear.error.message, /reauth-required/);
+  assert.equal(counts.get(portable), 3);
+  assert.equal(await readFile(localAuth, "utf8"), chatgptTokens);
+  assert.equal((await catalog(local)).ok, true);
+  assert.equal(counts.get(local), 1);
+
+  const captured = await credentials("legacy.capture", local, "chatgpt");
+  const proof = {
+    serverCredentialRevision: 7,
+    expectedSubjectBlindIndex: captured.result.credential.subjectBlindIndex,
+  };
+  const rejected = await credentials("legacy.purge", local, "chatgpt", {
+    ...proof,
+    expectedSubjectBlindIndex: credential.credential.subjectBlindIndex,
+  });
+  assert.equal(rejected.ok, false);
+  assert.match(rejected.error.message, /identity changed before purge/);
+  assert.equal(await readFile(localAuth, "utf8"), chatgptTokens);
+  for (const purged of [true, false]) {
+    const response = await credentials("legacy.purge", local, "chatgpt", proof);
+    assert.equal(response.ok, true, JSON.stringify(response.error));
+    assert.deepEqual(response.result, {
+      purged,
+      serverCredentialRevision: 7,
+      subjectBlindIndex: proof.expectedSubjectBlindIndex,
+    });
+    await assert.rejects(readFile(localAuth), { code: "ENOENT" });
+  }
   assert.equal(httpFailure, undefined);
   assert.equal(output.includes(secret), false);
   child.stdin.end();
@@ -383,6 +534,9 @@ try {
       exactAccount: true,
       coalescedCredentialGet: true,
       nodeQuotaOracle: true,
+      nodeCredentialOracle: true,
+      identityCheckedPurge: true,
+      scopedRuntimeAndLeaseRetirement: true,
       realKeeper: true,
       providerCalls: 0,
     }),

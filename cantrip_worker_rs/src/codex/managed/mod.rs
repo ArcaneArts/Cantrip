@@ -5,6 +5,7 @@ mod worker;
 use super::{
     admission::{Adapter, OnRevoked},
     private_inference::{Hooks, Router, Routing},
+    process_transport::{RetirementError, retirement_failed},
     rpc_requests::{Response, Settlement},
     session::{Event, EventKind, Session},
 };
@@ -139,6 +140,7 @@ impl Runtime {
         .await;
         let (session, events) = match resources {
             Ok(resources) => resources,
+            Err(error) if retirement_failed(&error) => return Err(error),
             Err(error) => {
                 // Launch has not returned a usable session. Retire the
                 // prepared generation through the keeper before replacement.
@@ -359,7 +361,7 @@ async fn refresh(auth: Option<Arc<dyn ExternalAuth>>, session: Session, id: Valu
 fn failed_start<T>(error: anyhow::Error, cleanup: Result<()>) -> Result<T> {
     match cleanup {
         Ok(()) => Err(error),
-        Err(cleanup) => Err(cleanup.context(error.to_string())),
+        Err(cleanup) => Err(RetirementError(cleanup.context(error.to_string())).into()),
     }
 }
 

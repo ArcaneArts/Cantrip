@@ -1,5 +1,8 @@
 use super::*;
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use base64::{
+    Engine, alphabet,
+    engine::general_purpose::{GeneralPurpose, NO_PAD},
+};
 
 const CHATGPT_CLIENT: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const CHATGPT_ENDPOINT: &str = "https://auth.openai.com/oauth/token";
@@ -99,11 +102,32 @@ pub(super) fn refreshed(current: &Value, payload: &Value, now: i64) -> Result<Va
     Ok(credential)
 }
 
-fn claims(token: Option<&JsString>) -> Value {
-    token
-        .and_then(JsString::as_str)
-        .and_then(|token| token.split('.').nth(1))
-        .and_then(|payload| URL_SAFE_NO_PAD.decode(payload.trim_end_matches('=')).ok())
+pub(crate) fn claims(token: Option<&JsString>) -> Value {
+    const DECODER: GeneralPurpose = GeneralPurpose::new(
+        &alphabet::URL_SAFE,
+        NO_PAD.with_decode_allow_trailing_bits(true),
+    );
+    let token = token.map(JsString::lossy);
+    let payload = token.as_ref().and_then(|token| token.split('.').nth(1));
+    // The legacy reader uses Buffer.from(base64url), which also accepts
+    // standard base64 characters and ignores bytes outside either alphabet.
+    payload
+        .and_then(|payload| {
+            let mut bytes = payload
+                .bytes()
+                .take_while(|byte| *byte != b'=')
+                .filter_map(|byte| match byte {
+                    b'+' => Some(b'-'),
+                    b'/' => Some(b'_'),
+                    b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' => Some(byte),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            if bytes.len() % 4 == 1 {
+                bytes.pop();
+            }
+            DECODER.decode(bytes).ok()
+        })
         .and_then(|data| parse_json_text(&String::from_utf8_lossy(&data)).ok())
         .filter(Value::is_object)
         .unwrap_or(Value::Null)
@@ -116,6 +140,7 @@ fn refresh_failed() -> anyhow::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
     fn token(claims: Value) -> String {
         format!(
