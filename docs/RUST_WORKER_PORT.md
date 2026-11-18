@@ -124,7 +124,7 @@ loaded by a production service.
 | Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub catalog, issue detail/mutations, issue/PR search, inspection, creation, reviews, lifecycle, checkout preparation, agent context, inbox, Actions/releases and replica provisioning/synchronization/removal/link repair | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, exports/sharing and delegated OS Git remain pending |
 | History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter, authenticated HTTP client, canonical content preparation, coherent archive recovery, native item rendering and canonical projector/bootstrap/rebase orchestration                                                                                                                                                                                                                       | Journal/outbox/projection, native protected preparation and coherent HTTP archive recovery pass focused checks; verified retained-context/child-scope and durable media/attachment adapters are native; live output identity, observation/capture and managed source/projection retry/recovery are native; verified child discovery and the top-level coordinator are native, including production worker startup recovery; live Codex/provider capture integration remains pending                                                                                                                                                    |
 | Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Native provider-error policy plus worker-wide provider pools, canonical lifetimes, direct HTTP/preparation admission and durable recovery; provider authentication/execution adapters pending | Actual keeper-backed FIFO/recovery and controlled HTTP teardown pass; live provider protocol, media/usage, refresh and integration remain pending |
-| Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Native discovery, managed sessions/RPC, keeper/journal, worker-wide admission manager and Codex admission adapter; private RPC routing, runtime owner and command-source adapters still pending | Real keeper grants, no-start withdrawal, cold FIFO recovery and prior registered app-server retirement; integrated execution, queue/settings and task/goal orchestration remain pending |
+| Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Native discovery, managed sessions/RPC, keeper/journal, worker-wide admission manager, Codex admission adapter and private RPC routing; runtime owner and command-source adapters still pending | Real keeper grants, no-start withdrawal, cold FIFO recovery and prior registered app-server retirement; integrated execution, queue/settings and task/goal orchestration remain pending |
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
 | Terminals/run supervision          | Terminal manager/canonical/private state, run-configuration providers and supervisors                                                     | Native host service reconciliation/restart and owned PTY supervision                                                                                                                                                                                                                                                                                                                                    | Actual encrypted server/worker service enable, idempotence, restart, recovery and disable pass. Interactive commands, canonical terminal/replay, attachment/input/resize, CLI broker environments, run providers and delegated OS services remain pending.                                                                       |
 | WorkerLink/direct/tunnels          | gateways/peer/WebRTC/direct broker, tunnel protection/routing/adapters                                                                    | Native framing/tunnel crypto; serving adapters pending                                                                                                                                                                                                                                                                                                                                                  | Existing frame fixtures plus actual ICE/TURN/WebRTC interoperability, bounded backpressure, stale grant/session and disconnect behavior                                                                                                                                                                                          |
@@ -3620,3 +3620,39 @@ Task Goal no-start receipt in an owned temporary profile. No inference provider
 was called. Worker all-target Clippy with warnings denied, formatting and diff
 checks passed. The private gate confirmation/dispatch callbacks use controlled
 inputs. No Windows/Linux runtime or hosted development Actions ran.
+
+## 57. Native Codex private inference transport
+
+Reference: `d25cca5565bdf70e00ed14d9d399ef5fc7110ece` (#3219).
+`codex::private_inference::Router` connects the adapter to the owned app-server
+WebSocket session. It consumes private inference notifications before the
+ordinary observer and uses Core's actual claim and resolve requests. Its
+pending table correlates runner, attempt, thread, turn and scope. Duplicate
+notifications join the existing request. A Task's first input can park the
+private Goal begin, then claim and deny that exact begin while it owns the
+native producer hold. Pause can inspect an actual waiting gate and claims the
+still-pending Core boundary before suspending an unbound root.
+
+The event consumer stays available while claims, admission and denial receipts
+are pending. An accepted negative resolve retires the exact begin. A failed
+denial or denied resume does not retire an admitted scope. A late Core cancel
+can still retire its original begin after the pending observer was removed,
+provided its runner and attempt match. Dropped socket observations cancel only
+unforwarded work. Native process retirement waits for the owned Session's
+confirmed child exit and the admission keeper's fencing.
+
+The router consumes real Session messages. The managed runtime owner still
+needs to create the session and router from the worker's command path, supply
+the managed overlay and Task/Goal ports, and integrate queue, settings,
+provider execution and live history. This cycle registers no outer commands.
+Production still launches the Node worker.
+
+Local macOS ARM64 validation used an owned child process and WebSocket peer
+to check claim/resolve parameters, first-input parking, stale and late
+cancellation, acknowledged and failed denial, denied resume, private finish,
+and distinct transport loss and confirmed exit. The session oracle passed
+166 Node/Rust comparisons, including a missing-scope claim against the
+installed bundled Codex. Eleven native admission tests passed, including
+the real keeper Task Goal case, along with the targeted Node transport
+fencing test, worker all-target Clippy, formatting and diff checks. No model
+calls, Windows/Linux runtime tests or hosted development Actions ran.

@@ -2,6 +2,7 @@
 pub mod admission;
 pub mod diagnostics;
 pub mod discovery;
+pub mod private_inference;
 pub mod process_transport;
 pub mod provider_errors;
 pub mod rpc_client;

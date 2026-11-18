@@ -103,8 +103,7 @@ fn observe(requests: &Requests, raw: &str, emit: &impl Fn(EventKind)) {
     // The runtime owner handles these private admission/protection controls
     // before the general diagnostic pipeline, as in the current Node runtime.
     if message["method"] == "thread/nativeResources/requested"
-        || message["method"] == "thread/managedExecution/requested"
-            && message["params"]["trigger"] == "inference"
+        || rpc_protocol::is_private_inference(&message)
     {
         emit(EventKind::Message(message));
         return;

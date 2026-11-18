@@ -20,6 +20,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 mod driver;
 #[path = "support/codex_ws_peer.rs"]
 mod peer;
+#[path = "support/private_inference_cases.rs"]
+mod private_inference;
 fn text(value: &Value, key: &str) -> JsString {
     value[key]
         .as_js_string()
@@ -211,6 +213,9 @@ async fn main() -> Result<()> {
     codex_utils_pty::init_spawn_helper(std::env::args_os());
     if std::env::args().any(|v| v == "app-server") {
         return peer::run().await;
+    }
+    if std::env::args().any(|v| v == "--private-inference") {
+        return private_inference::run().await;
     }
     let mut fixture = Fixture::default();
     let mut lines = tokio::io::BufReader::new(tokio::io::stdin()).lines();

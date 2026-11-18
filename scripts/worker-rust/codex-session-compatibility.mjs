@@ -114,6 +114,21 @@ try {
   await open({}, values.codex); await pair({ op: "session.initialize" });
   await pair({ op: "request", method: "thread/list", params: { cursor: null, limit: 10, archived: false }, name: "actual-local-threads" });
   const actual = await pair({ op: "await", name: "actual-local-threads" }); assert.deepEqual(actual.data, []);
+  const missingGate = "df6d13fd-84f7-4c81-bef6-26d171c0bb8f";
+  await pair({
+    op: "request",
+    method: "thread/managedExecution/inferenceClaim",
+    params: {
+      threadId: missingGate,
+      turnId: missingGate,
+      scopeId: missingGate,
+      attemptId: missingGate,
+      runnerGeneration: missingGate,
+    },
+    name: "actual-missing-inference-claim",
+  });
+  const claim = await pair({ op: "await", name: "actual-missing-inference-claim" });
+  assert.equal(claim.claimed, false);
   await pair({ op: "session.close" }); assert.equal((await pair({ op: "session.status" })).processExited, true);
   console.log(JSON.stringify({ status: "passed", comparisons, actualNodeAlgorithms: true, actualNativeWebSocketProcesses: true, lateReplySettlesAfterObservationTimeout: true, socketLossDoesNotSettle: true, actualExitFence: true, existingCodexManagedSession: true, noInference: true, rootRemovedOnExit: true }));
 } finally {
