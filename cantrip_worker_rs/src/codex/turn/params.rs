@@ -4,19 +4,23 @@ use cantrip_wire::{JsString, Value, value::json};
 use std::path::Path;
 
 pub(super) fn validate(command: &Value) -> Result<()> {
-    let supported_content = if protected_mode(command) {
+    let task = super::task::direct(command);
+    let supported_content = if task {
+        command["contextKind"] == "project" && command["taskDispatchLease"].is_object()
+    } else if protected_mode(command) {
         command["protectedPrompt"].is_object()
     } else {
         command["resultMode"]["kind"] == "visible" && command["prompt"].is_string()
     };
     if !supported_content
         || command["executionProfile"] == "cantrip-os"
+        || (!task
+            && (!command["taskDispatchLease"].is_null()
+                || !command["taskInferenceInput"].is_null()))
         || [
             "computerUseAuthority",
             "protectedNativeInput",
             "queuedPromptId",
-            "taskDispatchLease",
-            "taskInferenceInput",
             "taskResumption",
             "initialLabel",
             "subagentDefaults",
@@ -46,6 +50,7 @@ pub(super) fn preparation(command: &Value) -> Value {
         "cwd": command["cwd"],
         "threadId": command["threadId"],
         "planMode": command["planMode"],
+        "taskOwned": super::task::direct(command),
         "model": command["model"],
         "provider": command["provider"],
         "mcpServers": command["mcpServers"],

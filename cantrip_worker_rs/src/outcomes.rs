@@ -2,7 +2,7 @@
 //! Pending Task files use the existing commit protocol independently.
 use crate::{config::Config, encryption::Service, http::checked, logging::Logs};
 use anyhow::{Context, Result, bail};
-use cantrip_history::files::flush_directory;
+use cantrip_history::files::{ensure_directory, flush_directory, read_json, write_immutable};
 use cantrip_wire::{JsString, Value, parse_json_text, value::json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -28,6 +28,15 @@ pub(crate) fn chat(command: &Value, response: &Value) -> Result<Option<Value>> {
     {
         return Ok(None);
     }
+    let outcome = if response["ok"] == true {
+        json!({"ok":true, "result":checked("agentTurnResultSchema", &response["result"])?})
+    } else {
+        json!({"ok":false, "error":response["error"]["message"]})
+    };
+    notification(command, outcome).map(Some)
+}
+
+fn notification(command: &Value, outcome: Value) -> Result<Value> {
     let mut note = json!({"type":"chat.turn.outcome"});
     for field in [
         "chatId",
@@ -46,15 +55,13 @@ pub(crate) fn chat(command: &Value, response: &Value) -> Result<Option<Value>> {
             "operationGeneration": receipt["operationGeneration"],
         });
     }
-    note["outcome"] = if response["ok"] == true {
-        json!({
-            "ok": true,
-            "result": checked("agentTurnResultSchema", &response["result"])?,
-        })
-    } else {
-        json!({"ok":false, "error":response["error"]["message"]})
-    };
-    checked("workerChatTurnOutcomeNotificationSchema", &note).map(Some)
+    let task = &command["taskInferenceInput"];
+    if !task.is_null() {
+        note["taskInferenceInputOperationId"] = task["operationId"].clone();
+        note["taskDispatchFence"] = task["dispatch"].clone();
+    }
+    note["outcome"] = outcome;
+    checked("workerChatTurnOutcomeNotificationSchema", &note)
 }
 
 const MAX_RECORD_BYTES: u64 = 32 * 1024 * 1024;
@@ -65,6 +72,9 @@ pub(crate) struct TaskDelivery {
     directory: PathBuf,
     worker: JsString,
     http: reqwest::Client,
+    wake: Notify,
+    stop: watch::Receiver<bool>,
+    logs: Arc<Logs>,
 }
 
 #[derive(PartialEq)]
@@ -74,7 +84,12 @@ struct Scope {
 }
 
 impl TaskDelivery {
-    pub(crate) fn new(config: Arc<Mutex<Config>>, encryption: Arc<Service>) -> Result<Self> {
+    pub(crate) fn new(
+        config: Arc<Mutex<Config>>,
+        encryption: Arc<Service>,
+        stop: watch::Receiver<bool>,
+        logs: Arc<Logs>,
+    ) -> Result<Self> {
         let (directory, worker) = {
             let config = config.lock().unwrap();
             (
@@ -93,6 +108,9 @@ impl TaskDelivery {
             directory,
             worker,
             http,
+            wake: Notify::new(),
+            stop,
+            logs,
         })
     }
 
@@ -107,18 +125,93 @@ impl TaskDelivery {
         })
     }
 
-    pub(crate) async fn run(
-        self,
-        wake: Arc<Notify>,
-        mut stop: watch::Receiver<bool>,
-        logs: Arc<Logs>,
-    ) {
+    pub(crate) fn wake(&self) {
+        self.wake.notify_one();
+    }
+
+    pub(crate) async fn round(
+        &self,
+        owner: &JsString,
+        server: &JsString,
+        command: &Value,
+        result: &Result<Value>,
+    ) -> Option<Value> {
+        let append = async {
+            let outcome = match result {
+                Ok(result) => json!({"ok":true,"result":result}),
+                Err(error) => json!({"ok":false,"error":error.to_string()}),
+            };
+            let note = notification(command, outcome)?;
+            let scope = Scope { owner: owner.clone(), server: server.clone() };
+            let delivery = uuid::Uuid::new_v4().to_string();
+            let record = checked("taskGoalOutcomeDeliverySchema", &json!({
+                "version": 1, "deliveryId": delivery, "inputKind": "round",
+                "ownerId": owner, "serverId": server, "workerId": self.worker, "notification": note,
+            }))?;
+            self.append(&scope, &delivery, record.stringify()).await?;
+            Ok::<_, anyhow::Error>(note)
+        }.await;
+        match append {
+            Ok(note) => Some(note),
+            Err(error) => {
+                // Shutdown must not replace an already terminal model result.
+                self.report("Task outcome persistence was interrupted", &error);
+                None
+            }
+        }
+    }
+
+    async fn append(&self, scope: &Scope, delivery: &str, body: String) -> Result<()> {
+        if body.len() as u64 > MAX_RECORD_BYTES {
+            bail!("Task outcome file exceeds the delivery limit.");
+        }
+        let directory = self.directory(scope);
+        let filename = directory.join(format!("{delivery}.json"));
+        let mut stop = self.stop.clone();
+        let mut backoff = Duration::from_secs(1);
+        loop {
+            // Finish any write already in progress even if shutdown arrives.
+            let attempt = tokio::task::spawn_blocking({
+                let directory = directory.clone();
+                let filename = filename.clone();
+                let body = body.clone();
+                move || -> Result<()> {
+                    ensure_directory(&directory)?;
+                    if !write_immutable(&filename, &body)?
+                        && read_json(&filename)?.stringify() != body
+                    {
+                        bail!("Task outcome delivery identity has another body.");
+                    }
+                    Ok(())
+                }
+            })
+            .await?;
+            match attempt {
+                Ok(()) => {
+                    self.wake();
+                    return Ok(());
+                }
+                Err(error) => self.report("Task outcome remains unsaved", &error),
+            }
+            if *stop.borrow() {
+                bail!("Task outcome delivery stopped before persistence.");
+            }
+            tokio::select! {
+                _ = stop.changed() => bail!("Task outcome delivery stopped before persistence."),
+                _ = tokio::time::sleep(backoff) => {}
+            }
+            backoff = (backoff * 2).min(Duration::from_secs(30));
+        }
+    }
+
+    pub(crate) async fn run(self: Arc<Self>) {
+        let mut stop = self.stop.clone();
         let mut next = None;
         let mut backoff = Duration::from_secs(1);
         loop {
             tokio::select! {
                 _ = stop.changed() => break,
-                _ = wake.notified() => {},
+                _ = self.wake.notified() => {},
                 _ = async {
                     if let Some(at) = next {
                         tokio::time::sleep_until(at).await;
@@ -136,12 +229,7 @@ impl TaskDelivery {
                     backoff = Duration::from_secs(1);
                 }
                 Err(error) => {
-                    logs.repeated(
-                        format!("task-outcome-delivery:{}", self.worker.lossy()),
-                        "warn",
-                        "Task outcome durable delivery remains pending",
-                        json!({"event":"task.outcome-delivery-pending","workerId":self.worker,"error":crate::logging::error(&error)}),
-                    );
+                    self.report("Task outcome durable delivery remains pending", &error);
                     next = Some(tokio::time::Instant::now() + backoff);
                     backoff = (backoff * 2).min(Duration::from_secs(30));
                 }
@@ -149,9 +237,16 @@ impl TaskDelivery {
         }
     }
 
-    async fn drain(&self, stop: &mut watch::Receiver<bool>) -> Result<()> {
-        // Use the existing scope even when there are no component key grants.
-        let scope = self.scope()?;
+    fn report(&self, message: &str, error: &anyhow::Error) {
+        self.logs.repeated(
+            format!("task-outcome-delivery:{}:{message}", self.worker.lossy()),
+            "warn",
+            message,
+            json!({"event":"task.outcome-delivery-pending","workerId":self.worker,"error":crate::logging::error(error)}),
+        );
+    }
+
+    fn directory(&self, scope: &Scope) -> PathBuf {
         let key = Sha256::digest(
             json!([
                 scope.server.clone(),
@@ -162,7 +257,13 @@ impl TaskDelivery {
             .as_bytes(),
         );
         let key: String = key.iter().map(|byte| format!("{byte:02x}")).collect();
-        let directory = self.directory.join(key);
+        self.directory.join(key)
+    }
+
+    async fn drain(&self, stop: &mut watch::Receiver<bool>) -> Result<()> {
+        // Use the existing scope even when there are no component key grants.
+        let scope = self.scope()?;
+        let directory = self.directory(&scope);
         let mut entries = match fs::read_dir(&directory).await {
             Ok(entries) => entries,
             Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),

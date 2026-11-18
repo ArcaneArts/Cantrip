@@ -1,5 +1,6 @@
 use super::*;
 use crate::{
+    codex::task_inputs,
     encryption::Service,
     inference::{admission::Options as AdmissionOptions, ownership},
 };
@@ -55,6 +56,7 @@ struct Inner {
     worker_generation: JsString,
     binding: Binding,
     grok: OnceLock<GrokResolver>,
+    task_inputs: OnceLock<task_inputs::Client>,
     state: Mutex<State>,
 }
 
@@ -78,6 +80,7 @@ impl Worker {
             worker_generation,
             binding,
             grok: OnceLock::new(),
+            task_inputs: OnceLock::new(),
             state: Mutex::new(State::default()),
         }))
     }
@@ -109,6 +112,13 @@ impl Worker {
             .grok
             .set(resolve)
             .map_err(|_| anyhow!("Grok proxy is already configured."))
+    }
+
+    pub(crate) fn configure_task_inputs(&self, client: task_inputs::Client) -> Result<()> {
+        self.0
+            .task_inputs
+            .set(client)
+            .map_err(|_| anyhow!("Task input ownership is already configured."))
     }
 
     pub fn launch(&self, launch: Launch) -> Work<Runtime> {
@@ -390,6 +400,25 @@ impl Worker {
             options,
         );
         let mut admission = AdmissionOptions::local(scope);
+        if let Some(client) = self.0.task_inputs.get().cloned() {
+            let owner = admission.scope.owner_id.clone();
+            let server = admission.scope.server_id.clone();
+            admission.task_bound = Some(Arc::new(move |receipt, execution, generation, signal| {
+                let (client, owner, server) = (client.clone(), owner.clone(), server.clone());
+                Box::pin(async move {
+                    client
+                        .authorize(
+                            &owner,
+                            &server,
+                            &receipt,
+                            "native",
+                            Some((execution, generation)),
+                            signal,
+                        )
+                        .await
+                })
+            }));
+        }
         admission.ownership = Some(Arc::new(owner));
         let logs = self.0.host.logs.clone();
         admission.journal_error = Arc::new(move |_| {

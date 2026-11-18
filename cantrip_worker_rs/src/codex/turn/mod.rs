@@ -5,12 +5,14 @@ mod output;
 mod params;
 mod protected;
 mod receipt;
+mod task;
 
 use super::{
     admission::Acquire,
     managed::Runtime,
     preparation::{Intent, command::Ensurer},
     rpc_requests::Failure,
+    task_inputs,
 };
 use crate::{
     chat_content::Scope,
@@ -23,6 +25,7 @@ use crate::{
     http::checked,
     inference::admission::Source,
     metadata::{Abort, Signal},
+    outcomes::TaskDelivery,
 };
 use anyhow::{Context, Result, anyhow, bail};
 use cantrip_wire::{JsString, Value, payload_digest, value::json};
@@ -60,6 +63,14 @@ pub(crate) struct Turns {
     active: Sessions,
     receipts: receipt::Client,
     history: History,
+    task_inputs: task_inputs::Client,
+    task_outcomes: Arc<TaskDelivery>,
+}
+
+struct TaskTurn {
+    round: Arc<task::Round>,
+    key: Key,
+    claimed: bool,
 }
 
 struct Active {
@@ -170,6 +181,8 @@ impl Turns {
         configuration: Arc<Mutex<Config>>,
         generation: String,
         history: History,
+        task_inputs: task_inputs::Client,
+        task_outcomes: Arc<TaskDelivery>,
     ) -> Result<Self> {
         Ok(Self {
             preparation,
@@ -177,6 +190,8 @@ impl Turns {
             active: Arc::default(),
             receipts: receipt::Client::new(configuration, generation)?,
             history,
+            task_inputs,
+            task_outcomes,
         })
     }
 
@@ -262,15 +277,53 @@ impl Turns {
         Ok(json!({}))
     }
 
-    pub(crate) async fn run(&self, incoming: &Value, emit: Emit) -> Result<Value> {
-        self.run_owned(incoming, emit)
+    pub(crate) async fn run(&self, incoming: &Value, emit: Emit) -> (Result<Value>, Option<Value>) {
+        if !task::direct(incoming) {
+            let result = self
+                .run_owned(incoming, emit, None)
+                .await
+                .map_err(|error| protected::redact(incoming, error));
+            return (result, None);
+        }
+        let task = (|| {
+            params::validate(incoming)?;
+            let key = self.key(incoming)?;
+            let round = Arc::new(task::Round::open(self.encryption.clone(), incoming, &key)?);
+            Ok::<_, anyhow::Error>(TaskTurn {
+                round,
+                key,
+                claimed: false,
+            })
+        })();
+        let mut task = match task {
+            Ok(task) => task,
+            Err(_) => return (Err(anyhow!("Encrypted Task operation failed.")), None),
+        };
+        let result = self
+            .run_owned(incoming, emit, Some(&mut task))
             .await
-            .map_err(|error| protected::redact(incoming, error))
+            .map_err(|_| anyhow!("Encrypted Task operation failed."));
+        let note = if task.claimed {
+            self.task_outcomes
+                .round(&task.key.0, &task.key.1, incoming, &result)
+                .await
+        } else {
+            None
+        };
+        (result, note)
     }
 
-    async fn run_owned(&self, incoming: &Value, emit: Emit) -> Result<Value> {
+    async fn run_owned(
+        &self,
+        incoming: &Value,
+        emit: Emit,
+        mut task: Option<&mut TaskTurn>,
+    ) -> Result<Value> {
         params::validate(incoming)?;
         let key = self.key(incoming)?;
+        if task.as_ref().is_some_and(|task| key != task.key) {
+            bail!("The worker binding changed before Task admission.");
+        }
         let root = receipt::Operation::read(incoming)?;
         let (abort, signal) = Abort::new();
         let active = Arc::new(Active {
@@ -309,9 +362,24 @@ impl Turns {
             let (prompt, protection) =
                 protected::Protected::open(self.encryption.clone(), &command, &key.0, &key.1)?;
             (prompt, Some(Arc::new(protection)))
+        } else if let Some(task) = &task {
+            (task.round.prompt()?, None)
         } else {
             (id(&command["prompt"], "native turn prompt")?, None)
         };
+        if let Some(task) = &mut task {
+            self.task_inputs
+                .authorize(
+                    &key.0,
+                    &key.1,
+                    &command["taskInferenceInput"],
+                    "claim",
+                    None,
+                    signal.clone(),
+                )
+                .await?;
+            task.claimed = true;
+        }
         let prepared = self
             .preparation
             .prepare(&params::preparation(&command), Intent::Configure)
@@ -355,9 +423,15 @@ impl Turns {
             command["executionLaneId"].clone(),
             command["clientMessageId"].clone(),
         ]));
-        let operation = root
-            .as_ref()
-            .map_or_else(|| operation.into(), |root| root.generation.clone());
+        let operation = if task.is_some() {
+            id(
+                &command["taskInferenceInput"]["operationId"],
+                "Task input operation",
+            )?
+        } else {
+            root.as_ref()
+                .map_or_else(|| operation.into(), |root| root.generation.clone())
+        };
         let source = Source::claimed(operation, Some(signal.clone()));
         let admission = runtime.admission();
         let mut request = Acquire::new(
@@ -373,15 +447,20 @@ impl Turns {
         request.thread_id = Some(thread.clone());
         request.signal = Some(source.signal());
         let mut recovery = json!({"messageId": command["clientMessageId"], "threadId": thread});
-        if let Some(root) = &root {
+        if root.is_some() || task.is_some() {
             request.recovery_key = Some(json!(crate::native_items::concat(&[
                 "chat:".into(),
                 key.2.clone(),
                 ":message:".into(),
                 id(&command["clientMessageId"], "chat message identity")?,
             ])));
+        }
+        if let Some(root) = &root {
             recovery["commandId"] = json!(root.operation);
             recovery["commandGeneration"] = json!(root.generation);
+        }
+        if task.is_some() {
+            recovery["taskInput"] = command["taskInferenceInput"].clone();
         }
         request.recovery = Some(recovery);
         let acquired = admission.acquire(request).await;
@@ -422,6 +501,19 @@ impl Turns {
                 let _mcp = self
                     .preparation
                     .activate(&prepared, &command["executionLaneId"])?;
+                if task.is_some() {
+                    self.task_inputs
+                        .authorize(
+                            &key.0,
+                            &key.1,
+                            &command["taskInferenceInput"],
+                            "dispatch",
+                            None,
+                            signal.clone(),
+                        )
+                        .await?;
+                    prepared.thread.assert_current(runtime)?;
+                }
                 active.dispatch(&signal, thread.clone())?;
                 if let Some(receipt) = &receipt {
                     receipt.dispatch().await?;
@@ -505,6 +597,10 @@ impl Turns {
                     active.control.get().unwrap().published(result.is_ok());
                     result
                 };
+                let emit = match &task {
+                    Some(task) => task.round.events(emit),
+                    None => emit,
+                };
                 let (emit, publish) = match (protection.as_ref(), canonical) {
                     (Some(protection), Some(identity)) => {
                         let (emit, publish) = protection.publish_canonical(emit, identity);
@@ -553,9 +649,10 @@ impl Turns {
         source.close();
         result.and_then(|value| {
             cleanup?;
-            match protection {
-                Some(protection) => protection.result(value),
-                None => Ok(value),
+            match (protection, task) {
+                (Some(protection), _) => protection.result(value),
+                (_, Some(task)) => task.round.finish(value),
+                _ => Ok(value),
             }
         })
     }

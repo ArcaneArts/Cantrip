@@ -107,7 +107,11 @@ pub(super) async fn configuration(
             "subagentModel": defaults["name"],
             "subagentReasoningEffort": defaults["reasoningEffort"],
             "canonicalHistory": !standalone,
-            "executionGate": json!({"runnerGeneration": generation}),
+            "executionGate": if command["taskOwned"] == true {
+                json!({"runnerGeneration": generation, "inferenceOnly": true})
+            } else {
+                json!({"runnerGeneration": generation})
+            },
         })),
         expected_suspension: None,
     })

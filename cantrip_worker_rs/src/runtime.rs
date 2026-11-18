@@ -174,6 +174,19 @@ async fn cycle(
     );
     let data_directory = config.data_directory.clone();
     let configuration = Arc::new(Mutex::new(config));
+    let (stop, stop_rx) = watch::channel(false);
+    let task_inputs = crate::codex::task_inputs::Client::new(
+        configuration.clone(),
+        encryption.clone(),
+        generation.clone(),
+    )?;
+    codex.configure_task_inputs(task_inputs.clone())?;
+    let task_delivery = Arc::new(crate::outcomes::TaskDelivery::new(
+        configuration.clone(),
+        encryption.clone(),
+        stop_rx.clone(),
+        logs.clone(),
+    )?);
     let outgoing = Arc::new(Outbound::default());
     let auth_observations = crate::provider_auth_observer::Observer::new({
         let outgoing = outgoing.clone();
@@ -244,6 +257,8 @@ async fn cycle(
         configuration.clone(),
         generation.clone(),
         history.clone(),
+        task_inputs,
+        task_delivery.clone(),
     )?;
     let model_catalog = crate::codex::catalog::Catalog::new(
         codex.clone(),
@@ -269,13 +284,8 @@ async fn cycle(
             })
         },
     ));
-    let (stop, stop_rx) = watch::channel(false);
     let (registered, mut registration) = watch::channel(false);
-    let outcomes_ready = Arc::new(tokio::sync::Notify::new());
-    let task_outcomes =
-        crate::outcomes::TaskDelivery::new(configuration.clone(), encryption.clone())?;
-    let task_outcomes =
-        tokio::spawn(task_outcomes.run(outcomes_ready.clone(), stop_rx.clone(), logs.clone()));
+    let task_outcomes = tokio::spawn(task_delivery.clone().run());
     let (requests, mut received) = mpsc::unbounded_channel();
     let mut heartbeat_task = tokio::spawn(publish(
         configuration.clone(),
@@ -297,7 +307,7 @@ async fn cycle(
             let observations = auth_observations.clone();
             Arc::new(move || {
                 observations.reemit();
-                outcomes_ready.notify_one();
+                task_delivery.wake();
             })
         },
     };
@@ -375,9 +385,9 @@ async fn cycle(
                     let worker = worker.clone();
                     commands.spawn(async move {
                         let command = &request["command"];
-                        let result = match command["type"].as_str() {
-                            Some(crate::codex::turn::INTERRUPT) => turns.interrupt(command).await,
-                            Some(crate::codex::turn::CONTROL) => turns.control(command).await,
+                        let (result, note) = match command["type"].as_str() {
+                            Some(crate::codex::turn::INTERRUPT) => (turns.interrupt(command).await, None),
+                            Some(crate::codex::turn::CONTROL) => (turns.control(command).await, None),
                             _ => {
                                 let request_id = request["requestId"].clone();
                                 let stream = outgoing.clone();
@@ -388,6 +398,12 @@ async fn cycle(
                             }
                         };
                         finish(&request, &worker, &logs, &outgoing, began, &result);
+                        if let Some(note) = note
+                            && let Err(error) = outgoing.notification(note)
+                        {
+                            logs.event("warn", "Task outcome notification was rejected",
+                                json!({"event":"task.outcome-publication-failed","workerId":worker,"error":logging::error(&error)}));
+                        }
                     });
                     continue;
                 }
