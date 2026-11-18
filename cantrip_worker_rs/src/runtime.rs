@@ -233,6 +233,7 @@ async fn cycle(
         skill_root.clone(),
         &codex_compatibility,
     );
+    let turns = crate::codex::turn::Turns::new(thread_preparation.clone());
     let model_catalog = crate::codex::catalog::Catalog::new(
         codex.clone(),
         provider_access.clone(),
@@ -323,6 +324,27 @@ async fn cycle(
                 let kind=command["type"].as_str().unwrap_or("unknown");
                 let began=std::time::Instant::now();
                 logs.event("debug","Worker command dispatched",json!({"event":"worker.command.dispatched","operation":kind,"requestId":request["requestId"],"workerId":worker}));
+                if matches!(kind, crate::codex::turn::RUN | crate::codex::turn::INTERRUPT) {
+                    let turns = turns.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    let interrupt = kind == crate::codex::turn::INTERRUPT;
+                    commands.spawn(async move {
+                        let result = if interrupt {
+                            turns.interrupt(&request["command"]).await
+                        } else {
+                            let request_id = request["requestId"].clone();
+                            let stream = outgoing.clone();
+                            turns.run(&request["command"], Arc::new(move |event| {
+                                stream.send(json!({"kind":"event","requestId":request_id,"event":event}))?;
+                                Ok(())
+                            })).await
+                        };
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if kind == crate::codex::preparation::command::COMMAND {
                     let preparation=thread_preparation.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
                     commands.spawn(async move {
@@ -506,6 +528,7 @@ async fn cycle(
             command_failure.get_or_insert(error);
         }
     }
+    drop(turns);
     let preparation_closed = thread_preparation.close().await;
     let github_closed = github.drain().await;
     let terminals_closed = terminals.close().await;

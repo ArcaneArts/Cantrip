@@ -5,13 +5,13 @@ mod profile;
 use super::{Coordinator, Identity, Input, Intent, Target, native};
 use crate::{
     codex::{
-        managed::Worker,
+        managed::{Runtime, Worker},
         observation::{home, provider},
     },
     config::Config,
     encryption::Service,
     http::checked,
-    mcp::bindings::{Broker, Server},
+    mcp::bindings::{Activation, Broker, Server},
     protected_secrets::{open_mcp_servers, open_runtime_provider},
     provider_access::Access,
     routing::Registry,
@@ -25,6 +25,13 @@ use std::{
 use tokio::sync::OnceCell;
 
 pub(crate) const COMMAND: &str = "chat.thread.ensure";
+
+pub(crate) struct Prepared {
+    pub runtime: Runtime,
+    pub thread: native::LoadedThread,
+    admission: Value,
+    bound: (JsString, Value),
+}
 
 #[derive(Clone)]
 pub(crate) struct Ensurer(Arc<Inner>);
@@ -76,6 +83,32 @@ impl Ensurer {
     }
 
     pub(crate) async fn execute(&self, incoming: &Value) -> Result<Value> {
+        let prepared = self.prepare(incoming, Intent::Preserve).await?;
+        let mut result = json!({"threadId": prepared.thread.id()});
+        if let Some(turn) = incoming["recoveryTurnId"].as_js_string() {
+            let snapshot = prepared.runtime.read_history(prepared.thread.id()).await?;
+            prepared.thread.assert_current(&prepared.runtime)?;
+            let status = snapshot["thread"]["turns"]
+                .as_array()
+                .and_then(|turns| {
+                    turns
+                        .iter()
+                        .find(|entry| entry["id"].as_js_string() == Some(turn))
+                })
+                .map_or(Value::Null, |entry| entry["status"].clone());
+            result["recovery"] = checked(
+                "nativeTurnRecoveryObservationSchema",
+                &json!({
+                    "threadId": prepared.thread.id(), "runtimeGeneration": prepared.runtime.generation(),
+                    "turnId": turn, "status": status,
+                }),
+            )?;
+        }
+        self.assert_bound(&prepared.bound)?;
+        Ok(result)
+    }
+
+    pub(crate) async fn prepare(&self, incoming: &Value, intent: Intent) -> Result<Prepared> {
         let (owner, server) = self.0.encryption.bound_identity()?;
         let logical_server = server
             .as_js_string()
@@ -131,14 +164,13 @@ impl Ensurer {
             provider_kind: field(&provider, "kind")?,
             provider_account_id: provider["accountId"].as_js_string().cloned(),
             credential_home_key: provider["credentialHomeKey"].as_js_string().cloned(),
-            intent: Intent::Preserve,
+            intent,
         };
         let bound = (owner.clone(), server.clone());
         let scope = json!({"serverId": server, "ownerId": owner, "workerId": self.0.worker});
-        let recovery_turn = command["recoveryTurnId"].as_js_string().cloned();
-        let recovery = Arc::new(Mutex::new(None));
+        let prepared = Arc::new(Mutex::new(None));
         let this = self.clone();
-        let thread = self.0.preparation.prepare(Input {
+        self.0.preparation.prepare(Input {
             identity,
             target,
             unbound_reuse_key: None,
@@ -147,7 +179,7 @@ impl Ensurer {
             on_prepared: None,
             prepare: Box::new({
                 let bound = bound.clone();
-                let recovery = recovery.clone();
+                let prepared = prepared.clone();
                 move |selection, identify| Box::pin(async move {
                     let profile = home::profile(
                         &this.0.data, &scope, selection.thread_id.as_ref(), &chat,
@@ -167,17 +199,15 @@ impl Ensurer {
                     } else {
                         Some(this.0.routing.protect_metadata(&json!({"path":cwd})).await?["path"].clone())
                     };
-                    let attachment = broker.prepare(
-                        json!({
-                            "ownerId": bound.0, "workerId": this.0.worker, "chatId": chat,
-                            "contextKind": context_kind, "projectId": session["projectId"],
-                            "worktreeId": session["worktreeId"], "rootKind": session["rootKind"],
-                            "scratchRootId": session["scratchRootId"],
-                            "permissionProfileId": command["permissionProfileId"],
-                            "allowedOperations": vec!["context.get", "tool.help"],
-                        }),
-                        legacy_root,
-                    ).await?;
+                    let admission = json!({
+                        "ownerId": bound.0, "workerId": this.0.worker, "chatId": chat,
+                        "contextKind": context_kind, "projectId": session["projectId"],
+                        "worktreeId": session["worktreeId"], "rootKind": session["rootKind"],
+                        "scratchRootId": session["scratchRootId"],
+                        "permissionProfileId": command["permissionProfileId"],
+                        "allowedOperations": vec!["context.get", "tool.help"],
+                    });
+                    let attachment = broker.prepare(admission.clone(), legacy_root).await?;
                     mcp["cantrip"] = attachment.codex_configuration(&std::env::current_exe()?)?;
                     let runner = payload_digest(&json!([
                         json!(runtime.generation()), json!(chat), session[placement].clone()
@@ -192,32 +222,46 @@ impl Ensurer {
                     if selection.intent == Intent::Configure {
                         profile::apply_plan_mode(&runtime, &loaded, &command).await?;
                     }
-                    if let Some(turn) = recovery_turn {
-                        let snapshot = runtime.read_history(loaded.id()).await?;
-                        loaded.assert_current(&runtime)?;
-                        let status = snapshot["thread"]["turns"].as_array()
-                            .and_then(|turns| turns.iter().find(|entry| entry["id"].as_js_string() == Some(&turn)))
-                            .map_or(Value::Null, |entry| entry["status"].clone());
-                        *recovery.lock().unwrap() = Some(checked(
-                            "nativeTurnRecoveryObservationSchema",
-                            &json!({
-                                "threadId": loaded.id(), "runtimeGeneration": runtime.generation(),
-                                "turnId": turn, "status": status,
-                            }),
-                        )?);
-                    }
                     loaded.assert_current(&runtime)?;
                     this.assert_bound(&bound)?;
-                    Ok(loaded.id().clone())
+                    let thread_id = loaded.id().clone();
+                    *prepared.lock().unwrap() = Some(Prepared { runtime, thread: loaded, admission, bound });
+                    Ok(thread_id)
                 })
             }),
         }).await?;
         self.assert_bound(&bound)?;
-        let mut result = json!({"threadId": thread});
-        if let Some(recovery) = recovery.lock().unwrap().take() {
-            result["recovery"] = recovery;
-        }
+        let result = prepared
+            .lock()
+            .unwrap()
+            .take()
+            .context("Managed thread ownership was lost.")?;
         Ok(result)
+    }
+
+    pub(crate) fn activate(&self, prepared: &Prepared, lane: &Value) -> Result<Activation> {
+        self.assert_bound(&prepared.bound)?;
+        prepared.thread.assert_current(&prepared.runtime)?;
+        let mut admission = prepared.admission.clone();
+        admission["executionLaneId"] = lane.clone();
+        self.0
+            .broker
+            .get()
+            .context("Cantrip MCP attachment was not prepared.")?
+            .activate(&admission)?
+            .context("Cantrip MCP attachment no longer matches the admitted turn.")
+    }
+
+    pub(crate) fn identity(&self) -> Result<(JsString, Value)> {
+        Ok(self.0.encryption.bound_identity()?)
+    }
+
+    pub(crate) fn supports_permission_profiles(&self) -> bool {
+        self.0.permission_profiles
+    }
+
+    pub(crate) async fn resolve_routing(&self, incoming: &Value) -> Result<Value> {
+        self.0.routing.resolve(incoming).await
     }
 
     fn assert_bound(&self, identity: &(JsString, Value)) -> Result<()> {
