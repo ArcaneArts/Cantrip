@@ -1,6 +1,7 @@
 //! Serialize managed chat preparation and keep the Node worker's recoverable
 //! association. The server's committed thread remains authoritative.
 mod association;
+pub(crate) mod command;
 pub mod native;
 #[cfg(test)]
 mod tests;

@@ -224,6 +224,15 @@ async fn cycle(
         skill_root.clone(),
         worker.clone(),
     );
+    let thread_preparation = crate::codex::preparation::command::Ensurer::new(
+        codex.clone(),
+        provider_access.clone(),
+        configuration.clone(),
+        encryption.clone(),
+        routing.clone(),
+        skill_root.clone(),
+        &codex_compatibility,
+    );
     let model_catalog = crate::codex::catalog::Catalog::new(
         codex.clone(),
         provider_access.clone(),
@@ -314,6 +323,14 @@ async fn cycle(
                 let kind=command["type"].as_str().unwrap_or("unknown");
                 let began=std::time::Instant::now();
                 logs.event("debug","Worker command dispatched",json!({"event":"worker.command.dispatched","operation":kind,"requestId":request["requestId"],"workerId":worker}));
+                if kind == crate::codex::preparation::command::COMMAND {
+                    let preparation=thread_preparation.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
+                    commands.spawn(async move {
+                        let result=preparation.execute(&request["command"]).await;
+                        finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
                 if kind=="chat.sync" {
                     let observation=chat_observation.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
                     commands.spawn(async move {
@@ -489,6 +506,7 @@ async fn cycle(
             command_failure.get_or_insert(error);
         }
     }
+    let preparation_closed = thread_preparation.close().await;
     let github_closed = github.drain().await;
     let terminals_closed = terminals.close().await;
     let (heartbeat_done, connection_done) = tokio::join!(
@@ -515,6 +533,7 @@ async fn cycle(
         .into_iter()
         .collect::<std::result::Result<(), _>>()?;
     codex_stopped?;
+    preparation_closed?;
     provider_access_closed?;
     for pending in history_stopped? {
         logs.event("warn", "Native history source frames remain unsaved", json!({"event":"codex.history.source-unsaved","subsystem":"codex","operation":"shutdown","chatId":pending["chatId"],"threadId":pending["threadId"],"counts":json!({"pendingRecords":pending["pendingRecords"]})}));
