@@ -1,5 +1,7 @@
 //! Worker-owned chat and queued input envelopes. Plaintext is used only by
 //! authenticated worker operations and the selected native runtime.
+pub(crate) mod queue;
+
 use crate::{
     attachments::content::{self as attachment, ServiceKeys},
     encryption::Service,
@@ -19,6 +21,7 @@ pub(crate) const MESSAGE: &str = "chat.message.protect";
 pub(crate) const MESSAGES: &str = "chat.messages.protect";
 pub(crate) const REPROTECT: &str = "chat.messages.reprotect";
 pub(crate) const TURN: &str = "chat.turn.protect";
+pub(crate) const QUEUE_PREPARE: &str = "chat.queue.prepare";
 
 /// Re-read live grants when publishing and fence every acquired key to the
 /// account and logical server that accepted the operation.
@@ -66,6 +69,7 @@ pub(crate) fn execute(service: Arc<Service>, command: &Value) -> Result<Value> {
     let scope = Scope::new(service.clone())?;
     let result = match command["type"].as_str() {
         Some(TURN) => turn(&scope, command),
+        Some(QUEUE_PREPARE) => queue::prepare(&scope, command),
         Some(MESSAGE | MESSAGES) => {
             let keys = ServiceKeys(service);
             let mut opened = HashMap::new();

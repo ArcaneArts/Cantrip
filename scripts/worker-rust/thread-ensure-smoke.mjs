@@ -524,6 +524,7 @@ async function ensure(fields, event = () => {}, requestId = randomUUID()) {
       requestId,
       command:
         fields.type === "chat.native-control" ||
+        fields.type === "chat.queue.prepare" ||
         fields.type?.startsWith("chat.native-logical.") ||
         fields.type?.startsWith("task.")
           ? fields

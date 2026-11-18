@@ -9,6 +9,82 @@ import {
   nativeCommandReceiptSchema,
   nativeCommandSessionSchema,
 } from "./native-commands.js";
+const detail = z
+  .enum(["auto", "low", "high", "original"])
+  .nullable()
+  .optional();
+const textElement = z
+  .object({
+    byteRange: z
+      .object({
+        start: z.number().int().nonnegative(),
+        end: z.number().int().nonnegative(),
+      })
+      .strict(),
+    placeholder: z.string().nullable().optional(),
+  })
+  .strict();
+/** Pinned app-server UserInput, including native snake-case text_elements. */
+export const nativeQueueUserInputSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("text"),
+      text: z.string(),
+      text_elements: z.array(textElement).optional(),
+    })
+    .strict(),
+  z
+    .object({ type: z.literal("image"), url: z.string().min(1), detail })
+    .strict(),
+  z
+    .object({ type: z.literal("localImage"), path: z.string().min(1), detail })
+    .strict(),
+  z.object({ type: z.literal("audio"), url: z.string().min(1) }).strict(),
+  z.object({ type: z.literal("localAudio"), path: z.string().min(1) }).strict(),
+  z
+    .object({ type: z.literal("skill"), name: z.string(), path: z.string() })
+    .strict(),
+  z
+    .object({ type: z.literal("mention"), name: z.string(), path: z.string() })
+    .strict(),
+]);
+export type NativeQueueUserInput = z.infer<typeof nativeQueueUserInputSchema>;
+export const managedQueueNativeActionSchema = z.enum([
+  "plain",
+  "literal",
+  "parseSlash",
+  "runShell",
+]);
+const methodSchema = z.enum([
+  "turn/start",
+  "thread/goal/set",
+  "thread/goal/clear",
+  "thread/settings/update",
+  "thread/shellCommand",
+]);
+export const managedQueueNativeInputSchema = z
+  .object({
+    version: z.literal(1),
+    input: z.array(nativeQueueUserInputSchema).min(1),
+    displayText: z.string(),
+    action: managedQueueNativeActionSchema,
+    executionMethod: methodSchema,
+    retainedGui: z.boolean().optional(),
+    retainedTurnStart: z.boolean().optional(),
+    representedAttachmentIds: z.array(z.string()).optional(),
+    attachmentMap: z
+      .array(
+        z
+          .object({ id: z.string(), index: z.number().int().nonnegative() })
+          .strict(),
+      )
+      .default([]),
+  })
+  .strict();
+export type ManagedQueueNativeInput = z.infer<
+  typeof managedQueueNativeInputSchema
+>;
+
 const id = z.string().min(1).max(255);
 const revision = z.number().int().nonnegative();
 export const managedQueueClaimSchema = z

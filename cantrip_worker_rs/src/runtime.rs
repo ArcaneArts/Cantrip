@@ -366,13 +366,16 @@ async fn cycle(
                 let kind=command["type"].as_str().unwrap_or("unknown");
                 let began=std::time::Instant::now();
                 logs.event("debug","Worker command dispatched",json!({"event":"worker.command.dispatched","operation":kind,"requestId":request["requestId"],"workerId":worker}));
-                if matches!(kind, crate::chat_content::MESSAGE | crate::chat_content::MESSAGES | crate::chat_content::REPROTECT | crate::chat_content::TURN) {
+                if matches!(kind, crate::chat_content::MESSAGE | crate::chat_content::MESSAGES | crate::chat_content::REPROTECT | crate::chat_content::TURN | crate::chat_content::QUEUE_PREPARE) {
                     let encryption = encryption.clone();
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();
                     let worker = worker.clone();
                     commands.spawn(async move {
-                        let result = crate::chat_content::execute(encryption, &request["command"]);
+                        let command = request["command"].clone();
+                        let result = tokio::task::spawn_blocking(move || {
+                            crate::chat_content::execute(encryption, &command)
+                        }).await.unwrap_or_else(|error| Err(error.into()));
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
                     continue;

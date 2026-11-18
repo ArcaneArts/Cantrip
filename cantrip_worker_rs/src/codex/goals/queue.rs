@@ -2,7 +2,7 @@
 use super::Goals;
 use crate::{
     attachments::{Store, content},
-    chat_content::Scope,
+    chat_content::{Scope, queue},
     codex::turn::{Turns, runtime_text},
     native_items::{array, concat, join, text},
 };
@@ -11,17 +11,15 @@ use base64::{
     Engine,
     engine::general_purpose::{STANDARD, STANDARD_NO_PAD},
 };
-use cantrip_crypto::{Zeroizing, decrypt_payload, derive_field_key};
+use cantrip_crypto::Zeroizing;
 use cantrip_history::{
     canonical::open_message,
     content::Encryption,
     files::{ensure_directory, write_immutable, write_immutable_bytes},
 };
-use cantrip_wire::{
-    JsString, Value, parse_json_text, payload_digest, text::whitespace, value::json,
-};
+use cantrip_wire::{JsString, Value, value::json};
 use sha2::{Digest, Sha256};
-use std::{collections::HashMap, fs, path::Path};
+use std::{fs, path::Path};
 use uuid::Uuid;
 
 pub(crate) const EXECUTE: &str = "chat.queue.execute";
@@ -78,10 +76,6 @@ struct Input {
     represented: Vec<Value>,
 }
 
-fn text_input(text: &JsString) -> Value {
-    json!({"type":"text","text":text,"text_elements":Vec::<Value>::new()})
-}
-
 fn open_input(scope: &Scope, command: &Value) -> Result<Input> {
     let prompt = &command["protectedPrompt"];
     if prompt["classification"]["role"] != "user" {
@@ -108,105 +102,36 @@ fn open_input(scope: &Scope, command: &Value) -> Result<Input> {
     if payload.is_null() {
         return Ok(Input {
             action: declared.unwrap_or("literal").into(),
-            items: vec![text_input(&display)],
+            items: vec![queue::text_input(&display)],
             represented: Vec::new(),
         });
     }
-    let grant = scope.material(Some(
-        payload["keyRevision"]
-            .as_u64()
-            .context("Missing queued input key revision.")?,
-    ))?;
-    let row = Value::Array(vec![
-        json!(scope.server),
-        command["chatId"].clone(),
-        command["queuedPromptId"].clone(),
-    ]);
-    let aad = json!({
-        "ownerId": scope.owner, "component":"chat-content", "table":"managed-queue",
-        "rowId":payload_digest(&row),
-        "field":"native-input","formatVersion":1,"keyRevision":grant.key_revision,
-    });
-    let key = derive_field_key(&grant.key, &aad)?;
-    let plaintext = decrypt_payload(&key, payload, &aad)?;
-    let opened = parse_json_text(&String::from_utf8_lossy(&plaintext))
-        .map_err(|_| anyhow::anyhow!("Invalid protected native queue input."))?;
+    let opened = queue::open_native(
+        scope,
+        &command["chatId"],
+        &command["queuedPromptId"],
+        payload,
+        &display,
+        array(&prompt["classification"]["attachmentIds"])?,
+    )?;
     let action = opened["action"]
         .as_str()
-        .context("Missing protected native queue action.")?;
-    if opened["version"].as_u64() != Some(1)
-        || opened["executionMethod"] != command["executionMethod"]
+        .context("Missing protected queue action.")?;
+    if opened["executionMethod"] != command["executionMethod"]
         || declared.is_some_and(|declared| declared != action)
-        || !matches!(action, "plain" | "literal" | "parseSlash" | "runShell")
     {
         bail!("The queued action differs from its protected input.");
     }
-    let attachment_ids = array(&prompt["classification"]["attachmentIds"])?;
     let mut represented = opened["representedAttachmentIds"]
         .as_array()
         .cloned()
         .unwrap_or_default();
-    let changed = opened["displayText"]
-        .as_js_string()
-        .context("Missing protected queue display text.")?
-        != &display;
-    let encrypted_items = array(&opened["input"])?;
-    if encrypted_items.is_empty() {
-        bail!("The protected native queue input is empty.");
-    }
-    if opened["retainedGui"] == true && (changed || represented.as_slice() != attachment_ids) {
-        return Ok(Input {
-            action: action.into(),
-            items: vec![text_input(&display)],
-            represented: Vec::new(),
-        });
-    }
-    let mut by_index = HashMap::new();
-    if let Some(mapping) = opened.get("attachmentMap") {
-        for entry in array(mapping)? {
-            let index = entry["index"]
-                .as_u64()
-                .context("Invalid protected attachment index.")?;
-            text(&entry["id"])?;
-            by_index.insert(index, &entry["id"]);
-        }
-    }
-    let mut items = Vec::new();
-    let mut wrote_text = false;
-    for (index, item) in encrypted_items.iter().enumerate() {
-        match item["type"].as_str() {
-            Some("text") => {
-                text(&item["text"])?;
-            }
-            Some("image" | "audio") => {
-                text(&item["url"])?;
-            }
-            Some("localImage" | "localAudio") => {
-                text(&item["path"])?;
-            }
-            Some("skill" | "mention") => {
-                text(&item["name"])?;
-                text(&item["path"])?;
-            }
-            _ => bail!("Unknown protected native queue input."),
-        }
-        if let Some(id) = by_index.get(&(index as u64)) {
-            if !attachment_ids.contains(id) {
-                continue;
-            }
-            represented.push((*id).clone());
-        } else if changed && item["type"] == "text" {
-            if !wrote_text {
-                items.push(text_input(&display));
-                wrote_text = true;
-            }
-            continue;
-        }
-        items.push(item.clone());
-    }
-    if changed && !wrote_text {
-        items.insert(0, text_input(&display));
-    }
+    represented.extend(
+        array(&opened["attachmentMap"])?
+            .iter()
+            .map(|mapping| mapping["id"].clone()),
+    );
+    let items = array(&opened["input"])?.to_vec();
     Ok(Input {
         action: action.into(),
         items,
@@ -260,32 +185,14 @@ fn goal_action(
                     metadata["sizeBytes"].stringify(),
                     path.display(),
                 );
-                input.items.push(text_input(&reference.into()));
+                input.items.push(queue::text_input(&reference.into()));
             }
         }
     }
-    let original = join(
-        input
-            .items
-            .iter()
-            .filter(|item| item["type"] == "text")
-            .map(|item| text(&item["text"]).cloned())
-            .collect::<Result<Vec<_>>>()?,
-        "\n",
-    );
+    let original = queue::native_text(&input.items)?;
     let objective = if input.action == "parseSlash" {
-        let prefix: Vec<_> = "/goal".encode_utf16().collect();
-        let suffix = original
-            .units()
-            .strip_prefix(prefix.as_slice())
+        let argument = queue::slash_argument(&original, "/goal")
             .context("This queued slash command has no native Goal mapping.")?;
-        if suffix
-            .first()
-            .is_some_and(|&unit| !char::from_u32(u32::from(unit)).is_some_and(whitespace))
-        {
-            bail!("This queued slash command has no native Goal mapping.");
-        }
-        let argument = JsString::new(suffix.to_vec()).trim();
         match argument.lossy().to_lowercase().as_str() {
             "" | "edit" => bail!("This queued Goal opens an interactive native view."),
             "clear" => return Ok(Action::Clear),

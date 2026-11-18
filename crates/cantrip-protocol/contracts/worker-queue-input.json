@@ -1,0 +1,238 @@
+{
+  "schemaVersion": 1,
+  "roots": { "managedQueueNativeInputSchema": 0 },
+  "nodes": [
+    {
+      "type": "object",
+      "name": "managedQueueNativeInputSchema",
+      "shape": {
+        "version": 1,
+        "input": 2,
+        "displayText": 48,
+        "action": 49,
+        "executionMethod": 50,
+        "retainedGui": 51,
+        "retainedTurnStart": 53,
+        "representedAttachmentIds": 55,
+        "attachmentMap": 58
+      },
+      "catchall": 64,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "array",
+      "element": 3,
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "union",
+      "name": "nativeQueueUserInputSchema",
+      "options": [4, 19, 26, 30, 34, 38, 43],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "type": 5, "text": 6, "text_elements": 7 },
+      "catchall": 18,
+      "checks": []
+    },
+    { "type": "literal", "values": ["text"], "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8,
+      "checks": []
+    },
+    { "type": "array", "element": 9, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "byteRange": 10, "placeholder": 14 },
+      "catchall": 17,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "start": 11, "end": 12 },
+      "catchall": 13,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 15,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 16, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 20, "url": 21, "detail": 22 },
+      "catchall": 25,
+      "checks": []
+    },
+    { "type": "literal", "values": ["image"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 23,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 24, "checks": [] },
+    {
+      "type": "enum",
+      "values": ["auto", "low", "high", "original"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 27, "path": 28, "detail": 22 },
+      "catchall": 29,
+      "checks": []
+    },
+    { "type": "literal", "values": ["localImage"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 31, "url": 32 },
+      "catchall": 33,
+      "checks": []
+    },
+    { "type": "literal", "values": ["audio"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 35, "path": 36 },
+      "catchall": 37,
+      "checks": []
+    },
+    { "type": "literal", "values": ["localAudio"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 39, "name": 40, "path": 41 },
+      "catchall": 42,
+      "checks": []
+    },
+    { "type": "literal", "values": ["skill"], "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 44, "name": 45, "path": 46 },
+      "catchall": 47,
+      "checks": []
+    },
+    { "type": "literal", "values": ["mention"], "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "enum",
+      "name": "managedQueueNativeActionSchema",
+      "values": ["plain", "literal", "parseSlash", "runShell"],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": [
+        "turn/start",
+        "thread/goal/set",
+        "thread/goal/clear",
+        "thread/settings/update",
+        "thread/shellCommand"
+      ],
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 52,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 54,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 56,
+      "checks": []
+    },
+    { "type": "array", "element": 57, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 59,
+      "defaultValue": [],
+      "checks": []
+    },
+    { "type": "array", "element": 60, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "id": 61, "index": 62 },
+      "catchall": 63,
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] }
+  ]
+}
