@@ -4,6 +4,11 @@ use crate::{
     inference::{admission::Options as AdmissionOptions, ownership},
 };
 use futures::future::join_all;
+use std::sync::{
+    Weak,
+    atomic::{AtomicBool, Ordering},
+};
+use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 
 pub type Binding = Arc<dyn Fn() -> Result<(JsString, JsString)> + Send + Sync>;
 
@@ -30,12 +35,14 @@ struct Home {
 struct Slot {
     ready: Promise<Runtime>,
     home: Home,
+    retiring: Arc<AtomicBool>,
 }
 
 #[derive(Default)]
 struct State {
     managers: HashMap<Scope, Manager>,
     runtimes: HashMap<Key, Slot>,
+    homes: HashMap<PathBuf, Weak<AsyncMutex<()>>>,
     closing: Option<Promise<()>>,
 }
 
@@ -110,7 +117,15 @@ impl Worker {
                     .as_ref()
                     .map(|home| cantrip_config::resolve(&this.0.host.cwd, home)),
             };
+            let mut previous: Option<Slot> = None;
             loop {
+                let homes = this.lock_homes(&home).await;
+                if let Some(slot) = previous.take() {
+                    if slot.retiring.load(Ordering::Acquire) {
+                        bail!("The Codex account runtime was retired.");
+                    }
+                    this.remove(&key, &slot);
+                }
                 this.publish(&key)?;
                 let (slot, start) = {
                     let mut state = this.0.state.lock().unwrap();
@@ -132,14 +147,19 @@ impl Worker {
                         let slot = Slot {
                             ready,
                             home: home.clone(),
+                            retiring: Arc::new(AtomicBool::new(false)),
                         };
                         state.runtimes.insert(key.clone(), slot.clone());
                         (slot, Some((complete, manager)))
                     }
                 };
+                drop(homes);
                 if let Some((complete, manager)) = start {
                     let runtime = Runtime::launch(this.0.host.clone(), manager, launch).await;
-                    if runtime.is_err() {
+                    if runtime
+                        .as_ref()
+                        .is_err_and(|error| !retirement_failed(error))
+                    {
                         this.remove(&key, &slot);
                     }
                     complete.finish(runtime);
@@ -152,12 +172,15 @@ impl Worker {
                     return this.ready_runtime(&key, &slot, runtime).await;
                 }
                 runtime.close().await?;
-                this.remove(&key, &slot);
+                previous = Some(slot);
             }
         })
     }
 
     async fn ready_runtime(&self, key: &Key, slot: &Slot, runtime: Runtime) -> Result<Runtime> {
+        if slot.retiring.load(Ordering::Acquire) {
+            bail!("The Codex account runtime was retired.");
+        }
         match self.publish(key) {
             Ok(()) => Ok(runtime),
             Err(error) => {
@@ -170,6 +193,87 @@ impl Worker {
                 failed_start(error, cleanup)
             }
         }
+    }
+
+    fn home_lock(&self, home: &Path) -> Arc<AsyncMutex<()>> {
+        let mut state = self.0.state.lock().unwrap();
+        state.homes.retain(|_, lock| lock.strong_count() != 0);
+        let entry = state.homes.entry(home.to_path_buf()).or_default();
+        if let Some(lock) = entry.upgrade() {
+            return lock;
+        }
+        let lock = Arc::new(AsyncMutex::new(()));
+        *entry = Arc::downgrade(&lock);
+        lock
+    }
+
+    async fn lock_homes(&self, home: &Home) -> Vec<OwnedMutexGuard<()>> {
+        let mut paths = vec![home.runtime.as_path()];
+        paths.extend(home.configuration.as_deref());
+        paths.sort_unstable();
+        paths.dedup();
+        let mut locks = Vec::with_capacity(paths.len());
+        for path in paths {
+            locks.push(self.home_lock(path).lock_owned().await);
+        }
+        locks
+    }
+
+    /// Keep accepted launches and credential mutation mutually exclusive for
+    /// both runtime and configuration homes. The operation owns its cleanup
+    /// even if the control connection abandons the command response.
+    pub(crate) fn with_retired_account<T: Send + 'static>(
+        &self,
+        home: PathBuf,
+        account: (JsString, JsString),
+        operation: impl FnOnce(Work<()>) -> Work<T> + Send + 'static,
+    ) -> Work<T> {
+        let this = self.clone();
+        owned(async move {
+            let home = cantrip_config::resolve(&this.0.host.cwd, &home);
+            let _guard = this.home_lock(&home).lock_owned().await;
+            let slots = {
+                let state = this.0.state.lock().unwrap();
+                if state.closing.is_some() {
+                    bail!("Worker Codex runtimes are closing.");
+                }
+                let slots = state
+                    .runtimes
+                    .iter()
+                    .filter(|(_, slot)| {
+                        slot.home.runtime == home || slot.home.configuration.as_ref() == Some(&home)
+                    })
+                    .map(|(key, slot)| (key.clone(), slot.clone()))
+                    .collect::<Vec<_>>();
+                if slots
+                    .iter()
+                    .any(|(_, slot)| slot.home.account_scope.as_ref() != Some(&account))
+                {
+                    bail!("A Codex runtime uses this home for a different account.");
+                }
+                for (_, slot) in &slots {
+                    slot.retiring.store(true, Ordering::Release);
+                }
+                slots
+            };
+            let retired = Box::pin(async move {
+                let results = join_all(slots.into_iter().map(|(key, slot)| {
+                    let this = &this;
+                    async move {
+                        match slot.ready.work().await {
+                            Ok(runtime) => runtime.close().await?,
+                            Err(error) if retirement_failed(&error) => return Err(error),
+                            Err(_) => {}
+                        }
+                        this.remove(&key, &slot);
+                        Ok(())
+                    }
+                }))
+                .await;
+                results.into_iter().collect::<Result<()>>()
+            });
+            operation(retired).await
+        })
     }
 
     /// Check the current authenticated scope before handing out a ready child.
@@ -274,5 +378,102 @@ fn warn(logs: &Option<Arc<Logs>>, message: &str, event: &str) {
             message,
             json!({"event":event,"subsystem":"codex"}),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::codex::private_inference::{Context, Hooks};
+    use tokio::sync::oneshot;
+
+    #[tokio::test]
+    async fn account_mutation_joins_accepted_startup_and_fences_new_launches() -> Result<()> {
+        tokio::time::timeout(Duration::from_secs(4), async {
+            let root = tempfile::tempdir()?;
+            let home = root.path().join("account");
+            let worker = Worker::new(
+                Host {
+                    binary: root.path().join("fixture"),
+                    cwd: root.path().into(),
+                    environment: HashMap::new(),
+                    compatibility: Value::Null,
+                    logs: None,
+                },
+                root.path().into(),
+                "worker".into(),
+                "generation".into(),
+                Arc::new(|| Ok(("server".into(), "owner".into()))),
+            );
+            let account = ("provider".into(), "account".into());
+            let launch = |prepare| {
+                let mut profile = Profile::new("profile".into(), home.clone());
+                profile.account_scope = Some(account.clone());
+                Launch {
+                    profile,
+                    private_inference: Hooks {
+                        overlay: Arc::new(|_| Context::default()),
+                        provider: Arc::new(|| None),
+                        before_inference: None,
+                    },
+                    on_revoked: None,
+                    prepare_home: Some(prepare),
+                    external_auth: None,
+                    observe: Arc::new(|_| Ok(())),
+                }
+            };
+            let (resume, blocked) = oneshot::channel();
+            let blocked = Mutex::new(Some(blocked));
+            let first = worker.launch(launch(Arc::new(move |_| {
+                let blocked = blocked.lock().unwrap().take().unwrap();
+                Box::pin(async move {
+                    blocked.await?;
+                    bail!("Fixture stopped the accepted startup.")
+                })
+            })));
+            let (entered, retiring) = oneshot::channel();
+            let (stopped, retired) = oneshot::channel();
+            let (finish, writing) = oneshot::channel();
+            let mut operation =
+                worker.with_retired_account(home.clone(), account.clone(), |stop| {
+                    Box::pin(async move {
+                        entered.send(()).unwrap();
+                        stop.await?;
+                        stopped.send(()).unwrap();
+                        writing.await?;
+                        Ok(())
+                    })
+                });
+            retiring.await?;
+            assert!(futures::poll!(&mut operation).is_pending());
+            let (started, replacement) = oneshot::channel();
+            let started = Mutex::new(Some(started));
+            let queued = worker.launch(launch(Arc::new(move |_| {
+                started.lock().unwrap().take().unwrap().send(()).unwrap();
+                Box::pin(async {
+                    Err(RetirementError(anyhow!("Fixture did not confirm process exit.")).into())
+                })
+            })));
+            resume.send(()).unwrap();
+            assert!(first.await.is_err());
+            retired.await?;
+            let mut replacement = replacement;
+            assert!(futures::poll!(&mut replacement).is_pending());
+            finish.send(()).unwrap();
+            operation.await?;
+            replacement.await?;
+            assert!(queued.await.is_err_and(|error| retirement_failed(&error)));
+            let rejected: Result<()> = worker
+                .with_retired_account(home, account, |stop| {
+                    Box::pin(async move {
+                        stop.await?;
+                        panic!("Credential mutation must wait for confirmed process exit.");
+                    })
+                })
+                .await;
+            assert!(rejected.is_err_and(|error| retirement_failed(&error)));
+            worker.close().await
+        })
+        .await?
     }
 }

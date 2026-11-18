@@ -163,7 +163,7 @@ async fn cycle(
                 .iter()
                 .map(|(key, value)| (key.clone(), value.clone()))
                 .collect(),
-            compatibility: codex_compatibility,
+            compatibility: codex_compatibility.clone(),
             logs: Some(logs.clone()),
         },
         config.data_directory.clone(),
@@ -177,6 +177,13 @@ async fn cycle(
         configuration.clone(),
         encryption.clone(),
         client.clone(),
+    );
+    let provider_credentials = crate::provider_credentials::Commands::new(
+        codex.clone(),
+        provider_access.clone(),
+        encryption.clone(),
+        data_directory.clone(),
+        &codex_compatibility,
     );
     let model_catalog = crate::codex::catalog::Catalog::new(
         codex.clone(),
@@ -269,6 +276,14 @@ async fn cycle(
                     let catalog=model_catalog.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
                     commands.spawn(async move {
                         let result=catalog.execute(request["command"].clone()).await;
+                        finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
+                if crate::provider_credentials::supports(kind) {
+                    let credentials=provider_credentials.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
+                    commands.spawn(async move {
+                        let result=credentials.execute(request["command"].clone()).await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);
                     });
                     continue;

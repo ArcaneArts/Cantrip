@@ -1,6 +1,7 @@
 //! Opens the server's scoped credentials in the authorized worker. Only a
 //! newly sealed replacement can be sent back to the durable credential route.
 mod refresh;
+pub(crate) use refresh::claims as jwt_claims;
 
 use crate::{
     config::Config,
@@ -94,6 +95,7 @@ struct State {
     closed: bool,
     leases: HashMap<Key, Lease>,
     pending: HashMap<FlightKey, Promise<Lease>>,
+    paused: HashMap<Account, usize>,
 }
 
 struct Inner {
@@ -104,6 +106,29 @@ struct Inner {
 }
 #[derive(Clone)]
 pub struct Access(Arc<Inner>);
+
+pub(crate) struct Pause {
+    access: Access,
+    account: Account,
+    pending: Vec<Promise<Lease>>,
+}
+
+impl Pause {
+    pub(crate) async fn drain(&self) {
+        futures::future::join_all(self.pending.iter().map(Promise::work)).await;
+    }
+}
+
+impl Drop for Pause {
+    fn drop(&mut self) {
+        let mut state = self.access.0.state.lock().unwrap();
+        let count = state.paused.get_mut(&self.account).unwrap();
+        *count -= 1;
+        if *count == 0 {
+            state.paused.remove(&self.account);
+        }
+    }
+}
 
 impl Access {
     pub fn new(
@@ -145,8 +170,8 @@ impl Access {
             };
             let (start, pending) = {
                 let mut state = this.0.state.lock().unwrap();
-                if state.closed {
-                    return Err(lease_error(409, Some("credential-unavailable")));
+                if state.closed || state.paused.contains_key(&key.account) {
+                    return Err(invalidated());
                 }
                 if force.is_none()
                     && let Some(cached) = state
@@ -171,10 +196,11 @@ impl Access {
                     let mut state = this.0.state.lock().unwrap();
                     let current = state.pending.get(&flight).is_some_and(|p| p.same(&pending));
                     if state.closed
+                        || state.paused.contains_key(&key.account)
                         || !current
                         || current_binding.as_ref().ok() != Some(&key.binding)
                     {
-                        result = Err(lease_error(409, Some("credential-unavailable")));
+                        result = Err(invalidated());
                     }
                     if current {
                         state.pending.remove(&flight);
@@ -187,8 +213,8 @@ impl Access {
                     {
                         state.leases.insert(key, lease.clone());
                     }
+                    complete.finish(result);
                 }
-                complete.finish(result);
             }
             pending.work().await
         })
@@ -200,12 +226,14 @@ impl Access {
         let mut record = self.load(account, url.clone(), None).await?;
         let mut credential = self.open(key, &record)?;
         if force.is_some() || !fresh(&credential, minimum) {
+            self.assert_scope(key)?;
             credential = refresh::refresh(&self.0.client, &credential).await?;
             self.assert_scope(key)?;
             let mut replacement =
                 protect_provider_credential(&self.0.encryption, &json!(account.id), &credential)?;
             replacement["expectedRevision"] = record["credentialRevision"].clone();
             let replacement = checked("providerCredentialUploadSchema", &replacement)?;
+            self.assert_scope(key)?;
             let response = self
                 .request(reqwest::Method::PUT, url.clone())
                 .header("content-type", "application/json")
@@ -215,6 +243,7 @@ impl Access {
                 .map_err(|_| {
                     anyhow!("Cantrip could not upload a refreshed provider credential.")
                 })?;
+            self.assert_scope(key)?;
             if response.status().as_u16() == 409 {
                 let stale = record["credentialRevision"].as_u64().unwrap();
                 record = self.load(account, url, Some("refresh-failed")).await?;
@@ -269,10 +298,34 @@ impl Access {
     }
 
     fn assert_scope(&self, key: &Key) -> Result<()> {
-        if self.binding()? != key.binding || self.0.state.lock().unwrap().closed {
-            return Err(lease_error(409, Some("credential-unavailable")));
+        let binding = self.binding()?;
+        let state = self.0.state.lock().unwrap();
+        if binding != key.binding || state.closed || state.paused.contains_key(&key.account) {
+            return Err(invalidated());
         }
         Ok(())
+    }
+
+    /// Evict account leases immediately, fence new reads and join reads
+    /// accepted before the mutation. Even a delayed HTTP 404 cannot restart
+    /// legacy authentication once retirement begins.
+    pub(crate) fn pause(&self, account: Account) -> Pause {
+        let pending = {
+            let mut state = self.0.state.lock().unwrap();
+            *state.paused.entry(account.clone()).or_default() += 1;
+            state.leases.retain(|key, _| key.account != account);
+            state
+                .pending
+                .iter()
+                .filter(|(key, _)| key.key.account == account)
+                .map(|(_, work)| work.clone())
+                .collect::<Vec<_>>()
+        };
+        Pause {
+            access: self.clone(),
+            account,
+            pending,
+        }
     }
 
     fn record(account: &Account, raw: Value) -> Result<Value> {
@@ -385,6 +438,9 @@ fn error_code(raw: &Value) -> Option<&'static str> {
 }
 fn lease_error(status: u16, code: Option<&'static str>) -> anyhow::Error {
     RequestError { status, code }.into()
+}
+fn invalidated() -> anyhow::Error {
+    anyhow!("The provider account access lease was invalidated.")
 }
 fn fresh(credential: &Value, minimum: u64) -> bool {
     credential["expiresAt"]

@@ -104,7 +104,9 @@ impl Session {
             let socket = match connected {
                 Ok(socket) => socket,
                 Err(error) => {
-                    let _ = process.close().await;
+                    if let Err(cleanup) = process.close().await {
+                        return Err(cleanup.context(error.to_string()));
+                    }
                     return Err(error);
                 }
             };

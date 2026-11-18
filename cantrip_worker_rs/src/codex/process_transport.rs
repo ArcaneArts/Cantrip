@@ -55,6 +55,26 @@ pub struct Exit {
     pub code: i32,
     pub confirmed: bool,
 }
+
+#[derive(Debug)]
+pub(super) struct RetirementError(pub anyhow::Error);
+
+impl std::fmt::Display for RetirementError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for RetirementError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.0.as_ref())
+    }
+}
+
+pub(super) fn retirement_failed(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| cause.is::<RetirementError>())
+}
+
 impl Process {
     pub async fn launch(binary: &Path, arguments: &[String], options: &Options) -> Result<Self> {
         let child = codex_utils_pty::spawn_pipe_process(
@@ -174,7 +194,10 @@ impl Process {
             let _ = task.await;
         }
         if !self.confirmed {
-            anyhow::bail!("Could not confirm Codex app-server process exit.");
+            return Err(RetirementError(anyhow!(
+                "Could not confirm Codex app-server process exit."
+            ))
+            .into());
         }
         Ok(())
     }
