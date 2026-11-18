@@ -134,7 +134,11 @@ impl Resolver for Callbacks {
         })
     }
 }
-pub fn build(service: Arc<Keys>, config: Value) -> Result<(Projector, Arc<Callbacks>)> {
+pub fn build(
+    service: Arc<Keys>,
+    config: Value,
+    source: Option<Journal>,
+) -> Result<(Projector, Arc<Callbacks>)> {
     let (abort, signal) = Abort::new();
     if config["aborted"] == true {
         abort.abort(anyhow!("fixture stopped"));
@@ -158,11 +162,31 @@ pub fn build(service: Arc<Keys>, config: Value) -> Result<(Projector, Arc<Callba
     } else {
         callbacks.clone()
     };
+    let adapters: Arc<dyn Adapters> = if config["nativeAdapters"].is_object() {
+        let directory = PathBuf::from(config["nativeAdapters"]["directory"].as_str().unwrap());
+        let files = cantrip_worker::attachments::Store::new(&directory.join("files"), None)?;
+        Arc::new(cantrip_worker::history::adapters::Verified::new(
+            cantrip_worker::history::adapters::Options {
+                directory,
+                binding: config["binding"].clone(),
+                source: source
+                    .ok_or_else(|| anyhow!("Verified projector needs its actual source"))?,
+                keys: service.clone(),
+                files,
+                signal: Some(signal.clone()),
+                child_scope: None,
+                child_association: None,
+                published_attachments: None,
+            },
+        )?)
+    } else {
+        callbacks.clone()
+    };
     let projector = Projector::new(projector::Options {
         binding: config["binding"].clone(),
         service,
         client: resolver,
-        adapters: callbacks.clone(),
+        adapters,
         max_items_per_batch: config.get("maxItemsPerBatch").cloned(),
         signal: Some(signal),
     })?;
@@ -177,7 +201,7 @@ pub async fn run(service: Arc<Keys>, input: &Value, source: Option<Journal>) -> 
             &input["itemOrdinal"],
         )),
         "projector.run" | "projector.rebase" => {
-            let (projector, callbacks) = build(service, input["config"].clone())?;
+            let (projector, callbacks) = build(service, input["config"].clone(), source.clone())?;
             let result = if input["op"] == "projector.rebase" {
                 projector::rebase::replay(
                     input["config"]["binding"].clone(),

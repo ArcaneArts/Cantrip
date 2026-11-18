@@ -15,6 +15,8 @@ use std::{
     sync::{Arc, Mutex, atomic::AtomicBool},
 };
 
+#[path = "support/history_adapters.rs"]
+mod history_adapters;
 #[path = "support/history_content.rs"]
 mod history_content;
 #[path = "support/history_outbox.rs"]
@@ -82,9 +84,19 @@ struct Fixture {
     outboxes: HashMap<String, cantrip_history::outbox::Outbox>,
     tracker: Tracker,
     projections: history_projection::Engine,
+    adapters: history_adapters::Engine,
 }
 impl Fixture {
     async fn run(&mut self, input: Value) -> Result<Value> {
+        if input["op"]
+            .as_str()
+            .is_some_and(|v| v.starts_with("adapters."))
+        {
+            return self
+                .adapters
+                .run(self.service.clone(), &self.handles, &input)
+                .await;
+        }
         if input["op"]
             .as_str()
             .is_some_and(|op| op.starts_with("projector."))
@@ -302,6 +314,7 @@ async fn main() -> Result<()> {
         outboxes: HashMap::new(),
         tracker: Tracker::default(),
         projections: history_projection::Engine::default(),
+        adapters: history_adapters::Engine::default(),
     };
     for line in io::stdin().lock().lines() {
         let input = parse_json_text(&line?).map_err(|e| anyhow!("{}", e.lossy()))?;

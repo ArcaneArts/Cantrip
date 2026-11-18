@@ -116,7 +116,7 @@ pub fn read_json(filename: &Path) -> Result<Value> {
 /// their result future without cancelling accepted disk IO or releasing the next
 /// operation before publication has finished. Workers must drain before shutdown.
 #[derive(Default)]
-pub(crate) struct Queue {
+pub struct Queue {
     tail: Mutex<Option<oneshot::Receiver<()>>>,
 }
 impl Queue {
@@ -151,7 +151,9 @@ impl Queue {
         async move { result.await? }
     }
 }
-pub(crate) fn queue(directory: &Path) -> Arc<Queue> {
+/// Process-local serialization by a caller-selected lexical absolute path.
+/// This does not authorize that path or establish cross-process ownership.
+pub fn queue(directory: &Path) -> Arc<Queue> {
     static QUEUES: OnceLock<Mutex<HashMap<PathBuf, Weak<Queue>>>> = OnceLock::new();
     let mut queues = QUEUES.get_or_init(Default::default).lock().unwrap();
     queues.retain(|_, value| value.strong_count() != 0);
