@@ -32,6 +32,7 @@ import {
 } from "../../cantrip_worker/src/chat-message-encryption.ts";
 import { protectChatPlanState } from "../../cantrip_worker/src/chat-plan-encryption.ts";
 import { admit, GuiReceiptPeer, logical } from "./gui-receipt-cases.mjs";
+import { GuiHistoryPeer } from "./gui-history-cases.mjs";
 
 const { values } = parseArgs({
   options: {
@@ -66,7 +67,7 @@ const stamp = new Date().toISOString();
 const upstream = new EventEmitter();
 const contextCalls = [];
 let providerCalls = 0;
-let guiPeer, workerGeneration;
+let guiPeer, guiHistory, workerGeneration;
 const outputText = "Native host turn fixture.";
 const privatePrompt = "Protected input fixture, only for the worker.";
 const priorText = "Private preceding assistant message.";
@@ -159,6 +160,20 @@ const server = createServer(async (request, response) => {
     response
       .writeHead(200, { "content-type": "application/json" })
       .end(JSON.stringify(value));
+  if (url.pathname.startsWith("/api/internal/native-history/") && guiHistory) {
+    try {
+      await guiHistory.apply(
+        url.pathname.split("/").at(-1),
+        await requestBody(request),
+        response,
+        send,
+      );
+    } catch (error) {
+      upstream.emit("failure", error);
+      response.writeHead(400).end("{}");
+    }
+    return;
+  }
   if (url.pathname.startsWith("/api/internal/native-commands/") && guiPeer) {
     try {
       await guiPeer.apply(
@@ -878,6 +893,13 @@ async function verifyProtectedTurns() {
       /does not match the admitted native command/,
     );
     assert.equal(providerCalls, before);
+    guiHistory = new GuiHistoryPeer({
+      fields,
+      receipt,
+      workerId,
+      stamp,
+      oracle,
+    });
     guiPeer = new GuiReceiptPeer(fields, receipt, {
       oracle,
       workerGeneration,
@@ -959,15 +981,37 @@ async function verifyProtectedTurns() {
   );
   assert.ok(messages.some((event) => event.telemetry.streaming));
   assert.ok(messages.some((event) => !event.telemetry.streaming));
-  const legacy = new EncryptedChatEventSealer(oracle, chatId, {
-    explanation: null,
-    steps: [],
-    question: null,
-  });
+  const referenceSealer = new EncryptedChatEventSealer(
+    oracle,
+    chatId,
+    {
+      explanation: null,
+      steps: [],
+      question: null,
+    },
+    guiHistory
+      ? async ({ message }) => {
+          const { threadId, turnId, itemId } = message.correlation;
+          const mapping = guiHistory.identity({
+            threadId,
+            turnId,
+            itemId,
+            component: "assistant",
+            identityKind: "canonical",
+          });
+          assert.ok(mapping);
+          return {
+            id: mapping.messageId,
+            idempotencyKey: mapping.idempotencyKey,
+            mode: "default",
+          };
+        }
+      : undefined,
+  );
   for (const event of messages) {
     const [text] = (await actualMessage(event.message)).content;
     assert.equal(text.text, outputText);
-    const reference = await legacy.message({
+    const reference = await referenceSealer.message({
       id: text.correlation.itemId,
       text: text.text,
       phase: text.phase,
@@ -1005,6 +1049,17 @@ async function verifyProtectedTurns() {
     );
   }
   if (receipt) {
+    const settledMessage = messages.find((event) => !event.telemetry.streaming);
+    assert.equal(
+      await available(
+        guiHistory.verify(completed.result.turnId, settledMessage.message, [
+          privatePrompt,
+          outputText,
+          priorText,
+        ]),
+      ),
+      outputText,
+    );
     assert.equal(guiPeer.terminal.nativeTurnId, completed.result.turnId);
     assert.equal(guiPeer.terminal.terminalStatus, "completed");
     assert.deepEqual(guiPeer.steps, [
@@ -1059,6 +1114,13 @@ async function verifyProtectedTurns() {
     guiPeer.holdRootAcknowledgment = new Promise((resolve) => {
       releaseRoot = resolve;
     });
+    const resolvingOutput = Promise.withResolvers();
+    const releaseOutput = Promise.withResolvers();
+    guiHistory.holdResolution = {
+      previousTurn: completed.result.turnId,
+      arrived: resolvingOutput.resolve,
+      release: releaseOutput.promise,
+    };
     const request = untilProvider();
     const running = ensure({ ...resumed, nativeCommandReceipt: following });
     const active = await Promise.race([
@@ -1091,6 +1153,7 @@ async function verifyProtectedTurns() {
         /does not identify one connected managed session/,
       );
     }
+    await available(resolvingOutput.promise);
     guiPeer.loseNextControlDispatch = true;
     const lostStop = ensure(stopCommand);
     await expectSuccess({ type: "worker.version" });
@@ -1104,6 +1167,9 @@ async function verifyProtectedTurns() {
     );
     assert.equal(guiPeer.terminal, undefined);
     assert.deepEqual(await expectSuccess(stopCommand), { interrupted: true });
+    await active.closed;
+    releaseOutput.resolve();
+    guiHistory.holdResolution = undefined;
     assert.deepEqual(
       [...guiPeer.controls.values()].map(({ receipt, steps }) => [
         receipt.status,
@@ -1116,7 +1182,6 @@ async function verifyProtectedTurns() {
     );
     assert.equal((await running).ok, false);
     assert.equal(guiPeer.terminal.terminalStatus, "interrupted");
-    await active.closed;
     await expectSuccess(logical(following));
     guiPeer = undefined;
     console.log(
@@ -1125,8 +1190,15 @@ async function verifyProtectedTurns() {
   }
   await stop();
   assert.deepEqual(await bindings(), []);
+  if (guiHistory) {
+    await guiHistory.verifyLocalSource(directory, completed.result.turnId);
+    guiHistory = undefined;
+    console.log(
+      "Canonical live message identities, encrypted History source and commit replay passed.",
+    );
+  }
   console.log(
-    "Protected host turn, legacy identities, encrypted plan and Node interoperability passed.",
+    "Protected host turn, message identities, encrypted plan and Node interoperability passed.",
   );
 }
 

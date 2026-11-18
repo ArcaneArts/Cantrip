@@ -36,6 +36,8 @@ pub struct Input {
 }
 struct Entry {
     id: u64,
+    owner: JsString,
+    server: JsString,
     chat: JsString,
     thread: JsString,
     runtime: Arc<dyn ManagedRuntime>,
@@ -103,8 +105,8 @@ impl Sources {
         }
         let (owner, server) = self.0.options.service.identity()?;
         let key = Value::Array(vec![
-            s(server),
-            s(owner),
+            s(server.clone()),
+            s(owner.clone()),
             s(self.0.options.worker_id.clone()),
             s(input.chat_id.clone()),
             s(input.thread_id.clone()),
@@ -134,6 +136,8 @@ impl Sources {
         };
         let entry = Arc::new(Entry {
             id,
+            owner,
+            server,
             chat: input.chat_id,
             thread: input.thread_id,
             runtime: input.runtime,
@@ -273,6 +277,11 @@ impl Sources {
                     text(&binding)?,
                     &entry.thread,
                 )?;
+                if scope["ownerId"].as_js_string() != Some(&entry.owner)
+                    || scope["serverId"].as_js_string() != Some(&entry.server)
+                {
+                    bail!("The worker binding changed before native history was journaled.");
+                }
                 let journal =
                     Journal::open(options.directory.clone(), scope, options.service.clone())
                         .await?;

@@ -233,11 +233,17 @@ async fn cycle(
         skill_root.clone(),
         &codex_compatibility,
     );
+    let history = crate::history::managed::runtime::open(
+        configuration.clone(),
+        encryption.clone(),
+        logs.clone(),
+    )?;
     let turns = crate::codex::turn::Turns::new(
         thread_preparation.clone(),
         encryption.clone(),
         configuration.clone(),
         generation.clone(),
+        history.clone(),
     )?;
     let model_catalog = crate::codex::catalog::Catalog::new(
         codex.clone(),
@@ -266,11 +272,6 @@ async fn cycle(
     let (stop, stop_rx) = watch::channel(false);
     let (registered, mut registration) = watch::channel(false);
     let (requests, mut received) = mpsc::unbounded_channel();
-    let history = crate::history::managed::runtime::open(
-        configuration.clone(),
-        encryption.clone(),
-        logs.clone(),
-    )?;
     let mut heartbeat_task = tokio::spawn(publish(
         configuration.clone(),
         client,

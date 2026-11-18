@@ -30,7 +30,8 @@ placement/ownership records. Seventy-nine outer command types have native handle
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
 `diagnostics.logs.read`, `worker.encryption.refresh`, `chat.sync` (cold host observation),
 `chat.thread.ensure` (managed host attachment), `chat.turn` and `chat.interrupt`
-(host text turns, including protected input and managed GUI receipts),
+(host text turns, including protected input, managed GUI receipts and
+canonical History for admitted project turns),
 `chat.message.protect`,
 `chat.messages.protect`, `chat.messages.reprotect`, `chat.turn.protect`,
 `chat.native-logical.cancel`, `chat.native-logical.complete` and
@@ -4145,3 +4146,31 @@ command session tests and strict worker Clippy pass locally.
 Managed pause, steering, interaction replies, deferred and queued inputs,
 suspension recovery, canonical History and durable outcomes remain open.
 Production still selects Node.
+
+## 75. Connect managed project turns to canonical History
+
+Reference commit `139dfb6dc105d8934ab3929391d9717e81963319` (#3237).
+
+The running worker attaches the existing managed History coordinator after
+Core binds and dispatches an admitted project turn and before sending the
+native input. The capture uses the exact command, generation, and native
+thread as its provenance. Its background jobs journal native frames with
+the bound worker identity, reconcile retained snapshots, and deliver
+encrypted batches through the existing receipt-backed projection.
+
+Live protected text uses the same server-reserved identities as the
+projection. Its mode comes from the original retained turn context. Live
+publication keeps output in order while native observation and Stop can
+proceed. Standalone and unreceipted host text retain their existing paths.
+
+The macOS ARM64 smoke runs bundled Codex and the Rust worker with a
+disposable authenticated Core peer and loopback model provider. It checks
+that projected and live output share an identity, observed input preserves
+the original protected message, and the exact batch retries after a lost
+commit acknowledgment. It also holds an identity lookup across native Stop
+and reopens the encrypted journal with the Node reference reader after the
+worker shuts down.
+
+Autonomous execution and suspended-turn recovery still need their capture
+hooks. Managed queue, interaction, broader activity publication and durable
+logical outcomes remain open. Production still selects Node.
