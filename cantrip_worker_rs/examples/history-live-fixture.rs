@@ -18,9 +18,12 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 #[path = "support/history_live_context.rs"]
 mod context;
 use context::{ClientContext, Context, Keys};
+#[path = "support/history_children.rs"]
+mod history_children;
 #[path = "support/history_managed.rs"]
 mod history_managed;
 struct Fixture {
+    children: history_children::Engine,
     manager: history_managed::Engine,
     hub: Hub,
     context: Arc<Context>,
@@ -51,6 +54,12 @@ impl Fixture {
     }
     async fn run(&mut self, input: Value) -> Result<Value> {
         let op = input["op"].as_str().unwrap();
+        if op.starts_with("children.") || op.starts_with("history.") {
+            return self
+                .children
+                .run(&input, self.hub.clone(), self.context.clone())
+                .await;
+        }
         if op.starts_with("manager.") {
             return self
                 .manager
@@ -342,6 +351,7 @@ impl Fixture {
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let mut fixture = Fixture {
+        children: history_children::Engine::default(),
         manager: history_managed::Engine::default(),
         hub: Hub::new(Arc::new(|| 1000.)),
         context: Context::new(json!({})),

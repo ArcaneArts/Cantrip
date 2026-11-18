@@ -122,7 +122,7 @@ loaded by a production service.
 | Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | Native endpoint/surface/repository formats, all private surface records and scoped grant helpers                                                                                                                                                                                                                                                                                                        | Private-state interop covers 12 resource contexts and six content kinds. Remaining protected domains and serving resource lifetimes are pending. Initial surface-grant refresh now completes real host terminal-service reconciliation; delegated OS services remain pending.                                                    |
 | Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Workspace/folders/routing, nine protected host Explorer operations and bound file-document text read/write                                                                                                                                                                                                                                                                                              | Actual Rust worker/server persists encrypted resources, resolves opaque roots, saves files, rejects replay/mismatched document paths and reopens after restart. Paged readers, media/tail, transfers, activity/watches and delegated OS execution remain pending.                                                                |
 | Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub catalog, issue detail/mutations, issue/PR search, inspection, creation, reviews, lifecycle, checkout preparation, agent context, inbox, Actions/releases and replica provisioning/synchronization/removal/link repair | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, exports/sharing and delegated OS Git remain pending |
-| History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter, authenticated HTTP client, canonical content preparation, coherent archive recovery, native item rendering and canonical projector/bootstrap/rebase orchestration                                                                                                                                                                                                                       | Journal/outbox/projection, native protected preparation and coherent HTTP archive recovery pass focused checks; verified retained-context/child-scope and durable media/attachment adapters are native; live output identity, observation/capture and managed source/projection retry/recovery are native; child discovery, top-level history integration and execution runtime integration remain pending                                                                                                                                                    |
+| History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter, authenticated HTTP client, canonical content preparation, coherent archive recovery, native item rendering and canonical projector/bootstrap/rebase orchestration                                                                                                                                                                                                                       | Journal/outbox/projection, native protected preparation and coherent HTTP archive recovery pass focused checks; verified retained-context/child-scope and durable media/attachment adapters are native; live output identity, observation/capture and managed source/projection retry/recovery are native; verified child discovery and the top-level coordinator are native, including production worker startup recovery; live Codex/provider capture integration remains pending                                                                                                                                                    |
 | Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Actual provider protocol fixtures, streaming/media/usage, refresh, cancellation, failure and paid-work bounds                                                                                                                                                                                                                    |
 | Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Manifest verification/probe, native app-server processes, queue ownership, acceptance/commit and restart recovery                                                                                                                                                                                                                |
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
@@ -3201,3 +3201,91 @@ integration, then the remaining runtime/execution/provider, terminal,
 transport/browser, OS/helper, upgrade and packaging/default-cutover/Node-retirement
 work. Production still selects Node, installed native outer handlers remain 59,
 and the full replacement goal remains active.
+
+## Cycle 51: verified descendants, shared history coordinator and worker recovery
+
+Reference: `91d188fb0bb062acdb84639cdcf8b53ca7aff018` / PR #3213.
+
+`history::managed::descendants` now discovers candidate child threads from
+retained snapshots and notifications. It reads actual native headers rootward,
+rejects missing/cyclic/overlong ancestry, then opens authorized bindings
+parent-first. Item names and supplied agent scopes cannot establish lineage.
+Verification results share a cache per root, generation and provenance; failed
+attempts are evicted. Every later reference still binds/reconciles the verified
+child, including when its own notifications are not broadcast to this connection.
+
+Discovery scans real encrypted source journals independently, consumes records
+only after successful verification, skips only candidates with disproven
+ancestry and retries actual read/network failures. Native reads are abandoned
+on stop; metadata requests are aborted and active scans joined. Timer callbacks
+claim running ownership before calling runtime/client/bind callbacks, including
+on the multithreaded runtime.
+
+`history::managed::coordinator::History` connects the existing capture sources,
+canonical recovery pumps, verified adapters and descendant discovery under the
+reference profile directories `native-history-sources` and
+`native-history-canonical`. It retains managed roots, resolves child output
+scope, flushes observed discovery epochs before canonical delivery and shares
+one final stop completion. Callback ownership uses weak routing references to
+avoid retaining the entire service through its own descendants.
+
+The production native worker now constructs this coordinator after enrollment.
+It recovers retained journals independently of native execution and stops history
+before closing its encryption service. The adapter reads the current rotated
+credential and keeps chat-content and attachment-content grants separate. Live
+Codex/provider execution must still attach its runtime observations through the
+coordinator; this cycle does not claim that execution implementation.
+
+Local evidence on macOS ARM64:
+
+- 38 actual Node/native descendant comparisons cover shared pending/successful
+  verification, historical provenance, parent-first binding, unrelated roots,
+  cycles/depth, failed reads/opens, unrelated server replies, replacement and
+  shutdown. Real encrypted journal corruption/repair proves scan retry and
+  unrelated-candidate isolation without manufacturing consumed records.
+- All five existing descendant reference tests and seven native history unit
+  tests pass. The new native unit races two wakes of one real journal and proves
+  one scan/read plus prompt retirement of a held native header read.
+- The existing 81 live-history and 27 managed-source compatibility comparisons
+  pass after the fixture extension for per-thread snapshots/bindings.
+- Real Rust-server/PGlite integration exercises the whole coordinator with
+  root and child sources, verified server ancestry, shared output scope, a
+  started child becoming completed through parent-only activity, and repeated
+  stop. Its child item advances from revision 1 to 2. The actual Node coordinator
+  subsequently reopens the stopped native profile without duplicate batches.
+- An actual `cantrip-worker` process then starts on that retained profile with a
+  persisted credential. Real server principal approval and HPKE-wrapped grants
+  supply the fixture's synthetic chat/attachment keys. Without any live native
+  session, worker startup scans and publishes a previously unprojected source
+  record, advancing the root item to revision 2. Stdin shutdown completes with
+  history stopped before key-service closure. Worker and native fixture children
+  have no Node on PATH.
+- Worker/live-fixture builds, all-target worker Clippy with warnings denied,
+  formatting, diff and new-native-file-size checks pass. There are no new Cargo
+  dependencies, generated contracts, server routes or storage formats. Unchanged
+  server/repository and client/source fixture binaries reuse their existing
+  builds; affected native examples also compile in the all-target check.
+
+The child fixture follows a genuine started-to-completed lifecycle. An earlier
+fixture attempted to rewrite an already-completed snapshot item; the existing
+reducer correctly retained its committed content as conflicting evidence. No
+reducer or flush-semantic change was needed. The production worker smoke uses
+the supported persisted credential path rather than a legacy development token.
+
+Snapshot RPC and the initial enrollment/control worker remain controlled;
+production worker recovery/authentication/grants and canonical publication are
+real. No production provider/Codex acceptance or Windows/Linux runtime execution
+is claimed. No hosted development Actions, physical devices, paid providers,
+VM/container campaign, signing or deployment ran. Owned profiles are removed
+and builds use the existing bounded shared Cargo cache.
+
+The focused driver is `scripts/worker-rust/history-children-compatibility.mjs`
+with `--binary <history-live-fixture>`. The history-client integration smoke now
+also requires `--worker <cantrip-worker>` in addition to its previous binary
+arguments; it invokes the coordinator and production startup scenarios.
+
+Next is native Codex/runtime/provider execution integration, including accepted
+command/queue ownership, settings, task/goal delivery and recovery, then the
+remaining terminal, transport/browser, OS/helper, upgrade, packaging/default
+cutover and Node retirement work. Production packaging still selects the Node
+worker, native outer handlers remain 59, and the full goal remains active.

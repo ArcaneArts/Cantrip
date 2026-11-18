@@ -27,6 +27,7 @@ pub struct Options {
     pub timing: Timing,
     pub binding_timeout_ms: Option<f64>,
 }
+#[derive(Clone)]
 pub struct Input {
     pub chat_id: JsString,
     pub thread_id: JsString,
