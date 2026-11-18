@@ -238,7 +238,7 @@ impl Turns {
             .and_then(|active| active.root.as_ref())
             .map(|root| root.activation.clone())
             .unwrap_or(Value::Null);
-        let receipt = self
+        let (receipt, awaiting_goal) = self
             .receipts
             .admit_goal(scope, session, method, &params, command, activation)
             .await?;
@@ -263,7 +263,11 @@ impl Turns {
             .await;
         match reply {
             Ok(Some(result)) => {
-                receipt.applied(&result, None).await?;
+                if awaiting_goal {
+                    receipt.applied_queued_goal(&result).await?;
+                } else {
+                    receipt.applied(&result, None).await?;
+                }
                 Ok(result)
             }
             Err(error) => {

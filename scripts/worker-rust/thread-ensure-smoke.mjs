@@ -1640,6 +1640,7 @@ try {
     await verifyAutonomousGoal({
       expectThread,
       expectSuccess,
+      request: ensure,
       start,
       stop,
       available,

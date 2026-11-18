@@ -263,6 +263,7 @@ async fn cycle(
         chat_observation.clone(),
         encryption.clone(),
         project_goals.clone(),
+        crate::attachments::Store::new(&data_directory, None)?,
     );
     let turns = crate::codex::turn::Turns::new(
         thread_preparation.clone(),
@@ -390,7 +391,7 @@ async fn cycle(
                     });
                     continue;
                 }
-                if matches!(kind, crate::codex::goals::CREATE | crate::codex::goals::GET | crate::codex::goals::UPDATE | crate::codex::goals::CLEAR) {
+                if matches!(kind, crate::codex::goals::CREATE | crate::codex::goals::GET | crate::codex::goals::UPDATE | crate::codex::goals::CLEAR | crate::codex::goals::QUEUE_EXECUTE) {
                     let goals = goals.clone();
                     let turns = turns.clone();
                     let logs = logs.clone();
@@ -402,6 +403,7 @@ async fn cycle(
                             crate::codex::goals::GET => goals.get(command).await,
                             crate::codex::goals::UPDATE => goals.update(command, &turns).await,
                             crate::codex::goals::CLEAR => goals.clear(command, &turns).await,
+                            crate::codex::goals::QUEUE_EXECUTE => goals.execute_queued(command, &turns).await,
                             _ => goals.create(command, &turns).await,
                         };
                         finish(&request, &worker, &logs, &outgoing, began, &result);

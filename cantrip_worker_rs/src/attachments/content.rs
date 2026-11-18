@@ -52,8 +52,21 @@ pub fn protect(keys: &dyn Keys, chat: &Value, id: &Value, metadata: &Value) -> R
     attachments::encrypt_attachment_metadata(&material.key, &context(&material, chat, id), metadata)
 }
 pub fn open(keys: &dyn Keys, raw: &Value) -> Result<Value> {
+    open_for(keys, raw, None)
+}
+
+pub(crate) fn open_for(
+    keys: &dyn Keys,
+    raw: &Value,
+    binding: Option<(&JsString, &JsString)>,
+) -> Result<Value> {
     let value = checked("chatAttachmentOpaqueSummarySchema", raw)?;
     let material = keys.attachment_material()?;
+    if binding
+        .is_some_and(|(owner, server)| &material.owner_id != owner || &material.server_id != server)
+    {
+        bail!("The worker binding changed while opening protected attachment metadata.");
+    }
     if value["protectedMetadata"]["keyRevision"].as_u64() != Some(material.key_revision) {
         bail!("The attachment encryption key revision is unavailable.");
     }
