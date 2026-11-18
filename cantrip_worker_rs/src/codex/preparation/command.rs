@@ -29,6 +29,7 @@ pub(crate) const COMMAND: &str = "chat.thread.ensure";
 pub(crate) struct Prepared {
     pub runtime: Runtime,
     pub thread: native::LoadedThread,
+    pub codex_home: PathBuf,
     admission: Option<Value>,
     bound: (JsString, Value),
 }
@@ -191,6 +192,7 @@ impl Ensurer {
                         &provider, execution, this.0.skills.clone(),
                     ).await?;
                     this.assert_bound(&bound)?;
+                    let codex_home = profile.codex_home.clone();
                     let model_provider = provider::model_provider(&provider);
                     let runtime = this.0.codex.launch_in_scope(
                         provider::launch(profile, provider, this.0.access.clone())?,
@@ -222,8 +224,12 @@ impl Ensurer {
                     let runner = payload_digest(&json!([
                         json!(runtime.generation()), json!(chat), session[placement].clone()
                     ]));
+                    let first_message = command["taskGoalFirstInput"].as_js_string();
+                    if let (Some(message), Some(thread)) = (first_message, selection.thread_id.as_ref()) {
+                        runtime.inference_router().reserve_task_first_input(thread.clone(), runner.clone().into(), message.clone());
+                    }
                     let configuration = profile::configuration(
-                        &command, &cwd, mcp, runner, model_provider, standalone,
+                        &command, &cwd, mcp, runner.clone(), model_provider, standalone,
                         this.0.permission_profiles,
                     ).await?;
                     this.assert_bound(&bound)?;
@@ -232,10 +238,14 @@ impl Ensurer {
                     if selection.intent == Intent::Configure {
                         profile::apply_plan_mode(&runtime, &loaded, &command).await?;
                     }
+                    if let Some(message) = first_message {
+                        runtime.inference_router().reserve_task_first_input(loaded.id().clone(), runner.into(), message.clone());
+                        profile::apply_goal_permissions(&runtime, &loaded, &command, this.0.permission_profiles).await?;
+                    }
                     loaded.assert_current(&runtime)?;
                     this.assert_bound(&bound)?;
                     let thread_id = loaded.id().clone();
-                    *prepared.lock().unwrap() = Some(Prepared { runtime, thread: loaded, admission, bound });
+                    *prepared.lock().unwrap() = Some(Prepared { runtime, thread: loaded, codex_home, admission, bound });
                     Ok(thread_id)
                 })
             }),

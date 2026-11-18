@@ -23,6 +23,7 @@ use indexmap::IndexMap;
 use pending::FirstInputDispatch;
 pub use pending::{FirstInput, Pending};
 use std::{
+    collections::HashMap,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -74,7 +75,14 @@ struct Inner {
     hooks: Hooks,
     timeout: Duration,
     pending: Mutex<PendingState>,
+    first_inputs: Mutex<HashMap<JsString, TaskFirstInput>>,
     version: watch::Sender<u64>,
+}
+
+struct TaskFirstInput {
+    runner: JsString,
+    message: JsString,
+    input: FirstInput,
 }
 
 #[derive(Clone)]
@@ -93,6 +101,7 @@ impl Router {
             hooks,
             timeout: Duration::from_secs(120),
             pending: Mutex::new(PendingState::default()),
+            first_inputs: Mutex::new(HashMap::new()),
             version: watch::channel(0).0,
         })))
     }
@@ -169,6 +178,29 @@ impl Router {
             .values()
             .cloned()
             .collect()
+    }
+
+    pub(crate) fn reserve_task_first_input(
+        &self,
+        thread: JsString,
+        runner: JsString,
+        message: JsString,
+    ) {
+        let mut inputs = self.0.first_inputs.lock().unwrap();
+        if inputs
+            .get(&thread)
+            .is_some_and(|input| input.runner == runner && input.message == message)
+        {
+            return;
+        }
+        inputs.insert(
+            thread,
+            TaskFirstInput {
+                runner,
+                message,
+                input: FirstInput::default(),
+            },
+        );
     }
 
     pub fn changes(&self) -> watch::Receiver<u64> {
@@ -355,7 +387,14 @@ impl Router {
             && gate.root_thread() == &gate.key.thread_id
             && gate.goal_epoch.is_some()
         {
-            context.first_input.clone()
+            self.0
+                .first_inputs
+                .lock()
+                .unwrap()
+                .get(&gate.key.thread_id)
+                .filter(|input| input.runner == gate.key.runner_generation)
+                .map(|input| input.input.clone())
+                .or_else(|| context.first_input.clone())
         } else {
             None
         };

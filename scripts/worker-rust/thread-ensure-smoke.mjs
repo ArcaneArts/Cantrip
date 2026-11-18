@@ -37,6 +37,7 @@ import { verifyTaskOutcomeRecovery } from "./task-outcome-recovery.mjs";
 import { verifyTaskPreparation } from "./task-preparation-cases.mjs";
 import { verifyDirectTask } from "./direct-task-cases.mjs";
 import { verifyStructuredTasks } from "./structured-task-cases.mjs";
+import { verifyTaskGoalActivation } from "./task-goal-activation-cases.mjs";
 
 const { values } = parseArgs({
   options: {
@@ -49,9 +50,11 @@ const { values } = parseArgs({
     taskPreparation: { type: "boolean" },
     directTask: { type: "boolean" },
     structuredTasks: { type: "boolean" },
+    taskGoal: { type: "boolean" },
   },
 });
 assert.ok(values.worker && values.codex);
+const structuredTasks = values.structuredTasks || values.taskGoal;
 const requireWorker = createRequire(
   new URL("../../cantrip_worker/package.json", import.meta.url),
 );
@@ -265,7 +268,7 @@ const server = createServer(async (request, response) => {
           values.receipts ||
           values.taskPreparation ||
           values.directTask ||
-          values.structuredTasks
+          structuredTasks
             ? [
                 {
                   component: "chat-content",
@@ -274,9 +277,7 @@ const server = createServer(async (request, response) => {
                 },
               ]
             : []),
-          ...(values.taskPreparation ||
-          values.directTask ||
-          values.structuredTasks
+          ...(values.taskPreparation || values.directTask || structuredTasks
             ? [
                 {
                   component: "task-content",
@@ -1427,7 +1428,7 @@ try {
   };
   await start();
   let taskInputs;
-  if (values.taskPreparation || values.directTask || values.structuredTasks) {
+  if (values.taskPreparation || values.directTask || structuredTasks) {
     taskInputs = await verifyTaskPreparation({
       dispatch: ensure,
       ownerId,
@@ -1537,7 +1538,7 @@ try {
       "Direct Task claim, native binding, encrypted result, and persistent replay passed.",
     );
   }
-  if (values.structuredTasks) {
+  if (structuredTasks) {
     await verifyStructuredTasks({
       taskInputs,
       root,
@@ -1556,6 +1557,17 @@ try {
         taskOutcome = outcome;
         taskResponse = answer;
       },
+      activate: values.taskGoal
+        ? (input) =>
+            verifyTaskGoalActivation({
+              ...input,
+              ownerId,
+              key: taskKey,
+              invoke: ensure,
+              directory,
+              modelCalls: () => providerCalls,
+            })
+        : undefined,
       diagnostics: () => diagnostics,
     });
     console.log(
