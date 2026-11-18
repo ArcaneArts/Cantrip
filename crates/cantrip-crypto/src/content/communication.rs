@@ -1,4 +1,4 @@
-//! Existing first-party communication payload formats. No grant or network policy.
+//! Existing first-party communication and Task payload formats. No grant or network policy.
 use super::{aad, authenticate, decode_json, encode_json, open_field, seal_field};
 use crate::{checked, decryption_error};
 use anyhow::Result;
@@ -7,6 +7,9 @@ use cantrip_wire::{Value, value::json};
 #[derive(Clone, Copy)]
 pub enum Communication {
     Message,
+    Task,
+    TaskPlanningRound,
+    TaskMessage,
     QueuedPrompt,
     ComposerDraft,
     Plan,
@@ -34,6 +37,36 @@ impl Communication {
                 "chatMessageProtectedContentSchema",
                 "encryptedChatMessageProtectedContentSchema",
                 Some("chatMessageProtectedClassificationSchema"),
+                2 * 1024 * 1024,
+            ),
+            Self::Task => (
+                "task-content",
+                "tasks",
+                "protected_content",
+                "chatId",
+                "taskProtectedContentSchema",
+                "encryptedTaskProtectedContentSchema",
+                Some("taskProtectedClassificationSchema"),
+                4 * 1024 * 1024,
+            ),
+            Self::TaskPlanningRound => (
+                "task-content",
+                "task_planning_rounds",
+                "protected_content",
+                "roundId",
+                "taskPlanningRoundProtectedContentSchema",
+                "encryptedTaskPlanningRoundProtectedContentSchema",
+                Some("taskPlanningRoundProtectedClassificationSchema"),
+                6 * 1024 * 1024,
+            ),
+            Self::TaskMessage => (
+                "task-content",
+                "chat_messages",
+                "task_protected_content",
+                "messageId",
+                "taskMessageProtectedContentSchema",
+                "encryptedTaskMessageProtectedContentSchema",
+                Some("taskMessageProtectedClassificationSchema"),
                 2 * 1024 * 1024,
             ),
             Self::QueuedPrompt => (
@@ -121,7 +154,11 @@ pub fn encrypt_communication(
         format.content,
         content,
         format.limit,
-        "Protected communication content exceeds its byte limit.",
+        if format.component == "task-content" {
+            "Protected Task content exceeds its encoded byte limit."
+        } else {
+            "Protected communication content exceeds its byte limit."
+        },
     )?;
     let envelope = seal_field(component_key, &associated_data, &bytes)?;
     checked(

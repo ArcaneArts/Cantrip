@@ -30,6 +30,7 @@ mod remote_surfaces;
 pub mod repository_operations;
 pub mod response;
 mod run_configurations;
+mod task_content;
 mod tasks;
 mod terminals;
 pub use cantrip_wire::value;

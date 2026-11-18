@@ -40,6 +40,9 @@ pub(super) fn apply(
     if super::public_chats::refine(tag, result, path)? {
         return Ok(());
     }
+    if super::task_content::refine(tag, result, path)? {
+        return Ok(());
+    }
     if super::tasks::refine(tag, result, path)? {
         return Ok(());
     }

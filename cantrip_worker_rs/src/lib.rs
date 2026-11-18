@@ -32,6 +32,7 @@ pub mod replicas;
 pub mod repository_operations;
 pub mod routing;
 pub mod runtime;
+mod task_content;
 pub mod terminal_services;
 pub mod version;
 pub mod workspace;

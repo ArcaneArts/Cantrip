@@ -26,7 +26,7 @@ checkpointed reflog/lost-commit recovery, worker-scoped GitHub catalog operation
 and repository-scoped issue detail/mutations, issue/PR search, PR inspection, creation, reviews, lifecycle, checkout preparation and agent context,
 GitHub inbox, Actions and releases, plus native replica provisioning and
 managed-link repair, synchronization and guarded removal over the existing
-placement/ownership records. Seventy-nine outer command types have native handlers:
+placement/ownership records. Eighty-one outer command types have native handlers:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
 `diagnostics.logs.read`, `worker.encryption.refresh`, `chat.sync` (cold host observation),
 `chat.thread.ensure` (managed host attachment), `chat.turn` and `chat.interrupt`
@@ -34,6 +34,7 @@ placement/ownership records. Seventy-nine outer command types have native handle
 canonical History for admitted project turns),
 `chat.message.protect`,
 `chat.messages.protect`, `chat.messages.reprotect`, `chat.turn.protect`,
+`task.message.protect` and `task.operation.prepare` (encrypted Task input),
 `chat.native-logical.cancel`, `chat.native-logical.complete` and
 `chat.native-control` (interrupt for active managed host text turns),
 `model.chatgpt.catalog`,
@@ -4204,3 +4205,29 @@ requires separate validation.
 Native Task execution still needs its producer and commit barriers. Full
 integration against the production Rust server and production cutover
 remain open. Production still selects Node.
+
+## 77. Prepare protected Task inputs and failure records
+
+Reference commit `554ca76920c377a42348669c58beb3be6b703332` (#3239).
+
+The running Rust worker accepts the existing `task.message.protect` command
+and converts a protected Chat message into the Task encryption domain under
+the bound account. Message identity, mode, attachment classification, and
+idempotency key survive conversion. The Task, planning round, and message
+codecs use the shared encryption primitives and endpoint plaintext schemas
+generated from `packages/protocol`.
+
+`task.operation.prepare` opens the saved Task snapshot and prepares all four
+operation kinds. It returns the verifiable relay fingerprint, encrypted
+running Task and round, encrypted user message, and matching encrypted
+failure records with the original row version. This command prepares input
+for the server's existing transaction and does not start a native turn.
+
+The macOS ARM64 smoke opens native results using the Node reference codec.
+It compares all four decoded operations, verifies the keyed relay
+fingerprint, checks the fallback Task and round, and rejects inconsistent
+public metadata and a ciphertext moved to another Task. The worker and
+server compiled locally.
+
+Native Task dispatch, execution, and outcome production still need wiring.
+Production still selects Node.
