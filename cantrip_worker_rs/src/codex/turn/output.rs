@@ -1,14 +1,41 @@
 use super::{Emit, Signal, id};
-use crate::{http::checked, native_items::concat};
+use crate::{
+    history::live::observation::{Observer, Runtime as _, RuntimeHub, Subscription},
+    http::checked,
+    native_items::concat,
+};
 use anyhow::{Context, Result};
 use cantrip_wire::{JsString, Value, value::json};
-use std::time::{Duration, Instant};
-use tokio::sync::mpsc::UnboundedReceiver;
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use tokio::sync::mpsc::{self, UnboundedReceiver};
 
 type Events = UnboundedReceiver<Value>;
 const STREAM_INTERVAL: Duration = Duration::from_millis(80);
 
-pub(super) fn observes(method: &Value) -> bool {
+pub(super) fn subscribe(
+    observation: &RuntimeHub,
+    thread: &JsString,
+) -> Result<(Subscription, Events)> {
+    let (observed, events) = mpsc::unbounded_channel();
+    let subscription = observation.observe(
+        thread.clone(),
+        Observer {
+            capture: Arc::new(move |frame| {
+                if observes(&frame["method"]) {
+                    let _ = observed.send(frame);
+                }
+                Ok(None)
+            }),
+            on_error: Arc::new(|_, _| Ok(())),
+        },
+    )?;
+    Ok((subscription, events))
+}
+
+fn observes(method: &Value) -> bool {
     matches!(
         method.as_str(),
         Some(

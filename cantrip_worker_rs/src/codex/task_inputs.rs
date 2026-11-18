@@ -45,23 +45,7 @@ impl Client {
         native: Option<(Value, JsString)>,
         signal: Signal,
     ) -> Result<()> {
-        let assert_owner = || {
-            let (current_owner, bound_server) = self.encryption.bound_identity()?;
-            if current_owner != *owner || bound_server.as_js_string() != Some(server) {
-                bail!("The Task input worker binding changed.");
-            }
-            Ok(())
-        };
-        assert_owner()?;
-        let (url, token, worker) = {
-            let config = self.config.lock().unwrap();
-            (
-                url::Url::parse(&config.server_url)?
-                    .join("/api/internal/native-commands/task-input-dispatch")?,
-                config.token.clone(),
-                config.worker_id.clone(),
-            )
-        };
+        let worker = self.config.lock().unwrap().worker_id.clone();
         if receipt["workerId"].as_js_string() != Some(&worker) {
             bail!("The Task receipt belongs to another worker.");
         }
@@ -74,6 +58,82 @@ impl Client {
             input["nativeRuntimeGeneration"] = json!(generation);
         }
         let input = checked("taskInferenceInputDispatchSchema", &input)?;
+        let body = self
+            .post(owner, server, "task-input-dispatch", &input, signal)
+            .await?;
+        let acknowledged = checked("taskInferenceInputDispatchResultSchema", &body)?;
+        if acknowledged["receipt"].stringify() != input["receipt"].stringify()
+            || acknowledged.get("nativeExecution") != input.get("nativeExecution")
+            || acknowledged.get("nativeRuntimeGeneration") != input.get("nativeRuntimeGeneration")
+        {
+            bail!("Core acknowledged a different Task input or execution.");
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn authorize_goal_cycle(
+        &self,
+        owner: &JsString,
+        server: &JsString,
+        parent: &Value,
+        mut input: Value,
+        signal: Signal,
+    ) -> Result<Value> {
+        let worker = self.config.lock().unwrap().worker_id.clone();
+        if parent["workerId"].as_js_string() != Some(&worker) {
+            bail!("The Task Goal parent belongs to another worker.");
+        }
+        input["workerId"] = json!(worker);
+        input["workerGeneration"] = json!(self.worker_generation);
+        input["serverId"] = json!(server);
+        let input = checked("taskGoalCycleDispatchSchema", &input)?;
+        let body = self
+            .post(owner, server, "task-goal-cycle-dispatch", &input, signal)
+            .await?;
+        let receipt = checked("taskGoalCycleDispatchResultSchema", &body)?;
+        let source = &receipt["suspensionSource"];
+        if source["parent"] != *parent
+            || source["runtimeGeneration"] != input["nativeRuntimeGeneration"]
+            || [
+                "sourceKey",
+                "workerGeneration",
+                "threadId",
+                "turnId",
+                "operationId",
+                "cycle",
+            ]
+            .into_iter()
+            .any(|key| source[key] != input[key])
+        {
+            bail!("Core acknowledged a different autonomous Task Goal execution.");
+        }
+        Ok(source.clone())
+    }
+
+    async fn post(
+        &self,
+        owner: &JsString,
+        server: &JsString,
+        operation: &str,
+        input: &Value,
+        signal: Signal,
+    ) -> Result<Value> {
+        let assert_owner = || {
+            let (current_owner, bound_server) = self.encryption.bound_identity()?;
+            if current_owner != *owner || bound_server.as_js_string() != Some(server) {
+                bail!("The Task input worker binding changed.");
+            }
+            Ok(())
+        };
+        assert_owner()?;
+        let (url, token) = {
+            let config = self.config.lock().unwrap();
+            (
+                url::Url::parse(&config.server_url)?
+                    .join(&format!("/api/internal/native-commands/{operation}"))?,
+                config.token.clone(),
+            )
+        };
         let guard = Guard::metadata(Some(signal), None);
         let body = guard
             .run(async {
@@ -91,13 +151,7 @@ impl Client {
                     .map_err(|_| anyhow::anyhow!("Invalid Task input acknowledgment."))
             })
             .await?;
-        let acknowledged = checked("taskInferenceInputDispatchResultSchema", &body)?;
-        if acknowledged["receipt"].stringify() != input["receipt"].stringify()
-            || acknowledged.get("nativeExecution") != input.get("nativeExecution")
-            || acknowledged.get("nativeRuntimeGeneration") != input.get("nativeRuntimeGeneration")
-        {
-            bail!("Core acknowledged a different Task input or execution.");
-        }
-        assert_owner()
+        assert_owner()?;
+        Ok(body)
     }
 }

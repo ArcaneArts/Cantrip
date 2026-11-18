@@ -5,7 +5,7 @@ mod output;
 mod params;
 mod protected;
 mod receipt;
-mod task;
+pub(in crate::codex) mod task;
 
 use super::{
     admission::Acquire,
@@ -18,12 +18,9 @@ use crate::{
     chat_content::Scope,
     config::Config,
     encryption::Service,
-    history::{
-        live::observation::{Observer, Runtime as _},
-        managed::{coordinator::History, sources},
-    },
+    history::managed::{coordinator::History, sources},
     http::checked,
-    inference::admission::Source,
+    inference::admission::{Complete, Promise, Source},
     metadata::{Abort, Signal},
     outcomes::TaskDelivery,
 };
@@ -37,7 +34,7 @@ use std::{
     },
     time::Duration,
 };
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{Mutex as AsyncMutex, watch};
 
 pub(crate) const RUN: &str = "chat.turn";
 pub(crate) const INTERRUPT: &str = "chat.interrupt";
@@ -71,6 +68,7 @@ struct TaskTurn {
     turn: task::Turn,
     key: Key,
     claimed: bool,
+    goal_commit: Option<(Complete<()>, Promise<()>)>,
 }
 
 struct Active {
@@ -301,6 +299,7 @@ impl Turns {
                 turn,
                 key,
                 claimed: false,
+                goal_commit: goal.then(Promise::pair),
             })
         })();
         let mut task = match task {
@@ -318,6 +317,13 @@ impl Turns {
         } else {
             None
         };
+        if let Some((commit, _)) = task.goal_commit {
+            commit.finish(if note.is_some() {
+                Ok(())
+            } else {
+                Err(anyhow!("The first Task Goal outcome was not acknowledged."))
+            });
+        }
         (result, note)
     }
 
@@ -492,19 +498,7 @@ impl Turns {
                 params["outputSchema"] = schema.clone();
             }
             prepared.thread.assert_current(runtime)?;
-            let (observed, mut events) = mpsc::unbounded_channel();
-            let subscription = runtime.history().observe(
-                thread.clone(),
-                Observer {
-                    capture: Arc::new(move |frame| {
-                        if output::observes(&frame["method"]) {
-                            let _ = observed.send(frame);
-                        }
-                        Ok(None)
-                    }),
-                    on_error: Arc::new(|_, _| Ok(())),
-                },
-            )?;
+            let (subscription, mut events) = output::subscribe(&runtime.history(), thread)?;
             let transport = subscription.signal();
             let result = async {
                 execution.bind_thread(thread.clone())?;
@@ -551,7 +545,7 @@ impl Turns {
                             transport.clone(),
                         )
                     });
-                let send = || {
+                let send = || async {
                     if goal {
                         active.dispatch(&signal, thread.clone())?;
                     }
@@ -559,54 +553,73 @@ impl Turns {
                         execution.rejected()?;
                         return Err(error);
                     }
-                    Ok(runtime.request("turn/start".into(), Some(params), Some(RPC_TIMEOUT), None))
+                    let reply = runtime
+                        .request("turn/start".into(), Some(params), Some(RPC_TIMEOUT), None)
+                        .await;
+                    let turn = match reply {
+                        Ok(Some(reply)) => id(&reply["turn"]["id"], "native turn identity")
+                            .map(|turn| (turn, Some(reply))),
+                        Err(error)
+                            if error
+                                .downcast_ref::<Failure>()
+                                .is_some_and(|failure| failure.native_error.is_some()) =>
+                        {
+                            execution.rejected()?;
+                            execution.settled().await?;
+                            if let Some(receipt) = &receipt {
+                                let failure = error.downcast_ref::<Failure>().unwrap();
+                                receipt
+                                    .rejected(failure.native_error.as_ref().unwrap())
+                                    .await?;
+                            }
+                            return Err(error);
+                        }
+                        Err(error) => Err(error),
+                        Ok(None) => Err(anyhow!("Codex did not confirm the native turn identity.")),
+                    };
+                    match turn {
+                        Ok(turn) => Ok(turn),
+                        Err(error) => {
+                            // A lost acknowledgement must not make the lane reusable.
+                            match output::started(&mut events, &transport).await {
+                                Ok(turn) => Ok((turn, None)),
+                                Err(_) => {
+                                    runtime.retired().await?;
+                                    Err(error)
+                                }
+                            }
+                        }
+                    }
                 };
-                let reply = if goal {
+                let (turn, reply) = if let Some((_, commit)) =
+                    task.as_ref().and_then(|task| task.goal_commit.as_ref())
+                {
+                    let cycle = Arc::new(task::cycle::GoalCycle {
+                        parent: command["taskInferenceInput"].clone(),
+                        project: command["policyProjectId"].clone(),
+                        encryption: self.encryption.clone(),
+                        key: key.clone(),
+                        client: self.task_inputs.clone(),
+                        outcomes: self.task_outcomes.clone(),
+                        observation: runtime.history(),
+                        activate: self
+                            .preparation
+                            .cycle_activation(&prepared, &command["executionLaneId"]),
+                        emit: emit.clone(),
+                        reuse_published_response: command["resultMode"]["reusePublishedResponse"]
+                            == true,
+                        previous: AsyncMutex::new(commit.clone()),
+                    });
                     task::first_input::start(
                         &prepared,
                         &command["taskInferenceInput"],
                         &signal,
+                        cycle,
                         send,
                     )
                     .await?
                 } else {
-                    send()?.await
-                };
-                let turn = match reply {
-                    Ok(Some(reply)) => id(&reply["turn"]["id"], "native turn identity")
-                        .map(|turn| (turn, Some(reply))),
-                    Err(error)
-                        if error
-                            .downcast_ref::<Failure>()
-                            .is_some_and(|failure| failure.native_error.is_some()) =>
-                    {
-                        execution.rejected()?;
-                        execution.settled().await?;
-                        if let Some(receipt) = &receipt {
-                            let failure = error.downcast_ref::<Failure>().unwrap();
-                            receipt
-                                .rejected(failure.native_error.as_ref().unwrap())
-                                .await?;
-                        }
-                        return Err(error);
-                    }
-                    Err(error) => Err(error),
-                    Ok(None) => Err(anyhow!("Codex did not confirm the native turn identity.")),
-                };
-                let (turn, reply) = match turn {
-                    Ok(turn) => turn,
-                    Err(error) => {
-                        // A lost acknowledgement must not make the lane reusable.
-                        // This worker owns this native thread. Wait for its order-
-                        // preserving observation stream or confirmed process exit.
-                        match output::started(&mut events, &transport).await {
-                            Ok(turn) => (turn, None),
-                            Err(_) => {
-                                runtime.retired().await?;
-                                return Err(error);
-                            }
-                        }
-                    }
+                    send().await?
                 };
                 let bound = execution.bind_turn(turn.clone());
                 active.set(Phase::Running {
