@@ -109,9 +109,7 @@ impl Turns {
         let root = active
             .root
             .as_ref()
-            .filter(|root| {
-                command["nativeActivationGeneration"].as_js_string() == Some(&root.activation)
-            })
+            .filter(|root| command["nativeActivationGeneration"] == root.activation)
             .context(mismatch)?;
         let binding = active
             .control

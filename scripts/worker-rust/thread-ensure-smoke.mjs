@@ -84,6 +84,7 @@ let guiPeer,
   taskOutcome,
   taskDispatch,
   taskGoalDispatch,
+  goalMutation,
   taskResponse,
   holdHandshake;
 const outcomeFrames = new EventEmitter();
@@ -233,6 +234,23 @@ const server = createServer(async (request, response) => {
   ) {
     try {
       taskGoalDispatch(await requestBody(request), send);
+    } catch (error) {
+      upstream.emit("failure", error);
+      response.writeHead(400).end("{}");
+    }
+    return;
+  }
+  if (
+    url.pathname.startsWith("/api/internal/native-commands/") &&
+    goalMutation
+  ) {
+    try {
+      await goalMutation(
+        url.pathname.split("/").at(-1),
+        await requestBody(request),
+        response,
+        send,
+      );
     } catch (error) {
       upstream.emit("failure", error);
       response.writeHead(400).end("{}");
@@ -1591,6 +1609,10 @@ try {
                 taskResponse = answer;
               },
               attach,
+              attachMutation: (handler) => {
+                goalMutation = handler;
+              },
+              oracle,
               untilProvider,
               available,
               waitForFrame,

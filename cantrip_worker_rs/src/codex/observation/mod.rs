@@ -73,7 +73,13 @@ impl Observer {
         let chat = field(&command, "chatId")?;
         let provider = open_runtime_provider(&self.encryption, &command["provider"])?;
         let scope = json!({"serverId":server,"ownerId":owner,"workerId":self.worker});
-        let execution = command["executionProfile"].as_str().unwrap_or("ide");
+        let execution = command["executionProfile"].as_str().unwrap_or_else(|| {
+            if command["session"]["contextKind"] == "standalone" {
+                "standalone-chat"
+            } else {
+                "ide"
+            }
+        });
         let profile = home::profile(
             &self.data,
             &scope,

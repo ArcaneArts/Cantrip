@@ -29,7 +29,7 @@ impl std::error::Error for Unacknowledged {}
 pub(super) struct Operation {
     pub operation: JsString,
     pub generation: JsString,
-    pub activation: JsString,
+    pub activation: Value,
     payload: Value,
     lane: Value,
     method: &'static str,
@@ -64,10 +64,10 @@ impl Operation {
                 &receipt["operationGeneration"],
                 "native operation generation",
             )?,
-            activation: id(
+            activation: Value::String(id(
                 &receipt["activationGeneration"],
                 "native activation generation",
-            )?,
+            )?),
             payload: receipt["payloadDigest"].clone(),
             lane: receipt["executionLaneId"].clone(),
             method: "turn/start",
@@ -195,7 +195,7 @@ impl<'a> Receipt<'a> {
         let receipt = &response["receipt"];
         if receipt["operationId"].as_js_string() != Some(&self.operation.operation)
             || receipt["operationGeneration"].as_js_string() != Some(&self.operation.generation)
-            || receipt["activationGeneration"].as_js_string() != Some(&self.operation.activation)
+            || receipt["activationGeneration"] != self.operation.activation
             || receipt["payloadDigest"] != self.operation.payload
             || receipt["executionLaneId"] != self.operation.lane
             || receipt["chatId"] != self.session["chatId"]
@@ -347,6 +347,66 @@ fn crypto_context(
 }
 
 impl Client {
+    pub async fn admit_goal(
+        &self,
+        scope: Scope,
+        session: Value,
+        method: &'static str,
+        params: &Value,
+        permission: &Value,
+        activation: Value,
+    ) -> Result<Receipt<'_>> {
+        let operation = JsString::from(uuid::Uuid::new_v4().to_string());
+        let grant = scope.material(None)?;
+        let (envelope, digest) = protect_native_command_request(
+            &grant.key,
+            &crypto_context(&grant, &session["chatId"], &operation),
+            &json!({"id":operation,"method":method,"params":params}),
+        )?;
+        let mut intent = json!({
+            "scope":"thread", "settingKeys":Vec::<Value>::new(), "expectedTurnId":Value::Null,
+            "permissionProfileId":permission, "workerGeneration":self.generation,
+        });
+        if let Some(status) = params.get("status") {
+            intent["goalStatus"] = status.clone();
+            if status == "active" {
+                intent["resumeAutonomy"] = json!(true);
+            }
+        }
+        let body = checked(
+            "nativeCommandAdmissionSchema",
+            &json!({
+                "workerId":self.configuration.lock().unwrap().worker_id, "operationId":operation,
+                "origin":"gui", "session":session, "method":method, "intent":intent,
+                "payloadDigest":digest, "protectedPayload":envelope,
+                "expectedActivationGeneration":activation,
+            }),
+        )?;
+        let response = self
+            .post("admit", &body, &Guard::metadata(None, None))
+            .await?;
+        scope.identity()?;
+        let row = &response["receipt"];
+        if response["replayed"] == true || row["status"] != "accepted" {
+            bail!("Core did not admit the native Goal mutation.");
+        }
+        let control = Receipt {
+            client: self,
+            operation: Operation {
+                operation,
+                generation: id(&row["operationGeneration"], "Goal operation generation")?,
+                activation,
+                payload: json!(digest),
+                lane: row["executionLaneId"].clone(),
+                method,
+            },
+            session,
+            scope,
+        };
+        control.verify(&response, "accepted")?;
+        Ok(control)
+    }
+
     pub async fn admit_interrupt(
         &self,
         root: &Operation,

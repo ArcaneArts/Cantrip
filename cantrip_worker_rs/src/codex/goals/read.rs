@@ -1,5 +1,5 @@
 use super::*;
-use crate::{chat_content::Scope, http::checked};
+use crate::{chat_content::Scope, codex::preparation::command::LiveThread, http::checked};
 
 impl Goals {
     pub(crate) async fn get(&self, command: &Value) -> Result<Value> {
@@ -7,16 +7,8 @@ impl Goals {
             bail!("Native observation of an OS-hosted Goal is unavailable.");
         }
         let bound = self.encryption.bound_identity()?;
-        let chat = command["chatId"]
-            .as_js_string()
-            .context("Missing Goal chat.")?;
-        let thread = command["threadId"]
-            .as_js_string()
-            .context("Missing Goal thread.")?;
-        let runtime = match self.preparation.live_runtime(chat, thread, &bound) {
-            Some(runtime) => runtime,
-            None => self.observation.open_runtime(command, &bound).await?,
-        };
+        let thread = target_thread(command)?;
+        let LiveThread { runtime, .. } = self.metadata_thread(command, &bound, thread).await?;
         let goal = verify_goal(
             thread,
             &rpc(&runtime, "thread/goal/get", json!({"threadId":thread})).await?,
@@ -26,7 +18,35 @@ impl Goals {
         } else {
             None
         };
-        if self.encryption.bound_identity()? != bound {
+        self.render(command, &bound, goal, execution)
+    }
+
+    pub(super) async fn metadata_thread(
+        &self,
+        command: &Value,
+        bound: &(JsString, Value),
+        thread: &JsString,
+    ) -> Result<LiveThread> {
+        let chat = command["chatId"]
+            .as_js_string()
+            .context("Missing Goal chat.")?;
+        match self.preparation.live_thread(chat, thread, bound) {
+            Some(live) => Ok(live),
+            None => Ok(LiveThread {
+                runtime: self.observation.open_runtime(command, bound).await?,
+                session: None,
+            }),
+        }
+    }
+
+    pub(super) fn render(
+        &self,
+        command: &Value,
+        bound: &(JsString, Value),
+        goal: Value,
+        execution: Option<&str>,
+    ) -> Result<Value> {
+        if &self.encryption.bound_identity()? != bound {
             bail!("The worker binding changed during Goal observation.");
         }
         if command["taskContext"].is_object() {
@@ -44,7 +64,7 @@ impl Goals {
             let mut projected =
                 projection::started(&binding.component.key, &scope, &current, &context, &goal)?;
             if let Some(status) = execution {
-                projected["execution"] = json!({"threadId":thread,"status":status});
+                projected["execution"] = json!({"threadId":command["threadId"],"status":status});
             }
             self.assert_bound(&binding)?;
             checked("taskGoalWorkerResultSchema", &projected)
@@ -73,6 +93,12 @@ impl Goals {
             Ok(json!({"goal":goal}))
         }
     }
+}
+
+pub(super) fn target_thread(command: &Value) -> Result<&JsString> {
+    command["threadId"]
+        .as_js_string()
+        .context("Missing Goal thread.")
 }
 
 async fn execution_status(runtime: &Runtime, thread: &JsString) -> Result<&'static str> {

@@ -1,5 +1,6 @@
 //! Native Goal commands and authenticated Task projection.
 mod context;
+mod mutate;
 mod projection;
 mod read;
 
@@ -23,6 +24,8 @@ use std::{sync::Arc, time::Duration};
 
 pub(crate) const CREATE: &str = "chat.goal.create";
 pub(crate) const GET: &str = "chat.goal.get";
+pub(crate) const UPDATE: &str = "chat.goal.update";
+pub(crate) const CLEAR: &str = "chat.goal.clear";
 
 #[derive(Clone)]
 pub(crate) struct Goals {
