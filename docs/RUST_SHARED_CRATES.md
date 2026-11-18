@@ -248,3 +248,11 @@ or database dependency. Authorized attachment parts remain caller inputs;
 canonical identity resolution, materialization and runtime capture remain separate
 worker policy. `cantrip-wire::coercion::entries` exposes the existing ECMAScript
 entry ordering for raw documents and collaboration states.
+
+
+The worker's `history::projector` now composes native reduction/rendering,
+canonical preparation and authenticated identity resolution with the durable
+history transaction callback. It includes archive bootstrap and fixed-endpoint
+source replay/rebase. Verified context, attachment materialization and runtime
+capture remain worker adapters. The shared reducer exposes its existing strict
+JSON equality for archive consensus; no server or database dependency is added.

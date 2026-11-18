@@ -208,53 +208,72 @@ impl Engine {
                     context.clone(),
                     context.clone(),
                 );
-                let options =
-                    projection::Options {
-                        worker_id: input["workerId"]
-                            .as_js_string()
-                            .cloned()
-                            .unwrap_or_else(|| "worker".into()),
-                        chat_id: input["chatId"].as_js_string().cloned().unwrap_or_else(|| {
-                            source_scope["chatId"].as_js_string().unwrap().clone()
+                let native_service = service.clone();
+                let rebase_service = service.clone();
+                let rebase_source = source.clone();
+                let options = projection::Options {
+                    worker_id: input["workerId"]
+                        .as_js_string()
+                        .cloned()
+                        .unwrap_or_else(|| "worker".into()),
+                    chat_id: input["chatId"]
+                        .as_js_string()
+                        .cloned()
+                        .unwrap_or_else(|| source_scope["chatId"].as_js_string().unwrap().clone()),
+                    binding_id: input["bindingId"]
+                        .as_js_string()
+                        .cloned()
+                        .unwrap_or_else(|| {
+                            source_scope["bindingId"].as_js_string().unwrap().clone()
                         }),
-                        binding_id: input["bindingId"].as_js_string().cloned().unwrap_or_else(
-                            || source_scope["bindingId"].as_js_string().unwrap().clone(),
-                        ),
-                        service,
-                        source,
-                        outbox,
-                        project: Arc::new(move |records, previous| {
-                            let context = project_context.clone();
-                            Box::pin(async move {
-                                tokio::task::spawn_blocking(move || {
-                                    context.project(records, previous, false)
-                                })
-                                .await?
+                    service,
+                    source,
+                    outbox,
+                    project: Arc::new(move |records, previous| {
+                        let context = project_context.clone();
+                        let service = native_service.clone();
+                        Box::pin(async move {
+                            let config = context.config.lock().unwrap().clone();
+                            if config["nativeProjector"].is_object() {
+                                increment(&mut context.stats.lock().unwrap(), "projectCalls");
+                                if let Some(error) = config["projectError"].as_str() {
+                                    bail!("{error}");
+                                }
+                                let mut options = config["nativeProjector"].clone();
+                                options["serverUrl"] = config["serverUrl"].clone();
+                                options["token"] = config["token"].clone();
+                                return history_projector::build(service, options)?
+                                    .0
+                                    .project(records, previous)
+                                    .await;
+                            }
+                            tokio::task::spawn_blocking(move || {
+                                context.project(records, previous, false)
                             })
-                        }),
-                        rebase: if input["allowRebase"] == true {
-                            Some(Arc::new(move |records, previous| {
-                                let context = rebase_context.clone();
-                                Box::pin(async move {
-                                    tokio::task::spawn_blocking(move || {
-                                        context.project(records, previous, true)
-                                    })
-                                    .await?
-                                })
-                            }))
-                        } else {
-                            None
-                        },
-                        deliver: Arc::new(move |scope, record, body| {
-                            let context = deliver_context.clone();
+                            .await?
+                        })
+                    }),
+                    rebase: if input["allowRebase"] == true {
+                        Some(Arc::new(move |records, previous| {
+                            let context = rebase_context.clone();
+                            let service = rebase_service.clone();
+                            let source = rebase_source.clone();
                             Box::pin(async move {
                                 let config = context.config.lock().unwrap().clone();
-                                if let Some(server_url) = config["serverUrl"].as_str() {
+                                if config["nativeProjector"].is_object() {
+                                    increment(&mut context.stats.lock().unwrap(), "rebaseCalls");
+                                    let mut options = config["nativeProjector"].clone();
+                                    options["serverUrl"] = config["serverUrl"].clone();
+                                    options["token"] = config["token"].clone();
+                                    let binding = options["binding"].clone();
                                     let token = config["token"].as_str().unwrap().to_owned();
                                     let client = cantrip_worker::history::client::Client::new(
                                         cantrip_worker::history::client::Options {
-                                            server_url: server_url.to_owned(),
-                                            worker_id: config["workerId"]
+                                            server_url: config["serverUrl"]
+                                                .as_str()
+                                                .unwrap()
+                                                .to_owned(),
+                                            worker_id: binding["workerId"]
                                                 .as_js_string()
                                                 .unwrap()
                                                 .clone(),
@@ -262,21 +281,60 @@ impl Engine {
                                             metadata_signal: None,
                                         },
                                     )?;
-                                    return client.deliver(&scope, &record, &body, None).await;
+                                    let projector =
+                                        history_projector::build(service.clone(), options)?.0;
+                                    return cantrip_worker::history::projector::rebase::recover(
+                                        binding,
+                                        client,
+                                        service,
+                                        source,
+                                        records.last().unwrap().clone(),
+                                        projector,
+                                        None,
+                                    )
+                                    .await;
                                 }
                                 tokio::task::spawn_blocking(move || {
-                                    context.deliver(scope, record, body)
+                                    context.project(records, previous, true)
                                 })
                                 .await?
                             })
-                        }),
-                        check: Some(Arc::new(move || {
-                            if let Some(reason) = &*check_context.stop.lock().unwrap() {
-                                bail!("{reason}");
+                        }))
+                    } else {
+                        None
+                    },
+                    deliver: Arc::new(move |scope, record, body| {
+                        let context = deliver_context.clone();
+                        Box::pin(async move {
+                            let config = context.config.lock().unwrap().clone();
+                            if let Some(server_url) = config["serverUrl"].as_str() {
+                                let token = config["token"].as_str().unwrap().to_owned();
+                                let client = cantrip_worker::history::client::Client::new(
+                                    cantrip_worker::history::client::Options {
+                                        server_url: server_url.to_owned(),
+                                        worker_id: config["workerId"]
+                                            .as_js_string()
+                                            .unwrap()
+                                            .clone(),
+                                        token: Arc::new(move || Ok(token.clone())),
+                                        metadata_signal: None,
+                                    },
+                                )?;
+                                return client.deliver(&scope, &record, &body, None).await;
                             }
-                            Ok(())
-                        })),
-                    };
+                            tokio::task::spawn_blocking(move || {
+                                context.deliver(scope, record, body)
+                            })
+                            .await?
+                        })
+                    }),
+                    check: Some(Arc::new(move || {
+                        if let Some(reason) = &*check_context.stop.lock().unwrap() {
+                            bail!("{reason}");
+                        }
+                        Ok(())
+                    })),
+                };
                 let projection =
                     Projection::open(PathBuf::from(input["directory"].as_str().unwrap()), options)
                         .await?;

@@ -23,6 +23,8 @@ mod history_outbox;
 mod history_presentation;
 #[path = "support/history_projection.rs"]
 mod history_projection;
+#[path = "support/history_projector.rs"]
+mod history_projector;
 
 struct Keys(Mutex<Value>);
 impl Encryption for Keys {
@@ -83,6 +85,16 @@ struct Fixture {
 }
 impl Fixture {
     async fn run(&mut self, input: Value) -> Result<Value> {
+        if input["op"]
+            .as_str()
+            .is_some_and(|op| op.starts_with("projector."))
+        {
+            let source = self
+                .handles
+                .get(input["handle"].as_str().unwrap_or("a"))
+                .cloned();
+            return history_projector::run(self.service.clone(), &input, source).await;
+        }
         if input["op"]
             .as_str()
             .is_some_and(|op| op.starts_with("presentation."))

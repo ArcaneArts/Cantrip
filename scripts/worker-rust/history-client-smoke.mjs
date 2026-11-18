@@ -4,10 +4,14 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { heartbeat } from "../server-rust/security-fixtures.mjs";
+import { literal } from "../server-rust/project-target-state.mjs";
+import { repositoryFixture } from "../server-rust/repository-fixture.mjs";
 import {
   settingsHttpFixture,
   settingsChat,
@@ -15,6 +19,9 @@ import {
 } from "../server-rust/native-settings-http-fixture.mjs";
 import { NativeHistoryClient } from "../../cantrip_worker/src/native-history-client.ts";
 import { readNativeHistoryRecovery } from "../../cantrip_worker/src/native-history-recovery.ts";
+import { createNativeHistoryProjector } from "../../cantrip_worker/src/native-history-projector.ts";
+import { restoreNativeHistoryProjectorState } from "../../cantrip_worker/src/native-history-projector-bootstrap.ts";
+import { parseCodexNativeHistory } from "../../cantrip_worker/src/codex/native-history.ts";
 const { values } = parseArgs({
   options: {
     client: { type: "string" },
@@ -175,43 +182,6 @@ try {
     }),
   };
   const marker = "synthetic-native-history-client-private";
-  const source = {
-    id: identity.itemId,
-    identityKind: "canonical",
-    revision: 1,
-    ordinal: 0,
-    body: { type: "agentMessage", text: marker },
-    lifecycle: "completed",
-    completeBody: true,
-    startedAtMs: null,
-    completedAtMs: null,
-    origin: { generation: "fixture", sequence: 1, kind: "snapshot" },
-    conflicts: [],
-  };
-  await local({
-    op: "identity",
-    state: { owner: h.owner, server: h.serverId, revision: 1 },
-  });
-  const [rendered] = await local({
-    op: "presentation.render",
-    item: source,
-    context: {
-      threadId: identity.threadId,
-      turnId: identity.turnId,
-      cwd: root,
-      mode: "default",
-    },
-  });
-  assert.deepEqual(rendered.identity, identity);
-  const item = await local({
-    op: "content.prepare",
-    binding,
-    mapping,
-    revision: 1,
-    order: { turn: 0, item: 0, component: 0 },
-    attachments: [],
-    rendered,
-  });
   const counts = {
     totalTokens: 8,
     inputTokens: 3,
@@ -220,31 +190,45 @@ try {
     outputTokens: 5,
     reasoningOutputTokens: 2,
   };
-  const turn = await local({
-    op: "content.turn.prepare",
-    binding,
-    turnId: identity.turnId,
-    revision: 1,
-    snapshot: {
+  const snapshot = parseCodexNativeHistory(
+    {
       thread: {
         id: "thread",
+        status: { type: "idle" },
         parentThreadId: null,
         forkedFromId: null,
         turns: [
           {
             id: identity.turnId,
             status: "completed",
-            items: [],
+            items: [
+              { id: identity.itemId, type: "agentMessage", text: marker },
+            ],
             startedAt: 1,
             completedAt: 2,
           },
         ],
       },
       history: {
+        version: 1,
+        currentTurnId: null,
+        currentTurnState: "notLoaded",
         turns: [
           {
             turnId: identity.turnId,
+            source: "canonical",
             retention: "complete",
+            contexts: [],
+            items: [
+              {
+                itemId: identity.itemId,
+                state: "completed",
+                startedAtMs: 1000,
+                completedAtMs: 2000,
+              },
+            ],
+            warnings: null,
+            errors: null,
             cantripModelAttribution: {
               threadId: "thread",
               turnId: identity.turnId,
@@ -254,17 +238,23 @@ try {
             },
             usage: {
               responses: [
-                { threadId: "thread", responseId: "response", usage: counts },
+                {
+                  threadId: "thread",
+                  responseId: "response",
+                  sessionId: "session",
+                  rootTurnId: identity.turnId,
+                  usage: counts,
+                },
               ],
+              total: counts,
               conflictingResponseIds: [],
             },
           },
         ],
       },
     },
-  });
-  const batch = { items: [item], turns: [turn] };
-  assert.equal(JSON.stringify(batch).includes(marker), false);
+    "thread",
+  );
   const scope = {
     workerId: settingsWorker,
     chatId: settingsChat,
@@ -274,8 +264,11 @@ try {
     workerId: settingsWorker,
     serverUrl: origin,
     token: h.credential,
-    state: { retained: "frozen" },
-    batches: [batch],
+    nativeProjector: {
+      binding,
+      context: { cwd: root, mode: "default" },
+      prepare: true,
+    },
   };
   async function reopen() {
     await local({
@@ -302,6 +295,7 @@ try {
       outbox: "http",
       directory: path.join(root, "projection"),
       config,
+      allowRebase: true,
       ...scope,
     });
   }
@@ -310,16 +304,14 @@ try {
     op: "append",
     handle: "http",
     frame: {
-      kind: "notification",
+      kind: "snapshot",
+      id: randomUUID(),
       generation: "fixture",
-      sequence: 1,
       threadId: "thread",
       receivedAtMs: 1,
-      method: "item/completed",
-      params: {
-        turnId: identity.turnId,
-        item: { id: identity.itemId, type: "agentMessage", text: marker },
-      },
+      readBarrierSequence: 0,
+      completedSequence: 0,
+      snapshot,
     },
   });
   const first = await history.call({ op: "projection.drain", handle: "http" });
@@ -361,7 +353,21 @@ try {
     handle: "http",
   });
   assert.equal(checkpoint.cursor.sequence, 1);
-  assert.deepEqual(checkpoint.state, { retained: "frozen" });
+  const sourceRecords = await local({
+    op: "read",
+    handle: "http",
+    after: 0,
+    limit: 512,
+  });
+  const expectedProjection = await createNativeHistoryProjector({
+    binding,
+    service: encryption,
+    client: reference,
+    context: async () => ({ cwd: root, mode: "default" }),
+    materialize: async () => ({ attachments: [] }),
+    associate: async () => ({ kind: "native" }),
+  })(sourceRecords, null);
+  assert.deepEqual(checkpoint.state, expectedProjection.state);
   assert.deepEqual(await local({ op: "outbox.pending", handle: "http" }), []);
   assert.equal(
     await readFile(
@@ -397,9 +403,200 @@ try {
     batchPageSize: 1,
   });
   assert.deepEqual(recovered.snapshot, expectedRecovery);
+  assert.deepEqual(
+    await local({ op: "projector.restore", recovery: recovered.snapshot }),
+    restoreNativeHistoryProjectorState(expectedRecovery),
+  );
   assert.equal(recovered.snapshot.items[0].source.body.text, marker);
   assert.equal(recovered.snapshot.turns.length, 1);
   assert.equal(recovered.snapshot.batches.length, 1);
+  assert.equal(JSON.stringify(deliveries).includes(marker), false);
+  // A distinct committed stream advances the canonical item behind this local
+  // checkpoint. The next native projection must receive an actual permanent
+  // rejection, recover canonical floors over HTTP, replay retained source and
+  // publish revision 3 from basis 2 without replaying execution/input.
+  const concurrentWorker = "history-concurrent-worker",
+    concurrentTree = randomUUID();
+  const enrollmentCode = await h.visit(
+    "history concurrent enrollment code",
+    "POST",
+    "/api/workers/enrollment-codes",
+    { status: 201, json: { label: "History concurrent writer" } },
+  );
+  const enrollment = await h.visit(
+    "history concurrent enrollment",
+    "POST",
+    "/api/internal/workers/enroll",
+    {
+      client: "worker",
+      status: 201,
+      json: {
+        code: enrollmentCode.code,
+        heartbeat: { ...heartbeat, workerId: concurrentWorker },
+      },
+    },
+  );
+  await h.fixture.close();
+  const setupRepository = await repositoryFixture({
+    kind: "rust",
+    executable: values.repository,
+    root: path.join(root, "none"),
+    databaseMode: "pglite",
+  });
+  try {
+    const seeded = await setupRepository.request({
+      op: "transaction",
+      statements: [
+        `INSERT INTO project_sources(id,project_id,worker_id,source_kind,absolute_path,display_path) VALUES('history-concurrent-source',${literal(binding.projectId)},${literal(concurrentWorker)},'git','/worker-owned/concurrent','/worker-owned/concurrent')`,
+        `INSERT INTO project_worktrees(id,project_source_id,worker_id,name,absolute_path,display_path,is_primary,origin,lifecycle_state) VALUES(${literal(concurrentTree)},'history-concurrent-source',${literal(concurrentWorker)},'main','/worker-owned/concurrent','/worker-owned/concurrent',true,'cantrip','ready')`,
+        `INSERT INTO chat_runtime_sessions(id,chat_id,worker_id,worktree_id,codex_thread_id) VALUES('history-concurrent-runtime',${literal(settingsChat)},${literal(concurrentWorker)},${literal(concurrentTree)},'thread')`,
+        `UPDATE chats SET active_worker_id=${literal(concurrentWorker)},active_worktree_id=${literal(concurrentTree)} WHERE id=${literal(settingsChat)}`,
+      ],
+    });
+    assert.equal(seeded.rejected, false, seeded.diagnostic);
+  } finally {
+    await setupRepository.close();
+  }
+  await h.fixture.start();
+  const concurrentBinding = await invoke(
+    "open",
+    {
+      chatId: settingsChat,
+      threadId: "thread",
+      provenance: { kind: "current" },
+    },
+    { workerId: concurrentWorker, token: enrollment.credential },
+  );
+  const concurrentRecovered = await local({
+    op: "content.recovery",
+    binding: concurrentBinding,
+    serverUrl: origin,
+    token: enrollment.credential,
+  });
+  const concurrentState = await local({
+    op: "projector.restore",
+    recovery: concurrentRecovered.snapshot,
+  });
+  concurrentState.source.turns[0].items[0].body.text = marker + " concurrent";
+  concurrentState.source.turns[0].items[0].revision++;
+  const concurrent = await local({
+    op: "projector.run",
+    previous: concurrentState,
+    records: [],
+    config: {
+      ...config.nativeProjector,
+      binding: concurrentBinding,
+      serverUrl: origin,
+      token: enrollment.credential,
+    },
+  });
+  assert.equal(concurrent.error, undefined);
+  assert.equal(concurrent.batches.length, 1);
+  assert.equal(concurrent.batches[0].items[0].revision, 2);
+  assert.equal(concurrent.batches[0].items[0].expectedRevision, 1);
+  const concurrentScope = {
+    workerId: concurrentWorker,
+    chatId: settingsChat,
+    bindingId: concurrentBinding.id,
+  };
+  await local({
+    op: "outbox.open",
+    handle: "concurrent",
+    directory: path.join(root, "concurrent-outbox"),
+    ...concurrentScope,
+  });
+  const concurrentRecord = await local({
+    op: "outbox.append",
+    handle: "concurrent",
+    recordId: randomUUID(),
+    body: JSON.stringify(concurrent.batches[0]),
+  });
+  const concurrentBody = await local({
+    op: "outbox.body",
+    handle: "concurrent",
+    record: concurrentRecord,
+  });
+  const concurrentReceipt = await invoke("deliver", null, {
+    workerId: concurrentWorker,
+    token: enrollment.credential,
+    scope: concurrentScope,
+    record: concurrentRecord,
+    body: concurrentBody,
+  });
+  await local({
+    op: "outbox.ack",
+    handle: "concurrent",
+    receipt: concurrentReceipt,
+  });
+  await local({
+    op: "append",
+    handle: "http",
+    frame: {
+      kind: "notification",
+      generation: "fixture",
+      threadId: "thread",
+      sequence: 1,
+      receivedAtMs: 2,
+      method: "item/completed",
+      params: {
+        threadId: "thread",
+        turnId: identity.turnId,
+        item: {
+          id: identity.itemId,
+          type: "agentMessage",
+          text: marker + " local",
+        },
+      },
+    },
+  });
+  delete config.projectError;
+  await local({ op: "projection.config", handle: "http", config });
+  await local({ op: "projection.drain", handle: "http" });
+  const rebasedCheckpoint = await local({
+    op: "projection.checkpoint",
+    handle: "http",
+  });
+  assert.equal(rebasedCheckpoint.cursor.sequence, 2);
+  assert.equal(rebasedCheckpoint.state.items[0].revision, 3);
+  assert.equal(rebasedCheckpoint.state.items[0].canonicalRevision, 3);
+  assert.equal(
+    (await local({ op: "projection.stats", handle: "http" })).rebaseCalls,
+    1,
+  );
+  assert.deepEqual(await local({ op: "outbox.pending", handle: "http" }), []);
+  assert.equal(
+    deliveries.filter(
+      (entry) =>
+        entry.status === 409 &&
+        entry.receipt.code === "item-revision-conflict" &&
+        entry.receipt.rejection?.rejected === true,
+    ).length,
+    1,
+  );
+  const rebasedRecovery = await local({
+    op: "content.recovery",
+    binding,
+    serverUrl: origin,
+    token: h.credential,
+    pageSize: 1,
+    batchPageSize: 1,
+  });
+  assert.deepEqual(
+    rebasedRecovery.snapshot,
+    await readNativeHistoryRecovery({
+      binding,
+      client: reference,
+      service: encryption,
+      pageSize: 1,
+      batchPageSize: 1,
+    }),
+  );
+  assert.equal(rebasedRecovery.snapshot.items[0].revision, 3);
+  assert.equal(
+    rebasedRecovery.snapshot.items[0].source.body.text,
+    marker + " local",
+  );
+  assert.equal(rebasedRecovery.snapshot.batches.length, 3);
   assert.equal(JSON.stringify(deliveries).includes(marker), false);
   const invalid = await client.call({
     serverUrl: origin,
@@ -418,13 +615,18 @@ try {
       actualNativeClient: true,
       nativeProjectionAndOutbox: true,
       nativeContentPreparation: true,
+      nativeCanonicalProjector: true,
+      nativeArchiveBootstrap: true,
       nativeItemRendering: true,
       nativeCoherentArchiveRecovery: true,
       canonicalAckLostAndRecovered: true,
       nativeAndServerProcessRestart: true,
       exactFrozenRetry: true,
       archiveReaders: 3,
-      canonicalBatchCount: 1,
+      canonicalBatchCountAfterLostAck: 1,
+      canonicalBatchCount: 3,
+      nativeCanonicalRebaseFromActualRejection: true,
+      canonicalItemRevisionAfterRebase: 3,
       scope:
         "controlled source observations and control worker; production capture/runtime integration pending",
       runtime: "macOS ARM64",

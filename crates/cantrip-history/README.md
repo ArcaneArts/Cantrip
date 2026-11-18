@@ -27,6 +27,7 @@ of provider execution and the server application or database.
   conflicting completions and immutable settings/model attribution. Unknown or
   malformed future evidence remains retained. JavaScript deep equality includes
   signed zero, and actual coercion errors propagate without mutating prior state.
+  Public `reducer::equal` reuses those exact JSON equality rules for archive consensus.
 - `outbox::Outbox`: complete v1 opaque batch ledger, recovered server-receipt
   baselines, legacy batch/ACK files and encrypted append/replace mutation logs.
   Freeze body/identity/ciphertext before delivery; keep retries byte-identical,
@@ -87,8 +88,9 @@ node --import tsx scripts/worker-rust/history-source-compatibility.mjs \
   --binary /absolute/shared-target/aarch64-apple-darwin/debug/examples/history-source-fixture
 ```
 
-Runtime observation/capture, retry pumps, canonical projector/ID orchestration
-and attachment processing remain worker port work. Pure rendering is implemented
+Runtime observation/capture, retry pumps, live output identity and attachment
+processing remain worker port work. The worker now supplies canonical projector,
+archive bootstrap and fixed-endpoint rebase orchestration in `history::projector`. Pure rendering is implemented
 in the worker's `history::render`, with reusable activity normalization in
 `native_items`; neither performs attachment I/O or dispatches input. The authenticated
 HTTP client and coherent multi-resource recovery are implemented in the worker's

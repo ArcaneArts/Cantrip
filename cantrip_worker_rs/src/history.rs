@@ -3,6 +3,7 @@
 //! is advertised by the source-journal implementation alone.
 pub mod client;
 pub mod preparation;
+pub mod projector;
 pub mod recovery;
 pub mod render;
 use crate::encryption::Service;
