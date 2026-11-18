@@ -13,6 +13,7 @@ pub mod git;
 pub mod github;
 pub mod history;
 pub mod http;
+pub mod inference;
 pub mod installation;
 pub mod logging;
 pub mod metadata;

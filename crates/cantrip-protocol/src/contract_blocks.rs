@@ -74,6 +74,10 @@ pub(super) fn load() -> Contracts {
         serde_json::from_str(include_str!("../contracts/native-history-adapters.json"))
             .expect("embedded verified history adapter contracts"),
     );
+    contracts.append(
+        serde_json::from_str(include_str!("../contracts/worker-inference-journal.json"))
+            .expect("embedded worker inference journal contracts"),
+    );
     contracts.compile_patterns();
     contracts
 }
