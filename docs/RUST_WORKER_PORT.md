@@ -4394,3 +4394,32 @@ replay. Core and the provider are disposable local peers.
 Goal mutations beyond Task activation, exact native pause proof, live Goal
 resumption, OS-hosted Goal observation, and full Rust-server integration
 remain open. Production still selects Node.
+
+## 84. Apply native Goal edits, status changes, and clear
+
+Reference commit `a3c42288f47600c935c3cb481f72aec429580a29` (#3246).
+
+The Rust worker handles `chat.goal.update` and `chat.goal.clear`. A protected
+edit opens the existing Chat envelope and updates the native objective while
+retaining the Goal's status and budget. Pause and clear can act on saved
+metadata without loading the conversation. Task resume restores the selected
+permissions and reserves the canonical resume input before changing the Goal
+to active. Task replies carry the encrypted Goal, projected Task state, and
+resume message when requested.
+
+Managed conversation mutations use Core admission and dispatch before sending
+the native request. The worker settles the receipt with the encrypted reply,
+a native rejection, or uncertainty when it loses the native response. The
+request targets the retained native runtime and uses the current GUI activation
+when one exists.
+
+The macOS ARM64 smoke uses the real Rust worker and Codex processes with local
+Core and provider fixtures. It covers pause after restart, wrong-envelope
+rejection, an objective-only edit, canonical Task resume, managed admission
+denial, encrypted clear settlement, and repeated clear. The existing Goal
+execution and durable outcome checks run through the resumed Task.
+
+Ordinary Chat Goal creation and autonomous execution, exact native Task pause
+proof, restoration of a previously executing Goal, OS-hosted Goal controls,
+and end-to-end Rust-server integration remain open. Production still selects
+Node.

@@ -4,6 +4,7 @@ mod control;
 mod output;
 mod params;
 mod protected;
+pub(super) use protected::runtime_text;
 mod receipt;
 pub(in crate::codex) mod task;
 
@@ -202,6 +203,76 @@ impl Turns {
         ))
     }
 
+    pub(in crate::codex) async fn goal_mutation(
+        &self,
+        runtime: &Runtime,
+        binding: &(JsString, Value),
+        command: &Value,
+        session: Value,
+        method: &'static str,
+        params: Value,
+    ) -> Result<Value> {
+        let key = self.key(command)?;
+        let scope = Scope::new(self.encryption.clone())?;
+        if scope.owner != key.0
+            || scope.server != key.1
+            || key.0 != binding.0
+            || binding.1.as_js_string() != Some(&key.1)
+        {
+            bail!("The worker binding changed before the Goal mutation.");
+        }
+        let activation = self
+            .active
+            .lock()
+            .unwrap()
+            .active
+            .get(&key)
+            .and_then(|active| active.root.as_ref())
+            .map(|root| root.activation.clone())
+            .unwrap_or(Value::Null);
+        let receipt = self
+            .receipts
+            .admit_goal(
+                scope,
+                session,
+                method,
+                &params,
+                &command["permissionProfileId"],
+                activation,
+            )
+            .await?;
+        if let Err(error) = receipt.dispatch().await {
+            receipt
+                .rejected(&json!({"code":-32000,"message":"Native dispatch did not complete."}))
+                .await?;
+            return Err(error);
+        }
+        let reply = runtime
+            .request(method.into(), Some(params), Some(RPC_TIMEOUT), None)
+            .await;
+        match reply {
+            Ok(Some(result)) => {
+                receipt.applied(&result, None).await?;
+                Ok(result)
+            }
+            Err(error) => {
+                if let Some(native) = error
+                    .downcast_ref::<Failure>()
+                    .and_then(|error| error.native_error.as_ref())
+                {
+                    receipt.rejected(native).await?;
+                } else {
+                    receipt.uncertain().await?;
+                }
+                Err(error)
+            }
+            Ok(None) => {
+                receipt.uncertain().await?;
+                bail!("Codex did not return a Goal mutation result.");
+            }
+        }
+    }
+
     pub(crate) async fn interrupt(&self, command: &Value) -> Result<Value> {
         if ["task", "taskStop"]
             .iter()
@@ -218,8 +289,7 @@ impl Turns {
             .filter(|active| {
                 command["nativeActivationGeneration"].is_null()
                     || active.root.as_ref().is_some_and(|root| {
-                        command["nativeActivationGeneration"].as_js_string()
-                            == Some(&root.activation)
+                        command["nativeActivationGeneration"] == root.activation
                     })
             })
             .cloned();

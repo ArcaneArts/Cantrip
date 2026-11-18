@@ -378,17 +378,19 @@ async fn cycle(
                     });
                     continue;
                 }
-                if matches!(kind, crate::codex::goals::CREATE | crate::codex::goals::GET) {
+                if matches!(kind, crate::codex::goals::CREATE | crate::codex::goals::GET | crate::codex::goals::UPDATE | crate::codex::goals::CLEAR) {
                     let goals = goals.clone();
+                    let turns = turns.clone();
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();
                     let worker = worker.clone();
                     commands.spawn(async move {
                         let command = &request["command"];
-                        let result = if command["type"] == crate::codex::goals::GET {
-                            goals.get(command).await
-                        } else {
-                            goals.create(command).await
+                        let result = match command["type"].as_str().unwrap_or_default() {
+                            crate::codex::goals::GET => goals.get(command).await,
+                            crate::codex::goals::UPDATE => goals.update(command, &turns).await,
+                            crate::codex::goals::CLEAR => goals.clear(command, &turns).await,
+                            _ => goals.create(command).await,
                         };
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });

@@ -249,7 +249,7 @@ fn event_id(chat: &JsString, key: &JsString) -> String {
     uuid::Uuid::from_bytes(bytes).to_string()
 }
 
-fn runtime_text(item: &Value) -> Result<JsString> {
+pub(in crate::codex) fn runtime_text(item: &Value) -> Result<JsString> {
     let value = text(&item["text"])?;
     let source = &item["chatCommunication"];
     Ok(match source["direction"].as_str() {

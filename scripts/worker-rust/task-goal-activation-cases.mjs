@@ -3,6 +3,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { goalCycles } from "./task-goal-cycle-cases.mjs";
+import {
+  editAndResumeTaskGoal,
+  verifyManagedGoalClear,
+} from "./task-goal-control-cases.mjs";
 import { observeTaskGoal } from "./task-goal-observation-cases.mjs";
 import {
   decryptTaskGoalObjective,
@@ -30,6 +34,8 @@ export async function verifyTaskGoalActivation({
   workerId,
   generation,
   attach,
+  attachMutation,
+  oracle,
   untilProvider,
   available,
   waitForFrame,
@@ -181,22 +187,23 @@ export async function verifyTaskGoalActivation({
   await start();
   const saved = await observer.activeWithoutOwner();
   assert.equal(saved.createdAt, started.goal.createdAt);
-  // An explicit activation retry restores the first-input latch. Reading the
-  // saved Goal must leave the native execution untouched.
-  const reactivated = await invoke(activation);
-  assert.equal(reactivated.ok, true, JSON.stringify(reactivated));
-  assert.equal(reactivated.result.goal.createdAt, saved.createdAt);
-  assert.equal(
-    modelCalls(),
-    calls,
-    "Goal authorization alone must not start another model request.",
-  );
+  const { message: resumedMessage } = await editAndResumeTaskGoal({
+    invoke,
+    activation,
+    started,
+    ownerId,
+    chatKey,
+    objective: actual.objective,
+    openObjective,
+    openMessage,
+  });
+  assert.equal(modelCalls(), calls);
   console.log(
-    "Activated the retained Task Goal with an immutable native plan and encrypted reply.",
+    "Activated, paused, edited and resumed the retained Task Goal without early inference.",
   );
 
   const { prompt, ...base } = command;
-  const { id: clientMessageId } = started.message;
+  const { id: clientMessageId } = resumedMessage;
   const dispatch = {
     ...command.taskInferenceInput.dispatch,
     cycleId: randomUUID(),
@@ -300,7 +307,7 @@ export async function verifyTaskGoalActivation({
       clientMessageId,
       planMode: "default",
       permissionProfileId: activation.permissionProfileId,
-      protectedTaskPrompt: started.message,
+      protectedTaskPrompt: resumedMessage,
       resultMode,
       taskInferenceInput: receipt,
       taskDispatchLease: {
@@ -327,7 +334,7 @@ export async function verifyTaskGoalActivation({
   acknowledge();
   const model = await Promise.race([providerRequest, earlyReply]);
   assert.deepEqual(phases, ["claim", "dispatch", "native"]);
-  const promptText = (await openMessage(started.message)).content[0].text;
+  const promptText = (await openMessage(resumedMessage)).content[0].text;
   assert.ok(
     model.body.input.some(
       (item) =>
@@ -404,4 +411,14 @@ export async function verifyTaskGoalActivation({
     start,
   });
   await observer.afterRestart();
+  const beforeClear = modelCalls();
+  await verifyManagedGoalClear({
+    activation,
+    invoke,
+    oracle,
+    attachMutation,
+    workerId,
+    generation,
+  });
+  assert.equal(modelCalls(), beforeClear);
 }

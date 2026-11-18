@@ -44,6 +44,12 @@ struct ThreadOwner {
     runtime: WeakRuntime,
     thread: native::LoadedThread,
     bound: (JsString, Value),
+    session: Option<Value>,
+}
+
+pub(in crate::codex) struct LiveThread {
+    pub runtime: Runtime,
+    pub session: Option<Value>,
 }
 
 struct Inner {
@@ -251,6 +257,8 @@ impl Ensurer {
                     }
                     if let Some(message) = first_message {
                         runtime.inference_router().reserve_task_first_input(loaded.id().clone(), runner.clone(), message.clone());
+                    }
+                    if first_message.is_some() || command["taskGoalPermissions"] == true {
                         profile::apply_goal_permissions(&runtime, &loaded, &command, this.0.permission_profiles).await?;
                     }
                     loaded.assert_current(&runtime)?;
@@ -258,6 +266,7 @@ impl Ensurer {
                     let thread_id = loaded.id().clone();
                     let owner = ThreadOwner {
                         runtime: runtime.downgrade(), thread: loaded.clone(), bound: bound.clone(),
+                        session: (command["taskOwned"] != true).then(|| native_session(&command, &runtime, loaded.id())),
                     };
                     this.0.live_threads.lock().unwrap().insert(chat, owner);
                     *prepared.lock().unwrap() = Some(Prepared { runtime, thread: loaded, codex_home, runner_generation: runner, admission, bound });
@@ -296,12 +305,12 @@ impl Ensurer {
 
     /// Prefer the last prepared owner of this exact chat and native thread.
     /// A closed runtime falls back to a fresh, non-resuming metadata transport.
-    pub(in crate::codex) fn live_runtime(
+    pub(in crate::codex) fn live_thread(
         &self,
         chat: &JsString,
         thread: &JsString,
         bound: &(JsString, Value),
-    ) -> Option<Runtime> {
+    ) -> Option<LiveThread> {
         let owners = self.0.live_threads.lock().unwrap();
         let owner = owners.get(chat)?;
         if owner.thread.id() != thread || &owner.bound != bound {
@@ -309,7 +318,10 @@ impl Ensurer {
         }
         let runtime = owner.runtime.upgrade()?;
         owner.thread.assert_current(&runtime).ok()?;
-        Some(runtime)
+        Some(LiveThread {
+            runtime,
+            session: owner.session.clone(),
+        })
     }
 
     pub(crate) fn identity(&self) -> Result<(JsString, Value)> {
@@ -401,4 +413,23 @@ impl Inner {
             .context("Cantrip MCP attachment no longer matches the admitted turn.")
             .map(Some)
     }
+}
+
+pub(in crate::codex) fn native_session(
+    command: &Value,
+    runtime: &Runtime,
+    thread: &JsString,
+) -> Value {
+    let target = &command["session"];
+    let placement = if target["contextKind"] == "standalone" {
+        &target["scratchRootId"]
+    } else {
+        &target["worktreeId"]
+    };
+    json!({
+        "chatId":target["chatId"],"threadId":thread,"contextKind":target["contextKind"],
+        "projectId":target["projectId"],"placementId":placement,
+        "modelRouteId":command["model"]["routeId"],"providerAccountId":command["provider"]["accountId"],
+        "runtimeGeneration":runtime.generation(),"connectionId":format!("gui:goal:{}",runtime.generation()),
+    })
 }
