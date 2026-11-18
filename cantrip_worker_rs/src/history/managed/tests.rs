@@ -160,3 +160,100 @@ async fn concurrent_views_share_capture_and_repeated_stop_joins_inflight_callbac
     );
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn concurrent_child_wakes_share_one_scan_and_stop_abandons_unowned_native_read() -> Result<()>
+{
+    let directory = tempfile::tempdir()?;
+    let keys = Arc::new(Keys);
+    let source = cantrip_history::source::Journal::open(
+        directory.path().into(),
+        cantrip_history::source::scope(
+            keys.as_ref(),
+            &"worker".into(),
+            &"chat".into(),
+            &"binding-root".into(),
+            &"root".into(),
+        )?,
+        keys,
+    )
+    .await?;
+    source
+        .append(&obj([
+            ("kind", s("notification")),
+            ("generation", s("generation")),
+            ("threadId", s("root")),
+            ("sequence", Value::Number(1.)),
+            ("receivedAtMs", Value::Number(1.)),
+            ("method", s("item/completed")),
+            (
+                "params",
+                obj([
+                    ("threadId", s("root")),
+                    (
+                        "item",
+                        obj([
+                            ("type", s("subAgentActivity")),
+                            ("agentThreadId", s("child")),
+                        ]),
+                    ),
+                ]),
+            ),
+        ]))
+        .await?;
+    let hub = Hub::default();
+    hub.replace(Some("generation".into()));
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let active = entered.clone();
+    let reads = Arc::new(AtomicUsize::new(0));
+    let observed = reads.clone();
+    let runtime = Arc::new(RuntimeHub {
+        hub,
+        read: Arc::new(move |_| {
+            observed.fetch_add(1, Ordering::SeqCst);
+            active.notify_one();
+            Box::pin(std::future::pending())
+        }),
+    });
+    let owner = descendants::Descendants::new(descendants::Options {
+        client: Arc::new(Client(AtomicUsize::new(0))),
+        bind: Arc::new(|_| panic!("unverified child must not bind")),
+        on_error: None,
+        retry_delay: std::time::Duration::from_millis(1),
+    });
+    let handle = tokio::runtime::Handle::current();
+    let barrier = Arc::new(Barrier::new(2));
+    std::thread::scope(|scope| {
+        let jobs = (0..2)
+            .map(|_| {
+                let owner = owner.clone();
+                let source = source.clone();
+                let runtime = runtime.clone();
+                let handle = handle.clone();
+                let barrier = barrier.clone();
+                scope.spawn(move || {
+                    let _entered = handle.enter();
+                    barrier.wait();
+                    owner.wake(
+                        source,
+                        Scope {
+                            chat_id: "chat".into(),
+                            thread_id: "root".into(),
+                            binding_id: "binding-root".into(),
+                        },
+                        runtime,
+                    );
+                })
+            })
+            .collect::<Vec<_>>();
+        for job in jobs {
+            job.join().unwrap();
+        }
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(2), entered.notified()).await?;
+    tokio::time::timeout(std::time::Duration::from_secs(2), owner.stop()).await??;
+    owner.flush().await?;
+    assert_eq!(reads.load(Ordering::SeqCst), 1);
+    assert_eq!(source.read(0, 512).await?.len(), 1);
+    Ok(())
+}

@@ -173,6 +173,11 @@ async fn cycle(
     let (stop, stop_rx) = watch::channel(false);
     let (registered, mut registration) = watch::channel(false);
     let (requests, mut received) = mpsc::unbounded_channel();
+    let history = crate::history::managed::runtime::open(
+        configuration.clone(),
+        encryption.clone(),
+        logs.clone(),
+    )?;
     let mut heartbeat_task = tokio::spawn(publish(
         configuration.clone(),
         client,
@@ -339,6 +344,7 @@ async fn cycle(
     worktree_observations.close().await;
     timers.abort_all();
     while timers.join_next().await.is_some() {}
+    let history_stopped = history.stop().await;
     let encryption_closed = encryption.close().await;
     while let Some(result) = commands.join_next().await {
         if let Err(error) = result {
@@ -365,6 +371,9 @@ async fn cycle(
     terminals_closed?;
     github_closed?;
     encryption_closed?;
+    for pending in history_stopped? {
+        logs.event("warn", "Native history source frames remain unsaved", json!({"event":"codex.history.source-unsaved","subsystem":"codex","operation":"shutdown","chatId":pending["chatId"],"threadId":pending["threadId"],"counts":json!({"pendingRecords":pending["pendingRecords"]})}));
+    }
     if let Some(error) = command_failure {
         return Err(anyhow!("Worker command task failed: {error}"));
     }

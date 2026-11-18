@@ -102,7 +102,12 @@ impl Context {
                 replies.pop_front();
                 config["snapshots"] = Value::Array(replies.into());
             }
-            next.unwrap_or_else(|| config["snapshot"].clone())
+            next.unwrap_or_else(|| {
+                config["histories"]
+                    .get(&thread.lossy())
+                    .unwrap_or(&config["snapshot"])
+                    .clone()
+            })
         };
         let running = self.begin("read", Value::String(thread.clone()));
         cantrip_transport::lifecycle::owned(async move {
@@ -156,6 +161,7 @@ impl cantrip_worker::history::projector::Resolver for ClientContext {
 }
 impl live::identity::ClientApi for ClientContext {
     fn open(&self, input: Value, signal: Option<cantrip_worker::metadata::Signal>) -> Work<Value> {
+        let thread = input["threadId"].clone();
         let running = self.0.begin("open", input);
         let this = self.0.clone();
         cantrip_transport::lifecycle::owned(async move {
@@ -167,7 +173,9 @@ impl live::identity::ClientApi for ClientContext {
             }
             let config = this.config.lock().unwrap();
             Ok(config
-                .get("openResult")
+                .get("bindings")
+                .and_then(|bindings| bindings.get(thread.as_str().unwrap_or("")))
+                .or_else(|| config.get("openResult"))
                 .unwrap_or(&config["binding"])
                 .clone())
         })

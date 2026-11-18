@@ -25,6 +25,7 @@ import { parseCodexNativeHistory } from "../../cantrip_worker/src/codex/native-h
 import { createManagedNativeOutputIdentityResolver } from "../../cantrip_worker/src/native-history-output-identity.ts";
 import { createNativeHistoryOutputModeResolver } from "../../cantrip_worker/src/native-history-output-mode.ts";
 import { verifyManagedHistory } from "./history-managed-smoke.mjs";
+import { verifyHistoryCoordinator } from "./history-coordinator-smoke.mjs";
 const { values } = parseArgs({
   options: {
     client: { type: "string" },
@@ -32,9 +33,17 @@ const { values } = parseArgs({
     history: { type: "string" },
     server: { type: "string" },
     repository: { type: "string" },
+    worker: { type: "string" },
   },
 });
-for (const key of ["client", "history", "server", "repository", "live"])
+for (const key of [
+  "client",
+  "history",
+  "server",
+  "repository",
+  "live",
+  "worker",
+])
   assert.ok(values[key], `Pass --${key}`);
 const root = await mkdtemp(
   path.join(tmpdir(), "cantrip-native-history-client-"),
@@ -737,6 +746,21 @@ try {
       archives: () => historyArchives,
     },
   });
+  const coordinatorResult = await verifyHistoryCoordinator({
+    spawn: () => driver(values.live),
+    root,
+    serverUrl: origin,
+    runtimeServerUrl: h.fixture.server.origin,
+    token: enrollment.credential,
+    workerId: concurrentWorker,
+    ownerId: h.owner,
+    serverId: h.serverId,
+    chatId: settingsChat,
+    binding: concurrentBinding,
+    snapshot,
+    workerBinary: values.worker,
+    visit: h.visit,
+  });
   assert.equal(h.fixture.server.diagnostics().includes(marker), false);
   console.log(
     JSON.stringify({
@@ -761,8 +785,9 @@ try {
       nativeCanonicalRebaseFromActualRejection: true,
       canonicalItemRevisionAfterRebase: 3,
       managed: managedResult,
+      coordinator: coordinatorResult,
       scope:
-        "native initial capture with controlled snapshot RPC and later observations; control worker and production runtime integration pending",
+        "controlled native snapshot RPC and enrollment/control; actual production Rust worker startup recovery; live Codex/provider capture integration pending",
       runtime: "macOS ARM64",
       rootRemovedOnExit: true,
     }),

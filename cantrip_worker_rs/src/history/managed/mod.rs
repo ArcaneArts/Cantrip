@@ -2,7 +2,10 @@
 //! transport retirement does not retire durable history delivery.
 pub mod canonical;
 mod completion;
+pub mod coordinator;
+pub mod descendants;
 pub mod projection;
+pub mod runtime;
 pub mod sources;
 #[cfg(test)]
 mod tests;
@@ -18,10 +21,14 @@ use std::sync::Arc;
 pub type Diagnostic = Arc<dyn Fn(Failure, Value) -> anyhow::Result<()> + Send + Sync>;
 pub trait ManagedRuntime: Runtime {
     fn generation(&self) -> Option<JsString>;
+    fn read_history(&self, thread: JsString) -> cantrip_history::projection::Work<Value>;
 }
 impl ManagedRuntime for RuntimeHub {
     fn generation(&self) -> Option<JsString> {
         self.hub.generation()
+    }
+    fn read_history(&self, thread: JsString) -> cantrip_history::projection::Work<Value> {
+        (self.read)(thread)
     }
 }
 #[derive(Clone)]
