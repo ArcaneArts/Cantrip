@@ -129,6 +129,9 @@ const snapshotSchema = z
   })
   .strict();
 
+// Development exporter consumes the same live schema used by the Node journal.
+export { snapshotSchema as workerInferenceJournalSnapshotSchema };
+
 export type InferenceJournalMutation =
   | { action: "enqueue"; key: string; identity: z.infer<typeof identitySchema> }
   | {

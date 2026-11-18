@@ -124,7 +124,7 @@ loaded by a production service.
 | Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub catalog, issue detail/mutations, issue/PR search, inspection, creation, reviews, lifecycle, checkout preparation, agent context, inbox, Actions/releases and replica provisioning/synchronization/removal/link repair | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, exports/sharing and delegated OS Git remain pending |
 | History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter, authenticated HTTP client, canonical content preparation, coherent archive recovery, native item rendering and canonical projector/bootstrap/rebase orchestration                                                                                                                                                                                                                       | Journal/outbox/projection, native protected preparation and coherent HTTP archive recovery pass focused checks; verified retained-context/child-scope and durable media/attachment adapters are native; live output identity, observation/capture and managed source/projection retry/recovery are native; verified child discovery and the top-level coordinator are native, including production worker startup recovery; live Codex/provider capture integration remains pending                                                                                                                                                    |
 | Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Native provider-error classification/redaction; provider authentication and execution adapters pending | Actual provider protocol fixtures, streaming/media/usage, refresh, cancellation, failure and paid-work bounds                                                                                                                                                                                                                    |
-| Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Native stdio discovery plus owned managed process/WebSocket session and execution RPC request tracking; execution policy/admission integration pending | Manifest verification/probe, native app-server processes, queue ownership, acceptance/commit and restart recovery                                                                                                                                                                                                                |
+| Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Native stdio discovery, managed process/WebSocket session, execution RPC tracking, ownership-keeper client and complete journal orchestration; worker-wide/Codex admission and runtime policy integration pending | Manifest verification/probe, real native keeper/journal and registered app-server retirement; queue ownership, acceptance/commit and integrated execution recovery remain pending |
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
 | Terminals/run supervision          | Terminal manager/canonical/private state, run-configuration providers and supervisors                                                     | Native host service reconciliation/restart and owned PTY supervision                                                                                                                                                                                                                                                                                                                                    | Actual encrypted server/worker service enable, idempotence, restart, recovery and disable pass. Interactive commands, canonical terminal/replay, attachment/input/resize, CLI broker environments, run providers and delegated OS services remain pending.                                                                       |
 | WorkerLink/direct/tunnels          | gateways/peer/WebRTC/direct broker, tunnel protection/routing/adapters                                                                    | Native framing/tunnel crypto; serving adapters pending                                                                                                                                                                                                                                                                                                                                                  | Existing frame fixtures plus actual ICE/TURN/WebRTC interoperability, bounded backpressure, stale grant/session and disconnect behavior                                                                                                                                                                                          |
@@ -3430,4 +3430,74 @@ native outer command handlers remain 59. Remaining terminals, data planes,
 browsers, OS/helpers, upgrades and packaging/default cutover are still required.
 No full Cantrip-server integration suite, Windows/Linux runtime campaign, hosted
 development Actions, physical devices, signing or deployment ran for this cycle.
+The complete worker replacement goal remains active.
+
+## 54. Native lifetime-keeper client and inference journal
+
+Reference: `ccfff01601eb49b6856ed5214111db99a5a1fae1` (#3216).
+`inference::ownership::Owner` now implements the worker client for the existing
+bundled Codex Rust keeper. Scope hashes, generation registration, prepare/retire
+operations, lazy shared claims, failed-initial-claim retry and sticky ownership
+loss retain the existing protocol. Helpers clear inherited native-runtime
+registration. The keeper's real OS locks remain the authority; retirement waits
+for its positive acknowledgement and actual control-helper exit.
+
+The lifetime helper deliberately uses a direct stdin-pipe child rather than the
+model process parent-death/job policy. Parent EOF must allow the keeper to fence
+native runtimes before it exits. Explicit close drains stdin and joins actual
+child/stdio completion. Correlated requests retain missing versus null results,
+streaming UTF-8, bounded input, acknowledgement deadlines, late-reply exclusion
+and write-error settlement. Diagnostics cannot own retirement. A deadline kills
+only an owned no-inference helper and waits for its real exit; it never claims
+the native model lease has been released.
+
+`inference::journal::Journal` implements canonical recovery/queue identities,
+snapshot initialization/retry, all existing mutations, acknowledged transitions,
+same-provider order retention, chunked alias adoption, forget and recovery-cache
+maintenance. Mutation batches retain the 32-operation/60,000-byte budgets.
+Accepted work survives dropped response futures; flush joins accepted mutations
+and outer release/adoption cache updates. Reentrant queue submission cannot
+overtake an older drained batch. Three actual Node Zod schemas are exported as a
+separate 69-node worker-prefixed contract graph; existing graphs are unchanged.
+
+Focused local validation on macOS ARM64:
+
+- 146 comparisons use actual Node identities, schemas and journal/ownership
+  implementations against the real bundled Rust keeper and native client.
+  They cover initialization, unused-grant requeue, consumed/sealed rejection,
+  transitions, recovery, and six rejected acknowledgement variants after the
+  real keeper has already committed the mutation.
+- One bounded 410-alias metadata case crosses the real adoption frame budget.
+  Both stopped profiles reopen through the opposite implementation with exact
+  durable metadata retained; all disposable profiles are removed.
+- Real registered Codex app-server processes initialize without inference.
+  Owner EOF fences them, and explicit retirement waits for real native lease
+  reconciliation; both processes are actually reaped.
+- Native protocol peers exercise split Unicode, missing results, delayed EOF,
+  invalid IPC, failed acknowledgement and startup failure. Native-only short
+  deadlines prove failed-claim retry after actual helper exit and exclusion of
+  a late journal reply without dropping the live keeper. Lost ownership is
+  published before failed journal waiters resume; that generation cannot reclaim.
+- All five existing ownership, prestart-journal and task-journal epoch tests pass
+  against the actual bundled keeper. Three native units cover reentrant FIFO
+  batching with abandoned waiters, shared snapshot failure/retry and joined
+  recovery-cache updates after abandoned release observations.
+- Worker/fixture builds, worker/protocol all-target Clippy with warnings denied,
+  the affected Rust-server compile, formatting and diff checks pass. Contract
+  regeneration is byte-stable. No Cargo dependency or persistent format changes.
+
+An actual stack sample exposed claim startup polling recursively under its state
+mutex; claim now starts as an owned executor task outside that synchronous
+prefix. Test inputs were corrected to include the required task dispatch and
+explicit native wire objects/nulls. Native fixture/helper/runtime processes run
+with Node absent from PATH; Node remains the development oracle only.
+
+This is the native ownership/journal backend, not the worker-wide FIFO/capacity
+manager or complete Codex admission/runtime integration. Those must now connect
+the keeper and journal to managed sessions, execution preparation, queues,
+settings, history capture and task/goal recovery. Production packaging still
+selects Node and installed native outer handlers remain 59. Providers, remaining
+terminal/data-plane/browser/OS/helper behavior, upgrades, packaging/default cutover
+and Node retirement remain required. No broad suite, hosted development Actions,
+physical devices, Windows/Linux runtime campaign, signing or deployment ran.
 The complete worker replacement goal remains active.

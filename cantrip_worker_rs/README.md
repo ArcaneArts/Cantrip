@@ -143,3 +143,41 @@ discards partial pages and retries; permanent errors propagate. Decryption start
 only after every resource is coherent. Caller cancellation remains live through
 fetches, offloaded decryption and the existing 100ms conflict delay. Reporting
 callback errors cannot stop recovery. Recovery never advances a projector cursor.
+
+## Native inference ownership and journal
+
+`inference::ownership::Owner` talks to the existing bundled Codex Rust lifetime
+keeper. It claims one server/owner/worker scope, prepares native runtime
+registrations, carries correlated journal requests and retires runtimes only
+after the actual keeper acknowledges their OS leases. Closing the owner sends
+stdin EOF and waits for its child and pipes to close. The keeper deliberately
+does not use the model process's parent-death/job policy: it must finish fencing
+native leases after its parent exits. Failed initial claims can retry after the
+failed helper actually closes; an already claimed generation cannot reclaim
+ownership after losing its keeper.
+
+`inference::journal::Journal` supplies validated snapshots, stable recovery/key
+identities, bounded mutation batches, transition acknowledgements, recovery
+adoption/forget and shutdown flushing. Accepted mutations survive an abandoned
+result future. Adoption preserves provider-relative queue order and chunks
+physical aliases within the existing frame budget. `AdoptOptions::assert_current`
+is the canonical operation owner's cancellation check, called before each chunk.
+
+These are native library implementations. The worker-wide admission/capacity
+manager and Codex runtime orchestration still need to integrate them with managed
+sessions, execution, queues/settings and task/goal recovery before native
+inference becomes a supported production capability.
+
+Focused local commands:
+
+```sh
+node scripts/worker-rust/cargo.mjs test -p cantrip-worker --lib inference::journal::tests
+node scripts/worker-rust/cargo.mjs build --example inference-journal-fixture
+node --import tsx scripts/worker-rust/inference-journal-contracts.mjs
+node --import tsx scripts/worker-rust/inference-journal-compatibility.mjs --binary /absolute/path/to/inference-journal-fixture --codex /absolute/path/to/bundled/codex
+```
+
+The compatibility driver uses owned disposable profiles and the real native
+keeper, including real registered Codex app-server retirement without inference.
+Node runs only the development reference; native children have Node absent from
+PATH. Do not point fixtures at an active user profile.
