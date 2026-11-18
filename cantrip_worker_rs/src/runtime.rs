@@ -271,6 +271,11 @@ async fn cycle(
     ));
     let (stop, stop_rx) = watch::channel(false);
     let (registered, mut registration) = watch::channel(false);
+    let outcomes_ready = Arc::new(tokio::sync::Notify::new());
+    let task_outcomes =
+        crate::outcomes::TaskDelivery::new(configuration.clone(), encryption.clone())?;
+    let task_outcomes =
+        tokio::spawn(task_outcomes.run(outcomes_ready.clone(), stop_rx.clone(), logs.clone()));
     let (requests, mut received) = mpsc::unbounded_channel();
     let mut heartbeat_task = tokio::spawn(publish(
         configuration.clone(),
@@ -290,7 +295,10 @@ async fn cycle(
         generation,
         on_ready: {
             let observations = auth_observations.clone();
-            Arc::new(move || observations.reemit())
+            Arc::new(move || {
+                observations.reemit();
+                outcomes_ready.notify_one();
+            })
         },
     };
     let mut connection_stop = stop_rx.clone();
@@ -546,6 +554,7 @@ async fn cycle(
     let codex_stopped = codex.close().await;
     let provider_access_closed = provider_access.close().await;
     let history_stopped = history.stop().await;
+    let task_outcomes_closed = task_outcomes.await;
     let encryption_closed = encryption.close().await;
     while let Some(result) = commands.join_next().await {
         if let Err(error) = result {
@@ -573,6 +582,7 @@ async fn cycle(
     outgoing.close();
     terminals_closed?;
     github_closed?;
+    task_outcomes_closed?;
     encryption_closed?;
     auth_stopped?;
     grok_stopped?;
@@ -633,8 +643,17 @@ fn finish(
             json!({"kind":"response","requestId":request["requestId"],"ok":false,"error":error})
         }
     };
+    let outcome = crate::outcomes::chat(&request["command"], &response);
     if let Err(error) = outgoing.send(response) {
         logs.event("error","Worker command response was rejected",json!({"event":"worker.command.invalid-response","workerId":worker,"error":logging::error(&error)}));
+    }
+    if let Err(error) = outcome.and_then(|note| {
+        if let Some(note) = note {
+            outgoing.send(json!({"kind":"notification","notification":note}))?;
+        }
+        Ok(())
+    }) {
+        logs.event("warn","Chat turn recovery notification was rejected",json!({"event":"codex.turn.outcome-publication-failed","workerId":worker,"requestId":request["requestId"],"error":logging::error(&error)}));
     }
 }
 fn dispatch(command: &Value, configuration: &Arc<Mutex<Config>>, logs: &Logs) -> Result<Value> {

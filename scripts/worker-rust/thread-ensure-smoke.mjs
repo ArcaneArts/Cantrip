@@ -33,6 +33,7 @@ import {
 import { protectChatPlanState } from "../../cantrip_worker/src/chat-plan-encryption.ts";
 import { admit, GuiReceiptPeer, logical } from "./gui-receipt-cases.mjs";
 import { GuiHistoryPeer } from "./gui-history-cases.mjs";
+import { verifyTaskOutcomeRecovery } from "./task-outcome-recovery.mjs";
 
 const { values } = parseArgs({
   options: {
@@ -41,6 +42,7 @@ const { values } = parseArgs({
     turns: { type: "boolean" },
     protected: { type: "boolean" },
     receipts: { type: "boolean" },
+    outcomes: { type: "boolean" },
   },
 });
 assert.ok(values.worker && values.codex);
@@ -67,7 +69,8 @@ const stamp = new Date().toISOString();
 const upstream = new EventEmitter();
 const contextCalls = [];
 let providerCalls = 0;
-let guiPeer, guiHistory, workerGeneration;
+let guiPeer, guiHistory, workerGeneration, taskOutcome, holdHandshake;
+const outcomeFrames = new EventEmitter();
 const outputText = "Native host turn fixture.";
 const privatePrompt = "Protected input fixture, only for the worker.";
 const priorText = "Private preceding assistant message.";
@@ -168,6 +171,18 @@ const server = createServer(async (request, response) => {
         response,
         send,
       );
+    } catch (error) {
+      upstream.emit("failure", error);
+      response.writeHead(400).end("{}");
+    }
+    return;
+  }
+  if (
+    url.pathname === "/api/internal/native-commands/task-goal-outcome" &&
+    taskOutcome
+  ) {
+    try {
+      taskOutcome(await requestBody(request), send);
     } catch (error) {
       upstream.emit("failure", error);
       response.writeHead(400).end("{}");
@@ -290,7 +305,7 @@ sockets.on("connection", (socket, request) => {
     "http://127.0.0.1",
   ).searchParams.get("connectionGeneration");
   workerGeneration = connectionGeneration;
-  for (const state of ["pending", "ready"]) {
+  const hello = (state) =>
     socket.send(
       JSON.stringify({
         kind: "connection",
@@ -299,6 +314,16 @@ sockets.on("connection", (socket, request) => {
         connectionGeneration,
       }),
     );
+  socket.on("message", (message) => {
+    const frame = JSON.parse(message);
+    outcomeFrames.emit("frame", frame);
+  });
+  hello("pending");
+  if (holdHandshake) {
+    holdHandshake.resolve(() => hello("ready"));
+    holdHandshake = undefined;
+  } else {
+    hello("ready");
   }
 });
 server.listen(0, "127.0.0.1");
@@ -330,6 +355,7 @@ async function start() {
       PATH: "/usr/bin:/bin",
       HOME: root,
       NO_COLOR: "1",
+      ...(values.outcomes ? { CANTRIP_LOG_LEVEL: "debug" } : {}),
       CANTRIP_WORKER_DATA_DIR: directory,
       CANTRIP_WORKER_ID: workerId,
       CANTRIP_WORKER_CREDENTIAL: credential,
@@ -340,6 +366,7 @@ async function start() {
   for (const stream of [child.stdout, child.stderr])
     stream.on("data", (chunk) => {
       diagnostics = (diagnostics + chunk).slice(-32000);
+      upstream.emit("log");
     });
   exited = once(child, "close");
   [connection] = await available(
@@ -355,19 +382,18 @@ async function stop() {
   child.stdin.end();
   assert.deepEqual(await available(exited), [0, null], diagnostics);
 }
-async function ensure(fields, event = () => {}) {
-  const requestId = randomUUID();
+async function ensure(fields, event = () => {}, requestId = randomUUID()) {
+  const origin = connection;
   let onResponse;
   const reply = new Promise((resolve) => {
-    onResponse = (message) => {
-      const frame = JSON.parse(message);
+    onResponse = (frame) => {
       if (frame.requestId !== requestId) return;
       if (frame.kind === "response") resolve(frame);
       if (frame.kind === "event") event(frame.event);
     };
-    connection.on("message", onResponse);
+    outcomeFrames.on("frame", onResponse);
   });
-  connection.send(
+  origin.send(
     JSON.stringify({
       kind: "request",
       requestId,
@@ -401,7 +427,7 @@ async function ensure(fields, event = () => {}) {
   try {
     return await available(reply);
   } finally {
-    connection.off("message", onResponse);
+    outcomeFrames.off("frame", onResponse);
   }
 }
 async function expectThread(fields, expected) {
@@ -517,6 +543,23 @@ const untilProvider = () =>
     ]),
   );
 
+function waitForFrame(predicate) {
+  return new Promise((resolve) => {
+    const receive = (frame) => {
+      if (predicate(frame)) {
+        outcomeFrames.off("frame", receive);
+        resolve(frame);
+      }
+    };
+    outcomeFrames.on("frame", receive);
+  });
+}
+async function waitForTurnOutcomeLog(requestId) {
+  const evidence =
+    "event=worker.command.completed operation=chat.turn requestId=" + requestId;
+  while (!diagnostics.includes(evidence)) await once(upstream, "log");
+}
+
 async function verifyTurns() {
   const session = {
     contextKind: "project",
@@ -538,7 +581,7 @@ async function verifyTurns() {
   const [document] = await bindings();
   await assertIdle(document.file);
   const events = [];
-  const issuedTurn = (executionLaneId, extra = {}) =>
+  const issuedTurn = (executionLaneId, extra = {}, requestId) =>
     ensure(
       {
         type: "chat.turn",
@@ -560,6 +603,7 @@ async function verifyTurns() {
         ...extra,
       },
       (event) => events.push(event),
+      requestId,
     );
   const observed = untilProvider();
   const first = issuedTurn("admitted-lane");
@@ -641,6 +685,9 @@ async function verifyTurns() {
   await assertIdle(document.file);
 
   const observedSecond = untilProvider();
+  const stoppedOutcome = waitForFrame(
+    (frame) => frame.notification?.executionLaneId === "stop-lane",
+  );
   const second = issuedTurn("stop-lane");
   const providerSecond = await Promise.race([
     observedSecond,
@@ -656,9 +703,80 @@ async function verifyTurns() {
   const stopped = await second;
   assert.equal(stopped.ok, false);
   assert.match(stopped.error.message, /interrupt/i);
+  assert.deepEqual((await available(stoppedOutcome)).notification.outcome, {
+    ok: false,
+    error: stopped.error.message,
+  });
   await assertIdle(document.file);
   await available(providerSecond.closed);
   assert.deepEqual((await interrupt(threadId)).result, { interrupted: false });
+  if (values.outcomes) {
+    const requestId = randomUUID();
+    const clientMessageId = randomUUID();
+    const isolated = { ...session, chatId: randomUUID() };
+    const offlineProvider = { ...provider, id: "offline-turn-fixture" };
+    const offline = await expectThread({
+      session: isolated,
+      provider: offlineProvider,
+    });
+    const nextProvider = untilProvider();
+    const pending = issuedTurn(
+      "offline-outcome-lane",
+      {
+        chatId: isolated.chatId,
+        threadId: offline.threadId,
+        provider: offlineProvider,
+        clientMessageId,
+      },
+      requestId,
+    );
+    const offlineRequest = await Promise.race([
+      nextProvider,
+      pending.then((reply) => {
+        throw new Error(JSON.stringify(reply) + "\n" + diagnostics);
+      }),
+    ]);
+    holdHandshake = Promise.withResolvers();
+    const connected = holdHandshake.promise;
+    const reconnected = once(sockets, "connection");
+    const closed = once(connection, "close");
+    connection.terminate();
+    await available(closed);
+    offlineRequest.finish();
+    await available(waitForTurnOutcomeLog(requestId));
+    const [socket] = await available(reconnected);
+    const release = await available(connected);
+    const sequence = [];
+    const emitted = waitForFrame((frame) => {
+      if (frame.kind === "response" && frame.requestId === requestId)
+        sequence.push("response");
+      if (frame.notification?.clientMessageId !== clientMessageId) return false;
+      sequence.push("notification");
+      return true;
+    });
+    connection = socket;
+    release();
+    const [response, notification] = await Promise.all([
+      pending,
+      available(emitted),
+    ]);
+    assert.deepEqual(sequence, ["response", "notification"]);
+    assert.equal(response.ok, true);
+    assert.deepEqual(notification.notification, {
+      type: "chat.turn.outcome",
+      chatId: isolated.chatId,
+      clientMessageId,
+      executionLaneId: "offline-outcome-lane",
+      contextKind: "project",
+      worktreeId: session.worktreeId,
+      scratchRootId: null,
+      outcome: { ok: true, result: response.result },
+    });
+    assert.equal(providerCalls, 3);
+    console.log(
+      "A completed host response and recovery notification crossed an actual socket reconnect.",
+    );
+  }
   await stop();
   assert.deepEqual(await bindings(), []);
   console.log("Native host turn, streaming, MCP lane, and exact Stop passed.");
@@ -911,6 +1029,13 @@ async function verifyProtectedTurns() {
     : fields;
   const events = [];
   const observed = untilProvider();
+  const outcome = available(
+    waitForFrame(
+      (frame) =>
+        frame.notification?.clientMessageId === fields.clientMessageId &&
+        frame.notification?.outcome?.ok === true,
+    ),
+  );
   const pending = ensure(command, (event) => events.push(event));
   const providerInput = await Promise.race([
     observed,
@@ -950,6 +1075,18 @@ async function verifyProtectedTurns() {
     JSON.stringify(completed) + "\n" + diagnostics,
   );
   assert.equal(completed.result.text, "");
+  const delivered = (await outcome).notification;
+  assert.deepEqual(delivered.outcome, { ok: true, result: completed.result });
+  assert.equal(delivered.executionLaneId, fields.executionLaneId);
+  assert.deepEqual(
+    delivered.nativeLogicalRoot,
+    receipt
+      ? {
+          operationId: receipt.operationId,
+          operationGeneration: receipt.operationGeneration,
+        }
+      : undefined,
+  );
   const result = completed.result.structuredResult.message;
   assert.equal(result.id, responseMessage.id);
   assert.equal(result.idempotencyKey, responseMessage.idempotencyKey);
@@ -1284,7 +1421,22 @@ try {
   console.log(
     "Native project and standalone preparation, MCP, and restart recovery passed.",
   );
-  if (values.turns) await verifyTurns();
+  if (values.turns || values.outcomes) await verifyTurns();
+  if (values.outcomes) {
+    await verifyTaskOutcomeRecovery({
+      directory,
+      scope: { ownerId, serverId, workerId },
+      run: start,
+      stop,
+      attach: (peer) => {
+        taskOutcome = peer;
+      },
+      available,
+    });
+    console.log(
+      "Legacy Task files survived a mismatched acknowledgment and were recovered and retired by the Rust worker.",
+    );
+  }
   if (values.protected || values.receipts) await verifyProtectedTurns();
 } finally {
   if (child && child.exitCode === null && child.signalCode === null) {

@@ -4174,3 +4174,33 @@ worker shuts down.
 Autonomous execution and suspended-turn recovery still need their capture
 hooks. Managed queue, interaction, broader activity publication and durable
 logical outcomes remain open. Production still selects Node.
+
+## 76. Deliver host turn outcomes and recover pending Task files
+
+Reference commit `45e7878e116ba5fa0f48e0783d37bd9f557ea3ec` (#3238).
+
+The Rust worker sends the existing `chat.turn.outcome` notification after
+the matching host chat response. It carries the original lane, message,
+placement, and logical command identity. Both frames use the command
+connection's reconnect buffer. Protected results remain in their existing
+encrypted relay form.
+
+After the command connection authenticates, the worker scans the existing
+`task-goal-outcomes` directory for its logical server, owner, and worker.
+It reopens version-one files, including legacy Goal records that predate
+the input-kind field. It submits each outcome through Core's existing
+commit endpoint. Matching commit and positive retirement receipts permit
+removal. Transport failures and unrelated acknowledgments retain the
+original file and delivery identity for retry.
+
+The local macOS ARM64 smoke completes a bundled-Codex turn while the socket
+is disconnected and receives the response followed by the notification after
+reconnect. A disposable authenticated peer exercises original Node outbox
+files, authoritative retirement, wrong delivery and Goal source identities,
+and exact resend after Rust worker restart. The smoke uses a fresh thread for
+the reconnect case. Continuing on the same thread immediately after Stop
+requires separate validation.
+
+Native Task execution still needs its producer and commit barriers. Full
+integration against the production Rust server and production cutover
+remain open. Production still selects Node.

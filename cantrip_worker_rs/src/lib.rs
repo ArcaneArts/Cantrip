@@ -21,6 +21,7 @@ pub mod logging;
 pub mod mcp;
 pub mod metadata;
 pub mod native_items;
+pub(crate) mod outcomes;
 pub mod platform;
 pub mod protected_content;
 pub mod protected_secrets;
