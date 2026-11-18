@@ -25,7 +25,7 @@ use std::{
 };
 use tokio::{sync::mpsc, task::JoinSet};
 
-pub use launch::{Host, Profile};
+pub use launch::{GrokAccount, Host, Profile};
 pub use worker::{Binding, Worker};
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(120);
@@ -122,6 +122,9 @@ impl Runtime {
             external_auth,
             observe,
         } = launch;
+        if profile.grok.is_some() {
+            bail!("Managed Grok account launch requires the worker runtime registry.");
+        }
         let home = cantrip_config::resolve(&host.cwd, &profile.codex_home);
         cantrip_host::files::private_directory(&home)?;
         if let Some(prepare) = prepare_home {

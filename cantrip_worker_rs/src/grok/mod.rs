@@ -3,6 +3,7 @@ pub(crate) mod catalog;
 mod credential;
 pub(crate) mod http;
 mod models;
+mod proxy;
 
 use self::{
     credential::{Credential, FILE},
@@ -176,7 +177,7 @@ impl Commands {
         }
         let entry = self.0.registry.lock().unwrap().homes.get(home).cloned();
         if let Some(entry) = entry {
-            entry.stop(true).await?;
+            entry.close().await?;
             self.0.registry.lock().unwrap().homes.remove(home);
         }
         Ok(())
@@ -192,7 +193,7 @@ impl Commands {
             futures::future::join_all(
                 homes
                     .into_values()
-                    .map(|entry| async move { entry.stop(true).await }),
+                    .map(|entry| async move { entry.close().await }),
             )
             .await
             .into_iter()
@@ -220,9 +221,27 @@ struct State {
 struct Entry {
     state: AsyncMutex<State>,
     changed: Arc<Notify>,
+    proxy: AsyncMutex<Option<proxy::account::AccountProxy>>,
 }
 
 impl Entry {
+    async fn close(&self) -> Result<()> {
+        let mut slot = self.proxy.lock().await;
+        self.state.lock().await.closed = true;
+        let proxy = slot.take();
+        let (closed, stopped) = tokio::join!(
+            async move {
+                match proxy {
+                    Some(proxy) => proxy.close().await,
+                    None => Ok(()),
+                }
+            },
+            self.stop(true)
+        );
+        closed?;
+        stopped
+    }
+
     async fn status(&self, http: &Http, home: &Path) -> Result<Value> {
         let mut state = self.state.lock().await;
         if state.closed {

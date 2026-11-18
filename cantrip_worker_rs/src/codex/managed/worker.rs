@@ -5,12 +5,13 @@ use crate::{
 };
 use futures::future::join_all;
 use std::sync::{
-    Weak,
+    OnceLock, Weak,
     atomic::{AtomicBool, Ordering},
 };
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 
 pub type Binding = Arc<dyn Fn() -> Result<(JsString, JsString)> + Send + Sync>;
+type GrokResolver = Arc<dyn Fn(GrokAccount) -> Work<String> + Send + Sync>;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct Scope {
@@ -28,6 +29,7 @@ struct Key {
 struct Home {
     runtime: PathBuf,
     configuration: Option<PathBuf>,
+    credential: Option<PathBuf>,
     account_scope: Option<(JsString, JsString)>,
 }
 
@@ -52,6 +54,7 @@ struct Inner {
     worker_id: JsString,
     worker_generation: JsString,
     binding: Binding,
+    grok: OnceLock<GrokResolver>,
     state: Mutex<State>,
 }
 
@@ -74,6 +77,7 @@ impl Worker {
             worker_id,
             worker_generation,
             binding,
+            grok: OnceLock::new(),
             state: Mutex::new(State::default()),
         }))
     }
@@ -100,7 +104,14 @@ impl Worker {
         )
     }
 
-    pub fn launch(&self, launch: Launch) -> Work<Runtime> {
+    pub(crate) fn configure_grok(&self, resolve: GrokResolver) -> Result<()> {
+        self.0
+            .grok
+            .set(resolve)
+            .map_err(|_| anyhow!("Grok proxy is already configured."))
+    }
+
+    pub fn launch(&self, mut launch: Launch) -> Work<Runtime> {
         let this = self.clone();
         owned(async move {
             let scope = this.scope()?;
@@ -108,6 +119,21 @@ impl Worker {
                 scope,
                 profile: launch.profile.id.clone(),
             };
+            let credential = launch.profile.grok.as_ref().map(|grok| {
+                crate::codex::catalog::account_home(&this.0.data, &grok.credential_home_key)
+            });
+            if let Some(grok) = &launch.profile.grok {
+                let scope = (grok.account.provider.clone(), grok.account.id.clone());
+                if launch
+                    .profile
+                    .account_scope
+                    .as_ref()
+                    .is_some_and(|account| account != &scope)
+                {
+                    bail!("Managed Grok launch received a different account identity.");
+                }
+                launch.profile.account_scope = Some(scope);
+            }
             let home = Home {
                 account_scope: launch.profile.account_scope.clone(),
                 runtime: cantrip_config::resolve(&this.0.host.cwd, &launch.profile.codex_home),
@@ -116,6 +142,7 @@ impl Worker {
                     .configuration_home
                     .as_ref()
                     .map(|home| cantrip_config::resolve(&this.0.host.cwd, home)),
+                credential,
             };
             let mut previous: Option<Slot> = None;
             loop {
@@ -155,7 +182,18 @@ impl Worker {
                 };
                 drop(homes);
                 if let Some((complete, manager)) = start {
-                    let runtime = Runtime::launch(this.0.host.clone(), manager, launch).await;
+                    let runtime = async {
+                        if let Some(grok) = launch.profile.grok.take() {
+                            let resolver = this.0.grok.get().ok_or_else(|| {
+                                anyhow!("Grok subscription proxy is unavailable.")
+                            })?;
+                            let name = grok.provider_name.clone();
+                            let proxy = resolver(grok).await?;
+                            launch.profile.configure_grok(&name, &proxy);
+                        }
+                        Runtime::launch(this.0.host.clone(), manager, launch).await
+                    }
+                    .await;
                     if runtime
                         .as_ref()
                         .is_err_and(|error| !retirement_failed(error))
@@ -216,6 +254,7 @@ impl Worker {
     async fn lock_homes(&self, home: &Home) -> Vec<OwnedMutexGuard<()>> {
         let mut paths = vec![home.runtime.as_path()];
         paths.extend(home.configuration.as_deref());
+        paths.extend(home.credential.as_deref());
         paths.sort_unstable();
         paths.dedup();
         let mut locks = Vec::with_capacity(paths.len());
@@ -247,7 +286,9 @@ impl Worker {
                     .runtimes
                     .iter()
                     .filter(|(_, slot)| {
-                        slot.home.runtime == home || slot.home.configuration.as_ref() == Some(&home)
+                        slot.home.runtime == home
+                            || slot.home.configuration.as_ref() == Some(&home)
+                            || slot.home.credential.as_ref() == Some(&home)
                     })
                     .map(|(key, slot)| (key.clone(), slot.clone()))
                     .collect::<Vec<_>>();

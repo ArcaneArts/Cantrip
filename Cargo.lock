@@ -592,6 +592,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "bytes",
  "cantrip-config",
  "cantrip-crypto",
  "cantrip-framing",
@@ -606,6 +607,9 @@ dependencies = [
  "embed-resource",
  "futures",
  "getrandom 0.3.4",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "icu_casemap",
  "icu_collator",
  "icu_locale_core",

@@ -178,30 +178,19 @@ struct Portable<'a> {
 impl Portable<'_> {
     async fn request(&self, path: &str) -> Result<Response> {
         let lease = self.access.get(self.account.clone()).await?;
-        let credential = self.credential(&lease)?;
+        let credential = lease_credential(self.account, &lease)?;
         let response = self.http.subscription(path, &credential).await?;
         if response.status() == StatusCode::UNAUTHORIZED {
             let next = self
                 .access
                 .force(self.account.clone(), lease.revision())
                 .await?;
-            return self.http.subscription(path, &self.credential(&next)?).await;
+            return self
+                .http
+                .subscription(path, &lease_credential(self.account, &next)?)
+                .await;
         }
         Ok(response)
-    }
-
-    fn credential(&self, lease: &Lease) -> Result<Value> {
-        let value = lease.value();
-        if value["providerKind"] != "grok"
-            || value["providerIdentity"]["kind"] != "grok"
-            || value["providerId"].as_js_string() != Some(&self.account.provider)
-            || value["providerAccountId"].as_js_string() != Some(&self.account.id)
-        {
-            bail!("Server returned a mismatched Grok access lease.");
-        }
-        Ok(
-            json!({"accessToken":value["accessToken"],"userId":value["providerIdentity"]["userId"],"email":value["email"]}),
-        )
     }
 
     async fn models(&self) -> Result<Value> {
@@ -267,6 +256,20 @@ impl Portable<'_> {
             }
         }
     }
+}
+
+pub(super) fn lease_credential(account: &Account, lease: &Lease) -> Result<Value> {
+    let value = lease.value();
+    if value["providerKind"] != "grok"
+        || value["providerIdentity"]["kind"] != "grok"
+        || value["providerId"].as_js_string() != Some(&account.provider)
+        || value["providerAccountId"].as_js_string() != Some(&account.id)
+    {
+        bail!("Server returned a mismatched Grok access lease.");
+    }
+    Ok(
+        json!({"accessToken":value["accessToken"],"userId":value["providerIdentity"]["userId"],"email":value["email"]}),
+    )
 }
 
 async fn models_response(response: Response) -> Result<Value> {

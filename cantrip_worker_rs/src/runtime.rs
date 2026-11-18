@@ -198,6 +198,7 @@ async fn cycle(
         encryption.clone(),
         client.clone(),
     );
+    grok_auth.install_proxy(provider_access.clone(), encryption.clone())?;
     let grok_catalog = crate::grok::catalog::Catalog::new(
         grok_auth.clone(),
         provider_access.clone(),
