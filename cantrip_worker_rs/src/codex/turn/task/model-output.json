@@ -1,0 +1,72 @@
+{
+  "planner": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["planMarkdown", "questions"],
+    "properties": {
+      "planMarkdown": { "type": "string", "minLength": 1, "maxLength": 100000 },
+      "questions": {
+        "type": "array",
+        "maxItems": 12,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "header",
+            "question",
+            "options",
+            "recommendedOptionId",
+            "allowFreeform",
+            "required"
+          ],
+          "properties": {
+            "id": { "type": "string", "minLength": 1, "maxLength": 200 },
+            "header": { "type": "string", "minLength": 1, "maxLength": 80 },
+            "question": { "type": "string", "minLength": 1, "maxLength": 2000 },
+            "options": {
+              "type": "array",
+              "maxItems": 6,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "label", "description"],
+                "properties": {
+                  "id": { "type": "string", "minLength": 1, "maxLength": 200 },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "description": { "type": "string", "maxLength": 1000 }
+                }
+              }
+            },
+            "recommendedOptionId": {
+              "anyOf": [
+                { "type": "string", "minLength": 1, "maxLength": 200 },
+                { "type": "null" }
+              ]
+            },
+            "allowFreeform": { "type": "boolean" },
+            "required": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  },
+  "finalizer": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["finalPlanMarkdown", "goalPrompt"],
+    "properties": {
+      "finalPlanMarkdown": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100000
+      },
+      "goalPrompt": { "type": "string", "minLength": 1, "maxLength": 2000 }
+    }
+  },
+  "nativeGoalObjectiveLimit": 4000
+}

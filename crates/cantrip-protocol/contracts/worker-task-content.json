@@ -9,7 +9,13 @@
     "encryptedTaskPlanningRoundProtectedContentSchema": 86,
     "taskMessageProtectedClassificationSchema": 91,
     "taskMessageProtectedContentSchema": 97,
-    "encryptedTaskMessageProtectedContentSchema": 102
+    "encryptedTaskMessageProtectedContentSchema": 102,
+    "taskGoalObjectiveProtectedClassificationSchema": 107,
+    "taskGoalObjectiveProtectedContentSchema": 112,
+    "encryptedTaskGoalObjectiveSchema": 116,
+    "taskPlannerResultSchema": 121,
+    "taskFinalizerResultSchema": 123,
+    "boundedJsonObjectSchema": 126
   },
   "nodes": [
     {
@@ -663,6 +669,151 @@
         { "check": "max_length", "maximum": 2796224, "when": "length" }
       ]
     },
-    { "type": "never", "checks": [] }
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskGoalObjectiveProtectedClassificationSchema",
+      "shape": { "chatId": 108, "threadId": 109, "status": 110 },
+      "catchall": 111,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "taskGoalStatusSchema",
+      "values": [
+        "active",
+        "paused",
+        "blocked",
+        "usageLimited",
+        "budgetLimited",
+        "complete"
+      ],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskGoalObjectiveProtectedContentSchema",
+      "shape": { "version": 113, "classification": 107, "objective": 114 },
+      "catchall": 115,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100000, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedTaskGoalObjectiveSchema",
+      "shape": { "formatVersion": 117, "keyRevision": 58, "envelope": 118 },
+      "catchall": 120,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-task-envelope",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "version": 60,
+        "algorithm": 61,
+        "keyRevision": 58,
+        "nonce": 62,
+        "ciphertext": 119
+      },
+      "catchall": 64,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "messageAfterPath": true,
+          "message": "Value is not canonical unpadded base64url."
+        },
+        { "check": "max_length", "maximum": 22369643, "when": "length" },
+        { "check": "min_length", "minimum": 22, "when": "length" },
+        { "check": "max_length", "maximum": 699072, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskPlannerResultSchema",
+      "shape": { "planMarkdown": 122, "questions": 25 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "taskFinalizerResultSchema",
+      "shape": { "finalPlanMarkdown": 124, "goalPrompt": 125 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100000, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "task-content-goal-prompt",
+          "messageAfterPath": true,
+          "message": "The Task Goal prompt must be at most 2000 characters."
+        }
+      ]
+    },
+    { "type": "pipe", "in": 127, "out": 128, "checks": [] },
+    { "type": "unknown", "checks": [] },
+    {
+      "type": "transform",
+      "optionalIn": true,
+      "transformTag": "bounded-json-object",
+      "checks": []
+    }
   ]
 }

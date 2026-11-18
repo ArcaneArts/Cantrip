@@ -36,6 +36,7 @@ import { GuiHistoryPeer } from "./gui-history-cases.mjs";
 import { verifyTaskOutcomeRecovery } from "./task-outcome-recovery.mjs";
 import { verifyTaskPreparation } from "./task-preparation-cases.mjs";
 import { verifyDirectTask } from "./direct-task-cases.mjs";
+import { verifyStructuredTasks } from "./structured-task-cases.mjs";
 
 const { values } = parseArgs({
   options: {
@@ -47,6 +48,7 @@ const { values } = parseArgs({
     outcomes: { type: "boolean" },
     taskPreparation: { type: "boolean" },
     directTask: { type: "boolean" },
+    structuredTasks: { type: "boolean" },
   },
 });
 assert.ok(values.worker && values.codex);
@@ -78,6 +80,7 @@ let guiPeer,
   workerGeneration,
   taskOutcome,
   taskDispatch,
+  taskResponse,
   holdHandshake;
 const outcomeFrames = new EventEmitter();
 const outputText = "Native host turn fixture.";
@@ -111,23 +114,29 @@ async function responses(request, response) {
   const plan =
     JSON.stringify(body.input).includes(privatePrompt) &&
     !body.input.some((item) => item.type === "function_call_output");
-  const item = plan
-    ? {
-        id,
-        type: "function_call",
-        name: "update_plan",
-        call_id: "fixture-plan",
-        arguments: JSON.stringify({
-          explanation: "Protected model plan",
-          plan: [{ step: privateStep, status: "in_progress" }],
-        }),
-      }
-    : {
-        id,
-        type: "message",
-        role: "assistant",
-        content: [{ type: "output_text", text: outputText }],
-      };
+  const fixture =
+    typeof taskResponse === "function" ? taskResponse(body) : taskResponse;
+  const text = typeof fixture === "string" ? fixture : outputText;
+  const item =
+    fixture && typeof fixture === "object"
+      ? { id, type: "function_call", ...fixture }
+      : plan
+        ? {
+            id,
+            type: "function_call",
+            name: "update_plan",
+            call_id: "fixture-plan",
+            arguments: JSON.stringify({
+              explanation: "Protected model plan",
+              plan: [{ step: privateStep, status: "in_progress" }],
+            }),
+          }
+        : {
+            id,
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text }],
+          };
   const closed = once(response, "close");
   const write = (type, fields) =>
     response.write(
@@ -136,7 +145,8 @@ async function responses(request, response) {
   response.writeHead(200, { "content-type": "text/event-stream" });
   write("response.created", { response: { id: "response-" + number } });
   write("response.output_item.added", { item });
-  if (!plan) write("response.output_text.delta", { delta: outputText });
+  if (item.type === "message")
+    write("response.output_text.delta", { delta: text });
   upstream.emit("request", {
     number,
     plan,
@@ -254,7 +264,8 @@ const server = createServer(async (request, response) => {
           ...(values.protected ||
           values.receipts ||
           values.taskPreparation ||
-          values.directTask
+          values.directTask ||
+          values.structuredTasks
             ? [
                 {
                   component: "chat-content",
@@ -263,7 +274,9 @@ const server = createServer(async (request, response) => {
                 },
               ]
             : []),
-          ...(values.taskPreparation || values.directTask
+          ...(values.taskPreparation ||
+          values.directTask ||
+          values.structuredTasks
             ? [
                 {
                   component: "task-content",
@@ -577,15 +590,18 @@ async function assertIdle(file) {
     await client.close();
   }
 }
-const untilProvider = () =>
-  available(
+function untilProvider() {
+  const wait = new AbortController();
+  const options = { signal: wait.signal };
+  return available(
     Promise.race([
-      once(upstream, "request").then(([request]) => request),
-      once(upstream, "failure").then(([error]) => {
+      once(upstream, "request", options).then(([request]) => request),
+      once(upstream, "failure", options).then(([error]) => {
         throw error;
       }),
     ]),
-  );
+  ).finally(() => wait.abort());
+}
 
 function waitForFrame(predicate) {
   return new Promise((resolve) => {
@@ -1410,9 +1426,9 @@ try {
     scratchRootId: "isolated",
   };
   await start();
-  let directInput;
-  if (values.taskPreparation || values.directTask) {
-    directInput = await verifyTaskPreparation({
+  let taskInputs;
+  if (values.taskPreparation || values.directTask || values.structuredTasks) {
+    taskInputs = await verifyTaskPreparation({
       dispatch: ensure,
       ownerId,
       oracle,
@@ -1496,7 +1512,7 @@ try {
   if (values.protected || values.receipts) await verifyProtectedTurns();
   if (values.directTask) {
     await verifyDirectTask({
-      source: directInput,
+      source: taskInputs.direct,
       outputText,
       ownerId,
       serverId,
@@ -1519,6 +1535,31 @@ try {
     });
     console.log(
       "Direct Task claim, native binding, encrypted result, and persistent replay passed.",
+    );
+  }
+  if (values.structuredTasks) {
+    await verifyStructuredTasks({
+      taskInputs,
+      root,
+      ownerId,
+      serverId,
+      workerId,
+      key: taskKey,
+      baseUrl: `http://127.0.0.1:${server.address().port}/fixture/v1`,
+      invoke: ensure,
+      start,
+      stop,
+      untilProvider,
+      available,
+      attach: ({ dispatch, outcome, answer } = {}) => {
+        taskDispatch = dispatch;
+        taskOutcome = outcome;
+        taskResponse = answer;
+      },
+      diagnostics: () => diagnostics,
+    });
+    console.log(
+      "Structured Task planning, revision, and finalization matched the Node reference.",
     );
   }
 } finally {

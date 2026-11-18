@@ -10,6 +10,7 @@ pub(super) fn refine(
     if !matches!(
         tag,
         "task-content-classification"
+            | "task-content-goal-prompt"
             | "task-round-content-classification"
             | "task-message-content-classification"
             | "task-content-question"
@@ -85,6 +86,12 @@ pub(super) fn refine(
                     &[json!("classification"), json!("attachmentIds")],
                     "Protected Task message attachment classification does not match its content.",
                 );
+            }
+        }
+        "task-content-goal-prompt" => {
+            let text = value.as_js_string().ok_or(ValidationError::Operation)?;
+            if std::char::decode_utf16(text.units().iter().copied()).count() > 2000 {
+                custom(&[], "The Task Goal prompt must be at most 2000 characters.");
             }
         }
         "task-content-question" => {

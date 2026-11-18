@@ -60,6 +60,7 @@ pub(super) async fn configuration(
         &command["subagentDefaults"]["model"]
     };
     let permission = &command["permissionProfileId"];
+    let structured = command["structuredTask"] == true;
     let yolo = permission_profiles && permission == ":yolo";
     let mut start = json!({
         "cwd": cwd,
@@ -68,14 +69,16 @@ pub(super) async fn configuration(
         "modelProvider": provider,
         "developerInstructions": instructions,
         "dynamicTools": Vec::<Value>::new(),
-        "approvalPolicy": if yolo { "never" } else { "on-request" },
+        "approvalPolicy": if yolo || structured { "never" } else { "on-request" },
         "config": json!({
             "features": json!({"multi_agent": !standalone}),
             "agents": json!({"enabled": !standalone}),
             "mcp_servers": mcp,
         }),
     });
-    if permission_profiles {
+    if structured {
+        start["sandbox"] = json!("read-only");
+    } else if permission_profiles {
         start["permissions"] = if yolo {
             json!(":danger-full-access")
         } else {

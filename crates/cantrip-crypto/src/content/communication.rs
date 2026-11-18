@@ -10,6 +10,7 @@ pub enum Communication {
     Task,
     TaskPlanningRound,
     TaskMessage,
+    TaskGoalObjective,
     QueuedPrompt,
     ComposerDraft,
     Plan,
@@ -68,6 +69,16 @@ impl Communication {
                 "encryptedTaskMessageProtectedContentSchema",
                 Some("taskMessageProtectedClassificationSchema"),
                 2 * 1024 * 1024,
+            ),
+            Self::TaskGoalObjective => (
+                "task-content",
+                "task_goal_snapshots",
+                "objective",
+                "threadId",
+                "taskGoalObjectiveProtectedContentSchema",
+                "encryptedTaskGoalObjectiveSchema",
+                Some("taskGoalObjectiveProtectedClassificationSchema"),
+                512 * 1024,
             ),
             Self::QueuedPrompt => (
                 "chat-content",
@@ -134,11 +145,19 @@ impl Communication {
 }
 pub fn communication_associated_data(kind: Communication, context: &Value) -> Result<Value> {
     let format = kind.format();
+    let goal_row;
+    let row = if matches!(kind, Communication::TaskGoalObjective) {
+        goal_row =
+            json!(json!([context["chatId"].clone(), context["threadId"].clone()]).stringify());
+        &goal_row
+    } else {
+        &context[format.id]
+    };
     aad(
         context,
         &json!(format.component),
         &json!(format.table),
-        &context[format.id],
+        row,
         &json!(format.field),
     )
 }
