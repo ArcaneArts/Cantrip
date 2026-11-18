@@ -52,7 +52,7 @@ impl Signal {
             None => Ok(()),
         }
     }
-    async fn cancelled(&self) -> Cancelled {
+    pub async fn cancelled(&self) -> Cancelled {
         let mut receiver = self.0.clone();
         loop {
             if let Some(reason) = receiver.borrow_and_update().clone() {
@@ -112,6 +112,13 @@ impl Guard {
         }
     }
     pub fn metadata(caller: Option<Signal>, transport: Option<Signal>) -> Self {
+        Self::metadata_timeout(caller, transport, Duration::from_secs(30))
+    }
+    pub(crate) fn metadata_timeout(
+        caller: Option<Signal>,
+        transport: Option<Signal>,
+        timeout: Duration,
+    ) -> Self {
         // AbortSignal.any selects the first already-aborted input in input order.
         let initial = caller
             .as_ref()
@@ -120,7 +127,7 @@ impl Guard {
         Self {
             caller,
             transport,
-            deadline: Some(Instant::now() + Duration::from_secs(30)),
+            deadline: Some(Instant::now() + timeout),
             initial,
         }
     }

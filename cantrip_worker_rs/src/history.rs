@@ -7,6 +7,7 @@ pub mod client;
 pub mod input_materializer;
 pub mod lineage;
 pub mod live;
+pub mod managed;
 pub mod preparation;
 pub mod projector;
 pub mod recovery;

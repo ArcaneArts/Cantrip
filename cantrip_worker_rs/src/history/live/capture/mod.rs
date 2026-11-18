@@ -101,6 +101,12 @@ struct Inner {
 pub struct Capture(Arc<Inner>);
 impl Capture {
     pub fn new(options: Options) -> Result<Self> {
+        let capture = Self::deferred(options)?;
+        capture.activate();
+        Ok(capture)
+    }
+    /// Subscribe immediately; the manager installs ownership before timers run.
+    pub(crate) fn deferred(options: Options) -> Result<Self> {
         let this = Self(Arc::new(Inner {
             options,
             state: Mutex::new(State::default()),
@@ -145,12 +151,17 @@ impl Capture {
                 state.check_flushed();
             }
         }));
-        this.0.state.lock().unwrap().ready = true;
-        if subscription.signal().check().is_ok() {
-            this.reconcile(Some(0));
-        }
-        this.schedule(Kind::Write, 0);
         Ok(this)
+    }
+    pub(crate) fn activate(&self) {
+        self.0.state.lock().unwrap().ready = true;
+        if self.signal().check().is_ok() {
+            self.reconcile(Some(0));
+        }
+        self.schedule(Kind::Write, 0);
+    }
+    pub fn on_retired(&self, listener: super::observation::Retired) {
+        self.subscription().on_retired(listener);
     }
     pub fn journal(journal: Journal) -> Append {
         Arc::new(move |frame| Box::pin(journal.append(&frame)))

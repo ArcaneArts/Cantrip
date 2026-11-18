@@ -35,6 +35,9 @@ impl<T> Default for Cache<T> {
     }
 }
 impl<T: Clone + Send + Sync + 'static> Cache<T> {
+    pub fn clear(&self) {
+        self.0.lock().unwrap().slots.clear();
+    }
     pub fn get(&self, key: String, operation: impl FnOnce() -> Work<T>) -> Work<T> {
         let mut state = self.0.lock().unwrap();
         if let Some(slot) = state.slots.get(&key) {
