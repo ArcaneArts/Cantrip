@@ -19,6 +19,7 @@ impl Goals {
         let bound = self.encryption.bound_identity()?;
         let command = self.preparation.resolve_routing(command).await?;
         let (thread, owner) = self.chat_goal_thread(&command, &bound).await?;
+        self.watch_project(&command, &bound, &thread, &owner.runtime);
         let observed = rpc(
             &owner.runtime,
             "thread/goal/get",

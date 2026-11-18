@@ -251,6 +251,13 @@ impl Ensurer {
                         this.0.permission_profiles,
                     ).await?;
                     this.assert_bound(&bound)?;
+                    let delivery = this.0.codex.project_goals().filter(|_| !standalone);
+                    let task = command["taskOwned"] == true;
+                    if task
+                        && let (Some(delivery), Some(thread)) = (delivery, selection.thread_id.as_ref())
+                    {
+                        delivery.select(&bound, thread, runtime.generation(), &chat, true);
+                    }
                     let loaded = native::load(&runtime, &selection, &configuration, &identify).await?;
                     native::configure(&runtime, &loaded, selection.intent, &configuration).await?;
                     if selection.intent == Intent::Configure {
@@ -265,6 +272,9 @@ impl Ensurer {
                     loaded.assert_current(&runtime)?;
                     this.assert_bound(&bound)?;
                     let thread_id = loaded.id().clone();
+                    if let Some(delivery) = delivery {
+                        delivery.select(&bound, &thread_id, runtime.generation(), &chat, task);
+                    }
                     let owner = ThreadOwner {
                         runtime: runtime.downgrade(), thread: loaded.clone(), bound: bound.clone(),
                         session: (command["taskOwned"] != true).then(|| native_session(&command, &runtime, loaded.id())),

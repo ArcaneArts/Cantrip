@@ -4447,3 +4447,27 @@ Canonical queue handoff and ordinary autonomous Goal turns, Project Goal
 observation delivery, standalone scratch-workspace integration, live Goal
 restoration, and OS-hosted Goal creation remain open. Production still
 selects Node.
+
+## 86. Publish native Project Goal observations
+
+Reference commit `5509fd6bdd748acaffa57c1feb742da393ab3069` (#3248).
+
+The Rust worker observes Goal updates and removal from the selected native
+transport. It seals objective text with the Chat content grant and writes
+each transition to the existing per-thread Project Goal outbox. It replays
+the existing encrypted facts in order, waits for the server's disposition,
+and retains an unbound source or an observation whose response was lost.
+Known Task threads use their separate encrypted Task path. Managed
+preparation and Goal changes select the source, while a read alone does not
+register an unattached thread. Project delivery does not load a native thread or initiate model work. A managed producer
+request without an owner receives the exact native denial so it cannot hold
+later Goal controls.
+
+The macOS ARM64 smoke covers active, paused, and cleared native facts, the
+same pending bytes after restart, and recovery of a legacy record produced by
+the Node writer. It opens the protected objective through the TypeScript
+reference. The worker and Codex are real local processes, with disposable
+Core and provider fixtures.
+
+Ordinary Goal autonomous admission and queue handoff, live Goal recovery,
+and OS-hosted Goal support remain open. Production still selects Node.

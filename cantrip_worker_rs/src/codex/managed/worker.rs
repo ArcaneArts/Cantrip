@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    codex::task_inputs,
+    codex::{goals::delivery::Delivery as ProjectGoals, task_inputs},
     encryption::Service,
     inference::{admission::Options as AdmissionOptions, ownership},
 };
@@ -57,6 +57,7 @@ struct Inner {
     binding: Binding,
     grok: OnceLock<GrokResolver>,
     task_inputs: OnceLock<task_inputs::Client>,
+    project_goals: OnceLock<Arc<ProjectGoals>>,
     state: Mutex<State>,
 }
 
@@ -81,6 +82,7 @@ impl Worker {
             binding,
             grok: OnceLock::new(),
             task_inputs: OnceLock::new(),
+            project_goals: OnceLock::new(),
             state: Mutex::new(State::default()),
         }))
     }
@@ -119,6 +121,17 @@ impl Worker {
             .task_inputs
             .set(client)
             .map_err(|_| anyhow!("Task input ownership is already configured."))
+    }
+
+    pub(crate) fn configure_project_goals(&self, delivery: Arc<ProjectGoals>) -> Result<()> {
+        self.0
+            .project_goals
+            .set(delivery)
+            .map_err(|_| anyhow!("Project Goal observations are already configured."))
+    }
+
+    pub(in crate::codex) fn project_goals(&self) -> Option<&ProjectGoals> {
+        self.0.project_goals.get().map(Arc::as_ref)
     }
 
     pub fn launch(&self, launch: Launch) -> Work<Runtime> {
@@ -212,6 +225,15 @@ impl Worker {
                             let name = grok.provider_name.clone();
                             let proxy = resolver(grok).await?;
                             launch.profile.configure_grok(&name, &proxy);
+                        }
+                        if let Some(delivery) = this.0.project_goals.get().cloned() {
+                            let scope = key.scope.clone();
+                            let observe = launch.observe;
+                            launch.observe = Arc::new(move |event| {
+                                let captured = delivery.native(&scope.server, &scope.owner, &event);
+                                observe(event)?;
+                                captured
+                            });
                         }
                         Runtime::launch(this.0.host.clone(), manager, launch).await
                     }

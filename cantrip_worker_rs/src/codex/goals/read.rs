@@ -9,6 +9,9 @@ impl Goals {
         let bound = self.encryption.bound_identity()?;
         let thread = target_thread(command)?;
         let LiveThread { runtime, .. } = self.metadata_thread(command, &bound, thread).await?;
+        if command["taskContext"].is_object() {
+            self.watch_project(command, &bound, thread, &runtime);
+        }
         let goal = verify_goal(
             thread,
             &rpc(&runtime, "thread/goal/get", json!({"threadId":thread})).await?,
@@ -18,6 +21,12 @@ impl Goals {
         } else {
             None
         };
+        if command["taskContext"].is_null()
+            && let Some(server) = bound.1.as_js_string()
+        {
+            self.project
+                .capture(server, &bound.0, thread, runtime.generation(), &goal)?;
+        }
         self.render(command, &bound, goal, execution)
     }
 
@@ -69,30 +78,33 @@ impl Goals {
             self.assert_bound(&binding)?;
             checked("taskGoalWorkerResultSchema", &projected)
         } else if command["protectObjective"] == true {
-            let mut goal = goal;
-            if let Value::Object(fields) = &mut goal {
-                let objective = fields
-                    .shift_remove("objective")
-                    .context("Missing Goal objective.")?;
-                let scope = Scope::new(self.encryption.clone())?;
-                if scope.owner != bound.0 || bound.1.as_js_string() != Some(&scope.server) {
-                    bail!("The worker binding changed during Goal observation.");
-                }
-                let id = uuid::Uuid::new_v4().to_string();
-                goal["protectedObjective"] = scope.protect(&json!({
-                    "id":id, "role":"user", "mode":"goal", "reasoningEffort":Value::Null,
-                    "idempotencyKey":format!("goal-snapshot:{id}"),
-                    "content":[json!({"type":"text","text":objective})],
-                }))?;
+            let scope = Scope::new(self.encryption.clone())?;
+            if scope.owner != bound.0 || bound.1.as_js_string() != Some(&scope.server) {
+                bail!("The worker binding changed during Goal observation.");
             }
-            checked(
-                "chatGoalWireResponseSchema",
-                &json!({"kind":"chat-encrypted","goal":goal}),
-            )
+            protect_chat_goal(&scope, goal)
         } else {
             Ok(json!({"goal":goal}))
         }
     }
+}
+
+pub(super) fn protect_chat_goal(scope: &Scope, mut goal: Value) -> Result<Value> {
+    if let Value::Object(fields) = &mut goal {
+        let objective = fields
+            .shift_remove("objective")
+            .context("Missing Goal objective.")?;
+        let id = uuid::Uuid::new_v4().to_string();
+        goal["protectedObjective"] = scope.protect(&json!({
+            "id":id, "role":"user", "mode":"goal", "reasoningEffort":Value::Null,
+            "idempotencyKey":format!("goal-snapshot:{id}"),
+            "content":[json!({"type":"text","text":objective})],
+        }))?;
+    }
+    checked(
+        "chatGoalWireResponseSchema",
+        &json!({"kind":"chat-encrypted","goal":goal}),
+    )
 }
 
 pub(super) fn target_thread(command: &Value) -> Result<&JsString> {
