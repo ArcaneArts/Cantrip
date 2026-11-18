@@ -1,7 +1,7 @@
 //! One worker history lifetime: capture wakes both canonical delivery and child
 //! discovery; flush reaches a fixed point before confirming receipt checkpoints.
 use super::{
-    Diagnostic, Retry, canonical, completion,
+    Diagnostic, Failure, Retry, canonical, completion,
     descendants::{self, Descendants},
     projection::{self, Pump},
     sources::{self, Input, Sources},
@@ -11,13 +11,17 @@ use crate::{
     history::{
         adapters,
         client::Client,
-        live::capture::{Capture, Timing},
+        live::{
+            capture::{Capture, Timing},
+            identity, mode,
+        },
     },
+    metadata::Signal,
     native_items::s,
 };
 use anyhow::{Result, anyhow};
 use cantrip_history::{content::Encryption, projection::Work};
-use cantrip_wire::{JsString, Value};
+use cantrip_wire::{JsString, Value, value::json};
 use indexmap::IndexMap;
 use std::{
     path::PathBuf,
@@ -62,6 +66,8 @@ struct Inner {
     routing: Arc<Routing>,
     descendants: Descendants,
     projection: Pump,
+    client: Client,
+    on_error: Option<Diagnostic>,
     stopping: Mutex<Option<completion::Promise<Vec<Value>>>>,
 }
 #[derive(Clone)]
@@ -136,10 +142,10 @@ impl History {
             directory: source_directory,
             worker_id: options.worker_id,
             service: options.service,
-            client: Arc::new(options.client),
+            client: Arc::new(options.client.clone()),
             timing: options.timing,
             binding_timeout_ms: None,
-            on_error: options.on_error,
+            on_error: options.on_error.clone(),
             on_persisted: Some(Arc::new(move |source, scope, runtime| {
                 let result = project.wake(source.clone(), scope.clone());
                 if result.is_ok() {
@@ -153,11 +159,56 @@ impl History {
             routing,
             descendants,
             projection,
+            client: options.client,
+            on_error: options.on_error,
             stopping: Mutex::new(None),
         })))
     }
     pub fn bind(&self, input: Input) -> Result<Capture> {
         self.0.routing.bind(input)
+    }
+    /// Start capture before dispatch. Binding and projection I/O remain owned
+    /// by the History lifetime, independently of live output and Stop.
+    pub(crate) fn capture_outputs(&self, input: Input, lifetime: Signal) -> identity::Managed {
+        if let Err(error) = self.bind(input.clone())
+            && let Some(report) = &self.0.on_error
+        {
+            let _ = report(
+                Failure::new(error),
+                json!({
+                    "phase": "observe", "chatId": input.chat_id, "threadId": input.thread_id,
+                    "generation": input.runtime.generation(),
+                }),
+            );
+        }
+        let this = self.clone();
+        let runtime = input.runtime.clone();
+        let modes = mode::Resolver::scoped(
+            Arc::new(move |thread| runtime.read_history(thread)),
+            Some(input.runtime.clone()),
+            Some(lifetime.clone()),
+        );
+        identity::Managed::new(identity::Options {
+            client: Arc::new(self.0.client.clone()),
+            mode: identity::with_mode(modes),
+            signal: Some(lifetime),
+            scope: Arc::new(move |thread, agent_scope| {
+                if thread == input.thread_id {
+                    let scope = json!({
+                        "chatId": input.chat_id, "threadId": input.thread_id,
+                        "provenance": input.provenance,
+                    });
+                    Box::pin(async move { Ok(Some(scope)) })
+                } else if agent_scope.is_some_and(|scope| {
+                    scope["rootThreadId"].as_js_string() == Some(&input.thread_id)
+                }) {
+                    let child = this.output_scope(&input.chat_id, &input.thread_id, thread);
+                    Box::pin(async move { child.await.map(Some) })
+                } else {
+                    Box::pin(async { Ok(None) })
+                }
+            }),
+        })
     }
     pub fn output_scope(&self, chat: &JsString, root: &JsString, thread: JsString) -> Work<Value> {
         let input = self

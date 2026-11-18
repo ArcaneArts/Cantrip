@@ -16,7 +16,10 @@ use crate::{
     chat_content::Scope,
     config::Config,
     encryption::Service,
-    history::live::observation::{Observer, Runtime as _},
+    history::{
+        live::observation::{Observer, Runtime as _},
+        managed::{coordinator::History, sources},
+    },
     http::checked,
     inference::admission::Source,
     metadata::{Abort, Signal},
@@ -56,6 +59,7 @@ pub(crate) struct Turns {
     encryption: Arc<Service>,
     active: Sessions,
     receipts: receipt::Client,
+    history: History,
 }
 
 struct Active {
@@ -165,12 +169,14 @@ impl Turns {
         encryption: Arc<Service>,
         configuration: Arc<Mutex<Config>>,
         generation: String,
+        history: History,
     ) -> Result<Self> {
         Ok(Self {
             preparation,
             encryption,
             active: Arc::default(),
             receipts: receipt::Client::new(configuration, generation)?,
+            history,
         })
     }
 
@@ -306,9 +312,6 @@ impl Turns {
         } else {
             (id(&command["prompt"], "native turn prompt")?, None)
         };
-        let emit = protection
-            .as_ref()
-            .map_or(emit.clone(), |protection| protection.attach(emit));
         let prepared = self
             .preparation
             .prepare(&params::preparation(&command), Intent::Configure)
@@ -425,6 +428,23 @@ impl Turns {
                     signal.check()?;
                     prepared.thread.assert_current(runtime)?;
                 }
+                let canonical = root
+                    .as_ref()
+                    .filter(|_| command["contextKind"] == "project")
+                    .map(|root| {
+                        self.history.capture_outputs(
+                            sources::Input {
+                                chat_id: key.2.clone(),
+                                thread_id: thread.clone(),
+                                runtime: runtime.history(),
+                                provenance: Some(json!({
+                                    "kind": "command", "operationId": root.operation,
+                                    "operationGeneration": root.generation,
+                                })),
+                            },
+                            transport.clone(),
+                        )
+                    });
                 if let Err(error) = execution.dispatched() {
                     execution.rejected()?;
                     return Err(error);
@@ -485,6 +505,14 @@ impl Turns {
                     active.control.get().unwrap().published(result.is_ok());
                     result
                 };
+                let (emit, publish) = match (protection.as_ref(), canonical) {
+                    (Some(protection), Some(identity)) => {
+                        let (emit, publish) = protection.publish_canonical(emit, identity);
+                        (emit, Some(publish))
+                    }
+                    (Some(protection), None) => (protection.attach(emit), None),
+                    (None, _) => (emit, None),
+                };
                 let observe = async {
                     let result =
                         output::collect(&mut events, &transport, thread, &turn, &emit).await;
@@ -492,17 +520,29 @@ impl Turns {
                     result
                 };
                 let (result, applied) = tokio::join!(observe, applied);
-                if transport.check().is_err() {
-                    runtime.retired().await?;
+                drop(emit);
+                let settled = async {
+                    if transport.check().is_err() {
+                        runtime.retired().await?;
+                    }
+                    execution.settled().await?;
+                    bound?;
+                    let settled = result?;
+                    if let Some(receipt) = &receipt {
+                        receipt.observed(&turn, Some(settled.status)).await?;
+                    }
+                    applied?;
+                    settled.result
                 }
-                execution.settled().await?;
-                bound?;
-                let settled = result?;
-                if let Some(receipt) = &receipt {
-                    receipt.observed(&turn, Some(settled.status)).await?;
-                }
-                applied?;
-                settled.result
+                .await;
+                let published = match publish {
+                    Some(publish) => publish.await,
+                    None => Ok(()),
+                };
+                settled.and_then(|value| {
+                    published?;
+                    Ok(value)
+                })
             }
             .await;
             subscription.close();

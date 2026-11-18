@@ -3,12 +3,13 @@ use super::{Emit, protected_mode};
 use crate::{
     chat_content::Scope,
     encryption::Service,
+    history::live::identity,
     http::checked,
     native_items::{array, concat, join, text},
 };
 use anyhow::{Context, Result, anyhow, bail};
 use cantrip_crypto::content::{Communication, decrypt_communication, encrypt_communication};
-use cantrip_history::{canonical::open_message, content::Encryption};
+use cantrip_history::{canonical::open_message, content::Encryption, projection::Work};
 use cantrip_wire::{JsString, Value, value::json};
 use sha2::{Digest, Sha256};
 use std::sync::{Arc, Mutex};
@@ -103,32 +104,79 @@ impl Protected {
         let protection = self.clone();
         Arc::new(move |event| {
             let protected = protection
-                .event(&event)
+                .event(&event, None)
                 .map_err(|_| anyhow!("The worker could not protect a chat event."))?;
             downstream(protected)
         })
     }
 
-    fn event(&self, event: &Value) -> Result<Value> {
+    pub(super) fn publish_canonical(
+        self: &Arc<Self>,
+        downstream: Emit,
+        identity: identity::Managed,
+    ) -> (Emit, Work<()>) {
+        let (send, mut receive) = tokio::sync::mpsc::unbounded_channel::<Value>();
+        let emit: Emit = Arc::new(move |event| {
+            send.send(event)
+                .map_err(|_| anyhow!("Protected chat publication ended."))
+        });
+        let protection = self.clone();
+        let work = cantrip_transport::lifecycle::owned(async move {
+            let mut error = None;
+            while let Some(event) = receive.recv().await {
+                let result = async {
+                    let resolved = if event["type"] == "agent.message" {
+                        identity
+                            .resolve(json!({"kind": "message", "message": event["message"]}))
+                            .await?
+                    } else {
+                        None
+                    };
+                    downstream(protection.event(&event, resolved.as_ref())?)
+                }
+                .await;
+                if let Err(cause) = result {
+                    error.get_or_insert(cause);
+                }
+            }
+            error.map_or(Ok(()), |_| {
+                Err(anyhow!(
+                    "The worker could not publish canonical chat output."
+                ))
+            })
+        });
+        (emit, work)
+    }
+
+    fn event(&self, event: &Value, identity: Option<&Value>) -> Result<Value> {
         match event["type"].as_str() {
             Some("agent.message") => {
                 let message = &event["message"];
                 let turn = &message["correlation"]["turnId"];
-                let key = concat(&[
-                    "agent-message:root:".into(),
-                    turn.as_js_string()
-                        .cloned()
-                        .unwrap_or_else(|| "turn".into()),
-                    ":".into(),
-                    text(&message["id"])?.clone(),
-                ]);
-                let id = event_id(text(&self.chat)?, &key);
-                let idempotency = if key.len() <= 200 {
-                    key
+                let (id, idempotency, mode) = if let Some(identity) = identity {
+                    (
+                        identity["id"].clone(),
+                        identity["idempotencyKey"].clone(),
+                        identity["mode"].clone(),
+                    )
                 } else {
-                    let digest = Sha256::digest(key.lossy().as_bytes());
-                    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
-                    format!("agent-output:sha256:{hex}").into()
+                    let key = concat(&[
+                        "agent-message:root:".into(),
+                        turn.as_js_string()
+                            .cloned()
+                            .unwrap_or_else(|| "turn".into()),
+                        ":".into(),
+                        text(&message["id"])?.clone(),
+                    ]);
+                    let id = event_id(text(&self.chat)?, &key);
+                    let idempotency = if key.len() <= 200 {
+                        key
+                    } else {
+                        let digest = Sha256::digest(key.lossy().as_bytes());
+                        let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+                        format!("agent-output:sha256:{hex}").into()
+                    };
+                    (json!(id), json!(idempotency), Value::Null)
                 };
                 let mut content =
                     json!({"type": "text", "text": message["text"], "phase": message["phase"]});
@@ -142,7 +190,7 @@ impl Protected {
                     content["correlation"] = message["correlation"].clone();
                 }
                 let protected = self.scope.protect(&json!({
-                    "id": id, "role": "assistant", "content": vec![content], "idempotencyKey": idempotency,
+                    "id": id, "role": "assistant", "mode": mode, "content": vec![content], "idempotencyKey": idempotency,
                 }))?;
                 Ok(
                     json!({"type": "agent.protected-message", "message": protected, "telemetry": telemetry}),
