@@ -1,6 +1,6 @@
 //! Worker-owned credential migration and local account retirement.
 use crate::{
-    codex::{catalog::account_home, discovery, managed::Worker},
+    codex::{account_auth, catalog::account_home, discovery, managed::Worker},
     encryption::Service,
     http::checked,
     protected_secrets::{protect_provider_credential, provider_subject_blind_index},
@@ -29,6 +29,7 @@ pub fn supports(command: &str) -> bool {
 #[derive(Clone)]
 pub struct Commands {
     codex: Worker,
+    account_auth: account_auth::Commands,
     access: Access,
     encryption: Arc<Service>,
     data: PathBuf,
@@ -38,6 +39,7 @@ pub struct Commands {
 impl Commands {
     pub fn new(
         codex: Worker,
+        account_auth: account_auth::Commands,
         access: Access,
         encryption: Arc<Service>,
         data: PathBuf,
@@ -45,6 +47,7 @@ impl Commands {
     ) -> Self {
         Self {
             codex,
+            account_auth,
             access,
             encryption,
             data,
@@ -101,11 +104,14 @@ impl Commands {
                 _ => bail!("Unsupported provider credential command."),
             };
             this.codex
-                .with_retired_account(home, scope, move |retired| {
+                .with_retired_account(home.clone(), scope, move |retired| {
                     Box::pin(async move {
                         let pause = this.access.pause(account);
                         let (retired, ()) = tokio::join!(retired, pause.drain());
                         retired?;
+                        if kind == Kind::ChatGpt {
+                            this.account_auth.retire(&home, clear).await?;
+                        }
                         if clear {
                             discard(&file).await?;
                             return Ok(json!({"accepted":true}));

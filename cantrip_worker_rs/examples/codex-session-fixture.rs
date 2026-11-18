@@ -16,6 +16,8 @@ use std::{
     time::Duration,
 };
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+#[path = "support/codex_auth_peer.rs"]
+mod auth_peer;
 #[path = "support/codex_session_driver.rs"]
 mod driver;
 #[path = "support/managed_runtime_cases.rs"]
@@ -214,6 +216,23 @@ impl Fixture {
 async fn main() -> Result<()> {
     #[cfg(target_os = "linux")]
     codex_utils_pty::init_spawn_helper(std::env::args_os());
+    if std::env::args().any(|arg| arg == "model_provider=\"openai\"")
+        && !std::env::args().any(|arg| arg.starts_with("ws://"))
+        && let (Ok(cases), Some(home)) = (
+            std::env::var("CANTRIP_TEST_AUTH_FIXTURE"),
+            std::env::var_os("CODEX_HOME"),
+        )
+    {
+        let cases = parse_json_text(&cases).map_err(|error| anyhow!("{}", error.lossy()))?;
+        let home = PathBuf::from(home);
+        if let Some(mode) = home
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| cases[name].as_str())
+        {
+            return auth_peer::run(mode, &home).await;
+        }
+    }
     #[cfg(unix)]
     if std::env::var_os("CANTRIP_CATALOG_FIXTURE").is_some()
         && std::env::args()

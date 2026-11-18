@@ -207,6 +207,12 @@ impl Worker {
         lock
     }
 
+    pub(crate) async fn lock_account_home(&self, home: &Path) -> OwnedMutexGuard<()> {
+        self.home_lock(&cantrip_config::resolve(&self.0.host.cwd, home))
+            .lock_owned()
+            .await
+    }
+
     async fn lock_homes(&self, home: &Home) -> Vec<OwnedMutexGuard<()>> {
         let mut paths = vec![home.runtime.as_path()];
         paths.extend(home.configuration.as_deref());

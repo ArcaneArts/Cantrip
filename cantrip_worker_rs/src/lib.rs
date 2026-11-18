@@ -22,6 +22,7 @@ pub mod platform;
 pub mod protected_content;
 pub mod protected_secrets;
 pub mod provider_access;
+mod provider_auth_observer;
 mod provider_credentials;
 pub mod replicas;
 pub mod repository_operations;

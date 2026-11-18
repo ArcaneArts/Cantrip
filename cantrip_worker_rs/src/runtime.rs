@@ -155,17 +155,18 @@ async fn cycle(
     heartbeat["encryption"] = encryption.status();
     http::enroll(&client, &mut config, &heartbeat, logs).await?;
     let catalog_version = codex_compatibility["version"]["raw"].clone();
+    let codex_host = crate::codex::managed::Host {
+        binary: config.codex_installation.binary.clone(),
+        cwd: cwd.into(),
+        environment: environment
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+        compatibility: codex_compatibility.clone(),
+        logs: Some(logs.clone()),
+    };
     let codex = crate::codex::managed::Worker::bound_to_encryption(
-        crate::codex::managed::Host {
-            binary: config.codex_installation.binary.clone(),
-            cwd: cwd.into(),
-            environment: environment
-                .iter()
-                .map(|(key, value)| (key.clone(), value.clone()))
-                .collect(),
-            compatibility: codex_compatibility.clone(),
-            logs: Some(logs.clone()),
-        },
+        codex_host.clone(),
         config.data_directory.clone(),
         worker.clone(),
         generation.clone().into(),
@@ -173,6 +174,19 @@ async fn cycle(
     );
     let data_directory = config.data_directory.clone();
     let configuration = Arc::new(Mutex::new(config));
+    let outgoing = Arc::new(Outbound::default());
+    let auth_observations = crate::provider_auth_observer::Observer::new({
+        let outgoing = outgoing.clone();
+        Arc::new(move |notification| {
+            let _ = outgoing.notification(notification);
+        })
+    });
+    let account_auth = crate::codex::account_auth::Commands::new(
+        codex_host,
+        data_directory.clone(),
+        codex.clone(),
+        auth_observations.clone(),
+    );
     let provider_access = crate::provider_access::Access::new(
         configuration.clone(),
         encryption.clone(),
@@ -180,6 +194,7 @@ async fn cycle(
     );
     let provider_credentials = crate::provider_credentials::Commands::new(
         codex.clone(),
+        account_auth.clone(),
         provider_access.clone(),
         encryption.clone(),
         data_directory.clone(),
@@ -193,7 +208,6 @@ async fn cycle(
         crate::codex::catalog::global_skill_root(cwd, environment),
         catalog_version,
     );
-    let outgoing = Arc::new(Outbound::default());
     let worktree_observations = Arc::new(crate::git::worktrees::observations::Observations::new(
         worktrees.clone(),
         {
@@ -234,6 +248,7 @@ async fn cycle(
         requests,
         stop: stop_rx.clone(),
         generation,
+        on_ready: Arc::new(move || auth_observations.reemit()),
     };
     let mut connection_stop = stop_rx.clone();
     let mut connection_task = tokio::spawn(async move {
@@ -284,6 +299,14 @@ async fn cycle(
                     let credentials=provider_credentials.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
                     commands.spawn(async move {
                         let result=credentials.execute(request["command"].clone()).await;
+                        finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
+                if crate::codex::account_auth::supports(command) {
+                    let auth=account_auth.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
+                    commands.spawn(async move {
+                        let result=auth.execute(request["command"].clone()).await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);
                     });
                     continue;
@@ -400,6 +423,7 @@ async fn cycle(
     worktree_observations.close().await;
     timers.abort_all();
     while timers.join_next().await.is_some() {}
+    let auth_stopped = account_auth.close().await;
     let codex_stopped = codex.close().await;
     let provider_access_closed = provider_access.close().await;
     let history_stopped = history.stop().await;
@@ -429,6 +453,7 @@ async fn cycle(
     terminals_closed?;
     github_closed?;
     encryption_closed?;
+    auth_stopped?;
     codex_stopped?;
     provider_access_closed?;
     for pending in history_stopped? {

@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { once } from "node:events";
+import { EventEmitter, once } from "node:events";
 import {
   mkdir,
   mkdtemp,
@@ -26,9 +26,17 @@ import {
   encryptProtectedSecret,
   wrapComponentKeyForWorker,
 } from "../../packages/crypto/dist/index.js";
-import { chatGptModelInventorySchema } from "../../packages/protocol/dist/index.js";
+import {
+  chatGptModelInventorySchema,
+  codexAuthStatusSchema,
+  codexDeviceLoginSchema,
+  providerAuthStatusObservationSchema,
+} from "../../packages/protocol/dist/index.js";
 import { providerCredentialProtectedContentSchema } from "../../packages/protocol/dist/protected-secrets.js";
-import { quotaSnapshotFromRateLimits } from "../../cantrip_worker/src/codex/rate-limits.ts";
+import {
+  quotaSnapshotFromRateLimits,
+  weeklyUsageFromRateLimits,
+} from "../../cantrip_worker/src/codex/rate-limits.ts";
 import { codexAccountHome } from "../../cantrip_worker/src/codex/account-home.ts";
 import {
   captureLegacyProviderCredential,
@@ -64,6 +72,14 @@ const portable = "portable-account",
 const home = (id) => "fixture-home-" + id;
 const data = path.join(root, "profile");
 const homeHash = (id) => createHash("sha256").update(home(id)).digest("hex");
+const authSuccess = "auth-success",
+  authPending = "auth-pending",
+  authFailure = "auth-failure";
+const authCases = {
+  [homeHash(authSuccess)]: "success",
+  [homeHash(authPending)]: "pending",
+  [homeHash(authFailure)]: "failure",
+};
 const inventoryItem = {
   id: " native-model ",
   model: "model",
@@ -281,6 +297,7 @@ const [connected, child] = [
       CANTRIP_CODEX_BIN: path.resolve(values.peer),
       CANTRIP_TEST_CODEX: path.resolve(values.codex),
       CANTRIP_CATALOG_FIXTURE: "1",
+      CANTRIP_TEST_AUTH_FIXTURE: JSON.stringify(authCases),
       CANTRIP_CODEX_SESSION_FIXTURE: JSON.stringify(codexFixture),
     },
   }),
@@ -292,12 +309,29 @@ for (const stream of [child.stdout, child.stderr])
     output = (output + chunk).slice(-64_000);
   });
 const pending = new Map();
-async function within(work) {
+const observations = [];
+const notifications = new EventEmitter();
+function track(socket) {
+  socket.on("message", (raw) => {
+    const frame = JSON.parse(raw);
+    if (frame.kind === "response") pending.get(frame.requestId)?.(frame);
+    if (
+      frame.kind === "notification" &&
+      frame.notification.type === "provider.auth.status.observed"
+    ) {
+      observations.push(
+        providerAuthStatusObservationSchema.parse(frame.notification),
+      );
+      notifications.emit("observation");
+    }
+  });
+}
+async function within(work, timeoutMs = 25_000) {
   let timer;
   const limit = new Promise((_, reject) => {
     timer = setTimeout(
       () => reject(new Error("Catalog fixture timed out\n" + output)),
-      25_000,
+      timeoutMs,
     );
   });
   try {
@@ -313,11 +347,8 @@ async function within(work) {
   }
 }
 try {
-  const [socket] = await within(connected);
-  socket.on("message", (raw) => {
-    const frame = JSON.parse(raw);
-    if (frame.kind === "response") pending.get(frame.requestId)?.(frame);
-  });
+  let [socket] = await within(connected);
+  track(socket);
   async function command(command) {
     const requestId = randomUUID();
     const result = new Promise((resolve) => pending.set(requestId, resolve));
@@ -356,6 +387,32 @@ try {
       credentialHomeKey: home(providerAccountId),
       ...extra,
     });
+  }
+  function accountAuth(type, providerAccountId, extra = {}) {
+    return command({
+      type: "codex.auth." + type,
+      providerId,
+      providerAccountId,
+      credentialHomeKey: home(providerAccountId),
+      ...extra,
+    });
+  }
+  async function expectObservation(observationId, state, after = 0, timeoutMs) {
+    return within(
+      (async () => {
+        for (;;) {
+          const result = observations.find(
+            (observation) =>
+              observation.observationId === observationId &&
+              observation.sequence > after &&
+              observation.status.state === state,
+          );
+          if (result) return result;
+          await once(notifications, "observation");
+        }
+      })(),
+      timeoutMs,
+    );
   }
   const [a, b] = await Promise.all([catalog(portable), catalog(portable)]);
   for (const response of [a, b]) {
@@ -514,6 +571,174 @@ try {
     });
     await assert.rejects(readFile(localAuth), { code: "ENOENT" });
   }
+
+  const signedOut = codexAuthStatusSchema.parse({
+    authenticated: false,
+    authMode: null,
+    email: null,
+    planType: null,
+    weeklyUsage: null,
+  });
+  const actualLocalStatus = await accountAuth("status", "bundled-codex-auth");
+  assert.equal(
+    actualLocalStatus.ok,
+    true,
+    JSON.stringify(actualLocalStatus.error),
+  );
+  assert.deepEqual(actualLocalStatus.result, signedOut);
+  const device = codexDeviceLoginSchema.parse({
+    loginId: "device-fixture",
+    verificationUrl: "https://example.invalid/verify",
+    userCode: "FIXTURE-DEVICE-CODE",
+  });
+  const initial = await accountAuth("status", authSuccess, {
+    providerId: home(authSuccess),
+    credentialHomeKey: undefined,
+  });
+  assert.equal(initial.ok, true, JSON.stringify(initial.error));
+  assert.deepEqual(initial.result, signedOut);
+
+  const successId = randomUUID();
+  const login = await accountAuth("login.start", authSuccess, {
+    observationId: successId,
+  });
+  assert.equal(login.ok, true, JSON.stringify(login.error));
+  assert.deepEqual(login.result, device);
+  const initialObservation = await expectObservation(successId, "pending");
+  assert.equal(
+    (await accountAuth("status", authSuccess)).result.loginPending,
+    true,
+  );
+  await writeFile(
+    path.join(
+      codexAccountHome(data, home(authSuccess)),
+      "authorize-fixture-device",
+    ),
+    "",
+  );
+  const authenticated = await expectObservation(
+    successId,
+    "authenticated",
+    0,
+    2500,
+  );
+  assert.equal(initialObservation.sequence, 1);
+  assert.equal(authenticated.sequence, 2);
+  const weeklyUsage = weeklyUsageFromRateLimits({
+    rateLimitsByLimitId: {
+      codex: {
+        primary: null,
+        secondary: {
+          usedPercent: 42,
+          resetsAt: 2_000_000_000,
+          windowDurationMins: 10_080,
+        },
+      },
+    },
+  });
+  assert.deepEqual(authenticated.status, {
+    state: "authenticated",
+    authMode: "chatgpt",
+    email: "device@example.invalid",
+    planType: "plus",
+    weeklyUsage,
+    failureCode: null,
+  });
+  const status = await accountAuth("status", authSuccess);
+  assert.deepEqual(
+    status.result,
+    codexAuthStatusSchema.parse({
+      authenticated: true,
+      authMode: "chatgpt",
+      email: "device@example.invalid",
+      planType: "plus",
+      weeklyUsage,
+    }),
+  );
+
+  const failedId = randomUUID();
+  assert.equal(
+    (await accountAuth("login.start", authFailure, { observationId: failedId }))
+      .ok,
+    true,
+  );
+  assert.equal(
+    (await expectObservation(failedId, "expired")).status.failureCode,
+    "authorization-expired",
+  );
+  const expired = await accountAuth("status", authFailure);
+  assert.deepEqual(expired.result, {
+    ...signedOut,
+    loginError: "The ChatGPT sign-in code expired.",
+  });
+
+  const pendingId = randomUUID();
+  assert.equal(
+    (
+      await accountAuth("login.start", authPending, {
+        observationId: pendingId,
+      })
+    ).ok,
+    true,
+  );
+  assert.equal(
+    (await accountAuth("status", authPending)).result.loginPending,
+    true,
+  );
+  assert.deepEqual((await accountAuth("logout", authPending)).result, {
+    accepted: true,
+  });
+  assert.equal(
+    (await expectObservation(pendingId, "cancelled")).status.failureCode,
+    "authorization-cancelled",
+  );
+  assert.deepEqual(
+    (await accountAuth("status", authPending)).result,
+    signedOut,
+  );
+
+  const clearId = randomUUID();
+  assert.equal(
+    (await accountAuth("login.start", authPending, { observationId: clearId }))
+      .ok,
+    true,
+  );
+  const pendingFile = path.join(
+    codexAccountHome(data, home(authPending)),
+    "auth.json",
+  );
+  await writeFile(pendingFile, chatgptTokens);
+  assert.deepEqual(
+    (await credentials("account.clear", authPending, "chatgpt")).result,
+    { accepted: true },
+  );
+  await assert.rejects(readFile(pendingFile), { code: "ENOENT" });
+  await expectObservation(clearId, "cancelled");
+  assert.deepEqual(
+    (await accountAuth("status", authPending)).result,
+    signedOut,
+  );
+
+  const reconnected = once(sockets, "connection");
+  socket.terminate();
+  [socket] = await within(reconnected);
+  track(socket);
+  const replay = await expectObservation(
+    successId,
+    "authenticated",
+    authenticated.sequence,
+  );
+  assert.equal(replay.sequence, authenticated.sequence + 1);
+  assert.equal(replay.expiresAt, authenticated.expiresAt);
+  assert.deepEqual(replay.status, authenticated.status);
+  for (const secret of [
+    device.userCode,
+    "fixture-authentication-private-error",
+    "fixture-authentication-stderr-token",
+  ]) {
+    assert.equal(JSON.stringify(observations).includes(secret), false);
+    assert.equal(output.includes(secret), false);
+  }
   assert.equal(httpFailure, undefined);
   assert.equal(output.includes(secret), false);
   child.stdin.end();
@@ -537,6 +762,8 @@ try {
       nodeCredentialOracle: true,
       identityCheckedPurge: true,
       scopedRuntimeAndLeaseRetirement: true,
+      chatgptDeviceAuth: true,
+      authObservationReplay: true,
       realKeeper: true,
       providerCalls: 0,
     }),
