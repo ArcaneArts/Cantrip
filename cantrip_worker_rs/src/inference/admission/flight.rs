@@ -29,6 +29,12 @@ impl Failure {
         {
             return error.clone().into();
         }
+        if let Some(error) = self
+            .0
+            .downcast_ref::<crate::provider_access::RequestError>()
+        {
+            return anyhow::Error::new(*error);
+        }
         if let Some(error) = self.0.downcast_ref::<super::AdmissionError>() {
             return error.clone().into();
         }

@@ -154,6 +154,7 @@ async fn cycle(
     });
     heartbeat["encryption"] = encryption.status();
     http::enroll(&client, &mut config, &heartbeat, logs).await?;
+    let catalog_version = codex_compatibility["version"]["raw"].clone();
     let codex = crate::codex::managed::Worker::bound_to_encryption(
         crate::codex::managed::Host {
             binary: config.codex_installation.binary.clone(),
@@ -170,7 +171,21 @@ async fn cycle(
         generation.clone().into(),
         encryption.clone(),
     );
+    let data_directory = config.data_directory.clone();
     let configuration = Arc::new(Mutex::new(config));
+    let provider_access = crate::provider_access::Access::new(
+        configuration.clone(),
+        encryption.clone(),
+        client.clone(),
+    );
+    let model_catalog = crate::codex::catalog::Catalog::new(
+        codex.clone(),
+        provider_access.clone(),
+        encryption.clone(),
+        data_directory,
+        crate::codex::catalog::global_skill_root(cwd, environment),
+        catalog_version,
+    );
     let outgoing = Arc::new(Outbound::default());
     let worktree_observations = Arc::new(crate::git::worktrees::observations::Observations::new(
         worktrees.clone(),
@@ -250,6 +265,14 @@ async fn cycle(
                 let kind=command["type"].as_str().unwrap_or("unknown");
                 let began=std::time::Instant::now();
                 logs.event("debug","Worker command dispatched",json!({"event":"worker.command.dispatched","operation":kind,"requestId":request["requestId"],"workerId":worker}));
+                if kind==crate::codex::catalog::COMMAND {
+                    let catalog=model_catalog.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
+                    commands.spawn(async move {
+                        let result=catalog.execute(request["command"].clone()).await;
+                        finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
                 if kind=="worker.encryption.refresh" {
                     let requested=RequestedGrant{component:command["component"].as_str().unwrap().to_owned(),key_revision:command["keyRevision"].as_u64().unwrap()};
                     let credential=configuration.lock().unwrap().token.clone();
@@ -363,6 +386,7 @@ async fn cycle(
     timers.abort_all();
     while timers.join_next().await.is_some() {}
     let codex_stopped = codex.close().await;
+    let provider_access_closed = provider_access.close().await;
     let history_stopped = history.stop().await;
     let encryption_closed = encryption.close().await;
     while let Some(result) = commands.join_next().await {
@@ -391,6 +415,7 @@ async fn cycle(
     github_closed?;
     encryption_closed?;
     codex_stopped?;
+    provider_access_closed?;
     for pending in history_stopped? {
         logs.event("warn", "Native history source frames remain unsaved", json!({"event":"codex.history.source-unsaved","subsystem":"codex","operation":"shutdown","chatId":pending["chatId"],"threadId":pending["threadId"],"counts":json!({"pendingRecords":pending["pendingRecords"]})}));
     }

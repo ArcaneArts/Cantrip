@@ -21,6 +21,7 @@ pub mod native_items;
 pub mod platform;
 pub mod protected_content;
 pub mod protected_secrets;
+pub mod provider_access;
 pub mod replicas;
 pub mod repository_operations;
 pub mod routing;

@@ -163,6 +163,9 @@ impl Session {
     pub fn process_exited(&self) -> bool {
         self.0.exited.load(Ordering::Acquire)
     }
+    pub fn remember_secret(&self, secret: JsString) {
+        self.0.requests.remember_secret(secret);
+    }
     pub fn pending_count(&self) -> usize {
         self.0.requests.pending_count()
     }

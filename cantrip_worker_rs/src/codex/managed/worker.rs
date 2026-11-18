@@ -23,6 +23,7 @@ struct Key {
 struct Home {
     runtime: PathBuf,
     configuration: Option<PathBuf>,
+    account_scope: Option<(JsString, JsString)>,
 }
 
 #[derive(Clone)]
@@ -101,6 +102,7 @@ impl Worker {
                 profile: launch.profile.id.clone(),
             };
             let home = Home {
+                account_scope: launch.profile.account_scope.clone(),
                 runtime: cantrip_config::resolve(&this.0.host.cwd, &launch.profile.codex_home),
                 configuration: launch
                     .profile

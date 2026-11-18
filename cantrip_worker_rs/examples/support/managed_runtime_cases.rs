@@ -36,6 +36,7 @@ fn launch(id: &str, home: PathBuf) -> Launch {
         },
         on_revoked: None,
         prepare_home: None,
+        external_auth: None,
         observe: Arc::new(|_| Ok(())),
     }
 }

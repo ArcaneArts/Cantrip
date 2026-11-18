@@ -1,5 +1,6 @@
 //! Native Codex integration. Discovery does not admit execution or model input.
 pub mod admission;
+pub mod catalog;
 pub mod diagnostics;
 pub mod discovery;
 pub mod managed;

@@ -6,6 +6,7 @@ use crate::codex::{discovery, process_transport, provider_errors::Policy};
 pub struct Profile {
     pub id: JsString,
     pub codex_home: PathBuf,
+    pub account_scope: Option<(JsString, JsString)>,
     pub configuration_home: Option<PathBuf>,
     pub model: Option<JsString>,
     pub model_catalog: Option<PathBuf>,
@@ -22,6 +23,7 @@ impl Profile {
         Self {
             id,
             codex_home,
+            account_scope: None,
             configuration_home: None,
             model: None,
             model_catalog: None,
@@ -127,7 +129,8 @@ impl Host {
     }
 
     pub(super) async fn initialize(&self, session: &Session, profile: &Profile) -> Result<()> {
-        let experimental = self.compatibility["initialize"]["experimentalApi"] == true;
+        let experimental = profile.external_login.is_some()
+            || self.compatibility["initialize"]["experimentalApi"] == true;
         session
             .initialize("cantrip", "Cantrip", "0.0.0", experimental)
             .await?;

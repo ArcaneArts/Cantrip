@@ -31,11 +31,18 @@ const RPC_TIMEOUT: Duration = Duration::from_secs(120);
 pub type PrepareHome = Arc<dyn Fn(PathBuf) -> Work<()> + Send + Sync>;
 pub type Observe = Arc<dyn Fn(Event) -> Result<()> + Send + Sync>;
 
+pub trait ExternalAuth: Send + Sync {
+    fn login(&self) -> Work<Option<Value>>;
+    fn refresh(&self, params: Value) -> Work<Value>;
+    fn reauthenticate(&self, session: Session) -> Work<()>;
+}
+
 pub struct Launch {
     pub profile: Profile,
     pub private_inference: Hooks,
     pub on_revoked: Option<OnRevoked>,
     pub prepare_home: Option<PrepareHome>,
+    pub external_auth: Option<Arc<dyn ExternalAuth>>,
     pub observe: Observe,
 }
 
@@ -46,6 +53,7 @@ struct Inner {
     adapter: Adapter,
     router: Router,
     retirement: Promise<()>,
+    external_auth: Option<Arc<dyn ExternalAuth>>,
     closing: Mutex<Option<Promise<()>>>,
 }
 
@@ -106,10 +114,11 @@ impl Runtime {
 
     async fn start(host: Host, manager: Manager, launch: Launch) -> Result<Self> {
         let Launch {
-            profile,
+            mut profile,
             private_inference,
             on_revoked,
             prepare_home,
+            external_auth,
             observe,
         } = launch;
         let home = cantrip_config::resolve(&host.cwd, &profile.codex_home);
@@ -118,6 +127,9 @@ impl Runtime {
             prepare(home).await?;
         }
 
+        if let Some(auth) = &external_auth {
+            profile.external_login = auth.login().await?;
+        }
         let adapter = Adapter::new(manager, on_revoked)?;
         let resources = async {
             let environment = adapter.prepare_native_launch().await?;
@@ -151,6 +163,8 @@ impl Runtime {
             observe,
             host.logs.clone(),
             profile.id.clone(),
+            session.clone(),
+            external_auth.clone(),
         ));
         let runtime = Self(Arc::new(Inner {
             id: profile.id.clone(),
@@ -159,6 +173,7 @@ impl Runtime {
             adapter,
             router,
             retirement,
+            external_auth,
             closing: Mutex::new(None),
         }));
         if let Err(error) = host
@@ -214,6 +229,18 @@ impl Runtime {
         })
     }
 
+    pub fn reauthenticate_external(&self) -> Work<()> {
+        match self.assert_live().and_then(|()| {
+            self.0
+                .external_auth
+                .as_ref()
+                .ok_or_else(|| anyhow!("Portable ChatGPT authentication is not active."))
+        }) {
+            Ok(auth) => auth.reauthenticate(self.0.session.clone()),
+            Err(error) => Box::pin(async { Err(error) }),
+        }
+    }
+
     pub fn send(&self, message: Value) -> Result<()> {
         self.assert_live()?;
         self.0.session.send(message)
@@ -252,6 +279,8 @@ async fn pump(
     observe: Observe,
     logs: Option<Arc<Logs>>,
     id: JsString,
+    session: Session,
+    external_auth: Option<Arc<dyn ExternalAuth>>,
 ) -> Result<()> {
     let mut callbacks = JoinSet::new();
     let started = Instant::now();
@@ -260,6 +289,16 @@ async fn pump(
             Some(_) = callbacks.join_next(), if !callbacks.is_empty() => {},
             next = events.recv() => {
                 let Some(event_data) = next else { return router.close().await; };
+                if let EventKind::Message(message) = &event_data.kind
+                    && message["method"] == "account/chatgptAuthTokens/refresh"
+                    && let Some(request) = message.get("id") {
+                    let request = request.clone();
+                    let params = message["params"].clone();
+                    let session = session.clone();
+                    let auth = external_auth.clone();
+                    callbacks.spawn(async move { refresh(auth, session, request, params).await });
+                    continue;
+                }
                 let exited = matches!(event_data.kind, EventKind::ProcessExited(_));
                 if matches!(event_data.kind, EventKind::TransportLost(_)) {
                     event(&logs, "warn", "Codex app-server transport closed", &id, "connect-websocket", "disconnected", started);
@@ -296,6 +335,25 @@ async fn pump(
             }
         }
     }
+}
+
+async fn refresh(auth: Option<Arc<dyn ExternalAuth>>, session: Session, id: Value, params: Value) {
+    let result = match auth {
+        Some(auth) => auth.refresh(params).await,
+        None => Err(anyhow!("Portable ChatGPT authentication is not active.")),
+    };
+    let reply = match result {
+        Ok(result) => {
+            if let Some(secret) = result["accessToken"].as_js_string() {
+                session.remember_secret(secret.clone());
+            }
+            json!({"id":id,"result":result})
+        }
+        Err(error) => {
+            json!({"id":id,"error":json!({"code":-32602,"message":crate::error::message(&error)})})
+        }
+    };
+    let _ = session.send(reply);
 }
 
 fn failed_start<T>(error: anyhow::Error, cleanup: Result<()>) -> Result<T> {
