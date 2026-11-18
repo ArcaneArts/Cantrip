@@ -3967,3 +3967,32 @@ idle and active bindings, authenticated context, concurrent calls,
 cancellation, oversized responses and invalid connection documents.
 The native broker, managed configuration selection, CUA and Streamable HTTP
 hosts remain open. Production still selects Node.
+
+## 69. Native Cantrip MCP binding lifecycle
+
+Reference commit `df41181140529ee47ac29ea91a589e0a2917fe32` (#3231).
+
+The Rust worker can prepare and revoke a private loopback attachment. The
+MCP child can authenticate while idle. The worker admits calls once an
+execution lane matches the attachment's owner, chat, placement and permission
+profile. An activation identifies a specific admission, so releasing an
+earlier activation leaves its successor active even when both use the same
+lane ID. The connection file uses the existing format and is removed on
+revocation, expiry or shutdown.
+
+The initial broker operations are `context.get` and `tool.help`. The broker
+checks the declared operation scope before sending context requests with the
+current worker credential. The server validates the request against its
+current execution context. The broker serves tool help from the catalog used
+by the native child. It negotiates the binding protocol and supplies an opaque
+routing handle when a version-one context request requires it.
+
+Local macOS ARM64 validation exercised the native MCP child through the
+native broker against the Rust server's authenticated context endpoint with
+PGlite. It checked idle and active calls, placement and owner mismatches, scope
+restrictions, stale-binding replies, replacement, revocation and cleanup. The
+Node-broker differential also exercised the native child's wire behavior. The
+legacy version-one upstream exchange still needs native interoperability
+coverage. Production managed-thread preparation, additional broker operations,
+Streamable HTTP, CUA and CLI attachment remain open. Production still
+selects Node.

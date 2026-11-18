@@ -12,7 +12,7 @@ use tokio::{
 // Beyond the largest supported arguments (including escaped UTF-16).
 const MAXIMUM_LINE: usize = 8 * 1024 * 1024;
 
-fn catalog() -> &'static Value {
+pub(super) fn catalog() -> &'static Value {
     static CATALOG: OnceLock<Value> = OnceLock::new();
     CATALOG.get_or_init(|| {
         let mut bytes = String::new();

@@ -9,6 +9,8 @@ import { gzipSync, gunzipSync } from "node:zlib";
 import {
   CANTRIP_MCP_OPERATIONS,
   CANTRIP_MCP_TOOL_NAMES,
+  cantripMcpBindingSchema,
+  workerCantripMcpServerCapabilitiesSchema,
 } from "../../packages/protocol/dist/index.js";
 import { buildContractManifest } from "../server-rust/contracts.mjs";
 import { createCantripMcpServer } from "../../cantrip_worker/src/mcp/server.ts";
@@ -92,7 +94,21 @@ async function generate() {
   );
   const input = (name) => schemas[`mcpStdioInput/${name}`];
   const output = (name) => schemas[`mcpStdioOutput/${name}`];
+  const mcpHostSessionClaims = z.discriminatedUnion(
+    "contextKind",
+    cantripMcpBindingSchema.options.map((variant) =>
+      variant.omit({
+        bindingId: true,
+        executionLaneId: true,
+        issuedAt: true,
+        expiresAt: true,
+      }),
+    ),
+  );
+  const capabilities = workerCantripMcpServerCapabilitiesSchema.shape;
   const refinements = new Map([
+    [capabilities.bindingProtocolVersions, "stdio-mcp-capability-unique"],
+    [capabilities.operations, "stdio-mcp-capability-unique"],
     [output("policy_list").shape.data.shape.policies, "stdio-mcp-policy-keys"],
     [input("web_search"), "stdio-mcp-domain-overlap"],
     [input("web_read"), "stdio-mcp-web-read-source"],
@@ -120,8 +136,13 @@ async function generate() {
           "cantripMcpBrokerOperationRequestSchema",
           "cantripAgentOperationResultSchema",
           ...Object.keys(schemas),
+          "cantripMcpBindingSchema",
+          "workerCantripMcpServerCapabilitiesSchema",
+          "cantripMcpToolHelpInputSchema",
+          "cantripMcpContextGetInputSchema",
+          "mcpHostSessionClaims",
         ],
-        { schemas, refinements },
+        { schemas: { ...schemas, mcpHostSessionClaims }, refinements },
       ),
     ],
     [
