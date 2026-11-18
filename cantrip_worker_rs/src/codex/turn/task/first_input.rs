@@ -1,12 +1,12 @@
 //! Transfer the native producer to the server's exact first Goal input.
-use super::super::{RPC_TIMEOUT, Signal, id};
-use crate::codex::{
-    preparation::command::Prepared, private_inference::FirstInput, rpc_requests::Response,
+use super::{
+    super::{RPC_TIMEOUT, Signal, id},
+    cycle::GoalCycle,
 };
+use crate::codex::{preparation::command::Prepared, private_inference::FirstInput};
 use anyhow::{Context, Result, bail};
-use cantrip_history::projection::Work;
 use cantrip_wire::{JsString, Value, value::json};
-use std::time::Duration;
+use std::{future::Future, sync::Arc, time::Duration};
 
 struct Hold<'a> {
     prepared: &'a Prepared,
@@ -21,12 +21,16 @@ impl Drop for Dispatching {
     }
 }
 
-pub(in crate::codex::turn) async fn start(
+pub(in crate::codex::turn) async fn start<F>(
     prepared: &Prepared,
     receipt: &Value,
     signal: &Signal,
-    dispatch: impl FnOnce() -> Result<Work<Response>>,
-) -> Result<Result<Response>> {
+    cycle: Arc<GoalCycle>,
+    dispatch: impl FnOnce() -> F,
+) -> Result<(JsString, Option<Value>)>
+where
+    F: Future<Output = Result<(JsString, Option<Value>)>>,
+{
     let thread = prepared.thread.id();
     let runner = &prepared.runner_generation;
     let router = prepared.runtime.inference_router();
@@ -114,12 +118,15 @@ pub(in crate::codex::turn) async fn start(
         tokio::time::timeout(RPC_TIMEOUT, ready)
             .await
             .context("The native Goal did not settle its previous producer.")??;
-        Ok::<_, anyhow::Error>(dispatch()?.await)
+        let turn = dispatch().await?;
+        // Future native begins now belong to the cycle. Its dispatch will
+        // wait until Core commits this explicit turn's exact outcome.
+        router.activate_task_goal_cycle(thread, &first, cycle);
+        Ok(turn)
     }
     .await;
     // If the native input was sent, cleanup must never replace its outcome or
-    // trigger another dispatch. The first-input reservation stays scoped to the
-    // root while autonomous cycle delivery is wired separately.
+    // trigger another dispatch.
     if prepared.runtime.is_live() && hold.release().await.is_err() {
         let _ = hold.release().await;
     }

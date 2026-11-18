@@ -25,6 +25,7 @@ use std::{
 use tokio::sync::OnceCell;
 
 pub(crate) const COMMAND: &str = "chat.thread.ensure";
+pub(in crate::codex) type Activate = Arc<dyn Fn() -> Result<Option<Activation>> + Send + Sync>;
 
 pub(crate) struct Prepared {
     pub runtime: Runtime,
@@ -263,17 +264,21 @@ impl Ensurer {
     pub(crate) fn activate(&self, prepared: &Prepared, lane: &Value) -> Result<Option<Activation>> {
         self.assert_bound(&prepared.bound)?;
         prepared.thread.assert_current(&prepared.runtime)?;
-        let Some(mut admission) = prepared.admission.clone() else {
-            return Ok(None);
-        };
-        admission["executionLaneId"] = lane.clone();
         self.0
-            .broker
-            .get()
-            .context("Cantrip MCP attachment was not prepared.")?
-            .activate(&admission)?
-            .context("Cantrip MCP attachment no longer matches the admitted turn.")
-            .map(Some)
+            .activate(&prepared.bound, prepared.admission.as_ref(), lane)
+    }
+
+    pub(in crate::codex) fn cycle_activation(&self, prepared: &Prepared, lane: &Value) -> Activate {
+        let ensurer = Arc::downgrade(&self.0);
+        let identity = prepared.bound.clone();
+        let admission = prepared.admission.clone();
+        let lane = lane.clone();
+        Arc::new(move || {
+            ensurer
+                .upgrade()
+                .context("The managed MCP broker has closed.")?
+                .activate(&identity, admission.as_ref(), &lane)
+        })
     }
 
     pub(crate) fn identity(&self) -> Result<(JsString, Value)> {
@@ -342,4 +347,27 @@ fn field(object: &Value, field: &str) -> Result<JsString> {
         .as_js_string()
         .cloned()
         .with_context(|| format!("Managed thread preparation requires {field}"))
+}
+
+impl Inner {
+    fn activate(
+        &self,
+        identity: &(JsString, Value),
+        admission: Option<&Value>,
+        lane: &Value,
+    ) -> Result<Option<Activation>> {
+        if &self.encryption.bound_identity()? != identity {
+            bail!("The worker binding changed during managed MCP activation.");
+        }
+        let Some(mut admission) = admission.cloned() else {
+            return Ok(None);
+        };
+        admission["executionLaneId"] = lane.clone();
+        self.broker
+            .get()
+            .context("Cantrip MCP attachment was not prepared.")?
+            .activate(&admission)?
+            .context("Cantrip MCP attachment no longer matches the admitted turn.")
+            .map(Some)
+    }
 }

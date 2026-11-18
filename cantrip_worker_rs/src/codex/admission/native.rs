@@ -256,6 +256,12 @@ impl Adapter {
                 }
                 Some(cycle)
             }
+            (Some((_, true)), _, _)
+                if !input.independent
+                    && input.root_thread_id.as_ref() == Some(&input.thread_id) =>
+            {
+                bail!("The native Task Goal has no canonical cycle association.");
+            }
             _ => None,
         };
         let root = input.root_thread_id.as_ref().and_then(|root| {

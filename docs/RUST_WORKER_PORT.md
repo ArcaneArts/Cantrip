@@ -4340,3 +4340,33 @@ and policy input, pause and resumption, and full Rust-server integration
 remain open. First-turn failures use the generic protected error until the
 native Task retry categories are shared with the worker. Production still
 selects Node.
+
+## 82. Execute authorized autonomous Task Goal continuations
+
+Reference commit `22552e0e61fdf7ed9239fabe81914661397732fc` (#3244).
+
+After Codex accepts the explicit first Goal turn, the Rust worker can admit
+autonomous continuations on the same native root. It binds the actual
+private inference scope through the keeper, checks the current native Goal
+epoch, and presents the keeper's source to the existing Core dispatch
+endpoint. Core's acknowledgment must identify the original parent and the
+exact native turn and scope. Only then can the native gate allow inference.
+
+The worker observes that physical turn, reactivates its managed MCP
+attachment for the turn, encrypts its result under the Task grant, and
+writes the existing Goal-cycle outcome record. Each subsequent cycle
+waits for its predecessor's canonical commitment or retirement. The
+worker uses the same outbox scanner and replay format as the Node worker.
+
+Local macOS ARM64 validation uses bundled Codex, an authenticated fixture
+peer, and a loopback provider. Two consecutive autonomous turns run on
+the original native thread. The fixture withholds dispatch acknowledgment,
+returns a mismatched outbox receipt, checks the unchanged retry record,
+and opens both published results with the Node codec. Shutdown during an
+outstanding commit request preserves the record and lets the worker exit.
+The next worker process retries the same result and removes it after Core
+acknowledges it.
+
+Reattaching autonomous Goal authority after a worker restart, Goal state
+projection and controls, pause and restore, Task attachment and policy input,
+and full Rust-server integration remain open. Production still selects Node.

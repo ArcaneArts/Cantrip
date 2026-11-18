@@ -1,5 +1,6 @@
 //! The private inference protocol over one owned Codex app-server session.
 //! A delivered control is distinct from its observable RPC result and settlement.
+mod goal_cycle;
 mod pending;
 mod wire;
 
@@ -7,6 +8,7 @@ use super::{
     admission::{Adapter, NativeRequest, TaskDispatch, TaskQueued},
     rpc_protocol::is_private_inference,
     session::{Event, EventKind, Session},
+    turn::task::cycle::GoalCycle,
 };
 use crate::{
     inference::{
@@ -75,14 +77,15 @@ struct Inner {
     hooks: Hooks,
     timeout: Duration,
     pending: Mutex<PendingState>,
-    first_inputs: Mutex<HashMap<JsString, TaskFirstInput>>,
+    task_goals: Mutex<HashMap<JsString, TaskGoalRoot>>,
     version: watch::Sender<u64>,
 }
 
-struct TaskFirstInput {
+struct TaskGoalRoot {
     runner: JsString,
     message: JsString,
     input: FirstInput,
+    cycle: Option<Arc<GoalCycle>>,
 }
 
 #[derive(Clone)]
@@ -101,7 +104,7 @@ impl Router {
             hooks,
             timeout: Duration::from_secs(120),
             pending: Mutex::new(PendingState::default()),
-            first_inputs: Mutex::new(HashMap::new()),
+            task_goals: Mutex::new(HashMap::new()),
             version: watch::channel(0).0,
         })))
     }
@@ -186,7 +189,7 @@ impl Router {
         runner: JsString,
         message: JsString,
     ) {
-        let mut inputs = self.0.first_inputs.lock().unwrap();
+        let mut inputs = self.0.task_goals.lock().unwrap();
         if inputs
             .get(&thread)
             .is_some_and(|input| input.runner == runner && input.message == message)
@@ -195,10 +198,11 @@ impl Router {
         }
         inputs.insert(
             thread,
-            TaskFirstInput {
+            TaskGoalRoot {
                 runner,
                 message,
                 input: FirstInput::default(),
+                cycle: None,
             },
         );
     }
@@ -211,13 +215,29 @@ impl Router {
     ) -> Result<FirstInput> {
         self.assert_transport()?;
         self.0
-            .first_inputs
+            .task_goals
             .lock()
             .unwrap()
             .get(thread)
-            .filter(|input| &input.runner == runner && &input.message == message)
+            .filter(|input| {
+                &input.runner == runner && &input.message == message && input.cycle.is_none()
+            })
             .map(|input| input.input.clone())
             .ok_or_else(|| anyhow!("The native Goal first input was superseded."))
+    }
+
+    pub(in crate::codex) fn activate_task_goal_cycle(
+        &self,
+        thread: &JsString,
+        first: &FirstInput,
+        cycle: Arc<GoalCycle>,
+    ) {
+        if let Some(input) = self.0.task_goals.lock().unwrap().get_mut(thread)
+            && input.input.same(first)
+            && input.cycle.is_none()
+        {
+            input.cycle = Some(cycle);
+        }
     }
 
     pub fn changes(&self) -> watch::Receiver<u64> {
@@ -405,11 +425,11 @@ impl Router {
             && gate.goal_epoch.is_some()
         {
             self.0
-                .first_inputs
+                .task_goals
                 .lock()
                 .unwrap()
                 .get(&gate.key.thread_id)
-                .filter(|input| input.runner == gate.key.runner_generation)
+                .filter(|input| input.runner == gate.key.runner_generation && input.cycle.is_none())
                 .map(|input| input.input.clone())
                 .or_else(|| context.first_input.clone())
         } else {
@@ -511,6 +531,15 @@ impl Router {
                 let context = (self.0.hooks.overlay)(gate);
                 let provider = (self.0.hooks.provider)()
                     .ok_or_else(|| anyhow!("Native inference has no configured provider."))?;
+                let cycle = self.task_goal_cycle(gate);
+                let dispatch = cycle.as_ref().map(|cycle| {
+                    self.goal_dispatch(
+                        cycle.clone(),
+                        pending.clone(),
+                        signal.clone(),
+                        provider["id"].clone(),
+                    )
+                });
                 let this = self.clone();
                 let pending = pending.clone();
                 self.0
@@ -520,12 +549,15 @@ impl Router {
                         confirm_ownership: Arc::new(move || this.claim(&pending)),
                         goal_epoch: gate.goal_epoch.clone(),
                         runner_generation: Some(gate.key.runner_generation.clone()),
-                        task_goal_cycle: (gate.root_thread_id.as_ref()
-                            == Some(&gate.key.thread_id))
-                        .then_some(context.task_goal_cycle)
-                        .flatten(),
+                        task_goal_cycle: cycle.as_ref().map(|cycle| cycle.placement()).or_else(
+                            || {
+                                (gate.root_thread_id.as_ref() == Some(&gate.key.thread_id))
+                                    .then_some(context.task_goal_cycle)
+                                    .flatten()
+                            },
+                        ),
                         on_task_goal_queued: context.on_task_goal_queued,
-                        on_task_goal_dispatch: context.on_task_goal_dispatch,
+                        on_task_goal_dispatch: dispatch.or(context.on_task_goal_dispatch),
                         thread_id: gate.key.thread_id.clone(),
                         turn_id: gate.key.turn_id.clone(),
                         scope_id: gate.scope_id.clone(),
@@ -533,8 +565,14 @@ impl Router {
                         signal: signal.clone(),
                         is_paused: context.is_paused,
                         root_thread_id: gate.root_thread_id.clone(),
-                        chat_id: context.chat_id,
-                        project_id: context.project_id,
+                        chat_id: cycle
+                            .as_ref()
+                            .map(|cycle| cycle.parent["chatId"].clone())
+                            .or(context.chat_id),
+                        project_id: cycle
+                            .as_ref()
+                            .map(|cycle| cycle.project.clone())
+                            .or(context.project_id),
                         independent: gate.phase == Phase::BeginIndependent,
                     })
                     .await?;

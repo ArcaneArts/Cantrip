@@ -1,4 +1,5 @@
 //! Protected Task rounds use the same physical turn runner as host Chat.
+pub(in crate::codex) mod cycle;
 pub(super) mod first_input;
 mod structured;
 use super::{Emit, Key};
@@ -341,38 +342,48 @@ impl Goal {
         })
     }
 
-    fn finish(&self, mut result: Value) -> Result<Value> {
-        self.messages.assert_bound()?;
-        let final_message = if self.response["reusePublishedResponse"] == true {
-            self.messages.final_message(&result)
-        } else {
-            None
-        };
-        let message = match final_message {
-            Some(message) => message,
-            None => {
-                let text = result["text"]
-                    .as_js_string()
-                    .context("Missing native Goal output")?;
-                let text = if text.is_empty() {
-                    "The Task Goal completed without a message.".into()
-                } else {
-                    text.clone()
-                };
-                self.messages.seal(
-                    &self.response["messageId"],
-                    &self.response["idempotencyKey"],
-                    "assistant",
-                    "goal",
-                    &text,
-                )?
-            }
-        };
-        result["text"] = json!("");
-        result["structuredResult"] =
-            checked("taskMessageRelayResultSchema", &json!({"message":message}))?;
-        checked("agentTurnResultSchema", &result)
+    fn finish(&self, result: Value) -> Result<Value> {
+        finish_goal(
+            &self.messages,
+            result,
+            &self.response["messageId"],
+            &self.response["idempotencyKey"],
+            self.response["reusePublishedResponse"] == true,
+        )
     }
+}
+
+fn finish_goal(
+    messages: &Messages,
+    mut result: Value,
+    message_id: &Value,
+    idempotency: &Value,
+    reuse_published: bool,
+) -> Result<Value> {
+    messages.assert_bound()?;
+    let published = reuse_published
+        .then(|| messages.final_message(&result))
+        .flatten();
+    let message = match published {
+        Some(message) => message,
+        None => {
+            let text = result["text"]
+                .as_js_string()
+                .context("Missing native Goal output")?;
+            let fallback = "The Task Goal completed without a message.".into();
+            messages.seal(
+                message_id,
+                idempotency,
+                "assistant",
+                "goal",
+                if text.is_empty() { &fallback } else { text },
+            )?
+        }
+    };
+    result["text"] = json!("");
+    result["structuredResult"] =
+        checked("taskMessageRelayResultSchema", &json!({"message":message}))?;
+    checked("agentTurnResultSchema", &result)
 }
 
 impl Round {

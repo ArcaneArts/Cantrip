@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { goalCycles } from "./task-goal-cycle-cases.mjs";
 import {
   decryptTaskGoalObjective,
   decryptTaskMessageProtectedContent,
@@ -22,6 +23,7 @@ export async function verifyTaskGoalActivation({
   invoke,
   directory,
   modelCalls,
+  setAnswer,
   serverId,
   workerId,
   generation,
@@ -30,6 +32,8 @@ export async function verifyTaskGoalActivation({
   available,
   waitForFrame,
   diagnostics,
+  stop,
+  start,
 }) {
   const { goal, task } = result.structuredResult;
   const { chatId, worktreeId, provider } = command;
@@ -179,6 +183,7 @@ export async function verifyTaskGoalActivation({
     ...command.taskInferenceInput,
     kind: "goal",
     operationId: randomUUID(),
+    queueOrderEpoch: 3,
     clientMessageId,
     dispatch,
   };
@@ -187,6 +192,7 @@ export async function verifyTaskGoalActivation({
     messageId: randomUUID(),
     idempotencyKey: "fixture-first-goal-result",
   };
+  const cycles = goalCycles({ receipt, threadId, serverId, generation });
   const answer = "Native first Goal result.";
   const phases = [];
   const admissions = Promise.withResolvers();
@@ -195,6 +201,7 @@ export async function verifyTaskGoalActivation({
   let delivery;
   attach({
     answer,
+    cycle: cycles.authorize,
     dispatch: (body, send) => {
       const request = taskInferenceInputDispatchSchema.parse(body);
       assert.deepEqual(request.receipt, receipt);
@@ -223,6 +230,10 @@ export async function verifyTaskGoalActivation({
     },
     outcome: (body, send) => {
       const record = taskGoalOutcomeDeliverySchema.parse(body);
+      if (record.inputKind === "goal-cycle") {
+        cycles.deliver(body, send);
+        return;
+      }
       assert.equal(record.inputKind, "goal");
       assert.equal(record.ownerId, ownerId);
       assert.equal(record.serverId, serverId);
@@ -317,6 +328,8 @@ export async function verifyTaskGoalActivation({
   assert.deepEqual(JSON.parse(bytes), delivery);
   const commit = await available(Promise.race([replayed.promise, earlyReply]));
   assert.equal(await readFile(pending, "utf8"), bytes);
+  assert.equal(modelCalls(), calls + 1);
+  cycles.commitParent();
   commit();
 
   const outcome = await running;
@@ -356,4 +369,14 @@ export async function verifyTaskGoalActivation({
   console.log(
     "Ran the first native Goal input and waited for its exact encrypted outcome commit.",
   );
+  await cycles.verify({
+    firstTurnId: native.turnId,
+    untilProvider,
+    available,
+    openMessage,
+    outcomeDirectory: path.dirname(pending),
+    setAnswer,
+    stop,
+    start,
+  });
 }

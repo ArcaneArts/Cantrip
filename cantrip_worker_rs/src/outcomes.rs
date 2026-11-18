@@ -169,6 +169,37 @@ impl TaskDelivery {
         }
     }
 
+    pub(crate) async fn goal_cycle(
+        &self,
+        owner: &JsString,
+        server: &JsString,
+        source: &Value,
+        outcome: Value,
+    ) -> Result<()> {
+        let parent = &source["parent"];
+        let notification = json!({
+            "type":"chat.turn.outcome", "chatId":parent["chatId"],
+            "clientMessageId":parent["clientMessageId"], "executionLaneId":parent["executionLaneId"],
+            "contextKind":"project", "worktreeId":parent["worktreeId"],
+            "scratchRootId":Value::Null, "outcome":outcome,
+        });
+        let scope = Scope {
+            owner: owner.clone(),
+            server: server.clone(),
+        };
+        let delivery = uuid::Uuid::new_v4().to_string();
+        let record = checked(
+            "taskGoalOutcomeDeliverySchema",
+            &json!({
+                "version":1, "deliveryId":delivery, "inputKind":"goal-cycle", "ownerId":owner,
+                "serverId":server, "workerId":self.worker, "notification":notification,
+                "goalCycleSource":source,
+            }),
+        )?;
+        self.append_and_commit(&scope, &delivery, record.stringify())
+            .await
+    }
+
     async fn append_and_commit(&self, scope: &Scope, delivery: &str, body: String) -> Result<()> {
         let (committed, receipt) = oneshot::channel();
         self.commits
@@ -237,7 +268,9 @@ impl TaskDelivery {
         let mut stop = self.stop.clone();
         let mut next = None;
         let mut backoff = Duration::from_secs(1);
-        loop {
+        // A running drain can consume the shutdown change while cancelling
+        // its HTTP request. Observe the saved value before waiting again.
+        while !*stop.borrow() {
             tokio::select! {
                 _ = stop.changed() => break,
                 _ = self.wake.notified() => {},

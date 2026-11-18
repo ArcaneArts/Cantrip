@@ -83,6 +83,7 @@ let guiPeer,
   workerGeneration,
   taskOutcome,
   taskDispatch,
+  taskGoalDispatch,
   taskResponse,
   holdHandshake;
 const outcomeFrames = new EventEmitter();
@@ -220,6 +221,18 @@ const server = createServer(async (request, response) => {
   ) {
     try {
       taskDispatch(await requestBody(request), send, response);
+    } catch (error) {
+      upstream.emit("failure", error);
+      response.writeHead(400).end("{}");
+    }
+    return;
+  }
+  if (
+    url.pathname === "/api/internal/native-commands/task-goal-cycle-dispatch" &&
+    taskGoalDispatch
+  ) {
+    try {
+      taskGoalDispatch(await requestBody(request), send);
     } catch (error) {
       upstream.emit("failure", error);
       response.writeHead(400).end("{}");
@@ -1539,7 +1552,8 @@ try {
     );
   }
   if (structuredTasks) {
-    const attach = ({ dispatch, outcome, answer } = {}) => {
+    const attach = ({ dispatch, outcome, answer, cycle } = {}) => {
+      taskGoalDispatch = cycle;
       taskDispatch = dispatch;
       taskOutcome = outcome;
       taskResponse = answer;
@@ -1570,6 +1584,11 @@ try {
               workerId,
               generation: () => workerGeneration,
               modelCalls: () => providerCalls,
+              stop,
+              start,
+              setAnswer: (answer) => {
+                taskResponse = answer;
+              },
               attach,
               untilProvider,
               available,
