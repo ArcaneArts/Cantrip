@@ -286,7 +286,7 @@ impl<'a> Receipt<'a> {
     }
 
     pub async fn admitted_goal(&self, result: &Value) -> Result<()> {
-        self.report("uncertain", Some(result), None).await
+        self.report("uncertain", Some(result), None, None).await
     }
 
     pub async fn goal_not_started(&self) -> Result<()> {
@@ -377,17 +377,30 @@ impl<'a> Receipt<'a> {
             "applied",
             Some(content),
             reconciliation(&self.session, turn, None),
+            None,
         )
         .await
     }
 
+    pub async fn applied_queued_goal(&self, content: &Value) -> Result<()> {
+        let Some(epoch) = content["goalEpoch"]
+            .as_js_string()
+            .filter(|epoch| !epoch.is_empty())
+        else {
+            self.uncertain().await?;
+            bail!("Codex did not return the queued Goal epoch.");
+        };
+        self.report("applied", Some(content), None, Some(epoch))
+            .await
+    }
+
     pub async fn rejected(&self, error: &Value) -> Result<()> {
-        self.report("rejected", Some(&json!({"error": error})), None)
+        self.report("rejected", Some(&json!({"error": error})), None, None)
             .await
     }
 
     pub async fn uncertain(&self) -> Result<()> {
-        self.report("uncertain", None, None).await
+        self.report("uncertain", None, None, None).await
     }
 
     pub async fn observed(&self, turn: &JsString, status: Option<&str>) -> Result<()> {
@@ -395,6 +408,7 @@ impl<'a> Receipt<'a> {
             "applied",
             None,
             reconciliation(&self.session, Some(turn), status),
+            None,
         )
         .await
     }
@@ -404,6 +418,7 @@ impl<'a> Receipt<'a> {
         status: &str,
         content: Option<&Value>,
         evidence: Option<Value>,
+        goal_epoch: Option<&JsString>,
     ) -> Result<()> {
         let (envelope, digest) = if let Some(content) = content {
             let grant = self.scope.material(None)?;
@@ -427,6 +442,9 @@ impl<'a> Receipt<'a> {
         };
         if let Some(evidence) = evidence {
             body["reconciliation"] = evidence;
+        }
+        if let Some(epoch) = goal_epoch {
+            body["goalEpoch"] = json!(epoch);
         }
         self.settle(body, status).await
     }
@@ -562,7 +580,10 @@ impl Client {
         params: &Value,
         command: &Value,
         activation: Value,
-    ) -> Result<Receipt<'_>> {
+    ) -> Result<(Receipt<'_>, bool)> {
+        let claim = command
+            .get("queueClaim")
+            .filter(|_| command["type"] == crate::codex::goals::QUEUE_EXECUTE);
         let operation = command["operationId"]
             .as_js_string()
             .cloned()
@@ -579,19 +600,25 @@ impl Client {
         });
         if let Some(status) = params.get("status") {
             intent["goalStatus"] = status.clone();
-            if status == "active" {
-                intent["resumeAutonomy"] = json!(true);
-            }
         }
-        let body = checked(
-            "nativeCommandAdmissionSchema",
-            &json!({
-                "workerId":self.configuration.lock().unwrap().worker_id, "operationId":operation,
-                "origin":"gui", "session":session, "method":method, "intent":intent,
-                "payloadDigest":digest, "protectedPayload":envelope,
-                "expectedActivationGeneration":activation,
-            }),
-        )?;
+        let resume = params["status"] == "active"
+            || (claim.is_some()
+                && method == "thread/goal/set"
+                && params.get("status").is_none()
+                && params["objective"].is_string());
+        if resume {
+            intent["resumeAutonomy"] = json!(true);
+        }
+        let mut request = json!({
+            "workerId":self.configuration.lock().unwrap().worker_id, "operationId":operation,
+            "origin":"gui", "session":session, "method":method, "intent":intent,
+            "payloadDigest":digest, "protectedPayload":envelope,
+            "expectedActivationGeneration":activation,
+        });
+        if let Some(claim) = claim {
+            request["queueClaim"] = claim.clone();
+        }
+        let body = checked("nativeCommandAdmissionSchema", &request)?;
         let response = self
             .post("admit", &body, &Guard::metadata(None, None))
             .await?;
@@ -617,7 +644,7 @@ impl Client {
             scope,
         };
         control.verify(&response, "accepted")?;
-        Ok(control)
+        Ok((control, claim.is_some() && resume))
     }
 
     pub async fn admit_interrupt(

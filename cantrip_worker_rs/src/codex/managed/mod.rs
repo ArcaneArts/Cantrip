@@ -51,6 +51,7 @@ pub struct Launch {
 
 struct Inner {
     id: JsString,
+    codex_home: PathBuf,
     generation: String,
     session: Session,
     history: Arc<RuntimeHub>,
@@ -143,7 +144,7 @@ impl Runtime {
         let home = cantrip_config::resolve(&host.cwd, &profile.codex_home);
         cantrip_host::files::private_directory(&home)?;
         if let Some(prepare) = prepare_home {
-            prepare(home).await?;
+            prepare(home.clone()).await?;
         }
 
         if let Some(auth) = &external_auth {
@@ -188,6 +189,7 @@ impl Runtime {
         ));
         let runtime = Self(Arc::new_cyclic(|inner| Inner {
             id: profile.id.clone(),
+            codex_home: home,
             generation,
             history: history::source(session.history(), inner.clone()),
             session,
@@ -209,6 +211,10 @@ impl Runtime {
 
     pub fn id(&self) -> &JsString {
         &self.0.id
+    }
+
+    pub(in crate::codex) fn codex_home(&self) -> &Path {
+        &self.0.codex_home
     }
 
     pub fn generation(&self) -> &str {

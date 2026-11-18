@@ -4,6 +4,7 @@ mod create;
 pub(crate) mod delivery;
 mod mutate;
 mod projection;
+mod queue;
 mod read;
 
 use super::{
@@ -28,6 +29,7 @@ pub(crate) const CREATE: &str = "chat.goal.create";
 pub(crate) const GET: &str = "chat.goal.get";
 pub(crate) const UPDATE: &str = "chat.goal.update";
 pub(crate) const CLEAR: &str = "chat.goal.clear";
+pub(crate) use queue::EXECUTE as QUEUE_EXECUTE;
 
 #[derive(Clone)]
 pub(crate) struct Goals {
@@ -35,6 +37,7 @@ pub(crate) struct Goals {
     observation: Observer,
     encryption: Arc<Service>,
     project: Arc<delivery::Delivery>,
+    attachments: crate::attachments::Store,
 }
 
 impl Goals {
@@ -43,12 +46,14 @@ impl Goals {
         observation: Observer,
         encryption: Arc<Service>,
         project: Arc<delivery::Delivery>,
+        attachments: crate::attachments::Store,
     ) -> Self {
         Self {
             preparation,
             observation,
             encryption,
             project,
+            attachments,
         }
     }
 

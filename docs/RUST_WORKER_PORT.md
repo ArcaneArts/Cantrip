@@ -4499,3 +4499,30 @@ the provider are disposable local peers.
 Queued Goal mutation dispatch, cold recovery of live or unsettled Goals,
 provider transfer, and broader OS-hosted/interaction parity remain open.
 Production still selects Node.
+
+## 88. Execute queued managed Project Goal mutations
+
+Reference commit `2f979ad0435cff196f8fbbcbc234fa22e0d7e1cd` (#3250).
+
+The Rust worker handles Goal setters and clears through Core's existing
+`chat.queue.execute` command. It opens the protected pending message and
+authenticates any retained native input against its server, chat, and prompt.
+It applies current text and attachment selections and writes rich or oversized
+objectives in the chosen runtime's private home. `/goal pause`, `/goal resume`,
+and `/goal clear` map to the native controls. Queued objective setters keep
+Codex's implicit status and use the queue claim as the operation identity.
+
+Core receives the claim and prompt revision before native dispatch. An
+autonomy-enabling setter settles with the exact protected native response and
+its Goal epoch. The first autonomous turn can then hand the same claim back
+to Core. A setter that may have applied without returning an epoch settles
+as uncertain.
+
+The local macOS ARM64 smoke opens Node-produced ciphertext for an edited
+queued objective, verifies the retained media and spilled objective, rejects a
+mismatched prompt ID, and exercises the setter, two real native turns, exact
+terminal receipt retry, and queued clear. It uses local Core and provider peers
+with the real Rust worker and bundled Codex.
+
+Queue preparation and wake notifications, general queued commands and model
+inputs, and cold Goal recovery remain open. Production still selects Node.

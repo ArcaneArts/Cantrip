@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { readFile, stat } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
-import { decryptChatMessageProtectedContent } from "../../packages/crypto/dist/index.js";
+import {
+  decryptChatMessageProtectedContent,
+  deriveFieldKey,
+  encryptPayload,
+} from "../../packages/crypto/dist/index.js";
 import {
   managedQueueReadSchema,
   managedQueueSnapshotSchema,
@@ -16,10 +21,12 @@ import {
   protectNativeCommandContent,
 } from "../../cantrip_worker/src/native-command-content.ts";
 import { GuiHistoryPeer } from "./gui-history-cases.mjs";
+import { protectChatMessage } from "../../cantrip_worker/src/chat-message-encryption.ts";
 
 export async function verifyAutonomousGoal({
   expectThread,
   expectSuccess,
+  request,
   start,
   stop,
   available,
@@ -56,8 +63,10 @@ export async function verifyAutonomousGoal({
     provider,
     permissionProfileId,
   };
-  const operationId = "gui-goal:" + randomUUID();
-  const goalText = "Complete the authorized project Goal fixture.";
+  const goalText = "Complete the authorized project Goal fixture.\n"
+    .repeat(92)
+    .trim();
+  const media = Buffer.from("Fixture media bytes.");
   const answers = [
     "The authorized project Goal made progress.",
     "The authorized project Goal is complete.",
@@ -78,8 +87,70 @@ export async function verifyAutonomousGoal({
     awaitingGoal: true,
     status: "dispatched",
     createdAt: stamp,
-    operationId,
     nativeTurnId: null,
+  };
+  const operationId = (claim.operationId = "queue:" + claim.id);
+  const clearClaim = { id: randomUUID(), promptRevision: 1 };
+  const clearOperation = "queue:" + clearClaim.id;
+  const pending = (text) =>
+    protectChatMessage({
+      id: randomUUID(),
+      message: {
+        idempotencyKey: randomUUID(),
+        role: "user",
+        content: [{ type: "text", text }],
+      },
+      service: oracle,
+    });
+  const { key, keyRevision } = oracle.componentKey("chat-content");
+  const associatedData = {
+    ownerId: oracle.ownerId(),
+    component: "chat-content",
+    table: "managed-queue",
+    rowId: createHash("sha256")
+      .update(
+        JSON.stringify([
+          oracle.serverIdentity(),
+          session.chatId,
+          claim.promptId,
+        ]),
+      )
+      .digest("hex"),
+    field: "native-input",
+    formatVersion: 1,
+    keyRevision,
+  };
+  const retainedText = "/goal The previous version of the project objective.";
+  const protectedNativeInput = await encryptPayload({
+    key: deriveFieldKey({ componentKey: key, ...associatedData }),
+    associatedData,
+    plaintext: new TextEncoder().encode(
+      JSON.stringify({
+        version: 1,
+        input: [
+          { type: "text", text: retainedText, text_elements: [] },
+          {
+            type: "image",
+            url: `data:image/png;base64,${media.toString("base64")}`,
+          },
+        ],
+        action: "parseSlash",
+        executionMethod: "thread/goal/set",
+        displayText: retainedText,
+        attachmentMap: [],
+      }),
+    ),
+  });
+  const queued = {
+    ...enter,
+    type: "chat.queue.execute",
+    subagentDefaults: null,
+    queueClaim: { id: claim.id, promptRevision: claim.promptRevision },
+    queuedPromptId: claim.promptId,
+    nativeAction: "parseSlash",
+    executionMethod: "thread/goal/set",
+    protectedPrompt: await pending(`/goal ${goalText}`),
+    protectedNativeInput,
   };
   let history;
   let next = 0;
@@ -232,10 +303,41 @@ export async function verifyAutonomousGoal({
           worktreeMode: "agent-managed",
           worktreePolicy: "direct",
         };
+      } else if (request.operationId === clearOperation) {
+        assert.equal(request.method, "thread/goal/clear");
+        assert.deepEqual(request.queueClaim, clearClaim);
+        assert.equal(request.intent.resumeAutonomy, undefined);
+        assert.deepEqual(frame.params, { threadId });
+        steps.push("clear");
       } else {
         assert.equal(request.operationId, operationId);
         assert.equal(request.method, "thread/goal/set");
-        assert.equal(frame.params.objective, goalText);
+        assert.deepEqual(request.queueClaim, queued.queueClaim);
+        assert.equal(request.intent.goalStatus, undefined);
+        assert.equal(request.intent.resumeAutonomy, true);
+        assert.deepEqual(Object.keys(frame.params).sort(), [
+          "objective",
+          "threadId",
+        ]);
+        const objectivePath =
+          /^Read the Codex goal objective file at (.+) before continuing\.$/u.exec(
+            frame.params.objective,
+          )?.[1];
+        assert.ok(objectivePath);
+        const objective = await readFile(objectivePath, "utf8");
+        const imagePath = objectivePath.replace(
+          /goal-objective\.md$/u,
+          "image-1.png",
+        );
+        assert.equal(
+          objective,
+          `${goalText}\n\nReferenced input:\n- image: ${imagePath}`,
+        );
+        assert.deepEqual(await readFile(imagePath), media);
+        if (process.platform !== "win32") {
+          assert.equal((await stat(objectivePath)).mode & 0o777, 0o600);
+          assert.equal((await stat(imagePath)).mode & 0o777, 0o600);
+        }
         steps.push("setter");
       }
       const receipt = nativeCommandReceiptSchema.parse({
@@ -315,9 +417,17 @@ export async function verifyAutonomousGoal({
         result.protectedResult,
         result.resultDigest,
       );
-      claim.goalEpoch = snapshot.goalEpoch;
-      claim.operationGeneration = receipt.operationGeneration;
-      steps.push("setter committed");
+      if (request.method === "thread/goal/clear") {
+        assert.equal(result.goalEpoch, undefined);
+        assert.equal(snapshot.cleared, true);
+        steps.push("clear committed");
+      } else {
+        assert.ok(result.goalEpoch);
+        assert.equal(result.goalEpoch, snapshot.goalEpoch);
+        claim.goalEpoch = result.goalEpoch;
+        claim.operationGeneration = receipt.operationGeneration;
+        steps.push("setter committed");
+      }
     } else if (!result.executionComplete) {
       assert.equal(result.status, "uncertain");
       assert.deepEqual(
@@ -373,14 +483,11 @@ export async function verifyAutonomousGoal({
   attachCurrent();
   try {
     const before = modelCalls();
+    const foreign = await request({ ...queued, queuedPromptId: randomUUID() });
+    assert.equal(foreign.ok, false);
+    assert.deepEqual(steps, []);
     const first = untilProvider();
-    const launch = expectSuccess({
-      ...enter,
-      type: "chat.goal.create",
-      operationId,
-      objective: goalText,
-      tokenBudget: 5000,
-    });
+    const launch = expectSuccess(queued);
     const advance = async (ordinal, pending) => {
       const dispatch = await available(
         Promise.race([
@@ -413,6 +520,17 @@ export async function verifyAutonomousGoal({
       type: "chat.goal.get",
     });
     assert.equal(observation.goal.status, "complete");
+    const cleared = await expectSuccess({
+      ...enter,
+      type: "chat.queue.execute",
+      subagentDefaults: null,
+      nativeAction: "parseSlash",
+      executionMethod: "thread/goal/clear",
+      queueClaim: clearClaim,
+      queuedPromptId: randomUUID(),
+      protectedPrompt: await pending("/goal clear"),
+    });
+    assert.equal(cleared.cleared, true);
     assert.equal(modelCalls(), before + 3);
     assert.notEqual(firstResult.terminal.turnId, secondResult.terminal.turnId);
     for (const [ordinal, { terminal }] of [
@@ -467,12 +585,14 @@ export async function verifyAutonomousGoal({
       "dispatch 1",
       "accepted 1",
       "completed 1",
+      "clear",
+      "clear committed",
     ]);
     await stop();
   } finally {
     attach();
   }
   console.log(
-    "Ran two managed autonomous Project Goal turns through Core dispatch, protected output, canonical History and an exact retried terminal receipt.",
+    "Queued Project Goal setter and clear, edited encrypted rich input, two Core-dispatched autonomous turns, canonical History and exact receipt retry passed.",
   );
 }

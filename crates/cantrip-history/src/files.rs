@@ -92,11 +92,15 @@ impl Drop for Temporary {
     }
 }
 pub fn write_immutable(destination: &Path, content: &str) -> Result<bool> {
+    write_immutable_bytes(destination, content.as_bytes())
+}
+
+pub fn write_immutable_bytes(destination: &Path, content: &[u8]) -> Result<bool> {
     let mut temporary = destination.as_os_str().to_os_string();
     temporary.push(format!(".{}.tmp", Uuid::new_v4()));
     let temporary = Temporary(temporary.into());
     let mut file = cantrip_host::files::open_private(&temporary.0)?;
-    file.write_all(content.as_bytes())?;
+    file.write_all(content)?;
     file.sync_all()?;
     drop(file);
     let published = match fs::hard_link(&temporary.0, destination) {
