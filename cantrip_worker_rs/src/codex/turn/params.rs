@@ -4,7 +4,7 @@ use cantrip_wire::{JsString, Value, value::json};
 use std::path::Path;
 
 pub(super) fn validate(command: &Value) -> Result<()> {
-    let task = super::task::is_round(command);
+    let task = super::task::is_round(command) || super::task::is_goal(command);
     let supported_content = if task {
         command["contextKind"] == "project" && command["taskDispatchLease"].is_object()
     } else if protected_mode(command) {
@@ -50,7 +50,8 @@ pub(super) fn preparation(command: &Value) -> Value {
         "cwd": command["cwd"],
         "threadId": command["threadId"],
         "planMode": command["planMode"],
-        "taskOwned": super::task::is_round(command),
+        "taskOwned": super::task::is_round(command) || super::task::is_goal(command),
+        "taskGoalFirstInput": if super::task::is_goal(command) { command["clientMessageId"].clone() } else { Value::Null },
         "structuredTask": super::task::is_structured(command),
         "model": command["model"],
         "provider": command["provider"],

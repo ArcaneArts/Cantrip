@@ -7,7 +7,12 @@ import {
   decryptTaskMessageProtectedContent,
   decryptTaskProtectedContent,
 } from "../../packages/crypto/dist/index.js";
-import { taskGoalWorkerResultSchema } from "../../packages/protocol/dist/tasks.js";
+import {
+  taskGoalOutcomeDeliverySchema,
+  taskGoalWorkerResultSchema,
+  taskInferenceInputDispatchSchema,
+  taskMessageRelayResultSchema,
+} from "../../packages/protocol/dist/index.js";
 
 export async function verifyTaskGoalActivation({
   command,
@@ -17,6 +22,14 @@ export async function verifyTaskGoalActivation({
   invoke,
   directory,
   modelCalls,
+  serverId,
+  workerId,
+  generation,
+  attach,
+  untilProvider,
+  available,
+  waitForFrame,
+  diagnostics,
 }) {
   const { goal, task } = result.structuredResult;
   const { chatId, worktreeId, provider } = command;
@@ -153,5 +166,194 @@ export async function verifyTaskGoalActivation({
   );
   console.log(
     "Activated the retained Task Goal with an immutable native plan and encrypted reply.",
+  );
+
+  const { prompt, ...base } = command;
+  const { id: clientMessageId } = started.message;
+  const dispatch = {
+    ...command.taskInferenceInput.dispatch,
+    cycleId: randomUUID(),
+    operationId: randomUUID(),
+  };
+  const receipt = {
+    ...command.taskInferenceInput,
+    kind: "goal",
+    operationId: randomUUID(),
+    clientMessageId,
+    dispatch,
+  };
+  const resultMode = {
+    kind: "task-message-encrypted",
+    messageId: randomUUID(),
+    idempotencyKey: "fixture-first-goal-result",
+  };
+  const answer = "Native first Goal result.";
+  const phases = [];
+  const admissions = Promise.withResolvers();
+  const attempted = Promise.withResolvers();
+  const replayed = Promise.withResolvers();
+  let delivery;
+  attach({
+    answer,
+    dispatch: (body, send) => {
+      const request = taskInferenceInputDispatchSchema.parse(body);
+      assert.deepEqual(request.receipt, receipt);
+      assert.equal(request.serverId, serverId);
+      assert.equal(request.workerId, workerId);
+      assert.equal(request.workerGeneration, generation());
+      assert.equal(
+        request.phase,
+        ["claim", "dispatch", "native"][phases.length],
+      );
+      phases.push(request.phase);
+      if (request.phase === "native") {
+        assert.equal(request.nativeExecution.threadId, threadId);
+        admissions.resolve({
+          native: request.nativeExecution,
+          acknowledge: () =>
+            send({
+              receipt,
+              nativeExecution: request.nativeExecution,
+              nativeRuntimeGeneration: request.nativeRuntimeGeneration,
+            }),
+        });
+      } else {
+        send({ receipt });
+      }
+    },
+    outcome: (body, send) => {
+      const record = taskGoalOutcomeDeliverySchema.parse(body);
+      assert.equal(record.inputKind, "goal");
+      assert.equal(record.ownerId, ownerId);
+      assert.equal(record.serverId, serverId);
+      assert.equal(record.workerId, workerId);
+      assert.equal(record.notification.clientMessageId, clientMessageId);
+      assert.equal(
+        record.notification.taskInferenceInputOperationId,
+        receipt.operationId,
+      );
+      assert.deepEqual(record.notification.taskDispatchFence, dispatch);
+      if (!delivery) {
+        delivery = record;
+        send({
+          committed: true,
+          deliveryId: record.deliveryId,
+          taskInferenceInputOperationId: randomUUID(),
+        });
+        attempted.resolve();
+      } else {
+        assert.deepEqual(record, delivery);
+        replayed.resolve(() =>
+          send({
+            committed: true,
+            deliveryId: record.deliveryId,
+            taskInferenceInputOperationId: receipt.operationId,
+          }),
+        );
+      }
+    },
+  });
+
+  const streaming = [];
+  const providerRequest = untilProvider();
+  const notification = waitForFrame(
+    (frame) => frame.notification?.clientMessageId === clientMessageId,
+  );
+  const running = invoke(
+    {
+      ...base,
+      threadId,
+      clientMessageId,
+      planMode: "default",
+      permissionProfileId: activation.permissionProfileId,
+      protectedTaskPrompt: started.message,
+      resultMode,
+      taskInferenceInput: receipt,
+      taskDispatchLease: {
+        ...dispatch,
+        leaseExpiresAt: new Date(Date.now() + 60000).toISOString(),
+      },
+    },
+    (event) => streaming.push(event),
+  );
+  const earlyReply = running.then((reply) => {
+    throw new Error(JSON.stringify(reply) + "\n" + diagnostics());
+  });
+  const { native, acknowledge } = await available(
+    Promise.race([
+      admissions.promise,
+      providerRequest.then(() => {
+        throw new Error(
+          "The provider was reached before native Goal admission.",
+        );
+      }),
+      earlyReply,
+    ]),
+  );
+  acknowledge();
+  const model = await Promise.race([providerRequest, earlyReply]);
+  assert.deepEqual(phases, ["claim", "dispatch", "native"]);
+  const promptText = (await openMessage(started.message)).content[0].text;
+  assert.ok(
+    model.body.input.some(
+      (item) =>
+        item.role === "user" &&
+        item.content?.some(({ text }) => text === promptText),
+    ),
+  );
+  model.finish();
+
+  await available(Promise.race([attempted.promise, earlyReply]));
+  const namespace = createHash("sha256")
+    .update(JSON.stringify([serverId, ownerId, workerId]))
+    .digest("hex");
+  const pending = path.join(
+    directory,
+    "task-goal-outcomes",
+    namespace,
+    delivery.deliveryId + ".json",
+  );
+  const bytes = await readFile(pending, "utf8");
+  assert.deepEqual(JSON.parse(bytes), delivery);
+  const commit = await available(Promise.race([replayed.promise, earlyReply]));
+  assert.equal(await readFile(pending, "utf8"), bytes);
+  commit();
+
+  const outcome = await running;
+  assert.equal(
+    outcome.ok,
+    true,
+    JSON.stringify(outcome) + "\n" + diagnostics(),
+  );
+  assert.equal(outcome.result.threadId, native.threadId);
+  assert.equal(outcome.result.turnId, native.turnId);
+  assert.equal(outcome.result.text, "");
+  const { message } = taskMessageRelayResultSchema.parse(
+    outcome.result.structuredResult,
+  );
+  assert.equal(message.id, resultMode.messageId);
+  assert.equal(message.idempotencyKey, resultMode.idempotencyKey);
+  assert.equal(message.classification.mode, "goal");
+  assert.equal((await openMessage(message)).content[0].text, answer);
+  assert.ok(
+    streaming.some(
+      (event) =>
+        event.type === "agent.protected-task-message" &&
+        event.telemetry.streaming,
+    ),
+  );
+  assert.ok(!JSON.stringify({ outcome, delivery, streaming }).includes(answer));
+  assert.deepEqual(delivery.notification.outcome, {
+    ok: true,
+    result: outcome.result,
+  });
+  assert.deepEqual(
+    (await available(notification)).notification,
+    delivery.notification,
+  );
+  await assert.rejects(stat(pending), { code: "ENOENT" });
+  assert.equal(modelCalls(), calls + 1);
+  console.log(
+    "Ran the first native Goal input and waited for its exact encrypted outcome commit.",
   );
 }

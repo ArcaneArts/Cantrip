@@ -68,7 +68,7 @@ pub(crate) struct Turns {
 }
 
 struct TaskTurn {
-    round: Arc<task::Round>,
+    turn: task::Turn,
     key: Key,
     claimed: bool,
 }
@@ -278,34 +278,42 @@ impl Turns {
     }
 
     pub(crate) async fn run(&self, incoming: &Value, emit: Emit) -> (Result<Value>, Option<Value>) {
-        if !task::is_round(incoming) {
+        let goal = task::is_goal(incoming);
+        if !task::is_round(incoming) && !goal {
             let result = self
                 .run_owned(incoming, emit, None)
                 .await
                 .map_err(|error| protected::redact(incoming, error));
             return (result, None);
         }
+        let encrypted_error = || {
+            anyhow!(if goal {
+                "Encrypted Task turn failed."
+            } else {
+                "Encrypted Task operation failed."
+            })
+        };
         let task = (|| {
             params::validate(incoming)?;
             let key = self.key(incoming)?;
-            let round = Arc::new(task::Round::open(self.encryption.clone(), incoming, &key)?);
+            let turn = task::Turn::open(self.encryption.clone(), incoming, &key)?;
             Ok::<_, anyhow::Error>(TaskTurn {
-                round,
+                turn,
                 key,
                 claimed: false,
             })
         })();
         let mut task = match task {
             Ok(task) => task,
-            Err(_) => return (Err(anyhow!("Encrypted Task operation failed.")), None),
+            Err(_) => return (Err(encrypted_error()), None),
         };
         let result = self
             .run_owned(incoming, emit, Some(&mut task))
             .await
-            .map_err(|_| anyhow!("Encrypted Task operation failed."));
+            .map_err(|_| encrypted_error());
         let note = if task.claimed {
             self.task_outcomes
-                .round(&task.key.0, &task.key.1, incoming, &result)
+                .task(&task.key.0, &task.key.1, incoming, &result)
                 .await
         } else {
             None
@@ -363,7 +371,7 @@ impl Turns {
                 protected::Protected::open(self.encryption.clone(), &command, &key.0, &key.1)?;
             (prompt, Some(Arc::new(protection)))
         } else if let Some(task) = &task {
-            (task.round.prompt(), None)
+            (task.turn.prompt(), None)
         } else {
             (id(&command["prompt"], "native turn prompt")?, None)
         };
@@ -480,7 +488,7 @@ impl Turns {
                 self.preparation.supports_permission_profiles(),
             )
             .await?;
-            if let Some(schema) = task.as_ref().and_then(|task| task.round.output_schema()) {
+            if let Some(schema) = task.as_ref().and_then(|task| task.turn.output_schema()) {
                 params["outputSchema"] = schema.clone();
             }
             prepared.thread.assert_current(runtime)?;
@@ -517,7 +525,10 @@ impl Turns {
                         .await?;
                     prepared.thread.assert_current(runtime)?;
                 }
-                active.dispatch(&signal, thread.clone())?;
+                let goal = task::is_goal(&command);
+                if !goal {
+                    active.dispatch(&signal, thread.clone())?;
+                }
                 if let Some(receipt) = &receipt {
                     receipt.dispatch().await?;
                     signal.check()?;
@@ -540,13 +551,27 @@ impl Turns {
                             transport.clone(),
                         )
                     });
-                if let Err(error) = execution.dispatched() {
-                    execution.rejected()?;
-                    return Err(error);
-                }
-                let reply = runtime
-                    .request("turn/start".into(), Some(params), Some(RPC_TIMEOUT), None)
-                    .await;
+                let send = || {
+                    if goal {
+                        active.dispatch(&signal, thread.clone())?;
+                    }
+                    if let Err(error) = execution.dispatched() {
+                        execution.rejected()?;
+                        return Err(error);
+                    }
+                    Ok(runtime.request("turn/start".into(), Some(params), Some(RPC_TIMEOUT), None))
+                };
+                let reply = if goal {
+                    task::first_input::start(
+                        &prepared,
+                        &command["taskInferenceInput"],
+                        &signal,
+                        send,
+                    )
+                    .await?
+                } else {
+                    send()?.await
+                };
                 let turn = match reply {
                     Ok(Some(reply)) => id(&reply["turn"]["id"], "native turn identity")
                         .map(|turn| (turn, Some(reply))),
@@ -601,7 +626,7 @@ impl Turns {
                     result
                 };
                 let emit = match &task {
-                    Some(task) => task.round.events(emit),
+                    Some(task) => task.turn.events(emit),
                     None => emit,
                 };
                 let (emit, publish) = match (protection.as_ref(), canonical) {
@@ -654,7 +679,7 @@ impl Turns {
             cleanup?;
             match (protection, task) {
                 (Some(protection), _) => protection.result(value),
-                (_, Some(task)) => task.round.finish(value),
+                (_, Some(task)) => task.turn.finish(value),
                 _ => Ok(value),
             }
         })

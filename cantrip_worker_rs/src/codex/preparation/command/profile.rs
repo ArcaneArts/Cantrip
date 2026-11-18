@@ -42,7 +42,7 @@ pub(super) async fn configuration(
     command: &Value,
     cwd: &JsString,
     mcp: Value,
-    generation: String,
+    generation: JsString,
     provider: &str,
     standalone: bool,
     permission_profiles: bool,

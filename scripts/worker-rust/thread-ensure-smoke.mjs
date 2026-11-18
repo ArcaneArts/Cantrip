@@ -1539,6 +1539,11 @@ try {
     );
   }
   if (structuredTasks) {
+    const attach = ({ dispatch, outcome, answer } = {}) => {
+      taskDispatch = dispatch;
+      taskOutcome = outcome;
+      taskResponse = answer;
+    };
     await verifyStructuredTasks({
       taskInputs,
       root,
@@ -1552,11 +1557,7 @@ try {
       stop,
       untilProvider,
       available,
-      attach: ({ dispatch, outcome, answer } = {}) => {
-        taskDispatch = dispatch;
-        taskOutcome = outcome;
-        taskResponse = answer;
-      },
+      attach,
       activate: values.taskGoal
         ? (input) =>
             verifyTaskGoalActivation({
@@ -1565,7 +1566,15 @@ try {
               key: taskKey,
               invoke: ensure,
               directory,
+              serverId,
+              workerId,
+              generation: () => workerGeneration,
               modelCalls: () => providerCalls,
+              attach,
+              untilProvider,
+              available,
+              waitForFrame,
+              diagnostics: () => diagnostics,
             })
         : undefined,
       diagnostics: () => diagnostics,

@@ -203,6 +203,23 @@ impl Router {
         );
     }
 
+    pub(crate) fn task_first_input(
+        &self,
+        thread: &JsString,
+        runner: &JsString,
+        message: &JsString,
+    ) -> Result<FirstInput> {
+        self.assert_transport()?;
+        self.0
+            .first_inputs
+            .lock()
+            .unwrap()
+            .get(thread)
+            .filter(|input| &input.runner == runner && &input.message == message)
+            .map(|input| input.input.clone())
+            .ok_or_else(|| anyhow!("The native Goal first input was superseded."))
+    }
+
     pub fn changes(&self) -> watch::Receiver<u64> {
         self.0.version.subscribe()
     }
