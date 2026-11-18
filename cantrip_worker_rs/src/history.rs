@@ -1,11 +1,16 @@
 //! Bridge native history to the real worker-held encryption grants. Execution
 //! capture/projector orchestration is delivered separately; no new capability
 //! is advertised by the source-journal implementation alone.
+pub mod adapters;
+pub mod attachments;
 pub mod client;
+pub mod input_materializer;
+pub mod lineage;
 pub mod preparation;
 pub mod projector;
 pub mod recovery;
 pub mod render;
+pub mod turn_context;
 use crate::encryption::Service;
 use anyhow::{Result, anyhow};
 use cantrip_history::content::{Encryption, Material};

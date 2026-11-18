@@ -66,6 +66,13 @@ files. The queue is process-local, matching the existing worker. Never run two
 workers concurrently against one mutable profile. Cross-process hard-link
 collisions remain actual errors and require retrying the original frame.
 
+Public `files::Queue` and `files::queue` also serve the worker's retained media
+and attachment manifests. Callers select their lexical absolute serialization
+key and still own authorization; queues do not resolve symlinks or grant access.
+A context index uses an independent queue because its operations read the
+journal's queue. Both synchronous and asynchronous accepted operations retain
+their slot after response abandonment and release successors after failure.
+
 Source records are evidence before projection or server acknowledgment. This API
 has no consume, prune or server-commit operation. The directory index stores
 headers only and refreshes new records; authenticated payloads are opened only

@@ -1,5 +1,6 @@
 //! Native worker implementation. Modules are integrated progressively while the
 //! existing production worker remains the default until the complete cutover.
+pub mod attachments;
 pub mod config;
 pub mod connection;
 pub mod credentials;

@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "roots": {
+    "nativeHistoryRetainedContextsSchema": 0,
+    "chatAttachmentSummarySchema": 11
+  },
+  "nodes": [
+    { "type": "array", "element": 1, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "cwd": 2,
+        "model": 3,
+        "collaborationMode": 4,
+        "reasoningEffort": 6,
+        "rootTurnId": 8
+      },
+      "catchall": 10,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 7, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 9, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "unknown", "checks": [] },
+    {
+      "type": "object",
+      "name": "chatAttachmentSummarySchema",
+      "shape": {
+        "id": 12,
+        "chatId": 13,
+        "fileName": 14,
+        "mimeType": 15,
+        "sizeBytes": 16,
+        "kind": 17,
+        "source": 18,
+        "status": 19,
+        "previewText": 20,
+        "createdAt": 22
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 26214400, "inclusive": true }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "chatAttachmentKindSchema",
+      "values": ["audio", "file", "image", "text"],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "chatAttachmentSourceSchema",
+      "values": ["file", "paste"],
+      "checks": []
+    },
+    { "type": "enum", "values": ["ready", "failed"], "checks": [] },
+    { "type": "nullable", "innerType": 21, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 8000, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    }
+  ]
+}

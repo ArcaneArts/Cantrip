@@ -218,7 +218,15 @@ try {
             turnId: identity.turnId,
             source: "canonical",
             retention: "complete",
-            contexts: [],
+            contexts: [
+              {
+                cwd: root,
+                model: "fixture-model",
+                collaborationMode: "default",
+                reasoningEffort: null,
+                rootTurnId: null,
+              },
+            ],
             items: [
               {
                 itemId: identity.itemId,
@@ -268,6 +276,7 @@ try {
       binding,
       context: { cwd: root, mode: "default" },
       prepare: true,
+      nativeAdapters: { directory: path.join(root, "verified-adapters") },
     },
   };
   async function reopen() {
@@ -485,6 +494,7 @@ try {
     records: [],
     config: {
       ...config.nativeProjector,
+      nativeAdapters: null,
       binding: concurrentBinding,
       serverUrl: origin,
       token: enrollment.credential,
@@ -618,6 +628,7 @@ try {
       nativeCanonicalProjector: true,
       nativeArchiveBootstrap: true,
       nativeItemRendering: true,
+      nativeVerifiedContextAdapters: true,
       nativeCoherentArchiveRecovery: true,
       canonicalAckLostAndRecovered: true,
       nativeAndServerProcessRestart: true,

@@ -9,6 +9,8 @@ import type { NativeHistoryStateTurn } from "./native-history-state.js";
 type Context = z.infer<typeof nativeHistoryTurnContextSchema>;
 type Turn = Omit<NativeHistoryStateTurn, "items">;
 const contextsSchema = z.array(nativeHistoryTurnContextSchema);
+// Development contract exporter; runtime parsing still uses this exact schema.
+export const nativeHistoryRetainedContextsSchema = contextsSchema;
 
 function distinct(contexts: Context[]): Context[] {
   const result: Context[] = [];

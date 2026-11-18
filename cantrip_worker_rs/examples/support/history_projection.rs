@@ -211,6 +211,7 @@ impl Engine {
                 let native_service = service.clone();
                 let rebase_service = service.clone();
                 let rebase_source = source.clone();
+                let project_source = source.clone();
                 let options = projection::Options {
                     worker_id: input["workerId"]
                         .as_js_string()
@@ -232,6 +233,7 @@ impl Engine {
                     project: Arc::new(move |records, previous| {
                         let context = project_context.clone();
                         let service = native_service.clone();
+                        let source = project_source.clone();
                         Box::pin(async move {
                             let config = context.config.lock().unwrap().clone();
                             if config["nativeProjector"].is_object() {
@@ -242,7 +244,7 @@ impl Engine {
                                 let mut options = config["nativeProjector"].clone();
                                 options["serverUrl"] = config["serverUrl"].clone();
                                 options["token"] = config["token"].clone();
-                                return history_projector::build(service, options)?
+                                return history_projector::build(service, options, Some(source))?
                                     .0
                                     .project(records, previous)
                                     .await;
@@ -281,8 +283,12 @@ impl Engine {
                                             metadata_signal: None,
                                         },
                                     )?;
-                                    let projector =
-                                        history_projector::build(service.clone(), options)?.0;
+                                    let projector = history_projector::build(
+                                        service.clone(),
+                                        options,
+                                        Some(source.clone()),
+                                    )?
+                                    .0;
                                     return cantrip_worker::history::projector::rebase::recover(
                                         binding,
                                         client,

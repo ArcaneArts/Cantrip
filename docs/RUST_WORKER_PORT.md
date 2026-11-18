@@ -122,7 +122,7 @@ loaded by a production service.
 | Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | Native endpoint/surface/repository formats, all private surface records and scoped grant helpers                                                                                                                                                                                                                                                                                                        | Private-state interop covers 12 resource contexts and six content kinds. Remaining protected domains and serving resource lifetimes are pending. Initial surface-grant refresh now completes real host terminal-service reconciliation; delegated OS services remain pending.                                                    |
 | Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Workspace/folders/routing, nine protected host Explorer operations and bound file-document text read/write                                                                                                                                                                                                                                                                                              | Actual Rust worker/server persists encrypted resources, resolves opaque roots, saves files, rejects replay/mismatched document paths and reopens after restart. Paged readers, media/tail, transfers, activity/watches and delegated OS execution remain pending.                                                                |
 | Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub catalog, issue detail/mutations, issue/PR search, inspection, creation, reviews, lifecycle, checkout preparation, agent context, inbox, Actions/releases and replica provisioning/synchronization/removal/link repair | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, exports/sharing and delegated OS Git remain pending |
-| History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter, authenticated HTTP client, canonical content preparation, coherent archive recovery, native item rendering and canonical projector/bootstrap/rebase orchestration                                                                                                                                                                                                                       | Journal/outbox/projection, native protected preparation and coherent HTTP archive recovery pass focused checks; verified context/attachment adapters, live output identity and capture/retry/runtime orchestration remain pending                                                                                                                                                    |
+| History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter, authenticated HTTP client, canonical content preparation, coherent archive recovery, native item rendering and canonical projector/bootstrap/rebase orchestration                                                                                                                                                                                                                       | Journal/outbox/projection, native protected preparation and coherent HTTP archive recovery pass focused checks; verified retained-context/child-scope and durable media/attachment adapters are native; live output identity and capture/retry/runtime orchestration remain pending                                                                                                                                                    |
 | Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Actual provider protocol fixtures, streaming/media/usage, refresh, cancellation, failure and paid-work bounds                                                                                                                                                                                                                    |
 | Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Manifest verification/probe, native app-server processes, queue ownership, acceptance/commit and restart recovery                                                                                                                                                                                                                |
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
@@ -2959,3 +2959,83 @@ adapters, live output identity, capture subscriptions and managed recovery pumps
 remain, followed by the other execution/provider, terminal, transport/browser,
 OS/helper, upgrade and packaging/default-cutover/Node-retirement work.
 Windows/Linux runtime validation was not performed. The full goal remains active.
+
+## Cycle 48: verified retained context and durable attachment adapters
+
+Reference: current `9f839f5fdd5feeb13f0b3fcaab9da58a9db4c6e7` / PR #3210.
+
+The worker now supplies `history::adapters::Verified` for the real canonical
+projector. It checks the exact source binding and account/server identity before
+creating adapters. The independent context index captures a finite journal head,
+reads bounded pages beyond the current projection page and retains conflicting
+evidence. Failed refreshes can retry without moving a receipt-backed cursor.
+Missing context is a typed projection deferral, never an input/admission gate.
+Historical cwd/mode/root attribution comes from retained evidence. Child scope
+uses immutable binding ancestry and all retained parent evidence; newer labels
+cannot erase a conflicting parent.
+
+`attachments::Store` implements the existing chunked upload, complete, read,
+abort, remove and path behavior, including expected-size/hash verification,
+operation identity, EOF rules, empty streams and filename normalization. Logging
+accepts the worker log adapter. Its production `content::ServiceKeys` selects
+the actual attachment-content grant, independently of chat-content. Metadata
+opening requires the current attachment key revision, as the Node helper does.
+
+`history::attachments::Store` flushes ordinary file bytes before publishing an
+immutable opaque descriptor. Stable identity excludes worker/binding relocation
+fields. A separate immutable published descriptor supersedes a local candidate
+without replacing that candidate; authenticated committed ciphertext is reused
+exactly on later opens. Missing or damaged bytes are restored and malformed
+retained metadata remains a failure.
+
+The input materializer preserves media positions and text references, imports
+only defined native media fields, and never fetches remote URLs or follows
+assistant/tool saved-path hints. Local user media uses its retained cwd and
+opened-file type/actual-byte limits. Unix nonblocking open prevents FIFO hangs.
+Retained copies survive original source edits; a lost retained copy cannot adopt
+changed original bytes. Inline base64 is strict, MIME retains UTF-16 semantics,
+and temporary byte buffers are zeroized. Archive attachment lookup is lazy and
+shared across an item's parts.
+
+The shared history FIFO is now public without changing its algorithm. Media
+manifest operations use caller-selected lexical keys; context indexing uses a
+separate queue to avoid waiting on its own journal read. Two actual schema roots
+/ 23 nodes are exported independently in `native-history-adapters.json`.
+The Node context module adds only an export alias of its existing array schema.
+No Cargo dependencies or existing generated graphs change.
+
+Local evidence on macOS ARM64:
+
+- 107 focused compatibility comparisons use actual Node algorithms and native
+  recovery assertions: real files, metadata cross-opening,
+  immutable descriptor adoption/relocation, malformed manifests, empty and
+  multichunk streams, concurrent handles, byte restoration, local source edits,
+  inline/tool/generated media, UTF-16 MIME, regular-file/FIFO and byte limits,
+  finite paged contexts, failed refreshes, integrity boundaries and child scope.
+  Native fixture processes run with a PATH containing no Node executable.
+- The complete verified-media projector matches Node's revision/fingerprint
+  state and authenticated canonical message content over an actual encrypted
+  source journal. Both implementations reopen the same retained descriptors.
+- All 16 existing focused attachment/context/media reference tests, two native
+  context cancellation/deferral unit tests, five shared history library tests
+  and 104 existing projector comparisons pass.
+- The actual Rust-server/PGlite history integration now uses the real verified
+  context adapters for projection and rejection recovery. Lost ACK, process
+  restart, exact frozen retry and one actual revision-conflict rebase still pass:
+  three accepted batches, final item revision 3 and no pending local outbox.
+- Worker/source/client and actual server/repository-fixture builds, worker
+  all-target Clippy with warnings denied, formatting and diff checks pass.
+
+Source observations, encryption keys and the enrollment/control worker remain
+controlled fixtures. The second integration writer uses the earlier controlled
+projector callbacks explicitly; its actual server revision supplies the rejection
+for the first writer's verified native recovery. This is not production capture
+or provider acceptance. Windows/Linux runtime validation was not performed.
+No hosted development Actions, devices, paid providers, VM/container campaign,
+signing or deployment were used.
+
+Production still selects Node and native outer command handlers remain 59.
+Next work is live output identity, capture/subscription and managed retry/recovery
+orchestration, followed by execution/providers, terminals, transports/browsers,
+OS/helpers, upgrades, packaging/default cutover and Node retirement. The full
+goal remains active.

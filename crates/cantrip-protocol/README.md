@@ -52,3 +52,9 @@ The separate `native-history-projector.json` graph is generated from the actual
 worker projector state and v2 turn content schemas. It adds no wire route or
 server plaintext handling. Canonical orchestration, archive bootstrap and source
 replay live in the worker; transaction persistence stays in `cantrip-history`.
+
+`native-history-adapters.json` exports the actual retained-context array and
+shared attachment-summary schemas through
+`scripts/worker-rust/history-adapters-contracts.mjs`. Context selection, authorized
+local media and attachment decryption stay in worker adapters. The two additional
+roots do not change existing contract graphs or introduce server plaintext access.
