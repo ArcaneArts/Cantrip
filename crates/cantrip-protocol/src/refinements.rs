@@ -31,6 +31,9 @@ pub(super) fn apply(
     if super::project_automations::refine(tag, result, path, message)? {
         return Ok(());
     }
+    if super::mcp_host::refine(tag, result, path, message)? {
+        return Ok(());
+    }
     if super::mcp::refine(tag, result, path)? {
         return Ok(());
     }

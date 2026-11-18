@@ -3941,3 +3941,29 @@ exercised with both local and portable Grok credentials. Production
 `chat.thread.ensure` still needs the managed MCP, settings, and execution-owner
 configuration that supplies this preparation path, plus canonical History
 publication through the server. Production still selects Node.
+
+## 68. Native first-party Cantrip MCP stdio host
+
+Reference: `ae75e37a8e88c886243f0635a275fbbcedc6e293` (#3230).
+`cantrip-worker mcp --connection <path>` implements the Cantrip MCP child for
+IDE and standalone chat. It opens the same private connection document, verifies
+the live binding over loopback, and delegates calls to the authenticated
+broker. The broker continues to decide whether the associated execution lane
+can perform each operation. Stdio requests keep their JSON-RPC identity and
+cancellation closes the corresponding broker exchange. Broker replies are
+bounded at the existing 512 KiB limit.
+
+The child embeds the tool catalog, exact help and validation graphs generated
+from the pinned Node MCP registrations. To refresh them after changing the
+reference schemas, run
+`node --import tsx scripts/worker-rust/mcp-stdio-contract.mjs` from the repository
+root with the development protocol packages built. The MCP child loads the
+tool validation graphs on demand.
+
+On macOS ARM64, bundled Codex launched the native child and enumerated a
+required tool with no Node on its path. Both profiles matched the Node
+stdio catalogs, help and validation behavior. The local fixture exercised
+idle and active bindings, authenticated context, concurrent calls,
+cancellation, oversized responses and invalid connection documents.
+The native broker, managed configuration selection, CUA and Streamable HTTP
+hosts remain open. Production still selects Node.
