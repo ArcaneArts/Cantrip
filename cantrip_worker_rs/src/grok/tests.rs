@@ -1,6 +1,6 @@
 use super::*;
 use crate::codex::managed::Host;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     net::{TcpListener, TcpStream},
@@ -17,6 +17,11 @@ struct Fixture {
     exchange_started: Notify,
     release_exchange: Notify,
     exchange_released: Notify,
+    records: Mutex<HashMap<String, Value>>,
+    reads: AtomicUsize,
+    models: AtomicUsize,
+    billing_failed: AtomicBool,
+    reject_local_model: AtomicBool,
 }
 
 impl Fixture {
@@ -64,6 +69,20 @@ impl Fixture {
             .collect::<HashMap<_, _>>();
         let header = |key: &str| headers.get(key).map(String::as_str);
         let (status, value) = match request.as_str() {
+            path if path.starts_with("/api/internal/workers/providers/fixture/accounts/") => {
+                let account = path.split('/').nth(7).unwrap();
+                assert!(path.ends_with("/credential?workerId=worker"));
+                assert_eq!(
+                    header("authorization"),
+                    Some(format!("Bearer {WORKER_TOKEN}").as_str())
+                );
+                self.reads.fetch_add(1, Ordering::SeqCst);
+                let records = self.records.lock().unwrap();
+                match records.get(account) {
+                    Some(record) => ("200 OK", record.clone()),
+                    None => ("404 Not Found", json!({"code":"migration-needed"})),
+                }
+            }
             "/oauth2/device/code" => {
                 assert_eq!(form["client_id"], http::CLIENT_ID);
                 assert_eq!(form["referrer"], "grok-build");
@@ -131,12 +150,31 @@ impl Fixture {
             "/v1/billing?format=credits" => {
                 assert_eq!(header("x-grok-user-id"), Some("fixture-user"));
                 self.billed.fetch_add(1, Ordering::SeqCst);
-                (
-                    "200 OK",
-                    json!({"config":json!({"currentPeriod":json!({
-                        "type":"USAGE_PERIOD_TYPE_WEEKLY","end":"2026-08-24T00:00:00.000Z"
-                    })})}),
-                )
+                if self.billing_failed.load(Ordering::SeqCst) {
+                    ("503 Service Unavailable", json!({}))
+                } else {
+                    ("200 OK", catalog_fixture()["billing"].clone())
+                }
+            }
+            "/v1/models" => {
+                self.models.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(header("x-grok-user-id"), Some("fixture-user"));
+                let bearer = header("authorization");
+                assert!(matches!(
+                    bearer,
+                    Some(
+                        "Bearer fixture-access"
+                            | "Bearer fixture-rotated"
+                            | "Bearer portable-access"
+                    )
+                ));
+                if bearer == Some("Bearer fixture-access")
+                    && self.reject_local_model.swap(false, Ordering::SeqCst)
+                {
+                    ("401 Unauthorized", json!({}))
+                } else {
+                    ("200 OK", catalog_fixture()["payload"].clone())
+                }
             }
             _ => bail!("Unexpected local test route {request}"),
         };
@@ -148,6 +186,210 @@ impl Fixture {
         let _ = stream.get_mut().write_all(response.as_bytes()).await;
         Ok(())
     }
+}
+
+fn catalog_fixture() -> Value {
+    cantrip_wire::parse_json_text(include_str!("fixtures/catalog.json")).unwrap()
+}
+
+const WORKER_TOKEN: &str = "ctwk_0000000000000000000000000000000000000000000";
+
+fn catalog_command(kind: &str, account: &str) -> Value {
+    json!({"type":kind,"provider":json!({
+        "kind":"grok","id":"fixture","name":"fixture","accountId":account,
+        "credentialHomeKey":account,"baseUrl":"https://example.invalid"
+    })})
+}
+
+async fn catalog_service(
+    root: &Path,
+    endpoint: &url::Url,
+) -> Result<(
+    catalog::Catalog,
+    Arc<crate::encryption::Service>,
+    Arc<crate::logging::Logs>,
+)> {
+    use crate::{
+        config,
+        encryption::{Identity, Service},
+        logging::Logs,
+        provider_access::Access,
+    };
+    let server = endpoint.as_str();
+    let worker_id = "worker".into();
+    let client = reqwest::Client::new();
+    let identity = Identity::open(root, server, &worker_id, false)?;
+    let encryption = Service::new(identity, server, client.clone())?;
+    let registration = encryption.registration();
+    let owner = json!("fixture-owner");
+    let stamp = "2026-08-24T00:00:00.000Z";
+    let component = "provider-credential";
+    let grant = json!({"workerId":worker_id,"keyRevision":1,"component":component});
+    let wrapped =
+        cantrip_crypto::wrap_component_key(&[23; 32], &registration["publicKey"], &owner, &grant)?;
+    encryption.accept_bootstrap(&json!({
+        "serverId":uuid::Uuid::new_v4().to_string(),"ownerId":owner,
+        "principal":json!({
+            "id":registration["principalId"],"ownerId":owner,"workerId":worker_id,
+            "kind":"worker","label":Value::Null,"publicKey":registration["publicKey"],
+            "state":"approved","revision":1,"approvedAt":stamp,"revokedAt":Value::Null,
+            "revokedReason":Value::Null,"createdAt":stamp,"updatedAt":stamp
+        }),
+        "grants":vec![json!({
+            "id":uuid::Uuid::new_v4().to_string(),"ownerId":owner,
+            "principalId":registration["principalId"],"component":component,"keyRevision":1,
+            "wrappedKey":wrapped,"state":"active","revision":1,"revokedAt":Value::Null,
+            "revokedReason":Value::Null,"createdAt":stamp,"updatedAt":stamp
+        })]
+    }))?;
+    let environment = HashMap::from([
+        ("CANTRIP_WORKER_ID".into(), "worker".into()),
+        ("CANTRIP_WORKER_CREDENTIAL".into(), WORKER_TOKEN.into()),
+        (
+            "CANTRIP_WORKER_DATA_DIR".into(),
+            root.to_string_lossy().into_owned(),
+        ),
+        ("CANTRIP_SERVER_URL".into(), server.into()),
+    ]);
+    let configuration = config::read(
+        &environment,
+        &config::Host {
+            cwd: root,
+            worker_root: root,
+            platform: "darwin",
+            architecture: "arm64",
+            hostname: "fixture",
+        },
+    )?;
+    let access = Access::new(
+        Arc::new(Mutex::new(configuration)),
+        encryption.clone(),
+        client,
+    );
+    let worker = Worker::new(
+        Host {
+            binary: root.join("unused-codex"),
+            cwd: root.into(),
+            environment: HashMap::new(),
+            compatibility: Value::Null,
+            logs: None,
+        },
+        root.into(),
+        worker_id,
+        "generation".into(),
+        Arc::new(|| Ok(("server".into(), "owner".into()))),
+    );
+    let auth = Commands::with_http(
+        Http::new("test-1".into())?.fixture(endpoint.clone()),
+        root.into(),
+        worker,
+        Observer::new(Arc::new(|_| {})),
+    );
+    let logs = Arc::new(Logs::initialize(root, &environment, root).await);
+    Ok((
+        catalog::Catalog::new(auth, access, encryption.clone(), logs.clone()),
+        encryption,
+        logs,
+    ))
+}
+
+#[tokio::test]
+async fn model_and_quota_commands_use_bound_portable_credentials_and_scoped_fallback() -> Result<()>
+{
+    let root = tempfile::tempdir()?;
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let endpoint = url::Url::parse(&format!("http://{}/", listener.local_addr()?))?;
+    let fixture = Arc::new(Fixture::default());
+    let server = tokio::spawn(fixture.clone().serve(listener));
+    let (catalog, encryption, logs) = catalog_service(root.path(), &endpoint).await?;
+    let sealed = crate::protected_secrets::protect_provider_credential(
+        &encryption,
+        &json!("portable"),
+        &json!({
+            "kind":"grok","version":1,"userId":"fixture-user","accessToken":"portable-access",
+            "refreshToken":Value::Null,"expiresAt":Value::Null,"email":Value::Null,"planType":Value::Null
+        }),
+    )?;
+    let record = json!({"accountId":"portable","providerId":"fixture",
+        "providerKind":"grok","credentialRevision":4,"credential":sealed["credential"]});
+    fixture.records.lock().unwrap().extend([
+        ("portable".into(), record.clone()),
+        ("mismatched".into(), record),
+    ]);
+    let oracle = catalog_fixture();
+    let result = catalog
+        .execute(catalog_command("model.grok.catalog", "portable"))
+        .await?;
+    assert_eq!(result["models"], oracle["models"]);
+    assert_eq!(result["weeklyUsage"], oracle["weekly"]);
+    let first = &result["quotaSnapshot"];
+    assert_eq!(
+        first["windows"].as_array().unwrap()[0]["rawPayload"]["source"],
+        "billing-credits"
+    );
+    assert_eq!(fixture.reads.load(Ordering::SeqCst), 1);
+    assert_eq!(fixture.billed.load(Ordering::SeqCst), 1);
+    let cached = catalog
+        .execute(catalog_command("model.grok.catalog", "portable"))
+        .await?;
+    assert_eq!(cached["quotaSnapshot"], *first);
+    assert_eq!(fixture.billed.load(Ordering::SeqCst), 1);
+    let fresh = catalog
+        .execute(catalog_command("provider.quota.read", "portable"))
+        .await?;
+    assert_ne!(fresh["snapshotId"], first["snapshotId"]);
+    fixture.billing_failed.store(true, Ordering::SeqCst);
+    let retained = catalog
+        .execute(catalog_command("provider.quota.read", "portable"))
+        .await?;
+    assert_eq!(fresh, retained);
+    assert_eq!(fixture.billed.load(Ordering::SeqCst), 3);
+    fixture.billing_failed.store(false, Ordering::SeqCst);
+
+    let mismatch = catalog
+        .execute(catalog_command("model.grok.catalog", "mismatched"))
+        .await
+        .unwrap_err();
+    assert!(mismatch.to_string().contains("identity-conflict"));
+    assert_eq!(fixture.models.load(Ordering::SeqCst), 2);
+    let empty = catalog
+        .execute(catalog_command("provider.quota.read", "legacy"))
+        .await?;
+    assert_eq!(empty["windows"], json!(Vec::<Value>::new()));
+    assert_eq!(fixture.billed.load(Ordering::SeqCst), 3);
+
+    let local = account_home(root.path(), &"legacy".into());
+    tokio::fs::create_dir_all(&local).await?;
+    tokio::fs::write(
+        local.join(FILE),
+        json!({
+            "version":1,"accessToken":"fixture-access","refreshToken":"fixture-refresh",
+            "userId":"fixture-user","expiresAt":Value::Null
+        })
+        .stringify(),
+    )
+    .await?;
+    fixture.reject_local_model.store(true, Ordering::SeqCst);
+    let fallback = catalog
+        .execute(catalog_command("model.grok.catalog", "legacy"))
+        .await?;
+    assert_eq!(fallback["models"], oracle["models"]);
+    assert_eq!(fallback["weeklyUsage"], oracle["weekly"]);
+    assert_eq!(
+        fallback["quotaSnapshot"]["windows"].as_array().unwrap()[0]["rawPayload"],
+        json!({"source":"legacy-grok-usage"})
+    );
+    assert_eq!(fixture.refreshes.load(Ordering::SeqCst), 1);
+    assert_eq!(fixture.models.load(Ordering::SeqCst), 4);
+    assert_eq!(
+        crate::provider_credentials::read(&local.join(FILE)).await?["accessToken"],
+        "fixture-rotated"
+    );
+    encryption.close().await?;
+    logs.close().await;
+    server.abort();
+    assert!(server.await.unwrap_err().is_cancelled());
+    Ok(())
 }
 
 fn command(kind: &str, id: &str, observation: &str) -> Value {

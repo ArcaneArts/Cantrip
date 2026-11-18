@@ -145,24 +145,22 @@ impl Credential {
         enriched
     }
 
-    async fn quota(&mut self, http: &Http, home: &Path) -> Value {
+    pub(super) async fn quota(&mut self, http: &Http, home: &Path) -> Value {
         if let Some((at, cached)) = &self.quota
             && at.elapsed() < CACHE
         {
             return cached.clone();
         }
         let result = async {
-            let path = "billing?format=credits";
-            let credential = self.valid(http, home, false).await?;
-            let mut response = http.subscription(path, &credential).await?;
-            if response.status() == StatusCode::UNAUTHORIZED {
-                let renewed = self.valid(http, home, true).await?;
-                response = http.subscription(path, &renewed).await?;
-            }
+            let response = self.request(http, home, "billing?format=credits").await?;
             if !response.status().is_success() {
                 bail!("Grok usage discovery failed.");
             }
-            Ok::<_, anyhow::Error>(weekly_usage(&json_body(response).await?))
+            let usage = weekly_usage(&json_body(response).await?);
+            if usage["resetsAt"].as_i64().is_some_and(|resets| resets < 0) {
+                bail!("Grok usage discovery returned an invalid reset timestamp.");
+            }
+            Ok::<_, anyhow::Error>(usage)
         }
         .await;
         match result {
@@ -175,6 +173,21 @@ impl Credential {
                 .as_ref()
                 .map_or(Value::Null, |(_, saved)| saved.clone()),
         }
+    }
+
+    pub(super) async fn request(
+        &mut self,
+        http: &Http,
+        home: &Path,
+        resource: &str,
+    ) -> Result<reqwest::Response> {
+        let credential = self.valid(http, home, false).await?;
+        let response = http.subscription(resource, &credential).await?;
+        if response.status() == StatusCode::UNAUTHORIZED {
+            let renewed = self.valid(http, home, true).await?;
+            return http.subscription(resource, &renewed).await;
+        }
+        Ok(response)
     }
 
     async fn valid(&mut self, http: &Http, home: &Path, force: bool) -> Result<Value> {
