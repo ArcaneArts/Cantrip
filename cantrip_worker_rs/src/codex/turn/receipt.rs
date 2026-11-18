@@ -2,7 +2,7 @@
 use super::{Key, Runtime, id};
 use crate::{chat_content::Scope, config::Config, http::checked, metadata::Guard};
 use anyhow::{Result, bail};
-use cantrip_crypto::content::protect_native_command_result;
+use cantrip_crypto::content::{protect_native_command_request, protect_native_command_result};
 use cantrip_history::content::Encryption;
 use cantrip_wire::{JsString, Value, parse_json_text, value::json};
 use sha2::{Digest, Sha256};
@@ -26,15 +26,16 @@ impl std::fmt::Display for Unacknowledged {
 impl std::error::Error for Unacknowledged {}
 
 #[derive(Clone)]
-pub(super) struct Root {
+pub(super) struct Operation {
     pub operation: JsString,
     pub generation: JsString,
     pub activation: JsString,
     payload: Value,
     lane: Value,
+    method: &'static str,
 }
 
-impl Root {
+impl Operation {
     pub fn read(command: &Value) -> Result<Option<Self>> {
         let receipt = &command["nativeCommandReceipt"];
         if receipt.is_null() {
@@ -69,6 +70,7 @@ impl Root {
             )?,
             payload: receipt["payloadDigest"].clone(),
             lane: receipt["executionLaneId"].clone(),
+            method: "turn/start",
         }))
     }
 
@@ -80,7 +82,7 @@ impl Root {
 
 pub(super) struct Receipt<'a> {
     client: &'a Client,
-    root: &'a Root,
+    operation: Operation,
     session: Value,
     scope: Scope,
 }
@@ -136,7 +138,7 @@ impl Client {
         let text = String::from_utf8_lossy(&bytes);
         let body = parse_json_text(text.strip_prefix('\u{feff}').unwrap_or(&text))
             .map_err(|_| unacknowledged())?;
-        let schema = if action == "dispatch" {
+        let schema = if matches!(action, "admit" | "dispatch") {
             "nativeCommandAdmissionResultSchema"
         } else {
             "nativeCommandSettlementResultSchema"
@@ -148,7 +150,7 @@ impl Client {
 impl<'a> Receipt<'a> {
     pub fn new(
         client: &'a Client,
-        root: &'a Root,
+        root: &Operation,
         command: &Value,
         runtime: &Runtime,
         thread: &JsString,
@@ -176,7 +178,7 @@ impl<'a> Receipt<'a> {
         )?;
         Ok(Self {
             client,
-            root,
+            operation: root.clone(),
             session,
             scope,
         })
@@ -185,29 +187,35 @@ impl<'a> Receipt<'a> {
     fn body(&self) -> Value {
         json!({
             "workerId": self.client.configuration.lock().unwrap().worker_id,
-            "operationId": self.root.operation, "operationGeneration": self.root.generation,
+            "operationId": self.operation.operation, "operationGeneration": self.operation.generation,
         })
     }
 
     fn verify(&self, response: &Value, status: &str) -> Result<()> {
         let receipt = &response["receipt"];
-        if receipt["operationId"].as_js_string() != Some(&self.root.operation)
-            || receipt["operationGeneration"].as_js_string() != Some(&self.root.generation)
-            || receipt["activationGeneration"].as_js_string() != Some(&self.root.activation)
-            || receipt["payloadDigest"] != self.root.payload
-            || receipt["executionLaneId"] != self.root.lane
+        if receipt["operationId"].as_js_string() != Some(&self.operation.operation)
+            || receipt["operationGeneration"].as_js_string() != Some(&self.operation.generation)
+            || receipt["activationGeneration"].as_js_string() != Some(&self.operation.activation)
+            || receipt["payloadDigest"] != self.operation.payload
+            || receipt["executionLaneId"] != self.operation.lane
             || receipt["chatId"] != self.session["chatId"]
             || receipt["threadId"] != self.session["threadId"]
             || (!receipt["logicalOperationId"].is_null()
-                && receipt["logicalOperationId"].as_js_string() != Some(&self.root.operation))
+                && (self.operation.method != "turn/start"
+                    || receipt["logicalOperationId"].as_js_string()
+                        != Some(&self.operation.operation)))
             || !receipt["previousOperationId"].is_null()
-            || receipt["method"] != "turn/start"
+            || receipt["method"] != self.operation.method
             || receipt["status"] != status
-            || receipt["startsExecution"] != true
+            || receipt["startsExecution"] != (self.operation.method == "turn/start")
         {
             bail!("Core returned an unrelated native command receipt.");
         }
         Ok(())
+    }
+
+    pub fn session(&self) -> &Value {
+        &self.session
     }
 
     pub async fn prepare(&self) -> Result<()> {
@@ -221,7 +229,7 @@ impl<'a> Receipt<'a> {
     async fn bind(&self, action: &str, status: &str) -> Result<()> {
         self.scope.identity()?;
         let mut body = self.body();
-        body["payloadDigest"] = self.root.payload.clone();
+        body["payloadDigest"] = self.operation.payload.clone();
         body["session"] = self.session.clone();
         if action == "dispatch" {
             body["workerGeneration"] = json!(self.client.generation);
@@ -235,46 +243,63 @@ impl<'a> Receipt<'a> {
         self.verify(&response, status)
     }
 
-    pub async fn result(&self, content: &Value, turn: Option<&JsString>) -> Result<()> {
-        let grant = self.scope.material(None)?;
-        let (envelope, digest) = protect_native_command_result(
-            &grant.key,
-            &json!({
-                "ownerId": grant.owner_id, "serverId": grant.server_id,
-                "chatId": self.session["chatId"], "operationId": self.root.operation, "keyRevision": grant.key_revision,
-            }),
-            content,
-        )?;
-        let mut body = self.body();
-        let status = if turn.is_some() {
-            "applied"
-        } else {
-            "rejected"
-        };
-        body["status"] = json!(status);
-        body["resultDigest"] = json!(digest);
-        body["protectedResult"] = envelope;
-        body["rejectionCode"] = if let Some(turn) = turn {
-            body["reconciliation"] = json!({
-                "nativeTurnId": turn, "runtimeGeneration": self.session["runtimeGeneration"],
-            });
-            Value::Null
-        } else {
-            json!("native-request-rejected")
-        };
-        self.settle(body, status).await
+    pub async fn applied(&self, content: &Value, turn: Option<&JsString>) -> Result<()> {
+        self.report(
+            "applied",
+            Some(content),
+            reconciliation(&self.session, turn, None),
+        )
+        .await
     }
 
-    pub async fn terminal(&self, turn: &JsString, status: &str) -> Result<()> {
+    pub async fn rejected(&self, error: &Value) -> Result<()> {
+        self.report("rejected", Some(&json!({"error": error})), None)
+            .await
+    }
+
+    pub async fn uncertain(&self) -> Result<()> {
+        self.report("uncertain", None, None).await
+    }
+
+    pub async fn observed(&self, turn: &JsString, status: Option<&str>) -> Result<()> {
+        self.report(
+            "applied",
+            None,
+            reconciliation(&self.session, Some(turn), status),
+        )
+        .await
+    }
+
+    async fn report(
+        &self,
+        status: &str,
+        content: Option<&Value>,
+        evidence: Option<Value>,
+    ) -> Result<()> {
+        let (envelope, digest) = if let Some(content) = content {
+            let grant = self.scope.material(None)?;
+            let (envelope, digest) = protect_native_command_result(
+                &grant.key,
+                &crypto_context(&grant, &self.session["chatId"], &self.operation.operation),
+                content,
+            )?;
+            (envelope, json!(digest))
+        } else {
+            (Value::Null, Value::Null)
+        };
         let mut body = self.body();
-        body["status"] = json!("applied");
-        body["resultDigest"] = Value::Null;
-        body["protectedResult"] = Value::Null;
-        body["rejectionCode"] = Value::Null;
-        body["reconciliation"] = json!({
-            "nativeTurnId": turn, "runtimeGeneration": self.session["runtimeGeneration"], "terminalStatus": status,
-        });
-        self.settle(body, "applied").await
+        body["status"] = json!(status);
+        body["resultDigest"] = digest;
+        body["protectedResult"] = envelope;
+        body["rejectionCode"] = if status == "rejected" {
+            json!("native-request-rejected")
+        } else {
+            Value::Null
+        };
+        if let Some(evidence) = evidence {
+            body["reconciliation"] = evidence;
+        }
+        self.settle(body, status).await
     }
 
     async fn settle(&self, body: Value, status: &str) -> Result<()> {
@@ -295,5 +320,86 @@ impl<'a> Receipt<'a> {
                 Err(error) => return Err(error),
             }
         }
+    }
+}
+
+fn reconciliation(session: &Value, turn: Option<&JsString>, status: Option<&str>) -> Option<Value> {
+    turn.map(|turn| {
+        let mut evidence = json!({
+            "nativeTurnId": turn, "runtimeGeneration": session["runtimeGeneration"],
+        });
+        if let Some(status) = status {
+            evidence["terminalStatus"] = json!(status);
+        }
+        evidence
+    })
+}
+
+fn crypto_context(
+    grant: &cantrip_history::content::Material,
+    chat: &Value,
+    operation: &JsString,
+) -> Value {
+    json!({
+        "ownerId": grant.owner_id, "serverId": grant.server_id,
+        "chatId": chat, "operationId": operation, "keyRevision": grant.key_revision,
+    })
+}
+
+impl Client {
+    pub async fn admit_interrupt(
+        &self,
+        root: &Operation,
+        scope: Scope,
+        session: Value,
+        params: &Value,
+        permission: &Value,
+    ) -> Result<Receipt<'_>> {
+        let name = "turn/interrupt";
+        let operation = JsString::from(uuid::Uuid::new_v4().to_string());
+        let grant = scope.material(None)?;
+        let (envelope, digest) = protect_native_command_request(
+            &grant.key,
+            &crypto_context(&grant, &session["chatId"], &operation),
+            &json!({"id": operation, "method": name, "params": params}),
+        )?;
+        let body = checked(
+            "nativeCommandAdmissionSchema",
+            &json!({
+                "workerId": self.configuration.lock().unwrap().worker_id,
+                "operationId": operation, "origin": "gui", "session": session, "method": name,
+                "payloadDigest": digest, "protectedPayload": envelope,
+                "expectedActivationGeneration": root.activation,
+                "intent": json!({
+                    "scope": "thread", "settingKeys": Vec::<Value>::new(),
+                    "expectedTurnId": params["turnId"], "permissionProfileId": permission, "pathsWithinPlacement": true,
+                }),
+            }),
+        )?;
+        let response = self
+            .post("admit", &body, &Guard::metadata(None, None))
+            .await?;
+        scope.identity()?;
+        if response["replayed"] == true || response["receipt"]["status"] != "accepted" {
+            bail!("Core did not admit the native Stop command.");
+        }
+        let control = Receipt {
+            client: self,
+            operation: Operation {
+                operation,
+                generation: id(
+                    &response["receipt"]["operationGeneration"],
+                    "native control generation",
+                )?,
+                activation: root.activation.clone(),
+                payload: json!(digest),
+                lane: root.lane.clone(),
+                method: name,
+            },
+            session,
+            scope,
+        };
+        control.verify(&response, "accepted")?;
+        Ok(control)
     }
 }

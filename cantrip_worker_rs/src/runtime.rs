@@ -345,22 +345,24 @@ async fn cycle(
                     finish(&request, &worker, logs, &outgoing, began, &result);
                     continue;
                 }
-                if matches!(kind, crate::codex::turn::RUN | crate::codex::turn::INTERRUPT) {
+                if matches!(kind, crate::codex::turn::RUN | crate::codex::turn::INTERRUPT | crate::codex::turn::CONTROL) {
                     let turns = turns.clone();
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();
                     let worker = worker.clone();
-                    let interrupt = kind == crate::codex::turn::INTERRUPT;
                     commands.spawn(async move {
-                        let result = if interrupt {
-                            turns.interrupt(&request["command"]).await
-                        } else {
-                            let request_id = request["requestId"].clone();
-                            let stream = outgoing.clone();
-                            turns.run(&request["command"], Arc::new(move |event| {
-                                stream.send(json!({"kind":"event","requestId":request_id,"event":event}))?;
-                                Ok(())
-                            })).await
+                        let command = &request["command"];
+                        let result = match command["type"].as_str() {
+                            Some(crate::codex::turn::INTERRUPT) => turns.interrupt(command).await,
+                            Some(crate::codex::turn::CONTROL) => turns.control(command).await,
+                            _ => {
+                                let request_id = request["requestId"].clone();
+                                let stream = outgoing.clone();
+                                turns.run(command, Arc::new(move |event| {
+                                    stream.send(json!({"kind":"event","requestId":request_id,"event":event}))?;
+                                    Ok(())
+                                })).await
+                            }
                         };
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });

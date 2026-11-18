@@ -356,29 +356,31 @@ async function ensure(fields, event = () => {}) {
     JSON.stringify({
       kind: "request",
       requestId,
-      command: fields.type?.startsWith("chat.native-logical.")
-        ? fields
-        : {
-            type: "chat.thread.ensure",
-            cwd: root,
-            threadId: null,
-            planMode: "default",
-            model: {
-              id: "gpt-5",
-              routeId: "fixture-route",
-              name: "gpt-5",
-              reasoningEffort: null,
+      command:
+        fields.type === "chat.native-control" ||
+        fields.type?.startsWith("chat.native-logical.")
+          ? fields
+          : {
+              type: "chat.thread.ensure",
+              cwd: root,
+              threadId: null,
+              planMode: "default",
+              model: {
+                id: "gpt-5",
+                routeId: "fixture-route",
+                name: "gpt-5",
+                reasoningEffort: null,
+              },
+              provider: {
+                id: "fixture",
+                kind: "openai-compatible",
+                name: "Fixture",
+                baseUrl: "http://127.0.0.1:1",
+              },
+              permissionProfileId: ":read-only",
+              mcpServers: [],
+              ...fields,
             },
-            provider: {
-              id: "fixture",
-              kind: "openai-compatible",
-              name: "Fixture",
-              baseUrl: "http://127.0.0.1:1",
-            },
-            permissionProfileId: ":read-only",
-            mcpServers: [],
-            ...fields,
-          },
     }),
   );
   try {
@@ -1053,6 +1055,10 @@ async function verifyProtectedTurns() {
       workerGeneration,
       workerId,
     });
+    let releaseRoot;
+    guiPeer.holdRootAcknowledgment = new Promise((resolve) => {
+      releaseRoot = resolve;
+    });
     const request = untilProvider();
     const running = ensure({ ...resumed, nativeCommandReceipt: following });
     const active = await Promise.race([
@@ -1062,23 +1068,51 @@ async function verifyProtectedTurns() {
       }),
     ]);
     const stopCommand = {
-      type: "chat.interrupt",
+      type: "chat.native-control",
       chatId,
       threadId: resumed.threadId,
+      nativeActivationGeneration: following.activationGeneration,
+      nativeRuntimeGeneration: guiPeer.session.runtimeGeneration,
+      modelRouteId: "fixture-route",
+      providerAccountId: null,
+      control: { kind: "interrupt" },
     };
-    assert.deepEqual(
-      await expectSuccess({
-        ...stopCommand,
-        nativeActivationGeneration: randomUUID(),
-      }),
-      { interrupted: false },
+    for (const wrong of [
+      { nativeActivationGeneration: randomUUID() },
+      { nativeRuntimeGeneration: randomUUID() },
+      { threadId: randomUUID() },
+      { modelRouteId: "other-route" },
+      { providerAccountId: "other-account" },
+    ]) {
+      const refused = await ensure({ ...stopCommand, ...wrong });
+      assert.equal(refused.ok, false);
+      assert.match(
+        refused.error.message,
+        /does not identify one connected managed session/,
+      );
+    }
+    guiPeer.loseNextControlDispatch = true;
+    const lostStop = ensure(stopCommand);
+    await expectSuccess({ type: "worker.version" });
+    assert.equal(guiPeer.controls.size, 0);
+    releaseRoot();
+    const missed = await lostStop;
+    assert.equal(missed.ok, false);
+    assert.match(
+      missed.error.message,
+      /did not acknowledge native command dispatch/,
     );
+    assert.equal(guiPeer.terminal, undefined);
+    assert.deepEqual(await expectSuccess(stopCommand), { interrupted: true });
     assert.deepEqual(
-      await expectSuccess({
-        ...stopCommand,
-        nativeActivationGeneration: following.activationGeneration,
-      }),
-      { interrupted: true },
+      [...guiPeer.controls.values()].map(({ receipt, steps }) => [
+        receipt.status,
+        steps,
+      ]),
+      [
+        ["rejected", ["admit", "dispatch", "receipt"]],
+        ["applied", ["admit", "dispatch", "receipt", "receipt"]],
+      ],
     );
     assert.equal((await running).ok, false);
     assert.equal(guiPeer.terminal.terminalStatus, "interrupted");

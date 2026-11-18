@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import {
   chatMessageOpaqueContentSchema,
+  nativeCommandAdmissionSchema,
   nativeCommandDispatchSchema,
   nativeCommandReceiptSchema,
   nativeCommandSettlementSchema,
@@ -57,9 +58,14 @@ export class GuiReceiptPeer {
     this.workerGeneration = workerGeneration;
     this.workerId = workerId;
     this.steps = [];
+    this.controls = new Map();
   }
 
   async apply(action, input, response, send) {
+    if (input.operationId !== this.receipt.operationId) {
+      await this.applyControl(action, input, response, send);
+      return;
+    }
     this.steps.push(action);
     const body = (
       action === "receipt"
@@ -122,6 +128,8 @@ export class GuiReceiptPeer {
       assert.equal(body.reconciliation.terminalStatus, undefined);
       if (this.result) {
         assert.deepEqual(body, this.result);
+        await this.holdRootAcknowledgment;
+        this.rootAcknowledged = true;
       } else {
         assert.equal(this.receipt.status, "dispatched");
         const context = {
@@ -155,5 +163,146 @@ export class GuiReceiptPeer {
       this.terminal = body.reconciliation;
     }
     send({ receipt: this.receipt });
+  }
+
+  async applyControl(action, input, response, send) {
+    assert.equal(input.workerId, this.workerId);
+    if (action === "admit") {
+      const body = nativeCommandAdmissionSchema.parse(input);
+      assert.equal(this.rootAcknowledged, true);
+      assert.equal(this.controls.has(body.operationId), false);
+      assert.equal(body.method, "turn/interrupt");
+      assert.equal(body.origin, "gui");
+      assert.equal(
+        body.expectedActivationGeneration,
+        this.receipt.activationGeneration,
+      );
+      assert.deepEqual(body.session, {
+        ...this.session,
+        connectionId: "gui-control:" + this.session.runtimeGeneration,
+      });
+      assert.deepEqual(body.intent, {
+        scope: "thread",
+        settingKeys: [],
+        expectedTurnId: this.result.reconciliation.nativeTurnId,
+        permissionProfileId: ":read-only",
+        pathsWithinPlacement: true,
+      });
+      const context = {
+        chatId: this.receipt.chatId,
+        operationId: body.operationId,
+        direction: "request",
+      };
+      const frame = {
+        id: body.operationId,
+        method: "turn/interrupt",
+        params: {
+          threadId: this.session.threadId,
+          turnId: body.intent.expectedTurnId,
+        },
+      };
+      assert.deepEqual(
+        await openNativeCommandContent({
+          service: this.oracle,
+          context,
+          envelope: body.protectedPayload,
+        }),
+        frame,
+      );
+      assert.equal(
+        (
+          await protectNativeCommandContent({
+            service: this.oracle,
+            context,
+            content: frame,
+          })
+        ).digest,
+        body.payloadDigest,
+      );
+      const receipt = nativeCommandReceiptSchema.parse({
+        ...this.receipt,
+        operationId: body.operationId,
+        operationGeneration: randomUUID(),
+        logicalOperationId: null,
+        payloadDigest: body.payloadDigest,
+        startsExecution: false,
+        method: "turn/interrupt",
+        status: "accepted",
+      });
+      this.controls.set(body.operationId, {
+        receipt,
+        session: body.session,
+        steps: [action],
+      });
+      send({ receipt, execution: null, computerUseAuthority: null });
+      return;
+    }
+    const control = this.controls.get(input.operationId);
+    assert.ok(control);
+    const { receipt } = control;
+    assert.equal(input.operationGeneration, receipt.operationGeneration);
+    control.steps.push(action);
+    if (action === "dispatch") {
+      const body = nativeCommandDispatchSchema.parse(input);
+      assert.deepEqual(body.session, control.session);
+      assert.equal(body.payloadDigest, receipt.payloadDigest);
+      assert.equal(body.workerGeneration, this.workerGeneration);
+      assert.equal(receipt.status, "accepted");
+      receipt.status = "dispatched";
+      const lost = this.loseNextControlDispatch;
+      this.loseNextControlDispatch = false;
+      if (lost) {
+        control.dispatchLost = true;
+        response.destroy();
+      } else {
+        send({ receipt, execution: null, computerUseAuthority: null });
+      }
+      return;
+    }
+
+    assert.equal(action, "receipt");
+    const body = nativeCommandSettlementSchema.parse(input);
+    assert.equal(body.executionComplete, false);
+    assert.equal(body.reconciliation, undefined);
+    if (control.settlement) {
+      assert.deepEqual(body, control.settlement);
+      send({ receipt });
+      return;
+    }
+    const context = {
+      chatId: receipt.chatId,
+      operationId: receipt.operationId,
+      direction: "result",
+    };
+    const content = await openNativeCommandContent({
+      service: this.oracle,
+      context,
+      envelope: body.protectedResult,
+    });
+    assert.equal(
+      (
+        await protectNativeCommandContent({
+          service: this.oracle,
+          context,
+          content,
+        })
+      ).digest,
+      body.resultDigest,
+    );
+    if (control.dispatchLost) {
+      assert.equal(body.status, "rejected");
+      assert.equal(body.rejectionCode, "native-request-rejected");
+      assert.deepEqual(content, {
+        error: { code: -32000, message: "Native dispatch did not complete." },
+      });
+    } else {
+      assert.equal(body.status, "applied");
+      assert.equal(body.rejectionCode, null);
+      assert.deepEqual(content, { result: {} });
+    }
+    control.settlement = body;
+    receipt.status = body.status;
+    if (body.status === "applied") response.destroy();
+    else send({ receipt });
   }
 }

@@ -26,14 +26,15 @@ checkpointed reflog/lost-commit recovery, worker-scoped GitHub catalog operation
 and repository-scoped issue detail/mutations, issue/PR search, PR inspection, creation, reviews, lifecycle, checkout preparation and agent context,
 GitHub inbox, Actions and releases, plus native replica provisioning and
 managed-link repair, synchronization and guarded removal over the existing
-placement/ownership records. Seventy-eight outer command types have native handlers:
+placement/ownership records. Seventy-nine outer command types have native handlers:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
 `diagnostics.logs.read`, `worker.encryption.refresh`, `chat.sync` (cold host observation),
 `chat.thread.ensure` (managed host attachment), `chat.turn` and `chat.interrupt`
 (host text turns, including protected input and managed GUI receipts),
 `chat.message.protect`,
 `chat.messages.protect`, `chat.messages.reprotect`, `chat.turn.protect`,
-`chat.native-logical.cancel` and `chat.native-logical.complete`,
+`chat.native-logical.cancel`, `chat.native-logical.complete` and
+`chat.native-control` (interrupt for active managed host text turns),
 `model.chatgpt.catalog`,
 `model.grok.catalog` and `provider.quota.read` (Grok),
 `provider.auth.legacy.capture`, `provider.auth.legacy.purge`, `provider.auth.account.clear`,
@@ -4118,4 +4119,29 @@ The Rust server compiles with the generated reply contracts.
 Managed `chat.native-control` (including the GUI Stop path), native approvals,
 deferred settings, queued input, continuation recovery, protected attachments,
 canonical History and durable logical outcome publication remain open.
+Production still selects Node.
+
+## 74. Stop active managed host text turns
+
+Reference commit `88c76952904652c52668ef2d6373b96339a5a173` (#3236).
+
+The Rust worker handles the managed host Stop command sent by the desktop's
+server route. It identifies the active thread, activation, runtime, model route
+and provider account. After Core records the native turn identity, the worker
+encrypts the exact interrupt request and obtains a separate control receipt.
+It records dispatch before forwarding Stop. It rechecks the selected turn at
+the native send boundary and reports the control result separately from the
+root turn's terminal evidence.
+
+On macOS ARM64, the running Rust worker and bundled Codex exercised the
+command channel with an authenticated Core peer and loopback model provider.
+The smoke rejects stale selectors, holds the root receipt while Stop arrives,
+drops the control dispatch response, and verifies that a later confirmed Stop
+interrupts the selected turn. The Node codec opens the control request and
+result and reproduces their keyed digests. The smoke also verifies identical
+control settlement on acknowledgment loss. All 61 focused Node managed
+command session tests and strict worker Clippy pass locally.
+
+Managed pause, steering, interaction replies, deferred and queued inputs,
+suspension recovery, canonical History and durable outcomes remain open.
 Production still selects Node.
