@@ -27,6 +27,7 @@ import {
   wrapComponentKeyForWorker,
 } from "../../packages/crypto/dist/index.js";
 import {
+  agentThreadSyncSchema,
   chatGptModelInventorySchema,
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
@@ -42,6 +43,15 @@ import {
   captureLegacyProviderCredential,
   legacyProviderCredentialSubject,
 } from "../../cantrip_worker/src/legacy-provider-credentials.ts";
+
+import { codexRuntimeId } from "../../cantrip_worker/src/codex/app-server.ts";
+import { ManagedRuntimeNamespaces } from "../../cantrip_worker/src/codex/managed-runtime-namespaces.ts";
+import { observedCodexThreadStatus } from "../../cantrip_worker/src/codex/event-normalization.ts";
+
+import { CodexRpcClient } from "../../cantrip_worker/src/codex/rpc-client.ts";
+import { safeEndpointProviderError } from "../../cantrip_worker/src/codex/provider-errors.ts";
+
+import { OsAgentPlacements } from "../../cantrip_worker/src/os-executor/agent-placements.ts";
 
 const require = createRequire(
   new URL("../../cantrip_worker/package.json", import.meta.url),
@@ -142,6 +152,179 @@ const codexFixture = {
     [homeHash(local)]: { ...pages, login: null, quotaError: true },
   },
 };
+const scope = { serverId, ownerId, workerId };
+const endpointProvider = {
+  id: "observation-provider",
+  name: "Observation fixture",
+  kind: "openai-compatible",
+  baseUrl: "http://127.0.0.1:9/v1/responses",
+  apiKey: null,
+  accountId: null,
+  credentialHomeKey: null,
+};
+const model = {
+  id: "fixture-model",
+  routeId: "fixture-route",
+  name: "Fixture model",
+  reasoningEffort: null,
+};
+const runtimeId = codexRuntimeId(
+  model,
+  endpointProvider,
+  null,
+  "standalone-chat",
+  [],
+);
+const digest = (text) => createHash("sha256").update(text).digest("hex");
+const standalone = digest(runtimeId);
+const realProvider = { ...endpointProvider, id: "persisted-observation" };
+const realHome = path.join(
+  data,
+  "codex-standalone-homes",
+  digest(codexRuntimeId(model, realProvider, null, "standalone-chat", [])),
+);
+const namespaceChat = randomUUID();
+const namespaceThread = randomUUID();
+const operationId = randomUUID();
+const namespace = new ManagedRuntimeNamespaces(data);
+const namespaceHome = namespace.destination(
+  scope,
+  namespaceThread,
+  operationId,
+);
+const selections = path.resolve(namespaceHome, "../../selections");
+await mkdir(selections, { recursive: true });
+const initialOperation = randomUUID();
+const selection = {
+  version: 1,
+  scope,
+  chatId: namespaceChat,
+  threadId: namespaceThread,
+  operationId: initialOperation,
+  previousOperationId: null,
+  provider: {
+    id: endpointProvider.id,
+    kind: endpointProvider.kind,
+    accountId: null,
+  },
+};
+for (const record of [
+  selection,
+  { ...selection, operationId, previousOperationId: initialOperation },
+]) {
+  await writeFile(
+    path.join(selections, record.operationId + ".json"),
+    JSON.stringify(record),
+  );
+}
+assert.equal(namespace.current(scope, namespaceThread).home, namespaceHome);
+const osChat = randomUUID();
+new OsAgentPlacements(data).resolve(
+  { ...scope, chatId: osChat },
+  {
+    kind: "cantrip-os",
+    scope: {
+      ownerId,
+      workerId,
+      instanceId: randomUUID(),
+      guestInstanceId: randomUUID(),
+      attachmentGeneration: randomUUID(),
+      runtimeGeneration: randomUUID(),
+      bindingId: randomUUID(),
+      bindingGeneration: randomUUID(),
+      projectId: "fixture-project",
+      projectSourceId: randomUUID(),
+      worktreeId: randomUUID(),
+      workspaceId: randomUUID(),
+      guestWorkspaceId: "fixture",
+      uid: 20000,
+      gid: 20000,
+      homeGuestPath: "/home/fixture",
+      guestPath: "/home/fixture/source",
+      dependencyOverlays: [],
+      mode: "linux-owned",
+      linkedWorkerPath: null,
+      sourceKind: "folder",
+    },
+    transport: { kind: "docker", container: "fixture" },
+  },
+);
+const historyThread = (id, type, status = "completed") => ({
+  id,
+  status: { type },
+  turns: [
+    {
+      id: "turn",
+      status,
+      items: [
+        { type: "agentMessage", id: "assistant", text: "private native text" },
+      ],
+    },
+  ],
+});
+const active = historyThread("active-thread", "active", "failed");
+const failed = historyThread(namespaceThread, "idle", "failed");
+const idle = historyThread("standalone-thread", "idle", "interrupted");
+codexFixture.observation = {
+  "codex-home": {
+    threads: {
+      [active.id]: { thread: active, metadataUnsupported: true },
+      "wrong-thread": { thread: active },
+      "missing-thread": { error: "Thread not found" },
+    },
+  },
+  [operationId]: {
+    threads: { [failed.id]: { thread: failed } },
+    configuration: path.join(data, "codex-home", "config.toml"),
+  },
+  [standalone]: { threads: { [idle.id]: { thread: idle } } },
+};
+async function seedNativeThread() {
+  await mkdir(realHome, { recursive: true });
+  const child = spawn(
+    path.resolve(values.codex),
+    ["app-server", "--listen", "stdio://"],
+    {
+      cwd: root,
+      env: { PATH: "/usr/bin:/bin", HOME: root, CODEX_HOME: realHome },
+      stdio: "pipe",
+    },
+  );
+  const closed = once(child, "close");
+  const client = new CodexRpcClient(child, 10_000);
+  const request = async (method, params) => {
+    const reply = await client.request(method, params);
+    assert.equal(reply.error, undefined, JSON.stringify(reply.error));
+    return reply.result;
+  };
+  try {
+    await request("initialize", {
+      clientInfo: { name: "cantrip_read_fixture", version: "1" },
+      capabilities: { experimentalApi: true },
+    });
+    client.notify("initialized");
+    const { thread } = await request("thread/start", {
+      historyMode: "paginated",
+      cwd: root,
+      model: "gpt-5",
+      approvalPolicy: "never",
+      sandbox: "read-only",
+    });
+    await request("thread/name/set", {
+      threadId: thread.id,
+      name: "Observe persisted thread",
+    });
+    return thread.id;
+  } finally {
+    const fail = setTimeout(() => child.kill("SIGKILL"), 2_000);
+    try {
+      child.stdin.end();
+      assert.deepEqual(await closed, [0, null]);
+    } finally {
+      clearTimeout(fail);
+    }
+  }
+}
 const aad = {
   ownerId,
   component,
@@ -298,6 +481,7 @@ const [connected, child] = [
       CANTRIP_CODEX_BIN: path.resolve(values.peer),
       CANTRIP_TEST_CODEX: path.resolve(values.codex),
       CANTRIP_CATALOG_FIXTURE: "1",
+      CANTRIP_TEST_REAL_OBSERVATION_HOME: realHome,
       CANTRIP_TEST_AUTH_FIXTURE: JSON.stringify(authCases),
       CANTRIP_CODEX_SESSION_FIXTURE: JSON.stringify(codexFixture),
     },
@@ -415,6 +599,68 @@ try {
       timeoutMs,
     );
   }
+  const { apiKey: _apiKey, ...wireProvider } = endpointProvider;
+  const sync = (threadId, options = {}) =>
+    command({
+      type: "chat.sync",
+      chatId: "cold-observation",
+      cwd: root,
+      threadId,
+      model,
+      provider: wireProvider,
+      ...options,
+    });
+  for (const [thread, options] of [
+    [active, {}],
+    [failed, { chatId: namespaceChat }],
+    [idle, { executionProfile: "standalone-chat" }],
+  ]) {
+    const response = await sync(thread.id, options);
+    assert.equal(response.ok, true, JSON.stringify(response.error));
+    assert.deepEqual(agentThreadSyncSchema.parse(response.result), {
+      threadId: thread.id,
+      status: observedCodexThreadStatus(thread),
+      statusSource: "native-thread",
+      turns: [],
+    });
+    assert.equal(
+      JSON.stringify(response.result).includes("private native text"),
+      false,
+    );
+  }
+  const wrongThread = await sync("wrong-thread");
+  assert.equal(wrongThread.ok, false);
+  assert.match(wrongThread.error.message, /different thread/);
+  const missingThread = await sync("missing-thread");
+  assert.equal(missingThread.ok, false);
+  assert.equal(
+    missingThread.error.message,
+    safeEndpointProviderError("Thread not found"),
+  );
+  const otherRoute = await sync(namespaceThread, {
+    chatId: namespaceChat,
+    provider: { ...wireProvider, id: "changed" },
+  });
+  assert.equal(otherRoute.ok, false);
+  assert.match(otherRoute.error.message, /managed runtime route changed/);
+  const wrongChat = await sync(namespaceThread);
+  assert.equal(wrongChat.ok, false);
+  assert.match(wrongChat.error.message, /managed runtime route changed/);
+  const osChatResult = await sync(active.id, { chatId: osChat });
+  assert.equal(osChatResult.ok, false);
+  assert.match(osChatResult.error.message, /OS-hosted conversation/);
+  const realThread = await seedNativeThread();
+  const persisted = await sync(realThread, {
+    executionProfile: "standalone-chat",
+    provider: { ...wireProvider, id: realProvider.id },
+  });
+  assert.equal(persisted.ok, true, JSON.stringify(persisted.error));
+  assert.deepEqual(persisted.result, {
+    threadId: realThread,
+    status: "idle",
+    statusSource: "native-thread",
+    turns: [],
+  });
   const [a, b] = await Promise.all([catalog(portable), catalog(portable)]);
   for (const response of [a, b]) {
     assert.equal(response.ok, true, JSON.stringify(response.error));
@@ -796,6 +1042,9 @@ try {
       chatgptDeviceAuth: true,
       authObservationReplay: true,
       realKeeper: true,
+      coldNativeObservation: true,
+      nodeNamespaceAndStatusOracle: true,
+      bundledPersistedThreadRead: true,
       providerCalls: 0,
     }),
   );

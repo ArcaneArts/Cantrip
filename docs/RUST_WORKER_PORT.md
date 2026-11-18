@@ -26,9 +26,10 @@ checkpointed reflog/lost-commit recovery, worker-scoped GitHub catalog operation
 and repository-scoped issue detail/mutations, issue/PR search, PR inspection, creation, reviews, lifecycle, checkout preparation and agent context,
 GitHub inbox, Actions and releases, plus native replica provisioning and
 managed-link repair, synchronization and guarded removal over the existing
-placement/ownership records. Sixty-eight outer command types have native handlers:
+placement/ownership records. Sixty-nine outer command types have native handlers:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
-`diagnostics.logs.read`, `worker.encryption.refresh`, `model.chatgpt.catalog`,
+`diagnostics.logs.read`, `worker.encryption.refresh`, `chat.sync` (cold host observation),
+`model.chatgpt.catalog`,
 `model.grok.catalog` and `provider.quota.read` (Grok),
 `provider.auth.legacy.capture`, `provider.auth.legacy.purge`, `provider.auth.account.clear`,
 `codex.auth.status`, `codex.auth.login.start` and `codex.auth.logout` (ChatGPT and Grok),
@@ -127,7 +128,7 @@ loaded by a production service.
 | Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub catalog, issue detail/mutations, issue/PR search, inspection, creation, reviews, lifecycle, checkout preparation, agent context, inbox, Actions/releases and replica provisioning/synchronization/removal/link repair | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, exports/sharing and delegated OS Git remain pending |
 | History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter, authenticated HTTP client, canonical content preparation, coherent archive recovery, native item rendering and canonical projector/bootstrap/rebase orchestration                                                                                                                                                                                                                       | Journal/outbox/projection, native protected preparation and coherent HTTP archive recovery pass focused checks; verified retained-context/child-scope and durable media/attachment adapters are native; live output identity, observation/capture and managed source/projection retry/recovery are native; verified child discovery and the top-level coordinator are native, including production worker startup recovery; live Codex/provider capture integration remains pending                                                                                                                                                    |
 | Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Native provider-error policy plus worker-wide provider pools, canonical lifetimes, direct HTTP/preparation admission, durable recovery, portable provider credential access, ChatGPT and Grok catalogs and device sign-in, Grok quota reads and subscription proxy, legacy credential migration and scoped account clearing | Keeper-backed recovery, sealed credential migration, both device authentication lifecycles and Grok discovery against the Node oracle pass locally. Bundled Codex uses the native Grok proxy with a local provider peer. Additional catalog/quota commands and server-dispatched execution adapters remain pending |
-| Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Native discovery, managed sessions/RPC, keeper/journal, worker-wide admission manager, Codex admission adapter, private RPC routing and worker-scoped runtime owner; command-source adapters still pending | Real keeper grants, no-start withdrawal, cold FIFO recovery and prior registered app-server retirement; integrated execution, queue/settings and task/goal orchestration remain pending |
+| Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Native discovery, managed sessions/RPC, keeper/journal, worker-wide admission manager, Codex admission adapter, private RPC routing and worker-scoped runtime owner and cold host thread observation; command-source execution adapters still pending | Real keeper grants, no-start withdrawal, cold FIFO recovery and prior registered app-server retirement; integrated execution, queue/settings and task/goal orchestration remain pending |
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
 | Terminals/run supervision          | Terminal manager/canonical/private state, run-configuration providers and supervisors                                                     | Native host service reconciliation/restart and owned PTY supervision                                                                                                                                                                                                                                                                                                                                    | Actual encrypted server/worker service enable, idempotence, restart, recovery and disable pass. Interactive commands, canonical terminal/replay, attachment/input/resize, CLI broker environments, run providers and delegated OS services remain pending.                                                                       |
 | WorkerLink/direct/tunnels          | gateways/peer/WebRTC/direct broker, tunnel protection/routing/adapters                                                                    | Native framing/tunnel crypto; serving adapters pending                                                                                                                                                                                                                                                                                                                                                  | Existing frame fixtures plus actual ICE/TURN/WebRTC interoperability, bounded backpressure, stale grant/session and disconnect behavior                                                                                                                                                                                          |
@@ -3866,3 +3867,30 @@ logout. The worker control-channel smoke, 15 existing Node tests, three
 native Grok tests, Clippy, formatting and diff checks passed. Server-dispatched
 execution, durable capture, guest placement, and production launch
 integration remain open. Production still selects Node.
+
+## 65. Cold native thread observation
+
+Reference: `d1288a44113cc4131e4ccfecde3f3bb80709db4d` (#3227).
+The Rust worker handles the server's `chat.sync` command for cold host
+conversations. It resolves protected repository routing, opens the selected
+provider, and reads the thread from the existing IDE/account home, standalone
+home, or committed handoff namespace. Namespace selection validates the
+immutable operation chain against the command's conversation, owner, server,
+worker, and provider. A persisted OS placement requires its own native
+transport.
+
+The managed Codex runtime issues `thread/read` with turns and history metadata.
+It retries without the metadata parameter only when the native RPC explicitly
+rejects that parameter. It verifies the returned thread ID and sends the native
+lifecycle status using the existing response schema. Cold reads leave the
+thread unloaded, and replies omit transcript items without an external-console
+baseline.
+
+Local macOS ARM64 validation compared the actual Rust worker's replies with
+Node's home selection, thread status, and endpoint error rules. The bundled
+Codex read a persisted thread through the Rust worker after the originating
+process exited. The fixtures also checked the metadata retry, mismatched
+thread and namespace identities, and an OS placement that could not fall back
+to the host. External-console attachment, server-dispatched turn execution,
+live history publication and OS-hosted observation remain open. Production
+still selects Node.

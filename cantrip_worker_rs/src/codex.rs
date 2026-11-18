@@ -5,6 +5,7 @@ pub mod catalog;
 pub mod diagnostics;
 pub mod discovery;
 pub mod managed;
+pub(crate) mod observation;
 pub mod private_inference;
 pub mod process_transport;
 pub mod provider_errors;

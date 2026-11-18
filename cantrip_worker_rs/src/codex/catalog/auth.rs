@@ -18,7 +18,7 @@ struct State {
 }
 
 #[derive(Clone)]
-pub(super) struct Auth {
+pub(in crate::codex) struct Auth {
     account: Account,
     access: Access,
     state: Arc<Mutex<State>>,

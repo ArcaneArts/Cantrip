@@ -1,5 +1,5 @@
 //! Existing account-backed ChatGPT discovery over the owned native runtime.
-mod auth;
+pub(in crate::codex) mod auth;
 mod quota;
 
 use crate::{
@@ -29,7 +29,7 @@ const RPC_TIMEOUT: Duration = Duration::from_secs(120);
 
 pub const COMMAND: &str = "model.chatgpt.catalog";
 
-const PROVIDER_CONFIG: &[&str] = &[
+pub(in crate::codex) const PROVIDER_CONFIG: &[&str] = &[
     "web_search=\"disabled\"",
     "features.fast_mode=false",
     "agents.enabled=true",

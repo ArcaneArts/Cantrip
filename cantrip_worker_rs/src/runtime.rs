@@ -214,12 +214,22 @@ async fn cycle(
         data_directory.clone(),
         &codex_compatibility,
     );
+    let skill_root = crate::codex::catalog::global_skill_root(cwd, environment);
+    let chat_observation = crate::codex::observation::Observer::new(
+        codex.clone(),
+        provider_access.clone(),
+        encryption.clone(),
+        routing.clone(),
+        data_directory.clone(),
+        skill_root.clone(),
+        worker.clone(),
+    );
     let model_catalog = crate::codex::catalog::Catalog::new(
         codex.clone(),
         provider_access.clone(),
         encryption.clone(),
         data_directory,
-        crate::codex::catalog::global_skill_root(cwd, environment),
+        skill_root,
         catalog_version,
     );
     let worktree_observations = Arc::new(crate::git::worktrees::observations::Observations::new(
@@ -304,6 +314,14 @@ async fn cycle(
                 let kind=command["type"].as_str().unwrap_or("unknown");
                 let began=std::time::Instant::now();
                 logs.event("debug","Worker command dispatched",json!({"event":"worker.command.dispatched","operation":kind,"requestId":request["requestId"],"workerId":worker}));
+                if kind=="chat.sync" {
+                    let observation=chat_observation.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
+                    commands.spawn(async move {
+                        let result=observation.sync(&request["command"]).await;
+                        finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
                 if kind==crate::codex::catalog::COMMAND {
                     let catalog=model_catalog.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
                     commands.spawn(async move {
