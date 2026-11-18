@@ -26,12 +26,14 @@ checkpointed reflog/lost-commit recovery, worker-scoped GitHub catalog operation
 and repository-scoped issue detail/mutations, issue/PR search, PR inspection, creation, reviews, lifecycle, checkout preparation and agent context,
 GitHub inbox, Actions and releases, plus native replica provisioning and
 managed-link repair, synchronization and guarded removal over the existing
-placement/ownership records. Seventy-six outer command types have native handlers:
+placement/ownership records. Seventy-eight outer command types have native handlers:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
 `diagnostics.logs.read`, `worker.encryption.refresh`, `chat.sync` (cold host observation),
 `chat.thread.ensure` (managed host attachment), `chat.turn` and `chat.interrupt`
-(visible and protected host text turns), `chat.message.protect`,
-`chat.messages.protect`, `chat.messages.reprotect` and `chat.turn.protect`,
+(host text turns, including protected input and managed GUI receipts),
+`chat.message.protect`,
+`chat.messages.protect`, `chat.messages.reprotect`, `chat.turn.protect`,
+`chat.native-logical.cancel` and `chat.native-logical.complete`,
 `model.chatgpt.catalog`,
 `model.grok.catalog` and `provider.quota.read` (Grok),
 `provider.auth.legacy.capture`, `provider.auth.legacy.purge`, `provider.auth.account.clear`,
@@ -4087,3 +4089,33 @@ the socket and worker diagnostics for fixture plaintext.
 Protected attachment delivery at native turn dispatch, command receipts,
 approvals, Task and Goal execution, canonical History and durable outcome
 delivery remain open. Production still selects Node.
+
+## 73. Bind managed GUI receipt ownership to native host execution
+
+Reference commit `583abbc84036ea1797a3735f475c60c3a3db9855` (#3235).
+
+A protected host text turn can use Core's accepted GUI command. The worker
+matches its encrypted input digest and binds the Core operation, placement,
+route, and worker generation to the actual native thread before forwarding
+`turn/start`. The inference journal carries the existing command and message
+identities. The worker uses the shared crypto crate to seal the native RPC
+receipt and compute its keyed digest in the existing format.
+
+The worker retries idempotent receipt transactions with the same payload.
+Dispatch remains single-attempt. Exact terminal observations are reported
+separately from the RPC result. An authenticated logical completion or
+pre-dispatch cancellation releases the matching operation once native work
+has settled. The legacy host interrupt command honors an activation
+generation when supplied.
+
+The macOS ARM64 smoke exercises the real native worker and bundled Codex with
+a disposable authenticated Core peer. It checks preparation before dispatch,
+a lost dispatch reply, a lost RPC-receipt acknowledgment, exact logical
+cancellation and completion, and completed and interrupted native terminal
+evidence. The Node codec opens the receipt and reproduces its keyed digest.
+The Rust server compiles with the generated reply contracts.
+
+Managed `chat.native-control` (including the GUI Stop path), native approvals,
+deferred settings, queued input, continuation recovery, protected attachments,
+canonical History and durable logical outcome publication remain open.
+Production still selects Node.
