@@ -2,6 +2,8 @@
 //! A delivered control is distinct from its observable RPC result and settlement.
 mod goal_cycle;
 mod pending;
+mod producer;
+pub(in crate::codex) use producer::Attempt as GoalAttempt;
 mod wire;
 
 use super::{
@@ -78,6 +80,7 @@ struct Inner {
     timeout: Duration,
     pending: Mutex<PendingState>,
     task_goals: Mutex<HashMap<JsString, TaskGoalRoot>>,
+    producers: Mutex<producer::Producers>,
     version: watch::Sender<u64>,
 }
 
@@ -105,6 +108,7 @@ impl Router {
             timeout: Duration::from_secs(120),
             pending: Mutex::new(PendingState::default()),
             task_goals: Mutex::new(HashMap::new()),
+            producers: Mutex::default(),
             version: watch::channel(0).0,
         })))
     }
@@ -129,13 +133,10 @@ impl Router {
                 if message["method"] == "thread/managedExecution/requested" {
                     let this = self.clone();
                     let request = message["params"].clone();
-                    // An unowned producer must receive its exact denial.
-                    // Leaving the attempt pending can hold a native Goal setter
-                    // ahead of later Pause or Clear requests.
-                    return Routing::Private(owned(async move {
-                        let key = Key::parse(&request)?;
-                        this.resolve(&key, None).await
-                    }));
+                    return Routing::Private(owned(async move { this.producer(request).await }));
+                }
+                if message["method"] == "thread/managedExecution/declined" {
+                    return Routing::Private(done(self.producer_declined(&message["params"])));
                 }
                 if matches!(
                     message["method"].as_str(),

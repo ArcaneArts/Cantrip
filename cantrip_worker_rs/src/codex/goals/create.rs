@@ -66,7 +66,7 @@ impl Goals {
         Ok(json!({"goal":goal}))
     }
 
-    async fn chat_goal_thread(
+    pub(super) async fn chat_goal_thread(
         &self,
         command: &Value,
         bound: &(JsString, Value),

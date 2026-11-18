@@ -273,6 +273,7 @@ async fn cycle(
         task_inputs,
         task_delivery.clone(),
     )?;
+    thread_preparation.configure_autonomous(turns.autonomous(routing.clone()))?;
     let model_catalog = crate::codex::catalog::Catalog::new(
         codex.clone(),
         provider_access.clone(),

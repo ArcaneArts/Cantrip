@@ -38,6 +38,7 @@ import { verifyTaskPreparation } from "./task-preparation-cases.mjs";
 import { verifyDirectTask } from "./direct-task-cases.mjs";
 import { verifyStructuredTasks } from "./structured-task-cases.mjs";
 import { verifyProjectGoalDelivery } from "./project-goal-delivery-cases.mjs";
+import { verifyAutonomousGoal } from "./autonomous-goal-cases.mjs";
 import { verifyChatGoalCreate } from "./chat-goal-create-cases.mjs";
 import { verifyTaskGoalActivation } from "./task-goal-activation-cases.mjs";
 
@@ -55,6 +56,7 @@ const { values } = parseArgs({
     taskGoal: { type: "boolean" },
     chatGoal: { type: "boolean" },
     projectGoals: { type: "boolean" },
+    autonomousGoal: { type: "boolean" },
   },
 });
 assert.ok(values.worker && values.codex);
@@ -89,6 +91,7 @@ let guiPeer,
   taskDispatch,
   taskGoalDispatch,
   goalMutation,
+  goalQueue,
   projectGoal,
   taskResponse,
   holdHandshake;
@@ -205,11 +208,25 @@ const server = createServer(async (request, response) => {
     }
     return;
   }
+  if (url.pathname === "/api/internal/native-queue/read" && goalQueue) {
+    try {
+      send(await goalQueue(await requestBody(request)));
+    } catch (error) {
+      upstream.emit("failure", error);
+      response.writeHead(400).end("{}");
+    }
+    return;
+  }
   if (url.pathname.startsWith("/api/internal/native-history/") && guiHistory) {
     try {
+      const body = await requestBody(request);
+      if (body.chatId !== guiHistory.fields.chatId) {
+        response.writeHead(404).end("{}");
+        return;
+      }
       await guiHistory.apply(
         url.pathname.split("/").at(-1),
-        await requestBody(request),
+        body,
         response,
         send,
       );
@@ -312,6 +329,9 @@ const server = createServer(async (request, response) => {
         [
           ...(values.protected ||
           values.receipts ||
+          values.chatGoal ||
+          values.projectGoals ||
+          values.autonomousGoal ||
           values.taskPreparation ||
           values.directTask ||
           structuredTasks
@@ -458,7 +478,9 @@ async function start() {
       PATH: "/usr/bin:/bin",
       HOME: root,
       NO_COLOR: "1",
-      ...(values.outcomes ? { CANTRIP_LOG_LEVEL: "debug" } : {}),
+      ...(values.outcomes || values.autonomousGoal
+        ? { CANTRIP_LOG_LEVEL: "debug" }
+        : {}),
       CANTRIP_WORKER_DATA_DIR: directory,
       CANTRIP_WORKER_ID: workerId,
       CANTRIP_WORKER_CREDENTIAL: credential,
@@ -1611,6 +1633,34 @@ try {
         kind: "openai-compatible",
         name: "Fixture",
         baseUrl: `http://127.0.0.1:${server.address().port}/fixture/v1`,
+      },
+    });
+  }
+  if (values.autonomousGoal) {
+    await verifyAutonomousGoal({
+      expectThread,
+      expectSuccess,
+      start,
+      stop,
+      available,
+      untilProvider,
+      directory,
+      root,
+      oracle,
+      workerId,
+      generation: () => workerGeneration,
+      modelCalls: () => providerCalls,
+      attach: ({ queue, commands, history, answer } = {}) => {
+        goalQueue = queue;
+        goalMutation = commands;
+        guiHistory = history;
+        taskResponse = answer;
+      },
+      provider: {
+        id: "autonomous-project-goal-fixture",
+        kind: "openai-compatible",
+        name: "Fixture",
+        baseUrl: "http://127.0.0.1:" + server.address().port + "/fixture/v1",
       },
     });
   }

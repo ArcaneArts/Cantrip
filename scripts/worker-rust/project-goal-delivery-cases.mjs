@@ -33,7 +33,9 @@ export async function verifyProjectGoalDelivery({
   attach((source) => {
     const fact = projectGoalObservationSchema.parse(source);
     assert.equal(fact.workerId, workerId);
-    assert.ok([chatId, retainedChat].includes(fact.chatId));
+    if (fact.chatId !== chatId && fact.chatId !== retainedChat) {
+      return { accepted: true };
+    }
     assert.ok(!JSON.stringify(fact).includes(objective));
     seen.push(fact);
     arrived.resolve();

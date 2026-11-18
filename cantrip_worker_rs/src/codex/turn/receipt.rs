@@ -2,7 +2,10 @@
 use super::{Key, Runtime, id};
 use crate::{chat_content::Scope, config::Config, http::checked, metadata::Guard};
 use anyhow::{Result, bail};
-use cantrip_crypto::content::{protect_native_command_request, protect_native_command_result};
+use cantrip_crypto::content::{
+    protect_native_command_request, protect_native_command_result,
+    protect_native_command_terminal_result,
+};
 use cantrip_history::content::Encryption;
 use cantrip_wire::{JsString, Value, parse_json_text, value::json};
 use sha2::{Digest, Sha256};
@@ -31,7 +34,7 @@ pub(super) struct Operation {
     pub generation: JsString,
     pub activation: Value,
     payload: Value,
-    lane: Value,
+    pub(super) lane: Value,
     method: &'static str,
 }
 
@@ -104,11 +107,33 @@ impl Client {
     }
 
     async fn post(&self, action: &str, body: &Value, guard: &Guard) -> Result<Value> {
+        let reply = self
+            .exchange(
+                action,
+                &format!("/api/internal/native-commands/{action}"),
+                body,
+                guard,
+            )
+            .await?;
+        let schema = if matches!(action, "admit" | "dispatch") {
+            "nativeCommandAdmissionResultSchema"
+        } else {
+            "nativeCommandSettlementResultSchema"
+        };
+        checked(schema, &reply)
+    }
+
+    async fn exchange(
+        &self,
+        action: &str,
+        path: &str,
+        body: &Value,
+        guard: &Guard,
+    ) -> Result<Value> {
         let (url, token) = {
             let config = self.configuration.lock().unwrap();
             (
-                url::Url::parse(&config.server_url)?
-                    .join(&format!("/api/internal/native-commands/{action}"))?,
+                url::Url::parse(&config.server_url)?.join(path)?,
                 config.token.clone(),
             )
         };
@@ -136,14 +161,52 @@ impl Client {
             .run(async { response.bytes().await.map_err(|_| unacknowledged().into()) })
             .await?;
         let text = String::from_utf8_lossy(&bytes);
-        let body = parse_json_text(text.strip_prefix('\u{feff}').unwrap_or(&text))
-            .map_err(|_| unacknowledged())?;
-        let schema = if matches!(action, "admit" | "dispatch") {
-            "nativeCommandAdmissionResultSchema"
-        } else {
-            "nativeCommandSettlementResultSchema"
-        };
-        checked(schema, &body)
+        parse_json_text(text.strip_prefix('\u{feff}').unwrap_or(&text))
+            .map_err(|_| unacknowledged().into())
+    }
+
+    pub async fn goal_queue(&self, scope: &Scope, session: &Value) -> Result<Value> {
+        scope.identity()?;
+        let input = checked(
+            "managedQueueReadSchema",
+            &json!({
+                "workerId":self.configuration.lock().unwrap().worker_id, "session":session,
+            }),
+        )?;
+        let reply = self
+            .exchange(
+                "queue read",
+                "/api/internal/native-queue/read",
+                &input,
+                &Guard::metadata(None, None),
+            )
+            .await?;
+        scope.identity()?;
+        checked("managedQueueSnapshotSchema", &reply)
+    }
+
+    pub async fn event(&self, scope: &Scope, operation: &Operation, event: Value) -> Result<()> {
+        scope.identity()?;
+        let input = checked(
+            "nativeCommandEventSchema",
+            &json!({
+                "workerId":self.configuration.lock().unwrap().worker_id,
+                "operationId":operation.operation,"operationGeneration":operation.generation,"event":event,
+            }),
+        )?;
+        let result = self
+            .exchange(
+                "events",
+                "/api/internal/native-commands/events",
+                &input,
+                &Guard::metadata(None, None),
+            )
+            .await?;
+        scope.identity()?;
+        if result != json!({"applied":true}) {
+            bail!("Core did not apply the protected native event.");
+        }
+        Ok(())
     }
 }
 
@@ -216,6 +279,72 @@ impl<'a> Receipt<'a> {
 
     pub fn session(&self) -> &Value {
         &self.session
+    }
+
+    pub(super) fn operation(&self) -> &Operation {
+        &self.operation
+    }
+
+    pub async fn admitted_goal(&self, result: &Value) -> Result<()> {
+        self.report("uncertain", Some(result), None).await
+    }
+
+    pub async fn goal_not_started(&self) -> Result<()> {
+        let grant = self.scope.material(None)?;
+        let (envelope, digest) = protect_native_command_result(
+            &grant.key,
+            &crypto_context(&grant, &self.session["chatId"], &self.operation.operation),
+            &json!({"error":json!({"code":-32000,"message":"The native attempt was not dispatched."})}),
+        )?;
+        let mut body = self.body();
+        body["status"] = json!("rejected");
+        body["resultDigest"] = json!(digest);
+        body["protectedResult"] = envelope;
+        body["rejectionCode"] = json!("native-request-rejected");
+        body["executionComplete"] = json!(true);
+        body["executionStatus"] = json!("idle");
+        self.settle(body, "rejected").await
+    }
+
+    pub async fn goal_declined(&self, key: &crate::codex::private_inference::Key) -> Result<()> {
+        let grant = self.scope.material(None)?;
+        let (envelope, digest) = protect_native_command_terminal_result(
+            &grant.key,
+            &crypto_context(&grant, &self.session["chatId"], &self.operation.operation),
+            &json!({"failed":true}),
+        )?;
+        let mut body = self.body();
+        body["status"] = json!("rejected");
+        body["resultDigest"] = Value::Null;
+        body["protectedResult"] = Value::Null;
+        body["rejectionCode"] = json!("native-request-rejected");
+        body["executionComplete"] = json!(true);
+        body["executionStatus"] = json!("failed");
+        body["terminalResult"] = json!({"resultDigest":digest,"protectedResult":envelope});
+        body["decline"] = json!({
+            "nativeTurnId":key.turn_id,"runtimeGeneration":self.session["runtimeGeneration"],
+            "runnerGeneration":key.runner_generation,"attemptId":key.attempt_id,
+        });
+        self.settle(body, "rejected").await
+    }
+
+    pub async fn finish_goal(&self, turn: &JsString, status: &str, result: &Value) -> Result<()> {
+        let grant = self.scope.material(None)?;
+        let (envelope, digest) = protect_native_command_terminal_result(
+            &grant.key,
+            &crypto_context(&grant, &self.session["chatId"], &self.operation.operation),
+            result,
+        )?;
+        let mut body = self.body();
+        body["status"] = json!("applied");
+        body["resultDigest"] = Value::Null;
+        body["protectedResult"] = Value::Null;
+        body["rejectionCode"] = Value::Null;
+        body["terminalResult"] = json!({"resultDigest":digest,"protectedResult":envelope});
+        body["executionComplete"] = json!(true);
+        body["executionStatus"] = json!(if status == "failed" { "failed" } else { "idle" });
+        body["reconciliation"] = reconciliation(&self.session, Some(turn), Some(status)).unwrap();
+        self.settle(body, "applied").await
     }
 
     pub async fn prepare(&self) -> Result<()> {
@@ -347,6 +476,84 @@ fn crypto_context(
 }
 
 impl Client {
+    pub async fn admit_autonomous(
+        &self,
+        scope: Scope,
+        session: Value,
+        attempt: &Value,
+        permission: &Value,
+        queue: &Value,
+    ) -> Result<(Receipt<'_>, Value)> {
+        let operation = crate::native_items::concat(&[
+            "native:".into(),
+            id(&attempt["runnerGeneration"], "native runner")?,
+            ":".into(),
+            id(&attempt["attemptId"], "native attempt")?,
+        ]);
+        let grant = scope.material(None)?;
+        let (envelope, digest) = protect_native_command_request(
+            &grant.key,
+            &crypto_context(&grant, &session["chatId"], &operation),
+            &json!({"method":"turn/start","params":json!({"threadId":session["threadId"]}),"nativeAttempt":attempt}),
+        )?;
+        let mut input = json!({
+            "workerId":self.configuration.lock().unwrap().worker_id, "operationId":operation,
+            "origin":"autonomous","session":session,"method":"turn/start",
+            "intent":json!({"scope":"thread","expectedTurnId":attempt["turnId"],
+                "autonomousAttempt":json!({"runnerGeneration":attempt["runnerGeneration"],"attemptId":attempt["attemptId"],
+                    "turnId":attempt["turnId"],"trigger":"goal","goalEpoch":attempt["goalEpoch"]}),
+                "permissionProfileId":permission,"workerGeneration":self.generation}),
+            "payloadDigest":digest,"protectedPayload":envelope,"expectedActivationGeneration":Value::Null,
+        });
+        if let Some(claim) = queue["claims"].as_array().and_then(|claims| {
+            claims.iter().find(|claim| {
+                claim["awaitingGoal"] == true
+                    && claim["goalCancelled"] != true
+                    && attempt["goalEpoch"].is_string()
+                    && claim["goalEpoch"] == attempt["goalEpoch"]
+                    && claim["operationId"].is_string()
+                    && claim["operationGeneration"].is_string()
+                    && claim["goalOperationId"].is_null()
+                    && matches!(claim["status"].as_str(), Some("dispatched" | "uncertain"))
+            })
+        }) {
+            input["goalQueueHandoff"] = json!({
+                "claimId":claim["id"],"operationId":claim["operationId"],
+                "operationGeneration":claim["operationGeneration"],"goalEpoch":attempt["goalEpoch"],
+            });
+        }
+        let input = checked("nativeCommandAdmissionSchema", &input)?;
+        let response = self
+            .post("admit", &input, &Guard::metadata(None, None))
+            .await?;
+        scope.identity()?;
+        let row = &response["receipt"];
+        if response["replayed"] == true || row["status"] != "accepted" {
+            bail!("Core did not admit the autonomous Goal producer.");
+        }
+        let receipt = Receipt {
+            client: self,
+            operation: Operation {
+                operation,
+                generation: id(
+                    &row["operationGeneration"],
+                    "autonomous operation generation",
+                )?,
+                activation: Value::String(id(
+                    &row["activationGeneration"],
+                    "autonomous activation",
+                )?),
+                payload: json!(digest),
+                lane: Value::String(id(&row["executionLaneId"], "autonomous execution lane")?),
+                method: "turn/start",
+            },
+            session,
+            scope,
+        };
+        receipt.verify(&response, "accepted")?;
+        Ok((receipt, response))
+    }
+
     pub async fn admit_goal(
         &self,
         scope: Scope,

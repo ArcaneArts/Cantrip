@@ -3,7 +3,7 @@ use cantrip_wire::value::json;
 
 /// Core's exact physical request identity. A logical thread/turn pair is not a
 /// claim and may appear in more than one runner or inference scope.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Key {
     pub thread_id: JsString,
     pub turn_id: JsString,
