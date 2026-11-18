@@ -4423,3 +4423,27 @@ Ordinary Chat Goal creation and autonomous execution, exact native Task pause
 proof, restoration of a previously executing Goal, OS-hosted Goal controls,
 and end-to-end Rust-server integration remain open. Production still selects
 Node.
+
+## 85. Create and replace ordinary Chat Goals
+
+Reference commit `6a580e1b345066dae22806c2559ad21117528871` (#3247).
+
+`chat.goal.create` handles the existing string-objective command. It can open
+an ordinary host thread or use the conversation's managed preparation. The
+worker preserves the objective and optional token budget in the native Goal
+and returns the existing Chat response. Creation on the host path leaves
+model input to Core's later turn dispatch. A managed request uses the operation
+ID supplied by Core in the encrypted RPC frame and durable receipt. Replacing
+a completed Goal clears it through a separate receipt before setting the new
+objective. The worker respects Core's replay response before dispatch.
+
+The macOS ARM64 smoke exercises a fresh host thread, reads the saved Goal
+after restart, and replaces a completed managed Goal on the original native
+thread. It checks both protected request and result digests through the Node
+reference and confirms that a replayed receipt causes no native dispatch.
+The test uses local Core and provider fixtures.
+
+Canonical queue handoff and ordinary autonomous Goal turns, Project Goal
+observation delivery, standalone scratch-workspace integration, live Goal
+restoration, and OS-hosted Goal creation remain open. Production still
+selects Node.

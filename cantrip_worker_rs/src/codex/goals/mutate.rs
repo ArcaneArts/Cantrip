@@ -74,17 +74,37 @@ impl Goals {
         } else {
             self.metadata_thread(command, bound, thread).await?
         };
+        let session =
+            session.or_else(|| managed.then(|| native_session(command, &runtime, thread)));
+        self.apply_mutation(
+            command,
+            turns,
+            bound,
+            LiveThread { runtime, session },
+            method,
+            params,
+        )
+        .await
+    }
+
+    pub(super) async fn apply_mutation(
+        &self,
+        command: &Value,
+        turns: &Turns,
+        bound: &(JsString, Value),
+        owner: LiveThread,
+        method: &'static str,
+        params: Value,
+    ) -> Result<Value> {
         if &self.encryption.bound_identity()? != bound {
             bail!("The worker binding changed before Goal mutation.");
         }
-        let result = if let Some(session) =
-            session.or_else(|| managed.then(|| native_session(command, &runtime, thread)))
-        {
+        let result = if let Some(session) = owner.session {
             turns
-                .goal_mutation(&runtime, bound, command, session, method, params)
+                .goal_mutation(&owner.runtime, bound, command, session, method, params)
                 .await?
         } else {
-            rpc(&runtime, method, params).await?
+            rpc(&owner.runtime, method, params).await?
         };
         if &self.encryption.bound_identity()? != bound {
             bail!("The worker binding changed during Goal mutation.");
