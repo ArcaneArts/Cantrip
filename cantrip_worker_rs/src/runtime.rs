@@ -187,6 +187,12 @@ async fn cycle(
         codex.clone(),
         auth_observations.clone(),
     );
+    let grok_auth = crate::grok::Commands::new(
+        data_directory.clone(),
+        codex.clone(),
+        auth_observations.clone(),
+        environment,
+    )?;
     let provider_access = crate::provider_access::Access::new(
         configuration.clone(),
         encryption.clone(),
@@ -195,6 +201,7 @@ async fn cycle(
     let provider_credentials = crate::provider_credentials::Commands::new(
         codex.clone(),
         account_auth.clone(),
+        grok_auth.clone(),
         provider_access.clone(),
         encryption.clone(),
         data_directory.clone(),
@@ -248,7 +255,10 @@ async fn cycle(
         requests,
         stop: stop_rx.clone(),
         generation,
-        on_ready: Arc::new(move || auth_observations.reemit()),
+        on_ready: {
+            let observations = auth_observations.clone();
+            Arc::new(move || observations.reemit())
+        },
     };
     let mut connection_stop = stop_rx.clone();
     let mut connection_task = tokio::spawn(async move {
@@ -305,6 +315,14 @@ async fn cycle(
                 }
                 if crate::codex::account_auth::supports(command) {
                     let auth=account_auth.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
+                    commands.spawn(async move {
+                        let result=auth.execute(request["command"].clone()).await;
+                        finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
+                if crate::grok::supports(command) {
+                    let auth=grok_auth.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
                     commands.spawn(async move {
                         let result=auth.execute(request["command"].clone()).await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);
@@ -423,7 +441,12 @@ async fn cycle(
     worktree_observations.close().await;
     timers.abort_all();
     while timers.join_next().await.is_some() {}
-    let auth_stopped = account_auth.close().await;
+    let observations = auth_observations.stop();
+    let (auth_stopped, grok_stopped, observations_stopped) = tokio::join!(
+        account_auth.close(),
+        grok_auth.close(),
+        futures::future::join_all(observations),
+    );
     let codex_stopped = codex.close().await;
     let provider_access_closed = provider_access.close().await;
     let history_stopped = history.stop().await;
@@ -454,6 +477,10 @@ async fn cycle(
     github_closed?;
     encryption_closed?;
     auth_stopped?;
+    grok_stopped?;
+    observations_stopped
+        .into_iter()
+        .collect::<std::result::Result<(), _>>()?;
     codex_stopped?;
     provider_access_closed?;
     for pending in history_stopped? {

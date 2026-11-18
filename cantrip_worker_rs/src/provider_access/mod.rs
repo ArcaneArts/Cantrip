@@ -409,7 +409,7 @@ impl Access {
     }
 }
 
-pub(super) async fn json_body(mut response: reqwest::Response) -> Result<Value> {
+pub(crate) async fn json_body(mut response: reqwest::Response) -> Result<Value> {
     let mut body = Vec::new();
     while let Some(chunk) = response
         .chunk()

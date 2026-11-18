@@ -144,21 +144,15 @@ impl Commands {
             state.closed = true;
             std::mem::take(&mut state.homes)
         };
-        let tasks = self.0.observations.stop();
         owned(async move {
-            let (closed, observed) = tokio::join!(
-                futures::future::join_all(
-                    homes
-                        .into_values()
-                        .map(|entry| async move { entry.close().await })
-                ),
-                futures::future::join_all(tasks)
-            );
-            closed.into_iter().collect::<Result<()>>()?;
-            observed
-                .into_iter()
-                .collect::<std::result::Result<(), _>>()?;
-            Ok(())
+            futures::future::join_all(
+                homes
+                    .into_values()
+                    .map(|entry| async move { entry.close().await }),
+            )
+            .await
+            .into_iter()
+            .collect::<Result<()>>()
         })
     }
 }
