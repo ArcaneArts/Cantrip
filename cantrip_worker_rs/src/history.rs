@@ -4,6 +4,7 @@
 pub mod client;
 pub mod preparation;
 pub mod recovery;
+pub mod render;
 use crate::encryption::Service;
 use anyhow::{Result, anyhow};
 use cantrip_history::content::{Encryption, Material};

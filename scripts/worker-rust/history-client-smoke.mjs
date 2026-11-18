@@ -1,6 +1,6 @@
 // Native HTTP client and native durable transactions against the real Rust server.
-// Enrollment/control and rendered input are controlled fixtures. Preparation,
-// encryption, transactions and recovery execute natively; capture/runtime is pending.
+// Enrollment/control and source observations are controlled fixtures. Rendering,
+// preparation, encryption, transactions and recovery are native; capture is pending.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
@@ -192,6 +192,17 @@ try {
     op: "identity",
     state: { owner: h.owner, server: h.serverId, revision: 1 },
   });
+  const [rendered] = await local({
+    op: "presentation.render",
+    item: source,
+    context: {
+      threadId: identity.threadId,
+      turnId: identity.turnId,
+      cwd: root,
+      mode: "default",
+    },
+  });
+  assert.deepEqual(rendered.identity, identity);
   const item = await local({
     op: "content.prepare",
     binding,
@@ -199,15 +210,7 @@ try {
     revision: 1,
     order: { turn: 0, item: 0, component: 0 },
     attachments: [],
-    rendered: {
-      identity,
-      source,
-      message: {
-        role: "assistant",
-        mode: "default",
-        content: [{ type: "text", text: marker }],
-      },
-    },
+    rendered,
   });
   const counts = {
     totalTokens: 8,
@@ -415,6 +418,7 @@ try {
       actualNativeClient: true,
       nativeProjectionAndOutbox: true,
       nativeContentPreparation: true,
+      nativeItemRendering: true,
       nativeCoherentArchiveRecovery: true,
       canonicalAckLostAndRecovered: true,
       nativeAndServerProcessRestart: true,
@@ -422,7 +426,7 @@ try {
       archiveReaders: 3,
       canonicalBatchCount: 1,
       scope:
-        "controlled rendered input and control worker; production capture/runtime integration pending",
+        "controlled source observations and control worker; production capture/runtime integration pending",
       runtime: "macOS ARM64",
       rootRemovedOnExit: true,
     }),

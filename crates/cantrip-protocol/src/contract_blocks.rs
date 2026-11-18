@@ -62,6 +62,10 @@ pub(super) fn load() -> Contracts {
         serde_json::from_str(include_str!("../contracts/native-history-content.json"))
             .expect("embedded native history content contracts"),
     );
+    contracts.append(
+        serde_json::from_str(include_str!("../contracts/native-history-render.json"))
+            .expect("embedded native presentation contracts"),
+    );
     contracts.compile_patterns();
     contracts
 }

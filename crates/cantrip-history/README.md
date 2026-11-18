@@ -87,8 +87,10 @@ node --import tsx scripts/worker-rust/history-source-compatibility.mjs \
   --binary /absolute/shared-target/aarch64-apple-darwin/debug/examples/history-source-fixture
 ```
 
-Runtime observation/capture, retry pumps, canonical projector/ID orchestration,
-rendering and attachment processing remain worker port work. The authenticated
+Runtime observation/capture, retry pumps, canonical projector/ID orchestration
+and attachment processing remain worker port work. Pure rendering is implemented
+in the worker's `history::render`, with reusable activity normalization in
+`native_items`; neither performs attachment I/O or dispatches input. The authenticated
 HTTP client and coherent multi-resource recovery are implemented in the worker's
 `history::client` and `history::recovery`, outside this crate. Production runtime
 integration remains pending. These APIs alone advertise no new worker capability.
