@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { once } from "node:events";
+import { EventEmitter, once } from "node:events";
 import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
@@ -14,7 +14,11 @@ import { nativeTurnRecoveryObservationSchema } from "../../packages/protocol/dis
 import { CodexRpcClient } from "../../cantrip_worker/src/codex/rpc-client.ts";
 
 const { values } = parseArgs({
-  options: { worker: { type: "string" }, codex: { type: "string" } },
+  options: {
+    worker: { type: "string" },
+    codex: { type: "string" },
+    turns: { type: "boolean" },
+  },
 });
 assert.ok(values.worker && values.codex);
 const requireWorker = createRequire(
@@ -37,8 +41,64 @@ const serverId = randomUUID(),
   workerId = "thread-ensure-worker";
 const credential = "ctwk_" + "Y".repeat(43);
 const stamp = new Date().toISOString();
+const upstream = new EventEmitter();
+const contextCalls = [];
+let providerCalls = 0;
+const outputText = "Native host turn fixture.";
+async function requestBody(request) {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  return JSON.parse(Buffer.concat(chunks));
+}
+async function responses(request, response) {
+  const body = await requestBody(request);
+  assert.equal(body.model, "gpt-5");
+  const number = ++providerCalls;
+  const id = "assistant-" + number;
+  const item = {
+    id,
+    type: "message",
+    role: "assistant",
+    content: [{ type: "output_text", text: outputText }],
+  };
+  const closed = once(response, "close");
+  const write = (type, fields) =>
+    response.write(
+      `event: ${type}\ndata: ${JSON.stringify({ type, ...fields })}\n\n`,
+    );
+  response.writeHead(200, { "content-type": "text/event-stream" });
+  write("response.created", { response: { id: "response-" + number } });
+  write("response.output_item.added", { item });
+  write("response.output_text.delta", { delta: outputText });
+  upstream.emit("request", {
+    number,
+    body,
+    closed,
+    finish: () => {
+      write("response.output_item.done", { item });
+      write("response.completed", {
+        response: {
+          id: "response-" + number,
+          usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+        },
+      });
+      response.end();
+    },
+  });
+}
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url, "http://127.0.0.1");
+  if (url.pathname === "/fixture/v1/responses") {
+    try {
+      await responses(request, response);
+    } catch (error) {
+      upstream.emit("failure", error);
+      response.destroy();
+    }
+    return;
+  }
+
   if (request.headers.authorization !== "Bearer " + credential) {
     response.writeHead(401).end("{}");
     return;
@@ -80,7 +140,39 @@ const server = createServer(async (request, response) => {
       bindingProtocolVersions: [1, 2],
       operations: ["tool.help", "context.get"],
     });
-  else response.writeHead(404).end("{}");
+  else if (url.pathname === "/api/internal/agent-operations") {
+    const { binding, request: call } = await requestBody(request);
+    contextCalls.push(binding.executionLaneId);
+    if (call.operation !== "context.get") {
+      response.writeHead(400).end("{}");
+      return;
+    }
+    send({
+      summary: "Authorized native fixture context.",
+      worktreeId: binding.worktreeId,
+      data: {
+        worker: { id: workerId, name: "Worker", online: true },
+        context: {
+          chatId: binding.chatId,
+          executionLaneId: binding.executionLaneId,
+          permissionProfileId: binding.permissionProfileId,
+          projectId: binding.projectId,
+          rootKind: binding.rootKind,
+          terminalId: null,
+          workerId,
+          worktreeId: binding.worktreeId,
+          worktreeMode: "agent-managed",
+        },
+        binding: {
+          status: "read-only",
+          mutationReady: false,
+          staleClaims: [],
+          recoveryInstruction: "Select an authorized profile for mutations.",
+          expiresAt: binding.expiresAt,
+        },
+      },
+    });
+  } else response.writeHead(404).end("{}");
 });
 const sockets = new WebSocketServer({
   server,
@@ -156,14 +248,15 @@ async function stop() {
   child.stdin.end();
   assert.deepEqual(await available(exited), [0, null], diagnostics);
 }
-async function ensure(fields) {
+async function ensure(fields, event = () => {}) {
   const requestId = randomUUID();
   let onResponse;
   const reply = new Promise((resolve) => {
     onResponse = (message) => {
       const frame = JSON.parse(message);
-      if (frame.kind === "response" && frame.requestId === requestId)
-        resolve(frame);
+      if (frame.requestId !== requestId) return;
+      if (frame.kind === "response") resolve(frame);
+      if (frame.kind === "event") event(frame.event);
     };
     connection.on("message", onResponse);
   });
@@ -303,6 +396,162 @@ async function assertIdle(file) {
     await client.close();
   }
 }
+async function verifyTurns() {
+  const session = {
+    contextKind: "project",
+    chatId: randomUUID(),
+    computerUseEnabled: false,
+    projectId: randomUUID(),
+    worktreeId: randomUUID(),
+    rootKind: "folder-root",
+    scratchRootId: null,
+  };
+  const provider = {
+    id: "turn-fixture",
+    kind: "openai-compatible",
+    name: "Fixture",
+    baseUrl: `http://127.0.0.1:${server.address().port}/fixture/v1`,
+  };
+  await start();
+  const { threadId } = await expectThread({ session, provider });
+  const [document] = await bindings();
+  await assertIdle(document.file);
+  const events = [];
+  const issuedTurn = (executionLaneId, extra = {}) =>
+    ensure(
+      {
+        type: "chat.turn",
+        executionProfile: "ide",
+        contextKind: "project",
+        chatId: session.chatId,
+        clientMessageId: randomUUID(),
+        executionLaneId,
+        worktreeId: session.worktreeId,
+        scratchRootId: null,
+        rootKind: "folder-root",
+        isPrimary: true,
+        worktreeMode: "agent-managed",
+        worktreePolicy: "direct",
+        policyProjectId: session.projectId,
+        threadId,
+        prompt: "Return the fixture response.",
+        provider,
+        ...extra,
+      },
+      (event) => events.push(event),
+    );
+  const untilProvider = () =>
+    available(
+      Promise.race([
+        once(upstream, "request").then(([request]) => request),
+        once(upstream, "failure").then(([error]) => {
+          throw error;
+        }),
+      ]),
+    );
+  const observed = untilProvider();
+  const first = issuedTurn("admitted-lane");
+  const providerFirst = await Promise.race([
+    observed,
+    first.then((reply) => {
+      throw new Error(JSON.stringify(reply) + "\n" + diagnostics);
+    }),
+  ]);
+  assert.match(
+    JSON.stringify(providerFirst.body.input),
+    /Return the fixture response/,
+  );
+  const response = await fetch(document.endpoint + "/v1/execute", {
+    method: "POST",
+    headers: {
+      authorization: "Bearer " + document.credential,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      bindingId: document.bindingId,
+      request: { operation: "context.get", arguments: {} },
+    }),
+  });
+  assert.equal(response.status, 200, await response.text());
+  assert.deepEqual(contextCalls, ["admitted-lane"]);
+  const interrupt = (selectedThread, chatId = session.chatId) =>
+    ensure({
+      type: "chat.interrupt",
+      chatId,
+      threadId: selectedThread,
+    });
+  assert.deepEqual((await interrupt("different-thread")).result, {
+    interrupted: false,
+  });
+  const duplicate = await issuedTurn("another-lane");
+  assert.equal(duplicate.ok, false);
+  assert.match(duplicate.error.message, /already has an active native turn/);
+
+  providerFirst.finish();
+  const completed = await first;
+  assert.equal(
+    completed.ok,
+    true,
+    JSON.stringify(completed) + "\n" + diagnostics,
+  );
+  assert.equal(completed.result.threadId, threadId);
+  assert.equal(completed.result.text, outputText);
+  assert.equal(completed.result.status, "completed");
+  assert.equal(completed.result.measuredUsage.totalTokens, 2);
+  assert.ok(
+    events.some(
+      ({ type, message }) =>
+        type === "agent.message" &&
+        !message.streaming &&
+        message.text === outputText,
+    ),
+  );
+  assert.ok(
+    events.some(
+      ({ type, message }) =>
+        type === "agent.message" &&
+        message.streaming &&
+        message.text === outputText,
+    ),
+  );
+  await assertIdle(document.file);
+  const recovery = await expectThread(
+    { session, provider, threadId, recoveryTurnId: completed.result.turnId },
+    threadId,
+  );
+  assert.equal(recovery.recovery.status, "completed");
+  const changedPermission = await issuedTurn("misconfigured-lane", {
+    permissionProfileId: ":yolo",
+  });
+  assert.equal(changedPermission.ok, false);
+  assert.match(changedPermission.error.message, /permission profile changed/);
+  assert.equal(providerCalls, 1);
+  await assertIdle(document.file);
+
+  const observedSecond = untilProvider();
+  const second = issuedTurn("stop-lane");
+  const providerSecond = await Promise.race([
+    observedSecond,
+    second.then((reply) => {
+      throw new Error(JSON.stringify(reply) + "\n" + diagnostics);
+    }),
+  ]);
+  assert.equal(providerSecond.number, 2);
+  assert.deepEqual((await interrupt(threadId, randomUUID())).result, {
+    interrupted: false,
+  });
+  assert.deepEqual((await interrupt(threadId)).result, { interrupted: true });
+  const stopped = await second;
+  assert.equal(stopped.ok, false);
+  assert.match(stopped.error.message, /interrupt/i);
+  await assertIdle(document.file);
+  await available(providerSecond.closed);
+  assert.deepEqual((await interrupt(threadId)).result, { interrupted: false });
+  await stop();
+  assert.deepEqual(await bindings(), []);
+  console.log("Native host turn, streaming, MCP lane, and exact Stop passed.");
+}
+
 try {
   await mkdir(path.join(root, "scratch"));
   const session = {
@@ -379,6 +628,7 @@ try {
   console.log(
     "Native project and standalone preparation, MCP, and restart recovery passed.",
   );
+  if (values.turns) await verifyTurns();
 } finally {
   if (child && child.exitCode === null && child.signalCode === null) {
     child.kill("SIGTERM");
@@ -386,6 +636,7 @@ try {
   }
   for (const socket of sockets.clients) socket.terminate();
   sockets.close();
+  server.closeAllConnections();
   server.close();
   await rm(root, { recursive: true, force: true });
 }

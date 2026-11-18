@@ -26,10 +26,11 @@ checkpointed reflog/lost-commit recovery, worker-scoped GitHub catalog operation
 and repository-scoped issue detail/mutations, issue/PR search, PR inspection, creation, reviews, lifecycle, checkout preparation and agent context,
 GitHub inbox, Actions and releases, plus native replica provisioning and
 managed-link repair, synchronization and guarded removal over the existing
-placement/ownership records. Seventy outer command types have native handlers:
+placement/ownership records. Seventy-two outer command types have native handlers:
 `worker.version`, `worker.credential.rotate`, `worker.restart`,
 `diagnostics.logs.read`, `worker.encryption.refresh`, `chat.sync` (cold host observation),
-`chat.thread.ensure` (managed host attachment),
+`chat.thread.ensure` (managed host attachment), `chat.turn` and `chat.interrupt`
+(visible host text turns),
 `model.chatgpt.catalog`,
 `model.grok.catalog` and `provider.quota.read` (Grok),
 `provider.auth.legacy.capture`, `provider.auth.legacy.purge`, `provider.auth.account.clear`,
@@ -4027,3 +4028,33 @@ native settings survive reattachment.
 The legacy command without a managed session, OS-hosted and held-suspension
 preparation, complete managed tool registration, and execution-owner
 admission remain open. Production still selects Node.
+
+## 71. Execute and stop a server-dispatched host text turn
+
+Reference commit `abfd9c66bda087f1849288fe299b0b148b94f269` (#3233).
+
+The Rust worker dispatches the visible host text form of `chat.turn` through
+its managed native runtime. It reuses the recovered native thread, validates
+the Core permission profile, acquires the existing inference grant and
+activates the MCP attachment for the exact server-supplied execution lane.
+The worker retains the grant and attachment through native settlement.
+The command response includes the native IDs, final response text and observed
+token usage. Streaming messages retain their native item identities and
+provisional phase until completion.
+
+The host `chat.interrupt` handler cancels undispatched preparation or sends
+Stop to the exact native turn in the matching chat and thread. It leaves the
+active owner available until the native boundary settles. A second turn
+cannot dispatch concurrently in the same chat.
+
+On macOS ARM64, the running worker consumed a control-channel request from
+a local server peer and produced streamed text through bundled Codex and a
+loopback Responses provider. The smoke observed the active MCP lane, checked
+idle access before and after execution, read the completed turn back through
+managed preparation, rejected a conflicting permission profile, and stopped
+an active native turn while retaining its exact thread scope.
+
+Protected inputs and results, native command receipts, approvals, Task and
+Goal execution, complete turn telemetry, and canonical History and outcome
+delivery remain open. This cycle exercises the production worker dispatcher
+with a disposable server peer. Production still selects Node.
