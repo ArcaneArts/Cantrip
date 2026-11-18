@@ -21,6 +21,9 @@ impl Adapter {
                     if entry.gate != input.gate_attempt_id {
                         bail!("Native inference scope belongs to another gate request.");
                     }
+                    if entry.runner_generation != input.runner_generation {
+                        bail!("Native inference changed runner during redelivery.");
+                    }
                     if entry.independent != input.independent {
                         bail!("Native inference changed admission kind during redelivery.");
                     }
@@ -33,6 +36,7 @@ impl Adapter {
                     let entry = Arc::new(NativeEntry {
                         independent: input.independent,
                         gate: input.gate_attempt_id.clone(),
+                        runner_generation: input.runner_generation.clone(),
                         expected_goal: input.goal_epoch.clone(),
                         result,
                         state: Mutex::new(NativeState {
@@ -468,11 +472,11 @@ impl Adapter {
         turn: &JsString,
         scope: &JsString,
         gate: &JsString,
+        runner_generation: Option<&JsString>,
     ) -> Result<()> {
-        let Some(entry) = self
-            .native_entry(thread, turn, scope)
-            .filter(|entry| &entry.gate == gate)
-        else {
+        let Some(entry) = self.native_entry(thread, turn, scope).filter(|entry| {
+            &entry.gate == gate && entry.runner_generation.as_ref() == runner_generation
+        }) else {
             return Ok(());
         };
         let (confirmed, operation) = {

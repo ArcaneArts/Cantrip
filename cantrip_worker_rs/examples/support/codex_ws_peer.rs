@@ -78,6 +78,40 @@ pub async fn run() -> Result<()> {
                 socket.send(Message::Text(reply.stringify().into())).await?;
                 continue;
             }
+            "thread/managedExecution/inferenceClaim" | "thread/managedExecution/resolve" => {
+                let attempt = params["attemptId"].as_str().unwrap();
+                let claim = method.ends_with("/inferenceClaim");
+                let allow = params["allow"] == true;
+                received.push(frame.clone());
+                let key = if claim {
+                    "claim"
+                } else if allow {
+                    "allow"
+                } else {
+                    "deny"
+                };
+                let reply = &config["inference"][attempt][key];
+                if let Some(error) = reply.get("error") {
+                    socket
+                        .send(Message::Text(
+                            json!({"id":id,"error":error}).stringify().into(),
+                        ))
+                        .await?;
+                    continue;
+                }
+                let result = reply.get("result").cloned().unwrap_or_else(|| {
+                    if claim {
+                        json!({"claimed":true})
+                    } else {
+                        json!({"accepted":true})
+                    }
+                });
+                if reply["hold"] == true {
+                    held.push(json!({"id":id,"result":result}));
+                    continue;
+                }
+                result
+            }
             "fixture/release" => {
                 for reply in held.drain(..).rev() {
                     socket.send(Message::Text(reply.stringify().into())).await?;

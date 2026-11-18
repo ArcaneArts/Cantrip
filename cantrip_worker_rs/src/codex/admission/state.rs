@@ -80,6 +80,7 @@ pub(super) struct BeforeAcquire {
 pub(super) struct NativeEntry {
     pub independent: bool,
     pub gate: JsString,
+    pub runner_generation: Option<JsString>,
     pub expected_goal: Option<JsString>,
     pub result: Promise<()>,
     pub state: Mutex<NativeState>,

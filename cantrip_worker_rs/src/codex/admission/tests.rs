@@ -100,6 +100,7 @@ async fn exact_native_gate_borrows_root_until_private_finish_even_after_ui_compl
             &"turn".into(),
             &"physical-scope".into(),
             &"another-begin".into(),
+            None,
         )
         .unwrap();
     let mut independent = native("thread", "turn", "independent", "child-begin");
@@ -262,7 +263,8 @@ async fn real_keeper_private_goal_withdrawal_preserves_the_exact_acknowledgement
         gate.as_str().unwrap(),
     );
     input.goal_epoch = Some(epoch.clone());
-    input.runner_generation = Some(uuid());
+    let runner = uuid();
+    input.runner_generation = Some(runner.clone());
     input.root_thread_id = Some(thread.clone());
     input.chat_id = Some(json!(chat));
     input.task_goal_cycle = Some(
@@ -322,7 +324,7 @@ async fn real_keeper_private_goal_withdrawal_preserves_the_exact_acknowledgement
     withdrawal.acknowledge();
     within(acknowledgement).await.unwrap();
     adapter
-        .reject_native_begin(&thread, &turn, &scope, &gate)
+        .reject_native_begin(&thread, &turn, &scope, &gate, Some(&runner))
         .unwrap();
     within(adapter.process_exited()).await.unwrap();
     within(manager.close()).await.unwrap();
