@@ -31,6 +31,7 @@ import {
   protectChatMessage,
 } from "../../cantrip_worker/src/chat-message-encryption.ts";
 import { protectChatPlanState } from "../../cantrip_worker/src/chat-plan-encryption.ts";
+import { admit, GuiReceiptPeer, logical } from "./gui-receipt-cases.mjs";
 
 const { values } = parseArgs({
   options: {
@@ -38,6 +39,7 @@ const { values } = parseArgs({
     codex: { type: "string" },
     turns: { type: "boolean" },
     protected: { type: "boolean" },
+    receipts: { type: "boolean" },
   },
 });
 assert.ok(values.worker && values.codex);
@@ -64,6 +66,7 @@ const stamp = new Date().toISOString();
 const upstream = new EventEmitter();
 const contextCalls = [];
 let providerCalls = 0;
+let guiPeer, workerGeneration;
 const outputText = "Native host turn fixture.";
 const privatePrompt = "Protected input fixture, only for the worker.";
 const priorText = "Private preceding assistant message.";
@@ -72,6 +75,7 @@ const privateQuestion = "Private retained plan question.";
 const chatKey = new Uint8Array(32).fill(41);
 const oracle = {
   ownerId: () => ownerId,
+  serverIdentity: () => serverId,
   componentKey: (scope) => {
     assert.equal(scope, "chat-content");
     return { key: chatKey.slice(), keyRevision: 1 };
@@ -155,6 +159,20 @@ const server = createServer(async (request, response) => {
     response
       .writeHead(200, { "content-type": "application/json" })
       .end(JSON.stringify(value));
+  if (url.pathname.startsWith("/api/internal/native-commands/") && guiPeer) {
+    try {
+      await guiPeer.apply(
+        url.pathname.split("/").at(-1),
+        await requestBody(request),
+        response,
+        send,
+      );
+    } catch (error) {
+      upstream.emit("failure", error);
+      response.writeHead(400).end("{}");
+    }
+    return;
+  }
   if (url.pathname === "/api/internal/workers/encryption/bootstrap") {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
@@ -177,31 +195,32 @@ const server = createServer(async (request, response) => {
         createdAt: stamp,
         updatedAt: stamp,
       },
-      grants: values.protected
-        ? [
-            {
-              id: randomUUID(),
-              ownerId,
-              principalId,
-              component: "chat-content",
-              keyRevision: 1,
-              state: "active",
-              revision: 1,
-              revokedAt: null,
-              revokedReason: null,
-              createdAt: stamp,
-              updatedAt: stamp,
-              wrappedKey: await wrapComponentKeyForWorker({
+      grants:
+        values.protected || values.receipts
+          ? [
+              {
+                id: randomUUID(),
                 ownerId,
-                workerId,
+                principalId,
                 component: "chat-content",
                 keyRevision: 1,
-                componentKey: chatKey,
-                workerPublicKey: publicKey,
-              }),
-            },
-          ]
-        : [],
+                state: "active",
+                revision: 1,
+                revokedAt: null,
+                revokedReason: null,
+                createdAt: stamp,
+                updatedAt: stamp,
+                wrappedKey: await wrapComponentKeyForWorker({
+                  ownerId,
+                  workerId,
+                  component: "chat-content",
+                  keyRevision: 1,
+                  componentKey: chatKey,
+                  workerPublicKey: publicKey,
+                }),
+              },
+            ]
+          : [],
     });
   } else if (url.pathname === "/api/internal/workers/heartbeat") send({});
   else if (
@@ -255,6 +274,7 @@ sockets.on("connection", (socket, request) => {
     request.url,
     "http://127.0.0.1",
   ).searchParams.get("connectionGeneration");
+  workerGeneration = connectionGeneration;
   for (const state of ["pending", "ready"]) {
     socket.send(
       JSON.stringify({
@@ -336,27 +356,29 @@ async function ensure(fields, event = () => {}) {
     JSON.stringify({
       kind: "request",
       requestId,
-      command: {
-        type: "chat.thread.ensure",
-        cwd: root,
-        threadId: null,
-        planMode: "default",
-        model: {
-          id: "gpt-5",
-          routeId: "fixture-route",
-          name: "gpt-5",
-          reasoningEffort: null,
-        },
-        provider: {
-          id: "fixture",
-          kind: "openai-compatible",
-          name: "Fixture",
-          baseUrl: "http://127.0.0.1:1",
-        },
-        permissionProfileId: ":read-only",
-        mcpServers: [],
-        ...fields,
-      },
+      command: fields.type?.startsWith("chat.native-logical.")
+        ? fields
+        : {
+            type: "chat.thread.ensure",
+            cwd: root,
+            threadId: null,
+            planMode: "default",
+            model: {
+              id: "gpt-5",
+              routeId: "fixture-route",
+              name: "gpt-5",
+              reasoningEffort: null,
+            },
+            provider: {
+              id: "fixture",
+              kind: "openai-compatible",
+              name: "Fixture",
+              baseUrl: "http://127.0.0.1:1",
+            },
+            permissionProfileId: ":read-only",
+            mcpServers: [],
+            ...fields,
+          },
     }),
   );
   try {
@@ -831,15 +853,52 @@ async function verifyProtectedTurns() {
   assert.match(badPlan.error.message, /authenticate protected chat plan/);
   assert.equal(providerCalls, before);
 
+  let receipt;
+  if (values.receipts) {
+    receipt = admit(fields, stamp);
+    const cancelled = admit(fields, stamp);
+    await expectSuccess(logical(cancelled, "chat.native-logical.cancel"));
+    const preempted = await ensure({
+      ...fields,
+      nativeCommandReceipt: cancelled,
+    });
+    assert.equal(preempted.ok, false);
+    assert.match(preempted.error.message, /stopped before native dispatch/);
+    await expectSuccess(logical(cancelled));
+    const unrelated = { ...receipt, payloadDigest: "0".repeat(64) };
+    const mismatch = await ensure({
+      ...fields,
+      nativeCommandReceipt: unrelated,
+    });
+    assert.equal(mismatch.ok, false);
+    assert.match(
+      mismatch.error.message,
+      /does not match the admitted native command/,
+    );
+    assert.equal(providerCalls, before);
+    guiPeer = new GuiReceiptPeer(fields, receipt, {
+      oracle,
+      workerGeneration,
+      workerId,
+    });
+  }
+  const command = receipt
+    ? { ...fields, nativeCommandReceipt: receipt }
+    : fields;
   const events = [];
   const observed = untilProvider();
-  const pending = ensure(fields, (event) => events.push(event));
+  const pending = ensure(command, (event) => events.push(event));
   const providerInput = await Promise.race([
     observed,
     pending.then((reply) => {
       throw new Error(JSON.stringify(reply) + "\n" + diagnostics);
     }),
   ]);
+  if (receipt)
+    assert.deepEqual(guiPeer.steps.slice(0, 2), [
+      "bind-preparation",
+      "dispatch",
+    ]);
   assert.ok(providerInput.plan);
   assert.ok(
     providerInput.body.tools.some((tool) => tool.name === "update_plan"),
@@ -943,6 +1002,93 @@ async function verifyProtectedTurns() {
       "Protected plaintext appeared in worker output.",
     );
   }
+  if (receipt) {
+    assert.equal(guiPeer.terminal.nativeTurnId, completed.result.turnId);
+    assert.equal(guiPeer.terminal.terminalStatus, "completed");
+    assert.deepEqual(guiPeer.steps, [
+      "bind-preparation",
+      "dispatch",
+      "receipt",
+      "receipt",
+      "receipt",
+    ]);
+    const stillOwned = await ensure(command);
+    assert.match(stillOwned.error.message, /already has an active native turn/);
+    await expectSuccess({
+      ...logical(receipt),
+      rootOperationGeneration: randomUUID(),
+    });
+    assert.match(
+      (await ensure(command)).error.message,
+      /already has an active native turn/,
+    );
+    await expectSuccess(logical(receipt));
+    await expectSuccess(logical(receipt));
+
+    // An existing native turn is interrupted only by its current activation.
+    const resumed = { ...fields, threadId: completed.result.threadId };
+    const uncertain = admit(resumed, stamp);
+    guiPeer = new GuiReceiptPeer(resumed, uncertain, {
+      oracle,
+      workerGeneration,
+      workerId,
+    });
+    guiPeer.loseDispatchResponse = true;
+    const callsBeforeDispatchLoss = providerCalls;
+    const lostDispatch = await ensure({
+      ...resumed,
+      nativeCommandReceipt: uncertain,
+    });
+    assert.equal(lostDispatch.ok, false);
+    assert.match(
+      lostDispatch.error.message,
+      /did not acknowledge native command dispatch/,
+    );
+    assert.deepEqual(guiPeer.steps, ["bind-preparation", "dispatch"]);
+    assert.equal(providerCalls, callsBeforeDispatchLoss);
+    await expectSuccess(logical(uncertain));
+    const following = admit(resumed, stamp);
+    guiPeer = new GuiReceiptPeer(resumed, following, {
+      oracle,
+      workerGeneration,
+      workerId,
+    });
+    const request = untilProvider();
+    const running = ensure({ ...resumed, nativeCommandReceipt: following });
+    const active = await Promise.race([
+      request,
+      running.then((reply) => {
+        throw new Error(JSON.stringify(reply) + "\n" + diagnostics);
+      }),
+    ]);
+    const stopCommand = {
+      type: "chat.interrupt",
+      chatId,
+      threadId: resumed.threadId,
+    };
+    assert.deepEqual(
+      await expectSuccess({
+        ...stopCommand,
+        nativeActivationGeneration: randomUUID(),
+      }),
+      { interrupted: false },
+    );
+    assert.deepEqual(
+      await expectSuccess({
+        ...stopCommand,
+        nativeActivationGeneration: following.activationGeneration,
+      }),
+      { interrupted: true },
+    );
+    assert.equal((await running).ok, false);
+    assert.equal(guiPeer.terminal.terminalStatus, "interrupted");
+    await active.closed;
+    await expectSuccess(logical(following));
+    guiPeer = undefined;
+    console.log(
+      "Native GUI preparation, dispatch, protected receipt retry, exact Stop, terminal evidence and logical completion passed.",
+    );
+  }
   await stop();
   assert.deepEqual(await bindings(), []);
   console.log(
@@ -1033,7 +1179,7 @@ try {
     "Native project and standalone preparation, MCP, and restart recovery passed.",
   );
   if (values.turns) await verifyTurns();
-  if (values.protected) await verifyProtectedTurns();
+  if (values.protected || values.receipts) await verifyProtectedTurns();
 } finally {
   if (child && child.exitCode === null && child.signalCode === null) {
     child.kill("SIGTERM");

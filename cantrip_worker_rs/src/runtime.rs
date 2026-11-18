@@ -233,7 +233,12 @@ async fn cycle(
         skill_root.clone(),
         &codex_compatibility,
     );
-    let turns = crate::codex::turn::Turns::new(thread_preparation.clone(), encryption.clone());
+    let turns = crate::codex::turn::Turns::new(
+        thread_preparation.clone(),
+        encryption.clone(),
+        configuration.clone(),
+        generation.clone(),
+    )?;
     let model_catalog = crate::codex::catalog::Catalog::new(
         codex.clone(),
         provider_access.clone(),
@@ -333,6 +338,11 @@ async fn cycle(
                         let result = crate::chat_content::execute(encryption, &request["command"]);
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
+                    continue;
+                }
+                if matches!(kind, crate::codex::turn::COMPLETE | crate::codex::turn::CANCEL) {
+                    let result = turns.logical(command);
+                    finish(&request, &worker, logs, &outgoing, began, &result);
                     continue;
                 }
                 if matches!(kind, crate::codex::turn::RUN | crate::codex::turn::INTERRUPT) {

@@ -13,7 +13,6 @@ pub(super) fn validate(command: &Value) -> Result<()> {
         || command["executionProfile"] == "cantrip-os"
         || [
             "computerUseAuthority",
-            "nativeCommandReceipt",
             "protectedNativeInput",
             "queuedPromptId",
             "taskDispatchLease",

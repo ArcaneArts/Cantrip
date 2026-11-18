@@ -944,7 +944,9 @@
     "githubActionsRunCheckoutPreparedSchema": 14032,
     "githubReleaseSummarySchema": 14037,
     "githubReleaseListSchema": 14049,
-    "worktreePolicySchema": 1363
+    "worktreePolicySchema": 1363,
+    "nativeCommandAdmissionResultSchema": 14052,
+    "nativeCommandSettlementResultSchema": 14054
   },
   "nodes": [
     {
@@ -84826,6 +84828,27 @@
       "element": 14037,
       "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
     },
-    { "type": "boolean", "checks": [] }
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeCommandAdmissionResultSchema",
+      "shape": {
+        "receipt": 5757,
+        "execution": 10027,
+        "computerUseAuthority": 10066,
+        "replayed": 10067
+      },
+      "catchall": 14053,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeCommandSettlementResultSchema",
+      "shape": { "receipt": 5757 },
+      "catchall": 14055,
+      "checks": []
+    },
+    { "type": "never", "checks": [] }
   ]
 }

@@ -968,6 +968,8 @@ export const contractRoots = [
   "githubReleaseSummarySchema",
   "githubReleaseListSchema",
   "worktreePolicySchema",
+  "nativeCommandAdmissionResultSchema",
+  "nativeCommandSettlementResultSchema",
 ];
 
 export const projectExportContractRoots = [

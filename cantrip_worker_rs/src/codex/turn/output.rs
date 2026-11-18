@@ -1,6 +1,6 @@
 use super::{Emit, Signal, id};
 use crate::{http::checked, native_items::concat};
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use cantrip_wire::{JsString, Value, value::json};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -45,13 +45,18 @@ struct Pending {
     changed: bool,
 }
 
+pub(super) struct Settled {
+    pub status: &'static str,
+    pub result: Result<Value>,
+}
+
 pub(super) async fn collect(
     events: &mut Events,
     signal: &Signal,
     thread: &JsString,
     turn: &JsString,
     emit: &Emit,
-) -> Result<Value> {
+) -> Result<Settled> {
     let mut message = None::<Pending>;
     let mut final_text = None;
     let mut staged = None::<(JsString, JsString, Value)>;
@@ -158,12 +163,14 @@ pub(super) async fn collect(
                 }
             }
             "turn/completed" => {
-                let status = params["turn"]["status"].as_str();
-                if !matches!(status, Some("completed" | "failed" | "interrupted")) {
-                    continue;
-                }
+                let status = match params["turn"]["status"].as_str() {
+                    Some("completed") => "completed",
+                    Some("failed") => "failed",
+                    Some("interrupted") => "interrupted",
+                    _ => continue,
+                };
                 if let Some((id, text, phase)) = staged.take() {
-                    let phase = if status == Some("completed") {
+                    let phase = if status == "completed" {
                         phase
                     } else {
                         json!("commentary")
@@ -179,23 +186,21 @@ pub(super) async fn collect(
                         "item/agentMessage/delta",
                     );
                 }
-                match status {
-                    Some("completed") => {
-                        if let Some(error) = publisher.error {
-                            return Err(error);
-                        }
-                        return checked(
+                let result = match status {
+                    "completed" => match publisher.error {
+                        Some(error) => Err(error),
+                        None => checked(
                             "agentTurnResultSchema",
                             &json!({
                                 "threadId": thread, "turnId": turn, "text": final_text.unwrap_or(delta),
                                 "measuredUsage": usage, "status": "completed",
                             }),
-                        );
-                    }
-                    Some("interrupted") => bail!("The Codex turn was interrupted."),
-                    Some("failed") => bail!("The Codex turn failed."),
-                    _ => {}
-                }
+                        ),
+                    },
+                    "interrupted" => Err(anyhow::anyhow!("The Codex turn was interrupted.")),
+                    _ => Err(anyhow::anyhow!("The Codex turn failed.")),
+                };
+                return Ok(Settled { status, result });
             }
             _ => {}
         }
