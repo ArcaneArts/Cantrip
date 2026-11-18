@@ -31,7 +31,7 @@ placement/ownership records. Eighty-one outer command types have native handlers
 `diagnostics.logs.read`, `worker.encryption.refresh`, `chat.sync` (cold host observation),
 `chat.thread.ensure` (managed host attachment), `chat.turn` and `chat.interrupt`
 (host text turns, including protected input, managed GUI receipts and
-canonical History for admitted project turns),
+canonical History for admitted project turns, plus direct protected Task rounds),
 `chat.message.protect`,
 `chat.messages.protect`, `chat.messages.reprotect`, `chat.turn.protect`,
 `task.message.protect` and `task.operation.prepare` (encrypted Task input),
@@ -4231,3 +4231,29 @@ server compiled locally.
 
 Native Task dispatch, execution, and outcome production still need wiring.
 Production still selects Node.
+
+## 78. Execute direct protected Task rounds
+
+Reference commit `ea18e86a7856866788647444ad1e219f66bec0b7` (#3240).
+
+The Rust worker opens and authenticates the existing encrypted direct Task
+operation before claiming its exact input. It uses Core's claim and dispatch
+phases, then binds the actual native thread, turn, and scope through the same
+admission journal used for other native inference. Provider execution waits
+for the matching binding acknowledgment.
+
+Live assistant messages remain encrypted under the Task grant and retain
+their stream identity. The completed relay preserves the original operation
+and fingerprint, and reuses the final encrypted message when it matches the
+terminal result. A claimed result is written in the existing immutable
+round outcome format. The worker only removes the file after the server
+returns a matching commitment or retirement.
+
+The local macOS ARM64 smoke uses the bundled Codex binary, a disposable Core
+peer and a loopback provider. It runs a Node-created round, rejects a changed
+fingerprint and a duplicate claim, opens the encrypted result in Node, and
+replays the same pending delivery after restarting the Rust worker.
+
+This milestone covers direct host text rounds. Structured planning and
+finalization, Task attachments, policy bodies, native pause and resumption,
+and Goal continuations remain open. Production still selects Node.

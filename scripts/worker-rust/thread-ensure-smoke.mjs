@@ -35,6 +35,7 @@ import { admit, GuiReceiptPeer, logical } from "./gui-receipt-cases.mjs";
 import { GuiHistoryPeer } from "./gui-history-cases.mjs";
 import { verifyTaskOutcomeRecovery } from "./task-outcome-recovery.mjs";
 import { verifyTaskPreparation } from "./task-preparation-cases.mjs";
+import { verifyDirectTask } from "./direct-task-cases.mjs";
 
 const { values } = parseArgs({
   options: {
@@ -45,6 +46,7 @@ const { values } = parseArgs({
     receipts: { type: "boolean" },
     outcomes: { type: "boolean" },
     taskPreparation: { type: "boolean" },
+    directTask: { type: "boolean" },
   },
 });
 assert.ok(values.worker && values.codex);
@@ -71,7 +73,12 @@ const stamp = new Date().toISOString();
 const upstream = new EventEmitter();
 const contextCalls = [];
 let providerCalls = 0;
-let guiPeer, guiHistory, workerGeneration, taskOutcome, holdHandshake;
+let guiPeer,
+  guiHistory,
+  workerGeneration,
+  taskOutcome,
+  taskDispatch,
+  holdHandshake;
 const outcomeFrames = new EventEmitter();
 const outputText = "Native host turn fixture.";
 const privatePrompt = "Protected input fixture, only for the worker.";
@@ -194,6 +201,18 @@ const server = createServer(async (request, response) => {
     }
     return;
   }
+  if (
+    url.pathname === "/api/internal/native-commands/task-input-dispatch" &&
+    taskDispatch
+  ) {
+    try {
+      taskDispatch(await requestBody(request), send, response);
+    } catch (error) {
+      upstream.emit("failure", error);
+      response.writeHead(400).end("{}");
+    }
+    return;
+  }
   if (url.pathname.startsWith("/api/internal/native-commands/") && guiPeer) {
     try {
       await guiPeer.apply(
@@ -232,7 +251,10 @@ const server = createServer(async (request, response) => {
       },
       grants: await Promise.all(
         [
-          ...(values.protected || values.receipts || values.taskPreparation
+          ...(values.protected ||
+          values.receipts ||
+          values.taskPreparation ||
+          values.directTask
             ? [
                 {
                   component: "chat-content",
@@ -241,7 +263,7 @@ const server = createServer(async (request, response) => {
                 },
               ]
             : []),
-          ...(values.taskPreparation
+          ...(values.taskPreparation || values.directTask
             ? [
                 {
                   component: "task-content",
@@ -1388,8 +1410,9 @@ try {
     scratchRootId: "isolated",
   };
   await start();
-  if (values.taskPreparation) {
-    await verifyTaskPreparation({
+  let directInput;
+  if (values.taskPreparation || values.directTask) {
+    directInput = await verifyTaskPreparation({
       dispatch: ensure,
       ownerId,
       oracle,
@@ -1471,6 +1494,33 @@ try {
     );
   }
   if (values.protected || values.receipts) await verifyProtectedTurns();
+  if (values.directTask) {
+    await verifyDirectTask({
+      source: directInput,
+      outputText,
+      ownerId,
+      serverId,
+      workerId,
+      key: taskKey,
+      directory,
+      baseUrl: `http://127.0.0.1:${server.address().port}/fixture/v1`,
+      invoke: ensure,
+      start,
+      stop,
+      waitForFrame,
+      untilProvider,
+      available,
+      generation: () => workerGeneration,
+      attach: (dispatch, outcome) => {
+        taskDispatch = dispatch;
+        taskOutcome = outcome;
+      },
+      diagnostics: () => diagnostics,
+    });
+    console.log(
+      "Direct Task claim, native binding, encrypted result, and persistent replay passed.",
+    );
+  }
 } finally {
   if (child && child.exitCode === null && child.signalCode === null) {
     child.kill("SIGTERM");

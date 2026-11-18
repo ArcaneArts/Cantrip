@@ -136,41 +136,15 @@ fn prepare(task: &BoundComponentKey, context: &Value, command: &Value) -> Result
 
     let id = uuid::Uuid::new_v4().to_string();
     context["messageId"] = json!(id);
-    let user_classification =
-        json!({"role":"user","mode":mode,"attachmentIds":Vec::<Value>::new()});
-    let input = json!({
-        "version": 1, "classification": user_classification,
-        "content": vec![json!({"type":"text","phase":"final_answer","text":operation_message(kind, &running)})],
+    let message_key = format!(
+        "task-operation:{}",
+        command["operationId"].as_str().unwrap()
+    );
+    let message = json!({
+        "type":"text", "phase":"final_answer", "text":operation_message(kind, &running),
     });
-    let user_message = checked(
-        "taskMessageOpaqueContentSchema",
-        &json!({
-            "id": id, "classification": user_classification,
-            "protectedContent": encrypt_communication(Communication::TaskMessage, key, &context, &input)?,
-            "reasoningEffort": Value::Null,
-            "idempotencyKey": format!("task-operation:{}", command["operationId"].as_str().unwrap()),
-        }),
-    )?;
-    let lookup = derive_lookup_key(
-        key,
-        &json!({
-            "ownerId": context["ownerId"], "keyRevision": context["keyRevision"],
-            "component": COMPONENT, "table": "task_planning_rounds", "field": "operation_fingerprint",
-        }),
-    )?;
-    let fingerprint = blind_lookup_tag(
-        &lookup,
-        &json!([
-            json!(1),
-            context["chatId"].clone(),
-            command["operationId"].clone(),
-            round.clone(),
-            running.clone(),
-            user_message.clone(),
-        ])
-        .stringify()
-        .into(),
-    )?;
+    let user_message = seal_message(key, &context, "user", mode, &json!(message_key), message)?;
+    let fingerprint = fingerprint(key, &context, &round, &running, &user_message)?;
     let operation = json!({
         "chatId": context["chatId"], "operationId": command["operationId"],
         "fingerprint": fingerprint, "classification": round["classification"],
@@ -205,7 +179,61 @@ fn prepare(task: &BoundComponentKey, context: &Value, command: &Value) -> Result
     )
 }
 
-fn opaque(kind: Communication, key: &[u8], context: &Value, content: &Value) -> Result<Value> {
+pub(crate) fn fingerprint(
+    key: &[u8],
+    context: &Value,
+    round: &Value,
+    task: &Value,
+    message: &Value,
+) -> Result<String> {
+    let lookup = derive_lookup_key(
+        key,
+        &json!({
+            "ownerId": context["ownerId"], "keyRevision": context["keyRevision"],
+            "component": COMPONENT, "table": "task_planning_rounds", "field": "operation_fingerprint",
+        }),
+    )?;
+    blind_lookup_tag(
+        &lookup,
+        &json!([
+            json!(1),
+            context["chatId"].clone(),
+            context["roundId"].clone(),
+            round.clone(),
+            task.clone(),
+            message.clone(),
+        ])
+        .stringify()
+        .into(),
+    )
+}
+
+pub(crate) fn seal_message(
+    key: &[u8],
+    context: &Value,
+    role: &str,
+    mode: &str,
+    idempotency: &Value,
+    message: Value,
+) -> Result<Value> {
+    let classification = json!({"role":role,"mode":mode,"attachmentIds":Vec::<Value>::new()});
+    let content = json!({"version":1,"classification":classification,"content":vec![message]});
+    checked(
+        "taskMessageOpaqueContentSchema",
+        &json!({
+            "id": context["messageId"], "classification": classification,
+            "protectedContent": encrypt_communication(Communication::TaskMessage, key, context, &content)?,
+            "reasoningEffort": Value::Null, "idempotencyKey": idempotency,
+        }),
+    )
+}
+
+pub(crate) fn opaque(
+    kind: Communication,
+    key: &[u8],
+    context: &Value,
+    content: &Value,
+) -> Result<Value> {
     Ok(json!({
         "classification": content["classification"],
         "protectedContent": encrypt_communication(kind, key, context, content)?,
