@@ -187,6 +187,13 @@ async fn cycle(
         stop_rx.clone(),
         logs.clone(),
     )?);
+    let project_goals = Arc::new(crate::codex::goals::delivery::Delivery::new(
+        configuration.clone(),
+        encryption.clone(),
+        generation.clone(),
+        logs.clone(),
+    )?);
+    codex.configure_project_goals(project_goals.clone())?;
     let outgoing = Arc::new(Outbound::default());
     let auth_observations = crate::provider_auth_observer::Observer::new({
         let outgoing = outgoing.clone();
@@ -255,6 +262,7 @@ async fn cycle(
         thread_preparation.clone(),
         chat_observation.clone(),
         encryption.clone(),
+        project_goals.clone(),
     );
     let turns = crate::codex::turn::Turns::new(
         thread_preparation.clone(),
@@ -291,6 +299,7 @@ async fn cycle(
     ));
     let (registered, mut registration) = watch::channel(false);
     let task_outcomes = tokio::spawn(task_delivery.clone().run());
+    let goal_delivery = tokio::spawn(project_goals.clone().run(stop_rx.clone()));
     let (requests, mut received) = mpsc::unbounded_channel();
     let mut heartbeat_task = tokio::spawn(publish(
         configuration.clone(),
@@ -310,9 +319,11 @@ async fn cycle(
         generation,
         on_ready: {
             let observations = auth_observations.clone();
+            let project_goals = project_goals.clone();
             Arc::new(move || {
                 observations.reemit();
                 task_delivery.wake();
+                project_goals.wake();
             })
         },
     };
@@ -608,12 +619,16 @@ async fn cycle(
     let provider_access_closed = provider_access.close().await;
     let history_stopped = history.stop().await;
     let task_outcomes_closed = task_outcomes.await;
-    let encryption_closed = encryption.close().await;
+    let goal_delivery_closed = goal_delivery.await;
     while let Some(result) = commands.join_next().await {
         if let Err(error) = result {
             command_failure.get_or_insert(error);
         }
     }
+    if let Err(error) = project_goals.flush().await {
+        project_goals.report(&error);
+    }
+    let encryption_closed = encryption.close().await;
     drop(turns);
     drop(goals);
     let preparation_closed = thread_preparation.close().await;
@@ -637,6 +652,7 @@ async fn cycle(
     terminals_closed?;
     github_closed?;
     task_outcomes_closed?;
+    goal_delivery_closed?;
     encryption_closed?;
     auth_stopped?;
     grok_stopped?;

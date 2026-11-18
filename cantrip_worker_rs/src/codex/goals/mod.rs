@@ -1,6 +1,7 @@
 //! Native Goal commands and authenticated Task projection.
 mod context;
 mod create;
+pub(crate) mod delivery;
 mod mutate;
 mod projection;
 mod read;
@@ -33,6 +34,7 @@ pub(crate) struct Goals {
     preparation: Ensurer,
     observation: Observer,
     encryption: Arc<Service>,
+    project: Arc<delivery::Delivery>,
 }
 
 impl Goals {
@@ -40,11 +42,13 @@ impl Goals {
         preparation: Ensurer,
         observation: Observer,
         encryption: Arc<Service>,
+        project: Arc<delivery::Delivery>,
     ) -> Self {
         Self {
             preparation,
             observation,
             encryption,
+            project,
         }
     }
 
@@ -77,6 +81,26 @@ impl Goals {
                 command["taskContext"]["message"]["kind"] == "resume",
                 &error,
             ),
+        }
+    }
+
+    fn watch_project(
+        &self,
+        command: &Value,
+        bound: &(JsString, Value),
+        thread: &JsString,
+        runtime: &Runtime,
+    ) {
+        if let Some(chat) = command["chatId"].as_js_string()
+            && command["session"]["contextKind"] != "standalone"
+        {
+            self.project.select(
+                bound,
+                thread,
+                runtime.generation(),
+                chat,
+                command["taskContext"].is_object(),
+            );
         }
     }
 

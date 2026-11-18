@@ -37,6 +37,7 @@ import { verifyTaskOutcomeRecovery } from "./task-outcome-recovery.mjs";
 import { verifyTaskPreparation } from "./task-preparation-cases.mjs";
 import { verifyDirectTask } from "./direct-task-cases.mjs";
 import { verifyStructuredTasks } from "./structured-task-cases.mjs";
+import { verifyProjectGoalDelivery } from "./project-goal-delivery-cases.mjs";
 import { verifyChatGoalCreate } from "./chat-goal-create-cases.mjs";
 import { verifyTaskGoalActivation } from "./task-goal-activation-cases.mjs";
 
@@ -53,6 +54,7 @@ const { values } = parseArgs({
     structuredTasks: { type: "boolean" },
     taskGoal: { type: "boolean" },
     chatGoal: { type: "boolean" },
+    projectGoals: { type: "boolean" },
   },
 });
 assert.ok(values.worker && values.codex);
@@ -87,6 +89,7 @@ let guiPeer,
   taskDispatch,
   taskGoalDispatch,
   goalMutation,
+  projectGoal,
   taskResponse,
   holdHandshake;
 const outcomeFrames = new EventEmitter();
@@ -192,6 +195,16 @@ const server = createServer(async (request, response) => {
     response
       .writeHead(200, { "content-type": "application/json" })
       .end(JSON.stringify(value));
+  if (url.pathname === "/api/internal/project-alerts/goals") {
+    try {
+      const observation = await requestBody(request);
+      send(projectGoal ? await projectGoal(observation) : { accepted: true });
+    } catch (error) {
+      upstream.emit("failure", error);
+      response.writeHead(400).end("{}");
+    }
+    return;
+  }
   if (url.pathname.startsWith("/api/internal/native-history/") && guiHistory) {
     try {
       await guiHistory.apply(
@@ -1601,7 +1614,36 @@ try {
       },
     });
   }
+  if (values.projectGoals) {
+    await verifyProjectGoalDelivery({
+      expectSuccess,
+      start,
+      stop,
+      available,
+      directory,
+      oracle,
+      workerId,
+      modelCalls: () => providerCalls,
+      attach: (handler) => {
+        projectGoal = handler;
+      },
+      provider: {
+        id: "project-goal-fixture",
+        kind: "openai-compatible",
+        name: "Fixture",
+        baseUrl: `http://127.0.0.1:${server.address().port}/fixture/v1`,
+      },
+    });
+  }
   if (structuredTasks) {
+    const taskChatIds = new Set();
+    const projectObservations = [];
+    if (values.projectGoals) {
+      projectGoal = (fact) => {
+        projectObservations.push(fact);
+        return { accepted: true };
+      };
+    }
     const attach = ({ dispatch, outcome, answer, cycle } = {}) => {
       taskGoalDispatch = cycle;
       taskDispatch = dispatch;
@@ -1623,8 +1665,9 @@ try {
       available,
       attach,
       activate: values.taskGoal
-        ? (input) =>
-            verifyTaskGoalActivation({
+        ? (input) => {
+            taskChatIds.add(input.command.chatId);
+            return verifyTaskGoalActivation({
               ...input,
               ownerId,
               key: taskKey,
@@ -1649,10 +1692,18 @@ try {
               available,
               waitForFrame,
               diagnostics: () => diagnostics,
-            })
+            });
+          }
         : undefined,
       diagnostics: () => diagnostics,
     });
+    if (values.projectGoals) {
+      assert.deepEqual(
+        projectObservations.filter(({ chatId }) => taskChatIds.has(chatId)),
+        [],
+        "Task Goals must use their own outcome path.",
+      );
+    }
     console.log(
       "Structured Task planning, revision, and finalization matched the Node reference.",
     );

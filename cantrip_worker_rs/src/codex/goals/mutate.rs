@@ -74,6 +74,7 @@ impl Goals {
         } else {
             self.metadata_thread(command, bound, thread).await?
         };
+        self.watch_project(command, bound, thread, &runtime);
         let session =
             session.or_else(|| managed.then(|| native_session(command, &runtime, thread)));
         self.apply_mutation(

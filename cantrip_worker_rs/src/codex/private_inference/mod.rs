@@ -126,6 +126,17 @@ impl Router {
                     let params = message["params"].clone();
                     return Routing::Private(owned(async move { this.handle(params).await }));
                 }
+                if message["method"] == "thread/managedExecution/requested" {
+                    let this = self.clone();
+                    let request = message["params"].clone();
+                    // An unowned producer must receive its exact denial.
+                    // Leaving the attempt pending can hold a native Goal setter
+                    // ahead of later Pause or Clear requests.
+                    return Routing::Private(owned(async move {
+                        let key = Key::parse(&request)?;
+                        this.resolve(&key, None).await
+                    }));
+                }
                 if matches!(
                     message["method"].as_str(),
                     Some("turn/started" | "turn/completed")
