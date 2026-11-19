@@ -178,7 +178,7 @@ async fn cycle(
     let data_directory = config.data_directory.clone();
     let configuration = Arc::new(Mutex::new(config));
     let (stop, stop_rx) = watch::channel(false);
-    let (label_shutdown, label_signal) = crate::metadata::Abort::new();
+    let (command_shutdown, command_signal) = crate::metadata::Abort::new();
     let task_inputs = crate::codex::task_inputs::Client::new(
         configuration.clone(),
         encryption.clone(),
@@ -294,6 +294,9 @@ async fn cycle(
         skill_root,
         catalog_version,
     );
+    let endpoint_catalog = Arc::new(crate::codex::catalog::endpoint::Catalog::new(
+        encryption.clone(),
+    )?);
     let worktree_observations = Arc::new(crate::git::worktrees::observations::Observations::new(
         worktrees.clone(),
         {
@@ -404,7 +407,7 @@ async fn cycle(
                     let preparation = thread_preparation.clone();
                     let encryption = encryption.clone();
                     let task_inputs = task_inputs.clone();
-                    let signal = label_signal.clone();
+                    let signal = command_signal.clone();
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();
                     let worker = worker.clone();
@@ -543,6 +546,18 @@ async fn cycle(
                     commands.spawn(async move {
                         let result=observation.sync(&request["command"]).await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
+                if kind == crate::codex::catalog::endpoint::COMMAND {
+                    let catalog = endpoint_catalog.clone();
+                    let signal = command_signal.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = catalog.execute(&request["command"], signal).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
                     continue;
                 }
@@ -703,7 +718,7 @@ async fn cycle(
     };
     let began = std::time::Instant::now();
     stop.send_replace(true);
-    label_shutdown.abort(anyhow::anyhow!("Worker shutting down."));
+    command_shutdown.abort(anyhow::anyhow!("Worker shutting down."));
     worktree_observations.close().await;
     timers.abort_all();
     while timers.join_next().await.is_some() {}

@@ -947,7 +947,8 @@
     "worktreePolicySchema": 1363,
     "nativeCommandAdmissionResultSchema": 14052,
     "nativeCommandSettlementResultSchema": 14054,
-    "standaloneChatScratchResolveResultSchema": 14056
+    "standaloneChatScratchResolveResultSchema": 14056,
+    "endpointModelInventoryItemSchema": 7140
   },
   "nodes": [
     {
