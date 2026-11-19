@@ -22,7 +22,10 @@ pub use native_command::{
     protect_native_command_request, protect_native_command_result,
     protect_native_command_terminal_result, protect_native_settings_evidence,
 };
-pub use native_resources::{NativeResourceComponent, open_native_resources, seal_native_resources};
+pub use native_resources::{
+    NativeResourceComponent, open_native_resources, open_native_suspension_source,
+    seal_native_resources, seal_native_suspension_source,
+};
 pub use private_state::*;
 pub use repository::*;
 pub use secrets::*;

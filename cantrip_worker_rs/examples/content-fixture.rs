@@ -4,11 +4,13 @@ use anyhow::{Result, anyhow};
 use cantrip_crypto::{DecryptionError, content::*, decode, encode};
 use cantrip_wire::{Value, parse_json_text, value::json};
 use cantrip_worker::{
+    codex::suspension_store::{Commit, Store},
     encryption::{Identity, Service},
     protected_content as streams, protected_secrets as worker,
 };
 use std::{
     io::{self, BufRead},
+    path::Path,
     sync::Arc,
 };
 fn operate(
@@ -219,6 +221,37 @@ fn operate(
         _ => Err(anyhow!("Unknown content fixture operation")),
     }
 }
+async fn suspension(input: &Value, service: &Arc<Service>) -> Result<Value> {
+    let store = Store::new(
+        Path::new(input["directory"].as_str().unwrap()),
+        service.clone(),
+    );
+    let source = &input["source"];
+    if input["op"] == "suspension-commit" {
+        return store
+            .commit(Commit {
+                source,
+                home: Path::new(input["home"].as_str().unwrap()),
+                suspension: &input["suspension"],
+                runtime_version: &input["runtimeVersion"],
+                runtime_fingerprint: &input["runtimeFingerprint"],
+                continuation: input.get("continuation"),
+                task_continuation: input.get("taskContinuation"),
+            })
+            .await;
+    }
+    let opened = store
+        .open(input["storageId"].as_str().unwrap(), source)
+        .await?;
+    let mut result = json!({
+        "evidence":opened.evidence,"source":opened.source,
+        "home":opened.home.to_str().unwrap(),"continuation":opened.continuation,
+    });
+    if let Some(task) = opened.task_continuation {
+        result["taskContinuation"] = task;
+    }
+    Ok(result)
+}
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<()> {
     let mut service: Option<Arc<Service>> = None;
@@ -248,6 +281,11 @@ async fn main() -> Result<()> {
             ));
             service = Some(created);
             Ok(registration)
+        } else if matches!(
+            input["op"].as_str(),
+            Some("suspension-commit" | "suspension-open")
+        ) {
+            suspension(&input, service.as_ref().unwrap()).await
         } else if input["op"] == "explorer-command" {
             let command = cantrip_crypto::checked("workerCommandSchema", &input["command"]);
             match command {

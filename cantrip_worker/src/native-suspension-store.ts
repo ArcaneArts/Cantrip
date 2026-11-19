@@ -421,3 +421,10 @@ export class NativeSuspensionStore {
     );
   }
 }
+
+// The Rust worker generates its storage contracts from these definitions.
+export {
+  scopeSchema as nativeSuspensionStorageScopeSchema,
+  recordSchema as nativeSuspensionStorageRecordSchema,
+  snapshotSchema as nativeSuspensionStorageSnapshotSchema,
+};

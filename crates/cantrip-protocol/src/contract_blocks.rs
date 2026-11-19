@@ -94,6 +94,10 @@ pub(super) fn load() -> Contracts {
         serde_json::from_str(include_str!("../contracts/worker-task-content.json"))
             .expect("embedded worker Task content contracts"),
     );
+    contracts.append(
+        serde_json::from_str(include_str!("../contracts/worker-suspension-storage.json"))
+            .expect("embedded worker suspension storage contracts"),
+    );
     contracts.compile_patterns();
     contracts
 }

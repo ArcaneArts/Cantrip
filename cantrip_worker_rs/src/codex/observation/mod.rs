@@ -92,7 +92,7 @@ impl Observer {
         let profile = home::profile(
             &self.data,
             &scope,
-            command["threadId"].as_js_string(),
+            home::Source::Current(command["threadId"].as_js_string()),
             chat,
             &provider,
             execution,

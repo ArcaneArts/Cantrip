@@ -25,6 +25,9 @@ pub(super) fn apply(
     if super::native_suspensions::refine(tag, result, path)? {
         return Ok(());
     }
+    if super::suspension_storage::refine(tag, result, path)? {
+        return Ok(());
+    }
     if super::cantrip_os::refine(tag, result, path, message)? {
         return Ok(());
     }

@@ -4708,3 +4708,34 @@ context and suspension-source ciphertext in the protected content fixture.
 
 Direct Task boundary controls, committing the worker suspension source record,
 and live and cold restoration remain open. Production still selects Node.
+
+## 96. Preserve worker suspension records and attach held Chats
+
+Reference commit `6d88983a48f1af17806fae79d5c1102aac2e01e0` (#3258).
+
+The Rust worker reads and writes the existing immutable suspension source
+records. It preserves the legacy Chat record, the Chat record with worker
+bookkeeping, and the Task record with its original round or Goal publisher.
+The storage locator, filesystem layout, component grant and derived key
+match Node. Repeated writes authenticate the published record and retain
+the original evidence and home. The storage contracts are generated from
+the Node schemas using `scripts/worker-rust/suspension-storage-contracts.mjs`.
+
+For an existing held Chat, preserving thread preparation opens the
+Core-selected locator under the current worker grant and supplies its
+authenticated home and exact descriptor to Codex. It reuses the selected
+live runtime for the same conversation and home when available. The runtime
+version and fingerprint remain diagnostic. Metadata attachment retains
+the native hold and does not grant execution.
+
+On macOS ARM64, Node and Rust opened each other's records in all three
+formats, including direct Task and autonomous Goal continuations. The
+fixtures checked immutable retry, changed source and home, grant removal,
+and invalid continuation identities. Bundled Codex attached through the
+Node-written locator after worker restart. The smoke checked a missing
+locator, a mismatched descriptor, and Codex's hold when the native
+checkpoint bytes were absent. Seventeen existing Node tests passed.
+
+Durable Pause and Resume still need to capture and restore the actual
+native turn and the worker's saved bookkeeping through production
+controls. Full Task boundary handling and the production cutover remain open.
