@@ -10,7 +10,7 @@ use cantrip_wire::{JsString, Value, coercion, value::json};
 use indexmap::IndexMap;
 use responses::log;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     sync::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
@@ -71,7 +71,7 @@ struct Pending {
 #[derive(Default)]
 struct State {
     pending: IndexMap<u64, Pending>,
-    private: HashSet<u64>,
+    private: HashMap<u64, &'static str>,
     settlements: HashMap<u64, Arc<dyn Settlement>>,
 }
 impl Drop for State {
@@ -135,8 +135,14 @@ impl Requests {
             })
             .abort_handle()
         });
-        if method.as_str() == Some("cantrip/inference") {
-            state.private.insert(id);
+        match method.as_str() {
+            Some("cantrip/inference") => {
+                state.private.insert(id, "privateInference");
+            }
+            Some(super::rpc_protocol::RESOURCE_RESOLVE) => {
+                state.private.insert(id, "privateNativeResources");
+            }
+            _ => {}
         }
         if let Some(settlement) = &settlement {
             state.settlements.insert(id, settlement.clone());
@@ -200,10 +206,12 @@ impl Requests {
     pub fn diagnostic_payload(&self, message: &Value) -> Value {
         if !coercion::truthy(message.get("method"))
             && message.get("id").is_some()
-            && numeric_id(&message["id"])
-                .is_some_and(|id| self.0.state.lock().unwrap().private.remove(&id))
+            && let Some(kind) = numeric_id(&message["id"])
+                .and_then(|id| self.0.state.lock().unwrap().private.remove(&id))
         {
-            json!({"id":message["id"],"privateInference":true,"status":if coercion::truthy(message.get("error")){"failed"}else{"completed"}})
+            let mut status = json!({"id":message["id"],"status":if coercion::truthy(message.get("error")){"failed"}else{"completed"}});
+            status[kind] = json!(true);
+            status
         } else {
             message.clone()
         }

@@ -5,6 +5,7 @@ mod communication;
 mod endpoint;
 mod labels;
 mod native_command;
+mod native_resources;
 mod private_state;
 mod repository;
 mod secrets;
@@ -21,6 +22,7 @@ pub use native_command::{
     protect_native_command_request, protect_native_command_result,
     protect_native_command_terminal_result, protect_native_settings_evidence,
 };
+pub use native_resources::{NativeResourceComponent, open_native_resources, seal_native_resources};
 pub use private_state::*;
 pub use repository::*;
 pub use secrets::*;

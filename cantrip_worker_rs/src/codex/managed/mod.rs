@@ -1,6 +1,7 @@
 //! Owns each managed Codex child, its RPC session and native inference router.
 mod history;
 mod launch;
+mod resources;
 mod worker;
 
 use super::{
@@ -57,6 +58,7 @@ struct Inner {
     history: Arc<RuntimeHub>,
     adapter: Adapter,
     router: Router,
+    resources: Arc<resources::Resources>,
     retirement: Promise<()>,
     external_auth: Option<Arc<dyn ExternalAuth>>,
     closing: Mutex<Option<Promise<()>>>,
@@ -91,6 +93,15 @@ impl Runtime {
     }
 
     pub fn launch(host: Host, manager: Manager, launch: Launch) -> Work<Self> {
+        Self::launch_protected(host, manager, launch, None)
+    }
+
+    fn launch_protected(
+        host: Host,
+        manager: Manager,
+        launch: Launch,
+        protection: Option<resources::Grant>,
+    ) -> Work<Self> {
         owned(async move {
             let started = Instant::now();
             let id = launch.profile.id.clone();
@@ -103,7 +114,7 @@ impl Runtime {
                 "started",
                 started,
             );
-            let result = Self::start(host.clone(), manager, launch).await;
+            let result = Self::start(host.clone(), manager, launch, protection).await;
             if result.is_ok() {
                 event(
                     &host.logs,
@@ -129,7 +140,12 @@ impl Runtime {
         })
     }
 
-    async fn start(host: Host, manager: Manager, launch: Launch) -> Result<Self> {
+    async fn start(
+        host: Host,
+        manager: Manager,
+        launch: Launch,
+        protection: Option<resources::Grant>,
+    ) -> Result<Self> {
         let Launch {
             mut profile,
             private_inference,
@@ -178,14 +194,21 @@ impl Runtime {
             }
         };
         let generation = router.generation().to_owned();
+        let resources = Arc::new(resources::Resources::new(
+            protection,
+            adapter.generation().clone(),
+        ));
         let retirement = Promise::spawn(pump(
             router.clone(),
             events,
             observe,
             host.logs.clone(),
             profile.id.clone(),
-            session.clone(),
-            external_auth.clone(),
+            NativeCallbacks {
+                session: session.clone(),
+                external_auth: external_auth.clone(),
+                resources: resources.clone(),
+            },
         ));
         let runtime = Self(Arc::new_cyclic(|inner| Inner {
             id: profile.id.clone(),
@@ -195,6 +218,7 @@ impl Runtime {
             session,
             adapter,
             router,
+            resources,
             retirement,
             external_auth,
             closing: Mutex::new(None),
@@ -224,6 +248,15 @@ impl Runtime {
     pub fn is_live(&self) -> bool {
         self.0.closing.lock().unwrap().is_none()
             && self.0.session.generation() == Some(self.generation())
+    }
+
+    pub(in crate::codex) fn bind_native_resources(
+        &self,
+        thread: &JsString,
+        runner: &JsString,
+        task: bool,
+    ) {
+        self.0.resources.bind(&self.0.session, thread, runner, task);
     }
 
     pub(super) fn thread_version(&self, thread: &JsString) -> u64 {
@@ -304,15 +337,25 @@ impl Runtime {
     }
 }
 
+struct NativeCallbacks {
+    session: Session,
+    external_auth: Option<Arc<dyn ExternalAuth>>,
+    resources: Arc<resources::Resources>,
+}
+
 async fn pump(
     router: Router,
     mut events: mpsc::UnboundedReceiver<Event>,
     observe: Observe,
     logs: Option<Arc<Logs>>,
     id: JsString,
-    session: Session,
-    external_auth: Option<Arc<dyn ExternalAuth>>,
+    native: NativeCallbacks,
 ) -> Result<()> {
+    let NativeCallbacks {
+        session,
+        external_auth,
+        resources,
+    } = native;
     let mut callbacks = JoinSet::new();
     let started = Instant::now();
     loop {
@@ -328,6 +371,21 @@ async fn pump(
                     let session = session.clone();
                     let auth = external_auth.clone();
                     callbacks.spawn(async move { refresh(auth, session, request, params).await });
+                    continue;
+                }
+                if let EventKind::Message(message) = &event_data.kind
+                    && message["method"] == super::rpc_protocol::RESOURCE_REQUESTED {
+                    let session = session.clone();
+                    let resources = resources.clone();
+                    let logs = logs.clone();
+                    let id = id.clone();
+                    let generation = event_data.generation;
+                    let params = message["params"].clone();
+                    callbacks.spawn(async move {
+                        if resources.resolve(&generation, &session, &params).await.is_err() {
+                            event(&logs, "warn", "Native resource protection failed", &id, "native-resources", "failed", started);
+                        }
+                    });
                     continue;
                 }
                 let exited = matches!(event_data.kind, EventKind::ProcessExited(_));

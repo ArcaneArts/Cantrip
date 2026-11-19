@@ -57,6 +57,7 @@ struct Inner {
     binding: Binding,
     grok: OnceLock<GrokResolver>,
     task_inputs: OnceLock<task_inputs::Client>,
+    resource_protection: OnceLock<Arc<Service>>,
     project_goals: OnceLock<Arc<ProjectGoals>>,
     state: Mutex<State>,
 }
@@ -82,6 +83,7 @@ impl Worker {
             binding,
             grok: OnceLock::new(),
             task_inputs: OnceLock::new(),
+            resource_protection: OnceLock::new(),
             project_goals: OnceLock::new(),
             state: Mutex::new(State::default()),
         }))
@@ -94,7 +96,8 @@ impl Worker {
         worker_generation: JsString,
         encryption: Arc<Service>,
     ) -> Self {
-        Self::new(
+        let service = encryption.clone();
+        let worker = Self::new(
             host,
             data,
             worker_id,
@@ -106,7 +109,9 @@ impl Worker {
                 })?;
                 Ok((server, owner))
             }),
-        )
+        );
+        let _ = worker.0.resource_protection.set(service);
+        worker
     }
 
     pub(crate) fn configure_grok(&self, resolve: GrokResolver) -> Result<()> {
@@ -251,7 +256,15 @@ impl Worker {
                                 captured
                             });
                         }
-                        Runtime::launch(this.0.host.clone(), manager, launch).await
+                        let protection = this.0.resource_protection.get().map(|service| {
+                            super::resources::Grant {
+                                service: service.clone(),
+                                owner: key.scope.owner.clone(),
+                                server: key.scope.server.clone(),
+                            }
+                        });
+                        Runtime::launch_protected(this.0.host.clone(), manager, launch, protection)
+                            .await
                     }
                     .await;
                     if runtime
