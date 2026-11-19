@@ -81,7 +81,7 @@ fn executable_name(name: &std::ffi::OsStr) -> bool {
     }
 }
 
-fn regular_below(root: &Path, name: &str) -> Result<()> {
+pub(super) fn regular_below(root: &Path, name: &str) -> Result<()> {
     let file = root.join(relative(name)?);
     ensure!(
         fs::symlink_metadata(&file)?.is_file()

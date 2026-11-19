@@ -68,8 +68,14 @@ pub(super) fn unpack(
 
 pub(super) fn relative(name: &str) -> Result<PathBuf> {
     let name = name.trim_end_matches('/');
+    let bytes = name.as_bytes();
+    let drive_prefix =
+        bytes.first().is_some_and(u8::is_ascii_alphabetic) && bytes.get(1) == Some(&b':');
     ensure!(
-        !name.is_empty() && !name.contains(['\\', ':']) && !name.chars().any(char::is_control),
+        !name.is_empty()
+            && !drive_prefix
+            && !name.contains('\\')
+            && !name.chars().any(char::is_control),
         "Archive path is invalid."
     );
     let mut relative = PathBuf::new();
@@ -91,7 +97,7 @@ pub(super) fn relative(name: &str) -> Result<PathBuf> {
                         .any(|value| "123456789¹²³".contains(value))
                     && stem[3..].chars().count() == 1;
             ensure!(
-                !device && !part.ends_with([' ', '.']),
+                !device && !part.contains(':') && !part.ends_with([' ', '.']),
                 "Archive path is reserved on Windows."
             );
         }

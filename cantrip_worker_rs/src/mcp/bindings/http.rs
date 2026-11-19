@@ -194,6 +194,11 @@ impl Inner {
                 let tool = arguments["tool"].as_str().unwrap();
                 Ok(super::super::stdio::catalog()["help"][tool].clone())
             }
+            "web.search" => {
+                self.web
+                    .search(&authorization.active.binding, call.get("arguments"))
+                    .await
+            }
             "web.read" => {
                 self.web
                     .read(&authorization.active.binding, call.get("arguments"))

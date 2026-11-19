@@ -1,6 +1,7 @@
-//! Install the existing managed Chromium release and launch its native binary.
+//! Install and supervise the signed managed web runtimes.
 mod archive;
 mod launch;
+mod searxng;
 mod source;
 mod storage;
 
@@ -8,14 +9,91 @@ use crate::{http::checked, logging::Logs, platform};
 use anyhow::{Context, Result, anyhow, ensure};
 use cantrip_config::Environment;
 use cantrip_wire::{Value, parse_json_text, value::json};
+pub(crate) use searxng::Search;
 use source::Source;
-use std::{net::SocketAddrV4, path::Path, sync::Mutex, time::Duration};
+use std::{
+    net::SocketAddrV4,
+    path::Path,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use storage::{Entry, Pointer, Storage};
 use tokio::sync::{Mutex as AsyncMutex, RwLock, watch};
 
 const REFRESH: Duration = Duration::from_secs(6 * 60 * 60);
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum Component {
+    Chromium,
+    Searxng,
+}
+
+impl Component {
+    fn key(self) -> &'static str {
+        match self {
+            Self::Chromium => "playwright",
+            Self::Searxng => "searxng",
+        }
+    }
+}
+
+pub(crate) struct Runtimes {
+    pub(crate) browser: Arc<Manager>,
+    pub(crate) search: Arc<Search>,
+}
+
+impl Runtimes {
+    pub(crate) fn configure(
+        data: &Path,
+        environment: &Environment,
+        logs: Arc<Logs>,
+    ) -> Result<Self> {
+        let manifest = environment
+            .get("CANTRIP_MANAGED_RUNTIME_MANIFEST_URL")
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .unwrap_or(source::MANIFEST);
+        Ok(Self {
+            browser: Arc::new(Manager::new(
+                data,
+                Source::configured(manifest.into())?,
+                Component::Chromium,
+            )),
+            search: Arc::new(Search::new(
+                Manager::new(
+                    data,
+                    Source::configured(manifest.into())?,
+                    Component::Searxng,
+                ),
+                Some(logs),
+            )?),
+        })
+    }
+
+    pub(crate) fn capabilities(&self) -> Value {
+        json!({"schemaVersion":1,"search":self.search.snapshot(),"browser":self.browser.snapshot(),"staticReading":true})
+    }
+
+    pub(crate) fn stop(&self) {
+        self.browser.stop();
+        self.search.stop();
+    }
+
+    pub(crate) async fn run(&self, logs: &Logs) -> Result<()> {
+        tokio::join!(self.browser.run(logs), self.search.run(logs)).1
+    }
+
+    pub(crate) async fn action(&self, command: &Value, logs: &Logs) -> Result<Value> {
+        match command["component"].as_str() {
+            Some("playwright") => self.browser.action(command, logs).await,
+            Some("searxng") => self.search.action(command, logs).await,
+            _ => anyhow::bail!("Unknown managed web runtime."),
+        }
+    }
+}
+
 pub(crate) struct Manager {
+    component: Component,
     storage: Storage,
     source: Source,
     operation: AsyncMutex<()>,
@@ -34,30 +112,18 @@ struct Failure {
 type InstallResult<T> = std::result::Result<T, Failure>;
 
 impl Manager {
-    pub(crate) fn configure(data: &Path, environment: &Environment) -> Result<Self> {
-        let manifest = environment
-            .get("CANTRIP_MANAGED_RUNTIME_MANIFEST_URL")
-            .map(|value| value.trim())
-            .filter(|value| !value.is_empty())
-            .unwrap_or(source::MANIFEST);
-        Ok(Self::new(data, Source::configured(manifest.into())?))
-    }
-
-    fn new(data: &Path, source: Source) -> Self {
+    fn new(data: &Path, source: Source, component: Component) -> Self {
         let supported = matches!(platform::platform(), "darwin" | "linux" | "win32")
             && matches!(platform::architecture(), "arm64" | "x64");
         Self {
-            storage: Storage::new(data),
+            component,
+            storage: Storage::new(data, component.key()),
             source,
             operation: AsyncMutex::new(()),
             active_version: RwLock::new(()),
-            status: Mutex::new(status("playwright", supported)),
+            status: Mutex::new(status(component.key(), supported)),
             stop: watch::channel(false).0,
         }
-    }
-
-    pub(crate) fn capabilities(&self) -> Value {
-        json!({"schemaVersion":1,"search":status("searxng", false),"browser":self.snapshot(),"staticReading":true})
     }
 
     pub(crate) fn stopped(&self) -> watch::Receiver<bool> {
@@ -125,8 +191,8 @@ impl Manager {
 
     pub(crate) async fn action(&self, command: &Value, logs: &Logs) -> Result<Value> {
         ensure!(
-            command["component"] == "playwright",
-            "Native managed search runtime is unavailable."
+            command["component"] == self.component.key(),
+            "Managed web runtime command targets a different component."
         );
         ensure!(!*self.stop.borrow(), "Managed Chromium is shutting down.");
         let action = command["action"]
@@ -136,7 +202,7 @@ impl Manager {
         checked(
             "managedWebRuntimeActionResultSchema",
             &json!({
-                "accepted":true,"component":"playwright","action":action,"status":self.snapshot(),
+                "accepted":true,"component":self.component.key(),"action":action,"status":self.snapshot(),
             }),
         )
     }
@@ -150,8 +216,18 @@ impl Manager {
         if let Err(failure) = self.apply(action).await {
             if !*self.stop.borrow() {
                 self.failure(action, &failure);
-                logs.event("warn", "Managed Chromium operation failed", json!({
-                    "event":"managed-chromium.operation-failed","subsystem":"managed-web-runtime",
+                let (event, message) = match self.component {
+                    Component::Chromium => (
+                        "managed-chromium.operation-failed",
+                        "Managed Chromium operation failed",
+                    ),
+                    Component::Searxng => (
+                        "worker.search-runtime.install-failed",
+                        "Managed search runtime installation failed",
+                    ),
+                };
+                logs.event("warn", message, json!({
+                    "event":event,"subsystem":"managed-web-runtime","component":self.component.key(),
                     "operation":action,"reasonCode":failure.category,"error":failure.message,"status":"failed",
                     "httpStatus":failure.cause.downcast_ref::<reqwest::Error>().and_then(reqwest::Error::status).map(|status| status.as_u16()),
                     "ioErrorKind":failure.cause.downcast_ref::<std::io::Error>().map(|error| format!("{:?}", error.kind()))
@@ -163,7 +239,7 @@ impl Manager {
     async fn apply(&self, action: &str) -> InstallResult<()> {
         let storage_error = Failure::new(
             "disk",
-            "Managed Chromium storage could not be updated.",
+            "Managed runtime storage could not be updated.",
             true,
         );
         self.storage.ensure().map_err(storage_error)?;
@@ -181,21 +257,23 @@ impl Manager {
             }
             "clear-cache" => {
                 let _version = self.active_version.write().await;
-                self.storage
-                    .purge(&[
+                let paths = match self.component {
+                    Component::Chromium => &[
                         "downloads",
                         "staging",
                         "state/cache",
                         "state/downloads",
                         "state/traces",
-                    ])
-                    .map_err(storage_error)?;
+                    ][..],
+                    Component::Searxng => &["downloads", "staging", "cache"][..],
+                };
+                self.storage.purge(paths).map_err(storage_error)?;
             }
             _ => {}
         }
         let current = self.storage.current().map_err(Failure::new(
             "integrity",
-            "Managed Chromium current installation pointer is invalid.",
+            "Managed runtime current installation pointer is invalid.",
             false,
         ))?;
         if let Some(pointer) = &current {
@@ -210,12 +288,12 @@ impl Manager {
             .await
             .map_err(Failure::new(
                 "download",
-                "Managed Chromium release manifest could not be downloaded.",
+                "Managed runtime release manifest could not be downloaded.",
                 true,
             ))?;
         let manifest = parse_manifest(&raw).map_err(Failure::new(
             "integrity",
-            "Managed Chromium release manifest is invalid.",
+            "Managed runtime release manifest is invalid.",
             false,
         ))?;
         let artifact = manifest["artifacts"]
@@ -223,7 +301,7 @@ impl Manager {
             .unwrap()
             .iter()
             .find(|artifact| {
-                artifact["component"] == "playwright"
+                artifact["component"] == self.component.key()
                     && artifact["platform"] == platform::platform()
                     && artifact["architecture"] == platform::architecture()
             });
@@ -233,12 +311,12 @@ impl Manager {
             status["state"] = json!("unsupported");
             status["lastCheckedAt"] = json!(now());
             status["progress"] = Value::Null;
-            status["failure"] = json!({"category":"compatibility","message":"Managed Chromium is unavailable for this platform and architecture.","retryable":false,"failedAt":now()});
+            status["failure"] = json!({"category":"compatibility","message":"Managed runtime is unavailable for this platform and architecture.","retryable":false,"failedAt":now()});
             return Ok(());
         };
         self.source.verify(artifact).map_err(Failure::new(
             "signature",
-            "Managed Chromium release signature could not be verified.",
+            "Managed runtime release signature could not be verified.",
             false,
         ))?;
         let selected = Entry {
@@ -247,7 +325,7 @@ impl Manager {
                 .ok_or_else(|| {
                     Failure::new(
                         "integrity",
-                        "Managed Chromium release version is invalid.",
+                        "Managed runtime release version is invalid.",
                         false,
                     )(anyhow!("Invalid version"))
                 })?
@@ -267,7 +345,7 @@ impl Manager {
         {
             return Err(Failure::new(
                 "compatibility",
-                "The installed Managed Chromium version is no longer available in the signed release channel.",
+                "The installed Managed runtime version is no longer available in the signed release channel.",
                 false,
             )(anyhow!("Installed release differs")));
         }
@@ -302,7 +380,7 @@ impl Manager {
             .map_err(|error| {
                 Failure::new(
                     "disk",
-                    "Managed Chromium staging could not be created.",
+                    "Managed runtime staging could not be created.",
                     true,
                 )(error.into())
             })?;
@@ -310,7 +388,7 @@ impl Manager {
         let unpacked = scratch.path().join("runtime");
         storage::private(&unpacked).map_err(Failure::new(
             "disk",
-            "Managed Chromium staging could not be created.",
+            "Managed runtime staging could not be created.",
             true,
         ))?;
         let compressed = artifact["compressedBytes"].as_u64().unwrap();
@@ -326,14 +404,14 @@ impl Manager {
             .await
             .map_err(Failure::new(
                 "download",
-                "The managed Chromium archive could not be downloaded at its signed size.",
+                "The managed runtime archive could not be downloaded at its signed size.",
                 true,
             ))?;
         self.progress("verify", compressed, compressed);
         if source::hex(&digest) != entry.archive {
             return Err(Failure::new(
                 "integrity",
-                "Managed Chromium archive digest does not match the signed release.",
+                "Managed runtime archive digest does not match the signed release.",
                 false,
             )(anyhow!("Archive digest mismatch")));
         }
@@ -349,20 +427,20 @@ impl Manager {
         .map_err(|error| {
             Failure::new(
                 "archive",
-                "Managed Chromium archive extraction did not finish.",
+                "Managed runtime archive extraction did not finish.",
                 true,
             )(error.into())
         })?
         .map_err(Failure::new(
             "archive",
-            "Managed Chromium archive contents are invalid.",
+            "Managed runtime archive contents are invalid.",
             false,
         ))?;
         self.check_installation(&unpacked, artifact, &entry).await?;
         if *self.stop.borrow() {
             return Err(Failure::new(
                 "unknown",
-                "Managed Chromium installation stopped.",
+                "Managed runtime installation stopped.",
                 true,
             )(anyhow!("Worker stopping")));
         }
@@ -384,7 +462,7 @@ impl Manager {
             .promote(&unpacked, &pointer)
             .map_err(Failure::new(
                 "disk",
-                "Managed Chromium installation could not be activated.",
+                "Managed runtime installation could not be activated.",
                 true,
             ))?;
         self.apply_pointer(&pointer, "ready");
@@ -400,20 +478,35 @@ impl Manager {
     ) -> InstallResult<()> {
         let expanded = artifact["extractedBytes"].as_u64().unwrap();
         self.progress("inventory", expanded, expanded);
-        let executable =
-            launch::inventory(root, &selected.version, Some(artifact)).map_err(Failure::new(
-                "inventory",
-                "Managed Chromium runtime inventory does not match the release.",
-                false,
-            ))?;
+        let executable = match self.component {
+            Component::Chromium => launch::inventory(root, &selected.version, Some(artifact)),
+            Component::Searxng => searxng::inventory(root, &selected.version, Some(artifact)),
+        }
+        .map_err(Failure::new(
+            "inventory",
+            "Managed runtime inventory does not match the release.",
+            false,
+        ))?;
         self.progress("probe", expanded, expanded);
-        launch::probe(&executable, root, &self.storage.root, self.stop.subscribe())
-            .await
-            .map_err(Failure::new(
-                "health-check",
-                "Managed Chromium failed to launch or return an accessibility snapshot.",
-                true,
-            ))
+        match self.component {
+            Component::Chromium => {
+                launch::probe(&executable, root, &self.storage.root, self.stopped()).await
+            }
+            Component::Searxng => {
+                searxng::probe(
+                    &executable,
+                    root,
+                    &self.storage.root.join("staging"),
+                    self.stopped(),
+                )
+                .await
+            }
+        }
+        .map_err(Failure::new(
+            "health-check",
+            "The managed runtime failed its local health check.",
+            true,
+        ))
     }
 
     fn snapshot(&self) -> Value {

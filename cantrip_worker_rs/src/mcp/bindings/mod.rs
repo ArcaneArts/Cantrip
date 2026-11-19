@@ -157,7 +157,7 @@ impl Broker {
         worker: JsString,
         identity: Identity,
         server: Server,
-        renderer: Option<Arc<crate::managed_chromium::Manager>>,
+        runtimes: Option<Arc<crate::managed_web::Runtimes>>,
     ) -> Result<Self> {
         let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
         let endpoint = format!("http://{}", listener.local_addr()?);
@@ -167,7 +167,10 @@ impl Broker {
             worker,
             identity,
             server,
-            web: Arc::new(crate::web::Service::new(renderer)),
+            web: Arc::new(crate::web::Service::new(
+                runtimes.as_ref().map(|runtimes| runtimes.browser.clone()),
+                runtimes.as_ref().map(|runtimes| runtimes.search.clone()),
+            )),
             entries: Mutex::new(Entries::default()),
             negotiated: AsyncMutex::new(None),
         });
@@ -214,6 +217,7 @@ impl Broker {
             ),
             ("tool.help", "tool_help", true),
             ("web.read", "web_read", true),
+            ("web.search", "web_search", self.inner.web.has_search()),
         ]
         .into_iter()
         .filter(|(operation, _, supported)| {
