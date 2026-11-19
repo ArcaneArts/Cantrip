@@ -34,8 +34,7 @@ impl Turns {
 
         let result = self.apply_settings_update(&source, &runtime, scope, &command, patch, signal).await
             .map_err(|_| anyhow!("Native settings update did not return a confirmed receipt. Read its recorded state before submitting another change."))?;
-        source.runtime()?;
-        source.encryption_scope()?;
+        source.assert_current()?;
         Ok(result)
     }
 
@@ -55,12 +54,7 @@ impl Turns {
         let binding = &command["binding"];
         let chat = id(&binding["chatId"], "settings chat")?;
         let thread = id(&binding["threadId"], "settings thread")?;
-        let session = json!({
-            "chatId":chat,"threadId":thread,"contextKind":binding["contextKind"],
-            "projectId":binding["projectId"],"placementId":binding["placementId"],
-            "modelRouteId":binding["modelRouteId"],"providerAccountId":binding["providerAccountId"],
-            "runtimeGeneration":binding["runtimeGeneration"],"connectionId":format!("gui-control:{}",runtime.generation()),
-        });
+        let session = source.command_session();
         params["threadId"] = json!(thread);
         params["operationId"] = command["operationId"].clone();
 
@@ -74,22 +68,12 @@ impl Turns {
             current["settingsVersion"]["epoch"] == binding["nativeEpoch"],
             "The native settings runtime epoch changed."
         );
-        let key = (scope.owner.clone(), scope.server.clone(), chat);
-        let activation = self
-            .active
-            .lock()
-            .unwrap()
-            .active
-            .get(&key)
-            .and_then(|active| active.root.as_ref())
-            .map_or(Value::Null, |root| root.activation.clone());
+        let activation = self.settings_activation(&scope, chat);
         let intent = json!({"operationId":command["operationId"],
             "permissionProfileId":source.permission,"settingsBindingId":binding["bindingId"]});
         let check = || {
             signal.check()?;
-            source.runtime()?;
-            source.encryption_scope()?;
-            Ok(())
+            source.assert_current()
         };
         check()?;
         let (receipt, _, _) = self

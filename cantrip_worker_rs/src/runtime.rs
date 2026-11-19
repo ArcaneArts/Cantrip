@@ -729,14 +729,19 @@ async fn cycle(
                     });
                     continue;
                 }
-                if kind == crate::codex::turn::SETTINGS_UPDATE {
+                if matches!(kind, crate::codex::turn::SETTINGS_UPDATE | crate::codex::turn::ACCOUNT_DEFAULTS) {
                     let turns = turns.clone();
                     let signal = command_signal.clone();
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();
                     let worker = worker.clone();
                     commands.spawn(async move {
-                        let result = turns.update_settings(&request["command"], signal).await;
+                        let command = &request["command"];
+                        let result = if command["type"] == crate::codex::turn::ACCOUNT_DEFAULTS {
+                            turns.account_defaults(command, signal).await
+                        } else {
+                            turns.update_settings(command, signal).await
+                        };
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
                     continue;

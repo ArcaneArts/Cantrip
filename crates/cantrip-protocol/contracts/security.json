@@ -971,7 +971,12 @@
     "nativeModelAttributionSchema": 631,
     "nativeSettingsUpdateCommandSchema": 5483,
     "nativeSettingsUpdateContextSchema": 14346,
-    "nativeSettingsPatchSchema": 14348
+    "nativeSettingsPatchSchema": 14348,
+    "nativeAccountDefaultsCommandSchema": 5470,
+    "nativeAccountDefaultsContextSchema": 14413,
+    "nativeAccountDefaultsWriteSchema": 14416,
+    "nativeAccountDefaultsSnapshotSchema": 14433,
+    "nativeAccountDefaultsResultSchema": 14437
   },
   "nodes": [
     {
@@ -86493,6 +86498,156 @@
     },
     { "type": "nullable", "innerType": 14411, "checks": [] },
     { "type": "string", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeAccountDefaultsContextSchema",
+      "shape": {
+        "chatId": 5477,
+        "bindingId": 5477,
+        "operationId": 5477,
+        "direction": 14414
+      },
+      "catchall": 14415,
+      "checks": []
+    },
+    { "type": "enum", "values": ["request", "response"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeAccountDefaultsWriteSchema",
+      "shape": { "expectedVersion": 14417, "values": 14418 },
+      "catchall": 14432,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "model": 14419,
+        "model_reasoning_effort": 14422,
+        "service_tier": 14425,
+        "personality": 14428
+      },
+      "catchall": 14431,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "native-account-defaults-fields",
+          "messageAfterPath": true,
+          "message": "Select at least one account default."
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14420,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14421, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14423,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14424, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14426,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14427, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14429,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14430, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeAccountDefaultsSnapshotSchema",
+      "shape": { "version": 14434, "stored": 14435, "effective": 14435 },
+      "catchall": 14436,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "nativeAccountDefaultsValuesSchema",
+      "shape": {
+        "model": 14419,
+        "model_reasoning_effort": 14422,
+        "service_tier": 14425,
+        "personality": 14428
+      },
+      "catchall": 14431,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeAccountDefaultsResultSchema",
+      "shape": { "snapshot": 14438, "write": 14439, "verification": 14444 },
+      "catchall": 14445,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "native-account-defaults-verification",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 14433, "checks": [] },
+    { "type": "nullable", "innerType": 14440, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "status": 14441, "version": 14442 },
+      "catchall": 14443,
+      "checks": []
+    },
+    { "type": "enum", "values": ["ok", "okOverridden"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "enum",
+      "values": ["read", "confirmed", "changed", "unavailable", "rejected"],
+      "checks": []
+    },
     { "type": "never", "checks": [] }
   ]
 }

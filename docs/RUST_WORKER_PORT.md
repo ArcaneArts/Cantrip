@@ -7170,3 +7170,32 @@ and Windows x64 GNU worker cross-check passed.
 Managed permission transitions and recovery, live-turn settings,
 account defaults, alternate model attribution, approval replies, and
 runtime handoff remain open.
+
+## 185. Read and write protected native account defaults
+
+Reference commit 1f19d70702b846873ff956efd55bb13044f05ca0 (#3348).
+
+The Rust worker now handles `chat.account-defaults` on the current
+managed binding. It reads the stored and effective defaults through
+Codex's configuration API and limits the protected result to model,
+reasoning effort, service tier, personality, and native version evidence.
+Writes authenticate the client operation and binding, use Core's durable
+account-defaults admission, and pass the expected version to Codex.
+Explicit null clears a stored default. The target is the managed user
+configuration selected at process launch.
+
+The receipt records a native write acknowledgment even if a subsequent
+read cannot verify it. Replays of an operation with a receipt cannot
+dispatch another write. The thread settings revision is independent of
+the account defaults revision.
+
+The local macOS ARM64 standalone smoke used the production Rust server
+with PGlite, the production Rust worker with an empty PATH, and bundled
+Codex. The TypeScript codec encrypted requests and opened protected
+responses. The test confirmed versioned writes, clears, wrong-binding
+rejection, stale-version rejection, replay prevention and preservation
+of active thread settings. The Windows x64 GNU worker cross-check passed.
+
+Managed console account configuration writes, permission transitions
+and recovery, live-turn settings, alternate model attribution, approval
+replies and runtime handoff remain open.
