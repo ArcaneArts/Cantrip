@@ -4597,3 +4597,32 @@ claim conditions.
 Task pause notifications, native queue management and cutover, non-Goal
 queued actions, and saved Goal recovery remain open. Production still
 selects Node.
+
+## 92. Apply queued Plan Mode with durable settings evidence
+
+Reference commit `ca0d4c49168d6f9e1410c9e6b2ca7f526ca1090d` (#3254).
+
+The Rust worker handles a queued `/plan` action without model input on its
+bound managed thread. It gets the Plan Mode settings from the native runtime
+and uses the queue claim as the operation identity. Core admits and dispatches
+the mutation before the worker sends the native request. The protected receipt
+carries the actual native acknowledgment used by the canonical queue.
+
+The worker tracks settings application separately from the acknowledgment. It
+matches native notifications to the thread, runtime, operation, and submission.
+The shared crypto crate seals evidence with the existing event-bound format.
+The worker retains exact encrypted evidence until Core acknowledges it and
+replays pending evidence and interrupted registrations from the existing
+worker data directory.
+
+The local macOS ARM64 smoke exercised the real worker and bundled Codex with
+local Core and provider peers. It held Core dispatch, opened the Rust evidence
+with the Node codec, checked that no model turn started, and replayed the exact
+applied evidence after restart. It also recovered a Node-written registration
+as uncertain and verified that an existing receipt prevents redispatch. The
+worker build, Clippy, affected server compilation, and focused worker contract
+tests ran locally.
+
+Queued shell execution, Task pause notifications, native queue and gateway
+cutover, saved permission recovery, and cold Goal recovery remain open.
+Production still selects Node.

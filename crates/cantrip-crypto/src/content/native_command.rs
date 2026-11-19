@@ -32,21 +32,32 @@ pub fn protect_native_command_request(
     protect(component_key, context, "request", content)
 }
 
+pub fn protect_native_settings_evidence(
+    component_key: &[u8],
+    context: &Value,
+    content: &Value,
+) -> Result<(Value, String)> {
+    if context["eventId"].as_str().is_none_or(str::is_empty) {
+        anyhow::bail!("Native settings evidence requires its event identity.");
+    }
+    protect(component_key, context, "settings-evidence", content)
+}
+
 fn protect(
     component_key: &[u8],
     context: &Value,
     field: &str,
     content: &Value,
 ) -> Result<(Value, String)> {
-    let row = Sha256::digest(
-        json!([
-            context["serverId"].clone(),
-            context["chatId"].clone(),
-            context["operationId"].clone()
-        ])
-        .stringify()
-        .as_bytes(),
-    );
+    let mut identity = vec![
+        context["serverId"].clone(),
+        context["chatId"].clone(),
+        context["operationId"].clone(),
+    ];
+    if field == "settings-evidence" {
+        identity.push(context["eventId"].clone());
+    }
+    let row = Sha256::digest(Value::Array(identity).stringify().as_bytes());
     let row: String = row.iter().map(|byte| format!("{byte:02x}")).collect();
     let associated = aad(
         context,

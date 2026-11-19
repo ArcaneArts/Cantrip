@@ -104,17 +104,17 @@ impl Goals {
         params: Value,
     ) -> Result<Value> {
         if &self.encryption.bound_identity()? != bound {
-            bail!("The worker binding changed before Goal mutation.");
+            bail!("The worker binding changed before the native mutation.");
         }
         let result = if let Some(session) = owner.session {
             turns
-                .goal_mutation(&owner.runtime, bound, command, session, method, params)
+                .native_mutation(&owner.runtime, bound, command, session, method, params)
                 .await?
         } else {
             rpc(&owner.runtime, method, params).await?
         };
         if &self.encryption.bound_identity()? != bound {
-            bail!("The worker binding changed during Goal mutation.");
+            bail!("The worker binding changed during the native mutation.");
         }
         Ok(result)
     }
