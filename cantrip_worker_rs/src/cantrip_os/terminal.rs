@@ -50,6 +50,10 @@ pub(crate) enum Opened {
 }
 
 impl Target {
+    pub fn cwd(&self) -> &str {
+        &self.cwd
+    }
+
     pub fn new(
         command: &Value,
         directory: &Value,

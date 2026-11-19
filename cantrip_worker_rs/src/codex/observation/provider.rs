@@ -17,7 +17,7 @@ pub(in crate::codex) fn launch(
     provider: Value,
     access: Access,
 ) -> Result<Launch> {
-    let portable = configure(&mut profile, &provider)?;
+    let portable = configure(&mut profile, &provider, true)?;
     Ok(Launch {
         profile,
         private_inference: Hooks {
@@ -46,7 +46,11 @@ pub(in crate::codex) fn model_provider(provider: &Value) -> &'static str {
     }
 }
 
-fn configure(profile: &mut Profile, provider: &Value) -> Result<Option<Account>> {
+pub(in crate::codex) fn configure(
+    profile: &mut Profile,
+    provider: &Value,
+    account_runtime: bool,
+) -> Result<Option<Account>> {
     let kind = provider["kind"].as_str().unwrap_or_default();
     let account = provider["accountId"].as_js_string().map(|id| Account {
         provider: provider["id"]
@@ -70,8 +74,9 @@ fn configure(profile: &mut Profile, provider: &Value) -> Result<Option<Account>>
             .map(|account| (account.provider.clone(), account.id.clone()));
         return Ok(account);
     }
-    if let ("grok", Some(account), Some(key)) =
-        (kind, account, provider["credentialHomeKey"].as_js_string())
+    if account_runtime
+        && let ("grok", Some(account), Some(key)) =
+            (kind, account, provider["credentialHomeKey"].as_js_string())
     {
         profile.grok = Some(GrokAccount {
             account,

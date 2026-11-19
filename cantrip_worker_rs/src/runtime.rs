@@ -184,7 +184,7 @@ async fn cycle(
     .await?;
     let host_environment = cli.child_environment(environment);
     let codex_host = crate::codex::managed::Host {
-        binary: codex_binary,
+        binary: codex_binary.clone(),
         cwd: cwd.into(),
         environment: host_environment
             .iter()
@@ -961,9 +961,11 @@ async fn cycle(
                 }
                 if crate::terminal_services::interactive::Shells::supports(kind) {
                     let shells=shells.clone();let encryption=encryption.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    let turns = turns.clone();
+                    let binary = codex_binary.clone();
                     commands.spawn(async move {
                         let result=shells.execute(&request["command"], crate::terminal_services::interactive::Ports {
-                            encryption:&encryption,routes:&routing,scope:&scope,outbound:&outgoing,
+                            encryption:&encryption,routes:&routing,scope:&scope,codex_binary:&binary,turns:&turns,outbound:&outgoing,
                             request_id:&request["requestId"],socket_epoch:request["socketEpoch"].as_u64().unwrap_or_default(),
                         }).await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);

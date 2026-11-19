@@ -1,6 +1,7 @@
 //! Server-owned Chat turns. The command channel supplies the execution lane;
 //! the native runtime supplies the turn identity and terminal settlement.
 pub(crate) mod autonomous;
+pub(crate) mod console;
 mod control;
 pub(crate) mod label;
 mod output;

@@ -6911,3 +6911,32 @@ GNU worker compiled. SSH and Windows runtime were outside this validation.
 
 The guest catalog exposes the Rust broker's implemented tools. Guest CUA MCP,
 managed Codex TUI launch, and suspended guest turns remain open.
+
+## 176. Open a managed Codex console on its prepared native thread
+
+Reference commit 23d86fa76df635c83a58496c8d17b2f11f0340cf (#3339).
+
+The worker starts bundled Codex on its existing protected PTY service.
+A Cantrip OS console uses the worker's private runtime home. Its dedicated
+native WebSocket attaches to the prepared Linux thread with a preserving
+resume. The gateway binds a random loopback capability to the selected
+runtime generation, scopes thread reads and listings to that thread, and
+uses Core receipts for attach, detach and admitted skill discovery. Skill
+discovery receives the captured workspace directory. The terminal can be
+closed through the existing command, and its exit notification carries the
+managed preparation generation.
+
+The local macOS ARM64 fixture used bundled Codex, the Rust worker, a fixture
+Core command peer, and an ARM64 Docker guest with networking disabled.
+After a worker restart, the actual TUI displayed its original protected
+guest transcript through the terminal stream. The fixture decrypted the
+Core receipts, verified the original thread and guest directory, and
+confirmed that opening the console did not create another provider call.
+The Host shell relay, WorkerLink terminal and terminal service regression
+ran locally with the Rust server. The Windows x64 GNU worker compiled.
+Windows runtime and SSH were outside this validation.
+
+The terminal view handles attachment and discovery. Direct prompt
+admission, canonical queue operations, settings, approval replies and
+managed runtime handoff remain open. Those operations require their
+canonical command owners before console parity can be declared.
