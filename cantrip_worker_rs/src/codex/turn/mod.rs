@@ -2,6 +2,7 @@
 //! the native runtime supplies the turn identity and terminal settlement.
 pub(crate) mod autonomous;
 mod control;
+mod label;
 mod output;
 mod params;
 mod protected;
@@ -520,6 +521,7 @@ impl Turns {
         if task.as_ref().is_some_and(|task| key != task.key) {
             bail!("The worker binding changed before Task admission.");
         }
+        let title = label::Title::read(incoming, (key.0.clone(), json!(key.1)))?;
         let root = receipt::Operation::read(incoming)?;
         let (abort, signal) = Abort::new();
         let active = Arc::new(Active {
@@ -681,6 +683,24 @@ impl Turns {
             recovery["taskInput"] = command["taskInferenceInput"].clone();
         }
         request.recovery = Some(recovery);
+        let shared_title = if let Some(title) = title {
+            if title.shares_provider(&command["provider"]) {
+                Some(title)
+            } else {
+                let job = title.clone();
+                let preparation = self.preparation.clone();
+                let encryption = self.encryption.clone();
+                let result = admission
+                    .prepare_before_acquire(request.clone(), move |signal| {
+                        Box::pin(job.separate(preparation, encryption, signal))
+                    })
+                    .await;
+                title.report(&emit, result)?;
+                None
+            }
+        } else {
+            None
+        };
         let acquired = admission.acquire(request).await;
         let execution = match acquired {
             Ok(execution) => execution,
@@ -690,6 +710,13 @@ impl Turns {
             }
         };
         let result = async {
+            if let Some(title) = shared_title {
+                let result = title
+                    .shared(runtime, &execution, self.encryption.clone())
+                    .await;
+                title.report(&emit, result)?;
+            }
+            signal.check()?;
             let input = if is_queued {
                 queued::inputs(
                     &command,

@@ -22,7 +22,7 @@ pub(super) fn validate(command: &Value) -> Result<()> {
             && (!command["taskDispatchLease"].is_null()
                 || !command["taskInferenceInput"].is_null()
                 || !command["taskResumption"].is_null()))
-        || ["computerUseAuthority", "initialLabel", "subagentDefaults"]
+        || ["computerUseAuthority", "subagentDefaults"]
             .iter()
             .any(|field| command.get(field).is_some_and(|value| !value.is_null()))
         || (!queued

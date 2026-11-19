@@ -46,20 +46,7 @@ impl Protected {
         let owner = json!(grant.owner_id);
         let content = open_message(&grant.key, &owner, prompt)
             .map_err(|_| anyhow!("Unable to authenticate protected chat input."))?;
-        let prompt_text = join(
-            array(&content)?
-                .iter()
-                .filter(|item| item["type"] == "text")
-                .map(runtime_text)
-                .collect::<Result<Vec<_>>>()?,
-            "\n\n",
-        )
-        .trim();
-        let prompt_text = if prompt_text.is_empty() {
-            "Review the attached files and respond to the user.".into()
-        } else {
-            prompt_text
-        };
+        let prompt_text = user_prompt_text(&content)?;
         let chat = &command["chatId"];
         let input = if command["threadId"].is_null() && command["protectedNativeInput"].is_null() {
             let mut history = Vec::new();
@@ -290,6 +277,23 @@ fn event_id(chat: &JsString, key: &JsString) -> String {
     bytes[6] = (bytes[6] & 0x0f) | 0x50;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     uuid::Uuid::from_bytes(bytes).to_string()
+}
+
+pub(super) fn user_prompt_text(content: &Value) -> Result<JsString> {
+    let prompt_text = join(
+        array(content)?
+            .iter()
+            .filter(|item| item["type"] == "text")
+            .map(runtime_text)
+            .collect::<Result<Vec<_>>>()?,
+        "\n\n",
+    )
+    .trim();
+    Ok(if prompt_text.is_empty() {
+        "Review the attached files and respond to the user.".into()
+    } else {
+        prompt_text
+    })
 }
 
 pub(in crate::codex) fn runtime_text(item: &Value) -> Result<JsString> {
