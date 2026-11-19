@@ -4769,3 +4769,33 @@ Cold restoration through the dedicated Resume command, durable Stop, and
 Task boundary capture and resumption remain open. The saved continuation
 contains the progress tracked by the current Rust Chat observer. The
 remaining observer parity and production cutover are still in scope.
+
+## 98. Restore suspended Chat execution after worker restart
+
+Reference commit `a46398a3fe3b91a6635728ea8ab00e21f85359cc` (#3260).
+
+The Rust worker opens the authenticated continuation, attaches to the
+recorded Codex home under its execution hold, and registers a fresh
+observer with Core. Observer admission retains the original native
+operation and logical root. The separate Resume receipt authorizes the
+exact saved checkpoint. Duplicate requests join the same local Resume.
+If Core commits admission before losing its response, the worker retries
+the same protected admission.
+
+The restored observer starts with the saved text, usage and pending
+messages. It publishes protected output against the original History
+provenance and reports completion only after observing the original
+native turn end. The Resume response can precede terminal publication
+while the worker continues owning the operation.
+
+The macOS ARM64 smoke stopped the Rust worker and Codex while the turn
+was held, restarted both, and finished the same turn. The local Core and
+provider peers verified stale control rejection, duplicate delivery, a
+lost admission response, the original input appearing once in the
+provider request, and protected output and terminal receipt replay.
+A focused Rust test verified saved text remains available when the
+restored turn completes without new output.
+
+Durable Stop, Task checkpoint capture and restoration, and the remaining
+observer parity are still open. Production cutover and the final
+Rust server and worker acceptance remain in scope.

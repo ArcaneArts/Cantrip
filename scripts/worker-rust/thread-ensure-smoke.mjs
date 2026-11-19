@@ -33,6 +33,7 @@ import {
 } from "../../cantrip_worker/src/chat-message-encryption.ts";
 import { protectChatPlanState } from "../../cantrip_worker/src/chat-plan-encryption.ts";
 import { admit, GuiReceiptPeer, logical } from "./gui-receipt-cases.mjs";
+import { ColdResumePeer } from "./cold-resume-cases.mjs";
 import { GuiHistoryPeer } from "./gui-history-cases.mjs";
 import { verifyTaskOutcomeRecovery } from "./task-outcome-recovery.mjs";
 import { verifyTaskPreparation } from "./task-preparation-cases.mjs";
@@ -53,6 +54,7 @@ const { values } = parseArgs({
     turns: { type: "boolean" },
     held: { type: "boolean" },
     durablePause: { type: "boolean" },
+    coldResume: { type: "boolean" },
     protected: { type: "boolean" },
     receipts: { type: "boolean" },
     outcomes: { type: "boolean" },
@@ -346,6 +348,7 @@ const server = createServer(async (request, response) => {
           ...(values.protected ||
           values.held ||
           values.durablePause ||
+          values.coldResume ||
           values.receipts ||
           values.chatGoal ||
           values.projectGoals ||
@@ -538,10 +541,17 @@ async function stop() {
   child.stdin.end();
   assert.deepEqual(await available(exited), [0, null], diagnostics);
 }
-async function ensure(fields, event = () => {}, requestId = randomUUID()) {
+async function ensure(
+  fields,
+  event = () => {},
+  requestId = randomUUID(),
+  closeEndsResponse = false,
+) {
   const origin = connection;
-  let onResponse;
+  let onResponse, onClose;
   const reply = new Promise((resolve) => {
+    onClose = () => resolve({ ok: false, disconnected: true });
+    if (closeEndsResponse) origin.once("close", onClose);
     onResponse = (frame) => {
       if (frame.requestId !== requestId) return;
       if (frame.kind === "response") resolve(frame);
@@ -587,6 +597,7 @@ async function ensure(fields, event = () => {}, requestId = randomUUID()) {
   try {
     return await available(reply);
   } finally {
+    origin.off("close", onClose);
     outcomeFrames.off("frame", onResponse);
   }
 }
@@ -1061,7 +1072,7 @@ function summary(message, chatId, sequence) {
   };
 }
 
-async function verifyDurableChatPause() {
+async function verifyDurableChatPause(cold = false) {
   await start();
   let running;
   try {
@@ -1144,7 +1155,12 @@ async function verifyDurableChatPause() {
         }),
       };
     };
-    running = ensure({ ...fields, nativeCommandReceipt: receipt });
+    running = ensure(
+      { ...fields, nativeCommandReceipt: receipt },
+      undefined,
+      undefined,
+      cold,
+    );
     const first = await Promise.race([
       read,
       running.then((response) => {
@@ -1273,6 +1289,13 @@ async function verifyDurableChatPause() {
       subagentDefaults: null,
       mcpServers: [],
     };
+    if (cold) {
+      const previous = guiPeer;
+      await stop();
+      assert.deepEqual(await running, { ok: false, disconnected: true });
+      await start();
+      guiPeer = new ColdResumePeer(previous, resume, workerGeneration, stamp);
+    }
     const stale = await ensure({ ...resume, controlId: randomUUID() });
     assert.equal(stale.ok, false);
     assert.equal(
@@ -1283,7 +1306,18 @@ async function verifyDurableChatPause() {
     taskResponse = "Resumed the same original turn.";
     const nextRequest = untilProvider();
     const resumed = ensure(resume);
-    const next = await nextRequest;
+    const duplicate = cold ? ensure(resume) : null;
+    const next = await Promise.race([
+      nextRequest,
+      resumed.then((reply) => {
+        assert.equal(
+          reply.ok,
+          true,
+          JSON.stringify(reply) + "\n" + diagnostics,
+        );
+        return nextRequest;
+      }),
+    ]);
     assert.equal(next.number, first.number + 1);
     const resumedResponse = await resumed;
     assert.equal(
@@ -1296,12 +1330,29 @@ async function verifyDurableChatPause() {
       paused: false,
     });
     next.finish();
-    const completed = await running;
-    assert.equal(
-      completed.ok,
-      true,
-      JSON.stringify(completed) + "\n" + diagnostics,
-    );
+    if (cold) {
+      assert.deepEqual((await duplicate).result, resumedResponse.result);
+      assert.equal(guiPeer.admissionAttempts, 2);
+      const outcome = await available(guiPeer.finished.promise);
+      assert.equal(outcome.text, taskResponse);
+      assert.equal(
+        JSON.stringify(next.body.input).split("Synthetic durable pause input.")
+          .length,
+        2,
+      );
+      assert.ok(
+        guiPeer.events.some(
+          (event) => event.type === "agent.protected-message",
+        ),
+      );
+    } else {
+      const completed = await running;
+      assert.equal(
+        completed.ok,
+        true,
+        JSON.stringify(completed) + "\n" + diagnostics,
+      );
+    }
     assert.equal(guiPeer.terminal.nativeTurnId, evidence.suspension.turnId);
     assert.equal(guiPeer.terminal.terminalStatus, "completed");
     await expectSuccess(logical(receipt));
@@ -1313,7 +1364,9 @@ async function verifyDurableChatPause() {
     await running?.catch(() => {});
   }
   console.log(
-    "Durable GUI Chat pause captured a Node-readable continuation and live Resume completed the same native turn.",
+    cold
+      ? "Cold Resume replaced the worker and Codex, kept the original native turn, and committed protected output."
+      : "Durable GUI Chat pause captured a Node-readable continuation and live Resume completed the same native turn.",
   );
 }
 
@@ -1936,6 +1989,7 @@ try {
   );
   if (values.held) await verifyHeldAttachment(session, threadId);
   if (values.durablePause) await verifyDurableChatPause();
+  if (values.coldResume) await verifyDurableChatPause(true);
   if (values.turns || values.outcomes) await verifyTurns();
   if (values.outcomes) {
     await verifyTaskOutcomeRecovery({

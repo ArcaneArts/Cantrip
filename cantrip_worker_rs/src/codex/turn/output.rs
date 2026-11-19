@@ -92,11 +92,46 @@ pub(super) async fn collect(
     turn: &JsString,
     emit: &Emit,
 ) -> Result<Settled> {
-    let mut message = None::<Pending>;
-    let mut final_text = None;
-    let mut staged = None::<(JsString, JsString, Value)>;
-    let mut delta = JsString::from("");
-    let mut usage = Value::Null;
+    collect_restored(events, signal, thread, turn, emit, &Value::Null).await
+}
+
+pub(super) async fn collect_restored(
+    events: &mut Events,
+    signal: &Signal,
+    thread: &JsString,
+    turn: &JsString,
+    emit: &Emit,
+    saved: &Value,
+) -> Result<Settled> {
+    let restored = &saved["streamingAgentMessage"];
+    let mut message = restored["id"].as_js_string().map(|id| {
+        let text = restored["text"]
+            .as_js_string()
+            .cloned()
+            .unwrap_or_else(|| "".into());
+        let last_published = restored["lastEmittedText"]
+            .as_js_string()
+            .cloned()
+            .unwrap_or_else(|| "".into());
+        Pending {
+            id: id.clone(),
+            changed: text.trim() != last_published,
+            updated: (!last_published.is_empty()).then(Instant::now),
+            last_published,
+            text,
+        }
+    });
+    let mut final_text = saved["finalText"].as_js_string().cloned();
+    let pending = &saved["pendingAgentMessage"];
+    let mut staged = pending["id"]
+        .as_js_string()
+        .zip(pending["text"].as_js_string())
+        .map(|(id, text)| (id.clone(), text.clone(), pending["phase"].clone()));
+    let mut delta = saved["delta"]
+        .as_js_string()
+        .cloned()
+        .unwrap_or_else(|| "".into());
+    let mut usage = saved["latestUsage"].clone();
     let mut publisher = Publisher {
         thread,
         turn,
@@ -117,16 +152,14 @@ pub(super) async fn collect(
                 snapshot["delta"] = json!(delta);
                 snapshot["finalText"] = json!(final_text);
                 snapshot["latestUsage"] = usage.clone();
-                if let Some((id, text, phase)) = &staged {
-                    snapshot["pendingAgentMessage"] =
-                        publisher.agent_message(id, text, phase, false, "item/completed");
-                }
-                if let Some(pending) = &message {
-                    snapshot["streamingAgentMessage"] = json!({
+                snapshot["pendingAgentMessage"] =
+                    staged.as_ref().map_or(Value::Null, |(id, text, phase)| {
+                        publisher.agent_message(id, text, phase, false, "item/completed")
+                    });
+                snapshot["streamingAgentMessage"] = message.as_ref().map_or(Value::Null, |pending| json!({
                         "id":pending.id, "text":pending.text, "lastEmittedText":pending.last_published,
                         "phase":"commentary","correlation":publisher.correlation(&pending.id,"item/agentMessage/delta"),
-                    });
-                }
+                    }));
                 let _ = answer.send(snapshot);
                 continue;
             }
@@ -318,5 +351,35 @@ impl Publisher<'_> {
             "sourceMethod":method,"diagnosticId":Value::Null,
             "threadId":self.thread,"turnId":self.turn,"itemId":id,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn restored_turn_can_finish_with_saved_text_and_no_new_output() -> Result<()> {
+        let (send, mut events) = mpsc::unbounded_channel();
+        send.send(Event::Frame(json!({
+            "method":"turn/completed","params":json!({
+                "threadId":"thread","turn":json!({"id":"turn","status":"completed"}),
+            }),
+        })))
+        .map_err(|_| anyhow::anyhow!("Fixture event receiver closed"))?;
+        let (_abort, signal) = crate::metadata::Abort::new();
+        let emit: Emit = Arc::new(|_| panic!("Already-published text must not stream again"));
+        let saved = json!({"delta":"text from before restart","finalText":Value::Null});
+        let terminal = collect_restored(
+            &mut events,
+            &signal,
+            &"thread".into(),
+            &"turn".into(),
+            &emit,
+            &saved,
+        )
+        .await?;
+        assert_eq!(terminal.result?["text"], "text from before restart");
+        Ok(())
     }
 }

@@ -9,15 +9,10 @@ use cantrip_wire::{Value, value::json};
 use std::time::Duration;
 use tokio::sync::oneshot;
 
-const BOUNDARY_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
+pub(super) const BOUNDARY_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
 
 impl Binding {
-    pub(in crate::codex::turn) fn capture(
-        &self,
-        command: &Value,
-        channel: output::Capture,
-        thread_version: u64,
-    ) {
+    pub(in crate::codex::turn) fn capture(&self, command: &Value, channel: output::Capture) {
         // All fields tracked by the Rust observer come from the ordered
         // stream. The other fields use the Node continuation's empty values.
         let empty = Value::Array(Vec::new());
@@ -37,10 +32,13 @@ impl Binding {
             "streamingAgentMessage":Value::Null,"reasoningSummaries":empty,"structuredChat":false,
             "structuredOutputSchema":Value::Null,"goalCompletion":Value::Null,
         });
+        self.restore_capture(channel, seed);
+    }
+
+    pub(super) fn restore_capture(&self, channel: output::Capture, seed: Value) {
         let _ = self.checkpoint.set(Capture {
             events: channel,
             seed,
-            thread_version,
         });
     }
 
@@ -251,7 +249,7 @@ impl Turns {
 }
 
 impl Selection {
-    async fn confirm_held(&self, suspension: &Value) -> Result<()> {
+    pub(super) async fn confirm_held(&self, suspension: &Value) -> Result<()> {
         let result = self
             .runtime
             .request(
