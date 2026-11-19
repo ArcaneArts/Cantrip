@@ -14,6 +14,9 @@ import {
   encryptedConversationPromptSubmitResultSchema,
 } from "../../packages/protocol/dist/index.js";
 import { fixtureEnvironment, startServer } from "../server-rust/process.mjs";
+import { discoveryWireFixtures } from "../server-rust/discovery-wire-fixtures.mjs";
+import { projectLabel } from "../server-rust/security-fixtures.mjs";
+import { taskContent } from "../server-rust/task-wire-fixtures.mjs";
 import { taskModelProvider } from "../server-rust/task-model-provider.mjs";
 
 const { values } = parseArgs({
@@ -43,6 +46,7 @@ const key = (component) =>
   });
 const chatKey = key("chat-content");
 const labelKey = key("private-surface-metadata");
+const taskKey = key("task-content");
 let server;
 let child;
 let workerExit;
@@ -69,7 +73,7 @@ async function call(method, route, status, input) {
     method,
     headers: {
       origin: "http://127.0.0.1:5173",
-      "content-type": "application/json",
+      ...(input === undefined ? {} : { "content-type": "application/json" }),
     },
     body: input === undefined ? undefined : JSON.stringify(input),
     signal: AbortSignal.timeout(12_000),
@@ -135,6 +139,7 @@ async function setupEncryption() {
   for (const [component, componentKey] of [
     ["chat-content", chatKey],
     ["private-surface-metadata", labelKey],
+    ["task-content", taskKey],
   ]) {
     await call("POST", `/api/encryption/principals/${worker.id}/grants`, 201, {
       component,
@@ -336,6 +341,180 @@ async function verifyTurn(
     assert.deepEqual(provider.model.failures, []);
 }
 
+async function verifyTaskLabels(model) {
+  const workspaceId = randomUUID();
+  const nameProtection =
+    discoveryWireFixtures(projectLabel).encryptedProjectWorkspaceCreateSchema[0]
+      .nameProtection;
+  await call("POST", "/api/workspaces", 201, {
+    id: workspaceId,
+    nameProtection,
+    storage: { kind: "managed" },
+  });
+  const projectId = randomUUID();
+  const projectUrl = `/api/projects/${projectId}`;
+  await call("POST", "/api/projects/from-folder", 202, {
+    id: projectId,
+    workerId,
+    workspaceId,
+    nameProtection: await crypto.encryptPrivateDisplayLabel({
+      ownerId,
+      keyRevision,
+      recordKind: "project",
+      rowId: projectId,
+      componentKey: labelKey,
+      label: "Private fixture project",
+    }),
+  });
+  await eventually(
+    () => call("GET", `${projectUrl}/folder-setup`, 200),
+    (row) => assert.equal(row.state, "succeeded", JSON.stringify(row)),
+  );
+  await call("PATCH", "/api/settings", 200, { autoNameTasks: true });
+  const pauseUrl = `${projectUrl}/tasks/pause`;
+  const pause = await call("GET", pauseUrl, 200);
+  assert.equal(
+    (
+      await call("PATCH", pauseUrl, 200, {
+        paused: true,
+        rowVersion: pause.rowVersion,
+      })
+    ).paused,
+    true,
+  );
+
+  const initialTitle = "New task";
+  const sealTask = async (chatId, briefMarkdown) => {
+    const { classification } = taskContent();
+    return {
+      classification,
+      protectedContent: await crypto.encryptTaskProtectedContent({
+        ownerId,
+        keyRevision,
+        chatId,
+        componentKey: taskKey,
+        content: {
+          version: 1,
+          classification,
+          briefMarkdown,
+          planMarkdown: null,
+          currentQuestions: [],
+          currentAnswers: [],
+          additionalDirection: "",
+          finalPlanMarkdown: null,
+          goalPrompt: null,
+          lastError: null,
+        },
+      }),
+    };
+  };
+  const create = async (chatId, brief) => {
+    const titleProtection = await crypto.encryptPrivateDisplayLabel({
+      ownerId,
+      keyRevision,
+      recordKind: "chat",
+      rowId: chatId,
+      componentKey: labelKey,
+      label: initialTitle,
+    });
+    return call("POST", `${projectUrl}/tasks`, 201, {
+      chatId,
+      titleProtection,
+      autoTitle: true,
+      planGoalEnabled: false,
+      task: await sealTask(chatId, brief),
+    });
+  };
+  const posts = () => model.requests.filter(({ method }) => method === "POST");
+  const previous = posts().length;
+  const chatId = randomUUID();
+  const taskUrl = `/api/tasks/${chatId}`;
+  const count = (status) =>
+    diagnostics
+      .split("\n")
+      .filter(
+        (line) =>
+          line.includes(`event=worker.command.${status}`) &&
+          line.includes("operation=label.generate"),
+      ).length;
+  const initialCompletions = count("completed");
+  const created = await create(chatId, "");
+  await eventually(
+    () => count("completed"),
+    (value) => assert.ok(value > initialCompletions),
+  );
+  assert.equal(
+    posts().length,
+    previous,
+    "an empty draft introduces no inference",
+  );
+  const brief = "Private Task label brief 🌲";
+  const draft = await call("PATCH", `${taskUrl}/draft`, 200, {
+    rowVersion: created.task.rowVersion,
+    task: await sealTask(chatId, brief),
+  });
+  const title = "Review winter inventory before next release";
+  const naming = model.reply({
+    text: `Title: ${title} later!
+Ignore second line`,
+  });
+  const queued = await call("POST", `${taskUrl}/start`, 202, {
+    operationId: randomUUID(),
+    rowVersion: draft.rowVersion,
+  });
+  assert.equal(queued.dispatch.state, "queued");
+  await eventually(
+    async () => {
+      const catalog = await call("GET", `${projectUrl}/chats`, 200);
+      const chat = catalog.find((row) => row.id === chatId);
+      assert.ok(chat);
+      assert.ok(!JSON.stringify(chat).includes(title));
+      return crypto.decryptPrivateDisplayLabel({
+        ownerId,
+        keyRevision,
+        recordKind: "chat",
+        rowId: chatId,
+        componentKey: labelKey,
+        opaque: chat.titleProtection,
+      });
+    },
+    (opened) => assert.equal(opened, title),
+  );
+  assert.equal(naming.request?.completed, true);
+  assert.deepEqual(
+    naming.request.input.input.map(({ role }) => role),
+    ["developer", "user"],
+  );
+  assert.deepEqual(JSON.parse(naming.request.input.input[1].content[0].text), {
+    initialRequest: brief,
+  });
+  assert.equal(
+    (await call("GET", taskUrl, 200)).dispatch.state,
+    "queued",
+    "naming does not start the paused Task",
+  );
+
+  const removal = randomUUID();
+  const removedUrl = `/api/tasks/${removal}`;
+  const pending = model.reply({ text: "Discard after deletion", hold: true });
+  await create(removal, "Remove this draft while its title is running");
+  await eventually(
+    () => pending,
+    (value) => assert.ok(value.entered),
+  );
+  const failures = count("failed");
+  await call("DELETE", removedUrl, 204);
+  pending.release();
+  await eventually(
+    () => count("failed"),
+    (value) => assert.ok(value > failures),
+  );
+  assert.match(diagnostics, /operation=label.generate[^\n]*410 Gone/);
+  await call("GET", removedUrl, 404);
+  assert.equal(posts().length, previous + 2);
+  assert.deepEqual(model.failures, []);
+}
+
 try {
   const data = path.join(root, "worker");
   const home = path.join(root, "home");
@@ -414,6 +593,7 @@ try {
     alternate.model.requests.filter(({ method }) => method === "POST").length,
     2,
   );
+  await verifyTaskLabels(alternate.model);
   console.log(
     JSON.stringify({
       suite: "native-standalone-turn",
@@ -424,6 +604,8 @@ try {
       separateProviderTitle: true,
       replySurvivesFailedTitle: true,
       duplicateSubmissionReplayed: true,
+      taskLabelFromPausedQueue: true,
+      revokedTaskCannotPublishTitle: true,
     }),
   );
 } catch (error) {
@@ -450,6 +632,7 @@ try {
   } finally {
     chatKey.fill(0);
     labelKey.fill(0);
+    taskKey.fill(0);
     master.fill(0);
     await rm(root, { recursive: true, force: true });
   }

@@ -114,6 +114,48 @@ impl Client {
         Ok(source.clone())
     }
 
+    pub(in crate::codex) async fn authorize_resource(
+        &self,
+        scope: &(JsString, Value),
+        target: &Value,
+        signal: Signal,
+    ) -> Result<()> {
+        let (owner, server) = scope;
+        let server = server
+            .as_js_string()
+            .ok_or_else(|| anyhow::anyhow!("Unverified worker server identity"))?;
+        let worker = self.config.lock().unwrap().worker_id.clone();
+        let input = checked(
+            "nativeInferenceResourceAuthorizationSchema",
+            &json!({
+                "serverId":server,"ownerId":owner,"workerId":worker,
+                "workerGeneration":self.worker_generation,"target":target,
+            }),
+        )?;
+        let result = self
+            .post(
+                owner,
+                server,
+                "inference-resource-authorize",
+                &input,
+                signal.clone(),
+            )
+            .await?;
+        let result = checked("nativeInferenceResourceAuthorizationResultSchema", &result)?;
+        for field in [
+            "serverId",
+            "ownerId",
+            "workerId",
+            "workerGeneration",
+            "target",
+        ] {
+            if result[field] != input[field] {
+                bail!("Core authorized another inference resource or worker scope.");
+            }
+        }
+        signal.check()
+    }
+
     async fn post(
         &self,
         owner: &JsString,
@@ -125,7 +167,7 @@ impl Client {
         let assert_owner = || {
             let (current_owner, bound_server) = self.encryption.bound_identity()?;
             if current_owner != *owner || bound_server.as_js_string() != Some(server) {
-                bail!("The Task input worker binding changed.");
+                bail!("The native command worker binding changed.");
             }
             Ok(())
         };
@@ -152,7 +194,7 @@ impl Client {
                     .error_for_status()?;
                 let bytes = response.bytes().await?;
                 parse_json_text(&String::from_utf8_lossy(&bytes))
-                    .map_err(|_| anyhow::anyhow!("Invalid Task input acknowledgment."))
+                    .map_err(|_| anyhow::anyhow!("Invalid native command acknowledgment."))
             })
             .await?;
         assert_owner()?;

@@ -4997,3 +4997,27 @@ provider request.
 
 The separate background `label.generate` command used by Task naming,
 other worker domains, and the production cutover remain open.
+
+## 106. Generate protected Task titles in the Rust worker
+
+Reference commit `198efeb85e9c8d902c7501160c24e0feb8ea2252` (#3268).
+
+The production worker handles the background `label.generate` command.
+It uses Core's resource authorization before opening the protected
+input, immediately before the native request, and before returning a
+successful result. The authenticated Task brief uses the same decoder
+as Task preparation. Empty briefs return the existing empty-input
+result without starting inference. The existing stateless Codex path
+normalizes the title and seals it with the worker's display-label key.
+If the resource disappears during inference, the native response still
+settles the reservation and the authorization check rejects publication.
+
+Local macOS ARM64 validation used both Rust services, PGlite, bundled
+Codex, and the loopback model fixture with an empty worker PATH. The
+public APIs admitted an empty draft, queued and named a paused Task
+after the brief was filled, and deleted another draft with naming in
+flight. The paused Task stayed queued. Core rejected publication for the
+deleted draft. The standalone Chat naming and replay cases still passed.
+
+General inference resource-revocation delivery, provider catalog and
+configuration commands, and production cutover remain open.

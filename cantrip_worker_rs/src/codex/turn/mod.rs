@@ -2,7 +2,7 @@
 //! the native runtime supplies the turn identity and terminal settlement.
 pub(crate) mod autonomous;
 mod control;
-mod label;
+pub(crate) mod label;
 mod output;
 mod params;
 mod protected;
