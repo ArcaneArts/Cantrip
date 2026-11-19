@@ -1,6 +1,6 @@
 //! Rebuild a Chat observer after worker loss and resume its original Codex turn.
 use super::{Action, Binding, Selection, pause};
-use crate::codex::turn::*;
+use crate::codex::{preparation::command::Prepared, turn::*};
 use cantrip_history::content::Encryption;
 
 struct Reservation {
@@ -16,6 +16,9 @@ enum ReservationResult {
 impl Reservation {
     fn acquire(sessions: &Sessions, key: Key, signature: String) -> Result<ReservationResult> {
         let mut state = sessions.lock().unwrap();
+        if state.stopping.contains_key(&key) {
+            bail!("The saved turn has a pending Stop.");
+        }
         if let Some(pending) = state.restoring.get(&key) {
             if pending.signature == signature {
                 return Ok(ReservationResult::Join(pending.response.clone()));
@@ -32,7 +35,7 @@ impl Reservation {
         let (complete, response) = Promise::pair();
         state.restoring.insert(
             key.clone(),
-            Restoring {
+            PendingSuspension {
                 signature,
                 response,
             },
@@ -95,66 +98,14 @@ impl Turns {
         acknowledge: impl FnOnce(Result<Value>) + Send,
     ) -> Result<Value> {
         let key = &reservation.key;
-        if command["chatId"] != command["session"]["chatId"] {
-            bail!("The saved turn belongs to another chat.");
-        }
-        let checkpoint = &command["checkpoint"]["suspension"];
-        let thread = id(&checkpoint["threadId"], "suspended thread")?;
-        let turn = id(&checkpoint["turnId"], "suspended turn")?;
-        if command["threadId"].as_js_string() != Some(&thread) {
-            bail!("The checkpoint belongs to another native thread.");
-        }
-        let scope = Scope::new(self.encryption.clone())?;
-        if scope.owner != key.0 || scope.server != key.1 {
-            bail!("The worker binding changed before suspension restoration.");
-        }
-        let mut target = command.clone();
-        target["session"]["heldSuspension"] = command["checkpoint"].clone();
-        let prepared = self.preparation.prepare(&target, Intent::Preserve).await?;
-        let saved = &prepared
-            .saved
-            .as_ref()
-            .context("The suspended worker continuation was not opened.")?
-            .continuation;
-        if saved["threadId"].as_js_string() != Some(&thread)
-            || saved["turnId"].as_js_string() != Some(&turn)
-            || saved["chatId"] != command["chatId"]
-            || saved["cwd"] != command["cwd"]
-            || saved["providerId"] != command["provider"]["id"]
-            || saved["providerKind"] != command["provider"]["kind"]
-            || saved["executionKind"] != "chat"
-        {
-            bail!("The checkpoint has no compatible worker continuation for this Chat.");
-        }
+        let (prepared, selected, scope) = self.attach_saved_turn(command, key).await?;
         let runtime = &prepared.runtime;
-        let selected = Selection {
-            runtime: runtime.clone(),
-            thread: thread.clone(),
-            turn: turn.clone(),
-            thread_version: prepared.thread.version(),
-        };
+        let saved = &prepared.saved.as_ref().unwrap().continuation;
+        let checkpoint = &command["checkpoint"]["suspension"];
+        let thread = selected.thread.clone();
+        let turn = selected.turn.clone();
         selected.confirm_held(checkpoint).await?;
-        let mut session =
-            crate::codex::preparation::command::native_session(&target, runtime, &thread);
-        session["connectionId"] = json!(format!(
-            "suspension:{}:{}",
-            id(&command["controlId"], "suspension control")?,
-            runtime.generation()
-        ));
-        let (receipt, grant) = self
-            .receipts
-            .admit_suspension(scope, command, session)
-            .await?;
-        let execution = self
-            .preparation
-            .resolve_routing(&grant["execution"])
-            .await?;
-        autonomous::same_workspace(
-            &id(&command["cwd"], "suspended workspace")?,
-            &execution["cwd"],
-        )
-        .await?;
-        prepared.thread.assert_current(runtime)?;
+        let (receipt, grant) = self.admit_saved_turn(command, &selected, scope).await?;
         let root = receipt.operation();
         let (abort, signal) = Abort::new();
         let binding = Binding::new(
@@ -241,7 +192,7 @@ impl Turns {
                         root, control_scope, receipt.session().clone(),
                         &params, &command["permissionProfileId"], action,
                     ).await?;
-                    control.dispatch_pause().await?;
+                    control.dispatch_durable().await?;
                     let start = || {
                         prepared.thread.assert_current(runtime)?;
                         control.scope().identity()?;
@@ -259,7 +210,7 @@ impl Turns {
                     let resume = match start() {
                         Ok(request) => request.await,
                         Err(error) => {
-                            let _ = control.settle_pause("rejected", Some(&json!({
+                            let _ = control.settle_durable("rejected", Some(&json!({
                                 "error":json!({"code":-32000,"message":"The resumed turn lost its execution owner."})
                             })), None).await;
                             return Err(error);
@@ -269,16 +220,16 @@ impl Turns {
                         && error.downcast_ref::<Failure>().is_some_and(|failure| failure.native_error.is_some())
                     {
                         execution.rejected()?;
-                        let _ = control.settle_pause("uncertain", None, None).await;
+                        let _ = control.settle_durable("uncertain", None, None).await;
                         bail!("Codex could not resume the saved turn. Its checkpoint has been retained.");
                     }
                     let result = match resume {
                         Ok(Some(reply)) if reply["paused"] == false && &reply["suspension"] == checkpoint => {
-                            let settled = control.settle_pause("applied", Some(&json!({"result":reply})), None).await;
+                            let settled = control.settle_durable("applied", Some(&json!({"result":reply})), None).await;
                             settled.and_then(|()| pause::result(false, Some(&selected)))
                         }
                         _ => {
-                            let _ = control.settle_pause("uncertain", None, None).await;
+                            let _ = control.settle_durable("uncertain", None, None).await;
                             Err(anyhow!("Codex did not confirm that the saved turn resumed."))
                         }
                     };
@@ -311,9 +262,93 @@ impl Turns {
         drop(owner);
         result
     }
+    pub(super) async fn attach_saved_turn(
+        &self,
+        command: &Value,
+        key: &Key,
+    ) -> Result<(Prepared, Selection, Scope)> {
+        if command["chatId"] != command["session"]["chatId"] {
+            bail!("The saved turn belongs to another chat.");
+        }
+        let checkpoint = &command["checkpoint"]["suspension"];
+        let thread = id(&checkpoint["threadId"], "suspended thread")?;
+        let turn = id(&checkpoint["turnId"], "suspended turn")?;
+        if command["threadId"].as_js_string() != Some(&thread) {
+            bail!("The checkpoint belongs to another native thread.");
+        }
+        let scope = Scope::new(self.encryption.clone())?;
+        if scope.owner != key.0 || scope.server != key.1 {
+            bail!("The worker binding changed before suspension restoration.");
+        }
+        let mut target = command.clone();
+        target["session"]["heldSuspension"] = command["checkpoint"].clone();
+        let prepared = if command["type"] == STOP_SUSPENSION {
+            self.preparation.prepare_held_stop(&target).await?
+        } else {
+            self.preparation.prepare(&target, Intent::Preserve).await?
+        };
+        let saved = &prepared
+            .saved
+            .as_ref()
+            .context("The suspended worker continuation was not opened.")?
+            .continuation;
+        if saved["threadId"].as_js_string() != Some(&thread)
+            || saved["turnId"].as_js_string() != Some(&turn)
+            || saved["chatId"] != command["chatId"]
+            || saved["cwd"] != command["cwd"]
+            || saved["providerId"] != command["provider"]["id"]
+            || saved["providerKind"] != command["provider"]["kind"]
+            || saved["executionKind"] != "chat"
+        {
+            bail!("The checkpoint has no compatible worker continuation for this Chat.");
+        }
+        let runtime = &prepared.runtime;
+        let selected = Selection {
+            runtime: runtime.clone(),
+            thread: thread.clone(),
+            turn: turn.clone(),
+            thread_version: prepared.thread.version(),
+        };
+        Ok((prepared, selected, scope))
+    }
+
+    pub(super) async fn admit_saved_turn(
+        &self,
+        command: &Value,
+        selected: &Selection,
+        scope: Scope,
+    ) -> Result<(receipt::Receipt<'_>, Value)> {
+        let mut session = crate::codex::preparation::command::native_session(
+            command,
+            &selected.runtime,
+            &selected.thread,
+        );
+        session["connectionId"] = json!(format!(
+            "suspension:{}:{}",
+            id(&command["controlId"], "suspension control")?,
+            selected.runtime.generation()
+        ));
+        let (receipt, grant) = self
+            .receipts
+            .admit_suspension(scope, command, session)
+            .await?;
+        let execution = self
+            .preparation
+            .resolve_routing(&grant["execution"])
+            .await?;
+        autonomous::same_workspace(
+            &id(&command["cwd"], "suspended workspace")?,
+            &execution["cwd"],
+        )
+        .await?;
+        if !selected.transport_current() {
+            bail!("The native runtime changed during suspension admission.");
+        }
+        Ok((receipt, grant))
+    }
 }
 
-fn shared(result: &Result<Value>) -> Result<Value> {
+pub(super) fn shared(result: &Result<Value>) -> Result<Value> {
     result.as_ref().cloned().map_err(|error| anyhow!("{error}"))
 }
 

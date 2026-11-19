@@ -150,6 +150,19 @@ impl Ensurer {
     }
 
     pub(crate) async fn prepare(&self, incoming: &Value, intent: Intent) -> Result<Prepared> {
+        self.prepare_inner(incoming, intent, false).await
+    }
+
+    pub(in crate::codex) async fn prepare_held_stop(&self, incoming: &Value) -> Result<Prepared> {
+        self.prepare_inner(incoming, Intent::Preserve, true).await
+    }
+
+    async fn prepare_inner(
+        &self,
+        incoming: &Value,
+        intent: Intent,
+        stopping: bool,
+    ) -> Result<Prepared> {
         let (owner, server) = self.0.encryption.bound_identity()?;
         let logical_server = server
             .as_js_string()
@@ -249,15 +262,17 @@ impl Ensurer {
                     this.assert_bound(&bound)?;
                     let codex_home = profile.codex_home.clone();
                     let attached = held.as_ref().and_then(|saved| {
-                        let live = this.live_thread(&chat, selection.thread_id.as_ref()?, &bound)?;
+                        let expected = selection.thread_id.as_ref()?;
+                        let (thread, live) = this.selected_live_owner(&chat, &bound)?;
+                        if thread.id() != expected { return None; }
                         let session = live.session.as_ref()?;
                         (live.runtime.codex_home().as_os_str() == saved.home.as_os_str()
                             && ["contextKind", "projectId", "placementId", "modelRouteId", "providerAccountId"]
                                 .iter().all(|field| session[*field] == saved.source[*field]))
-                            .then_some(live.runtime)
+                            .then_some((thread, live))
                     });
-                    let runtime = match attached {
-                        Some(runtime) => runtime,
+                    let runtime = match &attached {
+                        Some((_, live)) => live.runtime.clone(),
                         None => this.0.codex.launch_in_scope(
                             provider::launch(profile, provider, this.0.access.clone())?,
                             Some((logical_server, bound.0.clone())),
@@ -325,8 +340,17 @@ impl Ensurer {
                     {
                         delivery.select(&bound, thread, runtime.generation(), &chat, true);
                     }
-                    let loaded = native::load(&runtime, &selection, &configuration, &identify).await?;
-                    native::configure(&runtime, &loaded, selection.intent, &configuration).await?;
+                    let loaded = if stopping && let Some((thread, _)) = attached {
+                        // The authorized Stop uses native terminal history even
+                        // if a previous Resume found unreadable checkpoint bytes.
+                        thread.assert_current(&runtime)?;
+                        identify(thread.id().clone()).await?;
+                        thread
+                    } else {
+                        let loaded = native::load(&runtime, &selection, &configuration, &identify).await?;
+                        native::configure(&runtime, &loaded, selection.intent, &configuration).await?;
+                        loaded
+                    };
                     if selection.intent == Intent::Configure {
                         profile::apply_plan_mode(&runtime, &loaded, &command).await?;
                     }
@@ -463,6 +487,15 @@ impl Ensurer {
         chat: &JsString,
         bound: &(JsString, Value),
     ) -> Option<(JsString, LiveThread)> {
+        self.selected_live_owner(chat, bound)
+            .map(|(thread, live)| (thread.id().clone(), live))
+    }
+
+    fn selected_live_owner(
+        &self,
+        chat: &JsString,
+        bound: &(JsString, Value),
+    ) -> Option<(native::LoadedThread, LiveThread)> {
         let owners = self.0.live_threads.lock().unwrap();
         let owner = owners.get(chat)?;
         if &owner.bound != bound {
@@ -471,7 +504,7 @@ impl Ensurer {
         let runtime = owner.runtime.upgrade()?;
         owner.thread.assert_current(&runtime).ok()?;
         Some((
-            owner.thread.id().clone(),
+            owner.thread.clone(),
             LiveThread {
                 runtime,
                 session: owner.session.clone(),

@@ -115,6 +115,7 @@ impl Autonomous {
             let accepted = {
                 let mut state = self.active.lock().unwrap();
                 if !state.restoring.contains_key(&key)
+                    && !state.stopping.contains_key(&key)
                     && let std::collections::hash_map::Entry::Vacant(entry) =
                         state.active.entry(key.clone())
                 {

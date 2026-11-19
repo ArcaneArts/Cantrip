@@ -2,7 +2,7 @@
 // The server peer supplies only the enrollment/command contracts the worker uses.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter, once } from "node:events";
 import {
   mkdir,
@@ -33,7 +33,7 @@ import {
 } from "../../cantrip_worker/src/chat-message-encryption.ts";
 import { protectChatPlanState } from "../../cantrip_worker/src/chat-plan-encryption.ts";
 import { admit, GuiReceiptPeer, logical } from "./gui-receipt-cases.mjs";
-import { ColdResumePeer } from "./cold-resume-cases.mjs";
+import { RestoredSuspensionPeer } from "./cold-resume-cases.mjs";
 import { GuiHistoryPeer } from "./gui-history-cases.mjs";
 import { verifyTaskOutcomeRecovery } from "./task-outcome-recovery.mjs";
 import { verifyTaskPreparation } from "./task-preparation-cases.mjs";
@@ -55,6 +55,8 @@ const { values } = parseArgs({
     held: { type: "boolean" },
     durablePause: { type: "boolean" },
     coldResume: { type: "boolean" },
+    durableStop: { type: "boolean" },
+    coldStop: { type: "boolean" },
     protected: { type: "boolean" },
     receipts: { type: "boolean" },
     outcomes: { type: "boolean" },
@@ -349,6 +351,8 @@ const server = createServer(async (request, response) => {
           values.held ||
           values.durablePause ||
           values.coldResume ||
+          values.durableStop ||
+          values.coldStop ||
           values.receipts ||
           values.chatGoal ||
           values.projectGoals ||
@@ -566,6 +570,7 @@ async function ensure(
       command:
         fields.type === "chat.native-control" ||
         fields.type === "chat.suspension.resume" ||
+        fields.type === "chat.suspension.stop" ||
         fields.type === "chat.queue.prepare" ||
         fields.type === "chat.queue.changed" ||
         fields.type?.startsWith("chat.native-logical.") ||
@@ -1072,7 +1077,7 @@ function summary(message, chatId, sequence) {
   };
 }
 
-async function verifyDurableChatPause(cold = false) {
+async function verifyDurableChatPause(cold = false, stopping = false) {
   await start();
   let running;
   try {
@@ -1258,7 +1263,7 @@ async function verifyDurableChatPause(cold = false) {
     const resumeId = randomUUID();
     guiPeer.suspensionControlId = resumeId;
     const resume = {
-      type: "chat.suspension.resume",
+      type: stopping ? "chat.suspension.stop" : "chat.suspension.resume",
       chatId,
       threadId,
       controlId: resumeId,
@@ -1289,20 +1294,66 @@ async function verifyDurableChatPause(cold = false) {
       subagentDefaults: null,
       mcpServers: [],
     };
+    const damaged = "synthetic damaged native checkpoint";
+    const checkpointPath = path.join(
+      opened.home,
+      "turn-suspensions",
+      createHash("sha256").update(threadId).digest("hex") + ".json",
+    );
     if (cold) {
       const previous = guiPeer;
       await stop();
       assert.deepEqual(await running, { ok: false, disconnected: true });
+      if (stopping) {
+        assert.ok((await readFile(checkpointPath)).length > 0);
+        await writeFile(checkpointPath, damaged);
+      }
       await start();
-      guiPeer = new ColdResumePeer(previous, resume, workerGeneration, stamp);
+      guiPeer = new RestoredSuspensionPeer(
+        previous,
+        resume,
+        workerGeneration,
+        stamp,
+      );
     }
     const stale = await ensure({ ...resume, controlId: randomUUID() });
     assert.equal(stale.ok, false);
-    assert.equal(
-      providerCalls,
-      first.number,
-      "A stale Core control did not resume Codex.",
-    );
+    assert.equal(providerCalls, first.number);
+    if (stopping) {
+      const stopped = ensure(resume);
+      const duplicate = ensure(resume);
+      const reply = await stopped;
+      assert.equal(reply.ok, true, JSON.stringify(reply) + "\n" + diagnostics);
+      assert.deepEqual(reply.result, { interrupted: true });
+      assert.deepEqual((await duplicate).result, reply.result);
+      if (cold) {
+        assert.equal(guiPeer.admissionAttempts, 2);
+        assert.deepEqual(
+          await available(guiPeer.finished.promise),
+          reply.result,
+        );
+        const checkpointDir = path.dirname(checkpointPath);
+        const retiredPrefix =
+          path.basename(checkpointPath, ".json") + ".retired-";
+        const retired = await Promise.all(
+          (await readdir(checkpointDir))
+            .filter((name) => name.startsWith(retiredPrefix))
+            .map((name) => readFile(path.join(checkpointDir, name), "utf8")),
+        );
+        assert.ok(retired.includes(damaged));
+      } else {
+        assert.equal((await running).ok, false);
+      }
+      assert.equal(guiPeer.terminal.nativeTurnId, evidence.suspension.turnId);
+      assert.equal(guiPeer.terminal.terminalStatus, "interrupted");
+      assert.equal(providerCalls, first.number);
+      console.log(
+        cold
+          ? "Cold Stop committed interruption of the original turn and retained the damaged native checkpoint."
+          : "Live Stop committed interruption of the held turn without requesting another provider turn.",
+      );
+      return;
+    }
     taskResponse = "Resumed the same original turn.";
     const nextRequest = untilProvider();
     const resumed = ensure(resume);
@@ -1867,7 +1918,7 @@ async function verifyProtectedTurns() {
         steps,
       ]),
       [
-        ["rejected", ["admit", "dispatch", "receipt"]],
+        ["uncertain", ["admit", "dispatch", "receipt"]],
         ["applied", ["admit", "dispatch", "receipt", "receipt"]],
       ],
     );
@@ -1990,6 +2041,8 @@ try {
   if (values.held) await verifyHeldAttachment(session, threadId);
   if (values.durablePause) await verifyDurableChatPause();
   if (values.coldResume) await verifyDurableChatPause(true);
+  if (values.durableStop) await verifyDurableChatPause(false, true);
+  if (values.coldStop) await verifyDurableChatPause(true, true);
   if (values.turns || values.outcomes) await verifyTurns();
   if (values.outcomes) {
     await verifyTaskOutcomeRecovery({

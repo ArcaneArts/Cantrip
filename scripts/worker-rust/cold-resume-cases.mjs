@@ -14,7 +14,7 @@ import {
 } from "../../cantrip_worker/src/native-command-content.ts";
 import { GuiReceiptPeer } from "./gui-receipt-cases.mjs";
 
-export class ColdResumePeer extends GuiReceiptPeer {
+export class RestoredSuspensionPeer extends GuiReceiptPeer {
   constructor(previous, command, workerGeneration, stamp) {
     super(previous.fields, previous.receipt, {
       workerGeneration,
@@ -23,6 +23,7 @@ export class ColdResumePeer extends GuiReceiptPeer {
     });
     this.previous = previous;
     this.command = command;
+    this.stopping = command.type === "chat.suspension.stop";
     this.stamp = stamp;
     this.suspensionControlId = command.controlId;
     this.finished = Promise.withResolvers();
@@ -99,14 +100,21 @@ export class ColdResumePeer extends GuiReceiptPeer {
       send({ receipt: this.receipt });
       return;
     }
-    assert.equal(body.reconciliation.terminalStatus, "completed");
+    assert.equal(
+      body.reconciliation.terminalStatus,
+      this.stopping ? "interrupted" : "completed",
+    );
     assert.equal(body.protectedResult, null);
     const outcome = await this.checkPayload(
       body.terminalResult,
       "terminal-result",
     );
-    assert.equal(outcome.turnId, this.command.checkpoint.suspension.turnId);
-    assert.equal(outcome.threadId, this.session.threadId);
+    if (this.stopping) {
+      assert.deepEqual(outcome, { interrupted: true });
+    } else {
+      assert.equal(outcome.turnId, this.command.checkpoint.suspension.turnId);
+      assert.equal(outcome.threadId, this.session.threadId);
+    }
     this.terminal = body.reconciliation;
     if (!this.terminalReceipt) {
       this.terminalReceipt = body;
@@ -156,6 +164,7 @@ export class ColdResumePeer extends GuiReceiptPeer {
       connectionId: `suspension:${command.controlId}:${session.runtimeGeneration}`,
     });
     assert.deepEqual(body.checkpoint, command.checkpoint);
+    assert.equal(body.action, this.stopping ? "stop" : undefined);
     const context = {
       chatId: session.chatId,
       operationId: body.operationId,
@@ -228,8 +237,8 @@ export class ColdResumePeer extends GuiReceiptPeer {
       logicalRoot: source,
       suspension: {
         version: 1,
-        action: "resume",
-        phase: "resuming",
+        action: this.stopping ? "stop" : "resume",
+        phase: this.stopping ? "stopping" : "resuming",
         controlId: command.controlId,
         target,
         active: {

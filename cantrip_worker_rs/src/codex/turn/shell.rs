@@ -97,7 +97,7 @@ impl Turns {
             let (subscription, mut events, _) = output::subscribe(&runtime.history(), &thread)?;
             let reserved = {
                 let mut sessions = self.active.lock().unwrap();
-                if sessions.active.contains_key(&key) || sessions.restoring.contains_key(&key) || sessions.cancelled.contains(&(
+                if sessions.active.contains_key(&key) || sessions.restoring.contains_key(&key) || sessions.stopping.contains_key(&key) || sessions.cancelled.contains(&(
                     key.clone(), root.operation.clone(), root.generation.clone()
                 )) {
                     false

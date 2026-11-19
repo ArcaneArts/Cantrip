@@ -51,12 +51,17 @@ export function logical(receipt, type = "chat.native-logical.complete") {
 // Record transactions at the worker's HTTP boundary. The first encrypted RPC
 // receipt commits before the peer drops its response, just like a lost ACK.
 export class GuiReceiptPeer {
-  constructor(fields, receipt, { oracle, workerGeneration, workerId }) {
+  constructor(
+    fields,
+    receipt,
+    { oracle, workerGeneration, workerId, durable = true },
+  ) {
     this.fields = fields;
     this.receipt = receipt;
     this.oracle = oracle;
     this.workerGeneration = workerGeneration;
     this.workerId = workerId;
+    this.durable = durable;
     this.steps = [];
     this.controls = new Map();
   }
@@ -176,7 +181,7 @@ export class GuiReceiptPeer {
         body.method === "turn/pause" ? body.intent.paused : undefined;
       if (body.method === "turn/pause") assert.equal(typeof pause, "boolean");
       if (
-        pause === false &&
+        pause !== true &&
         this.suspensionControlId &&
         body.intent.expectedSuspensionControlId !== this.suspensionControlId
       ) {
@@ -203,10 +208,12 @@ export class GuiReceiptPeer {
         expectedTurnId: this.result.reconciliation.nativeTurnId,
         permissionProfileId: this.fields.permissionProfileId ?? ":read-only",
         pathsWithinPlacement: true,
-        ...(pause === undefined
-          ? {}
-          : { paused: pause, durableSuspension: true }),
-        ...(pause === false && this.suspensionControlId
+        ...(this.durable
+          ? { durableSuspension: true, workerGeneration: this.workerGeneration }
+          : {}),
+        ...(pause === undefined ? {} : { paused: pause }),
+        ...(pause === false ? { resumeAutonomy: true } : {}),
+        ...(pause !== true && this.suspensionControlId
           ? { expectedSuspensionControlId: this.suspensionControlId }
           : {}),
       });
@@ -295,10 +302,11 @@ export class GuiReceiptPeer {
       send({ receipt });
       return;
     }
-    if (control.dispatchLost && control.pause !== undefined) {
-      assert.equal(body.status, "uncertain");
-      assert.equal(body.durableSuspension, true);
+    assert.equal(body.durableSuspension, this.durable ? true : undefined);
+    if (this.durable)
       assert.equal(body.workerGeneration, this.workerGeneration);
+    if (control.dispatchLost && this.durable) {
+      assert.equal(body.status, "uncertain");
       assert.equal(body.protectedResult, null);
       assert.equal(body.suspensionEvidence, undefined);
       control.settlement = body;
@@ -332,31 +340,29 @@ export class GuiReceiptPeer {
       assert.deepEqual(content, {
         error: { code: -32000, message: "Native dispatch did not complete." },
       });
+    } else if (control.pause === undefined) {
+      assert.equal(body.status, "applied");
+      assert.equal(body.rejectionCode, null);
+      assert.deepEqual(content, { result: {} });
     } else {
       assert.equal(body.status, "applied");
       assert.equal(body.rejectionCode, null);
-      if (control.pause === undefined) {
-        assert.deepEqual(content, { result: {} });
+      assert.equal(content.result.paused, control.pause);
+      if (control.pause) {
+        assert.deepEqual(
+          content.result.suspension,
+          body.suspensionEvidence.suspension,
+        );
+        assert.equal(
+          body.suspensionEvidence.suspension.turnId,
+          this.result.reconciliation.nativeTurnId,
+        );
+        assert.equal(
+          body.suspensionEvidence.suspension.threadId,
+          this.session.threadId,
+        );
       } else {
-        assert.equal(body.durableSuspension, true);
-        assert.equal(body.workerGeneration, this.workerGeneration);
-        assert.equal(content.result.paused, control.pause);
-        if (control.pause) {
-          assert.deepEqual(
-            content.result.suspension,
-            body.suspensionEvidence.suspension,
-          );
-          assert.equal(
-            body.suspensionEvidence.suspension.turnId,
-            this.result.reconciliation.nativeTurnId,
-          );
-          assert.equal(
-            body.suspensionEvidence.suspension.threadId,
-            this.session.threadId,
-          );
-        } else {
-          assert.equal(body.suspensionEvidence, undefined);
-        }
+        assert.equal(body.suspensionEvidence, undefined);
       }
     }
     control.settlement = body;

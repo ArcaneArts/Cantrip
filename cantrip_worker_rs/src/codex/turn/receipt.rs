@@ -540,7 +540,7 @@ impl<'a> Receipt<'a> {
         Ok(body)
     }
 
-    pub async fn dispatch_pause(&self) -> Result<()> {
+    pub async fn dispatch_durable(&self) -> Result<()> {
         let result = self.dispatch().await;
         if result
             .as_ref()
@@ -548,12 +548,12 @@ impl<'a> Receipt<'a> {
         {
             // Core may have committed dispatch before the reply was lost.
             // Preserve that uncertainty while leaving the native turn untouched.
-            let _ = self.settle_pause("uncertain", None, None).await;
+            let _ = self.settle_durable("uncertain", None, None).await;
         }
         result
     }
 
-    pub async fn settle_pause(
+    pub async fn settle_durable(
         &self,
         status: &str,
         content: Option<&Value>,
@@ -785,6 +785,7 @@ impl Client {
         command: &Value,
         session: Value,
     ) -> Result<(Receipt<'_>, Value)> {
+        let stopping = command["type"] == super::STOP_SUSPENSION;
         let operation = JsString::from(uuid::Uuid::new_v4().to_string());
         let grant = scope.material(None)?;
         let checkpoint = &command["checkpoint"];
@@ -796,15 +797,16 @@ impl Client {
                 "params":json!({"threadId":session["threadId"],"expectedSuspension":checkpoint["suspension"]}),
             }),
         )?;
-        let body = checked(
-            "nativeSuspensionExecutionAdmissionSchema",
-            &json!({
-                "workerId":self.configuration.lock().unwrap().worker_id,
-                "workerGeneration":self.generation, "controlId":command["controlId"],
-                "operationId":operation, "session":session, "checkpoint":checkpoint,
-                "protectedPayload":protected, "payloadDigest":digest,
-            }),
-        )?;
+        let mut body = json!({
+            "workerId":self.configuration.lock().unwrap().worker_id,
+            "workerGeneration":self.generation, "controlId":command["controlId"],
+            "operationId":operation, "session":session, "checkpoint":checkpoint,
+            "protectedPayload":protected, "payloadDigest":digest,
+        });
+        if stopping {
+            body["action"] = json!("stop");
+        }
+        let body = checked("nativeSuspensionExecutionAdmissionSchema", &body)?;
         let guard = Guard::metadata(None, None);
         let request = || {
             self.exchange(
@@ -836,8 +838,8 @@ impl Client {
             "scratchRootId"
         };
         if state["controlId"] != command["controlId"]
-            || state["action"] != "resume"
-            || state["phase"] != "resuming"
+            || state["action"] != if stopping { "stop" } else { "resume" }
+            || state["phase"] != if stopping { "stopping" } else { "resuming" }
             || &state["checkpoint"] != checkpoint
             || target["workerId"] != body["workerId"]
             || [
@@ -929,7 +931,13 @@ impl Client {
         });
         if let Some(paused) = pause {
             intent["paused"] = json!(paused);
+            if !paused {
+                intent["resumeAutonomy"] = json!(true);
+            }
+        }
+        if action.durable() {
             intent["durableSuspension"] = json!(true);
+            intent["workerGeneration"] = json!(self.generation);
         }
         if let Some(control_id) = action.control_id() {
             intent["expectedSuspensionControlId"] = control_id;

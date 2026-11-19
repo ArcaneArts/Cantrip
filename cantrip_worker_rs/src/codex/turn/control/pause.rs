@@ -57,7 +57,7 @@ impl Binding {
             .context("The native turn observer ended before capture.")
     }
 
-    pub(super) fn resume_checkpoint<'a>(
+    pub(super) fn matches_checkpoint<'a>(
         &self,
         command: &'a Value,
         selected: &Selection,
@@ -102,11 +102,11 @@ impl Turns {
         paused: bool,
         checkpoint: Option<&Value>,
     ) -> Result<Value> {
-        receipt.dispatch_pause().await?;
+        receipt.dispatch_durable().await?;
         if let Some(checkpoint) = checkpoint {
             let ready = selected.confirm_held(checkpoint).await;
             if let Err(error) = ready {
-                receipt.settle_pause("uncertain", None, None).await?;
+                receipt.settle_durable("uncertain", None, None).await?;
                 return Err(error);
             }
         }
@@ -144,13 +144,13 @@ impl Turns {
         let request = match request {
             Ok(Some(request)) => request,
             Ok(None) => {
-                receipt.settle_pause("rejected", Some(&json!({"error":json!({
+                receipt.settle_durable("rejected", Some(&json!({"error":json!({
                     "code":-32000,"message":"The native turn ended before Pause was forwarded.",
                 })})), None).await?;
                 return result(paused, None);
             }
             Err(error) => {
-                receipt.settle_pause("uncertain", None, None).await?;
+                receipt.settle_durable("uncertain", None, None).await?;
                 return Err(error);
             }
         };
@@ -186,7 +186,7 @@ impl Turns {
             Err(error) => {
                 // A failed capture can leave the Core checkpoint held. Record
                 // uncertainty and keep the local hold until the owner resolves it.
-                let settlement = receipt.settle_pause("uncertain", None, None).await;
+                let settlement = receipt.settle_durable("uncertain", None, None).await;
                 if selected.runtime.is_live()
                     && let Ok(history) = selected.runtime.read_history(&selected.thread).await
                     && history["thread"]["turns"].as_array().is_some_and(|turns| {
@@ -206,7 +206,7 @@ impl Turns {
             }
         };
         receipt
-            .settle_pause("applied", Some(&json!({"result":reply})), evidence.as_ref())
+            .settle_durable("applied", Some(&json!({"result":reply})), evidence.as_ref())
             .await?;
         if !paused {
             receipt.scope().identity()?;
