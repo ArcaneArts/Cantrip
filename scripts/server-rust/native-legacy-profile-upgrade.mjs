@@ -1,14 +1,18 @@
 // A real legacy WASM database is the development-only oracle. The production
-// upgrade and its subprocesses run with an empty executable search path.
+// transfers and their subprocesses run with an empty executable search path.
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  appendFile,
+  cp,
   mkdir,
   mkdtemp,
   readFile,
   readdir,
+  rename,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -76,24 +80,56 @@ function events(result) {
   });
 }
 
+function command(args) {
+  return execute(path.resolve(values.server), ["--migrate-only", ...args], {
+    env: { ...fixtureEnvironment(profile), PATH: emptyPath },
+    timeout: 120_000,
+  });
+}
+
+function legacyCommand(
+  flag,
+  archive,
+  directory,
+  binaries = values["legacy-postgres"],
+) {
+  return command([
+    "--data-dir",
+    directory,
+    "--legacy-postgres-bin-dir",
+    path.resolve(binaries),
+    flag,
+    archive,
+  ]);
+}
+
 function prepare(binaries) {
-  return execute(
-    path.resolve(values.server),
+  return command([
+    "--upgrade-profile",
+    "--database",
+    "pglite",
+    "--data-dir",
+    profile,
+    "--legacy-postgres-bin-dir",
+    path.resolve(binaries),
+  ]);
+}
+
+async function nativeSnapshot(sql) {
+  const native = await execute(
+    path.resolve(values.probe),
     [
-      "--migrate-only",
-      "--upgrade-profile",
-      "--database",
-      "pglite",
-      "--data-dir",
-      profile,
-      "--legacy-postgres-bin-dir",
-      path.resolve(binaries),
+      "--no-migrate",
+      "--directory",
+      path.join(profile, "server-db"),
+      ...(sql ? ["--sql", sql] : []),
     ],
-    {
-      env: { ...fixtureEnvironment(profile), PATH: emptyPath },
-      timeout: 120_000,
-    },
+    { env: { ...fixtureEnvironment(profile), PATH: emptyPath } },
   );
+  const result = events(native).find((event) => event.tables);
+  assert.equal(result?.migrationsApplied, 0);
+  const { tables, sequences, probe } = result;
+  return { tables, sequences, probe };
 }
 
 try {
@@ -140,6 +176,28 @@ try {
   }
 
   const original = await files(profile);
+  // The exporter stages the private recovery server beside its output. An
+  // archive inside the stopped profile must omit that server and its secrets.
+  const inside = path.join(profile, "archives", "inner");
+  const exported = await legacyCommand(
+    "--export-legacy-profile",
+    inside,
+    profile,
+  );
+  const exportReceipt = events(exported).find(
+    (event) => event.event === "profile.export.completed",
+  ).receipt;
+  assert.equal(exportReceipt.databaseMode, "pglite");
+  const manifest = JSON.parse(
+    await readFile(path.join(inside, "manifest.json"), "utf8"),
+  );
+  assert.deepEqual(
+    manifest.files.map((entry) => entry.path),
+    ["archives", "archives/empty", file].sort(),
+  );
+  await rename(inside, path.join(root, "legacy export"));
+  assert.deepEqual(await files(profile), original);
+
   await assert.rejects(prepare(values["stock-postgres"]), (error) => {
     assert.match(
       error.stderr,
@@ -167,13 +225,7 @@ try {
   assert.deepEqual(await files(result.receipt.backupDirectory), original);
   assert.deepEqual(await readFile(path.join(profile, file)), asset);
 
-  const native = await execute(
-    path.resolve(values.probe),
-    ["--no-migrate", "--directory", path.join(profile, "server-db")],
-    { env: { ...fixtureEnvironment(profile), PATH: emptyPath } },
-  );
-  const actual = events(native).find((event) => event.tables);
-  assert.equal(actual?.migrationsApplied, 0);
+  const actual = await nativeSnapshot();
   const receipts = actual.tables["public.system_state"].filter((row) =>
     JSON.parse(row).key.startsWith("profile-import:"),
   );
@@ -192,9 +244,115 @@ try {
       ?.upgraded,
     false,
   );
+  const writes = path.join(root, "accepted rust writes.sql");
+  await writeFile(
+    writes,
+    `
+    INSERT INTO public.system_state(key,value,updated_at)
+      VALUES ('rust-accepted-rollback-fixture','{"accepted":42}','2026-11-19T16:01:02.123456Z');
+    INSERT INTO public.migration_probe(content,metadata,precise)
+      VALUES ('written in Rust','null',-9999999999999999999.0123456789);
+  `,
+  );
+  const latest = await nativeSnapshot(writes);
+  assert.ok(
+    latest.tables["public.system_state"].some(
+      (row) => JSON.parse(row).key === "rust-accepted-rollback-fixture",
+    ),
+  );
+  const current = path.join(root, "current native bundle");
+  await command([
+    "--data-dir",
+    profile,
+    "--export-profile",
+    current,
+    "--pg-dump-path",
+    path.resolve(
+      values["legacy-postgres"],
+      process.platform === "win32" ? "pg_dump.exe" : "pg_dump",
+    ),
+  ]);
+  const corrupt = path.join(root, "corrupt bundle");
+  await cp(current, corrupt, { recursive: true });
+  await appendFile(
+    path.join(corrupt, "database.sql"),
+    "\n-- damaged after export\n",
+  );
+  const prepared = path.join(root, "prepared legacy");
+  await assert.rejects(
+    legacyCommand("--restore-legacy-profile", corrupt, prepared),
+  );
+  await assert.rejects(stat(prepared), { code: "ENOENT" });
+  await assert.rejects(
+    legacyCommand(
+      "--restore-legacy-profile",
+      current,
+      prepared,
+      values["stock-postgres"],
+    ),
+  );
+  await assert.rejects(stat(prepared), { code: "ENOENT" });
+
+  const saved = await files(profile);
+  const restored = await legacyCommand(
+    "--restore-legacy-profile",
+    current,
+    prepared,
+  );
+  const restoreReceipt = events(restored).find(
+    (event) => event.event === "profile.restore.completed",
+  ).receipt;
+  assert.equal(restoreReceipt.runtime, "legacy-javascript-pglite");
+  assert.equal(restoreReceipt.databaseMode, "pglite");
+  assert.deepEqual(await files(profile), saved);
+  assert.deepEqual(await readFile(path.join(prepared, file)), asset);
+  assert.deepEqual(
+    JSON.parse(
+      await readFile(
+        path.join(prepared, "server-profile-receipt.json"),
+        "utf8",
+      ),
+    ),
+    restoreReceipt,
+  );
+  const rollback = events(
+    await command(["--data-dir", profile, "--activate-profile", prepared]),
+  ).find((event) => event.event === "profile.activation.completed").receipt;
+  assert.deepEqual(await files(rollback.backupDirectory), saved);
+  const reopened = await PGlite.create(path.join(profile, "server-db"));
+  try {
+    assert.deepEqual(await snapshot(reopened), latest);
+    assert.equal(
+      (
+        await reopened.query(
+          "SELECT rolpassword IS NULL AS cleared FROM pg_authid WHERE rolname='postgres'",
+        )
+      ).rows[0].cleared,
+      true,
+    );
+    await reopened.query(
+      "UPDATE public.system_state SET value = $1 WHERE key = 'rust-accepted-rollback-fixture'",
+      [{ accepted: 43 }],
+    );
+  } finally {
+    await reopened.close();
+  }
+  const restarted = await PGlite.create(path.join(profile, "server-db"));
+  try {
+    assert.deepEqual(
+      (
+        await restarted.query(
+          "SELECT value FROM public.system_state WHERE key = 'rust-accepted-rollback-fixture'",
+        )
+      ).rows,
+      [{ value: { accepted: 43 } }],
+    );
+  } finally {
+    await restarted.close();
+  }
   console.log(
     JSON.stringify({
-      suite: "native-legacy-profile-upgrade",
+      suite: "native-legacy-profile-round-trip",
       tables: Object.keys(expected.tables).length,
       originalFiles: Object.keys(original).length,
       passed: true,
