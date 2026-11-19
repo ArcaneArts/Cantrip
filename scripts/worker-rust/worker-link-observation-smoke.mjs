@@ -1,18 +1,13 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { createRequire } from "node:module";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   decodeWorkerLinkFrame,
   encodeWorkerLinkFrame,
 } from "../../packages/protocol/dist/worker-link.js";
 import { workerObservationEnvelopeSchema } from "../../packages/protocol/dist/worker-observations.js";
-
-const WebSocket = createRequire(
-  new URL("../../tests/reference-node-server/package.json", import.meta.url),
-)("ws");
-const clientOrigin = "http://127.0.0.1:5173";
+import { openWorkerLinkSocket } from "./direct-client.mjs";
 
 export async function verifyLiveRunObservations({
   origin,
@@ -35,14 +30,7 @@ export async function verifyLiveRunObservations({
   });
   assert.equal(installed.status, 201);
   const grant = installed.body;
-  const route = new URL(base + "/connect", origin);
-  route.protocol = "ws:";
-  route.searchParams.set("clientInstanceId", clientInstanceId);
-  route.searchParams.set("routeGeneration", String(session.routeGeneration));
-  const socket = new WebSocket(route, {
-    headers: { origin: clientOrigin },
-    handshakeTimeout: 8000,
-  });
+  const socket = await openWorkerLinkSocket(origin, call, session);
   const frames = [];
   let failure;
   socket.on("error", (error) => {
@@ -73,7 +61,7 @@ export async function verifyLiveRunObservations({
     protocolVersion: 1,
     sessionId: session.sessionId,
     routeGeneration: session.routeGeneration,
-    effectiveRoute: "relay",
+    effectiveRoute: session.preferredRoute,
     channel: { channelId: randomUUID(), connectionId: randomUUID() },
     lane: "events",
   };
@@ -89,7 +77,9 @@ export async function verifyLiveRunObservations({
     );
 
   try {
-    await once(socket, "open", { signal: AbortSignal.timeout(9000) });
+    if (socket.readyState === socket.CONNECTING)
+      await once(socket, "open", { signal: AbortSignal.timeout(9000) });
+    assert.equal(socket.readyState, socket.OPEN);
     routeFrame({
       kind: "open",
       sequence: 0,

@@ -2,24 +2,19 @@
 use super::{
     Carrier, Coordinator, Frame, Inbound, Link, MAX_STREAMS, Output, Streams, id, is_source_frame,
 };
+use crate::worker_link::carrier::SocketOutput;
 use anyhow::{Result, ensure};
-use cantrip_transport::output::{Buffered, Queued, framed_size};
 use cantrip_wire::{JsString, Value, value::json};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
-use tokio::sync::mpsc;
-
-const MAX_BUFFER: usize = 8 * 1024 * 1024;
-const LOW_WATER: usize = 256 * 1024;
 
 pub(in crate::worker_link) struct DirectTunnel {
     route: Value,
     trace: Option<Value>,
     state: Mutex<Option<State>>,
-    buffer: Buffered,
-    outgoing: mpsc::UnboundedSender<Queued<Frame>>,
+    output: SocketOutput,
 }
 
 #[derive(Default)]
@@ -31,21 +26,13 @@ struct State {
 }
 
 impl DirectTunnel {
-    pub fn new(
-        route: Value,
-        trace: Option<Value>,
-    ) -> (Arc<Self>, mpsc::UnboundedReceiver<Queued<Frame>>) {
-        let (outgoing, incoming) = mpsc::unbounded_channel();
-        (
-            Arc::new(Self {
-                route,
-                trace,
-                state: Mutex::new(Some(State::default())),
-                buffer: Buffered::default(),
-                outgoing,
-            }),
-            incoming,
-        )
+    pub fn new(route: Value, trace: Option<Value>, output: SocketOutput) -> Arc<Self> {
+        Arc::new(Self {
+            route,
+            trace,
+            state: Mutex::new(Some(State::default())),
+            output,
+        })
     }
 
     pub fn active(&self) -> bool {
@@ -57,7 +44,7 @@ impl DirectTunnel {
     }
 
     pub fn writable(&self) {
-        if self.buffer.bytes() <= LOW_WATER
+        if self.output.writable()
             && let Some(state) = self.state.lock().unwrap().as_ref()
         {
             state.streams.capacity.send_replace(());
@@ -128,7 +115,7 @@ impl DirectTunnel {
         match routed {
             Ok(Inbound::Reply(frame)) => {
                 ensure!(
-                    matches!(self.enqueue(&frame), Output::Queued),
+                    matches!(self.output.offer(frame.bytes()), Output::Queued),
                     "Direct tunnel socket is congested."
                 );
             }
@@ -150,22 +137,6 @@ impl DirectTunnel {
         {
             return Output::Closed;
         }
-        self.enqueue(frame)
-    }
-
-    fn enqueue(&self, frame: &Frame) -> Output {
-        match self
-            .buffer
-            .bounded(frame.clone(), framed_size(frame.bytes().len()), MAX_BUFFER)
-        {
-            Some(frame) => {
-                if self.outgoing.send(frame).is_ok() {
-                    Output::Queued
-                } else {
-                    Output::Closed
-                }
-            }
-            None => Output::Pending,
-        }
+        self.output.offer(frame.bytes())
     }
 }

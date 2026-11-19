@@ -1,12 +1,15 @@
 //! Short-lived direct attachment authority and loopback listener.
 mod socket;
 
-use super::{Coordinator, GRACE, id, timestamp, tunnel::DirectTunnel};
+use super::{
+    Coordinator, GRACE,
+    carrier::{Local, SocketFrames, SocketOutput},
+    id, timestamp,
+    tunnel::DirectTunnel,
+};
 use crate::{http::checked, logging::Logs};
 use anyhow::{Context, Result, bail, ensure};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use cantrip_framing::tunnel::Frame;
-use cantrip_transport::output::Queued;
 use cantrip_wire::{JsString, Value, value::json};
 use chrono::{DateTime, SecondsFormat, Utc};
 use ed25519_dalek::{Signer, SigningKey};
@@ -18,12 +21,7 @@ use std::{
     time::Duration,
 };
 use subtle::ConstantTimeEq;
-use tokio::{
-    net::TcpListener,
-    sync::{mpsc, watch},
-    task::JoinSet,
-    time::Instant,
-};
+use tokio::{net::TcpListener, sync::watch, task::JoinSet, time::Instant};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -58,8 +56,14 @@ struct Prepared {
 struct Session {
     binding: Value,
     trace: Option<Value>,
-    tunnel: Option<Arc<DirectTunnel>>,
+    resource: Resource,
     control: watch::Sender<Control>,
+}
+
+enum Resource {
+    Probe,
+    Tunnel(Arc<DirectTunnel>),
+    WorkerLink(Arc<Local>),
 }
 
 #[derive(Clone)]
@@ -77,7 +81,7 @@ enum Control {
 struct Opened {
     key: JsString,
     session: Arc<Session>,
-    outgoing: Option<mpsc::UnboundedReceiver<Queued<Frame>>>,
+    outgoing: Option<SocketFrames>,
     ready: Value,
 }
 
@@ -169,6 +173,10 @@ impl Broker {
             .context("Direct capability channels")?;
         match binding["resourceKind"].as_str() {
             Some("probe") if route.is_null() && channels.contains(&json!("probe")) => {}
+            Some("worker-link")
+                if route.is_null()
+                    && channels.contains(&json!("worker-link"))
+                    && binding["resourceId"] == binding["attachmentId"] => {}
             Some("tunnel" | "project-share")
                 if channels.contains(&json!("tunnel-data"))
                     && route["attachmentId"] == binding["attachmentId"]
@@ -177,7 +185,7 @@ impl Broker {
                         == format!("worker:{}", self.worker).as_str()
                     && route["target"]["kind"] == "protected-tunnel"
                     && route["target"]["recordId"] == binding["resourceId"] => {}
-            _ => bail!("Direct tunnel route does not match a supported capability."),
+            _ => bail!("Direct route does not match a supported capability."),
         }
         ensure!(
             state.prepared.len() < MAX_PREPARED,
@@ -232,16 +240,23 @@ impl Broker {
                 "leaseExpiresAt":prepared.lease.wire,
             }),
         )?;
-        let (tunnel, outgoing) = if prepared.route.is_null() {
-            (None, None)
-        } else {
-            let (tunnel, outgoing) = DirectTunnel::new(prepared.route, prepared.trace.clone());
-            (Some(tunnel), Some(outgoing))
+        let (resource, outgoing) = match prepared.binding["resourceKind"].as_str() {
+            Some("probe") => (Resource::Probe, None),
+            Some("worker-link") => {
+                let (output, frames) = SocketOutput::channel();
+                let local = Local::new(id(&prepared.binding, "resourceId").clone(), output);
+                (Resource::WorkerLink(local), Some(frames))
+            }
+            _ => {
+                let (output, frames) = SocketOutput::channel();
+                let tunnel = DirectTunnel::new(prepared.route, prepared.trace.clone(), output);
+                (Resource::Tunnel(tunnel), Some(frames))
+            }
         };
         let session = Arc::new(Session {
             binding: prepared.binding,
             trace: prepared.trace,
-            tunnel,
+            resource,
             control: watch::channel(Control::Live(prepared.lease)).0,
         });
         state.active.insert(key.clone(), session.clone());
@@ -382,8 +397,10 @@ impl State {
 
 impl Session {
     fn retire(&self, reason: &str) {
-        if let Some(tunnel) = &self.tunnel {
-            tunnel.close();
+        match &self.resource {
+            Resource::Probe => {}
+            Resource::Tunnel(tunnel) => tunnel.close(),
+            Resource::WorkerLink(local) => local.close(),
         }
         self.control
             .send_replace(Control::Retired(reason.to_owned()));
@@ -425,7 +442,7 @@ mod tests {
         let session = Arc::new(Session {
             binding: Value::Null,
             trace: None,
-            tunnel: None,
+            resource: Resource::Probe,
             control: watch::channel(Control::Live(Lease::new(&lease(initial))?)).0,
         });
         let mut state = State::default();

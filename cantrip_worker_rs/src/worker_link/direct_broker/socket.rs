@@ -1,5 +1,5 @@
 //! Serve the existing direct/v1 WebSocket handshake and admitted traffic.
-use super::{Broker, Control, Coordinator, Frame, Opened, Queued, Session, checked, now};
+use super::{Broker, Control, Coordinator, Opened, Resource, Session, SocketFrames, checked, now};
 use cantrip_framing::{tunnel, worker_link};
 use cantrip_wire::{parse_json_text, value::json};
 use futures::{SinkExt, StreamExt};
@@ -10,7 +10,7 @@ use std::{
 };
 use tokio::{
     net::TcpStream,
-    sync::{mpsc, watch},
+    sync::watch,
     time::{sleep, timeout},
 };
 use tokio_tungstenite::{
@@ -87,6 +87,11 @@ pub(super) async fn accept(broker: Arc<Broker>, gateway: Weak<Coordinator>, stre
         result = connected => result,
     };
     broker.release(&key, &session);
+    if let Resource::WorkerLink(local) = &session.resource
+        && let Some(gateway) = gateway.upgrade()
+    {
+        gateway.disconnect_local(local);
+    }
     if let Some(ended) = ended {
         close(&mut socket, ended).await;
     }
@@ -127,18 +132,25 @@ async fn serve(
     socket: &mut Socket,
     gateway: &Weak<Coordinator>,
     session: &Session,
-    outgoing: &mut Option<mpsc::UnboundedReceiver<Queued<Frame>>>,
+    outgoing: &mut Option<SocketFrames>,
 ) -> Option<Close> {
     loop {
         tokio::select! {
             inbound = socket.next() => match inbound {
                 Some(Ok(Message::Binary(bytes))) => {
-                    let Some(tunnel) = &session.tunnel else {
-                        return Some((CloseCode::Policy, "Direct tunnel channel is not authorized".into()));
-                    };
                     let gateway = gateway.upgrade()?;
-                    if tunnel::decode(bytes.as_ref().into()).and_then(|frame| tunnel.receive(&gateway, frame)).is_err() {
-                        return Some((CloseCode::Unsupported, "Invalid direct tunnel frame".into()));
+                    let invalid = match &session.resource {
+                        Resource::Probe => return Some((CloseCode::Policy, "Direct tunnel channel is not authorized".into())),
+                        Resource::Tunnel(tunnel) => tunnel::decode(bytes.as_ref().into())
+                            .and_then(|frame| tunnel.receive(&gateway, frame))
+                            .is_err()
+                            .then_some("Invalid direct tunnel frame"),
+                        Resource::WorkerLink(local) => (!worker_link::decode(bytes.as_ref().into())
+                            .is_ok_and(|frame| gateway.handle_local_frame(local, &frame)))
+                            .then_some("Invalid direct WorkerLink frame"),
+                    };
+                    if let Some(reason) = invalid {
+                        return Some((CloseCode::Unsupported, reason.into()));
                     }
                 }
                 Some(Ok(Message::Text(_))) => return Some((CloseCode::Unsupported, "Direct data frames must be binary".into())),
@@ -160,12 +172,16 @@ async fn serve(
                     None => pending().await,
                 }
             } => {
-                let outbound = outbound?;
-                if !write(socket, Message::Binary(outbound.bytes().to_vec().into())).await {
+                let mut outbound = outbound?;
+                if !write(socket, Message::Binary(outbound.take())).await {
                     return None;
                 }
                 drop(outbound);
-                session.tunnel.as_ref().expect("direct tunnel carrier").writable();
+                match &session.resource {
+                    Resource::Tunnel(tunnel) => tunnel.writable(),
+                    Resource::WorkerLink(local) if local.output.writable() => gateway.upgrade()?.local_writable(),
+                    Resource::WorkerLink(_) | Resource::Probe => {}
+                }
             }
         }
     }

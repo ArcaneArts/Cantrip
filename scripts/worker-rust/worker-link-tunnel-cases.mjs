@@ -1,13 +1,7 @@
 // The Rust server relays CTTN frames between the existing TypeScript crypto
 // consumer and a real Rust worker. The destination is an owned TCP listener.
 import assert from "node:assert/strict";
-import {
-  createHash,
-  createPublicKey,
-  randomBytes,
-  randomUUID,
-  verify,
-} from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -26,7 +20,6 @@ import {
 import { tunnelAttachmentReadySchema } from "../../packages/protocol/dist/tunnels.js";
 import {
   directAttachmentTicketSchema,
-  directBrokerReadySchema,
   directTunnelTicketSchema,
 } from "../../packages/protocol/dist/direct-data-plane.js";
 import {
@@ -38,6 +31,8 @@ import {
   openTunnelDataFrame,
   sealTunnelDataFrame,
 } from "../../cantrip_worker/src/tunnel-data-protection.ts";
+
+import { connectDirect, openLocalWorkerLink } from "./direct-client.mjs";
 
 const WebSocket = createRequire(
   new URL("../../tests/reference-node-server/package.json", import.meta.url),
@@ -300,11 +295,146 @@ export async function verifyWorkerLinkTunnel({
     console.log(
       JSON.stringify({ suite: "native-workerlink-host-tcp", passed: true }),
     );
+    await verifyLocalWorkerLinkTunnel({
+      call,
+      workerId,
+      tunnelId,
+      configuration,
+      response,
+      received,
+      sockets,
+    });
   } finally {
     componentKey.fill(0);
     connection?.socket.terminate();
     for (const socket of sockets) socket.destroy();
     if (tcp.listening) await new Promise((resolve) => tcp.close(resolve));
+    await call("DELETE", base, 204);
+  }
+}
+
+async function verifyLocalWorkerLinkTunnel({
+  call,
+  workerId,
+  tunnelId,
+  configuration,
+  response,
+  received,
+  sockets,
+}) {
+  const openSession = () =>
+    call("POST", "/api/workers/" + workerId + "/worker-link/sessions", 201, {
+      clientInstanceId: randomUUID(),
+    });
+  const session = await openSession();
+  const base = "/api/worker-links/" + session.sessionId;
+  const carriers = [];
+  let foreign;
+  const connect = async (bound) => {
+    const socket = await openLocalWorkerLink(call, bound);
+    carriers.push(socket);
+    return socket;
+  };
+  const closed = (socket) =>
+    once(socket, "close", { signal: AbortSignal.timeout(5000) }).then(
+      ([code]) => code,
+    );
+  try {
+    assert.equal(session.preferredRoute, "local");
+    const { attachmentId } = await call(
+      "POST",
+      `/api/tunnels/${tunnelId}/attachments`,
+      201,
+      { clientId: session.identity.clientInstanceId },
+    );
+    const { grant, route } = workerLinkTunnelGrantSchema.parse(
+      await call(
+        "POST",
+        base + "/tunnel-attachments/" + attachmentId + "/grant",
+        201,
+        {},
+      ),
+    );
+    const link = new Connection(await connect(session), session, "local");
+    await link.open(grant);
+    const stream = link.stream(route);
+    await stream.next("accepted");
+
+    foreign = await openSession();
+    // Both peers hold valid tickets. Only the socket that opened the channel
+    // may spend its credit, even for a different ticket for the same session.
+    for (const bound of [session, foreign]) {
+      const outsider = await connect(bound);
+      const stopped = closed(outsider);
+      outsider.send(
+        encodeWorkerLinkFrame(
+          {
+            ...link.identity,
+            kind: "credit",
+            sequence: link.sequence,
+            direction: "worker-to-client",
+            bytes: response.length,
+          },
+          new Uint8Array(),
+        ),
+      );
+      assert.equal(await stopped, 1003);
+    }
+    assert.equal(sockets.size, 1);
+    const request = Buffer.from("local-private-request-" + randomUUID());
+    stream.send({ kind: "data", direction: source }, request, configuration);
+    stream.send({ kind: "half-close", direction: source });
+    assert.equal((await stream.next("credit")).header.bytes, request.length);
+    const head = await stream.next("data");
+    assert.deepEqual(
+      openTunnelDataFrame(configuration, head.header, head.payload),
+      response.subarray(0, smallCredit),
+    );
+    assert.deepEqual(received.at(-1), request);
+    stream.send({
+      kind: "credit",
+      direction: destination,
+      bytes: response.length,
+    });
+    link.wire({
+      kind: "credit",
+      direction: "worker-to-client",
+      bytes: 1024 * 1024,
+    });
+    await receiveResponse(stream, response, configuration);
+    assert.equal((await stream.next("close")).header.code, "normal");
+    const retained = link.stream(route);
+    await retained.next("accepted");
+
+    const disconnected = closed(link.socket);
+    link.socket.close(1000);
+    assert.equal(await disconnected, 1000);
+    await until(
+      () => sockets.size === 0,
+      "local socket releases its TCP stream",
+    );
+    const resumed = new Connection(await connect(session), session, "local");
+    await resumed.open(grant);
+    await resumed.stream(route).next("accepted");
+    await call("DELETE", base + "/grants/" + grant.binding.grantId, 204);
+    assert.equal((await resumed.nextControl("close")).code, "revoked");
+    await until(
+      () => sockets.size === 0,
+      "grant revocation releases local TCP",
+    );
+    const stopped = closed(resumed.socket);
+    const replacement = await call("POST", base + "/route", 200, {
+      preferredRoute: "relay",
+    });
+    assert.equal(replacement.routeGeneration, session.routeGeneration + 1);
+    assert.equal(await stopped, 1008);
+    console.log(
+      JSON.stringify({ suite: "native-workerlink-local", passed: true }),
+    );
+  } finally {
+    for (const socket of carriers) socket.terminate();
+    if (foreign)
+      await call("DELETE", "/api/worker-links/" + foreign.sessionId, 204);
     await call("DELETE", base, 204);
   }
 }
@@ -321,15 +451,14 @@ async function verifyDirectTunnel({
   const probe = directAttachmentTicketSchema.parse(
     await call("POST", `/api/workers/${workerId}/direct-probe`, 201, {}),
   );
-  await connectDirect(
-    probe,
-    { ...probe, secret: randomBytes(32).toString("base64url") },
-    1008,
-  );
+  await connectDirect(probe, {
+    initialize: { ...probe, secret: randomBytes(32).toString("base64url") },
+    expectClose: 1008,
+  });
   const first = await connectDirect(probe);
   try {
-    await connectDirect(probe, probe, 1008);
-    const stopped = once(first.socket, "close", {
+    await connectDirect(probe, { expectClose: 1008 });
+    const stopped = once(first, "close", {
       signal: AbortSignal.timeout(5000),
     });
     await call(
@@ -339,7 +468,7 @@ async function verifyDirectTunnel({
     );
     assert.equal((await stopped)[0], 1008);
   } finally {
-    first.socket.terminate();
+    first.terminate();
   }
 
   const { attachmentId } = await call(
@@ -406,7 +535,19 @@ export async function openDirectTunnel(call, attachmentId) {
   const ticket = directTunnelTicketSchema.parse(
     await call("POST", base + "/direct", 201, {}),
   );
-  const client = await connectDirect(ticket);
+  const socket = await connectDirect(ticket);
+  const client = { socket, streams: new Map(), failure: null };
+  socket.on("error", (error) => {
+    client.failure ??= error;
+  });
+  socket.on("message", (bytes, binary) => {
+    try {
+      assert.equal(binary, true);
+      receiveTunnelFrame(client, bytes);
+    } catch (error) {
+      client.failure ??= error;
+    }
+  });
   try {
     await call("POST", base + "/direct-activate", 204, {
       capabilityId: ticket.binding.capabilityId,
@@ -429,82 +570,6 @@ export async function openDirectTunnel(call, attachmentId) {
     };
   } catch (error) {
     client.socket.terminate();
-    throw error;
-  }
-}
-
-async function connectDirect(ticket, initialize = ticket, expectClose) {
-  const { broker, binding } = ticket;
-  assert.equal(broker.loopbackHost, "127.0.0.1");
-  assert.equal(broker.leaseRenewal, true);
-  const socket = new WebSocket(
-    `ws://${broker.loopbackHost}:${broker.loopbackPort}/direct/v1`,
-  );
-  const client = { socket, streams: new Map(), ready: null, failure: null };
-  socket.on("error", (error) => {
-    client.failure ??= error;
-  });
-  socket.on("message", (bytes, binary) => {
-    try {
-      if (binary) receiveTunnelFrame(client, bytes);
-      else
-        client.ready = directBrokerReadySchema.parse(
-          JSON.parse(bytes.toString()),
-        );
-    } catch (error) {
-      client.failure ??= error;
-    }
-  });
-  try {
-    await once(socket, "open", { signal: AbortSignal.timeout(5000) });
-    const challenge = randomBytes(32).toString("base64url");
-    const stopped =
-      expectClose === undefined
-        ? null
-        : once(socket, "close", { signal: AbortSignal.timeout(5000) });
-    socket.send(
-      JSON.stringify({
-        type: "initialize",
-        binding: initialize.binding,
-        secret: initialize.secret,
-        challenge,
-      }),
-    );
-    if (stopped) {
-      assert.equal((await stopped)[0], expectClose);
-      assert.equal(client.ready, null);
-      return null;
-    }
-    const ready = await until(() => {
-      if (client.failure) throw client.failure;
-      return client.ready;
-    }, "signed direct broker readiness");
-    assert.equal(ready.brokerInstanceId, broker.instanceId);
-    assert.equal(ready.challenge, challenge);
-    assert.equal(ready.leaseExpiresAt, binding.leaseExpiresAt);
-    const raw = Buffer.from(broker.publicKey, "base64url");
-    assert.equal(
-      createHash("sha256").update(raw).digest("hex"),
-      ready.fingerprint,
-    );
-    assert.equal(ready.fingerprint, broker.fingerprint);
-    const key = createPublicKey({
-      key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), raw]),
-      format: "der",
-      type: "spki",
-    });
-    assert.equal(
-      verify(
-        null,
-        Buffer.from(`cantrip-direct-v1\0${binding.capabilityId}\0${challenge}`),
-        key,
-        Buffer.from(ready.signature, "base64url"),
-      ),
-      true,
-    );
-    return client;
-  } catch (error) {
-    socket.terminate();
     throw error;
   }
 }
@@ -681,12 +746,12 @@ async function receiveResponse(stream, response, configuration) {
 }
 
 export class Connection {
-  constructor(url, relay) {
+  constructor(address, session, effectiveRoute = "relay") {
     this.identity = {
       protocolVersion: 1,
-      sessionId: relay.sessionId,
-      routeGeneration: relay.routeGeneration,
-      effectiveRoute: "relay",
+      sessionId: session.sessionId,
+      routeGeneration: session.routeGeneration,
+      effectiveRoute,
       channel: { channelId: randomUUID(), connectionId: randomUUID() },
       lane: "stream",
     };
@@ -695,9 +760,12 @@ export class Connection {
     this.bytes = 0;
     this.control = [];
     this.streams = new Map();
-    this.socket = new WebSocket(url, {
-      headers: { origin: "http://127.0.0.1:5173" },
-    });
+    this.socket =
+      address instanceof WebSocket
+        ? address
+        : new WebSocket(address, {
+            headers: { origin: "http://127.0.0.1:5173" },
+          });
     this.socket.on("error", (error) => {
       this.failure ??= error;
     });
@@ -722,7 +790,9 @@ export class Connection {
   }
 
   async open(grant, initialCreditBytes = outerCredit) {
-    await once(this.socket, "open", { signal: AbortSignal.timeout(5000) });
+    if (this.socket.readyState === WebSocket.CONNECTING)
+      await once(this.socket, "open", { signal: AbortSignal.timeout(5000) });
+    assert.equal(this.socket.readyState, WebSocket.OPEN);
     this.wire({
       kind: "open",
       openNonce: randomUUID(),

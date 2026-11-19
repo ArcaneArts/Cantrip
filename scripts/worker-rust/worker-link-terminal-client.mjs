@@ -1,18 +1,14 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { createRequire } from "node:module";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   decodeWorkerLinkFrame,
   encodeWorkerLinkFrame,
 } from "../../packages/protocol/dist/worker-link.js";
 import { terminalServerMessageSchema } from "../../packages/protocol/dist/terminals.js";
+import { openWorkerLinkSocket } from "./direct-client.mjs";
 import { protectedTerminalView } from "./terminal-relay-client.mjs";
-
-const WebSocket = createRequire(
-  new URL("../../tests/reference-node-server/package.json", import.meta.url),
-)("ws");
 
 export async function attachWorkerLinkTerminal({
   origin,
@@ -43,19 +39,16 @@ export async function attachWorkerLinkTerminal({
     assert.equal(issued.status, 201, JSON.stringify(issued));
     const grant = issued.body;
     assert.equal(grant.binding.resource.attachmentId, operationId);
-    const url = new URL(base + "/connect", origin);
-    url.protocol = "ws:";
-    url.searchParams.set("clientInstanceId", clientInstanceId);
-    url.searchParams.set("routeGeneration", String(session.routeGeneration));
     const header = {
       protocolVersion: 1,
       sessionId: session.sessionId,
       routeGeneration: session.routeGeneration,
-      effectiveRoute: "relay",
+      effectiveRoute: session.preferredRoute,
       channel: { channelId: randomUUID(), connectionId: randomUUID() },
       lane: "interactive",
     };
-    relay = new Relay(url, header, grant);
+    const socket = await openWorkerLinkSocket(origin, call, session);
+    relay = new WorkerLinkView(socket, header, grant);
     const view = await protectedTerminalView(relay, {
       ownerId,
       serverId,
@@ -89,21 +82,15 @@ export async function attachWorkerLinkTerminal({
   }
 }
 
-class Relay {
-  constructor(url, header, grant) {
+class WorkerLinkView {
+  constructor(socket, header, grant) {
     this.header = header;
     this.grant = grant;
     this.frames = [];
     this.history = [];
     this.sequence = 0;
     this.expected = 0;
-    this.socket = new WebSocket(url, {
-      headers: { origin: "http://127.0.0.1:5173" },
-      handshakeTimeout: 8000,
-    });
-    this.opened = once(this.socket, "open", {
-      signal: AbortSignal.timeout(9000),
-    });
+    this.socket = socket;
     this.socket.on("error", (error) => {
       this.failure ??= error;
     });
@@ -122,7 +109,9 @@ class Relay {
   }
 
   async open() {
-    await this.opened;
+    if (this.socket.readyState === this.socket.CONNECTING)
+      await once(this.socket, "open", { signal: AbortSignal.timeout(9000) });
+    assert.equal(this.socket.readyState, this.socket.OPEN);
     this.wire({
       kind: "open",
       openNonce: randomUUID(),
