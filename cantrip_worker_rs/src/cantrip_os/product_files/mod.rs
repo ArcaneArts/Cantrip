@@ -164,12 +164,17 @@ fn mutation(kind: &str) -> Result<bool> {
         | "explorer.binary.read"
         | "explorer.file.preview"
         | "explorer.file.tail"
-        | "explorer.media.read" => Ok(false),
+        | "explorer.media.read"
+        | "explorer.binary.write.status" => Ok(false),
         "explorer.file.write"
         | "explorer.file.create"
         | "explorer.directory.create"
         | "explorer.entry.rename"
-        | "explorer.entry.delete" => Ok(true),
+        | "explorer.entry.delete"
+        | "explorer.binary.write.begin"
+        | "explorer.binary.write.chunk"
+        | "explorer.binary.write.commit"
+        | "explorer.binary.write.abort" => Ok(true),
         _ => bail!("This worker does not support this Explorer operation."),
     }
 }

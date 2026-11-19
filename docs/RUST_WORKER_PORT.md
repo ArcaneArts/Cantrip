@@ -143,7 +143,7 @@ loaded by a production service.
 | WorkerLink/direct/tunnels | Gateways, peer/WebRTC, direct broker, tunnel protection and routing | Native installed authority, live observations, encrypted Host terminals and TCP, WebDAV shares, direct tickets, and LAN and WAN peer carriage | Continue managed console and guest/surface adapters. Local peer fixtures cover authenticated negotiation, encrypted TCP, credit, renewal, and revocation. |
 | Browsers/surfaces/computer use | Browser discovery, browser/desktop adapters, remote surfaces, computer use, and managed web runtimes | Native browser discovery, Chromium and CDP, encrypted surfaces with recovery, and signed managed Chromium installation | Public browser transport and Chromium recovery fixtures pass locally. The native installer verifies signed releases and probes Chromium. Legacy browser WebRTC, desktop capture, computer use, managed web sessions and search remain open. |
 | MCP/CLI/CodeGraph                  | `mcp/*`, CLI broker, computer-use MCP, codegraph/runtime/supervisor                                                                       | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Native stdio/HTTP helpers, generated/persisted launch commands, binding/generation scopes, CLI and managed-runtime fixtures                                                                                                                                                                                                      |
-| Cantrip OS | `cantrip_os/host`, `os-executor/*`, native MCP/run execution | Native guest inspection, attachment, workspace listing and creation, operation inspection, Linux-owned source provisioning and verification, linked Host mounts, guest Run definitions and process supervision, and guest Explorer navigation, text documents, and paged reads | Continue guest file transfers, chat files, lifecycle, PTYs, tunnels, packages, backups, system operations and checkpoints. |
+| Cantrip OS | `cantrip_os/host`, `os-executor/*`, native MCP/run execution | Native guest inspection, attachment, workspace listing and creation, operation inspection, Linux-owned source provisioning and verification, linked Host mounts, guest Run definitions and process supervision, and guest Explorer navigation, text documents, paged reads, and streamed binary saves | Continue guest file imports, chat files, lifecycle, PTYs, tunnels, packages, backups, system operations and checkpoints. |
 | Upgrade and packaging              | profile converter/database-transfer, server profile preparation, desktop services/worker, distribution/runtime scripts, worker Dockerfile | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Node-free legacy conversion/export/restore, desktop/standalone artifacts, existing-profile reopen and actual child-process/runtime audit                                                                                                                                                                                         |
 
 The source index includes existing tests with their source hashes. Each port must
@@ -6673,3 +6673,31 @@ compared binary versions and log cursors with the Node guest helper on
 the same file, and checked media sequence completion. Windows runtime,
 SSH and release image builds were outside this cycle. Binary writes,
 imports and chat file integration remain open.
+
+## 167. Stage and atomically publish binary file saves in Rust
+
+Reference commit bc245f4bc7c2ad7f1f6cb2ba2aec3866d30a06a1 (#3330).
+
+Host and Cantrip OS Explorer and file documents use the native writer for
+begin, chunk, commit, status and abort. The writer keeps the original upload
+identity, AES-GCM stage framing, receipt envelope and key derivation. A
+restart can resume the last acknowledged offset or observe a prepared
+publication. Page retries must match the authenticated original.
+
+The writer verifies the staged bytes before publishing beside the target.
+It rechecks the captured file version and preserves permissions. Creating
+a new destination uses exclusive publication. Upload and destination locks
+coordinate worker tasks and separate guest helper processes in each workspace.
+Status verifies the actual target when an interrupted publication consumed
+its temporary file. A conflicting destination retains the draft.
+
+Local macOS ARM64 testing used the production Rust server and worker for
+multi-page saves, retries, checksum failures, worker restart, early abort,
+permission preservation, and Save As races. A legacy writer published a file
+and lost its committed receipt. The Rust worker reopened the prepared record
+and verified the target. The ARM64 Docker guest used the locally assembled
+executor 0.17.0 package and resumed the same protected upload after a worker
+crash. The legacy and native guest helpers each completed an upload staged
+by the other. All 12 shared crypto tests and the Windows x64 GNU cross-check
+passed. Windows runtime, SSH and release image builds were outside this
+validation. File imports and chat file integration remain open.

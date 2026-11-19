@@ -9,7 +9,9 @@ pub use derivation::{blind_lookup_tag, derive_component_key, derive_field_key, d
 pub use hpke::{
     HpkeKeyPair, unwrap_component_key, unwrap_key, worker_grant_aad, wrap_component_key, wrap_key,
 };
-pub use payload::{decrypt_payload, encrypt_payload, parse_payload, serialize_payload};
+pub use payload::{
+    decrypt_payload, encrypt_payload, open_aes_gcm, parse_payload, seal_aes_gcm, serialize_payload,
+};
 pub use zeroize::Zeroizing;
 
 use anyhow::{Result, anyhow, bail};

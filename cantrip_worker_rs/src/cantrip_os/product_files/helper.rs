@@ -3,13 +3,19 @@
 use super::{digest, mutation, records, text};
 use crate::{
     cantrip_os::operations::save,
-    filesystem::{Scope, explorer},
+    encryption::ComponentKey,
+    filesystem::{
+        Scope,
+        explorer::{self, binary_write},
+        paths,
+    },
 };
 use anyhow::{Context, Result, bail, ensure};
-use cantrip_crypto::checked;
+use cantrip_crypto::{Zeroizing, checked, random_bytes};
 use cantrip_wire::{Value, parse_json_text, value::json};
 use std::{
     env,
+    fs::File,
     io::{self, BufRead, Read, Write},
     path::{Path, PathBuf},
 };
@@ -102,7 +108,7 @@ async fn dispatch(root: &Path, directory: &Path, frame: &Value, context: &Value)
     );
     let request = checked("explorerOperationRequestContentSchema", &frame["request"])?;
     if !mutation(text(&request, "type")?)? {
-        return Ok(execute(root, &request).await);
+        return Ok(execute(root, directory, context, &request).await);
     }
     let fingerprint = digest(json!({"id":id,"request":request,"context":context}));
     let path = receipt_path(directory, context);
@@ -118,7 +124,7 @@ async fn dispatch(root: &Path, directory: &Path, frame: &Value, context: &Value)
         }
         Err(error) => return Err(error),
     }
-    let result = execute(root, &request).await;
+    let result = execute(root, directory, context, &request).await;
     save(&path, &json!({"digest":fingerprint,"result":result}), false)?;
     Ok(result)
 }
@@ -142,13 +148,67 @@ fn observe(directory: &Path, context: &Value, fingerprint: &str) -> Result<Value
     Ok(result.clone())
 }
 
-async fn execute(root: &Path, request: &Value) -> Value {
-    match explorer::execute(root, request, &Scope::default()).await {
+async fn execute(root: &Path, directory: &Path, context: &Value, request: &Value) -> Value {
+    let result = if binary_write::action(request).is_some() {
+        guest_binary(root, directory, context, request).await
+    } else {
+        explorer::execute(root, request, &Scope::default()).await
+    };
+    match result {
         Ok(result) => {
             json!({"complete":explorer::complete(&result),"outcome":json!({"ok":true,"result":result})})
         }
         Err(error) => completed(explorer::failure(&error)),
     }
+}
+
+async fn guest_binary(
+    root: &Path,
+    directory: &Path,
+    context: &Value,
+    request: &Value,
+) -> Result<Value> {
+    let identity = directory
+        .file_name()
+        .and_then(|name| name.to_str())
+        .context("Invalid guest file identity.")?;
+    let locks = directory
+        .parent()
+        .unwrap()
+        .with_file_name("binary-write-locks");
+    let writer = binary_write::Writer::new(directory, &locks);
+    let key = ComponentKey {
+        key: guest_key(directory)?,
+        key_revision: 1,
+    };
+    writer
+        .execute(&paths::text(root), context, request, json!(identity), key)
+        .await
+}
+
+fn guest_key(directory: &Path) -> Result<Zeroizing<Vec<u8>>> {
+    cantrip_host::files::private_directory(directory)?;
+    let name = directory.join("cache-key");
+    let opened = match File::open(&name) {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            let key = random_bytes(32)?;
+            let mut candidate = tempfile::NamedTempFile::new_in(directory)?;
+            candidate.write_all(&key)?;
+            candidate.as_file().sync_all()?;
+            match candidate.persist_noclobber(&name) {
+                Ok(_) => File::open(directory)?.sync_all()?,
+                Err(error) if error.error.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error.error.into()),
+            }
+            File::open(name)?
+        }
+        Err(error) => return Err(error.into()),
+    };
+    let mut key = Zeroizing::new(Vec::new());
+    opened.take(33).read_to_end(&mut key)?;
+    ensure!(key.len() == 32, "Invalid local file cache key.");
+    Ok(key)
 }
 
 fn completed(outcome: Value) -> Value {

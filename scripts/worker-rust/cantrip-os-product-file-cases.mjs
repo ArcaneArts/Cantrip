@@ -420,6 +420,53 @@ export async function verifyProductFiles({
     await guest("cat", guestPath + "/" + file),
     "edited independently",
   );
+  const {
+    binaryReceipt,
+    binaryRequest,
+    finalChunk,
+    saveChecksum,
+    verifyBinarySave,
+  } = await import("./binary-save-cases.mjs");
+  const targetFile = guestPath + "/" + file;
+  const digestTarget = async () =>
+    (await guest("sha256sum", targetFile)).split(" ")[0];
+  await verifyBinarySave({
+    path: file,
+    send: edit,
+    digestTarget,
+    replaceTarget: (bytes) => put(targetFile, bytes.toString("utf8")),
+    restartWorker: crashWorker,
+  });
+  // Each implementation finishes the other implementation's staged upload.
+  const node = async (request) =>
+    oracle(await operation("file-document", document, request));
+  for (const [stage, finish] of [
+    [node, edit],
+    [edit, node],
+  ]) {
+    const baseline = (
+      await edit({
+        type: "explorer.binary.read",
+        path: file,
+        offset: 0,
+        limit: 1,
+      })
+    ).result.value.version;
+    const bytes = Buffer.concat([
+      Buffer.from([0, 255]),
+      Buffer.from(randomUUID()),
+    ]);
+    const id = randomUUID();
+    const request = (action, fields) => binaryRequest(file, id, action, fields);
+    binaryReceipt(await stage(request("begin", { version: baseline })));
+    binaryReceipt(await stage(request("chunk", finalChunk(bytes))));
+    const committed = binaryReceipt(
+      await finish(request("commit", saveChecksum(bytes))),
+    );
+    assert.equal(committed.state, "committed");
+    assert.equal(await digestTarget(), committed.sha256);
+    assert.deepEqual(binaryReceipt(await edit(request("status"))), committed);
+  }
   console.log(
     "Native guest files passed: protected Explorer and document edits, legacy receipts in both directions, and observation-only crash recovery.",
   );
