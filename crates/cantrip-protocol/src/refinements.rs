@@ -310,6 +310,15 @@ pub(super) fn apply(
         }
         return Ok(());
     }
+    if tag == "native-settings-unset-tier" {
+        if value["unsetServiceTier"] == Value::Bool(true) && value.get("serviceTier").is_some() {
+            custom(
+                &["unsetServiceTier"],
+                "unsetServiceTier cannot be combined with serviceTier.",
+            );
+        }
+        return Ok(());
+    }
     if tag == "conversion-source-pair" {
         if value.get("projectSourceId").is_some() != value.get("workerId").is_some() {
             custom(&[], "Conversion source fields must be provided together.");

@@ -992,6 +992,9 @@ export const contractRoots = [
   "nativeSettingsSnapshotContextSchema",
   "nativeThreadSettingsSchema",
   "nativeModelAttributionSchema",
+  "nativeSettingsUpdateCommandSchema",
+  "nativeSettingsUpdateContextSchema",
+  "nativeSettingsPatchSchema",
 ];
 
 export const projectExportContractRoots = [
@@ -1617,6 +1620,10 @@ registerChecks(protocol.providerAuthLiveStatusSchema, [
   "provider-auth-live-kind",
 ]);
 const recursiveJson = registerWorkerContracts(registerChecks);
+registerChecks(protocol.nativeSettingsPatchSchema, [
+  "native-settings-unset-tier",
+]);
+const patch = protocol.nativeSettingsPatchSchema.shape;
 const nativeSettings = protocol.nativeThreadSettingsSchema;
 const collaboration = nativeSettings.shape.collaborationMode;
 for (const schema of [
@@ -1626,6 +1633,8 @@ for (const schema of [
   nativeSettings.shape.approvalPolicy.options[1]._zod.def.valueType,
   collaboration._zod.def.catchall,
   collaboration.shape.settings._zod.def.valueType,
+  patch.approvalPolicy.unwrap().unwrap().options[1]._zod.def.valueType,
+  patch.sandboxPolicy.unwrap().unwrap()._zod.def.valueType,
 ])
   recursiveJson.add(schema);
 

@@ -1043,6 +1043,9 @@ impl Client {
                     .collect::<Vec<_>>()
             );
             intent["nativeSettingsOperationId"] = params["operationId"].clone();
+            if let Some(binding) = command.get("settingsBindingId") {
+                intent["settingsBindingId"] = binding.clone();
+            }
             if let Some(turn) = ["expectedTurnId", "turnId"]
                 .iter()
                 .find_map(|key| params[*key].as_js_string())

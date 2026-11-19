@@ -1,4 +1,4 @@
-use super::aad;
+use super::{aad, decode_json, open_field, revision};
 use crate::{checked, derive_field_key, encrypt_payload, hmac_sha256};
 use anyhow::{Result, ensure};
 use cantrip_wire::{Value, payload_digest, value::json};
@@ -52,4 +52,32 @@ pub fn protect_native_settings_snapshot(
 fn fingerprint(key: &[u8], associated: &Value, bytes: &[u8]) -> Result<String> {
     let digest = hmac_sha256(key, &[associated.stringify_canonical().as_bytes(), bytes])?;
     Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+/// Client settings patches have a separate purpose and bind the exact
+/// operation and canonical settings binding independently of snapshots.
+pub fn open_native_settings_patch(
+    component_key: &[u8],
+    grant: &Value,
+    context: &Value,
+    envelope: &Value,
+) -> Result<Value> {
+    let context = checked("nativeSettingsUpdateContextSchema", context)?;
+    let identity = json!([
+        &grant["serverId"],
+        &context["chatId"],
+        &context["operationId"],
+        &context["bindingId"],
+    ]);
+    // Array elements are strings, so canonical and ordinary encoding agree.
+    let associated = aad(
+        grant,
+        &json!("chat-content"),
+        &json!("native-settings-update"),
+        &json!(payload_digest(&identity)),
+        &json!("patch"),
+    )?;
+    revision(envelope, grant)?;
+    let plaintext = open_field(component_key, &associated, envelope)?;
+    decode_json("nativeSettingsPatchSchema", &plaintext, plaintext.len())
 }

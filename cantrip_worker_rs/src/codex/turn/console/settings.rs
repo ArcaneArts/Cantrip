@@ -5,7 +5,7 @@ use crate::{
     chat_content::Scope,
     codex::{
         rpc_requests::Failure,
-        turn::{RPC_TIMEOUT, autonomous::same_workspace, settings::UPDATE},
+        turn::{autonomous::same_workspace, settings::assert_ordinary_settings},
     },
     metadata::Signal,
 };
@@ -54,11 +54,10 @@ async fn execute(view: &View, session: Value, mut frame: Value, open: &Signal) -
     if params.get("operationId").is_none() {
         params["operationId"] = json!(operation);
     }
-    let native_operation = params["operationId"]
+    params["operationId"]
         .as_js_string()
         .filter(|id| !id.is_empty() && id.len() <= 255)
-        .context("Invalid native settings operation identity.")?
-        .clone();
+        .context("Invalid native settings operation identity.")?;
 
     let runtime = &view.prepared.runtime;
     let thread = view.prepared.thread.id();
@@ -96,40 +95,14 @@ async fn execute(view: &View, session: Value, mut frame: Value, open: &Signal) -
             activation,
         )
         .await?;
-    let observation = async {
-        open.check()?;
-        view.assert_current()?;
-        receipt.dispatch().await?;
-        open.check()?;
-        view.assert_current()?;
-        let scope = Scope::new(view.turns.encryption.clone())?;
-        ensure!(
-            scope.owner == view.queue_key.0 && scope.server == view.queue_key.1,
-            "The managed settings owner changed."
-        );
-        view.turns
-            .settings
-            .observe(runtime, &receipt, scope, &native_operation)
-    }
-    .await;
-    let observation = match observation {
-        Ok(observation) => observation,
-        Err(error) => {
-            receipt
-                .rejected(&json!({"code":-32000,"message":"Native settings were not dispatched."}))
-                .await?;
-            return Err(error);
-        }
-    };
-    let reply = runtime
-        .request(
-            UPDATE.into(),
-            Some(frame["params"].clone()),
-            Some(RPC_TIMEOUT),
-            None,
-        )
-        .await;
-    observation.settle(&receipt, reply).await
+    let (result, _) = view
+        .turns
+        .dispatch_settings(runtime, &receipt, frame["params"].clone(), || {
+            open.check()?;
+            view.assert_current()
+        })
+        .await?;
+    Ok(result)
 }
 
 async fn validate(view: &View, params: &Value) -> Result<()> {
@@ -137,20 +110,7 @@ async fn validate(view: &View, params: &Value) -> Result<()> {
         params.is_object() && params["threadId"].as_js_string() == Some(view.prepared.thread.id()),
         "Managed settings require the bound thread ID."
     );
-    for key in [
-        "approvalPolicy",
-        "approvalsReviewer",
-        "sandbox",
-        "sandboxPolicy",
-        "permissions",
-        "permissionProfile",
-        "permissionProfileId",
-    ] {
-        ensure!(
-            params[key].is_null(),
-            "Changing native permissions requires the managed permission transition."
-        );
-    }
+    assert_ordinary_settings(params)?;
     for key in [
         "config",
         "managedConfig",

@@ -968,7 +968,10 @@
     "chatFileReferencesResultContentSchema": 12988,
     "nativeSettingsSnapshotContextSchema": 623,
     "nativeThreadSettingsSchema": 14306,
-    "nativeModelAttributionSchema": 631
+    "nativeModelAttributionSchema": 631,
+    "nativeSettingsUpdateCommandSchema": 5483,
+    "nativeSettingsUpdateContextSchema": 14346,
+    "nativeSettingsPatchSchema": 14348
   },
   "nodes": [
     {
@@ -86271,6 +86274,225 @@
     { "type": "string", "checks": [] },
     { "type": "nullable", "innerType": 14344, "checks": [] },
     { "type": "string", "checks": [] },
-    { "type": "json", "checks": [] }
+    { "type": "json", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeSettingsUpdateContextSchema",
+      "shape": { "chatId": 5484, "operationId": 5484, "bindingId": 5484 },
+      "catchall": 14347,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeSettingsPatchSchema",
+      "shape": {
+        "cwd": 14349,
+        "approvalPolicy": 14352,
+        "approvalsReviewer": 14359,
+        "sandboxPolicy": 14362,
+        "permissions": 14367,
+        "model": 14370,
+        "effort": 14373,
+        "summary": 14376,
+        "serviceTier": 14379,
+        "unsetServiceTier": 14382,
+        "collaborationMode": 14384,
+        "collaborationModeKind": 14396,
+        "multiAgentEnabled": 14398,
+        "subagentModel": 14400,
+        "subagentReasoningEffort": 14403,
+        "multiAgentMode": 14406,
+        "personality": 14409
+      },
+      "catchall": 14412,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "native-settings-unset-tier",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14350,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14351, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14353,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14354, "checks": [] },
+    { "type": "union", "options": [14355, 14356], "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "record", "keyType": 14357, "valueType": 14358, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "json", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14360,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14361, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14363,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14364, "checks": [] },
+    { "type": "record", "keyType": 14365, "valueType": 14366, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "json", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14368,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14369, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14371,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14372, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14374,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14375, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14377,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14378, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14380,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14381, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14383,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14385,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14386, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "mode": 14387, "settings": 14388 },
+      "catchall": 14395,
+      "checks": []
+    },
+    { "type": "enum", "values": ["default", "plan"], "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "model": 14389,
+        "reasoning_effort": 14390,
+        "developer_instructions": 14392
+      },
+      "catchall": 14394,
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 14391, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 14393, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14397,
+      "checks": []
+    },
+    { "type": "enum", "values": ["default", "plan"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14399,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14401,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14402, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14404,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14405, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14407,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14408, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14410,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14411, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "never", "checks": [] }
   ]
 }

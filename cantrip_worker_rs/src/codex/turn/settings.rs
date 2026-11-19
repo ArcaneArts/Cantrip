@@ -1,9 +1,11 @@
 //! Native settings application is a separate fact from the RPC acknowledgment.
 //! Use the existing worker outbox so captured facts survive a worker upgrade.
 pub(in crate::codex) mod snapshot;
+mod update;
+pub(crate) use update::COMMAND;
 
 use super::{
-    RPC_TIMEOUT, Runtime, Scope, id,
+    RPC_TIMEOUT, Runtime, Scope, Turns, id,
     receipt::{Client, Receipt},
 };
 use crate::{
@@ -13,7 +15,7 @@ use crate::{
     http::checked,
     logging::Logs,
 };
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use cantrip_crypto::content::protect_native_settings_evidence;
 use cantrip_history::{
     content::Encryption,
@@ -34,6 +36,69 @@ use tokio::{
 };
 
 pub(in crate::codex) const UPDATE: &str = "thread/settings/update";
+
+pub(super) fn assert_ordinary_settings(params: &Value) -> Result<()> {
+    for key in [
+        "approvalPolicy",
+        "approvalsReviewer",
+        "sandbox",
+        "sandboxPolicy",
+        "permissions",
+        "permissionProfile",
+        "permissionProfileId",
+    ] {
+        ensure!(
+            params[key].is_null(),
+            "Changing native permissions requires the managed permission transition."
+        );
+    }
+    Ok(())
+}
+
+impl Turns {
+    pub(super) async fn dispatch_settings(
+        &self,
+        runtime: &Runtime,
+        receipt: &Receipt<'_>,
+        params: Value,
+        assert_current: impl Fn() -> Result<()>,
+    ) -> Result<(Value, &'static str)> {
+        let observation = async {
+            assert_current()?;
+            receipt.dispatch().await?;
+            assert_current()?;
+            let scope = Scope::new(self.encryption.clone())?;
+            ensure!(
+                scope.owner == receipt.scope().owner && scope.server == receipt.scope().server,
+                "The managed settings owner changed."
+            );
+            self.settings.observe(
+                runtime,
+                receipt,
+                scope,
+                params["operationId"]
+                    .as_js_string()
+                    .context("Missing native settings operation ID.")?,
+            )
+        }
+        .await;
+        let observation = match observation {
+            Ok(observation) => observation,
+            Err(error) => {
+                receipt
+                    .rejected(
+                        &json!({"code":-32000,"message":"Native settings were not dispatched."}),
+                    )
+                    .await?;
+                return Err(error);
+            }
+        };
+        let reply = runtime
+            .request(UPDATE.into(), Some(params), Some(RPC_TIMEOUT), None)
+            .await;
+        observation.settle_with_status(receipt, reply).await
+    }
+}
 
 pub(crate) struct Delivery {
     client: Client,
@@ -355,14 +420,28 @@ impl Observation {
         receipt: &Receipt<'_>,
         reply: Result<Response>,
     ) -> Result<Value> {
+        self.settle_with_status(receipt, reply)
+            .await
+            .map(|(result, _)| result)
+    }
+
+    async fn settle_with_status(
+        self,
+        receipt: &Receipt<'_>,
+        reply: Result<Response>,
+    ) -> Result<(Value, &'static str)> {
         match reply {
             Ok(Some(result)) => {
-                if let Err(error) = self.accepted(&result) {
-                    receipt.uncertain().await?;
-                    return Err(error);
-                }
+                let status = match self.accepted(&result) {
+                    Ok(status) => status,
+                    Err(error) => {
+                        receipt.uncertain().await?;
+                        return Err(error);
+                    }
+                };
                 receipt.applied(&json!({"result":result}), None).await?;
-                Ok(result)
+                let status = *status.borrow();
+                Ok((result, status))
             }
             Ok(None) => {
                 receipt.uncertain().await?;
@@ -384,7 +463,7 @@ impl Observation {
         }
     }
 
-    fn accepted(self, result: &Value) -> Result<()> {
+    fn accepted(mut self, result: &Value) -> Result<watch::Receiver<&'static str>> {
         let operation = &self.registration.identity["nativeOperationId"];
         let reply = json!({"result":result});
         if &result["operationId"] != operation
@@ -398,13 +477,21 @@ impl Observation {
         }
         let submission = result["submissionId"].clone();
         self.registration.record("queued", &submission, &reply)?;
+        if let Ok(frame) = self.events.try_recv() {
+            return Ok(watch::channel(self.record_application(&frame, &submission)?).1);
+        }
         let delivery = self.registration.delivery.clone();
         let mut observations = delivery.observations.lock().unwrap();
         // Completed captures have already persisted their facts. Failed writes
         // retain the registration for the delivery pump.
         while observations.try_join_next().is_some() {}
-        observations.spawn(self.wait(submission));
-        Ok(())
+        let (send, status) = watch::channel("queued");
+        observations.spawn(async move {
+            let observed = self.wait(submission).await;
+            send.send_replace(observed.as_ref().copied().unwrap_or("uncertain"));
+            observed.map(|_| ())
+        });
+        Ok(status)
     }
 
     fn rejected(self, error: &Value) -> Result<()> {
@@ -412,7 +499,7 @@ impl Observation {
             .record("rejected", &Value::Null, &json!({"error":error}))
     }
 
-    async fn wait(mut self, submission: Value) -> Result<()> {
+    async fn wait(mut self, submission: Value) -> Result<&'static str> {
         let cancellation = self.subscription.signal();
         let frame = tokio::select! {
             biased;
@@ -421,27 +508,30 @@ impl Observation {
             _ = tokio::time::sleep(RPC_TIMEOUT) => None,
         };
         let Some(frame) = frame else {
-            return self.registration.record(
+            self.registration.record(
                 "transport-lost",
                 &submission,
                 &json!({"reason":"native-settings-application-unobserved"}),
-            );
+            )?;
+            return Ok("uncertain");
         };
+        self.record_application(&frame, &submission)
+    }
+
+    fn record_application(&self, frame: &Value, submission: &Value) -> Result<&'static str> {
         let operation = id(
             &self.registration.identity["nativeOperationId"],
             "native settings operation",
         )?;
         let (kind, observed) =
-            observation_kind(&frame, &operation).context("Unrelated settings observation.")?;
-        self.registration.record(
-            if *observed == submission {
-                kind
-            } else {
-                "correlation-conflict"
-            },
-            observed,
-            &frame["params"],
-        )
+            observation_kind(frame, &operation).context("Unrelated settings observation.")?;
+        if observed != submission {
+            self.registration
+                .record("correlation-conflict", observed, &frame["params"])?;
+            return Ok("uncertain");
+        }
+        self.registration.record(kind, observed, &frame["params"])?;
+        Ok(kind)
     }
 }
 impl Drop for Observation {

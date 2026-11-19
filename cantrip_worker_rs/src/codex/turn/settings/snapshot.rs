@@ -67,6 +67,8 @@ pub(in crate::codex) struct Source {
     native: LoadedThread,
     runtime: WeakRuntime,
     generation: String,
+    pub cwd: JsString,
+    pub permission: Value,
     model_name: Value,
     attribution: Value,
     signal: Signal,
@@ -74,7 +76,7 @@ pub(in crate::codex) struct Source {
 }
 
 impl Source {
-    fn runtime(&self) -> Result<Runtime> {
+    pub(in crate::codex) fn runtime(&self) -> Result<Runtime> {
         self.signal.check()?;
         let runtime = self
             .runtime
@@ -84,7 +86,7 @@ impl Source {
         Ok(runtime)
     }
 
-    fn binding_matches(&self, binding: &Value) -> bool {
+    pub(in crate::codex) fn binding_matches(&self, binding: &Value) -> bool {
         binding["runtimeGeneration"] == self.generation
             && self.scope.as_object().unwrap().iter().all(|(key, value)| {
                 binding.as_object().and_then(|fields| fields.get(key)) == Some(value)
@@ -99,8 +101,13 @@ impl Source {
     }
 
     pub async fn read(&self, signal: Signal) -> Result<Value> {
-        let runtime = self.runtime()?;
         let scope = self.encryption_scope()?;
+        let settings = self.read_native(signal).await?;
+        self.seal(&scope, &settings)
+    }
+
+    pub(super) async fn read_native(&self, signal: Signal) -> Result<Value> {
+        let runtime = self.runtime()?;
         let guard = Guard::metadata(Some(signal), Some(self.signal.clone()));
         let reply = guard
             .run(runtime.request(
@@ -117,10 +124,10 @@ impl Source {
         );
         guard.check()?;
         self.runtime()?;
-        self.seal(&scope, &reply["threadSettings"])
+        Ok(reply["threadSettings"].clone())
     }
 
-    fn encryption_scope(&self) -> Result<Scope> {
+    pub(super) fn encryption_scope(&self) -> Result<Scope> {
         let scope = Scope::new(self.encryption.clone())?;
         ensure!(
             scope.owner == self.bound.0 && self.bound.1.as_js_string() == Some(&scope.server),
@@ -171,6 +178,8 @@ impl Factory {
                 "providerAccountId":session["providerAccountId"],
             }),
         )?;
+        let cwd = id(&command["cwd"], "managed settings cwd")?;
+        let permission = &command["permissionProfileId"];
         let model = &command["model"];
         let attribution = checked("nativeModelAttributionSchema", &json!({
             "status":"resolved","workerId":worker,"providerId":command["provider"]["id"],
@@ -180,6 +189,8 @@ impl Factory {
             && previous.source.scope == scope
             && previous.source.bound == prepared.bound
             && previous.source.native == prepared.thread
+            && previous.source.cwd == cwd
+            && &previous.source.permission == permission
             && previous.source.model_name == model["name"]
             && previous.source.attribution == attribution
         {
@@ -192,6 +203,8 @@ impl Factory {
             native: prepared.thread.clone(),
             runtime: prepared.runtime.downgrade(),
             generation: prepared.runtime.generation().into(),
+            cwd,
+            permission: permission.clone(),
             model_name: model["name"].clone(),
             attribution,
             signal,
