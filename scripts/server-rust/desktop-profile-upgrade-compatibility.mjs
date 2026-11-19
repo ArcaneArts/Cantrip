@@ -193,7 +193,7 @@ try {
     path.join(runtime, process.platform === "win32" ? "node.exe" : "node"),
   );
   await copy(converter, path.join(runtime, "profile-converter"));
-  await configureDesktopServer(path.join(runtime, "server"), "rust");
+  await configureDesktopServer(path.join(runtime, "server"));
   const desktop = path.join(root, "production-launcher");
   await mkdir(desktop);
   await copy(legacyProfile, path.join(desktop, "server"));

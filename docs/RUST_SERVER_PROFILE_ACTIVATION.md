@@ -27,8 +27,16 @@ node scripts/database-transfer/build-legacy-postgres.mjs /build/legacy-postgres
 The upgrade tries the native serving engine on a private copy. If it cannot
 open the database, the compatibility runtime opens a fresh copy and dumps it.
 The server restores the logical profile into native PGlite and publishes it
-through the activation journal. Desktop packages still supply the existing
-converter. The native runtime takes precedence when both are supplied.
+through the activation journal.
+
+Desktop packaging on a matching macOS or Linux host builds the private tools
+into `runtime/server/legacy-postgres`. The package records their `bin` directory
+in `desktop-server.json`, and desktop startup tries the upgrade before serving.
+For manual operations, point `--legacy-postgres-bin-dir` at that same directory.
+Building the package requires a C toolchain, Make, Bison, Flex and zlib headers.
+The packaged conversion uses the binaries directly. Windows and cross-target
+desktop assembly still use the JavaScript converter. The native runtime takes
+precedence when both are supplied.
 
 Use explicit export and restore if you need to keep an archive, prepare at a
 separate path, or select another database backend.

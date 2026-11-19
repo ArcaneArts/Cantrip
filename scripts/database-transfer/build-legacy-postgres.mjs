@@ -117,6 +117,13 @@ try {
   // avoids publishing a partially installed runtime at the requested path.
   const prefix = "/usr/local/cantrip-legacy-postgres";
   const stage = path.join(build, "install");
+  const environment = { ...process.env };
+  if (mac) {
+    // Match the Rust service's macOS baseline instead of inheriting the
+    // release builder's OS version from Apple Clang.
+    environment.MACOSX_DEPLOYMENT_TARGET ??=
+      process.arch === "arm64" ? "11.0" : "10.12";
+  }
   await run(
     "./configure",
     [
@@ -127,13 +134,18 @@ try {
     ],
     source,
     {
-      ...process.env,
+      ...environment,
       CFLAGS: "-O1 -g0 -fsigned-char",
       ...(mac ? { LDFLAGS: "-Wl,-rpath,@loader_path/../lib" } : {}),
     },
   );
-  await run("make", ["-j" + values.jobs, "world-bin"], source);
-  await run("make", ["install-world-bin", "DESTDIR=" + stage], source);
+  await run("make", ["-j" + values.jobs, "world-bin"], source, environment);
+  await run(
+    "make",
+    ["install-world-bin", "DESTDIR=" + stage],
+    source,
+    environment,
+  );
   const installed = path.join(stage, prefix);
   await copyFile(
     path.join(source, "COPYRIGHT"),

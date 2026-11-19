@@ -6400,3 +6400,27 @@ state, read the new Rust writes, and persisted a new write across restart.
 The test checked archive integrity, wrong-engine failure, and both retained
 active profiles. All transfer subprocesses ran with an empty executable
 search path. Desktop packaging and other platform runtime checks remain open.
+
+## 157. Package the native legacy profile reader for desktop
+
+Reference commit `910f5165586fd2e6a83890084d74367199c91bf1` (#3319).
+
+Desktop assembly on matching macOS and Linux build hosts stages the PostgreSQL
+compatibility tools under `runtime/server/legacy-postgres`. The desktop
+supervisor passes their binary directory to the Rust server's offline
+preparation process. The existing serving PostgreSQL directory remains
+separate. Windows and cross-target desktop assembly still ship the existing
+profile converter. The worker keeps its current runtime selection.
+
+Local macOS ARM64 assembly from server and worker artifacts produced the
+native compatibility layout and omitted the JavaScript converter. The
+compatibility executable targets macOS 11 on ARM64. The production supervisor
+probe started the staged server tree with no bundled Node and upgraded an
+existing legacy PGlite profile. It served the upgraded database, preserved
+the original profile bytes and retained the server identity across restart.
+The offline CLI round trip also passed on 137 tables and 1,807 original paths.
+
+A local Debian ARM64 container built the Linux tools, resolved the bundled
+libpq, initialized a fresh compatibility cluster, and evaluated a stored
+expression in the compatibility backend. Full Linux desktop and Windows
+native compatibility runtime checks remain open.

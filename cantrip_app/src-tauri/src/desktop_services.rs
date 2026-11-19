@@ -19,6 +19,8 @@ enum ServerRuntime {
     Rust {
         #[serde(rename = "postgresBin")]
         postgres_bin: Option<std::path::PathBuf>,
+        #[serde(rename = "legacyPostgresBin")]
+        legacy_postgres_bin: Option<std::path::PathBuf>,
         #[serde(rename = "profileConverter")]
         profile_converter: Option<std::path::PathBuf>,
     },
@@ -47,6 +49,7 @@ pub fn server_command(node: &Path, directory: &Path) -> Result<ServerLaunch, Str
             .map_err(|error| format!("Could not read {}: {error}", file.display()))?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => ServerRuntime::Rust {
             postgres_bin: None,
+            legacy_postgres_bin: None,
             profile_converter: Some("../profile-converter/dist/index.mjs".into()),
         },
         Err(error) => return Err(format!("Could not read {}: {error}", file.display())),
@@ -55,6 +58,7 @@ pub fn server_command(node: &Path, directory: &Path) -> Result<ServerLaunch, Str
     let mut command = match configuration {
         ServerRuntime::Rust {
             postgres_bin,
+            legacy_postgres_bin,
             profile_converter,
         } => {
             let native_command = || -> Result<Command, String> {
@@ -88,7 +92,18 @@ pub fn server_command(node: &Path, directory: &Path) -> Result<ServerLaunch, Str
                 }
                 Ok(command)
             };
-            if let Some(converter) = profile_converter {
+            if let Some(bin) = legacy_postgres_bin {
+                let mut command = native_command()?;
+                command
+                    .args([
+                        "--migrate-only",
+                        "--upgrade-profile",
+                        "--legacy-postgres-bin-dir",
+                    ])
+                    .arg(directory.join(bin));
+                configure_desktop_child(&mut command);
+                preparation = Some(command);
+            } else if let Some(converter) = profile_converter {
                 let mut command = native_command()?;
                 command
                     .args(["--migrate-only", "--upgrade-profile", "--legacy-node"])
