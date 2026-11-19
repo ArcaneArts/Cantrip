@@ -8,7 +8,9 @@ mod peer;
 mod terminal;
 mod tunnel;
 
-use crate::{connection::Outbound, encryption::Service, http::checked, logging::Logs};
+use crate::{
+    browser_surface, connection::Outbound, encryption::Service, http::checked, logging::Logs,
+};
 use anyhow::{Context, Result, bail, ensure};
 use cantrip_framing::worker_link::Frame;
 use cantrip_protocol::worker_link::identity_key;
@@ -46,7 +48,8 @@ pub(crate) struct Coordinator {
     shares: Arc<crate::project_shares::Manager>,
     direct: Arc<DirectBroker>,
     state: Mutex<State>,
-    wake: Notify,
+    wake: Arc<Notify>,
+    browsers: OnceLock<Arc<browser_surface::Manager>>,
     terminals: OnceLock<Arc<terminal::Adapter>>,
     tunnel_streams: Arc<Semaphore>,
 }
@@ -65,7 +68,20 @@ struct State {
 struct Session {
     value: Value,
     identity: Vec<u16>,
-    grants: HashMap<JsString, Value>,
+    grants: HashMap<JsString, Grant>,
+}
+
+struct Grant {
+    value: Value,
+    browser: Option<Arc<browser_surface::Link>>,
+}
+
+impl Drop for Grant {
+    fn drop(&mut self) {
+        if let Some(browser) = &self.browser {
+            browser.revoke();
+        }
+    }
 }
 
 pub(crate) fn observation_scope(command: &Value) -> Value {
@@ -116,7 +132,8 @@ impl Coordinator {
             shares,
             direct,
             state: Mutex::default(),
-            wake: Notify::new(),
+            wake: Arc::new(Notify::new()),
+            browsers: OnceLock::new(),
             terminals: OnceLock::new(),
             tunnel_streams: Arc::new(Semaphore::new(tunnel::MAX_STREAMS)),
         }
@@ -250,7 +267,14 @@ impl Coordinator {
             }
             "worker-link.session.revoke" => Some(state.revoke_session(session, "revoked")),
             "worker-link.grant.install" => {
-                state.install_grant(session, &command["grant"], now)?;
+                state.install_grant(
+                    session,
+                    &command["grant"],
+                    now,
+                    self.browsers
+                        .get()
+                        .map(|browsers| (browsers.as_ref(), &self.wake)),
+                )?;
                 None
             }
             "worker-link.grant.renew" => {
@@ -262,16 +286,20 @@ impl Coordinator {
                     .grants
                     .get_mut(id(command, "grantId"))
                     .filter(|grant| {
-                        grant["binding"]["grantGeneration"] == command["grantGeneration"]
+                        grant.value["binding"]["grantGeneration"] == command["grantGeneration"]
                     })
                     .context("WorkerLink grant is not installed at this generation.")?;
                 let next = &command["lease"];
-                validate_renewal(&grant["binding"]["lease"], next, now)?;
+                validate_renewal(&grant.value["binding"]["lease"], next, now)?;
+                let expiry = expiration(next)?;
                 ensure!(
-                    expiration(next)? <= expiration(&current.value["lease"])?,
+                    expiry <= expiration(&current.value["lease"])?,
                     "WorkerLink grant renewal exceeds its session lease."
                 );
-                grant["binding"]["lease"] = next.clone();
+                grant.value["binding"]["lease"] = next.clone();
+                if let Some(browser) = &grant.browser {
+                    browser.renew(expiry);
+                }
                 None
             }
             "worker-link.grant.revoke" => Some(
@@ -290,6 +318,10 @@ impl Coordinator {
             || json!({"accepted":true}),
             |revoked| json!({"accepted":true,"revoked":revoked}),
         ))
+    }
+
+    pub(crate) fn configure_browsers(&self, browsers: Arc<browser_surface::Manager>) {
+        assert!(self.browsers.set(browsers).is_ok());
     }
 
     pub(crate) fn configure_terminals(
@@ -356,7 +388,7 @@ impl Coordinator {
                         .and_then(|session| session.grants.get(grant))
                 })
                 .is_some_and(|grant| {
-                    grant["binding"]["operations"]
+                    grant.value["binding"]["operations"]
                         .as_array()
                         .is_some_and(|operations| operations.contains(&json!("stream:write")))
                 });
@@ -469,6 +501,7 @@ impl Coordinator {
             state.transport_ready = false;
             state.disconnect = Some(Instant::now() + GRACE);
             state.legacy_tunnels.disconnected();
+            state.channels.disconnect_browser_relay();
             self.wake.notify_one();
         }
     }
@@ -486,7 +519,7 @@ impl Coordinator {
             tokio::select! {
                 _ = stop.changed() => break,
                 _ = tick.tick() => self.reconcile(),
-                _ = self.wake.notified() => {},
+                _ = self.wake.notified() => self.reconcile(),
                 _ = self.outgoing.binary_writable() => {
                     let mut state = self.state.lock().unwrap();
                     state.channels.flush(&self.outgoing);
@@ -559,7 +592,13 @@ impl State {
             .context("WorkerLink session is not installed.")
     }
 
-    fn install_grant(&mut self, session: &JsString, grant: &Value, now: i64) -> Result<()> {
+    fn install_grant(
+        &mut self,
+        session: &JsString,
+        grant: &Value,
+        now: i64,
+        browsers: Option<(&browser_surface::Manager, &Arc<Notify>)>,
+    ) -> Result<()> {
         let binding = &grant["binding"];
         let grant_id = id(binding, "grantId");
         let current = self
@@ -592,7 +631,7 @@ impl State {
         );
         if let Some(installed) = current.grants.get(grant_id) {
             ensure!(
-                installed == grant,
+                &installed.value == grant,
                 "WorkerLink grant installation conflicts with existing state."
             );
             return Ok(());
@@ -609,9 +648,19 @@ impl State {
                 < MAX_GRANTS,
             "WorkerLink grant capacity is exhausted."
         );
-        self.session_mut(session)?
-            .grants
-            .insert(grant_id.clone(), grant.clone());
+        let browser = if binding["resource"]["kind"] == "browser" {
+            let (browsers, wake) = browsers.context("Browser surfaces are unavailable.")?;
+            Some(browsers.bind(binding, wake.clone(), expiry)?)
+        } else {
+            None
+        };
+        self.session_mut(session)?.grants.insert(
+            grant_id.clone(),
+            Grant {
+                value: grant.clone(),
+                browser,
+            },
+        );
         Ok(())
     }
 
@@ -624,7 +673,7 @@ impl State {
         for (id, grant) in session.grants {
             self.remember(
                 id,
-                grant["binding"]["grantGeneration"]
+                grant.value["binding"]["grantGeneration"]
                     .as_u64()
                     .expect("validated grant generation"),
             );
@@ -643,11 +692,9 @@ impl State {
         let Some(current) = self.sessions.get_mut(session) else {
             return false;
         };
-        if current
-            .grants
-            .get(id)
-            .is_some_and(|grant| grant["binding"]["grantGeneration"].as_u64() == Some(generation))
-        {
+        if current.grants.get(id).is_some_and(|grant| {
+            grant.value["binding"]["grantGeneration"].as_u64() == Some(generation)
+        }) {
             current.grants.remove(id);
             self.channels.close_grant(session, id, code);
             true
@@ -702,7 +749,7 @@ impl State {
                 continue;
             }
             for (grant_id, grant) in &session.grants {
-                let binding = &grant["binding"];
+                let binding = &grant.value["binding"];
                 if expired(&binding["lease"]) {
                     let generation = binding["grantGeneration"]
                         .as_u64()

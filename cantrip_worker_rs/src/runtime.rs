@@ -146,6 +146,7 @@ async fn cycle(
         crate::worker_link::DirectBroker::bind(worker.clone(), logs.clone()).await?;
     let mut heartbeat = http::heartbeat(&config, host.platform, host.architecture, &started)?;
     heartbeat["directBroker"] = direct.advertisement().clone();
+    heartbeat["remoteSurfaces"] = crate::browser_surface::capabilities(environment);
     heartbeat["projectReplicas"] = json!({
         "provision":true,"synchronize":true,"remove":true,"exactRevision":true,
         "directPlacement":true,"managedLinkPlacement":crate::replicas::placement::probe_managed_link(&config.data_directory).await,
@@ -218,6 +219,7 @@ async fn cycle(
         shares.clone(),
         direct.clone(),
     ));
+    worker_link.configure_browsers(browser_surfaces.clone());
     outgoing.observe_with(&worker_link);
     let direct_task = tokio::spawn(direct.clone().run(
         direct_listener,

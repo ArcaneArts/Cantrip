@@ -119,6 +119,22 @@ impl Lease {
     }
 }
 
+pub(super) fn discover(environment: &cantrip_config::Environment) -> bool {
+    // The catalog advertises discovered browser installations. Creation still
+    // attempts the actual launch and reports its outcome.
+    candidates(environment).iter().any(|path| {
+        path.metadata().is_ok_and(|metadata| {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
+            }
+            #[cfg(windows)]
+            metadata.is_file()
+        })
+    })
+}
+
 fn candidates(environment: &cantrip_config::Environment) -> Vec<PathBuf> {
     if let Some(executable) = environment.get("CANTRIP_CHROMIUM_EXECUTABLE") {
         return vec![PathBuf::from(executable)];

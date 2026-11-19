@@ -35,10 +35,11 @@ import {
   localOwner,
 } from "../server-rust/project-target-state.mjs";
 import { repositoryFixture } from "../server-rust/repository-fixture.mjs";
+import { BrowserWorkerLink } from "./browser-worker-link-client.mjs";
 
 const { values } = parseArgs({
   options: Object.fromEntries(
-    ["server", "worker", "repository", "chromium"].map((name) => [
+    ["server", "worker", "repository", "chromium", "route"].map((name) => [
       name,
       { type: "string" },
     ]),
@@ -47,6 +48,8 @@ const { values } = parseArgs({
 assert.ok(
   values.server && values.worker && values.repository && values.chromium,
 );
+const route = values.route ?? "legacy";
+assert.ok(["legacy", "relay", "local", "lan"].includes(route));
 const WebSocket = createRequire(
   new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("ws");
@@ -59,6 +62,7 @@ const environment = {
   ...fixtureEnvironment(dataDirectory),
   CANTRIP_BOOTSTRAP_MODE: "standalone",
 };
+if (route === "lan") environment.CANTRIP_WORKER_LINK_LAN_ENABLED = "true";
 delete environment.CANTRIP_WORKER_TOKEN;
 const ownerId = localOwner;
 const workerId = "native-browser-surface-worker";
@@ -89,7 +93,20 @@ const target = createServer((request, response) => {
   response.end(
     "<!doctype html><title>" +
       title +
-      '</title><input autofocus style="position:absolute;left:8px;top:8px" oninput="document.title=this.value">',
+      '</title><canvas width="640" height="480" style="position:absolute;inset:0"></canvas><input autofocus style="position:absolute;left:8px;top:8px" oninput="document.title=this.value">' +
+      `<script>
+        const ctx = document.querySelector('canvas').getContext('2d');
+        const image = ctx.createImageData(640, 480);
+        let state = 12345;
+        for (let index = 0; index < image.data.length; index += 4) {
+          state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+          image.data[index] = (state >>> 16) & 255;
+          image.data[index + 1] = (state >>> 8) & 255;
+          image.data[index + 2] = state & 255;
+          image.data[index + 3] = 255;
+        }
+        ctx.putImageData(image, 0, 0);
+      </script>`,
   );
 });
 target.listen(0, "127.0.0.1");
@@ -206,7 +223,21 @@ class BrowserSocket {
   inbox = [];
   counter = 0;
 
-  constructor() {
+  async connect() {
+    clients.push(this);
+    if (route !== "legacy") {
+      this.link = await BrowserWorkerLink.connect({
+        origin: core.origin,
+        call,
+        workerId,
+        surfaceId,
+        viewport,
+        route,
+        onFrame: (frame) => this.push(frame),
+      });
+      this.attachment = this.link.attachment;
+      return;
+    }
     this.socket = new WebSocket(
       core.origin.replace(/^http/u, "ws") +
         "/api/remote-surfaces/" +
@@ -215,17 +246,31 @@ class BrowserSocket {
       { origin: "http://127.0.0.1:5173" },
     );
     this.socket.on("message", (packet, binary) => {
-      this.inbox.push(
+      this.push(
         binary
           ? decodeRemoteSurfaceFrame(packet)
           : JSON.parse(packet.toString()),
       );
-      if (this.inbox.length > 128) this.inbox.shift();
     });
     this.socket.on("error", (error) =>
       this.inbox.push({ type: "error", message: error.message }),
     );
-    clients.push(this);
+  }
+
+  push(value) {
+    this.inbox.push(value);
+    if (this.inbox.length > 128) this.inbox.shift();
+  }
+
+  async close() {
+    if (this.link) return this.link.close();
+    this.socket.close();
+    await once(this.socket, "close");
+  }
+
+  terminate() {
+    if (this.link) return this.link.terminate();
+    this.socket?.terminate();
   }
 
   context(header, direction) {
@@ -244,6 +289,7 @@ class BrowserSocket {
   async next(select) {
     const limit = Date.now() + 12_000;
     while (Date.now() < limit) {
+      if (this.link?.failure) throw this.link.failure;
       const value = this.inbox.shift();
       if (!value) {
         await new Promise((resolve) => setTimeout(resolve, 20));
@@ -257,10 +303,13 @@ class BrowserSocket {
   }
 
   async ready() {
-    const value = await this.next((value) => value.type === "ready");
-    assert.equal(value.transport, "websocket");
-    assert.equal(value.surfaceId, surfaceId);
-    this.attachment = value.attachmentId;
+    await this.connect();
+    if (!this.link) {
+      const value = await this.next((value) => value.type === "ready");
+      assert.equal(value.transport, "websocket");
+      assert.equal(value.surfaceId, surfaceId);
+      this.attachment = value.attachmentId;
+    }
     await this.send({ type: "viewport", viewport });
   }
 
@@ -280,7 +329,9 @@ class BrowserSocket {
       plaintext: Buffer.from(JSON.stringify(message)),
     });
     if (invalid) payload[payload.length - 1] ^= 1;
-    this.socket.send(encodeRemoteSurfaceFrame(header, payload));
+    const frame = encodeRemoteSurfaceFrame(header, payload);
+    if (this.link) await this.link.send(frame);
+    else this.socket.send(frame);
   }
 
   async clear(value) {
@@ -447,16 +498,22 @@ try {
 
   await launchCore(port);
   await launchWorker();
+  const advertised = (await call("GET", "/api/workers", 200)).find(
+    (worker) => worker.workerId === workerId,
+  );
+  assert.equal(advertised.remoteSurfaces.browser, true);
+  assert.deepEqual(advertised.remoteSurfaces.transports, ["websocket"]);
   const first = new BrowserSocket();
   await first.ready();
   assert.equal(await first.title("Native first page"), origin + "/first");
   const screenshot = await first.next(
-    (value) => value.header?.channel === "frame",
+    (value) =>
+      value.header?.channel === "frame" && value.payload.byteLength > 64 * 1024,
   );
-  assert.deepEqual(
-    [...(await first.clear(screenshot)).slice(0, 2)],
-    [0xff, 0xd8],
-  );
+  const image = await first.clear(screenshot);
+  assert.deepEqual([...image.slice(0, 2)], [0xff, 0xd8]);
+  assert.ok(image.byteLength > 64 * 1024);
+  if (first.link) assert.ok(first.link.fragmentedScreenshot);
   const operationId = randomUUID();
   const navigation = {
     type: "navigate",
@@ -480,8 +537,7 @@ try {
     "Replayed operation did not navigate",
   );
   assert.notEqual(first.attachment, second.attachment);
-  first.socket.close();
-  await once(first.socket, "close");
+  await first.close();
 
   await second.send({
     type: "pointer",
@@ -518,17 +574,16 @@ try {
   await call("POST", "/api/remote-surfaces/" + surfaceId + "/resume", 200, {});
   await second.send({ type: "viewport", viewport });
   assert.equal(await second.title("A & private"), origin + "/second");
-  second.socket.close();
-  await once(second.socket, "close");
+  await second.close();
   await call("DELETE", "/api/browsers/" + surfaceId, 204);
   console.log(
-    JSON.stringify({ suite: "native-browser-surface", passed: true }),
+    JSON.stringify({ suite: "native-browser-surface", route, passed: true }),
   );
 } catch (error) {
   console.error(logs, core?.diagnostics());
   throw error;
 } finally {
-  for (const { socket } of clients) socket.terminate();
+  await Promise.allSettled(clients.map((client) => client.terminate()));
   componentKey.fill(0);
   master.fill(0);
   try {
