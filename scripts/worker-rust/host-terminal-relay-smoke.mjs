@@ -15,6 +15,7 @@ export async function verifyHostTerminal({
   metadataKey,
   projectId,
   checkout,
+  cli,
 }) {
   const id = randomUUID();
   const context = {
@@ -81,6 +82,27 @@ export async function verifyHostTerminal({
     );
     assert.ok(!first.relay.history.some(({ raw }) => raw.includes(marker)));
 
+    if (cli) {
+      await first.input(
+        "cantrip --context lane --json status > .cantrip-cli-fixture-terminal-status\r",
+      );
+      await eventually(
+        () =>
+          readFile(
+            path.join(checkout, ".cantrip-cli-fixture-terminal-status"),
+            "utf8",
+          ).catch(() => ""),
+        (value) => {
+          assert.ok(value);
+          const result = JSON.parse(value);
+          assert.equal(
+            result.target?.projectId ?? result.data.context.projectId,
+            projectId,
+          );
+        },
+        "CLI resolves the real Host Terminal lane",
+      );
+    }
     first.relay.send({ type: "resize", cols: 113, rows: 43 });
     // Resizing and input travel in separate server tasks. Confirm the actual
     // terminal dimensions from within the PTY.

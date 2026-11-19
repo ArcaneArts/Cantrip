@@ -1,4 +1,4 @@
-use super::{Environment, Failure, LaunchJob, process, shell};
+use super::{Environment, Failure, LaunchJob, process, protection, shell};
 use crate::{
     encryption::Service,
     filesystem::paths,
@@ -186,6 +186,7 @@ pub(super) async fn resolve(
         ("CANTRIP_RUN_OPERATION_ID", "operationId"),
         ("CANTRIP_RUN_RUNTIME_ID", "runtimeId"),
         ("CANTRIP_RUN_TERMINAL_ID", "terminalId"),
+        ("CANTRIP_TERMINAL_ID", "terminalId"),
         ("CANTRIP_RUN_WORKTREE_ID", "worktreeId"),
     ] {
         let value = identity[field]
@@ -341,17 +342,18 @@ fn secrets(
                 let grant = encryption
                     .bound_component("run-content", encrypted["keyRevision"].as_u64())
                     .map_err(|cause| unavailable(anyhow::Error::from(cause)))?;
-                let row_id = json!([project, &json!(reference)]).stringify();
-                let binding = json!({
-                    "ownerId":grant.owner_id,"component":"run-content","table":"run_configuration_secrets",
-                    "rowId":row_id,"field":"protected_value","keyRevision":encrypted["keyRevision"],
-                });
+                let binding = protection::secret(
+                    &grant.owner_id,
+                    project,
+                    &json!(reference),
+                    grant.component.key_revision,
+                );
                 let content = decrypt_secret(
                     &grant.component.key,
                     &binding,
                     encrypted,
-                    "runConfigurationSecretValueContentSchema",
-                    Some(64 * 1024 + 128),
+                    protection::SECRET_SCHEMA,
+                    Some(protection::SECRET_LIMIT),
                 )
                 .map_err(unavailable)?;
                 vacant.insert(Zeroizing::new(

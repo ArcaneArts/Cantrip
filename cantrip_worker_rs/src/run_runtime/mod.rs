@@ -3,6 +3,7 @@
 mod layers;
 mod output;
 mod process;
+pub(crate) mod protection;
 mod providers;
 mod shell;
 
@@ -459,15 +460,11 @@ impl Manager {
             server == command["serverId"],
             "The Run output belongs to another server."
         );
-        let scope = json!([&identity["projectId"], &identity["worktreeId"]]).stringify();
         let protected = protect_endpoint_content(
             &self.encryption,
-            &json!({
-                "domain":"run-content","workerId":Value::Null,"serverId":server,"scopeId":scope,
-                "operationId":command["requestOperationId"],"operation":"run.configuration.output","direction":"response","sequence":0,
-            }),
+            &protection::output(&server, identity, &command["requestOperationId"]),
             &content,
-            "runConfigurationRuntimeOutputContentSchema",
+            protection::OUTPUT_SCHEMA,
         )?;
         checked(
             "protectedRunConfigurationRuntimeWorkerOutputSchema",

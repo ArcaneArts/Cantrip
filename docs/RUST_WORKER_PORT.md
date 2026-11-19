@@ -5473,3 +5473,39 @@ runtime and non-macOS platform launches were outside this cycle.
 
 Cantrip OS Run execution, CLI connection environment, direct and
 WorkerLink delivery, and production cutover remain open.
+
+## 123. Connect the native CLI to Host Runs and terminals
+
+Reference commit `12a2334f07dcfbb4a3d8bc2ae1ef6c920bb73b0c` (#3285).
+
+The worker owns an authenticated IPv4 loopback broker and atomically
+publishes the version-one `cli-connection.json` with a per-lifetime
+session token. Host Runs, shell terminals, and terminal services inherit
+the connection path and the installed CLI directory through their
+existing process environments. A Host Run supplies its admitted
+Terminal identity, so Core can resolve a protected checkout without
+access to the local path. The broker forwards registered commands to
+Core using the current worker credential and preserves context selection
+and structured failures.
+
+The worker opens `run logs` output locally and encrypts `run secret set`
+for the authorized project before forwarding it. The CLI and the Run
+supervisor share the existing Run content bindings. Core checks an
+expected project identifier on native secret writes before committing
+them, so a context change between resolution and storage cannot bind an
+envelope to the wrong project. The broker accepts both the reference
+Node context target and the Rust server's status context structure.
+
+On macOS ARM64, the shipped CLI ran inside a Rust-managed Host Run and
+an interactive Terminal against the Rust server with PGlite. Local
+checks covered handshake parity with Node, session rotation and removal,
+mode-0600 publication, Terminal lane selection, decrypted log reads,
+encrypted secret storage and consumption, and rejection of a mismatched
+project before storage. The existing Host terminal service and
+Run-provider smoke checks and the eight Node broker tests passed. The
+worker startup PATH excluded Node.
+
+Protected CLI policy, Explorer, terminal read/input, and browser
+navigation adapters remain open. Cwd-only inference for protected
+checkouts, managed Codex bindings and CLI launch environment, Cantrip OS
+Run execution, and production cutover remain open.

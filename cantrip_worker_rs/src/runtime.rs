@@ -142,23 +142,6 @@ async fn cycle(
     let explorer_operations = Arc::new(
         crate::explorer_operations::ExplorerOperations::with_replay(surface_replay.clone()),
     );
-    let terminals = Arc::new(crate::terminal_services::Manager::new(
-        environment
-            .iter()
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect(),
-        logs.clone(),
-    ));
-    let shells = Arc::new(crate::terminal_services::interactive::Shells::new(
-        environment
-            .iter()
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect(),
-        logs.clone(),
-        terminals.clone(),
-        surface_replay,
-        generation.clone(),
-    ));
     let mut heartbeat = http::heartbeat(&config, host.platform, host.architecture, &started)?;
     heartbeat["projectReplicas"] = json!({
         "provision":true,"synchronize":true,"remove":true,"exactRevision":true,
@@ -187,6 +170,27 @@ async fn cycle(
     );
     let data_directory = config.data_directory.clone();
     let configuration = Arc::new(Mutex::new(config));
+    let cli = crate::cli::Broker::start(
+        configuration.clone(),
+        environment,
+        cwd,
+        worker_root,
+        encryption.clone(),
+    )
+    .await?;
+    let host_environment = cli.child_environment(environment);
+    let terminals = Arc::new(crate::terminal_services::Manager::new(
+        host_environment.clone(),
+        logs.clone(),
+    ));
+    let shells = Arc::new(crate::terminal_services::interactive::Shells::new(
+        host_environment.clone(),
+        logs.clone(),
+        terminals.clone(),
+        surface_replay,
+        generation.clone(),
+    ));
+
     let (stop, stop_rx) = watch::channel(false);
     let (command_shutdown, command_signal) = crate::metadata::Abort::new();
     let task_inputs = crate::codex::task_inputs::Client::new(
@@ -209,12 +213,7 @@ async fn cycle(
     )?);
     codex.configure_project_goals(project_goals.clone())?;
     let outgoing = Arc::new(Outbound::default());
-    let run_environment: Arc<crate::run_runtime::Environment> = Arc::new(
-        environment
-            .iter()
-            .map(|(name, value)| (name.clone(), value.clone()))
-            .collect(),
-    );
+    let run_environment = Arc::new(host_environment);
     let run_definitions = Arc::new(crate::run_definitions::Definitions::new(
         run_environment.clone(),
     ));
@@ -891,6 +890,7 @@ async fn cycle(
     }
     run_definitions.close().await;
     let runs_closed = runs.close().await;
+    let cli_closed = cli.close().await;
     if let Err(error) = project_goals.flush().await {
         project_goals.report(&error);
     }
@@ -919,6 +919,7 @@ async fn cycle(
     terminals_closed?;
     shells_closed?;
     runs_closed?;
+    cli_closed?;
     github_closed?;
     task_outcomes_closed?;
     goal_delivery_closed?;
