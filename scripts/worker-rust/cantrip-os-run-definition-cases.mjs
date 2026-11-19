@@ -25,6 +25,7 @@ export async function verifyRunDefinitions({
   stopWorker,
   restartWorker,
   runPlan,
+  runRuntime,
 }) {
   const projectId = binding.projectId;
   const configurationId = randomUUID();
@@ -156,6 +157,25 @@ export async function verifyRunDefinitions({
       serverId,
       docker,
       container,
+    });
+  }
+  if (runRuntime) {
+    const { verifyGuestRuns } =
+      await import("./cantrip-os-run-runtime-cases.mjs");
+    await verifyGuestRuns({
+      call,
+      definition,
+      request,
+      binding,
+      target,
+      os,
+      actual,
+      data,
+      serverId,
+      hash,
+      docker,
+      container,
+      ...runRuntime,
     });
   }
   console.log(

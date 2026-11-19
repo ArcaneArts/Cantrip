@@ -44,7 +44,7 @@ export async function seedProjects(executable, root, dataDirectory) {
   return projects;
 }
 
-async function grant(call, workerId, data) {
+async function grant(call, workerId, data, runRuntime) {
   const identity = JSON.parse(
     await readFile(path.join(data, "worker-encryption-key.json"), "utf8"),
   );
@@ -80,44 +80,46 @@ async function grant(call, workerId, data) {
     },
     201,
   );
-  const refresh = () =>
+  const refresh = (component) =>
     call("POST", `/api/workers/${workerId}/encryption/refresh`, {
-      component: "repository-content",
+      component,
       keyRevision: 1,
     });
-  await refresh();
+  await refresh("repository-content");
   const principals = await call("GET", "/api/encryption/principals");
   const principal = principals.find(({ id }) => id === identity.principalId);
   assert.ok(principal);
   await call("POST", `/api/encryption/principals/${principal.id}/approve`, {
     expectedRevision: principal.revision,
   });
-  const componentKey = crypto.deriveComponentKey({
-    accountMasterKey,
-    ownerId,
-    component: "repository-content",
-    keyRevision: 1,
-  });
-  const wrappedKey = await crypto.wrapComponentKeyForWorker({
-    ownerId,
-    workerId,
-    component: "repository-content",
-    keyRevision: 1,
-    componentKey,
-    workerPublicKey: identity.publicKey,
-  });
-  await call(
-    "POST",
-    `/api/encryption/principals/${principal.id}/grants`,
-    {
-      component: "repository-content",
+  const components = ["repository-content"];
+  if (runRuntime) components.push("run-content");
+  const keys = new Map();
+  for (const component of components) {
+    const componentKey = crypto.deriveComponentKey({
+      accountMasterKey,
+      ownerId,
+      component,
       keyRevision: 1,
-      wrappedKey,
-    },
-    201,
-  );
-  assert.equal((await refresh()).status.state, "ready");
-  return componentKey;
+    });
+    const wrappedKey = await crypto.wrapComponentKeyForWorker({
+      ownerId,
+      workerId,
+      component,
+      keyRevision: 1,
+      componentKey,
+      workerPublicKey: identity.publicKey,
+    });
+    await call(
+      "POST",
+      `/api/encryption/principals/${principal.id}/grants`,
+      { component, keyRevision: 1, wrappedKey },
+      201,
+    );
+    assert.equal((await refresh(component)).status.state, "ready");
+    keys.set(component, componentKey);
+  }
+  return keys;
 }
 
 export async function verifySources({
@@ -135,11 +137,14 @@ export async function verifySources({
   linked: linkedFixture,
   runDefinitions,
   runPlan,
+  runRuntime,
+  crashWorker,
   stopWorker,
   restartWorker,
 }) {
   assert.equal(os.ownerId, ownerId);
-  const componentKey = await grant(call, workerId, data);
+  const keys = await grant(call, workerId, data, runRuntime);
+  const componentKey = keys.get("repository-content");
   const serverId = bootstrap.server.id;
   const workspaces = await call("GET", `/api/cantrip-os/${os.id}/workspaces`);
   const workspace = workspaces.find(
@@ -379,6 +384,11 @@ export async function verifySources({
       stopWorker,
       restartWorker,
       runPlan,
+      runRuntime: runRuntime && {
+        key: keys.get("run-content"),
+        eventually,
+        crashWorker,
+      },
     });
   }
   if (!linkedFixture) return;

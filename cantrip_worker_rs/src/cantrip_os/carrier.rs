@@ -10,7 +10,7 @@ use std::{
 const DEADLINE: Duration = Duration::from_secs(60);
 const MAX_RECEIPT: usize = 1024 * 1024;
 
-pub(super) struct DeliveryUnknown(pub(super) String);
+pub(crate) struct DeliveryUnknown(pub(crate) String);
 impl std::fmt::Debug for DeliveryUnknown {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str("CantripOS delivery unknown")
@@ -23,7 +23,7 @@ impl std::fmt::Display for DeliveryUnknown {
 }
 impl std::error::Error for DeliveryUnknown {}
 
-pub(super) enum Transport {
+pub(crate) enum Transport {
     Docker(String),
     Ssh {
         host: String,
@@ -42,7 +42,7 @@ pub(super) enum Program {
 }
 
 impl Transport {
-    pub(super) fn from_value(value: &Value) -> Result<Self> {
+    pub(crate) fn from_value(value: &Value) -> Result<Self> {
         let field = |name: &str| {
             value[name]
                 .as_str()
