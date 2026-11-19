@@ -13,6 +13,8 @@ import {
   workerLinkQosLaneSchema,
 } from "../../packages/protocol/dist/worker-link.js";
 
+const MESSAGE_LIMIT = 64 * 1024;
+
 export async function connectPeerWorkerLink(call, session) {
   const base = "/api/worker-links/" + session.sessionId + "/peers";
   const { peerSession } = workerLinkPeerSessionDescriptorSchema.parse(
@@ -42,6 +44,10 @@ export async function connectPeerWorkerLink(call, session) {
     const page = await browser.newPage();
     const socket = new EventEmitter();
     await page.exposeFunction("peerFrame", (bytes) => {
+      assert.ok(
+        bytes.length <= MESSAGE_LIMIT,
+        "CWLK frame fits the negotiated SCTP message",
+      );
       socket.emit("message", Buffer.from(bytes), true);
     });
     const { sdp, candidates } = await page.evaluate(
@@ -104,9 +110,14 @@ export async function connectPeerWorkerLink(call, session) {
           .removedCandidates === 0,
     );
     assert.ok(allowed.length, "Chromium candidates for the LAN fixture");
+    assert.match(sdp, /^a=max-message-size:\d+/mu);
+    const limitedOffer = sdp.replace(
+      /^a=max-message-size:\d+/mu,
+      "a=max-message-size:" + MESSAGE_LIMIT,
+    );
     await call("POST", path + "/signals", 204, {
       signals: [
-        { type: "offer", sdp },
+        { type: "offer", sdp: limitedOffer },
         ...allowed.map(
           ({ candidate, sdpMid, sdpMLineIndex, usernameFragment }) => ({
             type: "candidate",

@@ -551,6 +551,14 @@ impl Actor {
         let label = channel.label().await?;
         let carrier = self.carrier.clone();
         if label == CONTROL && !self.control {
+            let sctp = self
+                .connection
+                .as_ref()
+                .context("WorkerLink peer connection is unavailable.")?
+                .sctp()
+                .await
+                .context("WorkerLink SCTP transport is unavailable.")?;
+            carrier.set_message_limit(sctp.max_message_size().await?);
             self.control = true;
             self.channels
                 .spawn(control(channel, carrier, self.session.clone()));

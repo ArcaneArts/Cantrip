@@ -30,6 +30,7 @@ const MAX_OBSERVATION_BYTES: usize = 4 * 1024 * 1024;
 const MAX_TUNNEL_QUEUE_BYTES: usize = 512 * 1024;
 const MAX_TUNNEL_QUEUE_FRAMES: usize = 32;
 const MAX_OPERATIONS: usize = 4096;
+const MAX_SEQUENCE: u64 = 9_007_199_254_740_991;
 const IDLE: Duration = Duration::from_secs(5 * 60);
 const LIFETIME: Duration = Duration::from_secs(12 * 60 * 60);
 
@@ -84,9 +85,9 @@ impl Channel {
         frame(&self.routing, kind, sequence, fields, payload)
     }
 
-    fn flush(&mut self, output: &Outbound) -> bool {
+    fn flush(&mut self, output: &Outbound) -> Output {
         if !self.ready {
-            return true;
+            return Output::Queued;
         }
         if self.send == 0 {
             let accept = self.frame(
@@ -95,8 +96,9 @@ impl Channel {
                 &[("initialCreditBytes", json!(self.initial_credit))],
                 &[],
             );
-            if !matches!(self.carrier.offer(output, &accept), Output::Queued) {
-                return false;
+            let offered = self.carrier.offer(output, &accept);
+            if !matches!(offered, Output::Queued) {
+                return offered;
             }
             self.send = 1;
             self.activity = Instant::now();
@@ -111,8 +113,9 @@ impl Channel {
                 ],
                 &[],
             );
-            if !matches!(self.carrier.offer(output, &credit), Output::Queued) {
-                return false;
+            let offered = self.carrier.offer(output, &credit);
+            if !matches!(offered, Output::Queued) {
+                return offered;
             }
             self.send += 1;
             self.inbound_credit += self.credit_pending;
@@ -126,14 +129,12 @@ impl Channel {
             let frame = self.frame(
                 "data",
                 self.send,
-                &[
-                    ("direction", json!("worker-to-client")),
-                    ("payloadFormat", json!(self.resource.payload_format())),
-                ],
+                &data_fields(self.resource.payload_format()),
                 bytes,
             );
-            if !matches!(self.carrier.offer(output, &frame), Output::Queued) {
-                return false;
+            let offered = self.carrier.offer(output, &frame);
+            if !matches!(offered, Output::Queued) {
+                return offered;
             }
             self.credit -= bytes.len();
             self.pending_bytes -= bytes.len();
@@ -144,7 +145,7 @@ impl Channel {
             self.send += 1;
             self.activity = Instant::now();
         }
-        true
+        Output::Queued
     }
 
     fn enqueue(&mut self, bytes: Vec<u8>, max_frames: usize) -> bool {
@@ -343,7 +344,19 @@ impl Channels {
             Some("tunnel")
                 if header["lane"] == "stream" && header["channelKind"] == "reliable-stream" =>
             {
-                let tunnel = Tunnel::open(gateway, header, installed)?;
+                let frame_limit = carrier.message_limit("stream").map(|limit| {
+                    // Reserve space for the widest possible sequence once.
+                    // The remaining bytes carry one complete CTTN frame.
+                    let envelope = frame(
+                        header,
+                        "data",
+                        MAX_SEQUENCE,
+                        &data_fields("tunnel-data-plane-v1"),
+                        &[0],
+                    );
+                    limit.saturating_sub(envelope.bytes().len() - 1)
+                });
+                let tunnel = Tunnel::open(gateway, header, installed, frame_limit)?;
                 if self.active.values().any(|channel| {
                     matches!(&channel.resource, Resource::Tunnel(active) if active.attachment == tunnel.attachment)
                 }) {
@@ -584,17 +597,24 @@ impl Channels {
             if blocked.contains(&carrier) {
                 continue;
             }
-            if !channel.flush(output) {
-                blocked.insert(carrier);
-                continue;
+            match channel.flush(output) {
+                Output::Pending => {
+                    blocked.insert(carrier);
+                    continue;
+                }
+                Output::Closed => {
+                    finished.push((id.clone(), "endpoint-disconnected"));
+                    continue;
+                }
+                Output::Queued => {}
             }
             if channel.close_after_drain && channel.pending.is_empty() && channel.send > 0 {
-                finished.push(id.clone());
+                finished.push((id.clone(), "normal"));
             }
         }
         if !finished.is_empty() {
-            for id in finished {
-                self.close(&id, "normal");
+            for (id, code) in finished {
+                self.close(&id, code);
             }
             self.flush_controls(output);
         }
@@ -708,6 +728,13 @@ impl Channels {
             self.controls.push_back((carrier, frame));
         }
     }
+}
+
+fn data_fields(format: &str) -> [(&'static str, Value); 2] {
+    [
+        ("direction", json!("worker-to-client")),
+        ("payloadFormat", json!(format)),
+    ]
 }
 
 fn routing(source: &Value) -> Value {

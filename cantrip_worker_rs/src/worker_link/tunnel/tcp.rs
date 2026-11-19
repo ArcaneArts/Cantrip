@@ -142,7 +142,7 @@ async fn connected(
         .control("accepted", &[("initialCreditBytes", json!(INITIAL_CREDIT))]);
     if output.send(accepted).await {
         let initial = request["initialCreditBytes"].as_u64().unwrap() as usize;
-        Stream::new(initial, protection)
+        Stream::new(initial, protection, output.link.frame_limit)
             .run(socket, input, output)
             .await
     } else {
@@ -333,6 +333,8 @@ impl OutputStream {
 
 struct Stream {
     protection: Option<Value>,
+    frame_limit: Option<usize>,
+    chunk_limit: usize,
     destination_credit: usize,
     source_credit: usize,
     write_buffer: VecDeque<Zeroizing<Vec<u8>>>,
@@ -345,9 +347,15 @@ struct Stream {
 }
 
 impl Stream {
-    fn new(destination_credit: usize, protection: Option<Value>) -> Self {
+    fn new(
+        destination_credit: usize,
+        protection: Option<Value>,
+        frame_limit: Option<usize>,
+    ) -> Self {
         Self {
             protection,
+            frame_limit,
+            chunk_limit: wire::MAX_PLAINTEXT_BYTES,
             destination_credit,
             source_credit: 0,
             write_buffer: VecDeque::new(),
@@ -480,20 +488,28 @@ impl Stream {
         unread: &mut Range<usize>,
     ) -> Result<Option<Frame>, End> {
         if !Range::is_empty(unread) && self.destination_credit > 0 {
-            let len = self.destination_credit.min(unread.len());
-            let end = unread.start + len;
+            let mut len = self
+                .destination_credit
+                .min(unread.len())
+                .min(self.chunk_limit);
             let header = reply.header("data", &[("direction", json!(FROM_DESTINATION))]);
-            let payload = &buffer[unread.start..end];
-            let frame = if let Some(protection) = &self.protection {
-                let sealed = seal_tunnel_data_frame(protection, &header, payload)
-                    .map_err(|_| End::Close("protocol-error"))?;
-                wire::create(sealed.header, &sealed.payload)
-            } else {
-                wire::create(header, payload)
+            let mut frame = self.encode_data(&header, &buffer[unread.start..unread.start + len])?;
+            if let Some(limit) = self
+                .frame_limit
+                .filter(|&limit| frame.bytes().len() > limit)
+            {
+                // Measure the encoded CTTN header and tag. Only the fitting
+                // frame is emitted and charged against the stream's credit.
+                let overhead = frame.bytes().len() - len;
+                len = limit
+                    .checked_sub(overhead)
+                    .filter(|&len| len > 0)
+                    .ok_or(End::Close("congested"))?;
+                self.chunk_limit = len;
+                frame = self.encode_data(&header, &buffer[unread.start..unread.start + len])?;
             }
-            .map_err(|_| End::Close("protocol-error"))?;
             self.destination_credit -= len;
-            unread.start = end;
+            unread.start += len;
             return Ok(Some(frame));
         }
         if self.source_credit > 0 {
@@ -511,5 +527,16 @@ impl Stream {
             ));
         }
         Ok(None)
+    }
+
+    fn encode_data(&self, header: &Value, payload: &[u8]) -> Result<Frame, End> {
+        if let Some(protection) = &self.protection {
+            let sealed = seal_tunnel_data_frame(protection, header, payload)
+                .map_err(|_| End::Close("protocol-error"))?;
+            wire::create(sealed.header, &sealed.payload)
+        } else {
+            wire::create(header.clone(), payload)
+        }
+        .map_err(|_| End::Close("protocol-error"))
     }
 }
