@@ -4,7 +4,7 @@ use super::{
     text,
 };
 use crate::filesystem::Scope;
-use anyhow::{Context, Result, anyhow, bail, ensure};
+use anyhow::{Context, Result, anyhow, ensure};
 use cantrip_wire::{Value, parse_json_text, value::json};
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, percent_decode_str, utf8_percent_encode};
 use std::{process::Stdio, time::Duration};
@@ -17,6 +17,33 @@ use url::Url;
 
 const DEADLINE: Duration = Duration::from_secs(60);
 const FRAME_LIMIT: usize = 16 * 1024 * 1024;
+
+#[derive(Debug)]
+pub(super) struct RpcError {
+    method: String,
+    error: Value,
+}
+
+impl RpcError {
+    pub(super) fn unknown_session(&self, expected: &str) -> bool {
+        self.method == "initialize"
+            && self.error["code"] == -32600
+            && self.error["message"] == format!("unknown session id {expected}")
+    }
+}
+
+impl std::fmt::Display for RpcError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "Guest executor rejected {}: {}",
+            self.method,
+            self.error.stringify()
+        )
+    }
+}
+
+impl std::error::Error for RpcError {}
 
 pub(crate) struct Session<'a> {
     pub binding: Value,
@@ -144,10 +171,11 @@ impl<'a> Session<'a> {
             )
             .await?;
         if response["error"].is_object() {
-            bail!(
-                "Guest executor rejected {method}: {}",
-                response["error"].stringify()
-            );
+            return Err(RpcError {
+                method: method.to_owned(),
+                error: response["error"].clone(),
+            }
+            .into());
         }
         Ok(response["result"].clone())
     }

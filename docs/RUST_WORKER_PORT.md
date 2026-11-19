@@ -143,7 +143,7 @@ loaded by a production service.
 | WorkerLink/direct/tunnels | Gateways, peer/WebRTC, direct broker, tunnel protection and routing | Native installed authority, live observations, encrypted Host terminals and TCP, WebDAV shares, direct tickets, and LAN and WAN peer carriage | Continue managed console and guest/surface adapters. Local peer fixtures cover authenticated negotiation, encrypted TCP, credit, renewal, and revocation. |
 | Browsers/surfaces/computer use | Browser discovery, browser/desktop adapters, remote surfaces, computer use, and managed web runtimes | Native browser discovery, Chromium and CDP, encrypted surfaces with recovery, and signed managed Chromium installation | Public browser transport and Chromium recovery fixtures pass locally. The native installer verifies signed releases and probes Chromium. Legacy browser WebRTC, desktop capture, computer use, managed web sessions and search remain open. |
 | MCP/CLI/CodeGraph                  | `mcp/*`, CLI broker, computer-use MCP, codegraph/runtime/supervisor                                                                       | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Native stdio/HTTP helpers, generated/persisted launch commands, binding/generation scopes, CLI and managed-runtime fixtures                                                                                                                                                                                                      |
-| Cantrip OS | `cantrip_os/host`, `os-executor/*`, native MCP/run execution | Native guest inspection, attachment, workspace listing and creation, operation inspection, Linux-owned source provisioning and verification, linked Host mounts, guest Run definitions, and guest Run process supervision | Continue guest lifecycle, files, PTYs, tunnels, packages, backups, system operations and checkpoints. |
+| Cantrip OS | `cantrip_os/host`, `os-executor/*`, native MCP/run execution | Native guest inspection, attachment, workspace listing and creation, operation inspection, Linux-owned source provisioning and verification, linked Host mounts, guest Run definitions and process supervision, and guest Explorer navigation and text documents | Continue guest file transfers and previews, chat files, lifecycle, PTYs, tunnels, packages, backups, system operations and checkpoints. |
 | Upgrade and packaging              | profile converter/database-transfer, server profile preparation, desktop services/worker, distribution/runtime scripts, worker Dockerfile | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Node-free legacy conversion/export/restore, desktop/standalone artifacts, existing-profile reopen and actual child-process/runtime audit                                                                                                                                                                                         |
 
 The source index includes existing tests with their source hashes. Each port must
@@ -6616,3 +6616,33 @@ Node differential behavior, and four focused Rust unit tests also passed.
 The guest runtime was exercised on Docker ARM64. SSH, AMD64 and Windows guest
 carriers were outside this validation. Desktop and standalone worker cutover
 remain open.
+
+## 165. Serve guest Explorer and text documents from the Rust worker
+
+Reference commit ab48f0a58cf11bd1175f5e8eee8017dbf46d628f (#3328).
+
+The Rust worker resolves the captured Linux Explorer or document placement
+and runs a finite helper from executor 0.15.0 as the admitted workspace
+account. The helper reuses the Host filesystem engine for listing, search,
+directory commits, text reads and writes, creation, rename and deletion.
+Linked worktree commit history continues to use the linked Host checkout.
+Purpose-specific surface encryption stays on the worker.
+
+The worker and helper use the existing placement and operation digests,
+worker admission records and guest receipt paths. A saved mutation may
+return its known receipt after reconnect. If the helper cannot establish
+completion, the result remains unknown. Before admitting a replacement
+helper, the worker resolves any pending helper using its captured executor
+generation, session and process identifier.
+
+The local macOS ARM64 fixture ran the production Rust server and worker
+against an upgraded disposable ARM64 Docker guest. It opened protected
+Explorer and file-document resources, wrote Unicode across carrier chunks,
+and verified checkout containment and a document's exact path restriction.
+The legacy and native helpers read each other's saved mutation receipts.
+The restarted worker returned the original receipt after the fixture changed
+the file independently, then reported an unknown outcome for an incomplete
+receipt without changing that file. The guest Run lifecycle smoke and the
+Explorer unit test also passed. SSH, Windows, and release image builds were
+outside this validation. Paged reads, binary writes, imports and chat file
+integration remain open.

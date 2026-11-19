@@ -26,9 +26,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /source
 
-# This binary runs once as the existing guest workspace account. Reuse the
-# worker's definitions code while packaging only the finite guest entry point.
-FROM toolchain AS run-definition-helper
+# Both helpers run as the existing guest workspace account. Reuse the
+# worker's filesystem and definitions code in the finite guest entry points.
+FROM toolchain AS native-helpers
 ARG CARGO_BUILD_JOBS=6
 RUN --mount=type=bind,source=.,target=/source,readonly \
     --mount=type=cache,target=/usr/local/cargo/registry \
@@ -37,8 +37,10 @@ RUN --mount=type=bind,source=.,target=/source,readonly \
     CANTRIP_VERSION_PATCH=0 CARGO_TARGET_DIR=/target CARGO_INCREMENTAL=0 \
     CARGO_BUILD_JOBS=$CARGO_BUILD_JOBS \
     cargo build --locked --release -p cantrip-worker \
-      --features guest-run-definitions --bin cantrip-os-run-definitions \
-    && install -D /target/release/cantrip-os-run-definitions /out/cantrip-os-run-definitions
+      --features guest-run-definitions,guest-files \
+      --bin cantrip-os-run-definitions --bin cantrip-os-files \
+    && install -D /target/release/cantrip-os-run-definitions /out/cantrip-os-run-definitions \
+    && install -D /target/release/cantrip-os-files /out/cantrip-os-files
 
 # Build the pinned executor and its sandbox helper with reviewed patches.
 FROM toolchain AS compiler
@@ -65,7 +67,7 @@ COPY --from=executor-runtime /executor/ /runtime/
 COPY cantrip_os/packages/executor/ /package/
 COPY --from=file-helper /out/file-operations.mjs /out/run-definitions.mjs /out/run-plan.mjs /package/root/usr/lib/cantrip-os-executor/
 COPY --from=file-helper /out/process-owner /package/root/usr/lib/cantrip-os-executor/process-owner
-COPY --from=run-definition-helper /out/cantrip-os-run-definitions /package/root/usr/lib/cantrip-os-executor/cantrip-os-run-definitions
+COPY --from=native-helpers /out/cantrip-os-run-definitions /out/cantrip-os-files /package/root/usr/lib/cantrip-os-executor/
 COPY --from=file-helper /out/file-helper-zod-LICENSE /package/root/usr/share/doc/cantrip-os-executor/file-helper-zod-LICENSE
 COPY --from=file-helper /out/run-helper-dotenv-LICENSE /out/run-helper-smol-toml-LICENSE /package/root/usr/share/doc/cantrip-os-executor/
 RUN /package/build.sh /runtime /out

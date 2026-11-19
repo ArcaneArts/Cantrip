@@ -44,7 +44,7 @@ export async function seedProjects(executable, root, dataDirectory) {
   return projects;
 }
 
-async function grant(call, workerId, data, runRuntime) {
+async function grant(call, workerId, data, runRuntime, productFiles) {
   const identity = JSON.parse(
     await readFile(path.join(data, "worker-encryption-key.json"), "utf8"),
   );
@@ -94,6 +94,8 @@ async function grant(call, workerId, data, runRuntime) {
   });
   const components = ["repository-content"];
   if (runRuntime) components.push("run-content");
+  if (productFiles)
+    components.push("surface-private-state", "private-surface-metadata");
   const keys = new Map();
   for (const component of components) {
     const componentKey = crypto.deriveComponentKey({
@@ -131,6 +133,7 @@ export async function verifySources({
   data,
   bootstrap,
   hash,
+  transport,
   container,
   docker,
   eventually,
@@ -138,12 +141,13 @@ export async function verifySources({
   runDefinitions,
   runPlan,
   runRuntime,
+  productFiles,
   crashWorker,
   stopWorker,
   restartWorker,
 }) {
   assert.equal(os.ownerId, ownerId);
-  const keys = await grant(call, workerId, data, runRuntime);
+  const keys = await grant(call, workerId, data, runRuntime, productFiles);
   const componentKey = keys.get("repository-content");
   const serverId = bootstrap.server.id;
   const workspaces = await call("GET", `/api/cantrip-os/${os.id}/workspaces`);
@@ -389,6 +393,28 @@ export async function verifySources({
         eventually,
         crashWorker,
       },
+    });
+  }
+  if (productFiles) {
+    const { verifyProductFiles } =
+      await import("./cantrip-os-product-file-cases.mjs");
+    await verifyProductFiles({
+      call,
+      target: tree,
+      workspace,
+      os,
+      actual,
+      data,
+      serverId,
+      workerId,
+      hash,
+      docker,
+      transport,
+      container,
+      crashWorker,
+      restartWorker,
+      surfaceKey: keys.get("surface-private-state"),
+      metadataKey: keys.get("private-surface-metadata"),
     });
   }
   if (!linkedFixture) return;

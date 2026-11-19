@@ -143,9 +143,11 @@ async fn cycle(
     let surface_replay = Arc::new(Mutex::new(
         crate::protected_content::SurfaceStreamReplayGuard::default(),
     ));
-    let explorer_operations = Arc::new(
-        crate::explorer_operations::ExplorerOperations::with_replay(surface_replay.clone()),
-    );
+    let explorer_operations =
+        Arc::new(crate::explorer_operations::ExplorerOperations::with_replay(
+            surface_replay.clone(),
+            &config.data_directory,
+        ));
     let (direct, direct_listener) =
         crate::worker_link::DirectBroker::bind(worker.clone(), logs.clone()).await?;
     let mut heartbeat = http::heartbeat(&config, host.platform, host.architecture, &started)?;

@@ -18,6 +18,7 @@ const { values } = parseArgs({
     "executor-package": { type: "string" },
     "run-plan": { type: "boolean", default: false },
     "run-runtime": { type: "boolean", default: false },
+    "product-files": { type: "boolean", default: false },
     linked: { type: "boolean", default: false },
     image: { type: "string", default: "cantrip-os:dev" },
   },
@@ -32,8 +33,9 @@ assert.ok(
   "--executor-package uses the source fixture",
 );
 assert.ok(
-  !(values["run-plan"] || values["run-runtime"]) || values["executor-package"],
-  "Run preparation and lifecycle use the upgraded executor",
+  !(values["run-plan"] || values["run-runtime"] || values["product-files"]) ||
+    values["executor-package"],
+  "Guest file and Run cases use the upgraded executor",
 );
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-rust-os-workspaces-"));
 const name = `cantrip-rust-os-${randomUUID()}`;
@@ -358,6 +360,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       data,
       bootstrap,
       hash,
+      transport,
       container,
       docker,
       eventually,
@@ -365,6 +368,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       runDefinitions: !!values["executor-package"],
       runPlan: values["run-plan"],
       runRuntime: values["run-runtime"],
+      productFiles: values["product-files"],
       stopWorker,
       crashWorker: async () => {
         const running = worker;

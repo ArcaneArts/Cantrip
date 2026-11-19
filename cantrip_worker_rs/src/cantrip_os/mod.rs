@@ -5,6 +5,7 @@ mod linked;
 mod lock;
 pub(crate) mod operations;
 mod process;
+pub(crate) mod product_files;
 mod replacement;
 mod run_definitions;
 pub(crate) mod session;

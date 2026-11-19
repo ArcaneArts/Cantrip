@@ -8,11 +8,17 @@ default-run = "cantrip-worker"
 
 [features]
 guest-run-definitions = []
+guest-files = []
 
 [[bin]]
 name = "cantrip-os-run-definitions"
 path = "src/bin/os-run-definitions.rs"
 required-features = ["guest-run-definitions"]
+
+[[bin]]
+name = "cantrip-os-files"
+path = "src/bin/os-files.rs"
+required-features = ["guest-files"]
 
 [dependencies]
 anyhow = "1"
