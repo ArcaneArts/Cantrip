@@ -283,6 +283,7 @@ async fn cycle(
         worktrees.clone(),
         routing.clone(),
         logs.clone(),
+        &configuration.lock().unwrap().data_directory,
     ));
     worker_link.configure_terminals(shells.clone(), runs.clone());
     codex.configure_inference_status({

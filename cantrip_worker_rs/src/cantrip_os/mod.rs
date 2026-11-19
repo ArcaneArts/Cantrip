@@ -1,13 +1,13 @@
 //! Administrative commands admitted by Core and executed by the owning worker.
-mod carrier;
+pub(crate) mod carrier;
 mod docker;
 mod linked;
 mod lock;
-mod operations;
+pub(crate) mod operations;
 mod process;
 mod replacement;
 mod run_definitions;
-mod session;
+pub(crate) mod session;
 mod sources;
 
 use crate::{encryption::Service, filesystem::Scope, routing::Registry};
@@ -48,7 +48,7 @@ async fn status(transport: &Transport, lifetime: &Scope) -> Result<Value> {
     Ok(status)
 }
 
-async fn assert_scope(
+pub(crate) async fn assert_scope(
     transport: &Transport,
     scope: &Value,
     attached: bool,
@@ -269,7 +269,7 @@ impl Controller {
     }
 }
 
-fn text<'a>(value: &'a Value, field: &str) -> Result<&'a str> {
+pub(crate) fn text<'a>(value: &'a Value, field: &str) -> Result<&'a str> {
     value[field]
         .as_str()
         .with_context(|| format!("Invalid OS command field {field}."))

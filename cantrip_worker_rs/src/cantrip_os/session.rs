@@ -18,7 +18,7 @@ use url::Url;
 const DEADLINE: Duration = Duration::from_secs(60);
 const FRAME_LIMIT: usize = 16 * 1024 * 1024;
 
-pub(super) struct Session<'a> {
+pub(crate) struct Session<'a> {
     pub binding: Value,
     lifetime: &'a Scope,
     child: Child,
@@ -106,7 +106,11 @@ impl<'a> Session<'a> {
                 .await?;
             let id = text(&receipt, "sessionId")?.to_owned();
             session
-                .exchange(json!({"method":"initialized","params":Value::Null}), None)
+                .exchange(
+                    json!({"method":"initialized","params":Value::Null}),
+                    None,
+                    DEADLINE,
+                )
                 .await?;
             Ok(id)
         }
@@ -121,10 +125,23 @@ impl<'a> Session<'a> {
     }
 
     pub async fn request(&mut self, method: &str, params: Value) -> Result<Value> {
+        self.request_with_timeout(method, params, DEADLINE).await
+    }
+
+    pub async fn request_with_timeout(
+        &mut self,
+        method: &str,
+        params: Value,
+        deadline: Duration,
+    ) -> Result<Value> {
         let id = self.next_id;
         self.next_id += 1;
         let response = self
-            .exchange(json!({"id":id,"method":method,"params":params}), Some(id))
+            .exchange(
+                json!({"id":id,"method":method,"params":params}),
+                Some(id),
+                deadline,
+            )
             .await?;
         if response["error"].is_object() {
             bail!(
@@ -135,7 +152,12 @@ impl<'a> Session<'a> {
         Ok(response["result"].clone())
     }
 
-    async fn exchange(&mut self, message: Value, id: Option<u64>) -> Result<Value> {
+    async fn exchange(
+        &mut self,
+        message: Value,
+        id: Option<u64>,
+        deadline: Duration,
+    ) -> Result<Value> {
         let mut frame = message.stringify();
         frame.push('\n');
         ensure!(
@@ -148,7 +170,7 @@ impl<'a> Session<'a> {
             .as_mut()
             .context("Guest executor carrier is closed.")?;
         let output = &mut self.output;
-        let exchange = timeout(DEADLINE, async {
+        let exchange = timeout(deadline, async {
             input.write_all(frame.as_bytes()).await?;
             let Some(id) = id else {
                 return Ok(Value::Null);
@@ -223,7 +245,7 @@ const URI_SEGMENT: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'(')
     .remove(b')');
 
-pub(super) fn file_uri(path: &str) -> Result<Url> {
+pub(crate) fn file_uri(path: &str) -> Result<Url> {
     super::checked("cantripOsGuestPathSchema", json!(path))?;
     let encoded = path
         .split('/')

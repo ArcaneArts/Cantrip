@@ -8,6 +8,7 @@ const SCROLLBACK: usize = 256 * 1024;
 pub(super) struct Output {
     buffer: VecDeque<u16>,
     redactor: Redactor,
+    incomplete: bool,
 }
 
 impl Output {
@@ -39,10 +40,23 @@ impl Output {
         self.buffer.drain(..excess);
     }
 
+    pub fn mark_incomplete(&mut self) {
+        self.incomplete = true;
+    }
+
+    pub fn redact(&self, text: &str) -> String {
+        String::from_utf16_lossy(
+            &self
+                .redactor
+                .transform(&text.encode_utf16().collect::<Vec<_>>(), true)
+                .0,
+        )
+    }
+
     pub fn tail(&self, tail: usize) -> Value {
         let skip = self.buffer.len().saturating_sub(tail);
         let data = JsString::new(self.buffer.iter().skip(skip).copied().collect());
-        json!({"data":data,"truncated":skip != 0})
+        json!({"data":data,"truncated":self.incomplete || skip != 0})
     }
 }
 

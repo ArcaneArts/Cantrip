@@ -410,38 +410,7 @@ fn secrets(
                             true,
                         )
                     })?;
-                let encrypted = &record["protectedValue"];
-                let unavailable = |_| {
-                    error(
-                        "secret-reference-unavailable",
-                        format!("Secret reference {reference} could not be opened on this worker."),
-                        true,
-                    )
-                };
-                let grant = encryption
-                    .bound_component("run-content", encrypted["keyRevision"].as_u64())
-                    .map_err(|cause| unavailable(anyhow::Error::from(cause)))?;
-                let binding = protection::secret(
-                    &grant.owner_id,
-                    project,
-                    &json!(reference),
-                    grant.component.key_revision,
-                );
-                let content = decrypt_secret(
-                    &grant.component.key,
-                    &binding,
-                    encrypted,
-                    protection::SECRET_SCHEMA,
-                    Some(protection::SECRET_LIMIT),
-                )
-                .map_err(unavailable)?;
-                vacant.insert(Zeroizing::new(
-                    content["value"]
-                        .as_js_string()
-                        .unwrap()
-                        .lossy()
-                        .into_owned(),
-                ))
+                vacant.insert(open_secret(project, record, encryption)?)
             }
         };
         put(
@@ -451,6 +420,49 @@ fn secrets(
         );
     }
     Ok(environment)
+}
+
+pub(super) fn open_secret(
+    project: &Value,
+    record: &Value,
+    encryption: &Service,
+) -> Result<Zeroizing<String>, Failure> {
+    let reference = &record["reference"];
+    let unavailable = |_| {
+        error(
+            "secret-reference-unavailable",
+            format!(
+                "Secret reference {} could not be opened on this worker.",
+                reference.as_str().unwrap()
+            ),
+            true,
+        )
+    };
+    let encrypted = &record["protectedValue"];
+    let grant = encryption
+        .bound_component("run-content", encrypted["keyRevision"].as_u64())
+        .map_err(|cause| unavailable(anyhow::Error::from(cause)))?;
+    let binding = protection::secret(
+        &grant.owner_id,
+        project,
+        reference,
+        grant.component.key_revision,
+    );
+    let content = decrypt_secret(
+        &grant.component.key,
+        &binding,
+        encrypted,
+        protection::SECRET_SCHEMA,
+        Some(protection::SECRET_LIMIT),
+    )
+    .map_err(unavailable)?;
+    Ok(Zeroizing::new(
+        content["value"]
+            .as_js_string()
+            .unwrap()
+            .lossy()
+            .into_owned(),
+    ))
 }
 
 async fn codex(

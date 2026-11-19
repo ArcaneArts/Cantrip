@@ -26,7 +26,7 @@ impl Drop for Active<'_> {
     }
 }
 
-pub(super) fn digest(value: Value) -> String {
+pub(crate) fn digest(value: Value) -> String {
     sha256(value.stringify().as_bytes())
 }
 
@@ -41,7 +41,7 @@ fn now() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
-pub(super) fn save(file: &Path, record: &Value, exclusive: bool) -> Result<()> {
+pub(crate) fn save(file: &Path, record: &Value, exclusive: bool) -> Result<()> {
     let directory = file.parent().context("OS operation directory")?;
     cantrip_host::files::private_directory(directory)?;
     cantrip_host::files::secure_directory(directory)?;

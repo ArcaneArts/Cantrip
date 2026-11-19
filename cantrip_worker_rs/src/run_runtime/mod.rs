@@ -1,5 +1,6 @@
-//! Host Run lifecycle. Core owns admission and durable identity. Each worker
+//! Host and Linux guest Run lifecycles. Core owns admission and durable identity. Each worker
 //! generation owns its setup and PTY handles, and returns only protected output.
+mod guest;
 #[cfg(all(feature = "guest-run-definitions", target_os = "linux"))]
 pub(crate) mod guest_plan;
 mod layers;
@@ -45,6 +46,7 @@ const RETAINED: usize = 256;
 pub(crate) struct Manager {
     entries: Mutex<IndexMap<JsString, Arc<Slot>>>,
     worker: JsString,
+    guest_journals: PathBuf,
     environment: Arc<Environment>,
     encryption: Arc<Service>,
     outbound: Arc<Outbound>,
@@ -61,7 +63,8 @@ struct Slot {
 struct Job {
     stop: watch::Sender<bool>,
     force: Arc<AtomicBool>,
-    task: JoinHandle<Option<process::Exit>>,
+    task: Option<JoinHandle<Result<Option<process::Exit>>>>,
+    guest_capture: Option<Value>,
 }
 
 pub(super) struct Control {
@@ -71,6 +74,7 @@ pub(super) struct Control {
 
 pub(super) struct LaunchJob {
     command: Value,
+    resume_only: bool,
     control: Control,
     session: Arc<Mutex<Session>>,
 }
@@ -161,10 +165,12 @@ impl Manager {
         worktrees: Arc<worktrees::Manager>,
         routing: Arc<Registry>,
         logs: Arc<Logs>,
+        data_directory: &Path,
     ) -> Self {
         Self {
             entries: Default::default(),
             worker,
+            guest_journals: data_directory.join("os-run-generations"),
             environment,
             encryption,
             outbound,
@@ -176,20 +182,34 @@ impl Manager {
 
     pub(crate) fn supports(kind: &str) -> bool {
         matches!(
-            kind.strip_prefix(PREFIX),
+            kind.strip_prefix(PREFIX)
+                .or_else(|| kind.strip_prefix(guest::PREFIX)),
             Some("start" | "restart" | "stop" | "status" | "output" | "reconcile")
         )
     }
 
     pub(crate) async fn execute(self: &Arc<Self>, command: &Value, scope: &Scope) -> Result<Value> {
         scope.check()?;
-        let action = command["type"]
-            .as_str()
-            .and_then(|kind| kind.strip_prefix(PREFIX))
+        let kind = command["type"].as_str().context("Run action")?;
+        let linux = kind.starts_with(guest::PREFIX);
+        let resolved;
+        let command = if linux {
+            resolved = self.routing.resolve(command).await?;
+            &resolved
+        } else {
+            command
+        };
+        let action = kind
+            .strip_prefix(if linux { guest::PREFIX } else { PREFIX })
             .context("Run action")?;
         if action == "reconcile" {
             return self
-                .reconcile(command["identities"].as_array().unwrap())
+                .reconcile(
+                    command[if linux { "captures" } else { "identities" }]
+                        .as_array()
+                        .unwrap(),
+                    linux,
+                )
                 .await;
         }
         let identity = &command["identity"];
@@ -197,15 +217,18 @@ impl Manager {
             identity["workerId"].as_js_string() == Some(&self.worker),
             "The Run configuration belongs to another worker."
         );
+        if linux {
+            guest::authorize(self, command)?;
+        }
         let id = identity["runtimeId"].as_js_string().unwrap();
         match action {
             "status" => checked(
                 "runConfigurationRuntimeWorkerLookupSchema",
-                &self.lookup(identity),
+                &self.lookup(identity, linux.then_some(command))?,
             ),
             "output" => self.output(command),
             "start" | "restart" => self.admit(id, command, action == "restart", scope).await,
-            "stop" => self.stop(id, identity).await,
+            "stop" => self.stop(id, command).await,
             _ => bail!("Unknown Run configuration runtime action."),
         }
     }
@@ -232,15 +255,17 @@ impl Manager {
                 .iter()
                 .filter_map(|(id, slot)| {
                     let state = slot.shared.lock().unwrap();
-                    (!state.phase().active() && Arc::strong_count(slot) == 1).then(|| {
-                        (
-                            id.clone(),
-                            state.observation["endedAt"]
-                                .as_str()
-                                .unwrap_or("")
-                                .to_owned(),
-                        )
-                    })
+                    ((state.observation.is_null() || !state.phase().active())
+                        && Arc::strong_count(slot) == 1)
+                        .then(|| {
+                            (
+                                id.clone(),
+                                state.observation["endedAt"]
+                                    .as_str()
+                                    .unwrap_or("")
+                                    .to_owned(),
+                            )
+                        })
                 })
                 .min_by(|(_, left), (_, right)| left.cmp(right));
             if let Some((id, _)) = oldest {
@@ -279,6 +304,7 @@ impl Manager {
         let (replaying_restart, initial) = {
             let mut state = slot.shared.lock().unwrap();
             state.assert_identity(identity)?;
+            state.assert_placement(guest::is_guest(command).then_some(command))?;
             ensure!(
                 self.current_authority(&state),
                 "The Run configuration belongs to another server authorization."
@@ -320,12 +346,8 @@ impl Manager {
             }
             (replaying, initial)
         };
-        if let Some(job) = running.as_mut() {
-            // Restart retires the actual previous process before a replacement
-            // may start. A naturally ended generation joins here as well.
-            job.retire(true, Duration::ZERO).await?;
-            running.take();
-        }
+        // Restart joins the actual previous process before a replacement may start.
+        self.retire_job(&mut running, true, Duration::ZERO).await?;
         let accepted = {
             let mut state = slot.shared.lock().unwrap();
             if !initial {
@@ -352,34 +374,64 @@ impl Manager {
                 Some(&state.observation),
             )?
         };
+        *running = Some(self.spawn(&slot, command, false));
+        Ok(accepted)
+    }
+
+    fn spawn(self: &Arc<Self>, slot: &Slot, command: &Value, resume_only: bool) -> Job {
         let manager = self.clone();
         let (stop, stopped) = watch::channel(false);
         let force = Arc::new(AtomicBool::new(false));
-        let job = LaunchJob {
+        let launch = LaunchJob {
             command: command.clone(),
+            resume_only,
             session: slot.shared.clone(),
             control: Control {
                 stop: stopped,
                 force: force.clone(),
             },
         };
-        let task = tokio::spawn(async move { manager.run(job).await });
-        *running = Some(Job { stop, force, task });
-        Ok(accepted)
+        let task = tokio::spawn(async move { manager.run(launch).await });
+        Job {
+            stop,
+            force,
+            task: Some(task),
+            guest_capture: guest::is_guest(command).then(|| command.clone()),
+        }
     }
 
-    async fn stop(&self, id: &JsString, identity: &Value) -> Result<Value> {
-        let Some(slot) = self.slot(id) else {
+    async fn stop(&self, id: &JsString, command: &Value) -> Result<Value> {
+        let identity = &command["identity"];
+        let linux = guest::is_guest(command);
+        let slot = if linux {
+            self.get_or_create(id, command, false)?
+        } else {
+            self.slot(id)
+        };
+        let Some(slot) = slot else {
             return result("not-found", None);
         };
         let mut running = slot.queue.lock().await;
-        let (replaying_stop, grace) = {
-            let mut state = slot.shared.lock().unwrap();
+        let cold = {
+            let state = slot.shared.lock().unwrap();
             state.assert_identity(identity)?;
+            state.assert_placement(linux.then_some(command))?;
             ensure!(
                 self.current_authority(&state),
                 "The Run configuration belongs to another server authorization."
             );
+            state.observation.is_null()
+        };
+        if cold && linux {
+            let exit = guest::stop_recorded(self, command).await?;
+            let mut state = slot.shared.lock().unwrap();
+            state.begin(identity, Session::requested(command), Phase::Stopping);
+            state.end(Phase::Idle, exit, None);
+            self.emit(&state);
+            return result("accepted", Some(&state.observation));
+        }
+        let (replaying_stop, grace, recorded_cleanup) = {
+            let mut state = slot.shared.lock().unwrap();
             let same = state.identity == *identity;
             let phase = state.phase();
             let replaying = same && phase == Phase::Stopping;
@@ -397,23 +449,24 @@ impl Manager {
                         == state.identity["codexEnvironmentRevision"],
                 "The stop target does not match the active generation."
             );
-            if !phase.active() {
+            let recorded_cleanup = linux && (!phase.active() || running.is_none());
+            if !phase.active() && !recorded_cleanup {
                 return result("replayed", Some(&state.observation));
             }
             if !replaying {
                 state.identity["operationId"] = identity["operationId"].clone();
                 state.observation["operationId"] = identity["operationId"].clone();
-                state.set_phase(Phase::Stopping);
+                state.stopping();
                 self.emit(&state);
             }
-            (replaying, state.grace)
+            (replaying, state.grace, recorded_cleanup)
         };
-        let exit = if let Some(job) = running.as_mut() {
-            job.retire(false, grace).await?
+        let exit = self.retire_job(&mut running, false, grace).await?;
+        let exit = if recorded_cleanup && exit.is_none() {
+            guest::stop_recorded(self, command).await?
         } else {
-            None
+            exit
         };
-        running.take();
         let mut state = slot.shared.lock().unwrap();
         state.end(Phase::Idle, exit, None);
         self.emit(&state);
@@ -427,17 +480,18 @@ impl Manager {
         )
     }
 
-    fn lookup(&self, identity: &Value) -> Value {
+    fn lookup(&self, identity: &Value, guest_capture: Option<&Value>) -> Result<Value> {
         if let Some(slot) = self.slot(identity["runtimeId"].as_js_string().unwrap()) {
             let state = slot.shared.lock().unwrap();
+            state.assert_placement(guest_capture)?;
             if state.identity == *identity
                 && !state.observation.is_null()
                 && self.current_authority(&state)
             {
-                return json!({"found":true,"observation":state.observation});
+                return Ok(json!({"found":true,"observation":state.observation}));
             }
         }
-        json!({"found":false,"identity":identity})
+        Ok(json!({"found":false,"identity":identity}))
     }
 
     fn output(&self, command: &Value) -> Result<Value> {
@@ -450,6 +504,7 @@ impl Manager {
         let authority = self.encryption.bound_identity()?;
         let content = {
             let state = slot.shared.lock().unwrap();
+            state.assert_placement(guest::is_guest(command).then_some(command))?;
             if state.identity != *identity || state.authority.as_ref() != Some(&authority) {
                 return Err(unavailable());
             }
@@ -476,22 +531,29 @@ impl Manager {
         )
     }
 
-    async fn reconcile(&self, identities: &[Value]) -> Result<Value> {
-        let found = identities
-            .iter()
-            .map(|identity| self.lookup(identity))
-            .collect::<Vec<_>>();
-        let expected: HashMap<_, _> = identities
-            .iter()
-            .map(|identity| (identity["runtimeId"].as_js_string().unwrap(), identity))
-            .collect();
+    async fn reconcile(self: &Arc<Self>, captures: &[Value], linux: bool) -> Result<Value> {
+        let mut found = Vec::with_capacity(captures.len());
+        let mut expected = HashMap::new();
+        for captured in captures {
+            let identity = if linux {
+                guest::authorize(self, captured)?;
+                self.recover(captured).await?;
+                &captured["identity"]
+            } else {
+                captured
+            };
+            expected.insert(identity["runtimeId"].as_js_string().unwrap(), identity);
+            found.push(self.lookup(identity, linux.then_some(captured))?);
+        }
         let entries = self.snapshot();
         let retired = futures::future::join_all(entries.into_iter().map(|(id, slot)| {
             let expected = expected.get(&id).copied();
             async move {
-                self.retire_slot(&slot, |state| expected != Some(&state.identity))
-                    .await
-                    .map(|retired| retired.then_some(id))
+                self.retire_slot(&slot, |state| {
+                    state.is_guest() == linux && expected != Some(&state.identity)
+                })
+                .await
+                .map(|retired| retired.then_some(id))
             }
         }))
         .await
@@ -502,6 +564,64 @@ impl Manager {
             "runConfigurationRuntimeWorkerReconciliationSchema",
             &json!({"runtimes":found,"orphanedRuntimeIds":orphaned}),
         )
+    }
+
+    async fn recover(self: &Arc<Self>, command: &Value) -> Result<()> {
+        let capture = guest::capture(command)?;
+        let identity = &capture["identity"];
+        let id = identity["runtimeId"].as_js_string().unwrap();
+        if self
+            .slot(id)
+            .is_some_and(|slot| !slot.shared.lock().unwrap().observation.is_null())
+        {
+            return Ok(());
+        }
+        let Some(saved) = guest::recovery(&self.guest_journals, &capture)? else {
+            return Ok(());
+        };
+        let slot = self.get_or_create(id, &saved, false)?.unwrap();
+        let mut running = slot.queue.lock().await;
+        {
+            let mut state = slot.shared.lock().unwrap();
+            if !state.observation.is_null() {
+                return Ok(());
+            }
+            state.assert_identity(identity)?;
+            state.assert_placement(Some(&saved))?;
+            ensure!(
+                self.current_authority(&state),
+                "The Run configuration belongs to another server authorization."
+            );
+            state.begin(identity, Session::requested(&saved), Phase::Starting);
+            self.emit(&state);
+        }
+        *running = Some(self.spawn(&slot, &saved, true));
+        Ok(())
+    }
+
+    async fn retire_job(
+        &self,
+        running: &mut Option<Job>,
+        force: bool,
+        grace: Duration,
+    ) -> Result<Option<process::Exit>> {
+        let Some(job) = running else {
+            return Ok(None);
+        };
+        let result = job.retire(force, grace).await;
+        let result = match result {
+            Err(error) if job.task.is_none() => {
+                if let Some(capture) = &job.guest_capture {
+                    guest::stop_recorded(self, capture).await
+                } else {
+                    *running = None;
+                    Err(error)
+                }
+            }
+            other => other,
+        }?;
+        *running = None;
+        Ok(result)
     }
 
     fn snapshot(&self) -> Vec<(JsString, Arc<Slot>)> {
@@ -521,17 +641,19 @@ impl Manager {
         let mut running = slot.queue.lock().await;
         {
             let mut state = slot.shared.lock().unwrap();
-            if state.observation.is_null() || !state.phase().active() || !matches(&state) {
+            let unresolved_guest =
+                state.is_guest() && state.phase() == Phase::Lost && running.is_some();
+            if state.observation.is_null()
+                || (!state.phase().active() && !unresolved_guest)
+                || !matches(&state)
+            {
                 return Ok(false);
             }
             // Fence completion callbacks before awaiting teardown. Core can
             // retry retirement if the actual owned exit remains unconfirmed.
-            state.set_phase(Phase::Stopping);
+            state.stopping();
         }
-        if let Some(job) = running.as_mut() {
-            job.retire(true, Duration::ZERO).await?;
-        }
-        running.take();
+        self.retire_job(&mut running, true, Duration::ZERO).await?;
         let mut state = slot.shared.lock().unwrap();
         state.end(
             Phase::Lost,
@@ -562,19 +684,31 @@ impl Manager {
         for (_, slot) in self.snapshot() {
             let (placement, active) = {
                 let state = slot.shared.lock().unwrap();
-                (state.placement.clone(), state.phase().active())
+                (
+                    state.placement.clone(),
+                    state.phase().active() || state.is_guest() && state.phase() == Phase::Lost,
+                )
             };
             if !active {
                 continue;
             }
             let mut requested = Vec::new();
-            for key in ["sourcePath", "targetPath"] {
-                if let Ok(resolved) = self.routing.resolve(&placement[key]).await
-                    && let Some(value) = resolved.as_js_string()
-                {
-                    let value = paths::native(value);
-                    let path = paths::canonical(&value).await.unwrap_or(value);
-                    requested.push(path);
+            if guest::is_guest(&placement) {
+                for root in ["definitions", "target"] {
+                    if let Some(value) = placement[root]["scope"]["linkedWorkerPath"].as_js_string()
+                    {
+                        requested.push(paths::native(value));
+                    }
+                }
+            } else {
+                for key in ["sourcePath", "targetPath"] {
+                    if let Ok(resolved) = self.routing.resolve(&placement[key]).await
+                        && let Some(value) = resolved.as_js_string()
+                    {
+                        let value = paths::native(value);
+                        let path = paths::canonical(&value).await.unwrap_or(value);
+                        requested.push(path);
+                    }
                 }
             }
             self.retire_slot(&slot, |state| {
@@ -630,8 +764,15 @@ impl Manager {
         }));
     }
 
-    async fn run(&self, job: LaunchJob) -> Option<process::Exit> {
-        let completion = self.launch(&job).await;
+    async fn run(&self, job: LaunchJob) -> Result<Option<process::Exit>> {
+        let linux = guest::is_guest(&job.command);
+        let completion = if linux {
+            guest::launch(self, &job).await
+        } else {
+            self.launch(&job).await
+        };
+        let uncertain =
+            linux && matches!(&completion, Err(failure) if failure.phase == "reconcile");
         let mut state = job.session.lock().unwrap();
         if state.identity == job.command["identity"]
             && matches!(state.phase(), Phase::Starting | Phase::Running)
@@ -646,15 +787,29 @@ impl Manager {
                         "configurationId":state.identity["configurationId"],"generation":state.generation()});
                     self.logs
                         .event("warn", "Run configuration process failed to start", detail);
-                    state.end(Phase::Failed, None, Some(failure));
+                    state.end(
+                        if uncertain {
+                            Phase::Lost
+                        } else {
+                            Phase::Failed
+                        },
+                        None,
+                        Some(failure),
+                    );
                 }
-                Ok(None) => return None,
+                Ok(None) => return Ok(None),
             }
             self.emit(&state);
-            None
+            if uncertain {
+                bail!(guest::TERMINATION_UNKNOWN);
+            }
+            Ok(None)
         } else {
             // The Stop/Restart command owns the transition and generation.
-            completion.ok().flatten()
+            if uncertain {
+                bail!(guest::TERMINATION_UNKNOWN);
+            }
+            Ok(completion.ok().flatten())
         }
     }
 
@@ -852,20 +1007,33 @@ impl Manager {
 
 impl Job {
     async fn retire(&mut self, force: bool, grace: Duration) -> Result<Option<process::Exit>> {
+        let Some(task) = self.task.as_mut() else {
+            bail!(guest::TERMINATION_UNKNOWN);
+        };
         if force {
             self.force.store(true, Ordering::Release);
         }
-        if !self.task.is_finished() {
+        if !task.is_finished() {
             self.stop.send_replace(true);
         }
-        let result = tokio::time::timeout(grace + Duration::from_millis(1600), &mut self.task)
+        let limit = if self.guest_capture.is_some() {
+            Duration::from_secs(30)
+        } else {
+            Duration::from_millis(1600)
+        };
+        let result = tokio::time::timeout(grace + limit, task)
             .await
-            .context("The Run process group did not confirm termination after force kill.")??;
-        Ok(result)
+            .context("The Run did not confirm termination before its deadline.")?;
+        self.task.take();
+        result?
     }
 }
 
 impl LaunchJob {
+    fn stopping(&self) -> bool {
+        *self.control.stop.borrow()
+    }
+
     fn append(&self, text: &str) {
         let mut state = self.session.lock().unwrap();
         // Lifecycle operations join this job before handing the terminal to a
@@ -895,6 +1063,9 @@ impl Session {
     }
 
     fn requested(command: &Value) -> Value {
+        if guest::is_guest(command) {
+            return json!({"definitions":command["definitions"],"target":command["target"]});
+        }
         json!({"rootKind":command["rootKind"],"sourcePath":command["sourcePath"],"targetPath":command["targetPath"]})
     }
 
@@ -925,6 +1096,28 @@ impl Session {
             );
         }
         Ok(())
+    }
+
+    fn is_guest(&self) -> bool {
+        guest::is_guest(&self.placement)
+    }
+
+    fn assert_placement(&self, guest_capture: Option<&Value>) -> Result<()> {
+        ensure!(
+            match guest_capture {
+                Some(command) => self.placement == Self::requested(command),
+                None => !self.is_guest(),
+            },
+            "The runtime is bound to a different execution placement."
+        );
+        Ok(())
+    }
+
+    fn stopping(&mut self) {
+        self.set_phase(Phase::Stopping);
+        for field in ["endedAt", "exitCode", "signal", "failure"] {
+            self.observation[field] = Value::Null;
+        }
     }
 
     fn phase(&self) -> Phase {
