@@ -1,11 +1,17 @@
 //! Worker-side installation of Core-issued session and resource authority.
 //! These leases are process-local. They never authorize a carrier by themselves.
-use crate::{encryption::Service, http::checked};
+mod channels;
+mod observation;
+
+use crate::{connection::Outbound, encryption::Service, http::checked};
 use anyhow::{Context, Result, bail, ensure};
+use cantrip_framing::worker_link::Frame;
 use cantrip_protocol::worker_link::identity_key;
 use cantrip_wire::{JsString, Value, value::json};
+use channels::Channels;
 use chrono::Utc;
 use indexmap::IndexMap;
+use observation::Observation;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -26,6 +32,7 @@ pub(crate) struct Coordinator {
     worker: JsString,
     generation: String,
     encryption: Arc<Service>,
+    outgoing: Arc<Outbound>,
     state: Mutex<State>,
     wake: Notify,
 }
@@ -34,6 +41,7 @@ pub(crate) struct Coordinator {
 struct State {
     sessions: HashMap<JsString, Session>,
     tombstones: IndexMap<JsString, u64>,
+    channels: Channels,
     transport_ready: bool,
     disconnect: Option<Instant>,
 }
@@ -42,6 +50,21 @@ struct Session {
     value: Value,
     identity: Vec<u16>,
     grants: HashMap<JsString, Value>,
+}
+
+pub(crate) fn observation_scope(command: &Value) -> Value {
+    Value::object(
+        [
+            "chatId",
+            "clientMessageId",
+            "executionLaneId",
+            "contextKind",
+            "worktreeId",
+            "scratchRootId",
+        ]
+        .into_iter()
+        .map(|key| (key, command[key].clone())),
+    )
 }
 
 pub(crate) fn supports(kind: &str) -> bool {
@@ -59,11 +82,17 @@ pub(crate) fn supports(kind: &str) -> bool {
 }
 
 impl Coordinator {
-    pub(crate) fn new(worker: JsString, generation: String, encryption: Arc<Service>) -> Self {
+    pub(crate) fn new(
+        worker: JsString,
+        generation: String,
+        encryption: Arc<Service>,
+        outgoing: Arc<Outbound>,
+    ) -> Self {
         Self {
             worker,
             generation,
             encryption,
+            outgoing,
             state: Mutex::default(),
             wake: Notify::new(),
         }
@@ -75,6 +104,18 @@ impl Coordinator {
         let identity = self.encryption.bound_identity();
         let now = Utc::now().timestamp_millis();
         state.sweep(now, identity.as_ref().ok());
+        let result = self.execute_authority(&mut state, command, now, identity);
+        state.channels.flush(&self.outgoing);
+        result
+    }
+
+    fn execute_authority(
+        &self,
+        state: &mut State,
+        command: &Value,
+        now: i64,
+        identity: Result<(JsString, Value), crate::encryption::ServiceError>,
+    ) -> Result<Value> {
         ensure!(
             state.transport_ready || state.disconnect.is_some(),
             "WorkerLink command transport is disconnected."
@@ -138,10 +179,11 @@ impl Coordinator {
                     );
                     current.value["routeGeneration"] = generation.clone();
                     current.value["preferredRoute"] = route.clone();
+                    state.channels.close_session(session, "route-replaced");
                 }
                 None
             }
-            "worker-link.session.revoke" => Some(state.revoke_session(session)),
+            "worker-link.session.revoke" => Some(state.revoke_session(session, "revoked")),
             "worker-link.grant.install" => {
                 state.install_grant(session, &command["grant"], now)?;
                 None
@@ -174,6 +216,7 @@ impl Coordinator {
                     command["grantGeneration"]
                         .as_u64()
                         .expect("validated grant generation"),
+                    "revoked",
                 ),
             ),
             _ => bail!("Unknown WorkerLink coordinator command."),
@@ -184,10 +227,56 @@ impl Coordinator {
         ))
     }
 
+    pub(crate) fn handle_frame(&self, frame: &Frame) {
+        let mut state = self.state.lock().unwrap();
+        let identity = self.encryption.bound_identity();
+        let now = Utc::now().timestamp_millis();
+        state.sweep(now, identity.as_ref().ok());
+        if state.transport_ready {
+            let header = frame.header();
+            if header["kind"] == "open" {
+                let session = id(header, "sessionId");
+                let State {
+                    sessions,
+                    channels,
+                    tombstones,
+                    ..
+                } = &mut *state;
+                if channels.open(header, sessions.get(session), tombstones, now) {
+                    state.revoke_session(session, "protocol-error");
+                }
+            } else {
+                state.channels.receive(header);
+            }
+        }
+        state.channels.flush(&self.outgoing);
+    }
+
+    pub(crate) fn publish_notification(&self, notification: &Value) {
+        if let Some(candidate) = Observation::from_notification(notification) {
+            self.publish(candidate);
+        }
+    }
+
+    pub(crate) fn publish_event(&self, command: &Value, event: &Value) {
+        if let Some(candidate) = Observation::from_event(command, event) {
+            self.publish(candidate);
+        }
+    }
+
+    fn publish(&self, candidate: Observation) {
+        let mut state = self.state.lock().unwrap();
+        let identity = self.encryption.bound_identity();
+        state.sweep(Utc::now().timestamp_millis(), identity.as_ref().ok());
+        state.channels.publish(candidate);
+        state.channels.flush(&self.outgoing);
+    }
+
     pub(crate) fn reconcile(&self) {
         let mut state = self.state.lock().unwrap();
         let identity = self.encryption.bound_identity();
         state.sweep(Utc::now().timestamp_millis(), identity.as_ref().ok());
+        state.channels.flush(&self.outgoing);
     }
 
     pub(crate) fn connected(&self) {
@@ -195,6 +284,7 @@ impl Coordinator {
         state.expire_disconnect();
         state.disconnect = None;
         state.transport_ready = true;
+        state.channels.flush(&self.outgoing);
     }
 
     pub(crate) fn disconnected(&self) {
@@ -219,6 +309,9 @@ impl Coordinator {
                 _ = stop.changed() => break,
                 _ = tick.tick() => self.reconcile(),
                 _ = self.wake.notified() => {},
+                _ = self.outgoing.worker_link_writable() => {
+                    self.state.lock().unwrap().channels.flush(&self.outgoing);
+                },
                 _ = async {
                     if let Some(deadline) = deadline {
                         tokio::time::sleep_until(deadline).await;
@@ -261,7 +354,7 @@ impl State {
             .find(|(_, other)| other.identity == key)
             .map(|(id, _)| id.clone());
         if let Some(replaced) = replaced {
-            self.revoke_session(&replaced);
+            self.revoke_session(&replaced, "route-replaced");
         }
         self.sessions.insert(
             session_id.clone(),
@@ -336,7 +429,8 @@ impl State {
         Ok(())
     }
 
-    fn revoke_session(&mut self, session: &JsString) -> bool {
+    fn revoke_session(&mut self, session: &JsString, code: &str) -> bool {
+        self.channels.close_session(session, code);
         let Some(session) = self.sessions.remove(session) else {
             return false;
         };
@@ -351,7 +445,13 @@ impl State {
         true
     }
 
-    fn revoke_grant(&mut self, session: &JsString, id: &JsString, generation: u64) -> bool {
+    fn revoke_grant(
+        &mut self,
+        session: &JsString,
+        id: &JsString,
+        generation: u64,
+        code: &str,
+    ) -> bool {
         self.remember(id.clone(), generation);
         let Some(current) = self.sessions.get_mut(session) else {
             return false;
@@ -362,6 +462,7 @@ impl State {
             .is_some_and(|grant| grant["binding"]["grantGeneration"].as_u64() == Some(generation))
         {
             current.grants.remove(id);
+            self.channels.close_grant(session, id, code);
             true
         } else {
             false
@@ -379,8 +480,9 @@ impl State {
     fn revoke_all(&mut self) {
         self.transport_ready = false;
         self.disconnect = None;
+        self.channels.clear();
         for id in self.sessions.keys().cloned().collect::<Vec<_>>() {
-            self.revoke_session(&id);
+            self.revoke_session(&id, "endpoint-disconnected");
         }
     }
 
@@ -400,12 +502,14 @@ impl State {
         let mut removed_grants = Vec::new();
         for (id, session) in &self.sessions {
             let bound = &session.value["identity"];
-            if expired(&session.value["lease"])
-                || !identity.is_some_and(|(owner, server)| {
-                    bound["ownerId"].as_js_string() == Some(owner) && &bound["serverId"] == server
-                })
-            {
-                removed_sessions.push(id.clone());
+            if expired(&session.value["lease"]) {
+                removed_sessions.push((id.clone(), "lifetime-expired"));
+                continue;
+            }
+            if !identity.is_some_and(|(owner, server)| {
+                bound["ownerId"].as_js_string() == Some(owner) && &bound["serverId"] == server
+            }) {
+                removed_sessions.push((id.clone(), "revoked"));
                 continue;
             }
             for (grant_id, grant) in &session.grants {
@@ -418,12 +522,13 @@ impl State {
                 }
             }
         }
-        for id in removed_sessions {
-            self.revoke_session(&id);
+        for (id, code) in removed_sessions {
+            self.revoke_session(&id, code);
         }
         for (session, grant, generation) in removed_grants {
-            self.revoke_grant(&session, &grant, generation);
+            self.revoke_grant(&session, &grant, generation, "lifetime-expired");
         }
+        self.channels.sweep(now);
     }
 }
 
@@ -437,6 +542,10 @@ fn route_enabled(session: &Value, route: &Value) -> bool {
     session["routePolicy"]["enabled"]
         .as_array()
         .is_some_and(|enabled| enabled.contains(route))
+}
+
+fn hex_digest(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn timestamp(lease: &Value, field: &str) -> Result<i64> {

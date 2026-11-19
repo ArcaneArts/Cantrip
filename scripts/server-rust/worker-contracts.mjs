@@ -21,6 +21,13 @@ export function registerWorkerContracts(register) {
   const notification = (type) =>
     variant(protocol.workerNotificationSchema, type);
   const activity = (type) => variant(protocol.agentActivitySchema, type);
+  register(protocol.workerObservationEnvelopeSchema, [
+    "worker-wire-observation-size",
+  ]);
+  const [progress, notificationObservation] =
+    protocol.workerObservationPayloadSchema.options;
+  register(progress, ["worker-wire-observation-progress"]);
+  register(notificationObservation, ["worker-wire-observation-notification"]);
   register(protocol.providerAuthStatusObservationSchema, [
     "worker-wire-provider-observation",
   ]);

@@ -982,6 +982,7 @@ export const contractRoots = [
   "runConfigurationRuntimeWorkerLookupSchema",
   "runConfigurationRuntimeOutputContentSchema",
   "runConfigurationSecretValueContentSchema",
+  "workerObservationEnvelopeSchema",
 ];
 
 export const projectExportContractRoots = [

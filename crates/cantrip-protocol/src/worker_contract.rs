@@ -154,6 +154,70 @@ pub(super) fn refine(
                 custom(&[], message.unwrap_or("Invalid input"));
             }
         }
+        "worker-wire-observation-size" => {
+            if value.stringify().len() > 512 * 1024 {
+                custom(
+                    &[],
+                    "Worker observation envelopes may contain at most 512 KiB.",
+                );
+            }
+        }
+        "worker-wire-observation-progress" => {
+            let valid_root = (value["contextKind"] == "project"
+                && !value["worktreeId"].is_null()
+                && value["scratchRootId"].is_null())
+                || (value["contextKind"] == "standalone"
+                    && value["worktreeId"].is_null()
+                    && !value["scratchRootId"].is_null());
+            if !valid_root {
+                custom(
+                    &["contextKind"],
+                    "The observation execution root is invalid.",
+                );
+            }
+            let event = &value["event"];
+            let provisional =
+                |message: &Value| message["streaming"] == true || message["phase"] == "commentary";
+            let allowed = match event["type"].as_str() {
+                Some("agent.activity" | "agent.inference-progress") => true,
+                Some("agent.message") => provisional(&event["message"]),
+                Some("agent.protected-message" | "agent.protected-task-message") => {
+                    let telemetry = &event["telemetry"];
+                    matches!(telemetry["kind"].as_str(), Some("activity" | "usage"))
+                        || (telemetry["kind"] == "message" && provisional(telemetry))
+                }
+                _ => false,
+            };
+            if !allowed {
+                custom(
+                    &["event"],
+                    "Final messages, outcomes, approvals, and durable worker events cannot use the provisional observation channel.",
+                );
+            }
+        }
+        "worker-wire-observation-notification" => {
+            let allowed = match value["notification"]["type"].as_str() {
+                Some("worktree.filesystem.changed") => value["topic"] == "filesystem",
+                Some(
+                    "worktree.inventory.observed"
+                    | "worktree.status.observed"
+                    | "git.operation.observed",
+                ) => value["topic"] == "worktree",
+                Some(
+                    "terminal.runtime.observed"
+                    | "codegraph.status.observed"
+                    | "project.run-configuration-runtime.observed"
+                    | "project.run-configuration-definitions.changed",
+                ) => value["topic"] == "runtime",
+                _ => false,
+            };
+            if !allowed {
+                custom(
+                    &["notification"],
+                    "This worker notification is not authorized for the selected provisional observation topic.",
+                );
+            }
+        }
         "worker-wire-chat-turn-root" => {
             let project = value["contextKind"] == "project"
                 && !value["worktreeId"].is_null()

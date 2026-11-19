@@ -738,6 +738,7 @@ try {
         }
         await verifyHostRuns({
           call,
+          origin: server.origin,
           eventually,
           projectId,
           checkout,
@@ -992,6 +993,7 @@ try {
       JSON.stringify({
         suite: "actual-native-host-run-worker-server",
         passed: true,
+        workerLinkRunObservations: true,
         typedNodeProvider: true,
         typedCargoProvider: true,
         typedDartProvider: true,
