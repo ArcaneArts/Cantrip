@@ -61,10 +61,11 @@ pub(super) async fn configuration(
         (workspace, instructions)
     };
     let cwd = workspace.as_str();
-    let defaults = if standalone {
-        &Value::Null
-    } else {
+    let subagents = !standalone && environment.is_none();
+    let defaults = if subagents {
         &command["subagentDefaults"]["model"]
+    } else {
+        &Value::Null
     };
     let permission = &command["permissionProfileId"];
     let structured = command["structuredTask"] == true;
@@ -78,8 +79,8 @@ pub(super) async fn configuration(
         "dynamicTools": Vec::<Value>::new(),
         "approvalPolicy": if yolo || structured { "never" } else { "on-request" },
         "config": json!({
-            "features": json!({"multi_agent": !standalone}),
-            "agents": json!({"enabled": !standalone}),
+            "features": json!({"multi_agent": subagents}),
+            "agents": json!({"enabled": subagents}),
             "mcp_servers": mcp,
         }),
     });
@@ -116,7 +117,7 @@ pub(super) async fn configuration(
         managed_overlay: Some(json!({
             "mcpServers": mcp,
             "developerInstructions": instructions,
-            "multiAgentEnabled": !standalone,
+            "multiAgentEnabled": subagents,
             "subagentModel": defaults["name"],
             "subagentReasoningEffort": defaults["reasoningEffort"],
             "canonicalHistory": !standalone,

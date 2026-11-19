@@ -373,7 +373,8 @@ const server = createServer(async (request, response) => {
       },
       grants: await Promise.all(
         [
-          ...(values.protected ||
+          ...(values["guest-image"] ||
+          values.protected ||
           values.held ||
           values.durablePause ||
           values.coldResume ||
@@ -2014,6 +2015,143 @@ async function expectSuccess(fields) {
   return reply.result;
 }
 
+async function verifyGuestTurn({ session, cwd, provider, threadId, marker }) {
+  const inputId = randomUUID();
+  const prompt = await protectChatMessage({
+    id: inputId,
+    service: oracle,
+    message: {
+      id: inputId,
+      role: "user",
+      mode: "default",
+      idempotencyKey: inputId,
+      content: [{ type: "text", text: "Read the guest fixture and reply." }],
+    },
+  });
+  const responseId = randomUUID();
+  const fields = {
+    type: "chat.turn",
+    executionProfile: "cantrip-os",
+    contextKind: session.contextKind,
+    chatId: session.chatId,
+    clientMessageId: prompt.id,
+    executionLaneId: randomUUID(),
+    worktreeId: session.worktreeId,
+    scratchRootId: null,
+    rootKind: session.rootKind,
+    cwd,
+    isPrimary: true,
+    worktreeMode: "agent-managed",
+    worktreePolicy: "direct",
+    policyProjectId: session.projectId,
+    threadId,
+    osExecution: session.osExecution,
+    provider,
+    protectedPrompt: prompt,
+    resultMode: {
+      kind: "chat-message-encrypted",
+      messageId: responseId,
+      idempotencyKey: responseId,
+    },
+  };
+  const calls = providerCalls;
+  const unplaced = await ensure({
+    ...fields,
+    executionProfile: "ide",
+    osExecution: undefined,
+  });
+  assert.equal(unplaced.ok, false, JSON.stringify(unplaced));
+  assert.match(unplaced.error.message, /guest execution support/u);
+  assert.equal(providerCalls, calls);
+  const receipt = admit(fields, stamp);
+  guiPeer = new GuiReceiptPeer(fields, receipt, {
+    oracle,
+    workerGeneration,
+    workerId,
+  });
+  guiHistory = new GuiHistoryPeer({ fields, receipt, workerId, stamp, oracle });
+  const callId = "fixture-guest-command";
+  const events = [];
+  taskResponse = (body) => {
+    if (body.input.some((item) => item.type === "function_call_output")) {
+      return outputText;
+    }
+    const name = body.tools.find((tool) =>
+      ["exec_command", "shell_command"].includes(tool.name),
+    )?.name;
+    assert.ok(name, "The model must receive a shell tool.");
+    const command = "pwd && id -u && uname -s && cat .cantrip-fixture";
+    return {
+      name,
+      call_id: callId,
+      arguments: JSON.stringify(
+        name === "exec_command" ? { cmd: command } : { command },
+      ),
+    };
+  };
+  const before = untilProvider();
+  const pending = ensure(
+    { ...fields, nativeCommandReceipt: receipt },
+    (event) => events.push(event),
+  );
+  const premature = pending.then((reply) => {
+    throw new Error(JSON.stringify(reply) + "\n" + diagnostics);
+  });
+  try {
+    const first = await Promise.race([before, premature]);
+    const after = untilProvider();
+    first.finish();
+    const second = await Promise.race([after, premature]);
+    const output = second.body.input.find(
+      (item) => item.type === "function_call_output" && item.call_id === callId,
+    );
+    assert.ok(output, JSON.stringify(second.body.input));
+    const toolText =
+      typeof output.output === "string"
+        ? output.output
+        : output.output.map(({ text }) => text).join("\n");
+    assert.ok(
+      toolText.includes(
+        [cwd, session.osExecution.scope.uid, "Linux", marker].join("\n"),
+      ),
+      toolText,
+    );
+    second.finish();
+    const completed = await pending;
+    assert.equal(
+      completed.ok,
+      true,
+      JSON.stringify(completed) + "\n" + diagnostics,
+    );
+    const turn = completed.result;
+    assert.equal(turn.threadId, threadId);
+    assert.equal(turn.status, "completed");
+    assert.equal(turn.text, "");
+    assert.deepEqual(
+      (await actualMessage(turn.structuredResult.message)).content,
+      [{ type: "text", phase: "final_answer", text: outputText }],
+    );
+    const settled = events.find(
+      (event) =>
+        event.type === "agent.protected-message" && !event.telemetry.streaming,
+    );
+    assert.ok(settled);
+    assert.equal(
+      await available(
+        guiHistory.verify(turn.turnId, settled.message, [marker, outputText]),
+      ),
+      outputText,
+    );
+    assert.ok(!JSON.stringify({ completed, events }).includes(marker));
+    assert.equal(guiPeer.terminal.terminalStatus, "completed");
+    return turn.turnId;
+  } finally {
+    taskResponse = undefined;
+    guiHistory = undefined;
+    guiPeer = undefined;
+  }
+}
+
 async function verifyGuestThread() {
   const execute = promisify(execFile);
   const dockerPath = (await execute("which", ["docker"])).stdout.trim();
@@ -2078,6 +2216,15 @@ async function verifyGuestThread() {
     const { uid, gid, homeGuestPath } = created.receipt.workspace;
     const cwd = homeGuestPath + "/checkout";
     await guest("install", "-d", "-o", String(uid), "-g", String(gid), cwd);
+    const marker = randomUUID();
+    await guest(
+      "/bin/sh",
+      "-c",
+      'printf "%s\\n" "$1" > "$2"',
+      "fixture",
+      marker,
+      cwd + "/.cantrip-fixture",
+    );
     const { serverId: _, ...admission } = dispatch;
     const scope = {
       ...admission,
@@ -2109,7 +2256,13 @@ async function verifyGuestThread() {
       osExecution,
     };
     const identity = { serverId, ownerId, workerId, chatId: session.chatId };
-    const { threadId } = await expectThread({ cwd, session });
+    const provider = {
+      id: "fixture",
+      kind: "openai-compatible",
+      name: "Fixture",
+      baseUrl: `http://127.0.0.1:${server.address().port}/fixture/v1`,
+    };
+    const { threadId } = await expectThread({ cwd, session, provider });
     assert.deepEqual(
       new OsAgentPlacements(directory).resolve(identity),
       osExecution,
@@ -2145,9 +2298,10 @@ async function verifyGuestThread() {
     await stop();
     await start();
     const { osExecution: _placement, ...reopen } = session;
-    await expectThread({ cwd, session: reopen, threadId }, threadId);
+    await expectThread({ cwd, session: reopen, threadId, provider }, threadId);
     const mismatch = await ensure({
       cwd,
+      provider,
       session: {
         ...session,
         osExecution: {
@@ -2162,9 +2316,23 @@ async function verifyGuestThread() {
       JSON.stringify(mismatch),
       /already captured a different OS placement/u,
     );
+    const recoveryTurnId = await verifyGuestTurn({
+      session,
+      cwd,
+      provider,
+      threadId,
+      marker,
+    });
+    await stop();
+    await start();
+    const recovered = await expectThread(
+      { cwd, session: reopen, threadId, provider, recoveryTurnId },
+      threadId,
+    );
+    assert.equal(recovered.recovery.status, "completed");
     await stop();
     console.log(
-      "Native guest preparation, Node placement and environment compatibility, and restart passed.",
+      "Native guest shell, protected Chat and History, Node placement compatibility, and restart passed.",
     );
   } finally {
     if (container) await docker("stop", "--time", "1", container);
@@ -2259,7 +2427,6 @@ try {
   console.log(
     "Native project and standalone preparation, MCP, and restart recovery passed.",
   );
-  if (values["guest-image"]) await verifyGuestThread();
   if (values.held) await verifyHeldAttachment(session, threadId);
   if (values.durablePause) await verifyDurableChatPause();
   if (values.coldResume) await verifyDurableChatPause(true);
@@ -2558,6 +2725,7 @@ try {
       "Structured Task planning, revision, and finalization matched the Node reference.",
     );
   }
+  if (values["guest-image"]) await verifyGuestThread();
 } finally {
   if (child && child.exitCode === null && child.signalCode === null) {
     child.kill("SIGTERM");

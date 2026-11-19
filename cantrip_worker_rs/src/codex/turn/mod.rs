@@ -1,4 +1,4 @@
-//! Server-owned host turns. The command channel supplies the execution lane;
+//! Server-owned Chat turns. The command channel supplies the execution lane;
 //! the native runtime supplies the turn identity and terminal settlement.
 pub(crate) mod autonomous;
 mod control;
@@ -802,6 +802,7 @@ impl Turns {
                 runtime,
                 thread,
                 self.preparation.supports_permission_profiles(),
+                prepared.environment.as_deref(),
             )
             .await?;
             if let Some(schema) = task.as_ref().and_then(|task| task.turn.output_schema()) {
