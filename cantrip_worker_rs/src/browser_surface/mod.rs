@@ -11,12 +11,13 @@ use cantrip_wire::{JsString, Value, value::json};
 pub(crate) use link::{Kind as LinkLane, Lane, Link};
 use std::{
     collections::HashMap,
+    future::pending,
     path::Path,
     sync::{Arc, Mutex, Weak},
     time::Duration,
 };
 use tokio::{
-    sync::{Notify, mpsc, oneshot, watch},
+    sync::{Notify, broadcast::error::RecvError, mpsc, oneshot, watch},
     task::JoinSet,
     time::MissedTickBehavior,
 };
@@ -364,32 +365,39 @@ async fn run(
     let Some(Work::Command { value, epoch, done }) = input.recv().await else {
         return Ok(());
     };
-    let opened = session::Session::open(
+    let current = match session::Session::new(
         shared.clone(),
         endpoint.clone(),
         surface.clone(),
         &value,
         epoch,
-    )
-    .await;
-    let current = match opened {
+    ) {
         Ok(opened) => browser.insert(opened),
         Err(error) => {
             let _ = done.send(Err(error));
             return Ok(());
         }
     };
-    let mut events = current.page().subscribe();
-    let result = match current.initialize(&value["viewport"], epoch).await {
-        Ok(()) => current.attach(&value, epoch).await,
-        Err(error) => Err(error),
-    };
-    let attached = result.is_ok();
-    let _ = done.send(result);
-    if !attached {
-        return Ok(());
+    let initial = async {
+        let lease = current.open_after(Duration::ZERO, None).await?;
+        let events = current.activate(lease, Some(epoch)).await?;
+        let response = current.attach(&value, epoch).await?;
+        Ok::<_, anyhow::Error>((events, response))
     }
+    .await;
+    let mut events = match initial {
+        Ok((events, response)) => {
+            let _ = done.send(Ok(response));
+            Some(events)
+        }
+        Err(error) => {
+            let _ = done.send(Err(error));
+            return Ok(());
+        }
+    };
 
+    let mut opening: Option<session::Opening> = None;
+    let mut attempt = 0u32;
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
     loop {
@@ -398,6 +406,7 @@ async fn run(
                 Some(Work::Command { value, epoch, done }) => {
                     let result = current.command(&value, epoch).await;
                     if value["type"] == "surface.close" && result.is_ok() {
+                        drop(opening.take());
                         if let Some(closing) = browser.take() {
                             closing.close().await;
                         }
@@ -410,12 +419,81 @@ async fn run(
                 Some(Work::Refresh(attachment)) => current.refresh(&attachment).await,
                 None => return Ok(()),
             },
-            event = events.next() => current.event(event?).await,
-            _ = tick.tick() => {
-                current.reconcile().await?;
-            }
+            event = async {
+                match &mut events {
+                    Some(events) => events.next().await,
+                    None => pending().await,
+                }
+            } => {
+                match event {
+                    Ok(event) => {
+                        current.event(event).await;
+                        continue;
+                    }
+                    Err(error) if matches!(error.downcast_ref::<RecvError>(), Some(RecvError::Lagged(_))) => {
+                        current.resync().await;
+                        continue;
+                    }
+                    _ => {}
+                }
+                events = None;
+                recovery_log(shared, surface, "warn", "Browser surface runtime disconnected", "browser.runtime.disconnected", "recovering", 0);
+                opening = Some(schedule_recovery(current, attempt));
+            },
+            next = async {
+                match &mut opening {
+                    Some(opening) => opening.await,
+                    None => pending().await,
+                }
+            } => {
+                opening = None;
+                let resumed = match next {
+                    Ok(lease) => current.activate(lease, None).await,
+                    Err(error) => Err(error),
+                };
+                current.reconcile()?;
+                match resumed {
+                    Ok(subscription) => {
+                        recovery_log(shared, surface, "info", "Browser surface runtime ready", "browser.runtime.ready", "ready", attempt.saturating_add(1));
+                        attempt = 0;
+                        events = Some(subscription);
+                    }
+                    Err(_) => {
+                        attempt = attempt.saturating_add(1);
+                        recovery_log(shared, surface, "warn", "Browser surface runtime failed to start", "browser.runtime.start-failed", "retrying", attempt);
+                        opening = Some(schedule_recovery(current, attempt));
+                    }
+                }
+            },
+            _ = tick.tick() => current.reconcile()?,
         }
     }
+}
+
+fn schedule_recovery(current: &mut session::Session, attempt: u32) -> session::Opening {
+    let delay = Duration::from_millis((250 * (1u64 << attempt.min(5))).min(5_000));
+    let retired = current.retire();
+    current.recovering();
+    current.open_after(delay, retired)
+}
+
+fn recovery_log(
+    shared: &Shared,
+    surface: &JsString,
+    level: &str,
+    message: &str,
+    event: &str,
+    status: &str,
+    attempt: u32,
+) {
+    shared.logs.event(
+        level,
+        message,
+        json!({
+            "event":event,"subsystem":"browser-surface","operation":"recover","status":status,
+            "surfaceId":surface,"attempt":attempt,
+        }),
+    );
 }
 
 fn id<'a>(value: &'a Value, key: &str) -> &'a JsString {

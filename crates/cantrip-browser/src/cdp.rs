@@ -5,7 +5,7 @@ use futures::{SinkExt, StreamExt};
 use std::{
     collections::HashMap,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, Weak,
         atomic::{AtomicU64, Ordering},
     },
     time::Duration,
@@ -24,6 +24,7 @@ use url::Url;
 const MESSAGE_LIMIT: usize = 16 * 1024 * 1024;
 const EVENT_BUFFER: usize = 8 * 1024 * 1024;
 const REQUEST_LIMIT: usize = 64;
+const TARGET_CLOSED: &str = "Chromium page was detached or crashed.";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -44,7 +45,39 @@ struct State {
     write_buffer: Arc<Semaphore>,
     pending: Mutex<HashMap<u64, oneshot::Sender<Value>>>,
     events: broadcast::Sender<Event>,
+    targets: Mutex<Vec<Weak<Target>>>,
     stop: watch::Sender<bool>,
+}
+
+pub(super) struct Target {
+    id: JsString,
+    session: JsString,
+    closed: watch::Sender<bool>,
+}
+
+impl Target {
+    pub(super) fn is_open(&self) -> bool {
+        !*self.closed.borrow()
+    }
+
+    pub(super) async fn closed(&self) {
+        let _ = self.closed.subscribe().wait_for(|closed| *closed).await;
+    }
+
+    fn ended(&self, method: &str, event: &Value) -> bool {
+        match method {
+            "Inspector.targetCrashed" | "Inspector.detached" => {
+                event["sessionId"].as_js_string() == Some(&self.session)
+            }
+            "Target.detachedFromTarget" => {
+                event["params"]["sessionId"].as_js_string() == Some(&self.session)
+            }
+            "Target.targetCrashed" | "Target.targetDestroyed" => {
+                event["params"]["targetId"].as_js_string() == Some(&self.id)
+            }
+            _ => false,
+        }
+    }
 }
 
 struct Outgoing {
@@ -83,6 +116,7 @@ impl Event {
 
 pub struct Subscription {
     session: Option<JsString>,
+    target: Option<Arc<Target>>,
     events: broadcast::Receiver<Event>,
     stop: watch::Receiver<bool>,
 }
@@ -96,6 +130,12 @@ impl Subscription {
             let event = tokio::select! {
                 biased;
                 _ = self.stop.changed() => return Err(anyhow!(CLOSED)),
+                _ = async {
+                    match &self.target {
+                        Some(target) => target.closed().await,
+                        None => std::future::pending().await,
+                    }
+                } => return Err(anyhow!(TARGET_CLOSED)),
                 event = self.events.recv() => event.context("Chromium event delivery interrupted.")?,
             };
             if event.session_id() == self.session.as_ref() {
@@ -145,6 +185,7 @@ impl Client {
             write_buffer: Arc::new(Semaphore::new(MESSAGE_LIMIT)),
             pending: Mutex::new(HashMap::new()),
             events,
+            targets: Mutex::default(),
             stop,
         });
         tokio::spawn(state.clone().drive(socket, writes, done));
@@ -154,9 +195,32 @@ impl Client {
     pub fn subscribe(&self, session: Option<&JsString>) -> Subscription {
         Subscription {
             session: session.cloned(),
+            target: None,
             events: self.state.events.subscribe(),
             stop: self.state.stop.subscribe(),
         }
+    }
+
+    pub(super) fn watch_target(&self, id: &JsString, session: &JsString) -> Arc<Target> {
+        let target = Arc::new(Target {
+            id: id.clone(),
+            session: session.clone(),
+            closed: watch::channel(false).0,
+        });
+        let mut targets = self.state.targets.lock().unwrap();
+        targets.retain(|entry| entry.strong_count() != 0);
+        targets.push(Arc::downgrade(&target));
+        target
+    }
+
+    pub(super) fn subscribe_page(&self, target: &Arc<Target>) -> Subscription {
+        let mut subscription = self.subscribe(Some(&target.session));
+        subscription.target = Some(target.clone());
+        subscription
+    }
+
+    pub(super) fn is_connected(&self) -> bool {
+        !*self.state.stop.borrow()
     }
 
     pub fn close(&self) {
@@ -229,6 +293,29 @@ impl Client {
 }
 
 impl State {
+    fn observe_target_loss(&self, method: &str, event: &Value) {
+        if matches!(
+            method,
+            "Inspector.targetCrashed"
+                | "Inspector.detached"
+                | "Target.detachedFromTarget"
+                | "Target.targetCrashed"
+                | "Target.targetDestroyed"
+        ) {
+            for target in self
+                .targets
+                .lock()
+                .unwrap()
+                .iter()
+                .filter_map(Weak::upgrade)
+            {
+                if target.ended(method, event) {
+                    target.closed.send_replace(true);
+                }
+            }
+        }
+    }
+
     async fn drive(
         self: Arc<Self>,
         mut socket: Socket,
@@ -258,11 +345,14 @@ impl State {
                                 if let Some(call) = self.pending.lock().unwrap().remove(&id) {
                                     let _ = call.send(value);
                                 }
-                            } else if value["method"].as_str().is_some() && self.events.receiver_count() != 0 {
-                                let Some(event) = buffer.bounded(value, text.len(), EVENT_BUFFER) else {
-                                    break;
-                                };
-                                let _ = self.events.send(Event(Arc::new(event)));
+                            } else if let Some(method) = value["method"].as_str() {
+                                self.observe_target_loss(method, &value);
+                                if self.events.receiver_count() != 0 {
+                                    let Some(event) = buffer.bounded(value, text.len(), EVENT_BUFFER) else {
+                                        break;
+                                    };
+                                    let _ = self.events.send(Event(Arc::new(event)));
+                                }
                             }
                         }
                     }
@@ -312,6 +402,12 @@ mod tests {
                     .await
                     .unwrap();
             }
+            let other =
+                json!({"method":"Target.targetCrashed","params":json!({"targetId":"other-tab"})});
+            socket
+                .send(Message::Text(other.stringify().into()))
+                .await
+                .unwrap();
             for request in pending.iter().rev() {
                 let reply = json!({"id":request["id"],"result":request["method"]});
                 socket
@@ -319,13 +415,22 @@ mod tests {
                     .await
                     .unwrap();
             }
-            // Close with an unanswered request still in flight.
+            // Close the subscribed page before closing the browser transport.
+            let _ = socket.next().await;
+            let crash =
+                json!({"method":"Target.targetCrashed","params":json!({"targetId":"owned-tab"})});
+            socket
+                .send(Message::Text(crash.stringify().into()))
+                .await
+                .unwrap();
             let _ = socket.next().await;
             socket.close(None).await.unwrap();
         });
         let client = Client::connect(url).await.unwrap();
         let session = JsString::from("current");
-        let mut events = client.subscribe(Some(&session));
+        let target = JsString::from("owned-tab");
+        let watched = client.watch_target(&target, &session);
+        let mut events = client.subscribe_page(&watched);
         let (a, b) = tokio::try_join!(
             client.request("Page.getNavigationHistory", json!({}), Some(&session)),
             client.request("Target.getTargets", json!({}), None)
@@ -336,6 +441,15 @@ mod tests {
         let event = events.next().await.unwrap();
         assert_eq!(event.method(), "Page.loadEventFired");
         assert_eq!(event.session_id(), Some(&session));
+        assert!(watched.is_open());
+        let (ended, request) = tokio::join!(events.next(), async {
+            tokio::select! {
+                _ = watched.closed() => Ok(()),
+                _ = client.request("Page.captureScreenshot", json!({}), Some(&session)) => Err(()),
+            }
+        });
+        assert_eq!(ended.err().unwrap().to_string(), TARGET_CLOSED);
+        assert!(request.is_ok());
         assert!(
             client
                 .request("Browser.getVersion", json!({}), None)

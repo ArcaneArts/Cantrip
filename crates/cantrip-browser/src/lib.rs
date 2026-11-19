@@ -7,7 +7,7 @@ pub use process::Exit;
 
 use anyhow::{Context, Result, bail, ensure};
 use cantrip_wire::{JsString, Value, value::json};
-use std::{ffi::OsString, path::Path, time::Duration};
+use std::{ffi::OsString, path::Path, sync::Arc, time::Duration};
 
 pub struct Launch<'a> {
     pub executable: &'a Path,
@@ -39,6 +39,9 @@ impl Browser {
             client
                 .request("Browser.getVersion", json!({}), None)
                 .await?;
+            client
+                .request("Target.setDiscoverTargets", json!({"discover":true}), None)
+                .await?;
             Ok::<_, anyhow::Error>(client)
         };
         match handshake.await {
@@ -48,6 +51,10 @@ impl Browser {
                 Err(process_error) => Err(error.context(process_error)),
             },
         }
+    }
+
+    pub fn is_connected(&self) -> bool {
+        self.client.is_connected()
     }
 
     pub fn client(&self) -> &Client {
@@ -99,6 +106,7 @@ impl Browser {
         match attached {
             Ok(session) => Ok(Page {
                 client: self.client.clone(),
+                watcher: self.client.watch_target(&target, &session),
                 target,
                 session,
             }),
@@ -133,17 +141,24 @@ pub struct Page {
     client: Client,
     target: JsString,
     session: JsString,
+    watcher: Arc<cdp::Target>,
 }
 
 impl Page {
+    pub fn is_connected(&self) -> bool {
+        self.watcher.is_open() && self.client.is_connected()
+    }
+
     pub async fn request(&self, method: &str, params: Value) -> Result<Value> {
-        self.client
-            .request(method, params, Some(&self.session))
-            .await
+        tokio::select! {
+            biased;
+            _ = self.watcher.closed() => bail!("Chromium page was detached or crashed."),
+            result = self.client.request(method, params, Some(&self.session)) => result,
+        }
     }
 
     pub fn subscribe(&self) -> Subscription {
-        self.client.subscribe(Some(&self.session))
+        self.client.subscribe_page(&self.watcher)
     }
 
     pub async fn evaluate(&self, expression: &str) -> Result<Value> {

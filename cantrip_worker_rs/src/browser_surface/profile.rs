@@ -17,17 +17,18 @@ pub(super) struct Profiles {
 
 #[derive(Default)]
 struct Profile {
-    inner: tokio::sync::Mutex<LiveProfile>,
+    inner: tokio::sync::Mutex<Option<LiveBrowser>>,
 }
 
-#[derive(Default)]
-struct LiveProfile {
-    browser: Option<Browser>,
-    pages: usize,
+struct LiveBrowser {
+    browser: Browser,
+    generation: Arc<()>,
 }
 
 pub(super) struct Lease {
     profile: Arc<Profile>,
+    generation: Arc<()>,
+    pub identity: JsString,
     pub page: Page,
 }
 
@@ -58,24 +59,39 @@ impl Profiles {
             }
         };
         let mut live = profile.inner.lock().await;
-        if live.browser.is_none() {
-            live.browser = Some(self.launch(&profile_path, viewport).await?);
+        if live
+            .as_ref()
+            .is_some_and(|live| !live.browser.is_connected())
+            && let Some(disconnected) = live.take()
+        {
+            let _ = disconnected.browser.close().await;
         }
-        let browser = live.browser.as_ref().unwrap();
-        let page = match browser.new_page(None).await {
+        if live.is_none() {
+            *live = Some(LiveBrowser {
+                browser: self.launch(&profile_path, viewport).await?,
+                generation: Arc::new(()),
+            });
+        }
+        let current = live.as_ref().unwrap();
+        let page = match current.browser.new_page(None).await {
             Ok(page) => page,
             Err(error) => {
-                if live.pages == 0
-                    && let Some(browser) = live.browser.take()
+                if (!current.browser.is_connected() || Arc::strong_count(&current.generation) == 1)
+                    && let Some(failed) = live.take()
                 {
-                    let _ = browser.close().await;
+                    let _ = failed.browser.close().await;
                 }
                 return Err(error);
             }
         };
-        live.pages += 1;
+        let generation = current.generation.clone();
         drop(live);
-        Ok(Lease { profile, page })
+        Ok(Lease {
+            profile,
+            generation,
+            identity: identity.clone(),
+            page,
+        })
     }
 
     async fn launch(&self, profile: &Path, viewport: (u32, u32)) -> Result<Browser> {
@@ -109,12 +125,18 @@ impl Profiles {
 impl Lease {
     pub async fn close(self) {
         let mut live = self.profile.inner.lock().await;
+        let Some(current) = live
+            .as_ref()
+            .filter(|current| Arc::ptr_eq(&current.generation, &self.generation))
+        else {
+            return;
+        };
+        drop(self.generation);
         let _ = tokio::time::timeout(Duration::from_secs(2), self.page.close()).await;
-        live.pages -= 1;
-        if live.pages == 0
-            && let Some(browser) = live.browser.take()
+        if Arc::strong_count(&current.generation) == 1
+            && let Some(last) = live.take()
         {
-            let _ = browser.close().await;
+            let _ = last.browser.close().await;
         }
     }
 }
