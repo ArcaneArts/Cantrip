@@ -194,6 +194,11 @@ impl Inner {
                 let tool = arguments["tool"].as_str().unwrap();
                 Ok(super::super::stdio::catalog()["help"][tool].clone())
             }
+            "web.read" => {
+                self.web
+                    .read(&authorization.active.binding, call.get("arguments"))
+                    .await
+            }
             "context.get" => {
                 mcp_host::parse("cantripMcpContextGetInputSchema", call.get("arguments")).map_err(
                     |_| anyhow!("Cantrip MCP operation validation failed on the worker."),

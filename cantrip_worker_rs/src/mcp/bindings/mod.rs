@@ -97,6 +97,7 @@ struct Inner {
     worker: JsString,
     identity: Identity,
     server: Server,
+    web: crate::web::Service,
     entries: Mutex<Entries>,
     negotiated: AsyncMutex<Option<Negotiated>>,
 }
@@ -156,6 +157,7 @@ impl Broker {
             worker,
             identity,
             server,
+            web: crate::web::Service::default(),
             entries: Mutex::new(Entries::default()),
             negotiated: AsyncMutex::new(None),
         });
@@ -201,6 +203,7 @@ impl Broker {
                 !standalone && capabilities.context,
             ),
             ("tool.help", "tool_help", true),
+            ("web.read", "web_read", true),
         ]
         .into_iter()
         .filter(|(operation, _, supported)| {

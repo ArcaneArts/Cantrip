@@ -9,8 +9,10 @@ publish.workspace = true
 anyhow = "1"
 base64 = "0.22"
 bytes = "1"
+brotli = "=9.1.1"
+dom_smoothie = { version = "=0.18.2", default-features = false }
 cantrip-browser = { path = "../crates/cantrip-browser" }
-encoding_rs = { version = "=0.8.35", default-features = false }
+encoding_rs = { version = "=0.8.35", default-features = false, features = ["alloc"] }
 cantrip-crypto = { path = "../crates/cantrip-crypto" }
 cantrip-framing = { path = "../crates/cantrip-framing" }
 cantrip-transport = { path = "../crates/cantrip-transport" }

@@ -6068,3 +6068,29 @@ The installer accepts existing release assets, including their legacy files.
 Replacing the legacy release contents, binding managed web sessions and page
 rendering to the installed Chromium, and porting SearXNG remain open. The
 new installer was exercised on macOS ARM64.
+
+
+## 145. Read static web pages through the native MCP broker
+
+Reference commit `23b500bf6d756cfd1d38aa7ed3cd19cc1b5c5d89` (#3307).
+
+The native worker admits `web_read` on the existing project and standalone
+MCP bindings. It fetches direct URLs without system HTTP proxies. It validates
+every DNS answer, pins one approved address per hop, rechecks robots rules
+on redirects and refuses HTTPS downgrades. Compressed bodies, decoded bodies,
+HTML extraction and concurrent work have explicit bounds. It extracts readable
+HTML and plain text and issues single-use cursors scoped to the owner and
+chat. Heartbeats advertise static reading through the existing schema.
+
+On macOS ARM64, the local HTTP fixture exercised redirect and robots policy,
+compressed input, charset decoding, canonical URLs and UTF-16 cursor
+ownership. A direct comparison with the Node reference matched the article
+result and the split surrogate pair across two pages. The native stdio child
+and broker against the Rust server PGlite fixture rejected calls without an
+active binding and rejected a private URL after activation. The stdio child
+ran with Node absent from its PATH. The checked-in web schemas were reused.
+The full MCP schema exporter still reports an unregistered refinement in
+`target_list` on the baseline.
+
+Chromium rendering, web research sessions, search and search-result
+references still need native implementations.
