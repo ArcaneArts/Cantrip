@@ -107,10 +107,12 @@ pub async fn load(
             if thread_id(&loaded)? != expected {
                 bail!("Codex resumed a different thread than requested.");
             }
+            verify_environment(configuration, &loaded)?;
             thread
         }
         None => {
             let started = request(runtime, "thread/start", params).await?;
+            verify_environment(configuration, &started)?;
             let thread = thread_id(&started)?.clone();
             bind_resources(&thread);
             identify(thread.clone()).await?;
@@ -123,6 +125,20 @@ pub async fn load(
     };
     thread.assert_current(runtime)?;
     Ok(thread)
+}
+
+fn verify_environment(configuration: &Configuration, result: &Value) -> Result<()> {
+    if let Some(expected) = configuration.start.get("environments") {
+        let thread = &result["thread"];
+        let environment = expected
+            .as_array()
+            .and_then(|environments| environments.first())
+            .context("Missing admitted Linux environment.")?;
+        if thread["environments"] != *expected || thread["cwd"] != environment["cwd"] {
+            bail!("Codex returned a thread outside its admitted Linux environment.");
+        }
+    }
+    Ok(())
 }
 
 /// Refresh the managed overlay and require the native acknowledgment before

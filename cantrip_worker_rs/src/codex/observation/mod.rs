@@ -98,6 +98,7 @@ impl Observer {
             &provider,
             execution,
             self.skill_root.clone(),
+            None,
         )
         .await?;
         let server_id = server.as_js_string().cloned().ok_or_else(|| {

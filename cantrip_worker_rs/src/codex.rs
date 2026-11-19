@@ -5,6 +5,7 @@ pub mod catalog;
 pub mod diagnostics;
 pub mod discovery;
 pub(crate) mod goals;
+mod guest_environment;
 pub mod managed;
 pub(crate) mod observation;
 pub mod preparation;

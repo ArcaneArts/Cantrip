@@ -6781,3 +6781,27 @@ their local regressions. The Windows x64 GNU worker compiled. SSH and
 Windows runtime were outside this validation.
 
 Guest Codex turn preparation and attachment materialization remain open.
+
+## 171. Prepare and reopen a managed Chat thread in Cantrip OS
+
+Reference commit f1ab36e398ea87e51c55b543ccadbb0bf8c7bc84 (#3334).
+
+The Rust worker handles guest placement in `chat.thread.ensure` through
+the existing authenticated worker command connection. It captures the
+attached executor and workspace identity, preserves the saved placement
+record, and selects the same Codex home and remote environment ID as the
+Node worker. The home contains a single remote executor configuration.
+Codex must acknowledge the admitted guest environment when starting or
+resuming the thread. The worker accepts configured network MCP servers
+for guest preparation.
+
+Local macOS ARM64 validation used the production worker, bundled Codex,
+and a disposable ARM64 Docker guest with a fixture Core command peer.
+It compared the saved placement and exact executor configuration with
+the Node implementation, reopened the same thread after worker restart,
+and rejected a changed binding. The Host project and standalone thread
+and MCP cases passed in the same fixture. The Windows x64 GNU worker
+compiled. SSH and Windows guest execution were outside this validation.
+
+Guest turn dispatch, the guest console, attachment materialization,
+first-party guest MCP, and cold guest observation remain open.

@@ -10,6 +10,7 @@ use super::{
 };
 use crate::{
     codex::{
+        guest_environment::Environment,
         managed::{Runtime, WeakRuntime, Worker},
         observation::{home, provider},
         revocation::{Resource, Target as RevocationTarget},
@@ -267,9 +268,6 @@ impl Ensurer {
         if !session.is_object() {
             bail!("This native preparation requires the managed chat session from the server.");
         }
-        if session.get("osExecution").is_some() {
-            bail!("This managed thread must prepare in its recorded execution environment.");
-        }
         if session["computerUseEnabled"] == true {
             bail!("Managed computer-use attachment is unavailable in the native worker.");
         }
@@ -282,6 +280,27 @@ impl Ensurer {
         let cwd = field(&command, "cwd")?;
         let chat = field(session, "chatId")?;
         let project = session["projectId"].as_js_string().cloned();
+        if incoming["type"] != COMMAND && session.get("osExecution").is_some() {
+            bail!(
+                "This command requires guest execution support beyond native thread preparation."
+            );
+        }
+        let scope = json!({"serverId": server, "ownerId": owner, "workerId": self.0.worker});
+        let environment = Environment::capture(&self.0.data, &scope, session, &cwd)
+            .await?
+            .map(Arc::new);
+        let guest = environment.is_some();
+        if guest
+            && (incoming["type"] != COMMAND
+                || stopping
+                || restored_task.is_some()
+                || session.get("heldSuspension").is_some()
+                || command["taskOwned"] == true)
+        {
+            bail!(
+                "This command requires guest execution support beyond native thread preparation."
+            );
+        }
         let resource = {
             let mut resources = self.0.resources.lock().unwrap();
             let entry = resources
@@ -326,7 +345,7 @@ impl Ensurer {
             open_runtime_provider(&self.0.encryption, &defaults["provider"])?;
         }
         let structured = command["structuredTask"] == true;
-        let user_servers = if structured {
+        let mut user_servers = if structured {
             Vec::new()
         } else {
             open_mcp_servers(
@@ -336,6 +355,9 @@ impl Ensurer {
                     .context("Managed MCP configurations")?,
             )?
         };
+        if guest {
+            user_servers.retain(|server| server["transport"] == "http");
+        }
         let target = Target {
             thread_id: command["threadId"].as_js_string().cloned(),
             cwd: cwd.clone(),
@@ -348,7 +370,6 @@ impl Ensurer {
             intent,
         };
         let bound = (owner.clone(), server.clone());
-        let scope = json!({"serverId": server, "ownerId": owner, "workerId": self.0.worker});
         let prepared = Arc::new(Mutex::new(None));
         let this = self.clone();
         let retained_resource = resource.clone();
@@ -374,6 +395,7 @@ impl Ensurer {
                     let source = held.as_ref().map_or(home::Source::Current(selection.thread_id.as_ref()), home::Source::Held);
                     let profile = home::profile(
                         &this.0.data, &scope, source, &chat, &provider, execution, this.0.skills.clone(),
+                        environment.as_deref(),
                     ).await?;
                     this.assert_bound(&bound)?;
                     let codex_home = profile.codex_home.clone();
@@ -389,15 +411,22 @@ impl Ensurer {
                     });
                     let runtime = match &attached {
                         Some((_, live)) => live.runtime.clone(),
-                        None => this.0.codex.launch_in_scope(
-                            provider::launch(profile, provider, this.0.access.clone())?,
-                            Some((logical_server, bound.0.clone())),
-                        ).await?,
+                        None => {
+                            let mut launch = provider::launch(profile, provider, this.0.access.clone())?;
+                            if let Some(environment) = environment.clone() {
+                                launch.profile.native_host = true;
+                                launch.prepare_home = Some(Arc::new(move |home| {
+                                    let environment = environment.clone();
+                                    cantrip_transport::lifecycle::owned(async move { environment.prepare_home(&home) })
+                                }));
+                            }
+                            this.0.codex.launch_in_scope(launch, Some((logical_server, bound.0.clone()))).await?
+                        }
                     };
                     resource.signal.check()?;
                     let session = &command["session"];
                     let mut mcp = profile::external_servers(user_servers);
-                    let admission = if structured {
+                    let admission = if structured || guest {
                         None
                     } else {
                         let broker = this.broker().await?;
@@ -435,7 +464,7 @@ impl Ensurer {
                     }
                     let mut configuration = profile::configuration(
                         &command, &cwd, mcp, runner.clone(), model_provider, standalone,
-                        this.0.permission_profiles,
+                        this.0.permission_profiles, environment.as_deref(),
                     ).await?;
                     this.assert_bound(&bound)?;
                     if let Some(saved) = &held {
@@ -443,7 +472,7 @@ impl Ensurer {
                     } else {
                         configuration.expected_suspension = native_stop;
                     }
-                    let delivery = this.0.codex.project_goals().filter(|_| !standalone && held.is_none() && !task_restoration);
+                    let delivery = this.0.codex.project_goals().filter(|_| !guest && !standalone && held.is_none() && !task_restoration);
                     let task = command["taskOwned"] == true;
                     let latch = task.then(|| this.task_latch(&bound, &chat)).transpose()?;
                     let task_root = |thread: &JsString, latch: &Arc<Latch>| Root {
@@ -502,7 +531,7 @@ impl Ensurer {
                         if let Some(delivery) = delivery {
                             delivery.select(&bound, &thread_id, runtime.generation(), &chat, task);
                         }
-                        let native_session = (!task).then(|| native_session(&command, &runtime, loaded.id()));
+                        let native_session = (!task && !guest).then(|| native_session(&command, &runtime, loaded.id()));
                         if let (Some(autonomous), Some(session)) = (this.0.autonomous.get(), native_session.as_ref())
                             && context_kind == "project"
                             && held.is_none()
@@ -711,6 +740,7 @@ impl Ensurer {
             model_provider,
             false,
             self.0.permission_profiles,
+            None,
         )
         .await?;
         if let Some(overlay) = &mut configuration.managed_overlay {
@@ -752,6 +782,7 @@ impl Ensurer {
             &provider,
             "ide",
             self.0.skills.clone(),
+            None,
         )
         .await?;
         self.assert_bound(bound)?;
