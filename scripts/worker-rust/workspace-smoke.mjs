@@ -71,6 +71,7 @@ const { values } = parseArgs({
     "replica-provision-only": { type: "boolean", default: false },
     "replica-lifecycle-only": { type: "boolean", default: false },
     "terminal-relay-only": { type: "boolean", default: false },
+    "shares-only": { type: "boolean", default: false },
     "run-definitions-only": { type: "boolean", default: false },
     "run-runtime-only": { type: "boolean", default: false },
   },
@@ -767,6 +768,22 @@ try {
       await verifyRunDefinitions({ call, projectId, checkout, restartWorker });
       break exercise;
     }
+    if (values["shares-only"]) {
+      const { verifyNetworkShares } = await import("./project-share-cases.mjs");
+      await verifyNetworkShares({
+        call,
+        origin: server.origin,
+        ownerId: repository.ownerId,
+        workerId,
+        workerDirectory,
+        serverId: repository.serverId,
+        projectId,
+        checkout,
+        master,
+        eventually,
+      });
+      break exercise;
+    }
     if (values["terminal-relay-only"]) {
       const metadataKey = cryptoClient.deriveComponentKey({
         accountMasterKey: master,
@@ -1022,6 +1039,10 @@ try {
         nodeDifferential: true,
         nodeAbsentFromWorkerPath: true,
       }),
+    );
+  else if (values["shares-only"])
+    console.log(
+      JSON.stringify({ suite: "native-worker-webdav-shares", passed: true }),
     );
   else if (values["terminal-relay-only"])
     console.log(

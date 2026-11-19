@@ -112,7 +112,7 @@ export async function closeShareCarrier(page, carrier) {
   await page.evaluate((key) => window.shareCarriers[key].close(), carrier.key);
 }
 
-function response(bytes) {
+export function parseWebdavResponse(bytes) {
   const boundary = bytes.indexOf("\r\n\r\n");
   assert.ok(boundary >= 0, "complete HTTP response headers");
   const lines = bytes.subarray(0, boundary).toString("latin1").split("\r\n");
@@ -229,7 +229,7 @@ async function exchange(page, carrier, request) {
       }),
   );
   await send({ ...base, kind: "close", sequence: 2, code: "normal" });
-  return response(bytes);
+  return parseWebdavResponse(bytes);
 }
 
 const md5 = (text) => createHash("md5").update(text).digest("hex");

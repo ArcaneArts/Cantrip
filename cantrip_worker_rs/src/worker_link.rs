@@ -36,6 +36,7 @@ pub(crate) struct Coordinator {
     encryption: Arc<Service>,
     outgoing: Arc<Outbound>,
     logs: Arc<Logs>,
+    shares: Arc<crate::project_shares::Manager>,
     state: Mutex<State>,
     wake: Notify,
     terminals: OnceLock<Arc<terminal::Adapter>>,
@@ -94,6 +95,7 @@ impl Coordinator {
         encryption: Arc<Service>,
         outgoing: Arc<Outbound>,
         logs: Arc<Logs>,
+        shares: Arc<crate::project_shares::Manager>,
     ) -> Self {
         Self {
             worker,
@@ -101,6 +103,7 @@ impl Coordinator {
             encryption,
             outgoing,
             logs,
+            shares,
             state: Mutex::default(),
             wake: Notify::new(),
             terminals: OnceLock::new(),

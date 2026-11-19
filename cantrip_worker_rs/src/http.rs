@@ -39,7 +39,7 @@ pub fn heartbeat(
                 }),
                 "files": json!({
                     "list":false,"read":false,"write":false,"remove":false,"download":false,
-                    "archive":false,"networkShare":false,
+                    "archive":false,"networkShare":true,
                 }),
             }),
         }),

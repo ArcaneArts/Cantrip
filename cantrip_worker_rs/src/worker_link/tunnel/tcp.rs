@@ -30,47 +30,23 @@ pub(super) async fn serve(
         stopped: stopped.clone(),
         reply: Reply::new(request.header()),
     };
-    let destination =
-        output.link.gateway.upgrade().map(|gateway| {
-            Destination::open(&gateway.encryption, &gateway.worker, request.header())
-        });
-    let Some(destination) = destination else {
-        return;
-    };
     if !output.link.active() {
         return;
     }
     let log = StreamLog::new(&output.link, request.header());
-    let end = match destination {
-        Ok(destination) => {
-            log.event(
-                "debug",
-                "tunnel.destination.opening",
-                "connect",
-                "started",
-                "Tunnel destination logical stream opening",
-            );
-            let initial = request.header()["initialCreditBytes"].as_u64().unwrap() as usize;
-            let end = tokio::select! {
-                biased;
-                _ = stopped.changed() => {
-                    match *stopped.borrow() {
-                        Some(Stop::RemoteClosed) => End::RemoteClosed,
-                        Some(Stop::Protocol) => End::Close("protocol-error"),
-                        Some(Stop::Congested) => End::Close("congested"),
-                        None => End::Remote,
-                    }
-                },
-                end = serve_socket(destination, initial, &mut input, &mut output, &log) => end,
-            };
-            log.finished(&end);
-            end
-        }
-        Err(error) => {
-            log.target_rejected(&error, &request.header()["target"]["targetKind"]);
-            End::Rejected(error.code())
-        }
+    let end = tokio::select! {
+        biased;
+        _ = stopped.changed() => {
+            match *stopped.borrow() {
+                Some(Stop::RemoteClosed) => End::RemoteClosed,
+                Some(Stop::Protocol) => End::Close("protocol-error"),
+                Some(Stop::Congested) => End::Close("congested"),
+                None => End::Remote,
+            }
+        },
+        end = serve_socket(request.header(), &mut input, &mut output, &log) => end,
     };
+    log.finished(&end);
     // After logical retirement the attachment still owns the outer credit.
     // Closing the receiver first prevents producers from adding to this drain.
     input.close();
@@ -85,12 +61,33 @@ pub(super) async fn serve(
 }
 
 async fn serve_socket(
-    destination: Destination,
-    initial: usize,
+    request: &Value,
     input: &mut mpsc::Receiver<Frame>,
     output: &mut OutputStream,
     log: &StreamLog,
 ) -> End {
+    let Some(gateway) = output.link.gateway.upgrade() else {
+        return End::Remote;
+    };
+    let destination = Destination::open(&gateway, request).await;
+    drop(gateway);
+    if !output.link.active() {
+        return End::Remote;
+    }
+    let destination = match destination {
+        Ok(destination) => destination,
+        Err(error) => {
+            log.target_rejected(&error, &request["target"]["targetKind"]);
+            return End::Rejected(error.code());
+        }
+    };
+    log.event(
+        "debug",
+        "tunnel.destination.opening",
+        "connect",
+        "started",
+        "Tunnel destination logical stream opening",
+    );
     let socket = match connect(&destination).await {
         Ok(socket) => socket,
         Err(end) => return end,
@@ -106,6 +103,7 @@ async fn serve_socket(
         .reply
         .control("accepted", &[("initialCreditBytes", json!(INITIAL_CREDIT))]);
     if output.send(accepted).await {
+        let initial = request["initialCreditBytes"].as_u64().unwrap() as usize;
         Stream::new(initial, destination.protection)
             .run(socket, input, output)
             .await
@@ -228,7 +226,7 @@ impl StreamLog {
                 *code,
                 *code,
             ),
-            End::Rejected(code) => (
+            End::Rejected(code @ "target-unavailable") => (
                 "failed",
                 "connect",
                 "warn",
@@ -236,6 +234,7 @@ impl StreamLog {
                 "timeout",
                 *code,
             ),
+            End::Rejected(_) => return,
             End::Error => (
                 "failed",
                 "connect",

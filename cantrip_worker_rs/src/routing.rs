@@ -84,6 +84,11 @@ pub fn protect_error(kind: &str, error: anyhow::Error) -> anyhow::Error {
             error
                 .downcast_ref::<crate::filesystem::folders::AttachmentError>()
                 .map(|error| error.code)
+        })
+        .or_else(|| {
+            error
+                .downcast_ref::<crate::project_shares::SourceUnavailable>()
+                .map(|_| "project-source-unavailable")
         });
     ProtectedError { code }.into()
 }

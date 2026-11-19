@@ -44,6 +44,14 @@ impl Manager {
         )
     }
 
+    pub(crate) async fn resolve_path(&self, identity_value: &Value) -> Result<PathBuf> {
+        let _guard = self.commands.lock().await;
+        let (root, chat) = identity(identity_value)?;
+        let roots = self.load().await?;
+        registered(&roots, root, chat)?;
+        self.location(chat).await?.canonical_target().await
+    }
+
     pub(crate) async fn execute_routed(
         &self,
         command: &Value,
