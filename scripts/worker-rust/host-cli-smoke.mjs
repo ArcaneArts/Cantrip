@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { runConfigurationFileSchema } from "../../packages/protocol/dist/run-configuration-definitions.js";
+import { verifyHostCliPolicies } from "./host-cli-policy-smoke.mjs";
 
 export async function cliConnection(workerDirectory) {
   const file = path.join(workerDirectory, "cli-connection.json");
@@ -40,6 +41,8 @@ export async function verifyHostCli({
   workerDirectory,
   workerId,
   projectId,
+  ownerId,
+  policyKey,
   checkout,
   call,
   save,
@@ -174,22 +177,41 @@ export async function verifyHostCli({
       "utf8",
     ),
   );
-  const conflict = await fetch(connection.serverUrl + "/api/internal/cli", {
-    method: "POST",
-    headers: {
-      authorization: "Bearer " + workerCredential.credential,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      command: "run.secret-set",
-      context: { selection: "lane", terminalId },
-      requestId: randomUUID(),
-      workerId,
-      arguments: { reference, expectedProjectId: randomUUID() },
-    }),
+  const core = async (command, arguments_) => {
+    const response = await fetch(connection.serverUrl + "/api/internal/cli", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer " + workerCredential.credential,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        command,
+        context: { selection: "lane", terminalId },
+        requestId: randomUUID(),
+        workerId,
+        arguments: arguments_,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    return { status: response.status, body: await response.json() };
+  };
+  const conflict = await core("run.secret-set", {
+    reference,
+    expectedProjectId: randomUUID(),
   });
   assert.equal(conflict.status, 409);
-  assert.equal((await conflict.json()).code, "conflict");
+  assert.equal(conflict.body.code, "conflict");
+
+  await verifyHostCliPolicies({
+    call,
+    core,
+    projectId,
+    ownerId,
+    checkout,
+    componentKey: policyKey,
+    run: (command) =>
+      run(fixture("Run invoking protected CLI policy commands", command)),
+  });
 
   const consumed = await run(
     fixture(

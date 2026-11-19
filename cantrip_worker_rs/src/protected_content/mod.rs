@@ -1,6 +1,7 @@
 //! Native equivalents of the worker endpoint/surface content helpers. Resource
 //! authorization and cancellation remain with the owning execution adapters.
 mod endpoint;
+mod policy;
 mod private_state;
 mod replay;
 mod repository;
@@ -10,6 +11,7 @@ use anyhow::{Result, anyhow};
 use cantrip_crypto::{DecryptionError, Zeroizing, checked};
 use cantrip_wire::{Value, parse_json_text, value::json};
 pub use endpoint::*;
+pub(crate) use policy::{open_policy_body, open_policy_summary};
 pub use private_state::*;
 pub use replay::SurfaceStreamReplayGuard;
 pub use repository::*;
