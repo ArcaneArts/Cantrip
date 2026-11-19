@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -16,6 +18,7 @@ export async function verifyHostTerminal({
   projectId,
   checkout,
   cli,
+  connectionPath,
 }) {
   const id = randomUUID();
   const context = {
@@ -102,6 +105,41 @@ export async function verifyHostTerminal({
         },
         "CLI resolves the real Host Terminal lane",
       );
+
+      const invoke = async (args) => {
+        const { stdout } = await promisify(execFile)(
+          cli,
+          ["--context", "lane", "--json", "terminal", ...args],
+          {
+            cwd: checkout,
+            env: {
+              ...process.env,
+              CANTRIP_CLI_CONNECTION: connectionPath,
+              CANTRIP_TERMINAL_ID: id,
+            },
+            timeout: 10_000,
+          },
+        );
+        return JSON.parse(stdout);
+      };
+      const snapshot = await invoke(["read", "--target", id]);
+      assert.equal(snapshot.target.surfaceId, id);
+      assert.equal(snapshot.data.terminalId, id);
+      assert.equal(snapshot.data.status, "running");
+      assert.ok(snapshot.data.data.includes(marker));
+
+      const inputMarker = randomUUID();
+      const sent = await invoke([
+        "send",
+        "--target",
+        id,
+        "--raw",
+        `printf '%s%s\\n' cli-terminal- '${inputMarker}'\r`,
+      ]);
+      assert.equal(sent.target.surfaceId, id);
+      assert.equal(sent.summary, "Sent encrypted terminal input.");
+      assert.equal(sent.mutated, true);
+      await first.read(new RegExp(`cli-terminal-${inputMarker}`));
     }
     first.relay.send({ type: "resize", cols: 113, rows: 43 });
     // Resizing and input travel in separate server tasks. Confirm the actual
