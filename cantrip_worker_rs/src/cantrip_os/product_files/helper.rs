@@ -4,7 +4,7 @@ use crate::{
     cantrip_os::operations::save,
     encryption::ComponentKey,
     filesystem::{
-        Scope,
+        Scope, chat_references,
         explorer::{self, binary_write, imports::Imports},
         paths,
     },
@@ -106,7 +106,7 @@ async fn respond(
         surface["operationId"] == id
             && matches!(
                 surface["surfaceKind"].as_str(),
-                Some("explorer" | "file-document")
+                Some("explorer" | "file-document" | "chat-files")
             ),
         "Misrouted OS file request."
     );
@@ -158,6 +158,13 @@ async fn dispatch(
         frame["action"] == "execute",
         "Unknown Linux file operation action."
     );
+    if context["surfaceKind"] == "chat-files" {
+        let request = checked("chatFileReferencesRequestContentSchema", &frame["request"])?;
+        let value = chat_references::resolve(root, &request).await?;
+        return Ok(completed(
+            json!({"ok":true,"result":json!({"type":"chat.files.references","value":value})}),
+        ));
+    }
     let request = checked("explorerOperationRequestContentSchema", &frame["request"])?;
     if !mutation(text(&request, "type")?)? {
         return Ok(execute(root, directory, imports, context, &request).await);

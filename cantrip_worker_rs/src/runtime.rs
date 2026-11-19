@@ -972,7 +972,7 @@ async fn cycle(
                     });
                     continue;
                 }
-                if matches!(kind,"explorer.operation"|"file-document.operation") {
+                if matches!(kind,"explorer.operation"|"file-document.operation"|"chat.files.references") {
                     let operations=explorer_operations.clone();let encryption=encryption.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
                     commands.spawn(async move {
                         let result=operations.execute(&request["command"],&encryption,&routing,&scope).await;

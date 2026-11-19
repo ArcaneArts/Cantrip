@@ -4,7 +4,7 @@ use crate::{
     cantrip_os::product_files::ProductFiles,
     encryption::Service,
     filesystem::{
-        Scope,
+        Scope, chat_references,
         explorer::{self, binary_write, imports::Imports},
         paths,
     },
@@ -37,7 +37,6 @@ impl ExplorerOperations {
     }
 
     /// All surface consumers in one runtime share admission/replay capacity.
-    /// Future terminal/chat-file adapters must use the same runtime guard.
     pub(crate) fn with_replay(
         replay: Arc<Mutex<SurfaceStreamReplayGuard>>,
         directory: &Path,
@@ -62,8 +61,24 @@ impl ExplorerOperations {
         scope.check()?;
         // The public Node wrapper resolves all routing metadata before dispatch.
         let command = registry.resolve(command).await?;
-        let document = command["type"] == "file-document.operation";
-        let mut context = json!({"serverId":command["serverId"],"surfaceKind":if document{"file-document"}else{"explorer"},"surfaceId":if document{&command["documentId"]}else{&command["explorerId"]},"operationId":command["operationId"],"direction":"request","sequence":command["sequence"]});
+        let (kind, id, schema) = match command["type"].as_str() {
+            Some("chat.files.references") => (
+                "chat-files",
+                &command["chatId"],
+                "chatFileReferencesRequestContentSchema",
+            ),
+            Some("file-document.operation") => (
+                "file-document",
+                &command["documentId"],
+                "explorerOperationRequestContentSchema",
+            ),
+            _ => (
+                "explorer",
+                &command["explorerId"],
+                "explorerOperationRequestContentSchema",
+            ),
+        };
+        let mut context = json!({"serverId":command["serverId"],"surfaceKind":kind,"surfaceId":id,"operationId":command["operationId"],"direction":"request","sequence":command["sequence"]});
         self.replay.lock().unwrap().reserve(&context)?;
         // Failed opens consume their reservation. Do not roll back sequence or
         // hold replay/key locks across asynchronous filesystem work.
@@ -71,10 +86,10 @@ impl ExplorerOperations {
             service,
             &context,
             &command["protectedRequest"],
-            "explorerOperationRequestContentSchema",
+            schema,
         )?;
         let result = async {
-            if document {
+            if kind == "file-document" {
                 let owner = service.owner_id()?;
                 let binding = json!({"serverId":command["serverId"],"resource":"file-document-row","resourceId":command["documentId"],"operationId":Value::Null,"recordKind":"file-document-state"});
                 let state = open_private_state(service,&owner,&binding,&command["stateProtection"])?;
@@ -87,7 +102,10 @@ impl ExplorerOperations {
                 if !allowed || request["path"] != state["path"] {bail!("The operation does not target this file document.");}
             }
             if let Some(root) = command["root"].as_js_string() {
-                let result = if binary_write::action(&request).is_some() {
+                let result = if kind == "chat-files" {
+                    let value = chat_references::resolve(&paths::native(root), &request).await?;
+                    json!({"type":"chat.files.references","value":value})
+                } else if binary_write::action(&request).is_some() {
                     let writer = self.binary_writes.as_ref().context("This worker does not support streamed binary saves.")?;
                     let material = service.bound_component("surface-private-state", None)?;
                     if material.server_id != context["serverId"] {

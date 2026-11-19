@@ -27,7 +27,7 @@ impl AsciiUnit for u16 {
 fn drive(units: &[u16]) -> bool {
     units.len() >= 2 && units[0].is_ascii_alphabetic() && units[1] == 58
 }
-fn file_url(input: &JsString, windows: bool) -> Result<JsString> {
+pub(super) fn file_url(input: &JsString, windows: bool) -> Result<JsString> {
     let url = url::Url::parse(&input.lossy())?;
     let path = url.path();
     let bytes = path.as_bytes();
@@ -66,10 +66,8 @@ fn file_url(input: &JsString, windows: bool) -> Result<JsString> {
         Ok(decoded.as_ref().into())
     }
 }
-pub fn normalize(input: &JsString, windows: bool) -> Result<JsString> {
-    let mut value = input.clone();
-    let units = value.units();
-    if units.get(..5).is_some_and(|v| {
+pub(super) fn is_file_url(value: &JsString) -> bool {
+    value.units().get(..5).is_some_and(|v| {
         v.iter()
             .copied()
             .map(|u| {
@@ -80,7 +78,12 @@ pub fn normalize(input: &JsString, windows: bool) -> Result<JsString> {
                 }
             })
             .eq("file:".encode_utf16())
-    }) {
+    })
+}
+pub fn normalize(input: &JsString, windows: bool) -> Result<JsString> {
+    let mut value = input.clone();
+    let units = value.units();
+    if is_file_url(&value) {
         value = file_url(&value, windows)?;
     } else if let Some(colon) = units.iter().position(|u| *u == 58)
         && scheme(&units[..colon])
@@ -91,6 +94,10 @@ pub fn normalize(input: &JsString, windows: bool) -> Result<JsString> {
     if windows {
         return windows_path(&value);
     }
+    posix_path(&value, true)
+}
+
+pub(super) fn posix_path(value: &JsString, preserve_trailing: bool) -> Result<JsString> {
     if value.units().first() != Some(&47) {
         bail!("Project source path must be absolute.");
     }
@@ -113,7 +120,7 @@ pub fn normalize(input: &JsString, windows: bool) -> Result<JsString> {
         }
         result.extend_from_slice(part);
     }
-    if trailing && !segments.is_empty() {
+    if preserve_trailing && trailing && !segments.is_empty() {
         result.push(47);
     }
     Ok(JsString::new(result))
