@@ -14,7 +14,9 @@ JavaScript converter.
 The offline CLI accepts an explicit PostgreSQL 18 compatibility runtime.
 Its build matches the datum and stored-expression formats of legacy PGlite 18.
 Build it on macOS or Linux with the PostgreSQL source build tools and zlib
-development headers. Node is used by the build script.
+development headers. For Windows x64, build in the MSYS2 MINGW64 shell with
+the MinGW-w64 C toolchain, its zlib package, Make, Bison, Flex and Perl.
+Node is used by the build script.
 
 ```sh
 node scripts/database-transfer/build-legacy-postgres.mjs /build/legacy-postgres
@@ -30,13 +32,13 @@ The server restores the logical profile into native PGlite and publishes it
 through the activation journal.
 
 Desktop packaging on a matching macOS or Linux host builds the private tools
-into `runtime/server/legacy-postgres`. The package records their `bin` directory
-in `desktop-server.json`, and desktop startup tries the upgrade before serving.
-For manual operations, point `--legacy-postgres-bin-dir` at that same directory.
-Building the package requires a C toolchain, Make, Bison, Flex and zlib headers.
-The packaged conversion uses the binaries directly. Windows and cross-target
-desktop assembly still use the JavaScript converter. The native runtime takes
-precedence when both are supplied.
+into `runtime/server/legacy-postgres`. The Windows x64 server package carries
+the same directory layout into desktop assembly. The package records the `bin`
+directory in `desktop-server.json`, and desktop startup tries the upgrade before
+serving. For manual operations, point `--legacy-postgres-bin-dir` at that same
+directory. The packaged conversion uses the binaries directly. Older Windows
+artifacts and cross-target packages without native tools still use the
+JavaScript converter.
 
 Use explicit export and restore if you need to keep an archive, prepare at a
 separate path, or select another database backend.

@@ -260,9 +260,14 @@ async function packageDesktopRuntime() {
     });
   }
   // Build the private compatibility engine for matching native build hosts.
-  const nativeLegacyUpgrade =
-    platform === hostTarget() && packageTarget.platform !== "win32";
-  if (!nativeLegacyUpgrade) {
+  const configuration = await configureDesktopServer(
+    path.join(runtime, "server"),
+    {
+      nativeLegacyUpgrade:
+        platform === hostTarget() && packageTarget.platform !== "win32",
+    },
+  );
+  if (configuration.profileConverter) {
     runPnpm(["--filter", "@cantrip/profile-converter", "build"]);
     runPnpm([
       "--config.node-linker=hoisted",
@@ -273,9 +278,6 @@ async function packageDesktopRuntime() {
       path.join(runtime, "profile-converter"),
     ]);
   }
-  await configureDesktopServer(path.join(runtime, "server"), {
-    nativeLegacyUpgrade,
-  });
   await bundleNodeRuntime(runtime);
   await verifyPackagedWorkerCua(path.join(runtime, "worker"));
   console.log(

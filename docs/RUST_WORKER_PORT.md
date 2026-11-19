@@ -6424,3 +6424,25 @@ A local Debian ARM64 container built the Linux tools, resolved the bundled
 libpq, initialized a fresh compatibility cluster, and evaluated a stored
 expression in the compatibility backend. Full Linux desktop and Windows
 native compatibility runtime checks remain open.
+
+## 158. Package the native legacy profile reader for Windows x64
+
+Reference commit `8335e36d72b53941c41c29384e272da042c5a5c5` (#3320).
+
+The Windows x64 server package builds the compatibility tools in the existing
+MSYS2 release build. It records their location for desktop assembly and applies
+the same UTF-8 executable manifests as the serving tools. The compatibility
+engine preserves the legacy `C` collation and `C.UTF-8` character types. Its
+gzip export preserves newline bytes inside data, and its linked zlib and
+winpthreads require no redistributable DLLs. The single-user PostgreSQL process
+runs in the existing Windows job with a restricted token. Rollback clears the
+Windows-specific PostgreSQL configuration before publishing the legacy profile.
+
+Local MinGW cross-builds produced the Windows x64 tools, Rust server, and
+desktop supervisor probe. The Windows executables ran through Wine on macOS.
+The CLI exported a migrated JavaScript PGlite profile, and JavaScript PGlite
+reopened the restored profile with exact Unicode and mixed newline data. The
+desktop probe used the server artifact layout with no Node executable, retained
+the source database control file and opaque profile file, and reopened the
+same server identity after restart. A native Windows installer run remains
+open. Older artifacts without the bundled tools retain their converter.

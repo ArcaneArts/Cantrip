@@ -8,10 +8,33 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 const exec = promisify(execFile);
+
+export function buildLegacyPostgres(directory, target) {
+  const build = fileURLToPath(
+    new URL("../database-transfer/build-legacy-postgres.mjs", import.meta.url),
+  );
+  const result = spawnSync(
+    process.execPath,
+    [
+      build,
+      path.join(directory, "legacy-postgres"),
+      ...(target ? ["--target", target] : []),
+    ],
+    { stdio: "inherit" },
+  );
+  if (result.error) throw result.error;
+  if (result.status !== 0)
+    throw new Error(
+      `Legacy PostgreSQL build failed (${result.signal ?? result.status}).`,
+    );
+  return "legacy-postgres/bin";
+}
+
 async function defaultPostgresBin(platform) {
   if (platform === "darwin") {
     const { stdout } = await exec("brew", ["--prefix", "postgresql@18"]);
@@ -21,7 +44,6 @@ async function defaultPostgresBin(platform) {
   }
   if (platform === "win32") {
     const script = new URL("./windows-postgres-assets.ps1", import.meta.url);
-    const { fileURLToPath } = await import("node:url");
     const cache = path.join(
       process.env.LOCALAPPDATA ?? process.env.TEMP,
       "Cantrip",

@@ -228,7 +228,7 @@ try {
       ),
     });
     const literal =
-      "first line\n\\restrict test\n\\unrestrict test\nlast 😀e\u0301";
+      "first line\r\n\\restrict test\n\\unrestrict test\rlast 😀e\u0301";
     await database.exec(`
       CREATE TABLE public.migration_probe (
         id serial PRIMARY KEY, content text, metadata jsonb, raw bytea,
