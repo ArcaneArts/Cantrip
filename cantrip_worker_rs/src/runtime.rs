@@ -469,7 +469,7 @@ async fn cycle(
                 if crate::worker_link::DirectBroker::supports(kind) {
                     let identity = encryption.bound_identity();
                     direct.reconcile(identity.as_ref().ok());
-                    let result = direct.execute(command);
+                    let result = direct.execute(command, &worker_link);
                     finish(&request, &worker, logs, &outgoing, began, &result);
                     continue;
                 }

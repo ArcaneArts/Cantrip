@@ -2,7 +2,7 @@
 use super::{
     Carrier, Coordinator, Frame, Inbound, Link, MAX_STREAMS, Output, Streams, id, is_source_frame,
 };
-use crate::worker_link::carrier::SocketOutput;
+use crate::worker_link::{carrier::SocketOutput, terminal::DirectTerminal};
 use anyhow::{Result, ensure};
 use cantrip_wire::{JsString, Value, value::json};
 use std::{
@@ -15,6 +15,7 @@ pub(in crate::worker_link) struct DirectTunnel {
     trace: Option<Value>,
     state: Mutex<Option<State>>,
     output: SocketOutput,
+    terminal: Option<Arc<DirectTerminal>>,
 }
 
 #[derive(Default)]
@@ -26,13 +27,23 @@ struct State {
 }
 
 impl DirectTunnel {
-    pub fn new(route: Value, trace: Option<Value>, output: SocketOutput) -> Arc<Self> {
+    pub fn new(
+        route: Value,
+        trace: Option<Value>,
+        output: SocketOutput,
+        terminal: Option<Arc<DirectTerminal>>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             route,
             trace,
             state: Mutex::new(Some(State::default())),
             output,
+            terminal,
         })
+    }
+
+    pub fn terminal(&self) -> Option<Arc<DirectTerminal>> {
+        self.terminal.clone()
     }
 
     pub fn active(&self) -> bool {

@@ -4,7 +4,9 @@ mod socket;
 use super::{
     Coordinator, GRACE,
     carrier::{Local, SocketFrames, SocketOutput},
-    id, timestamp,
+    id,
+    terminal::DirectTerminal,
+    timestamp,
     tunnel::DirectTunnel,
 };
 use crate::{http::checked, logging::Logs};
@@ -124,7 +126,17 @@ impl Broker {
         )
     }
 
-    pub(crate) fn execute(&self, command: &Value) -> Result<Value> {
+    pub(crate) fn execute(&self, command: &Value, gateway: &Coordinator) -> Result<Value> {
+        // Run state may publish observations. Check it outside the broker lock.
+        if command["type"] == "direct.capability.prepare"
+            && command["binding"]["resourceKind"] == "terminal"
+        {
+            gateway
+                .terminals
+                .get()
+                .context("Direct terminal adapter is unavailable.")?
+                .check_direct(&command["binding"]["resourceId"])?;
+        }
         let mut state = self.state.lock().unwrap();
         state.sweep();
         match command["type"].as_str() {
@@ -171,6 +183,9 @@ impl Broker {
         let channels = binding["channels"]
             .as_array()
             .context("Direct capability channels")?;
+        let tunnel_bound = channels.contains(&json!("tunnel-data"))
+            && route["attachmentId"] == binding["attachmentId"]
+            && route["destinationEndpointId"] == format!("worker:{}", self.worker).as_str();
         match binding["resourceKind"].as_str() {
             Some("probe") if route.is_null() && channels.contains(&json!("probe")) => {}
             Some("worker-link")
@@ -178,13 +193,17 @@ impl Broker {
                     && channels.contains(&json!("worker-link"))
                     && binding["resourceId"] == binding["attachmentId"] => {}
             Some("tunnel" | "project-share")
-                if channels.contains(&json!("tunnel-data"))
-                    && route["attachmentId"] == binding["attachmentId"]
+                if tunnel_bound
                     && route["tunnelId"] == binding["resourceId"]
-                    && route["destinationEndpointId"]
-                        == format!("worker:{}", self.worker).as_str()
                     && route["target"]["kind"] == "protected-tunnel"
                     && route["target"]["recordId"] == binding["resourceId"] => {}
+            Some("terminal")
+                if tunnel_bound
+                    && route["tunnelId"]
+                        == format!("terminal:{}", id(binding, "resourceId")).as_str()
+                    && route["target"]["kind"] == "adapter"
+                    && route["target"]["adapter"] == "terminal"
+                    && route["target"]["resourceId"] == binding["resourceId"] => {}
             _ => bail!("Direct route does not match a supported capability."),
         }
         ensure!(
@@ -249,7 +268,14 @@ impl Broker {
             }
             _ => {
                 let (output, frames) = SocketOutput::channel();
-                let tunnel = DirectTunnel::new(prepared.route, prepared.trace.clone(), output);
+                let terminal = (prepared.binding["resourceKind"] == "terminal").then(|| {
+                    Arc::new(DirectTerminal::new(
+                        &prepared.route["target"],
+                        prepared.binding["ownerId"].clone(),
+                    ))
+                });
+                let tunnel =
+                    DirectTunnel::new(prepared.route, prepared.trace.clone(), output, terminal);
                 (Resource::Tunnel(tunnel), Some(frames))
             }
         };

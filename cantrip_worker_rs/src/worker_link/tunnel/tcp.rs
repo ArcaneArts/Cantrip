@@ -1,13 +1,14 @@
 //! A logical TCP stream with independent nested credit and TCP half-closes.
 use super::{
-    Destination, FROM_DESTINATION, FROM_SOURCE, Frame, Link, Output, Reply, Stop, TargetError, wire,
+    Carrier, Destination, FROM_DESTINATION, FROM_SOURCE, Frame, Link, Output, Reply, Stop,
+    TargetError, wire,
 };
 use cantrip_crypto::content::{open_tunnel_data_frame, seal_tunnel_data_frame};
 use cantrip_wire::{Value, value::json};
-use std::{collections::VecDeque, io::ErrorKind, ops::Range, time::Duration};
+use std::{collections::VecDeque, ops::Range, time::Duration};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpStream, tcp::OwnedWriteHalf},
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, duplex},
+    net::TcpStream,
     sync::{mpsc, watch},
     time::{Instant, timeout},
 };
@@ -69,6 +70,24 @@ async fn serve_socket(
     let Some(gateway) = output.link.gateway.upgrade() else {
         return End::Remote;
     };
+    if let Carrier::Direct(pipe) = &output.link.carrier
+        && let Some(terminal) = pipe.upgrade().and_then(|pipe| pipe.terminal())
+    {
+        if terminal.claimed() {
+            return End::Error;
+        }
+        let Some(adapter) = gateway.terminals.get().cloned() else {
+            return End::Rejected("target-unavailable");
+        };
+        drop(gateway);
+        let (socket, endpoint) = duplex(64 * 1024);
+        let transport = connected(socket, None, request, input, output, log);
+        tokio::pin!(transport);
+        return tokio::select! {
+            end = &mut transport => end,
+            () = adapter.serve_direct(&terminal, endpoint) => transport.await,
+        };
+    }
     let destination = Destination::open(&gateway, request).await;
     drop(gateway);
     if !output.link.active() {
@@ -92,6 +111,25 @@ async fn serve_socket(
         Ok(socket) => socket,
         Err(end) => return end,
     };
+    connected(
+        socket,
+        Some(destination.protection),
+        request,
+        input,
+        output,
+        log,
+    )
+    .await
+}
+
+async fn connected(
+    socket: impl AsyncRead + AsyncWrite + Unpin,
+    protection: Option<Value>,
+    request: &Value,
+    input: &mut mpsc::Receiver<Frame>,
+    output: &mut OutputStream,
+    log: &StreamLog,
+) -> End {
     log.event(
         "info",
         "tunnel.destination.connected",
@@ -104,7 +142,7 @@ async fn serve_socket(
         .control("accepted", &[("initialCreditBytes", json!(INITIAL_CREDIT))]);
     if output.send(accepted).await {
         let initial = request["initialCreditBytes"].as_u64().unwrap() as usize;
-        Stream::new(initial, destination.protection)
+        Stream::new(initial, protection)
             .run(socket, input, output)
             .await
     } else {
@@ -294,7 +332,7 @@ impl OutputStream {
 }
 
 struct Stream {
-    protection: Value,
+    protection: Option<Value>,
     destination_credit: usize,
     source_credit: usize,
     write_buffer: VecDeque<Zeroizing<Vec<u8>>>,
@@ -307,7 +345,7 @@ struct Stream {
 }
 
 impl Stream {
-    fn new(destination_credit: usize, protection: Value) -> Self {
+    fn new(destination_credit: usize, protection: Option<Value>) -> Self {
         Self {
             protection,
             destination_credit,
@@ -324,11 +362,11 @@ impl Stream {
 
     async fn run(
         mut self,
-        socket: TcpStream,
+        socket: impl AsyncRead + AsyncWrite + Unpin,
         input: &mut mpsc::Receiver<Frame>,
         output: &mut OutputStream,
     ) -> End {
-        let (mut reader, mut writer) = socket.into_split();
+        let (mut reader, mut writer) = tokio::io::split(socket);
         let mut read_buffer = Zeroizing::new(vec![0; wire::MAX_PLAINTEXT_BYTES]);
         let mut unread = 0..0;
         let mut pending = None;
@@ -380,9 +418,13 @@ impl Stream {
                         Err(_) => return End::Error,
                     }
                 }
-                ready = writer.writable(), if !self.write_buffer.is_empty() => {
-                    if ready.is_err() || self.write(&writer).is_err() {
-                        return End::Error;
+                written = async {
+                    let front = self.write_buffer.front().expect("pending TCP write");
+                    writer.write(&front[self.write_offset..]).await
+                }, if !self.write_buffer.is_empty() => {
+                    match written {
+                        Ok(bytes) if bytes > 0 => self.written(bytes),
+                        _ => return End::Error,
                     }
                 }
             }
@@ -393,8 +435,16 @@ impl Stream {
         let header = frame.header();
         match header["kind"].as_str() {
             Some("data") => {
-                let data = open_tunnel_data_frame(&self.protection, header, frame.payload())
-                    .map_err(|_| End::Close("protocol-error"))?;
+                let data = match &self.protection {
+                    Some(protection) => open_tunnel_data_frame(protection, header, frame.payload())
+                        .map_err(|_| End::Close("protocol-error"))?,
+                    // The legacy terminal WebSocket protects the PTY payload
+                    // inside its own JSON messages. CTTN carries its bytes as-is.
+                    None if header.get("protection").is_none() => {
+                        Zeroizing::new(frame.payload().to_vec())
+                    }
+                    None => return Err(End::Close("protocol-error")),
+                };
                 if self.source_closed || self.write_bytes + data.len() > WRITE_BUFFER_LIMIT {
                     return Err(End::Close("congested"));
                 }
@@ -412,14 +462,8 @@ impl Stream {
         Ok(())
     }
 
-    fn write(&mut self, socket: &OwnedWriteHalf) -> std::io::Result<()> {
+    fn written(&mut self, written: usize) {
         let front = self.write_buffer.front().expect("pending TCP write");
-        let written = match socket.try_write(&front[self.write_offset..]) {
-            Ok(0) => return Err(ErrorKind::WriteZero.into()),
-            Ok(bytes) => bytes,
-            Err(error) if error.kind() == ErrorKind::WouldBlock => return Ok(()),
-            Err(error) => return Err(error),
-        };
         self.write_offset += written;
         self.write_bytes -= written;
         self.source_credit += written;
@@ -427,7 +471,6 @@ impl Stream {
             self.write_buffer.pop_front();
             self.write_offset = 0;
         }
-        Ok(())
     }
 
     fn next_output(
@@ -440,11 +483,15 @@ impl Stream {
             let len = self.destination_credit.min(unread.len());
             let end = unread.start + len;
             let header = reply.header("data", &[("direction", json!(FROM_DESTINATION))]);
-            let sealed =
-                seal_tunnel_data_frame(&self.protection, &header, &buffer[unread.start..end])
+            let payload = &buffer[unread.start..end];
+            let frame = if let Some(protection) = &self.protection {
+                let sealed = seal_tunnel_data_frame(protection, &header, payload)
                     .map_err(|_| End::Close("protocol-error"))?;
-            let frame = wire::create(sealed.header, &sealed.payload)
-                .map_err(|_| End::Close("protocol-error"))?;
+                wire::create(sealed.header, &sealed.payload)
+            } else {
+                wire::create(header, payload)
+            }
+            .map_err(|_| End::Close("protocol-error"))?;
             self.destination_credit -= len;
             unread.start = end;
             return Ok(Some(frame));

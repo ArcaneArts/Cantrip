@@ -1,4 +1,4 @@
-//! Attach WorkerLink to the same owned PTY and replay used by control views.
+//! Attach data-plane views to the same owned PTY and replay used by control views.
 use super::{Attachment, Display, Key, Shells, Transport, authority, binding, not_running, size};
 use crate::{encryption::Service, protected_content::SurfaceStreamReplayGuard};
 use anyhow::Result;
@@ -44,15 +44,40 @@ impl LinkTarget {
             "terminalId":resource["resourceId"],
             "operationId":operation["operationId"],
         });
-        let key = Shells::key(&command, encryption)?;
+        Self::for_operation(&grant["identity"]["ownerId"], &command, id, encryption)
+    }
+
+    pub(crate) fn direct(
+        owner: &Value,
+        terminal: &Value,
+        server: &Value,
+        operation: JsString,
+        encryption: &Service,
+    ) -> Result<Self> {
+        let command = json!({"serverId":server,"terminalId":terminal,"operationId":operation});
+        Self::for_operation(
+            owner,
+            &command,
+            format!("direct:{}", uuid::Uuid::new_v4()).into(),
+            encryption,
+        )
+    }
+
+    fn for_operation(
+        owner: &Value,
+        command: &Value,
+        id: JsString,
+        encryption: &Service,
+    ) -> Result<Self> {
+        let key = Shells::key(command, encryption)?;
         anyhow::ensure!(
-            grant["identity"]["ownerId"].as_js_string() == Some(&key.authority.0),
+            owner.as_js_string() == Some(&key.authority.0),
             "Terminal owner changed."
         );
         Ok(Self {
             key,
             id,
-            binding: binding(&command, "input"),
+            binding: binding(command, "input"),
         })
     }
 }
