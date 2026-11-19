@@ -8,6 +8,7 @@ import * as secrets from "../../packages/protocol/dist/run-configuration-secrets
 import { verifyCargoRunProvider } from "./cargo-run-provider-smoke.mjs";
 import { verifyDartRunProvider } from "./dart-run-provider-smoke.mjs";
 import { verifyFlutterRunProvider } from "./flutter-run-provider-smoke.mjs";
+import { cliConnection, verifyHostCli } from "./host-cli-smoke.mjs";
 import { verifyJavaRunProvider } from "./java-run-provider-smoke.mjs";
 import { verifyNodeRunProvider } from "./node-run-provider-smoke.mjs";
 
@@ -25,6 +26,8 @@ export async function verifyHostRuns({
   workerId,
   componentKey,
   restartWorker,
+  cli,
+  workerDirectory,
 }) {
   const secret = "native-test-secret-🗝";
   const reference = "run/native-fixture";
@@ -291,6 +294,7 @@ exec /bin/sleep 120`;
   await operate(intent("start", configurationId), 202);
   const active = await awaitState(configurationId, "running", 3);
   const current = await readyOutput(active);
+  const previous = cli && (await cliConnection(workerDirectory));
   await restartWorker();
   assert.throws(() => process.kill(getPid(current.data), 0), { code: "ESRCH" });
   await awaitState(configurationId, "lost", 3);
@@ -305,6 +309,14 @@ exec /bin/sleep 120`;
       return awaitState(id, state, 1);
     },
   };
+  if (cli)
+    await verifyHostCli({
+      ...providerFixture,
+      cli,
+      previous,
+      workerDirectory,
+      workerId,
+    });
   await verifyNodeRunProvider(providerFixture);
   await verifyCargoRunProvider(providerFixture);
   await verifyDartRunProvider(providerFixture);

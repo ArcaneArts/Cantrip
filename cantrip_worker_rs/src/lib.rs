@@ -2,6 +2,7 @@
 //! existing production worker remains the default until the complete cutover.
 pub mod attachments;
 pub(crate) mod chat_content;
+mod cli;
 pub mod codex;
 pub mod config;
 pub mod connection;

@@ -59,6 +59,7 @@ const { values } = parseArgs({
   options: {
     worker: { type: "string" },
     server: { type: "string" },
+    cli: { type: "string" },
     "observations-only": { type: "boolean", default: false },
     "recovery-only": { type: "boolean", default: false },
     "github-catalog-only": { type: "boolean", default: false },
@@ -216,6 +217,7 @@ function startWorker(code) {
   const workerEnvironment = {
     ...fixtureEnvironment(path.join(root, "unused")),
     PATH: bin,
+    ...(values.cli ? { CANTRIP_CLI_BIN: path.resolve(values.cli) } : {}),
     ...(values["terminal-relay-only"] || values["run-runtime-only"]
       ? { SHELL: "/bin/sh" }
       : {}),
@@ -289,6 +291,12 @@ async function seedReplicaSiblings(entries) {
   // the production API's last-replica rule. No sibling command is simulated.
   const port = Number(new URL(server.origin).port);
   await stopWorker();
+  if (values.cli) {
+    await assert.rejects(
+      readFile(path.join(workerDirectory, "cli-connection.json")),
+      { code: "ENOENT" },
+    );
+  }
   await server.close();
   server = undefined;
   const seed = await repositoryFixture({
@@ -718,6 +726,8 @@ try {
           workerId,
           componentKey: runKey,
           restartWorker,
+          cli: values.cli && path.resolve(values.cli),
+          workerDirectory,
         });
       } finally {
         runKey.fill(0);
@@ -746,6 +756,7 @@ try {
           metadataKey,
           projectId,
           checkout,
+          cli: Boolean(values.cli),
         });
         const reopen = await verifyTerminalServices({
           call,
@@ -957,6 +968,7 @@ try {
         typedDartProvider: true,
         typedFlutterProvider: true,
         typedJavaProvider: true,
+        nativeCliBroker: Boolean(values.cli),
         realGradleSdk: Boolean(
           process.env.CANTRIP_TEST_GRADLE && process.env.CANTRIP_TEST_JDK_HOME,
         ),
@@ -982,6 +994,7 @@ try {
         suite: "actual-native-host-terminal-worker-server",
         passed: true,
         encryptedHostTerminalRelay: true,
+        nativeCliBroker: Boolean(values.cli),
         encryptedServiceRelayAcrossRestarts: true,
         realTerminalServiceEnableRestartAndRecovery: true,
         nodeAbsentFromWorkerPath: true,

@@ -266,6 +266,17 @@ pub(super) async fn execute(
             json!({"summary":message(&[json!("Read Run configuration "),data["configurationId"].clone(),json!(" output.")]),"target":target,"worktreeId":data["worktreeId"],"data":data})
         }
         "secret-set" => {
+            if arguments
+                .get("expectedProjectId")
+                .is_some_and(|expected| expected.as_str() != Some(project))
+            {
+                return Err(Error::new(
+                    409,
+                    "conflict",
+                    "The project context changed before the Run secret could be stored.",
+                )
+                .into());
+            }
             let mut request = json!({"operationId":call["requestId"]});
             copy(&mut request, arguments, "reference");
             copy(&mut request, arguments, "protectedValue");
