@@ -142,7 +142,10 @@ async fn cycle(
     let explorer_operations = Arc::new(
         crate::explorer_operations::ExplorerOperations::with_replay(surface_replay.clone()),
     );
+    let (direct, direct_listener) =
+        crate::worker_link::DirectBroker::bind(worker.clone(), logs.clone()).await?;
     let mut heartbeat = http::heartbeat(&config, host.platform, host.architecture, &started)?;
+    heartbeat["directBroker"] = direct.advertisement().clone();
     heartbeat["projectReplicas"] = json!({
         "provision":true,"synchronize":true,"remove":true,"exactRevision":true,
         "directPlacement":true,"managedLinkPlacement":crate::replicas::placement::probe_managed_link(&config.data_directory).await,
@@ -206,8 +209,14 @@ async fn cycle(
         outgoing.clone(),
         logs.clone(),
         shares.clone(),
+        direct.clone(),
     ));
     outgoing.observe_with(&worker_link);
+    let direct_task = tokio::spawn(direct.clone().run(
+        direct_listener,
+        Arc::downgrade(&worker_link),
+        stop_rx.clone(),
+    ));
     let worker_link_task = {
         let gateway = worker_link.clone();
         let stop = stop_rx.clone();
@@ -454,6 +463,13 @@ async fn cycle(
                 }
                 if crate::worker_link::supports(kind) {
                     let result = worker_link.execute(command);
+                    finish(&request, &worker, logs, &outgoing, began, &result);
+                    continue;
+                }
+                if crate::worker_link::DirectBroker::supports(kind) {
+                    let identity = encryption.bound_identity();
+                    direct.reconcile(identity.as_ref().ok());
+                    let result = direct.execute(command);
                     finish(&request, &worker, logs, &outgoing, began, &result);
                     continue;
                 }
@@ -924,6 +940,7 @@ async fn cycle(
     let history_stopped = history.stop().await;
     let task_outcomes_closed = task_outcomes.await;
     let worker_link_closed = worker_link_task.await;
+    let direct_closed = direct_task.await;
     let goal_delivery_closed = goal_delivery.await;
     let settings_delivery_closed = settings_delivery.await;
     let shells_closed = shells.shutdown().await;
@@ -968,6 +985,7 @@ async fn cycle(
     github_closed?;
     task_outcomes_closed?;
     worker_link_closed?;
+    direct_closed?;
     goal_delivery_closed?;
     settings_delivery_closed?;
     encryption_closed?;

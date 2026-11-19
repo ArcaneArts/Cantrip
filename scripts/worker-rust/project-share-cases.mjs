@@ -7,7 +7,11 @@ import * as crypto from "../../packages/crypto/dist/index.js";
 import { workerLinkTunnelGrantSchema } from "../../packages/protocol/dist/worker-link.js";
 import { openTunnelDataFrame } from "../../cantrip_worker/src/tunnel-data-protection.ts";
 import { parseWebdavResponse } from "../server-rust/project-share-webdav.mjs";
-import { Connection, openLegacyTunnel } from "./worker-link-tunnel-cases.mjs";
+import {
+  Connection,
+  openDirectTunnel,
+  openLegacyTunnel,
+} from "./worker-link-tunnel-cases.mjs";
 
 const credit = 1024 * 1024;
 
@@ -246,6 +250,26 @@ export async function verifyNetworkShares({
       });
       assert.equal(rejected.status, 403);
       if (carrier === "worker-link") {
+        const attachment = await request(
+          "POST",
+          `/api/tunnels/${mount.tunnelId}/attachments`,
+          201,
+          { clientId: randomUUID() },
+        );
+        const direct = await openDirectTunnel(request, attachment.attachmentId);
+        try {
+          const reply = await webdav(
+            () => direct.open(credit),
+            share,
+            "GET",
+            name,
+          );
+          assert.equal(reply.status, 200);
+          assert.equal(reply.body.toString(), proof);
+          await direct.revoke();
+        } finally {
+          direct.socket.terminate();
+        }
         await verifyLocksAndProperties(run, name);
         const publicPath = share.publicOrigin + share.publicBasePath;
         assert.equal((await run("MKCOL", "/folder")).status, 201);

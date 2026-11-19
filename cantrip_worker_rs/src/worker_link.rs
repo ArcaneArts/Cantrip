@@ -1,6 +1,7 @@
 //! Worker-side installation of Core-issued session and resource authority.
 //! These leases are process-local. They never authorize a carrier by themselves.
 mod channels;
+mod direct_broker;
 mod observation;
 mod terminal;
 mod tunnel;
@@ -12,6 +13,7 @@ use cantrip_protocol::worker_link::identity_key;
 use cantrip_wire::{JsString, Value, value::json};
 use channels::Channels;
 use chrono::Utc;
+pub(crate) use direct_broker::Broker as DirectBroker;
 use indexmap::IndexMap;
 use observation::Observation;
 use std::{
@@ -37,6 +39,7 @@ pub(crate) struct Coordinator {
     outgoing: Arc<Outbound>,
     logs: Arc<Logs>,
     shares: Arc<crate::project_shares::Manager>,
+    direct: Arc<DirectBroker>,
     state: Mutex<State>,
     wake: Notify,
     terminals: OnceLock<Arc<terminal::Adapter>>,
@@ -96,6 +99,7 @@ impl Coordinator {
         outgoing: Arc<Outbound>,
         logs: Arc<Logs>,
         shares: Arc<crate::project_shares::Manager>,
+        direct: Arc<DirectBroker>,
     ) -> Self {
         Self {
             worker,
@@ -104,6 +108,7 @@ impl Coordinator {
             outgoing,
             logs,
             shares,
+            direct,
             state: Mutex::default(),
             wake: Notify::new(),
             terminals: OnceLock::new(),
@@ -349,12 +354,14 @@ impl Coordinator {
     pub(crate) fn reconcile(&self) {
         let mut state = self.state.lock().unwrap();
         let identity = self.encryption.bound_identity();
+        self.direct.reconcile(identity.as_ref().ok());
         state.sweep(Utc::now().timestamp_millis(), identity.as_ref().ok());
         state.channels.flush(&self.outgoing);
         state.legacy_tunnels.flush(&self.outgoing);
     }
 
     pub(crate) fn connected(&self) {
+        self.direct.connected();
         let mut state = self.state.lock().unwrap();
         state.expire_disconnect();
         state.disconnect = None;
@@ -365,6 +372,7 @@ impl Coordinator {
     }
 
     pub(crate) fn disconnected(&self) {
+        self.direct.disconnected();
         let mut state = self.state.lock().unwrap();
         if state.transport_ready {
             state.transport_ready = false;
@@ -376,6 +384,7 @@ impl Coordinator {
 
     pub(crate) fn revoke_all(&self) {
         self.state.lock().unwrap().revoke_all();
+        self.direct.revoke_all("Server control connection closed");
     }
 
     pub(crate) async fn run(&self, mut stop: watch::Receiver<bool>) {

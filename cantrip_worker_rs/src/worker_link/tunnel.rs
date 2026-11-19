@@ -1,4 +1,5 @@
 //! Host tunnel destinations and the carriers that own their logical streams.
+mod direct;
 mod legacy;
 mod tcp;
 
@@ -6,6 +7,7 @@ use super::{Coordinator, id};
 use crate::{logging::Logs, protected_content::open_tunnel_record};
 use cantrip_framing::tunnel::{self as wire, Frame};
 use cantrip_wire::{JsString, Value, value::json};
+pub(super) use direct::DirectTunnel;
 pub(super) use legacy::Legacy;
 use std::{
     collections::HashMap,
@@ -71,6 +73,7 @@ enum Stop {
 enum Carrier {
     WorkerLink { channel: JsString, token: Uuid },
     Legacy { token: Uuid },
+    Direct(Weak<DirectTunnel>),
 }
 
 #[derive(Clone)]
@@ -166,6 +169,41 @@ impl Default for Streams {
 }
 
 impl Streams {
+    fn connect(&mut self, header: Value, link: &Link, limit: &Arc<Semaphore>) -> Inbound {
+        let key =
+            ["tunnelId", "attachmentId", "connectionId"].map(|name| id(&header, name).clone());
+        while self.tasks.try_join_next().is_some() {}
+        self.active.retain(|_, slot| !slot.task.is_finished());
+        if self.active.contains_key(&key) {
+            return Inbound::Reply(Reply::new(&header).rejected("protocol-error"));
+        }
+        let Ok(permit) = limit.clone().try_acquire_owned() else {
+            return Inbound::Reply(Reply::new(&header).rejected("limit-exceeded"));
+        };
+        let (sender, receiver) = mpsc::channel(INBOUND_FRAMES);
+        let (stop, stopped) = watch::channel(None);
+        let source = header["sourceEndpointId"].clone();
+        let destination = header["destinationEndpointId"].clone();
+        let link = link.clone();
+        let capacity = self.capacity.subscribe();
+        let task = self.tasks.spawn(async move {
+            let _permit = permit;
+            tcp::serve(link, capacity, header, receiver, stopped).await;
+        });
+        self.active.insert(
+            key,
+            StreamSlot {
+                source,
+                destination,
+                input: sender,
+                stop,
+                task,
+                next: 1,
+            },
+        );
+        Inbound::Consumed
+    }
+
     fn receive(
         &mut self,
         frame: Frame,
@@ -175,40 +213,7 @@ impl Streams {
         let header = frame.header();
         let key = ["tunnelId", "attachmentId", "connectionId"].map(|name| id(header, name).clone());
         if header["kind"] == "connect" {
-            while self.tasks.try_join_next().is_some() {}
-            self.active.retain(|_, slot| !slot.task.is_finished());
-            if self.active.contains_key(&key) {
-                return Ok(Inbound::Reply(
-                    Reply::new(header).rejected("protocol-error"),
-                ));
-            }
-            let Ok(permit) = limit.clone().try_acquire_owned() else {
-                return Ok(Inbound::Reply(
-                    Reply::new(header).rejected("limit-exceeded"),
-                ));
-            };
-            let (sender, receiver) = mpsc::channel(INBOUND_FRAMES);
-            let (stop, stopped) = watch::channel(None);
-            let source = header["sourceEndpointId"].clone();
-            let destination = header["destinationEndpointId"].clone();
-            let link = link.clone();
-            let capacity = self.capacity.subscribe();
-            let task = self.tasks.spawn(async move {
-                let _permit = permit;
-                tcp::serve(link, capacity, frame, receiver, stopped).await;
-            });
-            self.active.insert(
-                key,
-                StreamSlot {
-                    source,
-                    destination,
-                    input: sender,
-                    stop,
-                    task,
-                    next: 1,
-                },
-            );
-            return Ok(Inbound::Consumed);
+            return Ok(self.connect(header.clone(), link, limit));
         }
         let Some(slot) = self.active.get_mut(&key) else {
             return Ok(Inbound::Consumed);
@@ -253,6 +258,7 @@ impl Link {
                     gateway.update_channels(|channels| channels.tunnel_active(channel, *token))
                 }
                 Carrier::Legacy { token } => legacy::active(&gateway, *token),
+                Carrier::Direct(pipe) => pipe.upgrade().is_some_and(|pipe| pipe.active()),
             })
     }
 
@@ -269,6 +275,9 @@ impl Link {
                     }
                 }),
                 Carrier::Legacy { token } => legacy::send(&gateway, *token, frame, remote_closed),
+                Carrier::Direct(pipe) => pipe
+                    .upgrade()
+                    .map_or(Output::Closed, |pipe| pipe.send(frame, remote_closed)),
             })
     }
 

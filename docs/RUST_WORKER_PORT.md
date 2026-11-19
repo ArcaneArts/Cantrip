@@ -5754,3 +5754,32 @@ focused Node share tests passed locally.
 
 Direct brokers, guest destinations and peer carriage remain open.
 System-level network-drive mounting was not exercised by this fixture.
+
+## 133. Serve native direct probes and protected TCP tunnel tickets
+
+Reference commit `9f2f6a002c7211ce6f5329bf39aa62d3fa5c9276` (#3295).
+
+The worker advertises a loopback `/direct/v1` WebSocket with the
+existing broker identity and Ed25519 challenge signature. The worker
+consumes a ticket only after verifying the secret, exact binding, and
+prepared and active expiry. Core's revoke and renew commands retire or
+extend the matching socket. Terminal control-connection loss and account
+or server identity changes retire direct capabilities.
+
+The direct carrier checks the installed tunnel and endpoint identities
+and maps each source open to the server-issued protected target. It
+uses the existing Rust TCP stream implementation with a bounded
+WebSocket output queue. A destination close leaves the source sequence
+available for the desktop client's closing acknowledgement.
+
+On macOS ARM64, the public probe and tunnel APIs issued tickets through
+the Rust server and worker with PGlite. The TypeScript fixture verified
+signatures, wrong-secret and spent-ticket rejection, concurrent streams,
+protected request and response bytes, half-close, and revocation
+closing an active TCP stream. It also exercised the legacy and
+WorkerLink relay paths and read an existing project WebDAV file over
+the public direct attachment API. A focused native test verified that
+renewal extends live authority without reviving a retired capability.
+
+Direct terminal and WorkerLink LOCAL capabilities and peer carriage
+remain open.

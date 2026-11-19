@@ -20,7 +20,7 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 pub(super) async fn serve(
     link: Link,
     capacity: watch::Receiver<()>,
-    request: Frame,
+    request: Value,
     mut input: mpsc::Receiver<Frame>,
     mut stopped: watch::Receiver<Option<Stop>>,
 ) {
@@ -28,12 +28,12 @@ pub(super) async fn serve(
         link,
         capacity,
         stopped: stopped.clone(),
-        reply: Reply::new(request.header()),
+        reply: Reply::new(&request),
     };
     if !output.link.active() {
         return;
     }
-    let log = StreamLog::new(&output.link, request.header());
+    let log = StreamLog::new(&output.link, &request);
     let end = tokio::select! {
         biased;
         _ = stopped.changed() => {
@@ -44,7 +44,7 @@ pub(super) async fn serve(
                 None => End::Remote,
             }
         },
-        end = serve_socket(request.header(), &mut input, &mut output, &log) => end,
+        end = serve_socket(&request, &mut input, &mut output, &log) => end,
     };
     log.finished(&end);
     // After logical retirement the attachment still owns the outer credit.
