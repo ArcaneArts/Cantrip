@@ -6207,3 +6207,28 @@ A separate production Rust worker and Rust server smoke passed the existing
 encrypted Browser workflow over WorkerLink Core relay. The focused Node
 reference tests also passed. Streaming network connections in private web
 sessions remain open.
+
+
+## 150. Stream events and WebSockets in private web sessions
+
+Reference commit `e551b23a896c89791a0edb190b175315fbf629c3` (#3312).
+
+Private interactive Chromium sessions use a worker-owned loopback HTTP proxy.
+The proxy validates the destination and every resolved address, pins the
+connection to an approved address and bounds response bytes, tunnel bytes and
+concurrency. Chromium receives plain HTTP bodies incrementally, including
+EventSource responses. Chromium establishes its own TLS through standard-port
+CONNECT tunnels. WebSocket connections use those same destination and lifetime
+limits. Closing the session tears down its proxy and owned sockets.
+
+DevTools still checks the robots policy on document navigations and redirects.
+The separate rendered-read path retains its GET/HEAD-only interception and
+stream restrictions.
+
+On macOS ARM64, actual headless Chromium received two controlled EventSource
+messages, with the server waiting for acknowledgment of the first before
+sending the second. The browser exchanged a WebSocket message and closed the
+socket when the session ended. The same fixture passed form submission, storage
+isolation, robots denial, rendered reads, and session cleanup. The native
+socket test verified CONNECT destination rejection, bidirectional forwarding
+and cleanup of both endpoints. The focused Node reference tests passed.

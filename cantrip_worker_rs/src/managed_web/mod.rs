@@ -137,7 +137,7 @@ impl Manager {
 
     pub(crate) async fn with_browser<T>(
         &self,
-        deny_proxy: SocketAddrV4,
+        proxy: SocketAddrV4,
         session: bool,
         read: impl AsyncFnOnce(&cantrip_browser::Browser) -> Result<T>,
     ) -> Result<T> {
@@ -179,7 +179,7 @@ impl Manager {
                 viewport: (1280, 720),
                 environment: Some(&environment),
             },
-            deny_proxy,
+            proxy,
         )
         .await?;
         if session {

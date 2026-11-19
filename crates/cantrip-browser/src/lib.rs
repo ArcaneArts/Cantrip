@@ -27,27 +27,24 @@ impl Browser {
         Self::launch_inner(options, None).await
     }
 
-    pub async fn launch_intercepted(options: Launch<'_>, deny_proxy: SocketAddrV4) -> Result<Self> {
-        ensure!(
-            deny_proxy.ip().is_loopback(),
-            "Chromium deny proxy must be loopback."
-        );
-        Self::launch_inner(options, Some(deny_proxy)).await
+    pub async fn launch_intercepted(options: Launch<'_>, proxy: SocketAddrV4) -> Result<Self> {
+        ensure!(proxy.ip().is_loopback(), "Chromium proxy must be loopback.");
+        Self::launch_inner(options, Some(proxy)).await
     }
 
-    async fn launch_inner(options: Launch<'_>, deny_proxy: Option<SocketAddrV4>) -> Result<Self> {
+    async fn launch_inner(options: Launch<'_>, proxy: Option<SocketAddrV4>) -> Result<Self> {
         ensure!(
             options.profile.is_absolute(),
             "Chromium needs an absolute profile path."
         );
         cantrip_host::files::private_directory(options.profile)?;
-        let (process, endpoint) = process::Process::launch(options, deny_proxy)?;
+        let (process, endpoint) = process::Process::launch(options, proxy)?;
         let handshake = async {
             let url = tokio::time::timeout(Duration::from_secs(20), endpoint)
                 .await
                 .context("Timed out waiting for Chromium remote debugging.")?
                 .context("Chromium exited before remote debugging was ready.")??;
-            let client = Client::connect(url, deny_proxy.is_some()).await?;
+            let client = Client::connect(url, proxy.is_some()).await?;
             client
                 .request("Browser.getVersion", json!({}), None)
                 .await?;

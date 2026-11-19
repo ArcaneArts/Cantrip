@@ -29,10 +29,15 @@ const PENDING: usize = 32;
 const MAX_HTML: usize = 10_000_000;
 const ISOLATE_SERVICES: &str = r#"(() => {
     Object.defineProperty(Navigator.prototype, 'serviceWorker', { get: () => undefined });
-    for (const api of ['RTCPeerConnection', 'webkitRTCPeerConnection', 'WebSocket', 'WebTransport', 'EventSource']) {
+    for (const api of ['RTCPeerConnection', 'webkitRTCPeerConnection', 'WebTransport']) {
         Object.defineProperty(globalThis, api, { value: undefined });
     }
 })()"#;
+const ISOLATE_STREAMS: &str = r#"
+    for (const api of ['WebSocket', 'EventSource']) {
+        Object.defineProperty(globalThis, api, { value: undefined });
+    }
+"#;
 
 pub(super) struct Rendered {
     pub url: Url,
@@ -135,7 +140,7 @@ pub(super) async fn prepare(
         .as_js_string()
         .context("Chromium did not identify the web document frame.")?
         .clone();
-    enable(&client, page.session(), true).await?;
+    enable(&client, page.session(), true, interactive).await?;
 
     let policy = Arc::new(Policy {
         client,
@@ -232,12 +237,22 @@ async fn snapshot(page: &Page) -> Result<Rendered> {
     })
 }
 
-async fn enable(client: &Client, session: &JsString, document: bool) -> Result<()> {
+async fn enable(
+    client: &Client,
+    session: &JsString,
+    document: bool,
+    interactive: bool,
+) -> Result<()> {
     if document {
+        let script = if interactive {
+            ISOLATE_SERVICES.to_owned()
+        } else {
+            format!("{ISOLATE_SERVICES}; {ISOLATE_STREAMS}")
+        };
         client
             .request(
                 "Page.addScriptToEvaluateOnNewDocument",
-                json!({"source":ISOLATE_SERVICES}),
+                json!({"source":script}),
                 Some(session),
             )
             .await?;
@@ -256,12 +271,15 @@ async fn enable(client: &Client, session: &JsString, document: bool) -> Result<(
             Some(session),
         )
         .await?;
+    // The private-session proxy checks every network destination. Keeping
+    // its subresources out of Fetch lets Chromium stream them natively.
+    let pattern = if interactive {
+        json!({"urlPattern":"*","resourceType":"Document","requestStage":"Request"})
+    } else {
+        json!({"urlPattern":"*","requestStage":"Request"})
+    };
     client
-        .request(
-            "Fetch.enable",
-            json!({"patterns":vec![json!({"urlPattern":"*","requestStage":"Request"})]}),
-            Some(session),
-        )
+        .request("Fetch.enable", json!({"patterns":[pattern]}), Some(session))
         .await?;
     client
         .request(
@@ -315,7 +333,7 @@ pub(super) async fn serve(policy: Arc<Policy>, events: &mut Subscription) -> Res
                         if !matches!(kind, Some("iframe" | "worker")) {
                             continue;
                         }
-                        enable(&policy.client, child, kind == Some("iframe")).await?;
+                        enable(&policy.client, child, kind == Some("iframe"), policy.interactive).await?;
                         sessions.insert(child.clone());
                         policy.client.request("Runtime.runIfWaitingForDebugger", json!({}), Some(child)).await?;
                     }
@@ -348,6 +366,25 @@ impl Policy {
         let id = &request["requestId"];
         let main = request["resourceType"] == "Document"
             && request["frameId"].as_js_string() == Some(&self.frame);
+        if self.interactive {
+            match self.document_url(request).await {
+                Ok(_) => {
+                    let result = self
+                        .client
+                        .request(
+                            "Fetch.continueRequest",
+                            json!({"requestId":id}),
+                            Some(&session),
+                        )
+                        .await;
+                    if main {
+                        result?;
+                    }
+                }
+                Err(error) => self.block(&session, id, main, error).await,
+            }
+            return Ok(());
+        }
         // Keep the bounded response in its slot until Chromium consumes it.
         let _asset = self.service.render_assets.acquire().await?;
         let result = self.fetch(request).await;
@@ -363,31 +400,32 @@ impl Policy {
                     result?;
                 }
             }
-            Err(error) => {
-                if main {
-                    *self.failures.lock().unwrap() = Some(error.to_string());
-                }
-                self.reject(&session, id).await;
-            }
+            Err(error) => self.block(&session, id, main, error).await,
         }
         Ok(())
     }
 
-    async fn fetch(&self, paused: &Value) -> Result<Resource> {
+    async fn document_url(&self, paused: &Value) -> Result<Url> {
         let request = &paused["request"];
         let url = normalize(Url::parse(
             request["url"]
                 .as_str()
                 .context("Browser request has no URL.")?,
         )?)?;
+        if paused["resourceType"] == "Document" {
+            self.service
+                .robots
+                .check(&self.service.network, &url)
+                .await?;
+        }
+        Ok(url)
+    }
+
+    async fn fetch(&self, paused: &Value) -> Result<Resource> {
+        let request = &paused["request"];
         let method = match request["method"].as_str() {
             Some("GET") => Method::GET,
             Some("HEAD") => Method::HEAD,
-            Some(method)
-                if self.interactive && !matches!(method, "CONNECT" | "TRACE" | "TRACK") =>
-            {
-                Method::from_bytes(method.as_bytes())?
-            }
             _ => bail!("The browser request method is not allowed."),
         };
         ensure!(
@@ -397,12 +435,7 @@ impl Policy {
             ),
             "Rendered reading does not open persistent connections."
         );
-        if paused["resourceType"] == "Document" {
-            self.service
-                .robots
-                .check(&self.service.network, &url)
-                .await?;
-        }
+        let url = self.document_url(paused).await?;
         let mut headers = HeaderMap::new();
         if let Some(source) = request["headers"].as_object() {
             for (key, value) in source {
@@ -428,11 +461,14 @@ impl Policy {
             HeaderValue::from_static("identity"),
         );
         headers.insert(header::USER_AGENT, HeaderValue::from_static(USER_AGENT));
-        let body = request_body(request)?;
-        self.service
-            .network
-            .resource(url, method, headers, body)
-            .await
+        self.service.network.resource(url, method, headers).await
+    }
+
+    async fn block(&self, session: &JsString, id: &Value, main: bool, error: anyhow::Error) {
+        if main {
+            *self.failures.lock().unwrap() = Some(error.to_string());
+        }
+        self.reject(session, id).await;
     }
 
     async fn reject(&self, session: &JsString, id: &Value) {
@@ -447,44 +483,7 @@ impl Policy {
     }
 }
 
-fn request_body(request: &Value) -> Result<Option<Vec<u8>>> {
-    const MAX: usize = 8_000_000;
-    if request["hasPostData"] != true {
-        return Ok(None);
-    }
-    if let Some(entries) = request["postDataEntries"]
-        .as_array()
-        .filter(|entries| !entries.is_empty())
-    {
-        let mut result = Vec::new();
-        for entry in entries {
-            let encoded = entry["bytes"]
-                .as_str()
-                .context("Browser request contains unsupported upload data.")?;
-            ensure!(
-                encoded.len() <= (MAX - result.len()).div_ceil(3) * 4,
-                "Browser request body exceeds its byte limit."
-            );
-            result.extend(STANDARD.decode(encoded)?);
-            ensure!(
-                result.len() <= MAX,
-                "Browser request body exceeds its byte limit."
-            );
-        }
-        return Ok(Some(result));
-    }
-    let text = request["postData"]
-        .as_js_string()
-        .context("Browser request did not expose a bounded body.")?
-        .lossy();
-    ensure!(
-        text.len() <= MAX,
-        "Browser request body exceeds its byte limit."
-    );
-    Ok(Some(text.as_bytes().to_vec()))
-}
-
-fn hop_header(name: &HeaderName) -> bool {
+pub(super) fn hop_header(name: &HeaderName) -> bool {
     matches!(
         name.as_str(),
         "connection"
