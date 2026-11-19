@@ -2,6 +2,7 @@
 //! These leases are process-local. They never authorize a carrier by themselves.
 mod channels;
 mod observation;
+mod terminal;
 
 use crate::{connection::Outbound, encryption::Service, http::checked};
 use anyhow::{Context, Result, bail, ensure};
@@ -14,7 +15,7 @@ use indexmap::IndexMap;
 use observation::Observation;
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
     time::Duration,
 };
 use tokio::{
@@ -35,6 +36,7 @@ pub(crate) struct Coordinator {
     outgoing: Arc<Outbound>,
     state: Mutex<State>,
     wake: Notify,
+    terminals: OnceLock<Arc<terminal::Adapter>>,
 }
 
 #[derive(Default)]
@@ -95,6 +97,7 @@ impl Coordinator {
             outgoing,
             state: Mutex::default(),
             wake: Notify::new(),
+            terminals: OnceLock::new(),
         }
     }
 
@@ -227,7 +230,20 @@ impl Coordinator {
         ))
     }
 
-    pub(crate) fn handle_frame(&self, frame: &Frame) {
+    pub(crate) fn configure_terminals(
+        &self,
+        shells: Arc<crate::terminal_services::interactive::Shells>,
+        runs: Arc<crate::run_runtime::Manager>,
+    ) {
+        let adapter = Arc::new(terminal::Adapter::new(
+            shells,
+            runs,
+            self.encryption.clone(),
+        ));
+        assert!(self.terminals.set(adapter).is_ok());
+    }
+
+    pub(crate) fn handle_frame(self: &Arc<Self>, frame: &Frame) {
         let mut state = self.state.lock().unwrap();
         let identity = self.encryption.bound_identity();
         let now = Utc::now().timestamp_millis();
@@ -242,14 +258,52 @@ impl Coordinator {
                     tombstones,
                     ..
                 } = &mut *state;
-                if channels.open(header, sessions.get(session), tombstones, now) {
+                if channels.open(header, sessions.get(session), tombstones, now, self) {
                     state.revoke_session(session, "protocol-error");
                 }
             } else {
-                state.channels.receive(header);
+                let allow_write = state
+                    .channels
+                    .grant_for(header)
+                    .and_then(|grant| {
+                        state
+                            .sessions
+                            .get(id(header, "sessionId"))
+                            .and_then(|session| session.grants.get(grant))
+                    })
+                    .is_some_and(|grant| {
+                        grant["binding"]["operations"]
+                            .as_array()
+                            .is_some_and(|operations| operations.contains(&json!("stream:write")))
+                    });
+                state.channels.receive(frame, allow_write);
             }
         }
         state.channels.flush(&self.outgoing);
+    }
+
+    fn update_terminal(&self, update: impl FnOnce(&mut Channels)) {
+        let mut state = self.state.lock().unwrap();
+        let identity = self.encryption.bound_identity();
+        state.sweep(Utc::now().timestamp_millis(), identity.as_ref().ok());
+        update(&mut state.channels);
+        state.channels.flush(&self.outgoing);
+    }
+
+    fn terminal_ready(&self, id: &JsString, token: uuid::Uuid) {
+        self.update_terminal(|channels| channels.terminal_ready(id, token));
+    }
+
+    fn terminal_output(&self, id: &JsString, token: uuid::Uuid, bytes: Vec<u8>, last: bool) {
+        self.update_terminal(|channels| channels.terminal_output(id, token, bytes, last));
+    }
+
+    fn terminal_credit(&self, id: &JsString, token: uuid::Uuid, bytes: usize) {
+        self.update_terminal(|channels| channels.terminal_credit(id, token, bytes));
+    }
+
+    fn terminal_error(&self, id: &JsString, token: uuid::Uuid, error: &str, close: &str) {
+        self.update_terminal(|channels| channels.terminal_error(id, token, error, close));
     }
 
     pub(crate) fn publish_notification(&self, notification: &Value) {
@@ -322,6 +376,9 @@ impl Coordinator {
             }
         }
         self.revoke_all();
+        if let Some(terminals) = self.terminals.get() {
+            terminals.close().await;
+        }
     }
 }
 

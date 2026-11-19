@@ -5638,3 +5638,35 @@ and revocation. The Node observation adapter tests passed locally.
 
 Encrypted detailed filesystem delivery, terminal and tunnel channels,
 remote surfaces, LOCAL capability serving, and peer transport remain open.
+
+## 129. Serve encrypted Host terminals over WorkerLink
+
+Reference commit `e1315da4158ffb33bac7931aa20e99cda6073020` (#3291).
+
+The relay accepts authorized interactive terminal channels for the same
+Host shell and supervised service PTYs used by the control connection.
+Each channel attaches to the existing terminal and sends encrypted
+replay before ready. Replay exposes the existing native snapshot in the
+protocol's legacy-raw hydration format with its actual dimensions.
+Output chunks fit the binary frame limit without splitting surrogate
+pairs.
+
+The worker validates encrypted input against the current terminal,
+owner, operation and input sequence before sending it to the PTY. It
+returns WorkerLink credit after processing input or resize. Run
+configuration terminals remain read-only. Revoking an attachment drops
+the terminal view and its input sequence state while the PTY can serve
+other views. Natural exits drain their remaining output and deliver
+the exit code before closing the channel.
+
+Local macOS ARM64 validation exercised both Rust services with PGlite.
+The client used the existing TypeScript terminal schemas and crypto.
+The fixture checked replay from the same shell PID, PTY resize,
+protected input and output, grant revocation, and natural exit. It
+also attached to a restarted terminal service and read that service's
+protected output, and exercised the existing control relay and CLI.
+WorkerLink observation delivery and the Node terminal adapter checks
+were validated locally.
+
+Managed Codex console launch over the terminal channel, terminal
+adapters for Cantrip OS, and direct and peer transport remain open.

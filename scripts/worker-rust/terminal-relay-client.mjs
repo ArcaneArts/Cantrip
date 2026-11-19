@@ -19,6 +19,19 @@ export async function attachTerminal({
     fixture,
     `/api/terminals/${id}/connect?operationId=${operationId}`,
   );
+  return protectedTerminalView(relay, {
+    ownerId,
+    serverId,
+    surfaceKey,
+    id,
+    operationId,
+  });
+}
+
+export async function protectedTerminalView(
+  relay,
+  { ownerId, serverId, surfaceKey, id, operationId },
+) {
   try {
     await relay.open();
     const binding = (direction, sequence) => ({
@@ -32,7 +45,8 @@ export async function attachTerminal({
     const secret = { ownerId, keyRevision: 1, componentKey: surfaceKey };
     let sequence = 0,
       outputSequence = 0,
-      data = "";
+      data = "",
+      hydration;
     async function output(frame) {
       assert.equal(frame.type, "output", JSON.stringify(frame));
       assert.equal(frame.operationId, operationId);
@@ -44,6 +58,7 @@ export async function attachTerminal({
       });
       const content = JSON.parse(Buffer.from(bytes).toString());
       assert.equal(content.type, "terminal.output");
+      hydration ??= frame.hydration;
       data += content.data;
     }
     for (;;) {
@@ -54,6 +69,7 @@ export async function attachTerminal({
     return {
       relay,
       replay: data,
+      hydration,
       async input(text) {
         const protectedData = await crypto.encryptSurfaceStreamPayload({
           ...secret,

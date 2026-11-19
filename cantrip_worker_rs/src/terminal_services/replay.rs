@@ -1,4 +1,4 @@
-use cantrip_wire::JsString;
+use cantrip_wire::{JsString, Value, value::json};
 use codex_utils_pty::TerminalSize;
 
 const CHAR_LIMIT: usize = 2_000_000;
@@ -8,6 +8,7 @@ pub(super) struct Replay {
     raw: Vec<u16>,
     truncated: bool,
     resized: bool,
+    generation: u64,
     parser: vt100::Parser,
 }
 
@@ -21,11 +22,13 @@ impl Replay {
             raw: Vec::new(),
             truncated: false,
             resized: false,
+            generation: 0,
             parser: vt100::Parser::new(size.rows, size.cols, SCROLLBACK_ROWS),
         }
     }
 
     pub fn write(&mut self, text: &str) {
+        self.generation += 1;
         self.parser.process(text.as_bytes());
         self.raw.extend(text.encode_utf16());
         if self.raw.len() > CHAR_LIMIT {
@@ -38,6 +41,7 @@ impl Replay {
         let current = self.parser.screen().size();
         if current != (size.rows, size.cols) {
             self.resized = true;
+            self.generation += 1;
             self.parser.screen_mut().set_size(size.rows, size.cols);
         }
     }
@@ -45,6 +49,15 @@ impl Replay {
     pub fn tail(&self, max: usize) -> (JsString, bool) {
         let offset = self.raw.len().saturating_sub(max);
         (JsString::new(self.raw[offset..].to_vec()), offset != 0)
+    }
+
+    pub fn hydration(&self, snapshot: &JsString, chunks: usize) -> Value {
+        let (rows, cols) = self.parser.screen().size();
+        json!({
+            "format":"legacy-raw", "version":1, "generation":self.generation,
+            "rows":rows,"cols":cols,"truncated":self.truncated,
+            "snapshotCharacters":snapshot.len(),"snapshotChunks":chunks,
+        })
     }
 
     pub fn attachment(&self) -> JsString {

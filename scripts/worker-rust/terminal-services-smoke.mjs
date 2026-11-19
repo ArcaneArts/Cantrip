@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import * as c from "../../packages/crypto/dist/index.js";
 import { attachTerminal } from "./terminal-relay-client.mjs";
+import { attachWorkerLinkTerminal } from "./worker-link-terminal-client.mjs";
 export async function verifyTerminalServices({
   call,
   eventually,
@@ -15,6 +16,7 @@ export async function verifyTerminalServices({
   projectId,
   checkout,
   origin,
+  workerId,
 }) {
   const id = crypto.randomUUID();
   const marker = path.join(checkout, "native-terminal-starts"),
@@ -153,6 +155,22 @@ export async function verifyTerminalServices({
       const second = await attach();
       assert.ok(second.replay.includes(`private-service-${secondPid}`));
       assert.ok(!second.replay.includes(`private-service-${firstPid}`));
+      const link = await attachWorkerLinkTerminal({
+        origin,
+        call,
+        workerId,
+        ownerId,
+        serverId,
+        surfaceKey,
+        id,
+      });
+      try {
+        assert.ok(link.replay.includes("private-service-" + secondPid));
+        await link.input("probe\r");
+        await link.read(new RegExp("private-service-input-" + secondPid));
+      } finally {
+        await link.close();
+      }
       await first.relay.close();
       await second.input("finish\r");
       await second.read(/Service exited 7; restarting in 5 seconds/);

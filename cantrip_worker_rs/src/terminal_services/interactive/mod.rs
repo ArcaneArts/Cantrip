@@ -1,8 +1,11 @@
 mod process;
+mod stream;
+
+pub(crate) use stream::{LinkTarget, LinkedTerminal};
 
 use super::{
     Authority, Configuration, Manager as Services, Resize, authority,
-    presentation::{Attachment, Display, detached},
+    presentation::{Attachment, Display, Transport, detached},
     private_state,
 };
 use crate::{
@@ -132,7 +135,7 @@ impl Shells {
                     .await;
                 Ok(detached())
             }
-            Some("terminal.input") => self.input(command, &key, ports.encryption).await,
+            Some("terminal.input") => self.input(command, &key, ports.encryption, true).await,
             Some("terminal.snapshot") => self.snapshot(command, &key, ports.encryption).await,
             Some("terminal.resize") => {
                 self.resize(&key, size(command)).await?;
@@ -174,13 +177,15 @@ impl Shells {
         let (complete, done) = oneshot::channel();
         let view = Attachment {
             complete,
-            outbound: ports.outbound.clone(),
-            request_id: ports
-                .request_id
-                .as_js_string()
-                .context("Terminal request identity")?
-                .clone(),
-            epoch: ports.socket_epoch,
+            transport: Transport::Command {
+                outbound: ports.outbound.clone(),
+                request_id: ports
+                    .request_id
+                    .as_js_string()
+                    .context("Terminal request identity")?
+                    .clone(),
+                epoch: ports.socket_epoch,
+            },
             binding: binding(&command, "output"),
             encryption: ports.encryption.clone(),
             owner: key.authority.0.clone(),
@@ -326,10 +331,20 @@ impl Shells {
         Ok(())
     }
 
-    async fn input(&self, command: &Value, key: &Key, encryption: &Service) -> Result<Value> {
+    async fn input(
+        &self,
+        command: &Value,
+        key: &Key,
+        encryption: &Service,
+        reply: bool,
+    ) -> Result<Value> {
         let _transition = self.transition().await;
         let service = self.services.view(&key.terminal, &key.authority).await?;
         let inner = self.inner.lock().await;
+        anyhow::ensure!(
+            authority(encryption)? == key.authority,
+            "Terminal owner changed."
+        );
         let context = binding(command, "input");
         let mut replay = self.replay.lock().unwrap();
         replay.reserve(&context)?;
@@ -359,11 +374,15 @@ impl Shells {
                 .try_send(data)
                 .map_err(|_| anyhow!("Terminal input could not be written."))?;
         }
-        let response = seal(
-            encryption,
-            context,
-            &json!({"ok":true,"result":json!({"type":"terminal.input.accepted"})}),
-        )?;
+        let response = if reply {
+            seal(
+                encryption,
+                context,
+                &json!({"ok":true,"result":json!({"type":"terminal.input.accepted"})}),
+            )?
+        } else {
+            Value::Null
+        };
         replay.accept(&binding(command, "input"), command["complete"] == true)?;
         Ok(response)
     }
