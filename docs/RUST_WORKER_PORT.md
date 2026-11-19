@@ -5700,3 +5700,29 @@ revocation. The focused Node tunnel adapter tests passed locally.
 
 Guest tunnels, project and Chat share destinations, the legacy tunnel
 WebSocket, direct brokers, and peer carriage remain open.
+
+## 131. Serve encrypted Host TCP tunnels over the legacy WebSocket
+
+Reference commit `16da5785d534fc921daacacbcf627d3f65b54f8f` (#3293).
+
+Core's existing secret-authenticated tunnel WebSocket provides the
+client attachment. The Rust worker receives CTTN frames on the ready,
+authenticated worker command socket and uses the same protected record
+opening, bounded TCP stream implementation, and connection limit as
+WorkerLink. Legacy output uses command-socket capacity. WorkerLink keeps
+its attachment credit and carrier-specific grant checks.
+
+Each carrier tracks logical streams by tunnel, attachment and connection
+IDs. A remote close retires the logical stream in frame order so an
+immediate open with the same connection ID can proceed. An older stream
+cannot enqueue new output after retirement. Account or server identity
+changes and terminal command-socket loss release the legacy streams.
+
+On macOS ARM64, both Rust services with PGlite served encrypted loopback
+traffic over each public attachment API. The TypeScript client verified
+flow credit, half-close, stream ID reuse, and revocation over the legacy
+WebSocket. One WorkerLink TCP stream stayed active during legacy
+revocation, including when the carriers used the same connection ID.
+
+Guest and share destinations, direct brokers, and peer carriage remain
+open.

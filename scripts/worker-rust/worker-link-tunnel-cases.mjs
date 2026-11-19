@@ -17,6 +17,7 @@ import {
   decodeTunnelDataPlaneFrame,
   encodeTunnelDataPlaneFrame,
 } from "../../packages/protocol/dist/tunnel-data-plane.js";
+import { tunnelAttachmentReadySchema } from "../../packages/protocol/dist/tunnels.js";
 import {
   decodeWorkerLinkFrame,
   encodeWorkerLinkFrame,
@@ -240,23 +241,33 @@ export async function verifyWorkerLinkTunnel({
       bytes: 1024 * 1024,
     });
 
-    const chunks = [response.subarray(0, smallCredit)];
-    for (;;) {
-      const frame = await first.next("data", "half-close");
-      assert.equal(frame.header.direction, destination);
-      if (frame.header.kind === "half-close") break;
-      assert.ok(!Buffer.from(frame.payload).includes(response.subarray(0, 32)));
-      chunks.push(
-        openTunnelDataFrame(configuration, frame.header, frame.payload),
-      );
-    }
-    assert.deepEqual(Buffer.concat(chunks), response);
+    await receiveResponse(first, response, configuration);
     assert.equal((await first.next("close")).header.code, "normal");
 
     second.send({ kind: "half-close", direction: source, sequence: 4 });
     assert.equal((await second.next("close")).header.code, "protocol-error");
     const active = connection.stream(route);
     await active.next("accepted");
+    await until(
+      () => sockets.size === 1,
+      "only the active WorkerLink TCP stream remains",
+    );
+    await verifyLegacyTunnel({
+      origin,
+      call,
+      tunnelId,
+      workerId,
+      configuration,
+      response,
+      received,
+      sockets,
+      connectionId: active.binding.connectionId,
+    });
+    assert.equal(
+      sockets.size,
+      1,
+      "revocation leaves the sibling WorkerLink stream open",
+    );
     await call("DELETE", base + "/grants/" + grant.binding.grantId, 204);
     const close = await connection.nextControl("close");
     assert.equal(close.code, "revoked");
@@ -264,7 +275,7 @@ export async function verifyWorkerLinkTunnel({
       () => sockets.size === 0,
       "owned TCP sockets close on revocation",
     );
-    assert.equal(openedSockets, 3);
+    assert.equal(openedSockets, 6);
     console.log(
       JSON.stringify({ suite: "native-workerlink-host-tcp", passed: true }),
     );
@@ -275,6 +286,152 @@ export async function verifyWorkerLinkTunnel({
     if (tcp.listening) await new Promise((resolve) => tcp.close(resolve));
     await call("DELETE", base, 204);
   }
+}
+
+async function verifyLegacyTunnel({
+  origin,
+  call,
+  tunnelId,
+  workerId,
+  configuration,
+  response,
+  received,
+  sockets,
+  connectionId,
+}) {
+  const clientId = randomUUID();
+  const attachment = await call(
+    "POST",
+    `/api/tunnels/${tunnelId}/attachments`,
+    201,
+    { clientId },
+  );
+  const route = "/api/tunnel-attachments/" + attachment.attachmentId;
+  const url = new URL(attachment.connectPath, origin);
+  url.protocol = "ws:";
+  const socket = new WebSocket(
+    url,
+    ["cantrip-tunnel-v1." + attachment.secret],
+    {
+      headers: { origin: "http://127.0.0.1:5173" },
+    },
+  );
+  const peer = { streams: new Map(), ready: null, failure: null };
+  socket.on("error", (error) => {
+    peer.failure ??= error;
+  });
+  socket.on("message", (bytes, binary) => {
+    try {
+      if (binary) receiveTunnelFrame(peer, bytes);
+      else
+        peer.ready = tunnelAttachmentReadySchema.parse(
+          JSON.parse(bytes.toString()),
+        );
+    } catch (error) {
+      peer.failure ??= error;
+    }
+  });
+  let revoked = false;
+  try {
+    await once(socket, "open", { signal: AbortSignal.timeout(5000) });
+    socket.send(JSON.stringify({ type: "initialize", clientId }));
+    const ready = await until(() => {
+      if (peer.failure) throw peer.failure;
+      return peer.ready;
+    }, "legacy attachment ready");
+    assert.equal(ready.attachmentId, attachment.attachmentId);
+    assert.equal(ready.tunnelId, tunnelId);
+    assert.equal(
+      ready.sourceEndpointId,
+      `desktop:${clientId}:${attachment.attachmentId}`,
+    );
+    assert.equal(ready.destinationEndpointId, `worker:${workerId}`);
+    const binding = {
+      tunnelId,
+      attachmentId: ready.attachmentId,
+      sourceEndpointId: ready.sourceEndpointId,
+      destinationEndpointId: ready.destinationEndpointId,
+    };
+    const open = (id = randomUUID()) =>
+      startStream(
+        peer,
+        { protocolVersion: 1, ...binding, connectionId: id },
+        { kind: "open", initialCreditBytes: smallCredit },
+        (bytes) => socket.send(bytes),
+      );
+    const working = open(connectionId);
+    const retained = open();
+    for (const stream of [working, retained])
+      assert.equal(
+        (await stream.next("accepted")).header.initialCreditBytes,
+        256 * 1024,
+      );
+    assert.equal(
+      sockets.size,
+      3,
+      "two legacy streams and one WorkerLink stream are connected",
+    );
+    const request = Buffer.from("legacy-private-request-" + randomUUID());
+    working.send({ kind: "data", direction: source }, request, configuration);
+    working.send({ kind: "half-close", direction: source });
+    const credit = await working.next("credit");
+    assert.equal(credit.header.direction, source);
+    assert.equal(credit.header.bytes, request.length);
+    const initial = await working.next("data");
+    assert.deepEqual(
+      openTunnelDataFrame(configuration, initial.header, initial.payload),
+      response.subarray(0, smallCredit),
+    );
+    assert.deepEqual(received.at(-1), request);
+    await delay(100);
+    assert.equal(
+      working.frames.length,
+      0,
+      "legacy broker and worker honor plaintext credit",
+    );
+    working.send({
+      kind: "credit",
+      direction: destination,
+      bytes: response.length,
+    });
+    await receiveResponse(working, response, configuration);
+    assert.equal((await working.next("close")).header.code, "normal");
+    retained.send({ kind: "close", code: "normal" });
+    const reopened = open(retained.binding.connectionId);
+    await reopened.next("accepted");
+    await until(
+      () => sockets.size === 2,
+      "reopening a retired logical stream leaves the sibling WorkerLink socket intact",
+    );
+    const closed = once(socket, "close", { signal: AbortSignal.timeout(5000) });
+    await call("DELETE", route, 204);
+    revoked = true;
+    assert.equal((await closed)[0], 1008);
+    await until(
+      () => sockets.size === 1,
+      "Core revocation closes the owned legacy sockets",
+    );
+    console.log(
+      JSON.stringify({ suite: "native-legacy-host-tcp", passed: true }),
+    );
+  } finally {
+    socket.terminate();
+    if (!revoked) await call("DELETE", route, 204);
+  }
+}
+
+async function receiveResponse(stream, response, configuration) {
+  const chunks = [response.subarray(0, smallCredit)];
+  for (;;) {
+    const frame = await stream.next("data", "half-close");
+    assert.equal(frame.header.direction, destination);
+    if (frame.header.kind === "half-close") break;
+    assert.ok(!Buffer.from(frame.payload).includes(response.subarray(0, 32)));
+    chunks.push(
+      openTunnelDataFrame(configuration, frame.header, frame.payload),
+    );
+  }
+  assert.deepEqual(Buffer.concat(chunks), response);
 }
 
 class Connection {
@@ -308,13 +465,7 @@ class Connection {
           assert.equal(frame.header.payloadFormat, "tunnel-data-plane-v1");
           assert.equal(frame.header.direction, "worker-to-client");
           this.bytes += frame.payload.length;
-          const inner = decodeTunnelDataPlaneFrame(frame.payload);
-          const stream = this.streams.get(inner.header.connectionId);
-          assert.ok(stream, "known logical stream");
-          for (const [key, value] of Object.entries(stream.binding))
-            assert.equal(inner.header[key], value, key);
-          assert.equal(inner.header.sequence, stream.expected++);
-          stream.frames.push(inner);
+          receiveTunnelFrame(this, frame.payload);
         } else {
           this.control.push(frame.header);
         }
@@ -361,45 +512,58 @@ class Connection {
   }
 
   stream({ target, ...route }, override = target) {
-    const binding = {
-      protocolVersion: 1,
-      ...route,
-      connectionId: randomUUID(),
-    };
-    const stream = { binding, sequence: 0, expected: 0, frames: [] };
-    stream.next = (...kinds) =>
-      until(
-        () => {
-          if (this.failure) throw this.failure;
-          return take(stream.frames, ({ header }) =>
-            kinds.includes(header.kind),
-          );
-        },
-        `TCP ${kinds.join("/")}`,
-      );
-    stream.send = (detail, plaintext, configuration) => {
-      const header = { ...binding, sequence: stream.sequence++, ...detail };
-      const frame = plaintext
-        ? sealTunnelDataFrame(configuration, header, plaintext)
-        : { header, payload: new Uint8Array() };
-      this.wire(
-        {
-          kind: "data",
-          direction: "client-to-worker",
-          payloadFormat: "tunnel-data-plane-v1",
-        },
-        encodeTunnelDataPlaneFrame(frame.header, frame.payload),
-      );
-    };
-    this.streams.set(binding.connectionId, stream);
-    stream.send({
-      kind: "connect",
-      target: override,
-      initialCreditBytes: smallCredit,
-      diagnosticTraceId: randomUUID(),
-    });
-    return stream;
+    return startStream(
+      this,
+      { protocolVersion: 1, ...route, connectionId: randomUUID() },
+      {
+        kind: "connect",
+        target: override,
+        initialCreditBytes: smallCredit,
+        diagnosticTraceId: randomUUID(),
+      },
+      (bytes) =>
+        this.wire(
+          {
+            kind: "data",
+            direction: "client-to-worker",
+            payloadFormat: "tunnel-data-plane-v1",
+          },
+          bytes,
+        ),
+    );
   }
+}
+
+function startStream(peer, binding, open, write) {
+  const stream = { binding, sequence: 0, expected: 0, frames: [] };
+  stream.next = (...kinds) =>
+    until(
+      () => {
+        if (peer.failure) throw peer.failure;
+        return take(stream.frames, ({ header }) => kinds.includes(header.kind));
+      },
+      `TCP ${kinds.join("/")}`,
+    );
+  stream.send = (detail, plaintext, configuration) => {
+    const header = { ...binding, sequence: stream.sequence++, ...detail };
+    const frame = plaintext
+      ? sealTunnelDataFrame(configuration, header, plaintext)
+      : { header, payload: new Uint8Array() };
+    write(encodeTunnelDataPlaneFrame(frame.header, frame.payload));
+  };
+  peer.streams.set(binding.connectionId, stream);
+  stream.send(open);
+  return stream;
+}
+
+function receiveTunnelFrame(peer, payload) {
+  const inner = decodeTunnelDataPlaneFrame(payload);
+  const stream = peer.streams.get(inner.header.connectionId);
+  assert.ok(stream, "known logical stream");
+  for (const [key, value] of Object.entries(stream.binding))
+    assert.equal(inner.header[key], value, key);
+  assert.equal(inner.header.sequence, stream.expected++);
+  stream.frames.push(inner);
 }
 
 function take(frames, select) {

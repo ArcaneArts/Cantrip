@@ -7,6 +7,7 @@ use crate::{
     worker_link::Coordinator,
 };
 use anyhow::{Result, anyhow};
+use cantrip_framing::tunnel;
 use cantrip_wire::{Value, parse_json_text, value::json};
 use futures::{SinkExt, StreamExt};
 use std::{
@@ -116,7 +117,7 @@ struct Queue {
 pub struct Outbound {
     queue: Mutex<Queue>,
     wake: Notify,
-    worker_link_capacity: Notify,
+    binary_capacity: Notify,
     observations: OnceLock<Weak<Coordinator>>,
     stream_epoch: watch::Sender<u64>,
 }
@@ -131,7 +132,7 @@ impl Default for Outbound {
                 closed: false,
             }),
             wake: Notify::new(),
-            worker_link_capacity: Notify::new(),
+            binary_capacity: Notify::new(),
             observations: OnceLock::new(),
             stream_epoch: watch::channel(0).0,
         }
@@ -197,13 +198,16 @@ impl Outbound {
         assert!(self.observations.set(Arc::downgrade(gateway)).is_ok());
     }
 
-    pub(crate) async fn worker_link_writable(&self) {
-        self.worker_link_capacity.notified().await;
+    pub(crate) async fn binary_writable(&self) {
+        self.binary_capacity.notified().await;
     }
 
     pub(crate) fn worker_link(&self, frame: cantrip_framing::worker_link::Frame) -> bool {
+        self.binary(frame.bytes())
+    }
+
+    pub(crate) fn binary(&self, bytes: &[u8]) -> bool {
         let mut queue = self.queue.lock().unwrap();
-        let bytes = frame.bytes();
         if queue.closed || !queue.ready || queue.bytes + queue.in_flight + bytes.len() > MAX_PENDING
         {
             return false;
@@ -261,7 +265,7 @@ impl Outbound {
     fn sent(&self, length: usize) {
         let mut queue = self.queue.lock().unwrap();
         queue.in_flight = queue.in_flight.saturating_sub(length);
-        self.worker_link_capacity.notify_one();
+        self.binary_capacity.notify_one();
     }
     fn restore(&self, value: Frame) {
         let mut queue = self.queue.lock().unwrap();
@@ -441,6 +445,12 @@ impl Connection {
                                 Some(Ok(Message::Pong(value)))=>{if pong.as_ref().is_some_and(|(nonce,_)|nonce.as_slice()==value.as_ref()) {pong=None;}},
                                 Some(Ok(Message::Ping(_)))=>{if !matches!(tokio::time::timeout(Duration::from_secs(10),socket.flush()).await,Ok(Ok(()))){break;}},
                                 Some(Ok(Message::Close(frame)))=>{rejected=frame.is_some_and(|frame|frame.code==CloseCode::Policy);break;},
+                                Some(Ok(Message::Binary(bytes))) if handshake.ready && tunnel::is_frame(&bytes)=>{
+                                    match tunnel::decode(Arc::from(bytes.as_ref())) {
+                                        Ok(frame) => self.worker_link.handle_tunnel_frame(frame),
+                                        Err(_) => self.invalid(&worker),
+                                    }
+                                },
                                 Some(Ok(Message::Binary(bytes))) if handshake.ready && cantrip_framing::worker_link::is_frame(&bytes)=>{
                                     match cantrip_framing::worker_link::decode(Arc::from(bytes.as_ref())) {
                                         Ok(frame) => self.worker_link.handle_frame(&frame),
