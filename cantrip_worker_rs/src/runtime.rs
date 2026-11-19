@@ -771,6 +771,17 @@ async fn cycle(
                     });
                     continue;
                 }
+                if kind == "browser.services.discover" {
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    let scope = crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let result = crate::browser_services::discover(&worker, &scope).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if matches!(kind,"project.folder.materialize"|"project.folder.delete") {
                     let folders = folders.clone();
                     let runs = runs.clone();
