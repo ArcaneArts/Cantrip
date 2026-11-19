@@ -17,7 +17,7 @@ import { fixtureEnvironment, startServer } from "../server-rust/process.mjs";
 import { discoveryWireFixtures } from "../server-rust/discovery-wire-fixtures.mjs";
 import { projectLabel } from "../server-rust/security-fixtures.mjs";
 import { taskContent } from "../server-rust/task-wire-fixtures.mjs";
-import { verifyEndpointCatalog } from "./endpoint-catalog-smoke-cases.mjs";
+import { verifyProviderCatalog } from "./provider-catalog-smoke-cases.mjs";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
 import { taskModelProvider } from "../server-rust/task-model-provider.mjs";
 
@@ -686,7 +686,7 @@ try {
     (value) => assert.match(value, /event=worker\.connection\.connected/),
   );
   await setupEncryption();
-  await verifyEndpointCatalog({
+  await verifyProviderCatalog({
     call,
     ownerId,
     workerId,
@@ -742,6 +742,7 @@ try {
       revokedTaskCannotPublishTitle: true,
       liveProviderQueueAndLimit: true,
       endpointCatalogPagingAndMetadata: true,
+      ollamaCatalogPagingAndMetadata: true,
     }),
   );
 } catch (error) {

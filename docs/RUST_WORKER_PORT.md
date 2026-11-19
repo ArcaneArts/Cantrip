@@ -5071,3 +5071,26 @@ and excluded private deployment fields.
 
 Ollama discovery, provider operation adapters, inference
 resource-revocation delivery, and production cutover remain open.
+
+## 109. Discover Ollama models in the Rust worker
+
+Reference commit `4869413481f597f938e971fd0a46c56006e5405b` (#3271).
+
+The worker handles `model.ollama.catalog` using the same protected
+credential, request bounds, and transfer-scoped snapshots as compatible
+endpoint discovery. It reads the native tags and show endpoints beneath
+the configured URL prefix and limits each discovery to four concurrent
+show requests. It retains the tags order and normalizes model details,
+capabilities, dates, and byte counts. The legacy response schema remains
+available within its existing limits.
+
+Local macOS ARM64 validation used both Rust services, PGlite, bundled
+Codex, and an empty worker PATH. The settings API received 203 Ollama
+models over multiple pages and exposed context, vision, thinking, and
+tools capabilities with the expected normalized metadata. A failing
+show request preserved the previous catalog and marked it stale.
+The compatible endpoint discovery and standalone turn cases passed
+in the same run.
+
+Provider operation adapters, inference resource-revocation delivery,
+and production cutover remain open.
