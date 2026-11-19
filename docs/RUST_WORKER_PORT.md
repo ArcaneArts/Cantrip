@@ -6828,3 +6828,29 @@ SSH and Windows guest execution were outside this validation.
 
 Guest attachment and skill materialization, first-party MCP, console,
 suspended turns, computer use and cold guest observation remain open.
+
+## 173. Materialize Chat attachments in the admitted Cantrip OS guest
+
+Reference commit 891419119253888cf0e54dcacde55c51c7794560 (#3336).
+
+The Rust worker authenticates attachment metadata and verifies uploaded
+bytes before transferring them through the selected guest executor. It
+shares the existing guest file operation service with Explorer. Executor
+0.20.0 publishes read-only files in the workspace account's private
+attachment directory. It preserves the Node operation identity, path and
+receipt format. An existing receipt verifies the stored file before reuse.
+The model receives Linux paths for file access and inline bytes for images
+when the selected model supports them.
+
+Local validation used the macOS ARM64 worker and bundled Codex with a
+disposable ARM64 Docker guest and the rebuilt Linux helper. An admitted
+protected turn read the guest attachments, including a 6.4 MB file whose
+encoded input exceeds the old helper frame limit. The provider received
+an inline image and guest file references. Node seeded a receipt
+that the native helper reopened. Node then reopened the native receipts.
+The Host rich and legacy queued-turn fixture passed. The Windows x64 GNU
+worker compiled. Full release package builds, SSH and Windows guest
+execution were outside this validation.
+
+Guest console startup, first-party MCP and suspended-turn recovery remain
+open, along with the remaining worker replacement and cutover work.

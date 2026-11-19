@@ -1,4 +1,4 @@
-//! Protected host conversation input and the wire forms for observed output.
+//! Protected conversation input and the wire forms for observed output.
 use super::{Emit, protected_mode};
 use crate::{
     chat_content::Scope,
@@ -38,10 +38,24 @@ impl Protected {
         {
             bail!("Protected chat input does not match the admitted user message.");
         }
-        if !super::queued::is_queued(command)
-            && !array(&prompt["classification"]["attachmentIds"])?.is_empty()
-        {
-            bail!("This native text turn cannot open attachment input.");
+        if !super::queued::is_queued(command) {
+            let ids = array(&prompt["classification"]["attachmentIds"])?;
+            if command["executionProfile"] == "cantrip-os" {
+                let attachments = array(&command["attachments"])?;
+                if attachments.len() != ids.len()
+                    || ids.iter().any(|id| {
+                        attachments
+                            .iter()
+                            .filter(|entry| entry["id"] == *id)
+                            .count()
+                            != 1
+                    })
+                {
+                    bail!("The protected Chat attachments do not match the admitted message.");
+                }
+            } else if !ids.is_empty() {
+                bail!("This native text turn cannot open attachment input.");
+            }
         }
         let owner = json!(grant.owner_id);
         let content = open_message(&grant.key, &owner, prompt)

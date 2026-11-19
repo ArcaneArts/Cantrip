@@ -1,5 +1,5 @@
 //! Workspace-account file operations with the existing version-one journal.
-use super::{digest, is_import, mutation, records, stream, text};
+use super::{attachments, digest, is_import, mutation, records, stream, text};
 use crate::{
     cantrip_os::operations::save,
     encryption::ComponentKey,
@@ -26,7 +26,7 @@ use tokio::{
 };
 use uuid::Uuid;
 
-const FRAME_LIMIT: usize = 8 * 1024 * 1024;
+const FRAME_LIMIT: usize = attachments::guest::FRAME_LIMIT;
 
 pub async fn run() -> Result<()> {
     // Match the previous guest service's creation mask before opening paths.
@@ -67,7 +67,7 @@ pub async fn run() -> Result<()> {
                     result?;
                 }
             }
-            if !respond(&root, &directory, Some(&imports), &input).await? {
+            if !respond(&root, &home, &directory, Some(&imports), &input).await? {
                 return Ok(());
             }
         }
@@ -77,12 +77,13 @@ pub async fn run() -> Result<()> {
         .lock()
         .take((FRAME_LIMIT + 1) as u64)
         .read_until(b'\n', &mut input)?;
-    respond(&root, &directory, None, &input).await?;
+    respond(&root, &home, &directory, None, &input).await?;
     Ok(())
 }
 
 async fn respond(
     root: &Path,
+    home: &Path,
     directory: &Path,
     imports: Option<&Imports>,
     input: &[u8],
@@ -111,7 +112,7 @@ async fn respond(
         "Misrouted OS file request."
     );
     let context = super::record_context(&surface);
-    let response = match dispatch(root, directory, imports, &frame, &context).await {
+    let response = match dispatch(root, home, directory, imports, &frame, &context).await {
         Ok(result) => result,
         Err(error) => completed(explorer::failure(&error)),
     };
@@ -140,6 +141,7 @@ fn valid_digest(value: &str) -> bool {
 
 async fn dispatch(
     root: &Path,
+    home: &Path,
     directory: &Path,
     imports: Option<&Imports>,
     frame: &Value,
@@ -152,20 +154,25 @@ async fn dispatch(
             valid_digest(fingerprint),
             "Invalid Linux file operation digest."
         );
-        return observe(directory, context, fingerprint);
+        return observe(home, directory, context, fingerprint);
     }
     ensure!(
         frame["action"] == "execute",
         "Unknown Linux file operation action."
     );
-    if context["surfaceKind"] == "chat-files" {
+    let attachment = frame["request"]["type"] == attachments::REQUEST;
+    if !attachment && context["surfaceKind"] == "chat-files" {
         let request = checked("chatFileReferencesRequestContentSchema", &frame["request"])?;
         let value = chat_references::resolve(root, &request).await?;
         return Ok(completed(
             json!({"ok":true,"result":json!({"type":"chat.files.references","value":value})}),
         ));
     }
-    let request = checked("explorerOperationRequestContentSchema", &frame["request"])?;
+    let request = if attachment {
+        frame["request"].clone()
+    } else {
+        checked("explorerOperationRequestContentSchema", &frame["request"])?
+    };
     if !mutation(text(&request, "type")?)? {
         return Ok(execute(root, directory, imports, context, &request).await);
     }
@@ -179,11 +186,20 @@ async fn dispatch(
                 .downcast_ref::<io::Error>()
                 .is_some_and(|cause| cause.kind() == io::ErrorKind::AlreadyExists) =>
         {
-            return observe(directory, context, &fingerprint);
+            return observe(home, directory, context, &fingerprint);
         }
         Err(error) => return Err(error),
     }
-    let result = execute(root, directory, imports, context, &request).await;
+    let result = if attachment {
+        completed(
+            match attachments::guest::materialize(home, &request, context) {
+                Ok(result) => json!({"ok":true,"result":result}),
+                Err(error) => explorer::failure(&error),
+            },
+        )
+    } else {
+        execute(root, directory, imports, context, &request).await
+    };
     save(&path, &json!({"digest":fingerprint,"result":result}), false)?;
     Ok(result)
 }
@@ -192,7 +208,7 @@ fn receipt_path(directory: &Path, context: &Value) -> PathBuf {
     directory.join(format!("{}.json", digest(context.clone())))
 }
 
-fn observe(directory: &Path, context: &Value, fingerprint: &str) -> Result<Value> {
+fn observe(home: &Path, directory: &Path, context: &Value, fingerprint: &str) -> Result<Value> {
     let Some(record) = records::read(&receipt_path(directory, context))? else {
         bail!(
             "The OS file operation has no saved completion. Its outcome is unknown; it was not replayed."
@@ -204,6 +220,10 @@ fn observe(directory: &Path, context: &Value, fingerprint: &str) -> Result<Value
     );
     let result = record.get("result")
         .context("The OS file operation has an unknown outcome. Inspect the file before issuing another mutation.")?;
+    let outcome = &result["outcome"]["result"];
+    if context["surfaceKind"] == "chat-files" && outcome["type"] == attachments::RESULT {
+        attachments::guest::verify_saved(home, &outcome["value"])?;
+    }
     Ok(result.clone())
 }
 

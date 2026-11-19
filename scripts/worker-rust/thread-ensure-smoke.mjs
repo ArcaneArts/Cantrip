@@ -26,7 +26,10 @@ import {
 } from "../../packages/protocol/dist/index.js";
 import { NativeSuspensionStore } from "../../cantrip_worker/src/native-suspension-store.ts";
 import { CodexRpcClient } from "../../cantrip_worker/src/codex/rpc-client.ts";
+import { AttachmentStore } from "../../cantrip_worker/src/attachment-store.ts";
+import { protectWorkerAttachmentMetadata } from "../../cantrip_worker/src/attachment-encryption.ts";
 import { OsAgentPlacements } from "../../cantrip_worker/src/os-executor/agent-placements.ts";
+import { OsFileOperations } from "../../cantrip_worker/src/os-executor/files.ts";
 import { OsNativeEnvironment } from "../../cantrip_worker/src/os-executor/native-environment.ts";
 import {
   decryptChatMessageProtectedContent,
@@ -60,6 +63,7 @@ const { values } = parseArgs({
     worker: { type: "string" },
     codex: { type: "string" },
     "guest-image": { type: "string" },
+    "guest-file-helper": { type: "string" },
     turns: { type: "boolean" },
     held: { type: "boolean" },
     durablePause: { type: "boolean" },
@@ -399,7 +403,7 @@ const server = createServer(async (request, response) => {
                 },
               ]
             : []),
-          ...(values.queuedTurn
+          ...(values.queuedTurn || values["guest-file-helper"]
             ? [
                 {
                   component: "attachment-content",
@@ -2015,7 +2019,72 @@ async function expectSuccess(fields) {
   return reply.result;
 }
 
-async function verifyGuestTurn({ session, cwd, provider, threadId, marker }) {
+async function guestUpload(session, fileName, bytes, mimeType = "text/plain") {
+  const id = randomUUID();
+  const chatId = session.chatId;
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const stored = new AttachmentStore(directory).resolve(chatId, id, fileName);
+  await mkdir(path.dirname(stored), { recursive: true });
+  await writeFile(stored, bytes, { mode: 0o600 });
+  const summary = {
+    id,
+    chatId,
+    fileName,
+    mimeType,
+    sizeBytes: bytes.length,
+    kind: mimeType.startsWith("image/") ? "image" : "text",
+    source: "file",
+    status: "ready",
+    previewText: null,
+    createdAt: stamp,
+  };
+  const protectedMetadata = await protectWorkerAttachmentMetadata({
+    chatId,
+    attachmentId: id,
+    service: oracle,
+    content: {
+      version: 1,
+      fileName,
+      mimeType: summary.mimeType,
+      kind: summary.kind,
+      source: summary.source,
+      previewText: null,
+      error: null,
+      sha256,
+    },
+  });
+  const guestPath = path.posix.join(
+    session.osExecution.scope.homeGuestPath,
+    ".local/share/cantrip-os-executor/attachments",
+    chatId,
+    id,
+    sha256,
+    fileName,
+  );
+  return {
+    sha256,
+    stored,
+    summary,
+    guestPath,
+    reference: {
+      id,
+      chatId,
+      sizeBytes: bytes.length,
+      status: "ready",
+      createdAt: stamp,
+      protectedMetadata,
+    },
+  };
+}
+
+async function verifyGuestTurn({
+  session,
+  cwd,
+  provider,
+  threadId,
+  marker,
+  uploads,
+}) {
   const inputId = randomUUID();
   const prompt = await protectChatMessage({
     id: inputId,
@@ -2025,7 +2094,13 @@ async function verifyGuestTurn({ session, cwd, provider, threadId, marker }) {
       role: "user",
       mode: "default",
       idempotencyKey: inputId,
-      content: [{ type: "text", text: "Read the guest fixture and reply." }],
+      content: [
+        { type: "text", text: "Read the guest fixture and reply." },
+        ...uploads.map(({ summary }) => ({
+          type: "attachment",
+          attachment: summary,
+        })),
+      ],
     },
   });
   const responseId = randomUUID();
@@ -2048,21 +2123,48 @@ async function verifyGuestTurn({ session, cwd, provider, threadId, marker }) {
     osExecution: session.osExecution,
     provider,
     protectedPrompt: prompt,
+    attachments: uploads.map(({ reference }) => reference),
+    model: {
+      id: "gpt-5",
+      name: "gpt-5",
+      routeId: "fixture-route",
+      reasoningEffort: null,
+      catalog: {
+        nativeModelId: "gpt-5",
+        displayName: "Fixture",
+        description: null,
+        contextWindow: null,
+        maxOutputTokens: null,
+        inputModalities: ["text", "image"],
+        outputModalities: ["text"],
+        supportsTools: true,
+        supportsParallelTools: null,
+        supportsStructuredOutput: null,
+        supportsVision: true,
+        supportsReasoning: null,
+        supportedReasoningEfforts: [],
+        defaultReasoningEffort: null,
+        reasoningMandatory: null,
+        metadataSource: "compatible-api",
+      },
+    },
     resultMode: {
       kind: "chat-message-encrypted",
       messageId: responseId,
       idempotencyKey: responseId,
     },
   };
-  const calls = providerCalls;
-  const unplaced = await ensure({
-    ...fields,
-    executionProfile: "ide",
-    osExecution: undefined,
-  });
-  assert.equal(unplaced.ok, false, JSON.stringify(unplaced));
-  assert.match(unplaced.error.message, /guest execution support/u);
-  assert.equal(providerCalls, calls);
+  if (!uploads.length) {
+    const calls = providerCalls;
+    const unplaced = await ensure({
+      ...fields,
+      executionProfile: "ide",
+      osExecution: undefined,
+    });
+    assert.equal(unplaced.ok, false, JSON.stringify(unplaced));
+    assert.match(unplaced.error.message, /guest execution support/u);
+    assert.equal(providerCalls, calls);
+  }
   const receipt = admit(fields, stamp);
   guiPeer = new GuiReceiptPeer(fields, receipt, {
     oracle,
@@ -2080,7 +2182,13 @@ async function verifyGuestTurn({ session, cwd, provider, threadId, marker }) {
       ["exec_command", "shell_command"].includes(tool.name),
     )?.name;
     assert.ok(name, "The model must receive a shell tool.");
-    const command = "pwd && id -u && uname -s && cat .cantrip-fixture";
+    const command = [
+      "pwd",
+      "id -u",
+      "uname -s",
+      "cat .cantrip-fixture",
+      ...uploads.map(({ guestPath }) => `sha256sum '${guestPath}'`),
+    ].join(" && ");
     return {
       name,
       call_id: callId,
@@ -2099,6 +2207,20 @@ async function verifyGuestTurn({ session, cwd, provider, threadId, marker }) {
   });
   try {
     const first = await Promise.race([before, premature]);
+    const input = JSON.stringify(first.body.input);
+    for (const upload of uploads) {
+      assert.ok(input.includes(upload.guestPath), input);
+      assert.ok(!input.includes(upload.stored));
+    }
+    const images = first.body.input.flatMap(({ content }) =>
+      Array.isArray(content)
+        ? content.filter(({ type }) => type === "input_image")
+        : [],
+    );
+    assert.equal(
+      images.length,
+      uploads.filter(({ summary }) => summary.kind === "image").length,
+    );
     const after = untilProvider();
     first.finish();
     const second = await Promise.race([after, premature]);
@@ -2116,6 +2238,8 @@ async function verifyGuestTurn({ session, cwd, provider, threadId, marker }) {
       ),
       toolText,
     );
+    for (const upload of uploads)
+      assert.ok(toolText.includes(upload.sha256), toolText);
     second.finish();
     const completed = await pending;
     assert.equal(
@@ -2176,6 +2300,15 @@ async function verifyGuestThread() {
     );
     const guest = (...args) =>
       docker("exec", "--user", "0", container, ...args);
+    if (values["guest-file-helper"]) {
+      const helper = "/usr/lib/cantrip-os-executor/cantrip-os-files";
+      await docker(
+        "cp",
+        path.resolve(values["guest-file-helper"]),
+        `${container}:${helper}`,
+      );
+      await guest("chmod", "0755", helper);
+    }
     const deadline = Date.now() + 15_000;
     for (;;) {
       const status = JSON.parse(await guest("cantrip-executor", "status"));
@@ -2316,14 +2449,82 @@ async function verifyGuestThread() {
       JSON.stringify(mismatch),
       /already captured a different OS placement/u,
     );
+    const uploads = [];
+    const legacyHelper = "/usr/lib/cantrip-os-executor/file-operations.mjs";
+    async function compareWithNode(upload) {
+      const files = new OsFileOperations(
+        directory,
+        {
+          captureExecutionBinding: async () =>
+            JSON.parse(
+              await guest("cantrip-executor", "open", guestWorkspaceId),
+            ),
+        },
+        { ownerId: () => ownerId, serverIdentity: () => serverId },
+      );
+      try {
+        const [observed] = await files.materialize(
+          osExecution,
+          session.chatId,
+          [{ ...upload.summary, path: upload.stored }],
+        );
+        assert.equal(observed.guestPath, upload.guestPath);
+      } finally {
+        await files.dispose();
+      }
+    }
+    if (values["guest-file-helper"]) {
+      const old = await guestUpload(
+        session,
+        "legacy-note.txt",
+        Buffer.from("Legacy guest attachment fixture."),
+      );
+      await compareWithNode(old);
+      assert.equal(
+        (await readdir(path.join(directory, "os-file-admissions"))).length,
+        1,
+      );
+      const bytes = Buffer.alloc(6_400_000, 99);
+      uploads.push(old, await guestUpload(session, "native-note.txt", bytes));
+      const image = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAD0lEQVR4nGNgaPgPQhAKACX2Bf2gcp/LAAAAAElFTkSuQmCC",
+        "base64",
+      );
+      uploads.push(
+        await guestUpload(session, "native-image.png", image, "image/png"),
+      );
+      await guest("mv", legacyHelper, legacyHelper + ".reference");
+    }
     const recoveryTurnId = await verifyGuestTurn({
       session,
       cwd,
       provider,
       threadId,
       marker,
+      uploads,
     });
     await stop();
+    if (uploads.length) {
+      const admissions = await readdir(
+        path.join(directory, "os-file-admissions"),
+      );
+      assert.equal(admissions.length, uploads.length);
+      await guest("mv", legacyHelper + ".reference", legacyHelper);
+      for (const upload of uploads) {
+        assert.equal(
+          await guest("stat", "-c", "%a:%u:%s", upload.guestPath),
+          `400:${uid}:${upload.summary.sizeBytes}`,
+        );
+        await compareWithNode(upload);
+      }
+      assert.deepEqual(
+        await readdir(path.join(directory, "os-file-admissions")),
+        admissions,
+      );
+      console.log(
+        "Guest attachment bytes, permissions, and Node receipt compatibility passed.",
+      );
+    }
     await start();
     const recovered = await expectThread(
       { cwd, session: reopen, threadId, provider, recoveryTurnId },
