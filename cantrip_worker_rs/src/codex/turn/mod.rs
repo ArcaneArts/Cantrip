@@ -47,6 +47,7 @@ pub(crate) const RUN: &str = "chat.turn";
 pub(crate) const INTERRUPT: &str = "chat.interrupt";
 pub(crate) const CONTROL: &str = "chat.native-control";
 pub(crate) const RESUME: &str = "chat.suspension.resume";
+pub(crate) const STOP_SUSPENSION: &str = "chat.suspension.stop";
 pub(crate) const COMPLETE: &str = "chat.native-logical.complete";
 pub(crate) const CANCEL: &str = "chat.native-logical.cancel";
 const RPC_TIMEOUT: Duration = Duration::from_secs(120);
@@ -58,9 +59,10 @@ type Sessions = Arc<Mutex<SessionsState>>;
 struct SessionsState {
     active: HashMap<Key, Arc<Active>>,
     cancelled: HashSet<(Key, JsString, JsString)>,
-    restoring: HashMap<Key, Restoring>,
+    restoring: HashMap<Key, PendingSuspension>,
+    stopping: HashMap<Key, PendingSuspension>,
 }
-struct Restoring {
+struct PendingSuspension {
     signature: String,
     response: Promise<Value>,
 }
@@ -499,7 +501,10 @@ impl Turns {
         });
         {
             let mut entries = self.active.lock().unwrap();
-            if entries.active.contains_key(&key) || entries.restoring.contains_key(&key) {
+            if entries.active.contains_key(&key)
+                || entries.restoring.contains_key(&key)
+                || entries.stopping.contains_key(&key)
+            {
                 bail!("This chat already has an active native turn.");
             }
             if root.as_ref().is_some_and(|root| {

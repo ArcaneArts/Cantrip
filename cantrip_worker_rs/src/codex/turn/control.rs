@@ -1,6 +1,7 @@
 //! Managed controls acquire a separate Core receipt for the exact active turn.
 mod pause;
 mod restore;
+mod stop;
 use super::{Active, Phase, RPC_TIMEOUT, Runtime, Turns, output};
 use crate::{chat_content::Scope, codex::rpc_requests::Failure, http::checked};
 use anyhow::{Context, Result, bail};
@@ -11,6 +12,7 @@ use tokio::sync::{Mutex, watch};
 #[derive(Clone, Copy)]
 pub(super) enum Action<'a> {
     Stop,
+    DurableStop(Option<&'a Value>),
     Pause(bool),
     Resume(&'a Value),
 }
@@ -18,15 +20,21 @@ pub(super) enum Action<'a> {
 impl Action<'_> {
     pub(super) fn paused(self) -> Option<bool> {
         match self {
-            Self::Stop => None,
+            Self::Stop | Self::DurableStop(_) => None,
             Self::Pause(paused) => Some(paused),
             Self::Resume(_) => Some(false),
         }
     }
 
+    pub(super) fn durable(self) -> bool {
+        !matches!(self, Self::Stop)
+    }
+
     pub(super) fn control_id(self) -> Option<Value> {
         match self {
-            Self::Resume(command) => Some(command["controlId"].clone()),
+            Self::Resume(command) | Self::DurableStop(Some(command)) => {
+                Some(command["controlId"].clone())
+            }
             _ => None,
         }
     }
@@ -205,6 +213,11 @@ impl Turns {
         if action.paused() == Some(true) && binding.checkpoint.get().is_none() {
             bail!("The native turn observer was not attached for durable Pause.");
         }
+        let action = if matches!(action, Action::Stop) && binding.checkpoint.get().is_some() {
+            Action::DurableStop(None)
+        } else {
+            action
+        };
         let _pause = if action.paused().is_some() {
             Some(binding.pause_control.lock().await)
         } else {
@@ -222,7 +235,7 @@ impl Turns {
                 Action::Resume(_) => Err(anyhow::anyhow!(
                     "The suspended native turn is no longer attached."
                 )),
-                Action::Stop => result(false),
+                Action::Stop | Action::DurableStop(_) => result(false),
             };
         };
         let scope = Scope::new(self.encryption.clone())?;
@@ -231,10 +244,13 @@ impl Turns {
         }
         let mut session = binding.session.clone();
         session["connectionId"] = json!(format!("gui-control:{}", selected.runtime.generation()));
-        let checkpoint = if let Action::Resume(command) = action {
-            Some(binding.resume_checkpoint(command, &selected)?)
-        } else {
-            None
+        let checkpoint = match action {
+            Action::Resume(command) => Some(binding.matches_checkpoint(command, &selected)?),
+            Action::DurableStop(Some(command)) => {
+                binding.matches_checkpoint(command, &selected)?;
+                None
+            }
+            _ => None,
         };
         let mut params = json!({"threadId": selected.thread, "turnId": selected.turn});
         if let Some(paused) = action.paused() {
@@ -248,6 +264,12 @@ impl Turns {
             return self
                 .pause(&active, binding, selected, &receipt, paused, checkpoint)
                 .await;
+        }
+        if matches!(action, Action::DurableStop(_)) {
+            let stop = self
+                .durable_stop(&selected, &receipt, Some(&active))
+                .await?;
+            return result(stop.is_some());
         }
         if let Err(error) = receipt.dispatch().await {
             receipt

@@ -4799,3 +4799,31 @@ restored turn completes without new output.
 Durable Stop, Task checkpoint capture and restoration, and the remaining
 observer parity are still open. Production cutover and the final
 Rust server and worker acceptance remain in scope.
+
+## 99. Stop suspended Chat execution in the Rust worker
+
+Reference commit `958958b2ca7d60404736c989a21c60c03e5168e8` (#3261).
+
+The worker handles the existing live interrupt and the named
+`chat.suspension.stop` command. A named Stop matches the saved Chat,
+placement and native turn, and passes the exact Core control ID. After
+restart, the worker opens the authenticated worker record, attaches to
+the recorded Codex home under the hold, and admits a protected observer
+with the original input provenance. It issues `turn/interrupt` against
+that turn and settles from native terminal history. No provider capacity
+or resumed model execution is needed to stop a cold turn. Concurrent
+copies of the same named Stop share a result.
+
+Durable control admissions carry the worker generation. Resume also
+carries the explicit request to resume autonomy required by Core.
+
+Local macOS ARM64 tests used the real Rust worker and bundled Codex with
+Core and provider peers. They verified live and cold Stop, stale and
+duplicate controls, protected receipt replay, and terminal history for
+the original turn. A cold Stop preserved an unreadable native checkpoint
+while committing the interruption and making no further provider request.
+Live and cold Resume, protected Chat receipts and queued-shell Stop
+passed in the same run.
+
+Task checkpoint capture and restoration, remaining worker parity, and
+production cutover remain open.

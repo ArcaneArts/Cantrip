@@ -250,6 +250,7 @@ printf '%s\\n' '${contents}'`;
         oracle,
         workerGeneration: generation(),
         workerId,
+        durable: false,
       });
       controls.session = admitted.session;
       controls.rootAcknowledged = true;
