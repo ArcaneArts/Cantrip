@@ -3,6 +3,7 @@ pub(super) mod pause;
 mod restore;
 mod stop;
 pub(crate) mod task_pause;
+mod task_stop;
 use super::{Active, Phase, RPC_TIMEOUT, Runtime, Turns, output};
 use crate::{chat_content::Scope, codex::rpc_requests::Failure, http::checked};
 use anyhow::{Context, Result, bail};

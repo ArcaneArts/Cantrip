@@ -97,6 +97,7 @@ struct Active {
     root: Option<receipt::Operation>,
     control: OnceLock<control::Binding>,
     task: OnceLock<task::checkpoint::Checkpoint>,
+    task_input: bool,
     logical_finished: AtomicBool,
     preparation: Abort,
     phase: Mutex<Phase>,
@@ -144,9 +145,14 @@ impl Active {
         Ok(())
     }
 
-    async fn interrupt(&self, selected: Option<&JsString>) -> Result<bool> {
+    async fn interrupt(
+        &self,
+        selected: Option<&JsString>,
+        assert_current: impl Fn() -> Result<()>,
+    ) -> Result<bool> {
         let mut changes = self.changed.subscribe();
         loop {
+            assert_current()?;
             let request = {
                 let phase = self.phase.lock().unwrap();
                 let matches = |thread: Option<&JsString>| selected.is_none() || selected == thread;
@@ -169,6 +175,7 @@ impl Active {
                 }
             };
             if let Some((runtime, thread, turn)) = request {
+                assert_current()?;
                 let result = runtime
                     .request(
                         "turn/interrupt".into(),
@@ -357,11 +364,8 @@ impl Turns {
     }
 
     pub(crate) async fn interrupt(&self, command: &Value) -> Result<Value> {
-        if ["task", "taskStop"]
-            .iter()
-            .any(|field| command.get(field).is_some_and(|value| !value.is_null()))
-        {
-            bail!("This native interrupt requires a host turn owned by the command channel.");
+        if !command["taskStop"].is_null() || !command["task"].is_null() {
+            return self.stop_task(command).await;
         }
         let active = self
             .active
@@ -377,7 +381,11 @@ impl Turns {
             })
             .cloned();
         let interrupted = match active {
-            Some(active) => active.interrupt(command["threadId"].as_js_string()).await?,
+            Some(active) => {
+                active
+                    .interrupt(command["threadId"].as_js_string(), || Ok(()))
+                    .await?
+            }
             None => false,
         };
         checked(
@@ -519,6 +527,7 @@ impl Turns {
             root: root.clone(),
             control: OnceLock::new(),
             task: OnceLock::new(),
+            task_input: task.is_some(),
             preparation: abort,
             phase: Mutex::new(Phase::Preparing(
                 incoming["threadId"].as_js_string().cloned(),

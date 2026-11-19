@@ -120,6 +120,7 @@ impl Turns {
             root: Some(root.clone()),
             control: OnceLock::from(binding),
             task: OnceLock::new(),
+            task_input: false,
             logical_finished: AtomicBool::new(false),
             preparation: abort,
             phase: Mutex::new(Phase::Preparing(Some(thread.clone()))),

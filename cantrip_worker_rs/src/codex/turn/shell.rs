@@ -88,6 +88,7 @@ impl Turns {
                     session.clone(), command["permissionProfileId"].clone(), prepared.thread.version()
                 )),
                 task: OnceLock::new(),
+            task_input: false,
                 // Like the managed Node shell observer, release the local
                 // owner after physical settlement. Core owns logical closure.
                 logical_finished: AtomicBool::new(false),

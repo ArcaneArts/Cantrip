@@ -207,7 +207,7 @@ impl Turns {
 }
 
 impl PauseTarget {
-    async fn active_turn(&self) -> Result<Option<JsString>> {
+    pub(super) async fn active_turn(&self) -> Result<Option<JsString>> {
         self.thread.assert_current(&self.runtime)?;
         let history = self.runtime.read_history(self.thread.id()).await?;
         self.thread.assert_current(&self.runtime)?;

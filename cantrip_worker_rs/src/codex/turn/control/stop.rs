@@ -14,7 +14,7 @@ impl Drop for Reservation {
 }
 
 pub(super) struct Terminal {
-    status: &'static str,
+    pub(super) status: &'static str,
     turn: Value,
 }
 
@@ -22,7 +22,17 @@ impl Turns {
     pub(crate) async fn stop_suspension(&self, command: &Value) -> Result<Value> {
         let command = self.preparation.resolve_routing(command).await?;
         let key = self.key(&command)?;
-        let signature = payload_digest(&command);
+        self.serialize_stop(key.clone(), &command, self.stop_owned(&command, &key))
+            .await
+    }
+
+    pub(super) async fn serialize_stop(
+        &self,
+        key: Key,
+        command: &Value,
+        operation: impl Future<Output = Result<Value>>,
+    ) -> Result<Value> {
+        let signature = payload_digest(command);
         let (owner, pending) = {
             let mut state = self.active.lock().unwrap();
             if let Some(pending) = state.stopping.get(&key) {
@@ -49,7 +59,7 @@ impl Turns {
             sessions: self.active.clone(),
             key: key.clone(),
         };
-        let result = self.stop_owned(&command, &key).await;
+        let result = operation.await;
         complete.finish(restore::shared(&result));
         result
     }
@@ -190,7 +200,7 @@ impl Turns {
 }
 
 impl Selection {
-    async fn terminal(&self) -> Result<Option<Terminal>> {
+    pub(super) async fn terminal(&self) -> Result<Option<Terminal>> {
         let snapshot = self.runtime.read_history(&self.thread).await?;
         if !self.transport_current() {
             bail!("The native transport changed during Stop.");
@@ -215,7 +225,7 @@ impl Selection {
         }))
     }
 
-    async fn await_terminal(&self) -> Result<Terminal> {
+    pub(super) async fn await_terminal(&self) -> Result<Terminal> {
         tokio::time::timeout(RPC_TIMEOUT, async {
             loop {
                 if let Some(terminal) = self.terminal().await? {

@@ -9,6 +9,7 @@ import {
   taskGoalOutcomeDeliverySchema,
   taskMessageRelayResultSchema,
   taskPauseRuntimeStateSchema,
+  taskTurnStopResultSchema,
 } from "../../packages/protocol/dist/index.js";
 
 import { NativeSuspensionStore } from "../../cantrip_worker/src/native-suspension-store.ts";
@@ -49,6 +50,7 @@ async function pauseGoal({
   setAnswer,
   answer,
   restoreCycle,
+  stopCycle,
 }) {
   const { parent, cycle, sourceKey, operationId, threadId, turnId } = source;
   const active = { threadId, turnId };
@@ -155,6 +157,72 @@ async function pauseGoal({
       ([key]) => key === `agent-message:root:${turnId}:${commentaryId}`,
     ),
   );
+
+  if (stopCycle) {
+    const previous = stopCycle.generation();
+    await stopCycle.stop();
+    await stopCycle.start();
+    assert.notEqual(stopCycle.generation(), previous);
+    const taskStop = {
+      controlId: randomUUID(),
+      checkpoint: saved.evidence,
+      source: parent,
+      active,
+      cwd: saved.continuation.cwd,
+      model: saved.continuation.model,
+      provider: stopCycle.provider,
+      permissionProfileId: ":workspace",
+      scope: { ...command.task, revision: 5, orderEpoch: cycle.orderEpoch + 1 },
+    };
+    const packet = {
+      type: "chat.interrupt",
+      chatId: parent.chatId,
+      threadId,
+      taskStop,
+    };
+    const wrongSource = await invoke({
+      ...packet,
+      taskStop: {
+        ...taskStop,
+        scope: {
+          ...taskStop.scope,
+          taskGoalCycle: {
+            ...taskStop.scope.taskGoalCycle,
+            sourceKey: "f".repeat(64),
+          },
+        },
+      },
+    });
+    assert.equal(wrongSource.ok, false);
+    assert.equal(modelCalls(), model.number);
+    const stopped = await invoke(packet);
+    assert.equal(
+      stopped.ok,
+      true,
+      JSON.stringify(stopped) + "\n" + diagnostics(),
+    );
+    const proof = taskTurnStopResultSchema.parse(stopped.result);
+    assert.deepEqual(proof, {
+      controlId: taskStop.controlId,
+      active,
+      outcome: "stopped",
+      interrupted: true,
+      actor: {
+        workerGeneration: stopCycle.generation(),
+        runtimeGeneration: proof.actor.runtimeGeneration,
+        operationId: taskStop.controlId,
+        operationGeneration: taskStop.controlId,
+      },
+    });
+    assert.notEqual(proof.actor.runtimeGeneration, source.runtimeGeneration);
+    assert.deepEqual((await invoke(packet)).result, proof);
+    assert.equal(modelCalls(), model.number);
+    await stopCycle.stop();
+    console.log(
+      "Cold Task Goal Stop used the saved canonical source and committed the original cycle's interruption.",
+    );
+    return { stopped: true };
+  }
 
   if (restoreCycle)
     return restoreCycle({
@@ -377,6 +445,7 @@ export function goalCycles({
             answer: firstAnswer,
           })
         : { continued: first };
+      if (paused.stopped) return;
       let commit = paused.commit;
       if (paused.continued) {
         paused.continued.finish();
