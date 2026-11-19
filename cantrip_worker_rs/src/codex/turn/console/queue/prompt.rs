@@ -1,6 +1,6 @@
 use super::{View, required};
 use crate::{
-    attachments::content,
+    attachments::{Store, content},
     chat_content::{Scope, queue, queue::media, turn_with_attachments},
     filesystem::paths,
     history::input_materializer,
@@ -11,6 +11,7 @@ use anyhow::{Result, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use cantrip_history::content::Encryption;
 use cantrip_wire::{JsString, Value, value::json};
+use std::path::PathBuf;
 
 fn open_vector(scope: &Scope, view: &View, item: &Value) -> Result<Value> {
     ensure!(
@@ -72,12 +73,23 @@ pub(super) async fn open(view: &View, scope: &Scope, item: &Value) -> Result<Val
 
 pub(super) enum Preparation<'a> {
     Add,
-    Edit(&'a Value),
+    Edit(&'a View, &'a Value),
     Import,
 }
 
+#[derive(Clone)]
+pub(super) struct Input {
+    pub chat: JsString,
+    pub directory: PathBuf,
+    pub model: Value,
+    pub plan_mode: Value,
+    pub subagent_model: Value,
+    pub worktree: Value,
+}
+
 pub(super) async fn prepare(
-    view: &View,
+    input: &Input,
+    attachments: &Store,
     scope: &Scope,
     params: &Value,
     operation: &JsString,
@@ -86,22 +98,18 @@ pub(super) async fn prepare(
 ) -> Result<Value> {
     let imported = matches!(preparation, Preparation::Import);
     let existing = match preparation {
-        Preparation::Edit(item) => Some(item),
+        Preparation::Edit(_, item) => Some(item),
         _ => None,
     };
     let empty = Value::Null;
     let previous = existing.unwrap_or(&empty);
-    let configuration = &view.command;
-    let captured = media::capture(
-        queue::validated_input(&params["input"])?,
-        &view.local_directory,
-    )
-    .await?;
+    let captured =
+        media::capture(queue::validated_input(&params["input"])?, &input.directory).await?;
     let requested = params["managed"]["action"]
         .as_str()
         .or_else(|| previous["nativeAction"].as_str())
         .unwrap_or("plain");
-    let default_mode = configuration["planMode"].as_str().unwrap_or("default");
+    let default_mode = input.plan_mode.as_str().unwrap_or("default");
     let mode = previous["classification"]["mode"].as_str().unwrap_or(
         if imported && default_mode != "plan" {
             "default"
@@ -112,7 +120,7 @@ pub(super) async fn prepare(
     let (action, method, mode_override) =
         queue::classify(&json!({"input":captured.input,"action":requested}), mode)?;
     let mode = mode_override.unwrap_or(mode);
-    let retained = if let Some(previous) = existing {
+    let retained = if let Preparation::Edit(view, previous) = preparation {
         retained_attachments(view, scope, previous, &captured.input).await?
     } else {
         media::Projection::default()
@@ -121,8 +129,8 @@ pub(super) async fn prepare(
     let prompt_id = id.lossy();
     let projected = media::project(
         scope,
-        &view.turns.attachments,
-        &view.chat,
+        attachments,
+        &input.chat,
         id,
         operation,
         captured,
@@ -137,7 +145,7 @@ pub(super) async fn prepare(
             json!(queue::stable_id(&json!((
                 "cantrip:managed-queue-message",
                 &scope.server,
-                &view.chat,
+                &input.chat,
                 id,
             ))))
         });
@@ -168,24 +176,24 @@ pub(super) async fn prepare(
     let subagents = if imported {
         &empty
     } else {
-        &configuration["subagentDefaults"]
+        &input.subagent_model
     };
     let turn = turn_with_attachments(
         scope,
         &json!({
             "promptId":id_value,"messageId":message,"text":display,"mode":mode,"idempotencyKey":idempotency,
-            "modelId":selected("modelId",&configuration["model"]["id"]),
-            "reasoningEffort":selected("reasoningEffort",&configuration["model"]["reasoningEffort"]),
+            "modelId":selected("modelId",&input.model["id"]),
+            "reasoningEffort":selected("reasoningEffort",&input.model["reasoningEffort"]),
             "customSubagentModel":selected("customSubagentModel",&json!(subagents.is_object())),
-            "subagentModelId":selected("subagentModelId",&subagents["model"]["id"]),
-            "subagentReasoningEffort":selected("subagentReasoningEffort",&subagents["model"]["reasoningEffort"]),
+            "subagentModelId":selected("subagentModelId",&subagents["id"]),
+            "subagentReasoningEffort":selected("subagentReasoningEffort",&subagents["reasoningEffort"]),
         }),
         &projected.summaries,
     )?;
     let mut prompt = turn["queuedPrompt"].clone();
     prompt["protectedNativeInput"] = queue::seal_native(
         scope,
-        &json!(view.chat),
+        &json!(input.chat),
         &id_value,
         &json!({
             "version":1,"input":projected.input,"displayText":display,"action":action,
@@ -195,7 +203,7 @@ pub(super) async fn prepare(
     prompt["nativeAction"] = json!(action);
     prompt["executionMethod"] = json!(method);
     prompt["nativeClientUserMessageId"] = client_id;
-    prompt["worktreeId"] = selected("worktreeId", &configuration["session"]["worktreeId"]);
+    prompt["worktreeId"] = selected("worktreeId", &input.worktree);
     prompt["frozen"] = selected("frozen", &json!(false));
     Ok(json!({
         "prompt":checked("queuedPromptOpaqueContentSchema", &prompt)?,

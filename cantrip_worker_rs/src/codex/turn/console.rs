@@ -5,6 +5,7 @@ mod prompt;
 mod queue;
 pub(crate) use gateway::Gateway;
 pub(super) use queue::Views as QueueViews;
+pub(in crate::codex) use queue::import;
 
 use super::{Key, Scope, Turns, id};
 use crate::{
@@ -40,7 +41,7 @@ struct View {
     permission: Value,
     command: Value,
     queue_key: Key,
-    queue_state: Arc<queue::State>,
+    queue: Arc<import::Import>,
 }
 
 impl View {
@@ -117,7 +118,10 @@ impl Turns {
             id(&prepared.bound.1, "managed console logical server")?,
             chat.clone(),
         );
-        let queue_state = self.console_queues.watch(queue_key.clone());
+        let queue = prepared
+            .queue
+            .clone()
+            .context("The managed console queue is unavailable.")?;
         let view = Arc::new(View {
             turns: self.clone(),
             prepared,
@@ -128,7 +132,7 @@ impl Turns {
             permission: command["permissionProfileId"].clone(),
             command,
             queue_key,
-            queue_state,
+            queue,
         });
         let gateway = Gateway::start(view).await?;
         let mut args = vec!["--remote".into(), gateway.url.clone()];
