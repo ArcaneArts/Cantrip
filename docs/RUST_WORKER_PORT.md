@@ -4952,3 +4952,26 @@ tests also passed.
 
 Broader worker parity, service packaging and production cutover remain
 open.
+
+## 104. Preserve standalone Chat scratch folders in the Rust worker
+
+Reference commit `3e818c8c619c1e34adb34d8f275f6087384603f3` (#3266).
+
+The Rust worker now provisions, resolves, archives, restores, reconciles,
+and deletes standalone Chat scratch folders. It reopens the Node worker's
+version 1 registry and directory layout, keeps path metadata behind the
+existing routing handles, and persists the root binding before directory
+creation so interrupted provisioning can retry. Reconciliation reports
+missing, due, and orphaned roots to Core. Permanent removal requires the
+registered root and chat identities.
+
+Local macOS ARM64 validation used the linked Rust worker with an empty
+PATH and the linked Rust server with PGlite. A public standalone Chat
+creation and permanent deletion both reached successful Core job
+settlement. The worker recovered stale archive state after reconnect and
+retained a nested file across archive and restore. Focused Rust tests
+covered reopening the Node registry format, resolution, replay, and
+rejection of unregistered directories and symlink targets.
+
+Standalone Chat file operations and full model execution through the
+production Rust pair remain open, along with production cutover.

@@ -1,14 +1,25 @@
 // Actual native worker/server control integration. No fake worker command handler.
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { verifyGrantFlow } from "./grant-server-flow.mjs";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { fixtureEnvironment, startServer } from "../server-rust/process.mjs";
 import { repositoryRoot } from "../server-rust/build.mjs";
+import { projectLabel } from "../server-rust/security-fixtures.mjs";
 const { values } = parseArgs({
   options: {
     worker: { type: "string" },
@@ -28,8 +39,8 @@ let diagnostics = "";
 async function eventually(read, check, label) {
   const deadline = Date.now() + 20_000;
   for (;;) {
-    const value = await read();
     try {
+      const value = await read();
       check(value);
       return value;
     } catch (error) {
@@ -143,6 +154,88 @@ try {
       (record) => record.context?.event === "worker.connection.connected",
     ),
   );
+  const chatId = randomUUID();
+  const chatUrl = `/api/chats/${chatId}`;
+  const created = await call("POST", "/api/chats", {
+    id: chatId,
+    titleProtection: {
+      ...projectLabel,
+      classification: { recordKind: "chat" },
+    },
+    autoTitle: false,
+  });
+  assert.equal(created.status, 202, JSON.stringify(created.body));
+  assert.equal(created.body.activeWorkerId, "native-control-worker");
+  const settledScratchJob = (operation) =>
+    eventually(
+      () =>
+        server.events
+          .filter(
+            (event) =>
+              event.event === "standalone-chat.scratch.transitioned" &&
+              event.chatId === chatId &&
+              event.operation === operation,
+          )
+          .at(-1),
+      (event) =>
+        assert.equal(event?.status, "succeeded", JSON.stringify(event)),
+      `standalone Chat server ${operation} settlement`,
+    );
+  await settledScratchJob("provision");
+  const rootId = created.body.activeScratchRootId;
+  const scratch = path.join(dataDirectory, "chat-scratch", chatId);
+  const marker = path.join(scratch, "nested", "retained.txt");
+  const registryPath = path.join(dataDirectory, "chat-scratch-registry.json");
+  const scratchRecord = async () =>
+    JSON.parse(await readFile(registryPath, "utf8")).roots.find(
+      (record) => record.rootId === rootId,
+    );
+  const scratchPath = await eventually(
+    () => realpath(scratch),
+    (value) => assert.ok(value),
+    "standalone Chat scratch folder",
+  );
+  const routingHandle = async () =>
+    JSON.parse(
+      await readFile(
+        path.join(dataDirectory, "repository-routing.json"),
+        "utf8",
+      ),
+    ).records.find(
+      (record) =>
+        record.field === "path" &&
+        path.resolve(record.value) === path.resolve(scratchPath),
+    );
+  const protectedPath = await eventually(
+    routingHandle,
+    (value) => assert.match(value?.token ?? "", /^ctrr_/),
+    "standalone Chat scratch routing handle",
+  );
+  assert.deepEqual(await scratchRecord(), {
+    rootId,
+    chatId,
+    archivedAt: null,
+    archiveExpiresAt: null,
+  });
+  await mkdir(path.dirname(marker));
+  await writeFile(marker, "retained until permanent deletion");
+  assert.equal((await call("DELETE", chatUrl)).status, 204);
+  const archivedScratch = await eventually(
+    scratchRecord,
+    (record) =>
+      assert.ok(
+        Date.parse(record?.archiveExpiresAt) > Date.parse(record?.archivedAt),
+      ),
+    "standalone Chat worker archive",
+  );
+  // Simulate an older local checkpoint. On reconnect the server reconciles it.
+  await writeFile(
+    registryPath,
+    JSON.stringify({
+      version: 1,
+      roots: [{ ...archivedScratch, archivedAt: null, archiveExpiresAt: null }],
+    }),
+  );
   const original = JSON.parse(await readFile(credentialPath, "utf8"));
   assert.equal(original.workerId, "native-control-worker");
   assert.equal(original.serverUrl, server.origin);
@@ -197,6 +290,34 @@ try {
     encryptionRecord,
     "restart retains the exact endpoint encryption identity",
   );
+  await eventually(
+    scratchRecord,
+    (record) => assert.deepEqual(record, archivedScratch),
+    "standalone Chat archive reconciliation after reconnect",
+  );
+  assert.deepEqual(await routingHandle(), protectedPath);
+  assert.equal((await call("POST", `${chatUrl}/restore`, {})).status, 200);
+  await eventually(
+    scratchRecord,
+    (record) => {
+      assert.equal(record?.archivedAt, null);
+      assert.equal(record?.archiveExpiresAt, null);
+    },
+    "standalone Chat worker restore",
+  );
+  assert.equal(
+    await readFile(marker, "utf8"),
+    "retained until permanent deletion",
+  );
+  assert.equal((await call("DELETE", chatUrl)).status, 204);
+  assert.equal((await call("DELETE", `${chatUrl}/permanent`)).status, 204);
+  await eventually(
+    scratchRecord,
+    (record) => assert.equal(record, undefined),
+    "standalone Chat worker permanent deletion",
+  );
+  await assert.rejects(stat(scratch), { code: "ENOENT" });
+  await settledScratchJob("delete");
   const revoked = await call(
     "DELETE",
     `/api/workers/native-control-worker/credentials/${rotated.body.credentialSummary.id}`,
@@ -253,11 +374,12 @@ try {
       sameProcessRestart: true,
       actualScopedGrantRotationAndRevocation: true,
       credentialRevocation: true,
+      standaloneScratchLifecycle: true,
       archiveDrained: true,
       cleanShutdown: true,
       shutdownTrigger: values.shutdown,
       scope:
-        "Real native worker implemented control handlers and real Rust server; execution/data-plane domains remain unimplemented.",
+        "Native worker control and standalone Chat scratch lifecycle against the Rust server.",
     }),
   );
 } catch (error) {
