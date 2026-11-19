@@ -30,6 +30,12 @@ pub struct ExplorerOperations {
     imports: Imports,
 }
 impl ExplorerOperations {
+    pub(crate) async fn close(&self) {
+        if let Some(guests) = &self.guests {
+            guests.close().await;
+        }
+    }
+
     /// All surface consumers in one runtime share admission/replay capacity.
     /// Future terminal/chat-file adapters must use the same runtime guard.
     pub(crate) fn with_replay(
@@ -93,8 +99,7 @@ impl ExplorerOperations {
                 } else {
                     explorer::execute_decoded(&paths::native(root), &request, &input, scope).await?
                 };
-                let complete = explorer::complete(&result)
-                    && (request["type"] != "explorer.file.import" || request["eof"] == true);
+                let complete = explorer::complete(&result, &request);
                 return Ok((json!({"ok":true,"result":result}), complete));
             }
             self.guests.as_ref().context("This worker does not support CantripOS file operations.")?

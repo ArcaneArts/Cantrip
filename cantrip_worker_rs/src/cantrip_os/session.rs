@@ -45,16 +45,16 @@ impl std::fmt::Display for RpcError {
 
 impl std::error::Error for RpcError {}
 
-pub(crate) struct Session<'a> {
+pub(crate) struct Session {
     pub binding: Value,
-    lifetime: &'a Scope,
+    lifetime: Scope,
     child: Child,
     input: Option<ChildStdin>,
     output: BufReader<ChildStdout>,
     next_id: u64,
 }
 
-impl<'a> Session<'a> {
+impl Session {
     pub async fn capture_binding(
         transport: &Transport,
         scope: &Value,
@@ -85,7 +85,7 @@ impl<'a> Session<'a> {
         transport: &Transport,
         scope: &Value,
         client: &str,
-        lifetime: &'a Scope,
+        lifetime: &Scope,
     ) -> Result<(Self, String)> {
         let binding = Self::capture_binding(transport, scope, lifetime).await?;
         Self::connect(transport, binding, client, None, lifetime).await
@@ -96,7 +96,7 @@ impl<'a> Session<'a> {
         binding: Value,
         client: &str,
         resume_session_id: Option<&str>,
-        lifetime: &'a Scope,
+        lifetime: &Scope,
     ) -> Result<(Self, String)> {
         let workspace = text(&binding, "workspace_id")?;
         let (program, args) = transport.spec(
@@ -121,7 +121,7 @@ impl<'a> Session<'a> {
             output: BufReader::new(child.stdout.take().unwrap()),
             child,
             binding,
-            lifetime,
+            lifetime: lifetime.clone(),
             next_id: 1,
         };
         let initialized = async {
@@ -239,6 +239,10 @@ impl<'a> Session<'a> {
             self.input.take();
             DeliveryUnknown(format!("Guest executor delivery is uncertain: {error}")).into()
         })
+    }
+
+    pub(super) fn allow_cleanup(&mut self) {
+        self.lifetime = Scope::default();
     }
 
     pub async fn close(mut self) {

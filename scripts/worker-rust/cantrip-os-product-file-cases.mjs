@@ -467,7 +467,106 @@ export async function verifyProductFiles({
     assert.equal(await digestTarget(), committed.sha256);
     assert.deepEqual(binaryReceipt(await edit(request("status"))), committed);
   }
+  const liveHelper = path.join(data, "os-file-helpers", identity + ".json");
+  const bytes = Buffer.alloc(256 * 1024, 0xda);
+  const lastBytes = Buffer.from([0, 255, 128]);
+  const importedPath = "données importées.bin";
+  const chunk = {
+    type: "explorer.file.import",
+    path: "",
+    name: importedPath,
+    size: bytes.length + lastBytes.length,
+    offset: 0,
+    data: bytes.toString("base64"),
+    eof: false,
+  };
+  const final = {
+    ...chunk,
+    offset: bytes.length,
+    data: lastBytes.toString("base64"),
+    eof: true,
+  };
+  const drop = (request, id, sequence) =>
+    operation("explorer", explorer, request, id, sequence);
+  const imported = (outcome) => {
+    assert.equal(outcome.ok, true, JSON.stringify(outcome));
+    assert.equal(outcome.result.type, "explorer.file.imported");
+    return outcome.result.value;
+  };
+  const noFile = (name) => guest("test", "!", "-e", guestPath + "/" + name);
+  let completedDrop, completion;
+  await root("mv", legacy, legacy + ".fixture");
+  try {
+    const id = randomUUID();
+    const started = imported(await (await drop(chunk, id, 0)).send());
+    assert.deepEqual(started, { offset: bytes.length, entry: null });
+    await noFile(importedPath);
+    const child = await readFile(liveHelper, "utf8");
+    const canceled = randomUUID();
+    const canceledName = "canceled.bin";
+    imported(
+      await (await drop({ ...chunk, name: canceledName }, canceled, 0)).send(),
+    );
+    assert.deepEqual(
+      imported(
+        await (
+          await drop({ type: "explorer.file.import.cancel" }, canceled, 1)
+        ).send(),
+      ),
+      { offset: 0, entry: null },
+    );
+    const list = await explore({ type: "explorer.directory.list", path: "" });
+    assert.equal(list.ok, true, JSON.stringify(list));
+    assert.equal(await readFile(liveHelper, "utf8"), child);
+    const reused = await drop({ ...chunk, name: "reused.bin" });
+    await writeFile(
+      admission(reused.context),
+      JSON.stringify({ digest: "0".repeat(64) }),
+      { flag: "wx", mode: 0o600 },
+    );
+    assert.match((await reused.send()).error, /identity was reused/u);
+    assert.equal(await readFile(liveHelper, "utf8"), child);
+    await noFile(canceledName);
+    completedDrop = await drop(final, id, 1);
+    completion = await completedDrop.send();
+    assert.equal(imported(completion).entry.path, importedPath);
+    assert.equal(imported(completion).offset, chunk.size);
+    assert.equal(
+      (await guest("sha256sum", guestPath + "/" + importedPath)).split(" ")[0],
+      saveChecksum(Buffer.concat([bytes, lastBytes])).sha256,
+    );
+    await assert.rejects(readFile(liveHelper), { code: "ENOENT" });
+
+    const interrupted = randomUUID();
+    const lost = { ...chunk, name: "interrupted.bin" };
+    const firstPage = await drop(lost, interrupted, 0);
+    const firstReceipt = await firstPage.send();
+    imported(firstReceipt);
+    await crashWorker();
+    // The admission still observes the original receipt, without rebuilding
+    // the abandoned private stage or replaying its bytes into a fresh child.
+    assert.deepEqual(await firstPage.send(), firstReceipt);
+    const missing = await (
+      await drop({ ...final, name: lost.name }, interrupted, 1)
+    ).send();
+    assert.equal(missing.ok, false);
+    assert.match(missing.error, /file import is unavailable/u);
+    await noFile(lost.name);
+
+    imported(
+      await (
+        await drop({ ...chunk, name: "shutdown.bin" }, randomUUID(), 0)
+      ).send(),
+    );
+    await readFile(liveHelper);
+    await restartWorker();
+    await assert.rejects(readFile(liveHelper), { code: "ENOENT" });
+    await noFile("shutdown.bin");
+  } finally {
+    await root("mv", legacy + ".fixture", legacy);
+  }
+  assert.deepEqual(await oracle(completedDrop, true), completion);
   console.log(
-    "Native guest files passed: protected Explorer and document edits, legacy receipts in both directions, and observation-only crash recovery.",
+    "Native guest files passed: protected edits, retained imports, compatible receipts, and observation-only crash recovery.",
   );
 }

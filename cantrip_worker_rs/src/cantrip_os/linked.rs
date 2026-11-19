@@ -305,7 +305,7 @@ async fn ready(transport: &Transport, scope: &Value, lifetime: &Scope) -> Result
 }
 
 async fn verify(
-    session: &mut Session<'_>,
+    session: &mut Session,
     scope: &Value,
     root: &std::path::Path,
     name: &str,

@@ -33,7 +33,7 @@ pub(super) struct Output {
 }
 
 pub(super) async fn command(
-    session: &mut Session<'_>,
+    session: &mut Session,
     journal: Option<&mut Journal<'_>>,
     argv: &[&str],
     cwd: &str,
@@ -67,7 +67,7 @@ pub(super) async fn command(
 }
 
 pub(super) async fn run(
-    session: &mut Session<'_>,
+    session: &mut Session,
     journal: Option<&mut Journal<'_>>,
     invocation: Invocation<'_>,
     limits: Limits,
@@ -80,36 +80,103 @@ pub(super) async fn run(
 }
 
 pub(super) async fn run_owned(
-    session: &mut Session<'_>,
+    session: &mut Session,
     id: &str,
     invocation: Invocation<'_>,
     limits: Limits,
 ) -> Result<Output> {
-    let cwd = file_uri(invocation.cwd)?;
     let deadline = Instant::now() + limits.deadline;
     let result = async {
-        session
-            .request(
-                "process/start",
-                json!({"processId":id,"argv":invocation.argv,"cwd":cwd.as_str(),
-                    "env":invocation.env,"tty":false,"pipeStdin":invocation.input.is_some(),
-                    "arg0":Value::Null,"sandbox":Value::Null}),
-            )
-            .await?;
+        start(
+            session,
+            id,
+            invocation.argv,
+            invocation.cwd,
+            invocation.env,
+            invocation.input.is_some(),
+        )
+        .await?;
         if let Some(input) = invocation.input {
-            for chunk in input.chunks(32768) {
-                let result = session.request("process/write", json!({
-                    "processId":id,"writeId":Uuid::new_v4().to_string(),"chunk":STANDARD.encode(chunk),
-                })).await?;
-                ensure!(result["status"] == "accepted", "Linux process input was not acknowledged.");
-            }
+            write(session, id, input).await?;
         }
         read(session, id, deadline, limits.output, false).await
-    }.await;
+    }
+    .await;
     result.map_err(|error| uncertain(id, error))
 }
 
-pub(super) async fn observe(session: &mut Session<'_>, id: &str, limits: Limits) -> Result<Output> {
+pub(super) async fn start(
+    session: &mut Session,
+    id: &str,
+    argv: &[&str],
+    cwd: &str,
+    env: Value,
+    pipe_stdin: bool,
+) -> Result<()> {
+    let cwd = file_uri(cwd)?;
+    session
+        .request(
+            "process/start",
+            json!({
+                "processId":id,"argv":argv,"cwd":cwd.as_str(),"env":env,
+                "tty":false,"pipeStdin":pipe_stdin,"arg0":Value::Null,"sandbox":Value::Null,
+            }),
+        )
+        .await?;
+    Ok(())
+}
+
+pub(super) async fn write(session: &mut Session, id: &str, input: &[u8]) -> Result<()> {
+    for chunk in input.chunks(32768) {
+        let result = session.request("process/write", json!({
+            "processId":id,"writeId":Uuid::new_v4().to_string(),"chunk":STANDARD.encode(chunk),
+        })).await?;
+        ensure!(
+            result["status"] == "accepted",
+            "Linux process input was not acknowledged."
+        );
+    }
+    Ok(())
+}
+
+pub(super) async fn terminate(session: &mut Session, id: &str) -> Result<()> {
+    let request_timeout = Duration::from_secs(5);
+    let result = session
+        .request_with_timeout(
+            "process/terminate",
+            json!({"processId":id}),
+            request_timeout,
+        )
+        .await?;
+    if result["running"] == false {
+        return Ok(());
+    }
+    ensure!(
+        result["running"] == true,
+        "Invalid native process termination receipt."
+    );
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let page = session
+            .request_with_timeout(
+                "process/read",
+                json!({
+                    "processId":id,"afterSeq":Value::Null,"maxBytes":1,"waitMs":200,
+                }),
+                request_timeout,
+            )
+            .await?;
+        if page["exited"] == true && page["closed"] == true {
+            return Ok(());
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "The previous Linux process did not confirm termination."
+        );
+    }
+}
+
+pub(super) async fn observe(session: &mut Session, id: &str, limits: Limits) -> Result<Output> {
     read(
         session,
         id,
@@ -129,7 +196,7 @@ fn uncertain(id: &str, error: anyhow::Error) -> anyhow::Error {
 }
 
 async fn read(
-    session: &mut Session<'_>,
+    session: &mut Session,
     id: &str,
     deadline: Instant,
     capacity: usize,

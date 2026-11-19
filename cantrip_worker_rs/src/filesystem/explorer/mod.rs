@@ -129,8 +129,12 @@ pub fn failure_code(error: &anyhow::Error) -> Option<&'static str> {
     }
 }
 
-pub(crate) fn complete(result: &Value) -> bool {
-    result["type"] != "explorer.media" || result["value"]["eof"] == true
+pub(crate) fn complete(result: &Value, request: &Value) -> bool {
+    match request["type"].as_str() {
+        Some("explorer.file.import") => request["eof"] == true,
+        Some("explorer.media.read") => result["value"]["eof"] == true,
+        _ => true,
+    }
 }
 
 fn joined(parent: &JsString, name: &JsString) -> JsString {

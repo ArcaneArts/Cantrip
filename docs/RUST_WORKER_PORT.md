@@ -6727,3 +6727,31 @@ runtime and other destination filesystems were outside this validation.
 Exclusive publication currently requires filesystem hard-link support.
 Cantrip OS imports still need the native helper to retain its import state
 across executor requests.
+
+## 169. Retain native Explorer imports in Cantrip OS
+
+Reference commit 3284e8d80c34b6da930aeb68988491e36b35ffc4 (#3332).
+
+Executor 0.18.0 runs the shared Rust import stage under the admitted Linux
+workspace account. The worker reuses the generation-bound executor session
+while that placement has active imports. Other file commands for the same
+placement continue through the same serialized helper. Placements without
+imports keep the single-operation invocation.
+
+The final chunk and cancellation reclaim the helper when its other transfers
+have ended. Idle stages expire after five minutes. Orderly worker shutdown
+terminates the retained native process. After a crash the next operation
+retires the helper in its saved session and can observe the original
+version-one receipt.
+Reopening a receipt cannot reconstruct an abandoned stage or replay a write.
+The publication still requires filesystem hard-link support.
+
+Local macOS ARM64 validation used the production Rust server and worker with
+executor 0.18.0 assembled for a disposable ARM64 Docker guest. The protected
+file smoke verified both chunks and exact bytes, cancellation, an interleaved
+directory read, admission conflict isolation, graceful shutdown and crash
+recovery. The legacy helper observed the native completion receipt. Host
+Explorer imports and guest Run supervision passed their local regressions.
+The Windows x64 GNU worker compiled. Windows runtime, SSH and release image
+builds were outside this validation. Guest chat files and attachment
+materialization remain open.
