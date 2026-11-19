@@ -13,11 +13,13 @@ import { parseArgs } from "node:util";
 import {
   decryptRemoteSurfaceStreamPayload,
   decryptSurfacePrivateState,
+  encryptRemoteSurfaceStreamPayload,
   encryptSurfacePrivateState,
   wrapComponentKeyForWorker,
 } from "../../packages/crypto/dist/index.js";
 import {
   decodeRemoteSurfaceFrame,
+  encodeRemoteSurfaceFrame,
   remoteDesktopServerMessageSchema,
 } from "../../packages/protocol/dist/index.js";
 
@@ -402,6 +404,67 @@ try {
   assert.equal(attached.ok, true, JSON.stringify(attached));
   assert.deepEqual(attached.result, { accepted: true, transport: "websocket" });
   await dimensions(320, 200);
+  let sequence = 0;
+  async function input(message) {
+    const header = {
+      protocolVersion: 1,
+      surfaceId,
+      attachmentId,
+      channel: "control",
+      sequence: sequence++,
+    };
+    const payload = await encryptRemoteSurfaceStreamPayload({
+      ownerId,
+      componentKey: key,
+      keyRevision: 1,
+      context: {
+        surfaceId,
+        attachmentId,
+        channel: header.channel,
+        sequence: header.sequence,
+        surfaceKind: "desktop",
+        serverId,
+        direction: "client-to-worker",
+      },
+      plaintext: Buffer.from(JSON.stringify(message)),
+    });
+    socket.send(encodeRemoteSurfaceFrame(header, payload));
+  }
+  let inputEpoch;
+  await input({
+    type: "viewport",
+    viewport: { width: 800, height: 600, devicePixelRatio: 1 },
+  });
+  await untilFrame((channel, bytes) => {
+    if (channel !== "control") return false;
+    const message = remoteDesktopServerMessageSchema.parse(JSON.parse(bytes));
+    if (message.type !== "desktop-input" || !message.epoch) return false;
+    inputEpoch = message.epoch;
+    return true;
+  });
+  await input({
+    type: "pointer",
+    event: "down",
+    button: "left",
+    buttons: 1,
+    x: 80,
+    y: 40,
+    inputEpoch,
+    inputSequence: 1,
+  });
+  await untilFrame((channel, bytes) => {
+    if (channel !== "control") return false;
+    const message = remoteDesktopServerMessageSchema.parse(JSON.parse(bytes));
+    if (message.type !== "desktop-cursor") return false;
+    assert.deepEqual(message, {
+      type: "desktop-cursor",
+      id: inputEpoch,
+      x: 0.25,
+      y: 0.2,
+      click: true,
+    });
+    return true;
+  });
   const suspended = await send({ type: "surface.suspend", surfaceId });
   assert.equal(suspended.ok, true);
   await untilFrame(

@@ -6319,3 +6319,35 @@ direct also returned deferred credit after revocation and verified that the
 socket remained responsive. The Browser relay and legacy desktop fixtures
 passed. Viewer input, real desktop capture permissions, and WAN desktop
 runtime validation remain open.
+
+
+## 154. Route Host window input through native participants
+
+Reference commit `82a86d24fc63c8b4ae6dd8aa0badcd12aa93e89a` (#3316).
+
+The Rust worker opens an independent input participant against the same native
+window ID, helper generation, and target generation used for capture. The
+existing protected control messages carry viewer epochs and increasing input
+sequences. Host monitor attachments publish view-only state. The worker scales
+frame coordinates to the window's logical bounds, translates physical keys
+and fractional scroll, and splits pasted text at UTF-8 character boundaries.
+Each viewer has a bounded ordered queue that coalesces only adjacent hover
+updates with matching modifiers. Cursor state and sprites use the existing
+encrypted desktop messages. Input state precedes cursor assets when opening
+or closing a participant.
+
+Input cancellation, suspend, detach, retarget, and revoked routes retire the
+input epoch and discard queued work. In-flight requests can be canceled over
+the native helper's ordered pipe. Replacement input on the same attachment
+waits for held input to be released, while other viewers keep their own
+participants. Native actions with uncertain outcomes are never replayed.
+
+Local macOS ARM64 tests exercised the legacy authenticated Core socket and
+the real Rust server and worker over Core relay, local direct, and LAN WebRTC.
+The helper used deterministic windows with an inert input backend. The
+fixture verified exact generation, pixel mapping, keyboard and Unicode
+paste dispatch, wrong-epoch and duplicate-sequence rejection, release before
+reopening input, and independent viewers through grant revocation. Focused
+Rust and Node reference tests also passed. Host clipboard copy, desktop
+target UI parity, guest input, WAN desktop runtime validation, and actual
+platform permissions remain open.

@@ -23,7 +23,11 @@
     "remoteBrowserClipboardMessageSchema": 309,
     "browserPrivateStateProtectedContentSchema": 313,
     "remoteDesktopServerMessageSchema": 321,
-    "remoteDesktopStreamFeedbackSchema": 378
+    "remoteDesktopStreamFeedbackSchema": 378,
+    "remoteDesktopViewerPointerSchema": 385,
+    "remoteDesktopViewerKeySchema": 406,
+    "remoteDesktopViewerClipboardSchema": 419,
+    "remoteDesktopViewerInputCancelSchema": 428
   },
   "nodes": [
     {
@@ -2285,6 +2289,307 @@
       "checks": [
         { "check": "greater_than", "value": 0, "inclusive": true },
         { "check": "less_than", "value": 10000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 386,
+        "inputEpoch": 387,
+        "inputSequence": 389,
+        "event": 391,
+        "x": 392,
+        "y": 393,
+        "button": 394,
+        "buttons": 396,
+        "clickCount": 398,
+        "deltaX": 400,
+        "deltaY": 402,
+        "modifiers": 404
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["pointer"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 388,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 390,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    { "type": "enum", "values": ["move", "down", "up", "wheel"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 395,
+      "defaultValue": "none",
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["none", "left", "middle", "right", "back", "forward"],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 397,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 31, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 399,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 3, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 401,
+      "defaultValue": 0,
+      "checks": []
+    },
+    { "type": "number", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 403,
+      "defaultValue": 0,
+      "checks": []
+    },
+    { "type": "number", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 405,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 15, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 407,
+        "inputEpoch": 408,
+        "inputSequence": 410,
+        "event": 412,
+        "key": 413,
+        "code": 414,
+        "text": 415,
+        "modifiers": 417
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["key"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 409,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 411,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    { "type": "enum", "values": ["down", "up"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 416,
+      "defaultValue": "",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 10, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 418,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 15, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 420,
+        "inputEpoch": 421,
+        "inputSequence": 423,
+        "operation": 425,
+        "text": 426
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["clipboard"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 422,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 424,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    { "type": "enum", "values": ["copy", "paste-text"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 427,
+      "defaultValue": "",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "type": 429, "inputEpoch": 430 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["input-cancel"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
       ]
     }
   ]

@@ -361,6 +361,19 @@ impl CaptureBackend for FakeBackend {
             },
         ])
     }
+    fn interaction_input(
+        &mut self,
+        _participant: &str,
+        _target: &Target,
+        _position: crate::target::Point,
+        _sequence: u64,
+        event: cantrip_interaction::input::InputEvent,
+        cancellation: &Cancellation,
+    ) -> Result<()> {
+        cancellation.check()?;
+        event.validate()?;
+        Ok(())
+    }
     fn capture(&mut self, target: &Target, cancellation: &Cancellation) -> Result<Capture> {
         let current = self
             .targets(cancellation)?
