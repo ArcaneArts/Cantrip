@@ -143,7 +143,7 @@ loaded by a production service.
 | WorkerLink/direct/tunnels | Gateways, peer/WebRTC, direct broker, tunnel protection and routing | Native installed authority, live observations, encrypted Host terminals and TCP, WebDAV shares, direct tickets, and LAN and WAN peer carriage | Continue managed console and guest/surface adapters. Local peer fixtures cover authenticated negotiation, encrypted TCP, credit, renewal, and revocation. |
 | Browsers/surfaces/computer use | Browser discovery, browser/desktop adapters, remote surfaces, computer use, and managed web runtimes | Native browser discovery, Chromium and CDP, encrypted surfaces with recovery, and signed managed Chromium installation | Public browser transport and Chromium recovery fixtures pass locally. The native installer verifies signed releases and probes Chromium. Legacy browser WebRTC, desktop capture, computer use, managed web sessions and search remain open. |
 | MCP/CLI/CodeGraph                  | `mcp/*`, CLI broker, computer-use MCP, codegraph/runtime/supervisor                                                                       | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Native stdio/HTTP helpers, generated/persisted launch commands, binding/generation scopes, CLI and managed-runtime fixtures                                                                                                                                                                                                      |
-| Cantrip OS | `cantrip_os/host`, `os-executor/*`, native MCP/run execution | Native guest inspection, attachment, workspace listing and creation, operation inspection, and Linux-owned source provisioning and verification | Continue linked Host mounts, guest execution, lifecycle, files, PTYs, tunnels, packages, backups, system operations and checkpoints. |
+| Cantrip OS | `cantrip_os/host`, `os-executor/*`, native MCP/run execution | Native guest inspection, attachment, workspace listing and creation, operation inspection, Linux-owned source provisioning and verification, and linked Host mounts | Continue guest execution, lifecycle, files, PTYs, tunnels, packages, backups, system operations and checkpoints. |
 | Upgrade and packaging              | profile converter/database-transfer, server profile preparation, desktop services/worker, distribution/runtime scripts, worker Dockerfile | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Node-free legacy conversion/export/restore, desktop/standalone artifacts, existing-profile reopen and actual child-process/runtime audit                                                                                                                                                                                         |
 
 The source index includes existing tests with their source hashes. Each port must
@@ -6499,3 +6499,33 @@ and Git fingerprints with JavaScript encoding and checked protected branch
 routing and persistence. The worker executable ran with only the Docker
 carrier on its search path. Linked Host mounts and guest execution remain
 open. SSH and Windows carrier execution were not run for this cycle.
+
+## 161. Install and verify linked Host sources in Rust
+
+Reference commit `ae9925e80bdc356bfc29755e94f30d3cfd07b595` (#3324).
+
+The Rust worker resolves the canonical Host worktree from the protected
+binding intent. It uses the existing local Docker Engine socket and
+process-owned instance lock. It snapshots the root filesystem changes,
+retains the existing workspace and executor volumes and Docker settings,
+and mounts each selected dependency path into its own named Linux volume.
+The replacement uses the configured container name and requires the
+original container to persist after stopping.
+
+The worker records Docker phase and identity in the compatible
+`.json.docker` journal and records mount verification in the corresponding
+`.binding` sidecar. It pins the new executor's instance, attachment and
+workspace identity, tests live file bytes in both directions, and checks
+that guest dependency writes stay off the Host checkout before cleaning
+up the previous container. An uncertain start leaves both identities and
+its requested phase recorded for recovery. Provisioning replay reads the
+existing operation.
+
+A local macOS ARM64 Docker fixture ran both production Rust services and
+used a real Host project created through the server. It verified opaque
+path resolution in the encrypted intent, original root and named-volume
+state, shared Host bytes, isolated dependencies, read-only verification
+and receipt recovery after worker restart. The worker's search path
+contained its Docker carrier only. A focused journal test covered a lost
+start receipt. Windows named-pipe and native Linux Docker execution were
+not exercised in this cycle.

@@ -27,7 +27,11 @@ impl Drop for Active<'_> {
 }
 
 pub(super) fn digest(value: Value) -> String {
-    Sha256::digest(value.stringify().as_bytes())
+    sha256(value.stringify().as_bytes())
+}
+
+pub(super) fn sha256(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
@@ -37,7 +41,7 @@ fn now() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
-fn save(file: &Path, record: &Value, exclusive: bool) -> Result<()> {
+pub(super) fn save(file: &Path, record: &Value, exclusive: bool) -> Result<()> {
     let directory = file.parent().context("OS operation directory")?;
     cantrip_host::files::private_directory(directory)?;
     cantrip_host::files::secure_directory(directory)?;
@@ -64,6 +68,10 @@ pub(super) struct Journal<'a> {
 }
 
 impl Journal<'_> {
+    pub fn path(&self) -> &Path {
+        self.file
+    }
+
     fn save(&mut self) -> Result<()> {
         self.record["updatedAt"] = json!(now());
         save(self.file, &self.record, false).map_err(|_| DeliveryUnknown(

@@ -28,12 +28,11 @@ pub(super) struct Session<'a> {
 }
 
 impl<'a> Session<'a> {
-    pub async fn open(
+    pub async fn capture_binding(
         transport: &Transport,
         scope: &Value,
-        client: &str,
-        lifetime: &'a Scope,
-    ) -> Result<(Self, String)> {
+        lifetime: &Scope,
+    ) -> Result<Value> {
         let workspace = text(scope, "guestWorkspaceId")?;
         let binding = transport
             .control(Program::Executor, &["open", workspace], lifetime)
@@ -52,6 +51,17 @@ impl<'a> Session<'a> {
             .all(|(native, admitted)| binding[native] == scope[admitted]),
             "The selected OS workspace identity changed."
         );
+        Ok(binding)
+    }
+
+    pub async fn open(
+        transport: &Transport,
+        scope: &Value,
+        client: &str,
+        lifetime: &'a Scope,
+    ) -> Result<(Self, String)> {
+        let binding = Self::capture_binding(transport, scope, lifetime).await?;
+        let workspace = text(&binding, "workspace_id")?;
         let (program, args) = transport.spec(
             Program::Executor,
             &["connect", workspace, "--expect", &binding.stringify()],

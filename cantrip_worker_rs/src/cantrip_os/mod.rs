@@ -1,8 +1,11 @@
 //! Administrative commands admitted by Core and executed by the owning worker.
 mod carrier;
 mod docker;
+mod linked;
+mod lock;
 mod operations;
 mod process;
+mod replacement;
 mod session;
 mod sources;
 
@@ -49,7 +52,7 @@ async fn assert_scope(
     scope: &Value,
     attached: bool,
     lifetime: &Scope,
-) -> Result<()> {
+) -> Result<Value> {
     let status = status(transport, lifetime).await?;
     let owner = &status["attachment"];
     ensure!(
@@ -60,7 +63,7 @@ async fn assert_scope(
                     && owner["worker_id"] == scope["workerId"])),
         "The OS attachment/runtime changed; refresh its intended placement."
     );
-    Ok(())
+    Ok(status)
 }
 
 async fn workspaces(transport: &Transport, lifetime: &Scope) -> Result<Vec<Value>> {
@@ -175,13 +178,16 @@ impl Controller {
         }
         if matches!(kind, SOURCE_PROVISION | SOURCE_INSPECT) {
             let scope = checked("cantripOsSourceDispatchScopeSchema", dispatch.clone())?;
-            let source = sources::Source::new(&scope)?;
             if kind == SOURCE_INSPECT {
                 ensure!(
                     command["sourceKind"] == scope["sourceKind"],
                     "Source kind changed after admission."
                 );
                 assert_scope(&transport, &scope, true, lifetime).await?;
+                if scope["mode"] == "linked" {
+                    return linked::inspect(&transport, &scope, lifetime).await;
+                }
+                let source = sources::Source::new(&scope)?;
                 let (mut session, _) =
                     Session::open(&transport, &scope, SOURCE_CLIENT, lifetime).await?;
                 let result = source.inspect(&mut session).await;
@@ -194,6 +200,10 @@ impl Controller {
             return self
                 .operations
                 .execute(&scope, id, kind, intent.clone(), async |journal| {
+                    if scope["mode"] == "linked" {
+                        return linked::install(&transport, &scope, id, journal, lifetime).await;
+                    }
+                    let source = sources::Source::new(&scope)?;
                     let (mut session, session_id) =
                         Session::open(&transport, &scope, SOURCE_CLIENT, lifetime).await?;
                     let result = async {

@@ -15,16 +15,24 @@ const { values } = parseArgs({
     worker: { type: "string" },
     server: { type: "string" },
     repository: { type: "string" },
+    linked: { type: "boolean", default: false },
     image: { type: "string", default: "cantrip-os:dev" },
   },
 });
 assert.ok(values.worker && values.server);
+assert.ok(
+  !values.linked || values.repository,
+  "--linked uses the source fixture",
+);
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-rust-os-workspaces-"));
 const name = `cantrip-rust-os-${randomUUID()}`;
 const workerId = "native-os-workspaces";
 const data = path.join(root, "worker");
 const trace = path.join(root, "guest-create.log");
 let container, server, worker;
+const linked = values.linked
+  ? { name, journals: [], volumes: [], operations: [] }
+  : undefined;
 
 async function docker(...args) {
   return (await execute("docker", args, { timeout: 20_000 })).stdout.trim();
@@ -57,10 +65,27 @@ async function stopWorker() {
 }
 
 try {
+  const managedVolumes = linked
+    ? ["home", "workspaces", "executor"].map((volume) => name + "-" + volume)
+    : [];
+  linked?.volumes.push(...managedVolumes);
   container = await docker(
     "run",
     "-d",
-    "--rm",
+    ...(linked
+      ? [
+          "--label",
+          "io.cantrip.os=foundation",
+          "--label",
+          `io.cantrip.os.fixture=${name}`,
+          "-v",
+          managedVolumes[0] + ":/home/cantrip",
+          "-v",
+          managedVolumes[1] + ":/var/lib/cantrip-os-workspaces",
+          "-v",
+          managedVolumes[2] + ":/var/lib/cantrip-os-executor",
+        ]
+      : ["--rm"]),
     "--pull=never",
     "--network",
     "none",
@@ -307,6 +332,8 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       hash,
       container,
       docker,
+      eventually,
+      linked,
       restartWorker: async () => {
         await stopWorker();
         await startWorker();
@@ -337,7 +364,38 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       await server?.close();
     } finally {
       try {
-        if (container) await docker("rm", "-f", container);
+        if (linked) {
+          const selectors = [
+            `io.cantrip.os.fixture=${name}`,
+            ...linked.operations.map((id) => `io.cantrip.os.cache-init=${id}`),
+          ];
+          for (const selector of selectors) {
+            const owned = await docker(
+              "ps",
+              "-aq",
+              "--filter",
+              "label=" + selector,
+            );
+            for (const id of owned.split("\n").filter(Boolean))
+              await docker("rm", "-f", "-v", id);
+          }
+          const present = new Set(
+            (await docker("volume", "ls", "-q")).split("\n"),
+          );
+          for (const volume of linked.volumes)
+            if (present.has(volume)) await docker("volume", "rm", volume);
+          for (const journal of linked.journals) {
+            try {
+              const state = JSON.parse(await readFile(journal, "utf8"));
+              if (state.snapshotImage)
+                await docker("image", "rm", state.snapshotImage);
+            } catch (error) {
+              if (error.code !== "ENOENT") throw error;
+            }
+          }
+        } else if (container) {
+          await docker("rm", "-f", container);
+        }
       } finally {
         await rm(root, { recursive: true, force: true });
       }
