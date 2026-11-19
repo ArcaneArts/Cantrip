@@ -2,7 +2,7 @@
 use anyhow::{Context, Result, bail, ensure};
 use cantrip_interaction::geometry::MAX_SEQUENCE;
 use cantrip_wire::{Value, parse_json_text, value::json};
-use std::{path::Path, process::Stdio, time::Duration};
+use std::{future::Future, path::Path, process::Stdio, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     process::{Child, ChildStdin, ChildStdout, Command},
@@ -85,6 +85,27 @@ impl Process {
         self.exchange(operation, false).await.map(|(data, _)| data)
     }
 
+    pub(super) async fn interaction(
+        &mut self,
+        request: Value,
+        revoked: impl Future<Output = ()>,
+    ) -> Result<Value> {
+        let sequence = self
+            .begin(json!({"operation":"interaction.request","request":request}))
+            .await?;
+        let response = Self::read_response(&mut self.output, sequence, false);
+        tokio::pin!(response);
+        tokio::select! {
+            result = &mut response => result.map(|(data, _)| data),
+            _ = revoked => {
+                // Drain the ordered response after cancellation. Dropping a
+                // partially read frame would desynchronize other participants.
+                Self::write(&mut self.input, json!({"kind":"cancel","requestId":sequence})).await?;
+                response.await.map(|(data, _)| data)
+            }
+        }
+    }
+
     pub(super) async fn frame(&mut self, operation: Value) -> Result<(Value, Vec<u8>)> {
         self.exchange(operation, true).await
     }
@@ -94,32 +115,48 @@ impl Process {
         operation: Value,
         expect_pixels: bool,
     ) -> Result<(Value, Vec<u8>)> {
+        let sequence = self.begin(operation).await?;
+        Self::read_response(&mut self.output, sequence, expect_pixels).await
+    }
+
+    async fn begin(&mut self, operation: Value) -> Result<u64> {
         let sequence = self.sequence + 1;
         ensure!(
             sequence <= MAX_SEQUENCE,
             "Capture helper request IDs exhausted."
         );
         self.sequence = sequence;
-        let header = json!({
-            "version":VERSION,
-            "message":json!({"kind":"request", "requestId":sequence, "operation":operation})
-        })
-        .stringify();
+        Self::write(
+            &mut self.input,
+            json!({"kind":"request","requestId":sequence,"operation":operation}),
+        )
+        .await?;
+        Ok(sequence)
+    }
+
+    async fn write(input: &mut ChildStdin, message: Value) -> Result<()> {
+        let header = json!({"version":VERSION,"message":message}).stringify();
         ensure!(
             header.len() <= MAX_HEADER,
             "Capture helper request is too large."
         );
-        self.input.write_u32(header.len() as u32).await?;
-        self.input.write_u32(0).await?;
-        self.input.write_all(header.as_bytes()).await?;
-        self.input.flush().await?;
+        input.write_u32(header.len() as u32).await?;
+        input.write_u32(0).await?;
+        input.write_all(header.as_bytes()).await?;
+        input.flush().await?;
+        Ok(())
+    }
 
-        let size = self
-            .output
+    async fn read_response(
+        output: &mut ChildStdout,
+        sequence: u64,
+        expect_pixels: bool,
+    ) -> Result<(Value, Vec<u8>)> {
+        let size = output
             .read_u32()
             .await
             .context("Capture helper stopped before replying.")? as usize;
-        let payload = self.output.read_u32().await? as usize;
+        let payload = output.read_u32().await? as usize;
         ensure!(
             size > 0
                 && size <= MAX_HEADER
@@ -128,7 +165,7 @@ impl Process {
             "Invalid capture helper inventory frame."
         );
         let mut bytes = vec![0; size];
-        self.output.read_exact(&mut bytes).await?;
+        output.read_exact(&mut bytes).await?;
         let frame = std::str::from_utf8(&bytes)
             .ok()
             .and_then(|text| parse_json_text(text).ok())
@@ -158,7 +195,7 @@ impl Process {
                     "Capture helper response is missing pixels."
                 );
                 let mut pixels = vec![0; payload];
-                self.output.read_exact(&mut pixels).await?;
+                output.read_exact(&mut pixels).await?;
                 Ok((data, pixels))
             }
             Some("error") => {
@@ -185,6 +222,9 @@ impl Process {
                     }
                     Some("capacity") => "Desktop capture capacity reached.",
                     Some("invalid-request") => "The desktop capture request was rejected.",
+                    Some("input-failed" | "input-unknown") => {
+                        "Desktop input delivery could not be confirmed."
+                    }
                     Some("cancelled") => "Desktop target discovery was cancelled.",
                     _ => bail!("Unexpected capture helper inventory error."),
                 };

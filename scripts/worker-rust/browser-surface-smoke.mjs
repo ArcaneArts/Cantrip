@@ -80,6 +80,7 @@ const chromium = values.recover
   ? path.join(root, "chromium-fixture")
   : values.chromium && path.resolve(values.chromium);
 const captureHelper = path.join(root, "capture-helper");
+const captureRequests = path.join(root, "capture-requests");
 const environment = {
   ...fixtureEnvironment(dataDirectory),
   CANTRIP_BOOTSTRAP_MODE: "standalone",
@@ -196,6 +197,7 @@ async function launchWorker(enrollmentCode) {
           ? {
               CANTRIP_CUA_BIN: captureHelper,
               CANTRIP_FIXTURE_CUA: path.resolve(values["desktop-helper"]),
+              CANTRIP_FIXTURE_CAPTURE_REQUESTS: captureRequests,
             }
           : {
               CANTRIP_CHROMIUM_EXECUTABLE: chromium,
@@ -613,6 +615,7 @@ async function connectDesktop() {
     direction,
   });
   const sequences = new Map();
+  let sequence = 0;
   return {
     link,
     frames,
@@ -641,36 +644,213 @@ async function connectDesktop() {
       }
       assert.fail("Timed out waiting for protected Host desktop output.");
     },
-    async feedback({ tamper = false } = {}) {
-      for (let sequence = 0; sequence < 16; sequence += 1) {
-        const header = {
-          protocolVersion: 1,
-          surfaceId,
-          attachmentId: link.attachment,
-          channel: "control",
-          sequence,
-        };
-        const payload = await encryptRemoteSurfaceStreamPayload({
-          ownerId,
-          componentKey,
-          keyRevision,
-          context: context(header, "client-to-worker"),
-          plaintext: Buffer.from(
-            JSON.stringify({
-              type: "stream-feedback",
-              intervalMs: 1000,
-              receivedFrames: 10,
-              renderedFrames: 2,
-              droppedFrames: 8,
-              averageDecodeMs: 100,
-            }),
-          ),
-        });
-        if (tamper) payload[payload.length - 1] ^= 1;
-        await link.send(encodeRemoteSurfaceFrame(header, payload));
+    async control(message, { tamper = false } = {}) {
+      const header = {
+        protocolVersion: 1,
+        surfaceId,
+        attachmentId: link.attachment,
+        channel: "control",
+        sequence: sequence++,
+      };
+      const payload = await encryptRemoteSurfaceStreamPayload({
+        ownerId,
+        componentKey,
+        keyRevision,
+        context: context(header, "client-to-worker"),
+        plaintext: Buffer.from(JSON.stringify(message)),
+      });
+      if (tamper) payload[payload.length - 1] ^= 1;
+      await link.send(encodeRemoteSurfaceFrame(header, payload));
+    },
+    async feedback(options) {
+      for (let i = 0; i < 16; i += 1) {
+        await this.control(
+          {
+            type: "stream-feedback",
+            intervalMs: 1000,
+            receivedFrames: 10,
+            renderedFrames: 2,
+            droppedFrames: 8,
+            averageDecodeMs: 100,
+          },
+          options,
+        );
       }
     },
   };
+}
+
+async function desktopRequests() {
+  const bytes = await readFile(captureRequests);
+  const requests = [];
+  for (let offset = 0; offset + 8 <= bytes.length;) {
+    const size = bytes.readUInt32BE(offset);
+    const payload = bytes.readUInt32BE(offset + 4);
+    const next = offset + 8 + size + payload;
+    if (next > bytes.length) break;
+    const { message } = JSON.parse(
+      bytes.subarray(offset + 8, offset + 8 + size),
+    );
+    if (message.operation?.operation === "interaction.request")
+      requests.push(message.operation.request);
+    offset = next;
+  }
+  return requests;
+}
+
+async function desktopControl(view, accept) {
+  let selected;
+  await view.next((channel, bytes) => {
+    if (channel !== "control") return false;
+    const message = remoteDesktopServerMessageSchema.parse(
+      JSON.parse(Buffer.from(bytes)),
+    );
+    if (!accept(message)) return false;
+    selected = message;
+    return true;
+  });
+  return selected;
+}
+
+async function verifyWindowInput(second) {
+  const { epoch } = await desktopControl(
+    second,
+    (msg) => msg.type === "desktop-input" && msg.epoch,
+  );
+  const third = await connectDesktop();
+  await third.control({ type: "viewport", viewport });
+  const { epoch: other } = await desktopControl(
+    third,
+    (msg) => msg.type === "desktop-input" && msg.epoch,
+  );
+  assert.notEqual(epoch, other);
+
+  const pointer = (inputEpoch, inputSequence, x) => ({
+    type: "pointer",
+    event: "down",
+    button: "left",
+    buttons: 1,
+    x,
+    y: 40,
+    inputEpoch,
+    inputSequence,
+  });
+  await second.control(pointer(other, 1, 150));
+  await second.control(pointer(epoch, 1, 151), { tamper: true });
+  await second.control(pointer(epoch, 1, 80));
+  await desktopControl(second, (msg) => {
+    if (msg.type !== "desktop-cursor") return false;
+    assert.equal(msg.id, epoch);
+    assert.equal(msg.x, 0.25);
+    assert.equal(msg.y, 0.2);
+    return msg.click;
+  });
+  await second.control(pointer(epoch, 1, 152)); // stale input sequence in a fresh envelope
+  await second.control({
+    type: "key",
+    event: "down",
+    key: "k",
+    code: "KeyK",
+    modifiers: 8,
+    inputEpoch: epoch,
+    inputSequence: 2,
+  });
+  const paste = "a".repeat(8191) + "🧪";
+  await second.control({
+    type: "clipboard",
+    operation: "paste-text",
+    text: paste,
+    inputEpoch: epoch,
+    inputSequence: 3,
+  });
+  const inputEvents = (requests, id) =>
+    requests.filter(
+      (req) => req.type === "input" && req.binding.attachmentId === id,
+    );
+  await eventually(
+    async () => inputEvents(await desktopRequests(), epoch).length,
+    (count) => assert.equal(count, 4),
+  );
+  const before = await desktopRequests();
+  assert.deepEqual(
+    inputEvents(before, epoch).map(({ sequence, event }) => [sequence, event]),
+    [
+      [
+        1,
+        {
+          type: "pointerDown",
+          data: { point: { x: 40, y: 20 }, button: "left", modifiers: [] },
+        },
+      ],
+      [
+        2,
+        {
+          type: "keyDown",
+          data: { key: "K", modifiers: ["Shift"], repeat: false },
+        },
+      ],
+      [3, { type: "text", data: { type: "commit", data: "a".repeat(8191) } }],
+      [4, { type: "text", data: { type: "commit", data: "🧪" } }],
+    ],
+  );
+  assert.deepEqual(
+    before
+      .filter(({ type }) => type === "open")
+      .map((open) => [open.targetId, open.targetGeneration]),
+    [
+      ["fake-window", 1],
+      ["fake-window", 1],
+    ],
+  );
+
+  await second.control({ type: "input-cancel", inputEpoch: epoch });
+  const replacement = await desktopControl(
+    second,
+    (msg) => msg.type === "desktop-input" && msg.epoch && msg.epoch !== epoch,
+  );
+  await second.control(pointer(epoch, 4, 153));
+  await second.control(pointer(replacement.epoch, 1, 96));
+  await third.control(pointer(other, 1, 128));
+  await eventually(
+    async () => {
+      const requests = await desktopRequests();
+      return (
+        inputEvents(requests, replacement.epoch).length === 1 &&
+        inputEvents(requests, other).length === 1
+      );
+    },
+    (value) => assert.ok(value),
+  );
+  const close = (requests, id) =>
+    requests.findIndex(
+      (req) => req.type === "closeBinding" && req.binding.attachmentId === id,
+    );
+  const after = await desktopRequests();
+  assert.equal(inputEvents(after, epoch).length, 4);
+  assert.ok(
+    close(after, epoch) > 0 &&
+      close(after, epoch) <
+        after.findIndex(
+          (req) =>
+            req.type === "input" &&
+            req.binding.attachmentId === replacement.epoch,
+        ),
+  );
+  assert.equal(close(after, other), -1);
+  await third.link.close();
+  await eventually(
+    async () => close(await desktopRequests(), other) >= 0,
+    (value) => assert.ok(value),
+  );
+  await second.control({
+    ...pointer(replacement.epoch, 2, 96),
+    event: "up",
+    buttons: 0,
+  });
+  await eventually(
+    async () => inputEvents(await desktopRequests(), replacement.epoch).length,
+    (count) => assert.equal(count, 2),
+  );
 }
 
 async function verifyDesktop() {
@@ -696,6 +876,14 @@ async function verifyDesktop() {
   });
   await image(first, ({ width, height }) => width === 640 && height === 360);
   assert.equal(first.link.fragmentedScreenshot, true);
+  await first.control({ type: "viewport", viewport });
+  await desktopControl(
+    first,
+    (msg) =>
+      msg.type === "desktop-input" &&
+      msg.epoch === null &&
+      msg.message?.includes("view-only"),
+  );
   await first.feedback({ tamper: true });
   first.frames.length = 0;
   for (let sample = 0; sample < 3; sample += 1) {
@@ -713,6 +901,7 @@ async function verifyDesktop() {
   const second = await connectDesktop();
   assert.notEqual(first.link.attachment, second.link.attachment);
   await image(second, ({ width }) => width > 0);
+  await second.control({ type: "viewport", viewport });
   await first.link.close();
   second.frames.length = 0;
   await image(second, ({ width }) => width > 0);
@@ -727,6 +916,7 @@ async function verifyDesktop() {
     stateProtection: await desktopState(target, 2),
   });
   await image(second, ({ width, height }) => width === 320 && height === 200);
+  await verifyWindowInput(second);
   await second.link.close({ verifyLateCredit: route === "local" });
   await call("DELETE", "/api/remote-surfaces/" + surfaceId, 204);
 }
@@ -735,7 +925,7 @@ try {
   if (desktop) {
     await writeFile(
       captureHelper,
-      '#!/bin/sh\nexec "$CANTRIP_FIXTURE_CUA" --backend fake\n',
+      '#!/bin/sh\n/usr/bin/tee "$CANTRIP_FIXTURE_CAPTURE_REQUESTS" | "$CANTRIP_FIXTURE_CUA" --backend fake\n',
       { mode: 0o700 },
     );
   }

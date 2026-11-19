@@ -1088,6 +1088,10 @@ export const remoteSurfaceHttpContractRoots = [
   "browserPrivateStateProtectedContentSchema",
   "remoteDesktopServerMessageSchema",
   "remoteDesktopStreamFeedbackSchema",
+  "remoteDesktopViewerPointerSchema",
+  "remoteDesktopViewerKeySchema",
+  "remoteDesktopViewerClipboardSchema",
+  "remoteDesktopViewerInputCancelSchema",
 ];
 
 export const computerUseHttpContractRoots = [
@@ -1133,15 +1137,21 @@ export const cliContractRoots = [
   "cantripCliCommandResultSchema",
 ];
 
+const desktopClientKind = new Map([
+  ["remoteDesktopStreamFeedbackSchema", "stream-feedback"],
+  ["remoteDesktopViewerPointerSchema", "pointer"],
+  ["remoteDesktopViewerKeySchema", "key"],
+  ["remoteDesktopViewerClipboardSchema", "clipboard"],
+  ["remoteDesktopViewerInputCancelSchema", "input-cancel"],
+]);
+
 // Resolve the actual source schemas, including their separate protocol modules.
 // Compatibility oracles use this registry, never the generated native manifest.
 export function sourceContractSchema(name) {
   return (
-    (name === "remoteDesktopStreamFeedbackSchema"
-      ? protocol.remoteDesktopClientMessageSchema.options.find(
-          (message) => message.shape.type.value === "stream-feedback",
-        )
-      : undefined) ??
+    protocol.remoteDesktopClientMessageSchema.options.find(
+      (message) => message.shape.type.value === desktopClientKind.get(name),
+    ) ??
     (name === "remoteDesktopPreparedGenerationSchema"
       ? protocol.remoteDesktopOsSourceSchema
           .pick({ desktopGeneration: true })

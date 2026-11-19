@@ -1,4 +1,6 @@
-//! Host desktop capture carried by the existing authenticated surface routing.
+//! Host desktop capture and input on the authenticated surface transports.
+mod input;
+
 use super::{Callback, Endpoint, FrameSource, Route, Shared, Work, accepted, id};
 use crate::{
     desktop_inventory::{Capture, Scope},
@@ -12,6 +14,7 @@ use image::{
     ImageDecoder,
     codecs::{jpeg::JpegEncoder, png::PngDecoder},
 };
+use input::{Update, Viewer};
 use std::{
     collections::HashMap,
     future::{Future, pending},
@@ -21,7 +24,8 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    sync::{Semaphore, mpsc},
+    sync::{Semaphore, mpsc, watch},
+    task::JoinSet,
     time::{Instant, MissedTickBehavior, sleep_until},
 };
 
@@ -41,6 +45,9 @@ struct Session<'a> {
     failure: Option<String>,
     observed: f64,
     dimensions: (u32, u32, u32),
+    logical: (f64, f64),
+    updates: mpsc::Sender<Update>,
+    inputs: JoinSet<()>,
 }
 
 struct Attachment {
@@ -48,6 +55,20 @@ struct Attachment {
     viewport: Value,
     incoming: Option<u64>,
     outgoing: HashMap<&'static str, u64>,
+    source: Option<FrameSource>,
+    input: Option<Viewer>,
+    closing: Option<watch::Receiver<bool>>,
+}
+
+impl Attachment {
+    fn stop_input(&mut self) -> bool {
+        if let Some(input) = self.input.take() {
+            self.closing = Some(input.closed.clone());
+            true
+        } else {
+            false
+        }
+    }
 }
 
 #[derive(PartialEq)]
@@ -61,6 +82,7 @@ struct Image {
     width: u32,
     height: u32,
     encoded_width: u32,
+    logical: (f64, f64),
 }
 
 static ENCODERS: Semaphore = Semaphore::const_new(2);
@@ -76,7 +98,8 @@ pub(super) async fn run(
     epoch: u64,
     done: Callback,
 ) -> Result<()> {
-    let mut active = match Session::begin(shared, endpoint, surface, &opening, epoch) {
+    let (updates, mut changes) = mpsc::channel(16);
+    let mut active = match Session::begin(shared, endpoint, surface, &opening, epoch, updates) {
         Ok(value) => value,
         Err(error) => {
             let _ = done.send(Err(error));
@@ -115,7 +138,9 @@ pub(super) async fn run(
                         let _ = done.send(response);
                         if end { break; }
                     }
-                    Some(Work::Frame { frame, source }) => { let _ = active.control(&frame, &source); }
+                    Some(Work::Frame { frame, source }) => {
+                        let _ = active.control(&frame, &source, capture.as_ref());
+                    }
                     Some(Work::Refresh(attachment)) => active.publish(Some(&attachment)),
                     Some(Work::AgentBorrow { done, .. }) => {
                         let _ = done.send(Err(anyhow!("This surface is a desktop.")));
@@ -123,6 +148,8 @@ pub(super) async fn run(
                     Some(Work::AgentPresentation(_)) => {}
                 }
             },
+            Some(change) = changes.recv() => active.input_update(change),
+            _ = active.inputs.join_next(), if !active.inputs.is_empty() => {}
             result = async {
                 match &mut work {
                     Some(work) => work.await,
@@ -133,7 +160,16 @@ pub(super) async fn run(
                 active.authorize()?;
                 match result {
                     Ok((lease, image)) if active.visible() => {
+                        let opening = capture.is_none();
+                        active.logical = image.logical;
                         capture = Some(lease);
+                        if opening {
+                            let ready = capture.as_ref().unwrap();
+                            let viewers: Vec<_> = active.attachments.keys().cloned().collect();
+                            for viewer in viewers {
+                                active.start_input(&viewer, ready);
+                            }
+                        }
                         let dimensions = (image.width, image.height, image.encoded_width);
                         if active.status != "ready" || active.dimensions != dimensions {
                             active.dimensions = dimensions;
@@ -155,6 +191,7 @@ pub(super) async fn run(
                     }
                     Ok((lease, _)) => release(lease).await,
                     Err(error) if active.visible() => {
+                        active.retire_inputs();
                         if let Some(lease) = capture.take() {
                             release(lease).await;
                         }
@@ -171,7 +208,7 @@ pub(super) async fn run(
             },
             _ = check.tick() => {
                 active.authorize()?;
-                active.attachments.retain(|_, member| member.route.alive(&active.shared.outgoing));
+                active.prune();
                 if !active.visible() {
                     drop(work.take());
                     if let Some(capture) = capture.take() {
@@ -187,6 +224,8 @@ pub(super) async fn run(
         }
     }
     drop(work);
+    active.attachments.clear();
+    active.inputs.shutdown().await;
     if let Some(capture) = capture {
         release(capture).await;
     }
@@ -207,6 +246,7 @@ impl<'a> Session<'a> {
         surface: &'a JsString,
         incoming: &Value,
         epoch: u64,
+        updates: mpsc::Sender<Update>,
     ) -> Result<Self> {
         let owner = shared
             .encryption
@@ -229,6 +269,9 @@ impl<'a> Session<'a> {
             failure: None,
             observed: 0.0,
             dimensions: (1, 1, 1),
+            logical: (1.0, 1.0),
+            updates,
+            inputs: JoinSet::new(),
         };
         active.attach(incoming, epoch)?;
         Ok(active)
@@ -265,8 +308,7 @@ impl<'a> Session<'a> {
             command["projectId"] == self.project,
             "Desktop attachment belongs to another project."
         );
-        self.attachments
-            .retain(|_, member| member.route.alive(&self.shared.outgoing));
+        self.prune();
         let attachment = id(command, "attachmentId").clone();
         ensure!(
             self.attachments.len() < 4 || self.attachments.contains_key(&attachment),
@@ -285,6 +327,9 @@ impl<'a> Session<'a> {
                 ),
                 incoming: None,
                 outgoing: HashMap::new(),
+                source: None,
+                input: None,
+                closing: None,
             });
         self.publish(Some(&attachment));
         Ok(())
@@ -297,6 +342,7 @@ impl<'a> Session<'a> {
         );
         let kind = command["type"].as_str().unwrap();
         if kind == "surface.close" {
+            self.retire_inputs();
             return Ok(Effect::Close);
         }
         if kind != "surface.detach" {
@@ -328,6 +374,7 @@ impl<'a> Session<'a> {
                 }
                 self.desktop = next;
                 if changed {
+                    self.retire_inputs();
                     self.reset_capture();
                     return Ok(Effect::Retire);
                 }
@@ -340,12 +387,14 @@ impl<'a> Session<'a> {
                     .is_some_and(|member| member.route.closes_on(epoch))
                 {
                     self.attachments.remove(attachment);
+                    self.input_assets();
                 }
                 if !self.visible() {
                     return Ok(Effect::Retire);
                 }
             }
             "surface.suspend" => {
+                self.retire_inputs();
                 self.suspended = true;
                 self.publish(None);
                 return Ok(Effect::Retire);
@@ -409,7 +458,12 @@ impl<'a> Session<'a> {
         })
     }
 
-    fn control(&mut self, frame: &Frame, source: &FrameSource) -> Result<()> {
+    fn control(
+        &mut self,
+        frame: &Frame,
+        source: &FrameSource,
+        capture: Option<&Arc<Capture>>,
+    ) -> Result<()> {
         self.authorize()?;
         let header = frame.header();
         let attachment = id(header, "attachmentId");
@@ -441,6 +495,10 @@ impl<'a> Session<'a> {
         let data = match kind {
             Some("viewport") => checked("remoteSurfaceViewportSchema", &message["viewport"])?,
             Some("stream-feedback") => checked("remoteDesktopStreamFeedbackSchema", &message)?,
+            Some("input-cancel") => checked("remoteDesktopViewerInputCancelSchema", &message)?,
+            Some("pointer") => checked("remoteDesktopViewerPointerSchema", &message)?,
+            Some("key") => checked("remoteDesktopViewerKeySchema", &message)?,
+            Some("clipboard") => checked("remoteDesktopViewerClipboardSchema", &message)?,
             _ => bail!("Desktop control is unavailable."),
         };
         ensure!(
@@ -448,12 +506,253 @@ impl<'a> Session<'a> {
             "Desktop control authority expired."
         );
         member.incoming = Some(sequence);
-        if kind == Some("viewport") {
-            member.viewport = data;
-        } else {
-            self.tuner.feedback(&data, self.fps);
+        match kind {
+            Some("viewport") => {
+                member.viewport = data;
+                let fresh = member
+                    .source
+                    .as_ref()
+                    .is_none_or(|old| !member.route.receives(old, &self.shared.outgoing));
+                if fresh {
+                    member.stop_input();
+                    member.source = Some(source.clone());
+                    self.publish(Some(attachment));
+                    if let Some(capture) = capture {
+                        self.start_input(attachment, capture);
+                    }
+                }
+            }
+            Some("stream-feedback") => self.tuner.feedback(&data, self.fps),
+            Some("input-cancel") => {
+                if member
+                    .input
+                    .as_ref()
+                    .is_some_and(|input| data["inputEpoch"] == input.epoch)
+                {
+                    self.stop_input(attachment, None);
+                    if let Some(capture) = capture {
+                        self.start_input(attachment, capture);
+                    }
+                }
+            }
+            _ => self.viewer_input(attachment, data, clear.len(), source)?,
         }
         Ok(())
+    }
+
+    fn start_input(&mut self, attachment: &JsString, capture: &Arc<Capture>) {
+        let member = self.attachments.get_mut(attachment).unwrap();
+        let Some(source) = member.source.clone() else {
+            return;
+        };
+        if self.suspended
+            || member.input.is_some()
+            || !member.route.receives(&source, &self.shared.outgoing)
+        {
+            return;
+        }
+        if !capture.is_window() {
+            self.input_state(
+                Some(attachment),
+                None,
+                Some("Select a window for independent input. Display sharing is view-only."),
+            );
+            return;
+        }
+        let route = Arc::downgrade(&member.route);
+        let outgoing = self.shared.outgoing.clone();
+        let allowed = Arc::new(move || {
+            route.upgrade().is_some_and(|route| {
+                outgoing.stream_current(route.epoch) && route.receives(&source, &outgoing)
+            })
+        });
+        member.input = Some(Viewer::start(
+            &mut self.inputs,
+            self.updates.clone(),
+            capture.clone(),
+            self.shared.encryption.worker_id().clone(),
+            attachment.clone(),
+            allowed,
+            member.closing.take(),
+        ));
+    }
+
+    fn input_update(&mut self, change: Update) {
+        let Some(member) = self.attachments.get_mut(&change.attachment) else {
+            return;
+        };
+        let Some(input) = member
+            .input
+            .as_mut()
+            .filter(|input| input.epoch == change.epoch)
+        else {
+            return;
+        };
+        if let Some(sprite) = change.sprite {
+            if member
+                .source
+                .as_ref()
+                .is_none_or(|source| !member.route.receives(source, &self.shared.outgoing))
+            {
+                self.stop_input(&change.attachment, None);
+                return;
+            }
+            input.sprite = Some(sprite);
+            self.input_state(Some(&change.attachment), Some(&change.epoch), None);
+            self.input_assets();
+        } else {
+            self.stop_input(&change.attachment, change.message);
+        }
+    }
+
+    fn stop_input(&mut self, attachment: &JsString, message: Option<&str>) {
+        if self
+            .attachments
+            .get_mut(attachment)
+            .is_some_and(Attachment::stop_input)
+        {
+            self.input_state(Some(attachment), None, message);
+            self.input_assets();
+        }
+    }
+
+    fn retire_inputs(&mut self) {
+        let mut changed = false;
+        for member in self.attachments.values_mut() {
+            changed |= member.stop_input();
+        }
+        if changed {
+            self.input_assets();
+            self.input_state(None, None, None);
+        }
+    }
+
+    fn prune(&mut self) {
+        let before = self.attachments.len();
+        self.attachments
+            .retain(|_, member| member.route.alive(&self.shared.outgoing));
+        let mut changed = self.attachments.len() != before;
+        for member in self.attachments.values_mut() {
+            if member.source.as_ref().is_some_and(|source| {
+                !member.route.receives(source, &self.shared.outgoing)
+                    || !self.shared.outgoing.stream_current(member.route.epoch)
+            }) {
+                member.source.take();
+                changed |= member.stop_input();
+            }
+        }
+        if changed {
+            self.input_assets();
+        }
+    }
+
+    fn viewer_input(
+        &mut self,
+        attachment: &JsString,
+        value: Value,
+        bytes: usize,
+        source: &FrameSource,
+    ) -> Result<()> {
+        ensure!(!self.suspended, "Desktop input is suspended.");
+        let member = self.attachments.get_mut(attachment).unwrap();
+        ensure!(
+            member
+                .source
+                .as_ref()
+                .is_some_and(|bound| member.route.receives(bound, &self.shared.outgoing))
+                && member.route.receives(source, &self.shared.outgoing),
+            "Desktop input route expired."
+        );
+        let viewer = member
+            .input
+            .as_mut()
+            .filter(|viewer| viewer.sprite.is_some())
+            .context("Desktop input is unavailable.")?;
+        let sequence = value["inputSequence"]
+            .as_u64()
+            .filter(|sequence| *sequence > viewer.sequence && value["inputEpoch"] == viewer.epoch)
+            .context("Desktop input epoch or sequence expired.")?;
+        viewer.sequence = sequence;
+        if value["operation"] == "copy" {
+            let epoch = viewer.epoch.clone();
+            self.input_state(
+                Some(attachment),
+                Some(&epoch),
+                Some("Copying from this desktop is unavailable."),
+            );
+            return Ok(());
+        }
+        let (width, height, _) = self.dimensions;
+        let click = value["event"] == "down";
+        let position = (value["type"] == "pointer").then(|| {
+            (
+                (value["x"].as_f64().unwrap() / f64::from(width)).min(1.0),
+                (value["y"].as_f64().unwrap() / f64::from(height)).min(1.0),
+            )
+        });
+        if !viewer.enqueue(input::Command {
+            value,
+            bytes,
+            pixels: (width, height),
+            logical: self.logical,
+        }) {
+            self.stop_input(attachment, Some(input::FAILED));
+            return Ok(());
+        }
+        if let Some((x, y)) = position {
+            viewer.position = position;
+            let id = viewer.epoch.clone();
+            self.send_message(
+                None,
+                &json!({"type":"desktop-cursor","id":id,"x":x,"y":y,"click":click}),
+            );
+        }
+        Ok(())
+    }
+
+    fn input_state(
+        &mut self,
+        recipient: Option<&JsString>,
+        epoch: Option<&str>,
+        message: Option<&str>,
+    ) {
+        self.send_message(
+            recipient,
+            &json!({"type":"desktop-input","epoch":epoch,"message":message}),
+        );
+    }
+
+    fn input_assets(&mut self) {
+        let participants = self
+            .attachments
+            .values()
+            .filter_map(|member| {
+                let viewer = member.input.as_ref()?;
+                Some(json!({"id":viewer.epoch,"sprite":viewer.sprite.as_ref()?}))
+            })
+            .collect::<Vec<_>>();
+        self.send_message(
+            None,
+            &json!({"type":"desktop-cursor-assets","participants":participants}),
+        );
+        let positions = self
+            .attachments
+            .values()
+            .filter_map(|member| {
+                let viewer = member.input.as_ref()?;
+                let (x, y) = viewer.position?;
+                Some(json!({"type":"desktop-cursor","id":viewer.epoch,"x":x,"y":y,"click":false}))
+            })
+            .collect::<Vec<_>>();
+        for position in positions {
+            self.send_message(None, &position);
+        }
+    }
+
+    fn send_message(&mut self, only: Option<&JsString>, message: &Value) {
+        if let Ok(value) = checked("remoteDesktopServerMessageSchema", message) {
+            self.send(only, "control", value.stringify().as_bytes());
+        }
     }
 
     fn publish(&mut self, only: Option<&JsString>) {
@@ -472,9 +771,7 @@ impl<'a> Session<'a> {
             "type":"desktop-state","width":width,"height":height,"status":status,"message":message,
             "stream":json!({"backend":"native","targetFps":self.fps,"observedFps":self.observed,"quality":self.tuner.quality,"encodedWidth":encoded_width})
         });
-        if let Ok(value) = checked("remoteDesktopServerMessageSchema", &value) {
-            self.send(only, "control", value.stringify().as_bytes());
-        }
+        self.send_message(only, &value);
     }
 
     fn send(&mut self, only: Option<&JsString>, channel: &'static str, bytes: &[u8]) -> bool {
@@ -685,5 +982,6 @@ fn encode(
         width: frame.width,
         height: frame.height,
         encoded_width: image.width(),
+        logical: frame.logical,
     })
 }

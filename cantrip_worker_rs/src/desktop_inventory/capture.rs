@@ -6,7 +6,7 @@ use crate::{connection::Outbound, encryption::Service};
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use cantrip_interaction::geometry::{MAX_IMAGE_PIXELS, MAX_SEQUENCE};
 use cantrip_wire::{JsString, Value, value::json};
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 use tokio::{
     sync::{mpsc, oneshot},
     time::timeout,
@@ -98,13 +98,39 @@ pub(crate) struct Capture {
     client: Captures,
 }
 
+pub(crate) type InputAuthority = Arc<dyn Fn() -> bool + Send + Sync>;
+
 pub(crate) struct Frame {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) png: Vec<u8>,
+    pub(crate) logical: (f64, f64),
 }
 
 impl Capture {
+    pub(crate) fn is_window(&self) -> bool {
+        self.key.as_ref().unwrap().target["kind"] == "window"
+    }
+
+    pub(crate) fn participant(
+        &self,
+        worker: &JsString,
+        attachment: &JsString,
+        input_epoch: &str,
+        allowed: InputAuthority,
+    ) -> Participant {
+        let key = self.key.as_ref().unwrap().clone();
+        Participant {
+            binding: Some(json!({
+                "workerId":worker,"surfaceId":key.scope.surface,"attachmentId":input_epoch,"participantId":attachment
+            })),
+            client: self.client.clone(),
+            key,
+            allowed,
+            handle: 0,
+        }
+    }
+
     pub(crate) async fn frame(&self) -> Result<Frame> {
         let (reply, result) = oneshot::channel();
         self.client
@@ -126,7 +152,12 @@ impl Capture {
 
     fn release(&mut self, reply: Option<oneshot::Sender<()>>) {
         if let Some(key) = self.key.take() {
-            let _ = self.client.releases.send(Release { key, reply });
+            let _ = self.client.releases.send(Release {
+                generation: key.generation,
+                binding: key.binding,
+                operation: "capture.request",
+                reply,
+            });
         }
     }
 }
@@ -137,8 +168,113 @@ impl Drop for Capture {
     }
 }
 
-pub(super) struct Release {
+pub(crate) struct Participant {
     key: Key,
+    client: Captures,
+    binding: Option<Value>,
+    allowed: InputAuthority,
+    handle: u64,
+}
+
+impl Participant {
+    pub(crate) async fn open(&mut self) -> Result<Value> {
+        ensure!(
+            self.key.target["kind"] == "window",
+            "Host displays are view-only."
+        );
+        let result = self
+            .request(
+                "open",
+                [
+                    ("targetId", self.key.target["id"].clone()),
+                    ("targetGeneration", self.key.target["generation"].clone()),
+                ],
+            )
+            .await?;
+        ensure!(
+            same_target(&self.key.target, &result["target"]),
+            "The desktop participant opened another target."
+        );
+        self.handle = result["handle"]
+            .as_u64()
+            .filter(|handle| (1..=MAX_SEQUENCE).contains(handle))
+            .context("Invalid desktop input participant handle.")?;
+        Ok(result["sprite"].clone())
+    }
+
+    async fn request<const N: usize>(
+        &self,
+        kind: &str,
+        fields: [(&str, Value); N],
+    ) -> Result<Value> {
+        let (reply, result) = oneshot::channel();
+        let mut request = json!({"type":kind,"binding":self.binding.as_ref().unwrap()});
+        if self.handle != 0 {
+            request["handle"] = json!(self.handle);
+        }
+        for (name, value) in fields {
+            request[name] = value;
+        }
+        self.client
+            .requests
+            .send(Operation::Interaction {
+                key: self.key.clone(),
+                request,
+                allowed: self.allowed.clone(),
+                reply,
+            })
+            .await
+            .context("Desktop input service stopped.")?;
+        result.await.context("Desktop input service stopped.")?
+    }
+
+    pub(crate) async fn input(
+        &self,
+        sequence: u64,
+        event: &cantrip_interaction::input::InputEvent,
+    ) -> Result<()> {
+        let event = Value::from_serialize(event);
+        let receipt = self
+            .request("input", [("sequence", json!(sequence)), ("event", event)])
+            .await?;
+        ensure!(
+            receipt["handle"].as_u64() == Some(self.handle)
+                && receipt["sequence"].as_u64() == Some(sequence)
+                && receipt["outcome"] == "dispatched",
+            "Invalid desktop input receipt."
+        );
+        Ok(())
+    }
+
+    pub(crate) async fn close(mut self) {
+        let (reply, closed) = oneshot::channel();
+        self.release(Some(reply));
+        let _ = closed.await;
+    }
+
+    fn release(&mut self, reply: Option<oneshot::Sender<()>>) {
+        // The unique binding also closes an open whose response was canceled.
+        if let Some(binding) = self.binding.take() {
+            let _ = self.client.releases.send(Release {
+                generation: self.key.generation,
+                binding,
+                operation: "interaction.request",
+                reply,
+            });
+        }
+    }
+}
+
+impl Drop for Participant {
+    fn drop(&mut self) {
+        self.release(None);
+    }
+}
+
+pub(super) struct Release {
+    generation: Uuid,
+    binding: Value,
+    operation: &'static str,
     reply: Option<oneshot::Sender<()>>,
 }
 
@@ -146,13 +282,13 @@ impl Release {
     pub(super) async fn close(self, current: &mut Option<Helper>) {
         if let Some(helper) = current
             .as_mut()
-            .filter(|helper| helper.identity == self.key.generation)
+            .filter(|helper| helper.identity == self.generation)
         {
             let result = helper
                 .process
                 .request(json!({
-                    "operation":"capture.request",
-                    "request":json!({"type":"closeBinding","binding":self.key.binding})
+                    "operation":self.operation,
+                    "request":json!({"type":"closeBinding","binding":self.binding})
                 }))
                 .await;
             if result.is_err() {
@@ -172,6 +308,12 @@ pub(super) enum Operation {
         client: Captures,
         reply: oneshot::Sender<Result<Capture>>,
     },
+    Interaction {
+        key: Key,
+        request: Value,
+        allowed: InputAuthority,
+        reply: oneshot::Sender<Result<Value>>,
+    },
     Frame {
         key: Key,
         reply: oneshot::Sender<Result<Frame>>,
@@ -182,7 +324,7 @@ impl Operation {
     pub(super) fn scope(&self) -> &Scope {
         match self {
             Self::Open { scope, .. } => scope,
-            Self::Frame { key, .. } => &key.scope,
+            Self::Frame { key, .. } | Self::Interaction { key, .. } => &key.scope,
         }
     }
 
@@ -190,6 +332,9 @@ impl Operation {
         match self {
             Self::Open { reply, .. } => {
                 let _ = reply.send(Err(anyhow!("The desktop capture authority expired.")));
+            }
+            Self::Interaction { reply, .. } => {
+                let _ = reply.send(Err(anyhow!("The desktop input authority expired.")));
             }
             Self::Frame { reply, .. } => {
                 let _ = reply.send(Err(anyhow!("The desktop capture authority expired.")));
@@ -230,6 +375,33 @@ impl Operation {
                         key: Some(key),
                         client,
                     });
+                let broken = result.as_ref().is_err_and(retire);
+                let _ = reply.send(result);
+                broken
+            }
+            Self::Interaction {
+                key,
+                request,
+                allowed,
+                mut reply,
+            } => {
+                if reply.is_closed() || !allowed() {
+                    let _ = reply.send(Err(anyhow!("The desktop input authority expired.")));
+                    return Ok(());
+                }
+                let result = timeout(DEADLINE, async {
+                    let helper = current
+                        .as_mut()
+                        .filter(|helper| helper.identity == key.generation)
+                        .ok_or(Unavailable("The desktop input helper was replaced."))?;
+                    helper
+                        .process
+                        .interaction(request, async { reply.closed().await })
+                        .await
+                })
+                .await
+                .context("Desktop input timed out.")
+                .and_then(|result| result);
                 let broken = result.as_ref().is_err_and(retire);
                 let _ = reply.send(result);
                 broken
@@ -379,5 +551,17 @@ async fn frame(current: &mut Option<Helper>, key: &Key) -> Result<Frame> {
             && image["cursorIncluded"] == false,
         "Invalid desktop capture image metadata."
     );
-    Ok(Frame { width, height, png })
+    let bounds = &response["target"]["bounds"];
+    let logical = |name| {
+        bounds[name]
+            .as_f64()
+            .filter(|size| size.is_finite() && *size > 0.0)
+            .context("Invalid desktop target bounds.")
+    };
+    Ok(Frame {
+        width,
+        height,
+        png,
+        logical: (logical("width")?, logical("height")?),
+    })
 }

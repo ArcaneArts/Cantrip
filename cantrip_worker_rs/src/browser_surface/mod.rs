@@ -58,6 +58,7 @@ struct Route {
     link: Mutex<Option<Arc<Link>>>,
 }
 
+#[derive(Clone)]
 enum FrameSource {
     Legacy(u64),
     Link { link: Weak<Link>, channel: Weak<()> },

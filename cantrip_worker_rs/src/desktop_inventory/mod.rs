@@ -1,7 +1,7 @@
 //! Authenticated Host desktop target discovery and protected fleet inventory.
 mod capture;
 mod process;
-pub(crate) use capture::{Capture, Captures, Frame, Scope};
+pub(crate) use capture::{Capture, Captures, Frame, InputAuthority, Scope};
 
 use crate::{connection::Outbound, encryption::Service, http::checked};
 use anyhow::{Context, Result, bail, ensure};
