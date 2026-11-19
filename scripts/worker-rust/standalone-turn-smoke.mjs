@@ -941,19 +941,86 @@ async function verifySettingsSnapshot() {
     read.effective.context.runtimeGeneration,
     read.binding.runtimeGeneration,
   );
-  const settings = await crypto.decryptNativeSettingsSnapshot({
-    ownerId,
-    serverId,
-    keyRevision,
-    componentKey: chatKey,
-    context: explicit.effective.context,
-    snapshot: explicit.effective,
-  });
+  const open = (snapshot) =>
+    crypto.decryptNativeSettingsSnapshot({
+      ownerId,
+      serverId,
+      keyRevision,
+      componentKey: chatKey,
+      context: snapshot.context,
+      snapshot,
+    });
+  const settings = await open(explicit.effective);
   assert.equal(settings.model, model.model.model);
   assert.equal(settings.settingsVersion.epoch, explicit.binding.nativeEpoch);
   assert.ok(!JSON.stringify(read).includes(settings.cwd));
+  const bindingId = explicit.binding.bindingId;
+  async function update(patch, changes = {}) {
+    const operationId = randomUUID();
+    const protectedPatch = await crypto.encryptNativeSettingsPatch({
+      ownerId,
+      serverId,
+      keyRevision,
+      componentKey: chatKey,
+      patch,
+      context: { chatId, operationId, bindingId, ...changes },
+    });
+    return { operationId, bindingId, protectedPatch };
+  }
+
+  const incorrect = await update(
+    { effort: "low" },
+    { bindingId: randomUUID() },
+  );
+  const denied = await call("POST", `${url}/update`, 500, incorrect);
+  assert.ok(!JSON.stringify(denied).includes("low"));
+  const wrongPlacement = path.join(root, "unauthorized-settings-directory");
+  const rejected = await call(
+    "POST",
+    `${url}/update`,
+    500,
+    await update({ cwd: wrongPlacement }),
+  );
+  assert.ok(!JSON.stringify(rejected).includes(wrongPlacement));
+  const afterErrors = await call("GET", url, 200);
+  assert.equal(afterErrors.revision, explicit.revision);
+  let state = afterErrors;
+  for (const patch of [
+    { effort: "low", serviceTier: null, collaborationModeKind: "plan" },
+    { effort: null, unsetServiceTier: true },
+  ]) {
+    const request = await update(patch);
+    const result = await call("POST", `${url}/update`, 200, request);
+    assert.equal(result.operationId, request.operationId);
+    assert.ok(result.submissionId);
+    assert.ok(
+      ["queued", "applied"].includes(result.status),
+      JSON.stringify(result),
+    );
+    const previous = state.effective.context.settingsVersion;
+    state = await eventually(
+      () => call("GET", url, 200),
+      (current) => {
+        const version = current.effective?.context.settingsVersion;
+        assert.equal(current.desiredStatus, "applied");
+        assert.equal(current.desired.operationId, result.operationId);
+        assert.equal(version?.epoch, previous.epoch);
+        assert.ok(BigInt(version.revision) > BigInt(previous.revision));
+      },
+    );
+    const changed = await open(state.effective);
+    assert.equal(changed.effort, patch.effort);
+    assert.equal(
+      changed.serviceTier,
+      patch.unsetServiceTier ? null : "default",
+    );
+    assert.equal(changed.collaborationMode.mode, "plan");
+    assert.equal(changed.model, settings.model);
+    await call("POST", `${url}/update`, 500, request);
+    assert.equal((await call("GET", url, 200)).revision, state.revision);
+  }
   console.log(
-    "Production Rust Core and worker bound and reopened a protected native settings snapshot.",
+    "Production Rust Core and worker encrypted, applied and reopened client settings with stable operation receipts.",
   );
 }
 

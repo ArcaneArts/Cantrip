@@ -215,20 +215,37 @@ impl Ensurer {
         signal: crate::metadata::Signal,
     ) -> Result<Value> {
         let scope = checked("nativeSettingsReadScopeSchema", scope)?;
-        let chat = field(&scope, "chatId")?;
+        self.settings_source(&scope, false)?.read(signal).await
+    }
+
+    pub(in crate::codex) fn settings_source(
+        &self,
+        scope: &Value,
+        write: bool,
+    ) -> Result<Arc<snapshot::Source>> {
+        let chat = field(scope, "chatId")?;
         let identity = self.identity()?;
-        let source = self
-            .0
+        self.0
             .live_threads
             .lock()
             .unwrap()
             .get(&chat)
             .filter(|owner| owner.bound == identity)
             .and_then(|owner| owner.settings.as_ref())
-            .filter(|settings| settings.source.matches_read(&scope))
+            .filter(|settings| {
+                if write {
+                    settings.source.binding_matches(scope)
+                } else {
+                    settings.source.matches_read(scope)
+                }
+            })
             .map(|settings| settings.source.clone())
-            .context("The settings read no longer refers to the current managed runtime.")?;
-        source.read(signal).await
+            .with_context(|| {
+                format!(
+                    "The settings {} no longer refers to the current managed runtime.",
+                    if write { "update" } else { "read" }
+                )
+            })
     }
 
     pub(crate) async fn prepare(&self, incoming: &Value, intent: Intent) -> Result<Prepared> {

@@ -729,6 +729,18 @@ async fn cycle(
                     });
                     continue;
                 }
+                if kind == crate::codex::turn::SETTINGS_UPDATE {
+                    let turns = turns.clone();
+                    let signal = command_signal.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = turns.update_settings(&request["command"], signal).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if kind == crate::codex::turn::SETTINGS_READ {
                     let preparation = thread_preparation.clone();
                     let signal = command_signal.clone();

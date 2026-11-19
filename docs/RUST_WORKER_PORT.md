@@ -7142,3 +7142,31 @@ its native PGlite build check.
 Permission transitions and recovery, live-turn settings, client settings
 updates, account defaults, approval replies, and runtime handoff remain
 open.
+
+## 184. Apply encrypted client settings updates
+
+Reference commit 48c45cc7f6ed2f9ea90c6fc407137971dd3b841b (#3347).
+
+Core sends the existing `chat.settings.update` command to the worker that
+owns the binding. The worker authenticates the encrypted patch against the
+chat, binding and operation, checks the selected native thread's epoch, and
+submits only the explicit fields to Codex. The exact binding and operation
+travel through Core's admission and dispatch. The console and client share
+the native settings dispatcher and evidence outbox. A correlated
+application event can confirm an applied receipt. A native acknowledgment
+alone reports a queued update.
+
+The production Rust server and worker passed the local standalone PGlite
+fixture with bundled Codex. The Node codec encrypted the client patches
+and opened the resulting snapshots. The fixture verified sparse writes,
+clearing effort and the service-tier override, mode preservation, and
+stable operation identity. An incorrect cryptographic binding and an
+unauthorized workspace produced no settings revision. Repeating an
+already-applied operation produced no second revision.
+The guest console settings and queued Plan Mode recovery smoke passed on
+rerun after a timeout in the later image test. The native server check
+and Windows x64 GNU worker cross-check passed.
+
+Managed permission transitions and recovery, live-turn settings,
+account defaults, alternate model attribution, approval replies, and
+runtime handoff remain open.
