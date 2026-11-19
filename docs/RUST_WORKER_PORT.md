@@ -141,7 +141,7 @@ loaded by a production service.
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
 | Terminals/run supervision          | Terminal manager/canonical/private state, run-configuration providers and supervisors                                                     | Native host service reconciliation/restart and owned PTY supervision                                                                                                                                                                                                                                                                                                                                    | Actual encrypted server/worker service enable, idempotence, restart, recovery and disable pass. Interactive commands, canonical terminal/replay, attachment/input/resize, CLI broker environments, run providers and delegated OS services remain pending.                                                                       |
 | WorkerLink/direct/tunnels | Gateways, peer/WebRTC, direct broker, tunnel protection and routing | Native installed authority, live observations, encrypted Host terminals and TCP, WebDAV shares, direct tickets, and LAN and WAN peer carriage | Continue managed console and guest/surface adapters. Local peer fixtures cover authenticated negotiation, encrypted TCP, credit, renewal, and revocation. |
-| Browsers/surfaces/computer use | Browser discovery, browser/desktop adapters, remote surfaces, computer use, and managed web runtimes | Native browser-service discovery, protected stream formats, and the shared Chromium process and CDP driver | Per-browser discovery exercised with both Rust services. Native Chromium health check exercised real page loading, accessibility and context isolation. Connect the driver to surface and managed-runtime owners, then port capture, input and computer-use integrations. |
+| Browsers/surfaces/computer use | Browser discovery, browser/desktop adapters, remote surfaces, computer use, and managed web runtimes | Native browser-service discovery, Chromium process and CDP driver, and encrypted browser surfaces over the legacy Core WebSocket | Both Rust services exercised protected navigation, JPEG frames, pointer/key and clipboard input, shared attachments and suspend/resume. WorkerLink browser surfaces, legacy browser WebRTC, desktop/capture, computer-use integration and managed web runtimes remain open. |
 | MCP/CLI/CodeGraph                  | `mcp/*`, CLI broker, computer-use MCP, codegraph/runtime/supervisor                                                                       | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Native stdio/HTTP helpers, generated/persisted launch commands, binding/generation scopes, CLI and managed-runtime fixtures                                                                                                                                                                                                      |
 | Cantrip OS                         | `cantrip_os/host`, `os-executor/*`, native MCP/run execution                                                                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Port Node host orchestration, Docker/guest/lifecycle/files/PTY/tunnels/packages/backups/system/checkpoints; retain independent non-Node guest helpers                                                                                                                                                                            |
 | Upgrade and packaging              | profile converter/database-transfer, server profile preparation, desktop services/worker, distribution/runtime scripts, worker Dockerfile | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Node-free legacy conversion/export/restore, desktop/standalone artifacts, existing-profile reopen and actual child-process/runtime audit                                                                                                                                                                                         |
@@ -5962,3 +5962,29 @@ Focused unit tests covered launch output and request/event correlation.
 The crate passed compile checks for Linux x64 and Windows x64.
 Production browser surfaces and managed runtime installation still need
 integration with the new driver.
+
+
+## 141. Serve native browser surfaces over the legacy Core WebSocket
+
+Reference commit `27c0a0f3ba60cd3be82a5c9e3b5aa18b1b5e95e4` (#3303).
+
+The worker opens the protected browser location from the existing attach
+command and acquires a Chromium page in the existing profile directory.
+The surface owns its input queue and tracks attachment IDs, stream counters
+and the authenticated Core socket generation. It uses the shared encrypted
+CTRS frame format for browser state, JPEG frames, input, cursor and clipboard
+traffic. Stale attachments and expired grants cannot continue using the
+stream. The surface also handles configure, suspend, resume and close.
+
+On macOS ARM64, the Rust server with PGlite and the Rust worker with Chromium
+headless shell exercised the existing public legacy surface socket. The
+fixture verified encrypted URL state and JPEG output, tampered input and
+navigation replay rejection, two attachments sharing one page, pointer,
+keyboard and clipboard input, suspend/resume, and browser deletion. The
+worker's PATH excluded Node.
+
+The default app path still needs the WorkerLink surface adapter, including
+frame chunks, grants and attachment generations. Browser WebRTC on the
+legacy feature socket, browser restart recovery, managed web sessions,
+desktop surfaces, and computer-use integration remain open. The worker
+continues to advertise browser surfaces as unavailable for automatic routing.

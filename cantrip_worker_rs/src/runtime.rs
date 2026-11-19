@@ -197,6 +197,13 @@ async fn cycle(
 
     let (stop, stop_rx) = watch::channel(false);
     let outgoing = Arc::new(Outbound::default());
+    let browser_surfaces = Arc::new(crate::browser_surface::Manager::new(
+        &data_directory,
+        environment,
+        encryption.clone(),
+        outgoing.clone(),
+        logs.clone(),
+    ));
     let shares = Arc::new(crate::project_shares::Manager::new(
         encryption.clone(),
         chat_scratch.clone(),
@@ -398,6 +405,7 @@ async fn cycle(
         stop: stop_rx.clone(),
         generation,
         worker_link: worker_link.clone(),
+        browser_surfaces: browser_surfaces.clone(),
         on_ready: {
             let observations = auth_observations.clone();
             let project_goals = project_goals.clone();
@@ -782,6 +790,21 @@ async fn cycle(
                     });
                     continue;
                 }
+                if crate::browser_surface::supports(kind) {
+                    let pending = crate::browser_surface::epoch(&request)
+                        .and_then(|epoch| browser_surfaces.submit(command, epoch));
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = match pending {
+                            Ok(receipt) => receipt.await.unwrap_or_else(|_| Err(anyhow!("Browser surface closed."))),
+                            Err(error) => Err(error),
+                        };
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if matches!(kind,"project.folder.materialize"|"project.folder.delete") {
                     let folders = folders.clone();
                     let runs = runs.clone();
@@ -948,6 +971,7 @@ async fn cycle(
     let began = std::time::Instant::now();
     stop.send_replace(true);
     command_shutdown.abort(anyhow::anyhow!("Worker shutting down."));
+    browser_surfaces.close().await;
     worktree_observations.close().await;
     timers.abort_all();
     while timers.join_next().await.is_some() {}

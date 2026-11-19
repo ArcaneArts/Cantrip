@@ -16,7 +16,12 @@
     "remoteDesktopPreparedGenerationSchema": 165,
     "remoteSurfaceViewportSchema": 167,
     "remoteSurfaceConnectionMessageSchema": 171,
-    "remoteSurfaceWebRtcConfigurationSchema": 178
+    "remoteSurfaceWebRtcConfigurationSchema": 178,
+    "remoteBrowserClientMessageSchema": 193,
+    "remoteBrowserServerMessageSchema": 257,
+    "remoteBrowserCursorMessageSchema": 306,
+    "remoteBrowserClipboardMessageSchema": 309,
+    "browserPrivateStateProtectedContentSchema": 313
   },
   "nodes": [
     {
@@ -1307,6 +1312,634 @@
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
-    { "type": "boolean", "checks": [] }
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "union",
+      "name": "remoteBrowserClientMessageSchema",
+      "options": [194, 197, 202, 204, 206, 208, 225, 234, 236, 252],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "type": 195, "operationId": 196, "stateProtection": 24 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["navigate"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "object", "shape": { "type": 198, "delta": 199 }, "checks": [] },
+    { "type": "literal", "values": ["history"], "checks": [] },
+    { "type": "union", "options": [200, 201], "checks": [] },
+    { "type": "literal", "values": [-1], "checks": [] },
+    { "type": "literal", "values": [1], "checks": [] },
+    { "type": "object", "shape": { "type": 203 }, "checks": [] },
+    { "type": "literal", "values": ["reload"], "checks": [] },
+    { "type": "object", "shape": { "type": 205 }, "checks": [] },
+    { "type": "literal", "values": ["stop"], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 207, "viewport": 167 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["viewport"], "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "type": 209,
+        "event": 210,
+        "x": 211,
+        "y": 212,
+        "button": 213,
+        "buttons": 215,
+        "clickCount": 217,
+        "deltaX": 219,
+        "deltaY": 221,
+        "modifiers": 223
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["pointer"], "checks": [] },
+    { "type": "enum", "values": ["move", "down", "up", "wheel"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 214,
+      "defaultValue": "none",
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["none", "left", "middle", "right", "back", "forward"],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 216,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 31, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 218,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 3, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 220,
+      "defaultValue": 0,
+      "checks": []
+    },
+    { "type": "number", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 222,
+      "defaultValue": 0,
+      "checks": []
+    },
+    { "type": "number", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 224,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 15, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 226,
+        "event": 227,
+        "key": 228,
+        "code": 229,
+        "text": 230,
+        "modifiers": 232
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["key"], "checks": [] },
+    { "type": "enum", "values": ["down", "up"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 231,
+      "defaultValue": "",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 10, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 233,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 15, "inclusive": true }
+      ]
+    },
+    { "type": "object", "shape": { "type": 235 }, "checks": [] },
+    { "type": "literal", "values": ["focus"], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 237, "event": 238, "points": 239, "modifiers": 250 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["touch"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["start", "move", "end", "cancel"],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 240,
+      "checks": [{ "check": "max_length", "maximum": 10, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 241,
+        "x": 242,
+        "y": 243,
+        "radiusX": 244,
+        "radiusY": 246,
+        "force": 248
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 245,
+      "defaultValue": 1,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": false }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 247,
+      "defaultValue": 1,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": false }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 249,
+      "defaultValue": 1,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 251,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 15, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "type": 253, "operation": 254, "text": 255 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["clipboard"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["copy-selection", "paste-text"],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 256,
+      "defaultValue": "",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "remoteBrowserServerMessageSchema",
+      "options": [258, 290, 297, 303],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "browserAgentCursorSchema",
+      "shape": {
+        "type": 259,
+        "epoch": 260,
+        "sequence": 261,
+        "position": 262,
+        "click": 266,
+        "dragging": 267,
+        "sprite": 268
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["browser-agent-cursor"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 263, "checks": [] },
+    { "type": "object", "shape": { "x": 264, "y": 265 }, "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 269,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "remoteCursorSpriteSchema",
+      "shape": {
+        "motion": 270,
+        "width": 281,
+        "height": 282,
+        "hotspot": 283,
+        "normal": 286,
+        "click": 288
+      },
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 271,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "minimumDistance": 272,
+        "pixelsPerMs": 273,
+        "minDurationMs": 274,
+        "maxDurationMs": 275,
+        "easing": 276
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": false }]
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    { "type": "tuple", "items": [277, 278, 279, 280], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1, "inclusive": true }
+      ]
+    },
+    { "type": "number", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1, "inclusive": true }
+      ]
+    },
+    { "type": "number", "checks": [] },
+    { "type": "literal", "values": [256], "checks": [] },
+    { "type": "literal", "values": [256], "checks": [] },
+    { "type": "object", "shape": { "x": 284, "y": 285 }, "checks": [] },
+    { "type": "literal", "values": [128], "checks": [] },
+    { "type": "literal", "values": [128], "checks": [] },
+    {
+      "type": "array",
+      "element": 287,
+      "checks": [{ "check": "max_length", "maximum": 262144, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 255, "inclusive": true }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 289,
+      "checks": [{ "check": "max_length", "maximum": 262144, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 255, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 291,
+        "operationId": 292,
+        "stateProtection": 24,
+        "title": 293,
+        "canGoBack": 294,
+        "canGoForward": 295,
+        "loading": 296
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["browser-state"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 2000, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 298, "status": 299, "message": 300 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["browser-runtime"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["ready", "recovering", "error"],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 301,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 302, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 2000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": { "type": 304, "editable": 305 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["browser-input-focus"], "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "remoteBrowserCursorMessageSchema",
+      "shape": { "type": 307, "cursor": 308 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["browser-cursor"], "checks": [] },
+    {
+      "type": "enum",
+      "values": [
+        "auto",
+        "default",
+        "none",
+        "context-menu",
+        "help",
+        "pointer",
+        "progress",
+        "wait",
+        "cell",
+        "crosshair",
+        "text",
+        "vertical-text",
+        "alias",
+        "copy",
+        "move",
+        "no-drop",
+        "not-allowed",
+        "grab",
+        "grabbing",
+        "all-scroll",
+        "col-resize",
+        "row-resize",
+        "n-resize",
+        "e-resize",
+        "s-resize",
+        "w-resize",
+        "ne-resize",
+        "nw-resize",
+        "se-resize",
+        "sw-resize",
+        "ew-resize",
+        "ns-resize",
+        "nesw-resize",
+        "nwse-resize",
+        "zoom-in",
+        "zoom-out"
+      ],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "remoteBrowserClipboardMessageSchema",
+      "shape": { "type": 310, "operation": 311, "text": 312 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["browser-clipboard"], "checks": [] },
+    { "type": "literal", "values": ["copy-selection"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "browserPrivateStateProtectedContentSchema",
+      "shape": {
+        "version": 314,
+        "classification": 315,
+        "revision": 318,
+        "url": 319
+      },
+      "catchall": 320,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "recordKind": 316 },
+      "catchall": 317,
+      "checks": []
+    },
+    { "type": "literal", "values": ["browser-state"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "string_format", "format": "url", "abort": false },
+        { "check": "max_length", "maximum": 4096, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-private-http-url",
+          "messageAfterPath": true,
+          "message": "Protected browser URLs must use HTTP or HTTPS."
+        }
+      ]
+    },
+    { "type": "never", "checks": [] }
   ]
 }

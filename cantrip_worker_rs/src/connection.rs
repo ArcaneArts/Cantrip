@@ -203,8 +203,15 @@ impl Outbound {
     }
 
     pub(crate) fn binary(&self, bytes: &[u8]) -> bool {
+        self.binary_for_epoch(bytes, None)
+    }
+
+    pub(crate) fn binary_for_epoch(&self, bytes: &[u8], epoch: Option<u64>) -> bool {
         let mut queue = self.queue.lock().unwrap();
-        if queue.closed || !queue.ready || queue.bytes + queue.in_flight + bytes.len() > MAX_PENDING
+        if queue.closed
+            || !queue.ready
+            || epoch.is_some_and(|epoch| *self.stream_epoch.borrow() != epoch)
+            || queue.bytes + queue.in_flight + bytes.len() > MAX_PENDING
         {
             return false;
         }
@@ -220,6 +227,10 @@ impl Outbound {
 
     pub fn stream_epoch(&self) -> watch::Receiver<u64> {
         self.stream_epoch.subscribe()
+    }
+    pub(crate) fn stream_current(&self, epoch: u64) -> bool {
+        let queue = self.queue.lock().unwrap();
+        queue.ready && !queue.closed && *self.stream_epoch.borrow() == epoch
     }
     /// Terminal views belong to their connected control socket. Keep their
     /// output bounded and never queue it for a replacement socket.
@@ -295,6 +306,7 @@ pub struct Connection {
     pub generation: String,
     pub on_ready: Arc<dyn Fn() + Send + Sync>,
     pub(crate) worker_link: Arc<Coordinator>,
+    pub(crate) browser_surfaces: Arc<crate::browser_surface::Manager>,
 }
 impl Connection {
     pub async fn run(mut self) -> Result<()> {
@@ -441,6 +453,12 @@ impl Connection {
                                 Some(Ok(Message::Pong(value)))=>{if pong.as_ref().is_some_and(|(nonce,_)|nonce.as_slice()==value.as_ref()) {pong=None;}},
                                 Some(Ok(Message::Ping(_)))=>{if !matches!(tokio::time::timeout(Duration::from_secs(10),socket.flush()).await,Ok(Ok(()))){break;}},
                                 Some(Ok(Message::Close(frame)))=>{rejected=frame.is_some_and(|frame|frame.code==CloseCode::Policy);break;},
+                                Some(Ok(Message::Binary(bytes))) if handshake.ready && bytes.starts_with(b"CTRS")=>{
+                                    match cantrip_framing::remote_surface::decode(Arc::from(bytes.as_ref())) {
+                                        Ok(frame) => self.browser_surfaces.receive(frame, *self.outgoing.stream_epoch.borrow()),
+                                        Err(_) => self.invalid(&worker),
+                                    }
+                                },
                                 Some(Ok(Message::Binary(bytes))) if handshake.ready && tunnel::is_frame(&bytes)=>{
                                     match tunnel::decode(Arc::from(bytes.as_ref())) {
                                         Ok(frame) => self.worker_link.handle_tunnel_frame(frame),

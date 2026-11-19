@@ -1,0 +1,739 @@
+use super::{Shared, accepted, id, profile};
+use crate::{
+    http::checked,
+    protected_content::{
+        open_private_state, open_remote_surface, protect_private_state, protect_remote_surface,
+    },
+};
+use anyhow::{Context, Result, bail, ensure};
+use base64::{Engine, engine::general_purpose::STANDARD};
+use cantrip_browser::{Event, Page};
+use cantrip_framing::remote_surface::{self, Frame};
+use cantrip_wire::{JsString, Value, parse_json_text, value::json};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+pub(super) struct Session {
+    shared: Arc<Shared>,
+    lease: profile::Lease,
+    surface: JsString,
+    owner: JsString,
+    server: Value,
+    project: Value,
+    stored: Location,
+    attachments: HashMap<JsString, Attachment>,
+    viewport: Option<Value>,
+    loading: bool,
+    suspended: bool,
+    operations: VecDeque<JsString>,
+    cursor: JsString,
+    cursor_epoch: uuid::Uuid,
+    last_cursor: Option<Instant>,
+}
+
+#[derive(PartialEq)]
+struct Location {
+    revision: u64,
+    url: JsString,
+}
+
+struct Attachment {
+    viewport: Value,
+    epoch: u64,
+    incoming: Option<u64>,
+    outgoing: HashMap<&'static str, u64>,
+}
+
+impl Session {
+    pub async fn open(
+        shared: Arc<Shared>,
+        surface: JsString,
+        command: &Value,
+        epoch: u64,
+    ) -> Result<Self> {
+        let (owner, server) = shared.encryption.bound_identity()?;
+        ensure!(
+            server == command["serverId"],
+            "Browser command has the wrong server binding."
+        );
+        ensure!(
+            shared.outgoing.stream_current(epoch),
+            "Browser command socket expired."
+        );
+        let stored = location(&shared, &owner, &surface, command)?;
+        let profile = command["configuration"]["profileId"]
+            .as_js_string()
+            .unwrap_or(&surface);
+        let viewport = &command["viewport"];
+        let lease = shared
+            .profiles
+            .open(
+                profile,
+                (
+                    viewport["width"].as_u64().unwrap() as u32,
+                    viewport["height"].as_u64().unwrap() as u32,
+                ),
+            )
+            .await?;
+        Ok(Self {
+            shared,
+            lease,
+            surface,
+            owner,
+            server,
+            stored,
+            project: command["projectId"].clone(),
+            attachments: HashMap::new(),
+            viewport: None,
+            loading: true,
+            suspended: false,
+            operations: VecDeque::new(),
+            cursor: "default".into(),
+            cursor_epoch: uuid::Uuid::new_v4(),
+            last_cursor: None,
+        })
+    }
+
+    pub async fn initialize(&mut self, viewport: &Value, epoch: u64) -> Result<()> {
+        self.authorize(epoch)?;
+        self.request("Page.enable", json!({})).await?;
+        self.request("Runtime.enable", json!({})).await?;
+        self.configure_viewport(viewport, false).await?;
+        self.navigate(self.stored.url.clone()).await
+    }
+
+    pub fn page(&self) -> &Page {
+        &self.lease.page
+    }
+
+    pub async fn close(self) {
+        self.lease.close().await;
+    }
+
+    fn authorize(&self, epoch: u64) -> Result<()> {
+        let identity = self
+            .shared
+            .encryption
+            .bound_component("surface-private-state", None)?;
+        ensure!(
+            self.owner == identity.owner_id && self.server == identity.server_id,
+            "Browser session authority changed."
+        );
+        ensure!(
+            self.shared.outgoing.stream_current(epoch),
+            "Browser attachment socket expired."
+        );
+        Ok(())
+    }
+
+    pub async fn reconcile(&mut self) -> Result<()> {
+        let identity = self
+            .shared
+            .encryption
+            .bound_component("surface-private-state", None)?;
+        ensure!(
+            identity.owner_id == self.owner && identity.server_id == self.server,
+            "Browser session authority changed."
+        );
+        let epoch = *self.shared.outgoing.stream_epoch().borrow();
+        self.attachments
+            .retain(|_, attachment| attachment.epoch == epoch);
+        Ok(())
+    }
+
+    pub async fn attach(&mut self, command: &Value, epoch: u64) -> Result<Value> {
+        self.authorize(epoch)?;
+        ensure!(
+            command["projectId"] == self.project,
+            "Browser attachment belongs to another project."
+        );
+        self.configure_location(command).await?;
+        self.attachments
+            .retain(|_, attachment| attachment.epoch == epoch);
+        let attachment = id(command, "attachmentId").clone();
+        ensure!(
+            self.attachments.contains_key(&attachment) || self.attachments.len() < 4,
+            "Remote Surface already has four active attachments."
+        );
+        let viewport = &command["viewport"];
+        self.configure_viewport(viewport, false).await?;
+        self.authorize(epoch)?;
+        self.attachments
+            .entry(attachment.clone())
+            .and_modify(|current| current.viewport = viewport.clone())
+            .or_insert(Attachment {
+                viewport: viewport.clone(),
+                epoch,
+                incoming: None,
+                outgoing: HashMap::new(),
+            });
+        self.send_json(
+            Some(&attachment),
+            "control",
+            &json!({
+                "type":"browser-agent-cursor","epoch":self.cursor_epoch.to_string(),
+                "sequence":0,"position":Value::Null,"click":false,"dragging":false,
+            }),
+        );
+        let _ = self.publish_state(Some(&attachment)).await;
+        let _ = self.screenshot(Some(&attachment)).await;
+        Ok(json!({"accepted":true,"transport":"websocket"}))
+    }
+
+    pub async fn command(&mut self, value: &Value, epoch: u64) -> Result<Value> {
+        if value["type"] == "surface.close" || value["type"] == "surface.detach" {
+            ensure!(
+                self.shared.outgoing.stream_current(epoch),
+                "Browser command authority expired."
+            );
+        } else {
+            self.authorize(epoch)?;
+        }
+        match value["type"].as_str().unwrap() {
+            "surface.attach" => return self.attach(value, epoch).await,
+            "surface.detach" => {
+                let attachment = id(value, "attachmentId");
+                if self
+                    .attachments
+                    .get(attachment)
+                    .is_some_and(|member| member.epoch == epoch)
+                {
+                    self.attachments.remove(attachment);
+                }
+            }
+            "surface.configure" => self.configure_location(value).await?,
+            "surface.suspend" => {
+                self.suspended = true;
+                self.request("Page.stopScreencast", json!({})).await?;
+            }
+            "surface.resume" => {
+                if let Some(viewport) = self
+                    .attachments
+                    .values()
+                    .next()
+                    .map(|member| member.viewport.clone())
+                {
+                    self.configure_viewport(&viewport, true).await?;
+                }
+            }
+            "surface.close" => {}
+            _ => bail!("Unknown browser surface command."),
+        }
+        Ok(accepted())
+    }
+
+    async fn configure_location(&mut self, command: &Value) -> Result<()> {
+        ensure!(
+            command["configuration"]["kind"] == "browser" && command["serverId"] == self.server,
+            "Browser configuration authority changed."
+        );
+        let next = location(&self.shared, &self.owner, &self.surface, command)?;
+        if next != self.stored {
+            ensure!(
+                next.revision >= self.stored.revision,
+                "Browser configuration revision is stale."
+            );
+            let history = self.history().await?;
+            if active_entry(&history)
+                .is_none_or(|entry| entry["url"].as_js_string() != Some(&next.url))
+            {
+                self.navigate(next.url.clone()).await?;
+            }
+            self.stored = next;
+            let _ = self.publish_state(None).await;
+        }
+        Ok(())
+    }
+
+    pub async fn frame(&mut self, frame: &Frame, epoch: u64) -> Result<()> {
+        self.authorize(epoch)?;
+        let header = frame.header();
+        let id = id(header, "attachmentId");
+        let sequence = header["sequence"].as_u64().unwrap();
+        let attachment = self
+            .attachments
+            .get_mut(id)
+            .context("Browser attachment is not active.")?;
+        ensure!(
+            attachment.epoch == epoch && attachment.incoming.is_none_or(|last| sequence > last),
+            "Browser input sequence is stale."
+        );
+        let clear = open_remote_surface(
+            &self.shared.encryption,
+            &stream(
+                &self.server,
+                &self.surface,
+                id,
+                "client-to-worker",
+                "control",
+                sequence,
+            ),
+            frame.payload(),
+        )?;
+        attachment.incoming = Some(sequence);
+        let value = parse_json_text(&String::from_utf8_lossy(&clear))
+            .map_err(|_| anyhow::anyhow!("Invalid browser control message JSON."))?;
+        let command = checked("remoteBrowserClientMessageSchema", &value)?;
+        self.authorize(epoch)?;
+        self.input(id, &command).await
+    }
+
+    async fn input(&mut self, attachment: &JsString, message: &Value) -> Result<()> {
+        match message["type"].as_str().unwrap() {
+            "viewport" => {
+                self.attachments.get_mut(attachment).unwrap().viewport =
+                    message["viewport"].clone();
+                self.configure_viewport(&message["viewport"], false).await?;
+                self.publish_state(Some(attachment)).await?;
+                self.screenshot(Some(attachment)).await?;
+            }
+            "navigate" => {
+                let operation = id(message, "operationId");
+                let content = open_private_state(
+                    &self.shared.encryption,
+                    &self.owner,
+                    &private(
+                        &self.server,
+                        &self.surface,
+                        &json!(operation),
+                        "browser-operation",
+                    ),
+                    &message["stateProtection"],
+                )?;
+                let content = checked("browserPrivateStateProtectedContentSchema", &content)?;
+                ensure!(
+                    content["revision"].as_u64() == Some(self.stored.revision),
+                    "Browser navigation revision is stale."
+                );
+                ensure!(
+                    !self.operations.contains(operation),
+                    "Browser navigation was already applied."
+                );
+                self.operations.push_back(operation.clone());
+                if self.operations.len() > 1_000 {
+                    self.operations.pop_front();
+                }
+                self.navigate(id(&content, "url").clone()).await?;
+            }
+            "history" => {
+                let history = self.history().await?;
+                let next = history["currentIndex"].as_i64().unwrap_or(0)
+                    + message["delta"].as_i64().unwrap();
+                if let Some(entry) = usize::try_from(next)
+                    .ok()
+                    .and_then(|index| history["entries"].as_array()?.get(index))
+                {
+                    self.loading = true;
+                    self.request(
+                        "Page.navigateToHistoryEntry",
+                        json!({"entryId":entry["id"]}),
+                    )
+                    .await?;
+                }
+            }
+            "reload" => {
+                self.loading = true;
+                self.request("Page.reload", json!({})).await?;
+            }
+            "stop" => {
+                self.request("Page.stopLoading", json!({})).await?;
+                self.loading = false;
+                self.publish_state(None).await?;
+            }
+            "pointer" => self.pointer(message).await?,
+            "key" => self.key(message).await?,
+            "touch" => {
+                let kind = match message["event"].as_str().unwrap() {
+                    "start" => "touchStart",
+                    "move" => "touchMove",
+                    "cancel" => "touchCancel",
+                    _ => "touchEnd",
+                };
+                self.request(
+                    "Input.dispatchTouchEvent",
+                    json!({
+                        "type":kind,"touchPoints":message["points"],"modifiers":message["modifiers"]
+                    }),
+                )
+                .await?;
+                if kind == "touchEnd" {
+                    self.input_focus(attachment).await?;
+                }
+            }
+            "clipboard" if message["operation"] == "paste-text" => {
+                if !id(message, "text").is_empty() {
+                    self.request("Input.insertText", json!({"text":message["text"]}))
+                        .await?;
+                }
+            }
+            "clipboard" => {
+                let text = self
+                    .page()
+                    .evaluate("String(globalThis.getSelection?.() ?? '')")
+                    .await?;
+                let result = checked(
+                    "remoteBrowserClipboardMessageSchema",
+                    &json!({
+                        "type":"browser-clipboard","operation":"copy-selection","text":text
+                    }),
+                )?;
+                self.send_json(Some(attachment), "clipboard", &result);
+            }
+            "focus" => {
+                self.request("Page.bringToFront", json!({})).await?;
+            }
+            _ => bail!("Unsupported browser input."),
+        }
+        Ok(())
+    }
+
+    async fn pointer(&mut self, message: &Value) -> Result<()> {
+        let kind = match message["event"].as_str().unwrap() {
+            "move" => "mouseMoved",
+            "down" => "mousePressed",
+            "up" => "mouseReleased",
+            _ => "mouseWheel",
+        };
+        self.request("Input.dispatchMouseEvent", json!({
+            "type":kind,"pointerType":"mouse","x":message["x"],"y":message["y"],
+            "button":message["button"],"buttons":message["buttons"],"clickCount":message["clickCount"],
+            "deltaX":message["deltaX"],"deltaY":message["deltaY"],"modifiers":message["modifiers"]
+        })).await?;
+        if kind == "mouseMoved"
+            && self
+                .last_cursor
+                .is_none_or(|at| at.elapsed() >= Duration::from_millis(50))
+        {
+            self.last_cursor = Some(Instant::now());
+            let expression = format!(
+                "(() => {{const node=document.elementFromPoint({},{});return node ? getComputedStyle(node).cursor : 'default'}})()",
+                message["x"].stringify(),
+                message["y"].stringify()
+            );
+            let result = self.page().evaluate(&expression).await?;
+            let parsed = checked(
+                "remoteBrowserCursorMessageSchema",
+                &json!({"type":"browser-cursor","cursor":result}),
+            )
+            .unwrap_or_else(|_| json!({"type":"browser-cursor","cursor":"default"}));
+            // Store only the bounded, validated cursor enum string.
+            let next = id(&parsed, "cursor");
+            if self.cursor != *next {
+                self.cursor = next.clone();
+                self.send_json(None, "cursor", &parsed);
+            }
+        }
+        Ok(())
+    }
+
+    async fn key(&self, message: &Value) -> Result<()> {
+        let key = message["key"].as_str().unwrap_or_default();
+        let down = message["event"] == "down";
+        let modifiers = message["modifiers"].as_u64().unwrap();
+        let explicit = if !down || (key == "Enter" && modifiers & !8 != 0) {
+            None
+        } else if key == "Enter" {
+            Some(json!("\r"))
+        } else {
+            message["text"]
+                .as_js_string()
+                .filter(|text| !text.is_empty())
+                .map(|text| json!(text))
+        };
+        let kind = if !down {
+            "keyUp"
+        } else if explicit.is_some() {
+            "keyDown"
+        } else {
+            "rawKeyDown"
+        };
+        let mut params = json!({
+            "type":kind,"key":message["key"],"code":message["code"],"modifiers":message["modifiers"]
+        });
+        if let Some(text) = explicit {
+            params["unmodifiedText"] = text.clone();
+            params["text"] = text;
+        }
+        if let Some(code) = key_code(key) {
+            params["windowsVirtualKeyCode"] = json!(code);
+        }
+        if key == "Enter" && message["code"] == "NumpadEnter" {
+            params["isKeypad"] = json!(true);
+            params["location"] = json!(3);
+        }
+        self.request("Input.dispatchKeyEvent", params).await?;
+        Ok(())
+    }
+
+    async fn input_focus(&mut self, attachment: &JsString) -> Result<()> {
+        let editable = self.page().evaluate(
+            "(() => {const e=document.activeElement;if(!(e instanceof HTMLElement))return false;if(e instanceof HTMLTextAreaElement)return !e.disabled&&!e.readOnly;if(e instanceof HTMLInputElement)return !e.disabled&&!e.readOnly&&!['button','checkbox','color','file','hidden','image','radio','range','reset','submit'].includes(e.type);return e.isContentEditable})()"
+        ).await.ok().and_then(|value| value.as_bool()).unwrap_or(false);
+        self.send_json(
+            Some(attachment),
+            "control",
+            &json!({"type":"browser-input-focus","editable":editable}),
+        );
+        Ok(())
+    }
+
+    async fn navigate(&mut self, url: JsString) -> Result<()> {
+        self.loading = true;
+        let result = self.request("Page.navigate", json!({"url":url})).await;
+        match result {
+            Ok(reply) if reply["errorText"].is_null() => Ok(()),
+            _ => {
+                self.loading = false;
+                bail!("Chromium could not navigate to the browser location.")
+            }
+        }
+    }
+
+    async fn configure_viewport(&mut self, viewport: &Value, restart: bool) -> Result<()> {
+        if !restart && !self.suspended && self.viewport.as_ref() == Some(viewport) {
+            return Ok(());
+        }
+        self.request(
+            "Emulation.setDeviceMetricsOverride",
+            json!({
+                "width":viewport["width"],"height":viewport["height"],
+                "deviceScaleFactor":viewport["devicePixelRatio"],"mobile":false
+            }),
+        )
+        .await?;
+        self.request(
+            "Emulation.setTouchEmulationEnabled",
+            json!({"enabled":true,"maxTouchPoints":10}),
+        )
+        .await?;
+        let _ = self.request("Page.stopScreencast", json!({})).await;
+        self.request("Page.startScreencast", json!({
+            "format":"jpeg","quality":78,"maxWidth":viewport["width"],"maxHeight":viewport["height"],"everyNthFrame":1
+        })).await?;
+        self.viewport = Some(viewport.clone());
+        self.suspended = false;
+        Ok(())
+    }
+
+    pub async fn event(&mut self, event: Event) {
+        match event.method() {
+            "Page.screencastFrame" => {
+                let params = event.params();
+                let _ = self
+                    .request(
+                        "Page.screencastFrameAck",
+                        json!({"sessionId":params["sessionId"]}),
+                    )
+                    .await;
+                if !self.suspended
+                    && let Some(data) = params["data"].as_str()
+                    && let Ok(bytes) = STANDARD.decode(data)
+                {
+                    self.send(None, "frame", &bytes);
+                }
+            }
+            "Page.frameStartedLoading" => {
+                self.loading = true;
+                let _ = self.publish_state(None).await;
+            }
+            "Page.frameStoppedLoading" | "Page.loadEventFired" => {
+                self.loading = false;
+                let _ = self.publish_state(None).await;
+                let _ = self.screenshot(None).await;
+            }
+            "Page.frameNavigated" if event.params()["frame"]["parentId"].is_null() => {
+                if !self.suspended
+                    && let Some(viewport) = self.viewport.clone()
+                {
+                    let _ = self.configure_viewport(&viewport, true).await;
+                }
+                let _ = self.publish_state(None).await;
+            }
+            "Page.navigatedWithinDocument" => {
+                let _ = self.publish_state(None).await;
+            }
+            _ => {}
+        }
+    }
+
+    async fn history(&self) -> Result<Value> {
+        self.request("Page.getNavigationHistory", json!({})).await
+    }
+
+    async fn publish_state(&mut self, only: Option<&JsString>) -> Result<()> {
+        if self.attachments.is_empty() {
+            return Ok(());
+        }
+        let history = self.history().await?;
+        let Some(entry) = active_entry(&history) else {
+            return Ok(());
+        };
+        let operation = json!(uuid::Uuid::new_v4().to_string());
+        let protected = protect_private_state(
+            &self.shared.encryption,
+            &self.owner,
+            &private(&self.server, &self.surface, &operation, "browser-operation"),
+            &json!({"version":1,"classification":json!({"recordKind":"browser-state"}),
+                "revision":self.stored.revision,"url":entry["url"]}),
+        )?;
+        let title = entry["title"]
+            .as_js_string()
+            .map(|text| JsString::new(text.units().iter().take(2_000).copied().collect()))
+            .unwrap_or_else(|| "".into());
+        let index = history["currentIndex"].as_u64().unwrap_or(0);
+        let count = history["entries"]
+            .as_array()
+            .map_or(0, |entries| entries.len() as u64);
+        let message = checked(
+            "remoteBrowserServerMessageSchema",
+            &json!({
+                "type":"browser-state","operationId":operation,"stateProtection":protected,
+                "title":title,"canGoBack":index > 0,"canGoForward":index + 1 < count,"loading":self.loading
+            }),
+        )?;
+        self.send_json(only, "control", &message);
+        Ok(())
+    }
+
+    async fn screenshot(&mut self, only: Option<&JsString>) -> Result<()> {
+        if self.suspended || self.attachments.is_empty() {
+            return Ok(());
+        }
+        let screenshot = self
+            .request(
+                "Page.captureScreenshot",
+                json!({
+                    "format":"jpeg","quality":78,"fromSurface":true,"captureBeyondViewport":false,
+                }),
+            )
+            .await?;
+        let data = STANDARD.decode(
+            screenshot["data"]
+                .as_str()
+                .context("Chromium returned no browser frame.")?,
+        )?;
+        self.send(only, "frame", &data);
+        Ok(())
+    }
+
+    fn send_json(&mut self, only: Option<&JsString>, channel: &'static str, value: &Value) {
+        self.send(only, channel, value.stringify().as_bytes());
+    }
+
+    fn send(&mut self, only: Option<&JsString>, channel: &'static str, data: &[u8]) {
+        let encryption = &self.shared.encryption;
+        let outgoing = &self.shared.outgoing;
+        let matches_owner = || {
+            encryption
+                .bound_identity()
+                .is_ok_and(|(owner, server)| owner == self.owner && server == self.server)
+        };
+        if !matches_owner() {
+            return;
+        }
+        for (id, member) in &mut self.attachments {
+            if only.is_some_and(|chosen| chosen != id) || !outgoing.stream_current(member.epoch) {
+                continue;
+            }
+            let position = member.outgoing.entry(channel).or_default();
+            let binding = stream(
+                &self.server,
+                &self.surface,
+                id,
+                "worker-to-client",
+                channel,
+                *position,
+            );
+            let result = protect_remote_surface(encryption, &binding, data).and_then(|payload| {
+                remote_surface::create(json!({
+                    "protocolVersion":1,"surfaceId":self.surface,"attachmentId":id,"sequence":*position,"channel":channel
+                }), &payload)
+            });
+            if let Ok(frame) = result
+                && matches_owner()
+                && outgoing.binary_for_epoch(frame.bytes(), Some(member.epoch))
+            {
+                *position += 1;
+            }
+        }
+    }
+
+    async fn request(&self, method: &str, value: Value) -> Result<Value> {
+        self.page().request(method, value).await
+    }
+}
+
+fn location(
+    shared: &Shared,
+    owner: &JsString,
+    surface: &JsString,
+    command: &Value,
+) -> Result<Location> {
+    let resource = command["stateResource"]
+        .as_str()
+        .context("Browser configuration resource is missing.")?;
+    ensure!(
+        matches!(resource, "browser-row" | "browser-remote-surface"),
+        "Browser configuration resource is invalid."
+    );
+    let opened = open_private_state(
+        &shared.encryption,
+        owner,
+        &private(&command["serverId"], surface, &Value::Null, resource),
+        &command["stateProtection"],
+    )?;
+    let checked = checked("browserPrivateStateProtectedContentSchema", &opened)?;
+    ensure!(
+        checked["revision"] == command["stateRevision"],
+        "Browser configuration revision is stale."
+    );
+    Ok(Location {
+        revision: checked["revision"].as_u64().unwrap(),
+        url: id(&checked, "url").clone(),
+    })
+}
+
+fn stream(
+    server: &Value,
+    surface: &JsString,
+    attachment: &JsString,
+    direction: &str,
+    channel: &str,
+    sequence: u64,
+) -> Value {
+    json!({"serverId":server,"surfaceKind":"browser","surfaceId":surface,
+        "attachmentId":attachment,"direction":direction,"channel":channel,"sequence":sequence})
+}
+
+fn private(server: &Value, surface: &JsString, operation: &Value, resource: &str) -> Value {
+    json!({"serverId":server,"resource":resource,"resourceId":surface,
+        "operationId":operation,"recordKind":"browser-state"})
+}
+
+fn active_entry(history: &Value) -> Option<&Value> {
+    let index = history["currentIndex"].as_u64()? as usize;
+    history["entries"].as_array()?.get(index)
+}
+
+fn key_code(key: &str) -> Option<u16> {
+    Some(match key {
+        "Backspace" => 8,
+        "Tab" => 9,
+        "Enter" => 13,
+        "Escape" => 27,
+        " " => 32,
+        "PageUp" => 33,
+        "PageDown" => 34,
+        "End" => 35,
+        "Home" => 36,
+        "ArrowLeft" => 37,
+        "ArrowUp" => 38,
+        "ArrowRight" => 39,
+        "ArrowDown" => 40,
+        "Delete" => 46,
+        _ => return None,
+    })
+}
