@@ -17,6 +17,7 @@ import { fixtureEnvironment, startServer } from "../server-rust/process.mjs";
 import { discoveryWireFixtures } from "../server-rust/discovery-wire-fixtures.mjs";
 import { projectLabel } from "../server-rust/security-fixtures.mjs";
 import { taskContent } from "../server-rust/task-wire-fixtures.mjs";
+import { verifyEndpointCatalog } from "./endpoint-catalog-smoke-cases.mjs";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
 import { taskModelProvider } from "../server-rust/task-model-provider.mjs";
 
@@ -48,6 +49,7 @@ const key = (component) =>
 const chatKey = key("chat-content");
 const labelKey = key("private-surface-metadata");
 const taskKey = key("task-content");
+const providerKey = key("provider-credential");
 let server;
 let child;
 let workerExit;
@@ -141,6 +143,7 @@ async function setupEncryption() {
     ["chat-content", chatKey],
     ["private-surface-metadata", labelKey],
     ["task-content", taskKey],
+    ["provider-credential", providerKey],
   ]) {
     await call("POST", `/api/encryption/principals/${worker.id}/grants`, 201, {
       component,
@@ -683,6 +686,13 @@ try {
     (value) => assert.match(value, /event=worker\.connection\.connected/),
   );
   await setupEncryption();
+  await verifyEndpointCatalog({
+    call,
+    ownerId,
+    workerId,
+    keyRevision,
+    componentKey: providerKey,
+  });
   await verifyProviderCapacity();
 
   const primary = await createModel("Response model");
@@ -731,6 +741,7 @@ try {
       taskLabelFromPausedQueue: true,
       revokedTaskCannotPublishTitle: true,
       liveProviderQueueAndLimit: true,
+      endpointCatalogPagingAndMetadata: true,
     }),
   );
 } catch (error) {
@@ -758,6 +769,7 @@ try {
     chatKey.fill(0);
     labelKey.fill(0);
     taskKey.fill(0);
+    providerKey.fill(0);
     master.fill(0);
     await rm(root, { recursive: true, force: true });
   }

@@ -1,5 +1,6 @@
 //! Existing account-backed ChatGPT discovery over the owned native runtime.
 pub(in crate::codex) mod auth;
+pub(crate) mod endpoint;
 mod quota;
 
 use crate::{

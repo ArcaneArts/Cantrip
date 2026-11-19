@@ -5044,3 +5044,30 @@ the same run.
 
 Provider model discovery, general resource-revocation delivery, and
 production cutover remain open.
+
+## 108. Discover compatible endpoint models in the Rust worker
+
+Reference commit `17e480be2c9acc0bc5155177e8ccbf246f2c6f16` (#3270).
+
+The Rust worker handles `model.endpoint.catalog`. It authenticates with
+the worker's protected provider credential, follows same-origin provider
+continuations, and normalizes model capabilities before returning them
+through Core's paged catalog contract. Catalog snapshots share concurrent
+loads, keep each transfer's cursor separate, and are bounded by size,
+concurrent discovery, and expiry. Legacy callers receive the complete
+legacy inventory when it fits the existing limits.
+
+LM Studio and LiteLLM can enrich the standard catalog. Unavailable or
+invalid enrichment leaves the standard catalog intact and tells Core to
+retain prior observations. LiteLLM contributes normalized capabilities
+only for aliases advertised by the standard endpoint.
+
+Local macOS ARM64 validation used both Rust services, PGlite, an empty
+worker PATH, and authenticated loopback endpoints. Core received 206
+models over multiple worker pages, retained prior models after a
+malformed overlay, and served its cached catalog when an endpoint
+returned a redirect. LiteLLM discovery preserved capability metadata
+and excluded private deployment fields.
+
+Ollama discovery, provider operation adapters, inference
+resource-revocation delivery, and production cutover remain open.

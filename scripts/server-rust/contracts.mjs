@@ -971,6 +971,7 @@ export const contractRoots = [
   "nativeCommandAdmissionResultSchema",
   "nativeCommandSettlementResultSchema",
   "standaloneChatScratchResolveResultSchema",
+  "endpointModelInventoryItemSchema",
 ];
 
 export const projectExportContractRoots = [
