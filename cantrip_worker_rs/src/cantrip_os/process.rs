@@ -12,7 +12,25 @@ use std::time::Duration;
 use tokio::time::Instant;
 use uuid::Uuid;
 
-const MAX_OUTPUT: usize = 4 * 1024 * 1024;
+#[derive(Clone, Copy)]
+pub(super) struct Limits {
+    pub deadline: Duration,
+    pub output: usize,
+}
+
+pub(super) struct Invocation<'a> {
+    pub argv: &'a [&'a str],
+    pub cwd: &'a str,
+    pub env: Value,
+    pub input: Option<&'a [u8]>,
+}
+
+pub(super) struct Output {
+    pub stdout: String,
+    pub stderr: String,
+    pub successful: bool,
+    exit_code: Value,
+}
 
 pub(super) async fn command(
     session: &mut Session<'_>,
@@ -20,101 +38,171 @@ pub(super) async fn command(
     argv: &[&str],
     cwd: &str,
 ) -> Result<String> {
-    let cwd = file_uri(cwd)?;
+    let output = run(
+        session,
+        journal,
+        Invocation {
+            argv,
+            cwd,
+            env: json!({"GIT_TERMINAL_PROMPT":"0","GIT_OPTIONAL_LOCKS":"0"}),
+            input: None,
+        },
+        Limits {
+            deadline: Duration::from_secs(30 * 60),
+            output: 4 * 1024 * 1024,
+        },
+    )
+    .await?;
+    ensure!(
+        output.successful,
+        "Linux source command exited {}.",
+        output.exit_code.stringify()
+    );
+    let mut stdout = output.stdout;
+    // Keep significant path bytes and remove only the final Linux delimiter.
+    if stdout.ends_with('\n') {
+        stdout.pop();
+    }
+    Ok(stdout)
+}
+
+pub(super) async fn run(
+    session: &mut Session<'_>,
+    journal: Option<&mut Journal<'_>>,
+    invocation: Invocation<'_>,
+    limits: Limits,
+) -> Result<Output> {
+    let cwd = file_uri(invocation.cwd)?;
     let id = Uuid::new_v4().to_string();
     if let Some(journal) = journal {
-        journal.prepare_process(&id, argv)?;
+        journal.prepare_process(&id, invocation.argv)?;
     }
-    let receipt = async {
-        let deadline = Instant::now() + Duration::from_secs(30 * 60);
+    let deadline = Instant::now() + limits.deadline;
+    let result = async {
         session
             .request(
                 "process/start",
-                json!({"processId":id,"argv":argv,"cwd":cwd.as_str(),
-                    "env":json!({"GIT_TERMINAL_PROMPT":"0","GIT_OPTIONAL_LOCKS":"0"}),
-                    "tty":false,"pipeStdin":false,"arg0":Value::Null,"sandbox":Value::Null}),
+                json!({"processId":id,"argv":invocation.argv,"cwd":cwd.as_str(),
+                    "env":invocation.env,"tty":false,"pipeStdin":invocation.input.is_some(),
+                    "arg0":Value::Null,"sandbox":Value::Null}),
             )
             .await?;
-        let mut after = None::<u64>;
-        let mut termination = None;
-        let mut exited = false;
-        let mut output = Vec::new();
-        let mut bytes = 0_usize;
-        let mut truncated = false;
-        loop {
-            let expired = Instant::now() >= deadline;
-            if termination.is_none() && (expired || (!exited && bytes > MAX_OUTPUT)) {
-                session
-                    .request("process/terminate", json!({"processId":id}))
-                    .await?;
-                termination = Some(Instant::now() + Duration::from_secs(10));
-            }
-            let page = session
-                .request(
-                    "process/read",
-                    json!({"processId":id,"afterSeq":after,"maxBytes":65536,"waitMs":200}),
-                )
-                .await?;
-            let chunks = page["chunks"].as_array().context("Guest process output")?;
-            let cursor = page["nextSeq"]
-                .as_u64()
-                .context("Guest process cursor")?
-                .saturating_sub(1);
-            ensure!(
-                cursor >= after.unwrap_or(0),
-                "Guest process cursor moved backwards."
-            );
-            exited = page["exited"]
-                .as_bool()
-                .context("Guest process exit flag")?;
-            let closed = page["closed"]
-                .as_bool()
-                .context("Guest process close flag")?;
-            if page["outputEvictedThroughSeq"]
-                .as_u64()
-                .is_some_and(|seq| seq > after.unwrap_or(0))
-            {
-                truncated = true;
-            }
-            for chunk in chunks {
-                let data = STANDARD.decode(text(chunk, "chunk")?)?;
-                if text(chunk, "stream")? == "stdout" {
-                    output.extend_from_slice(
-                        &data[..data.len().min(MAX_OUTPUT.saturating_sub(bytes))],
-                    );
-                }
-                bytes = bytes.saturating_add(data.len());
-            }
-            after = Some(cursor);
-            if exited && closed && chunks.is_empty() {
-                ensure!(
-                    !truncated && bytes <= MAX_OUTPUT,
-                    "Guest process output is incomplete."
-                );
-                return Ok::<_, anyhow::Error>((page, output, termination.is_some()));
-            }
-            ensure!(
-                (!closed || exited) && page["failure"].is_null(),
-                "Guest process closed without an observed exit."
-            );
-            if termination.is_some_and(|deadline| Instant::now() >= deadline) {
-                bail!("Guest process did not close after termination.");
+        if let Some(input) = invocation.input {
+            for chunk in input.chunks(32768) {
+                let result = session.request("process/write", json!({
+                    "processId":id,"writeId":Uuid::new_v4().to_string(),"chunk":STANDARD.encode(chunk),
+                })).await?;
+                ensure!(result["status"] == "accepted", "Linux process input was not acknowledged.");
             }
         }
-    }
+        read(session, &id, deadline, limits.output, false).await
+    }.await;
+    result.map_err(|error| uncertain(&id, error))
+}
+
+pub(super) async fn observe(session: &mut Session<'_>, id: &str, limits: Limits) -> Result<Output> {
+    read(
+        session,
+        id,
+        Instant::now() + limits.deadline,
+        limits.output,
+        true,
+    )
     .await
-    .map_err(|error| {
-        DeliveryUnknown(format!(
-            "Linux process {id} has an unknown outcome; inspect its native session: {error}"
-        ))
-    })?;
-    let (page, output, terminated) = receipt;
-    ensure!(
-        page["exitCode"].as_u64() == Some(0) && page["failure"].is_null() && !terminated,
-        "Linux source command exited {}.",
-        page["exitCode"].stringify()
-    );
-    // Keep significant path bytes and remove only the final Linux delimiter.
-    let output = output.strip_suffix(b"\n").unwrap_or(&output);
-    Ok(String::from_utf8_lossy(output).into_owned())
+    .map_err(|error| uncertain(id, error))
+}
+
+fn uncertain(id: &str, error: anyhow::Error) -> anyhow::Error {
+    DeliveryUnknown(format!(
+        "Linux process {id} has an unknown outcome; inspect its native session: {error}"
+    ))
+    .into()
+}
+
+async fn read(
+    session: &mut Session<'_>,
+    id: &str,
+    deadline: Instant,
+    capacity: usize,
+    observe_only: bool,
+) -> Result<Output> {
+    let mut after = None::<u64>;
+    let mut termination = None;
+    let mut exited = false;
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let mut bytes = 0_usize;
+    let mut truncated = false;
+    loop {
+        let expired = Instant::now() >= deadline;
+        let over_capacity = bytes > capacity;
+        if observe_only {
+            ensure!(
+                !expired && !over_capacity,
+                "Guest process observation reached its bound."
+            );
+        } else if termination.is_none() && (expired || (!exited && over_capacity)) {
+            session
+                .request("process/terminate", json!({"processId":id}))
+                .await?;
+            termination = Some(Instant::now() + Duration::from_secs(10));
+        }
+        let page = session
+            .request(
+                "process/read",
+                json!({"processId":id,"afterSeq":after,"maxBytes":65536,"waitMs":200}),
+            )
+            .await?;
+        let chunks = page["chunks"].as_array().context("Guest process output")?;
+        let cursor = page["nextSeq"]
+            .as_u64()
+            .context("Guest process cursor")?
+            .saturating_sub(1);
+        ensure!(
+            cursor >= after.unwrap_or(0),
+            "Guest process cursor moved backwards."
+        );
+        exited = page["exited"]
+            .as_bool()
+            .context("Guest process exit flag")?;
+        let closed = page["closed"]
+            .as_bool()
+            .context("Guest process close flag")?;
+        truncated |= page["outputEvictedThroughSeq"]
+            .as_u64()
+            .is_some_and(|seq| seq > after.unwrap_or(0));
+        for chunk in chunks {
+            let data = STANDARD.decode(text(chunk, "chunk")?)?;
+            let retained = &data[..data.len().min(capacity.saturating_sub(bytes))];
+            match text(chunk, "stream")? {
+                "stdout" => stdout.extend_from_slice(retained),
+                "stderr" => stderr.extend_from_slice(retained),
+                _ => {}
+            }
+            bytes = bytes.saturating_add(data.len());
+        }
+        after = Some(cursor);
+        // The exit flag can arrive before the last page of output.
+        if exited && closed && chunks.is_empty() {
+            ensure!(
+                !truncated && bytes <= capacity,
+                "Guest process output is incomplete."
+            );
+            return Ok(Output {
+                stdout: String::from_utf8_lossy(&stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&stderr).into_owned(),
+                successful: page["exitCode"].as_u64() == Some(0)
+                    && page["failure"].is_null()
+                    && termination.is_none(),
+                exit_code: page["exitCode"].clone(),
+            });
+        }
+        ensure!(
+            (!closed || exited) && page["failure"].is_null(),
+            "Guest process closed without an observed exit."
+        );
+        if termination.is_some_and(|deadline| Instant::now() >= deadline) {
+            bail!("Guest process did not close after termination.");
+        }
+    }
 }

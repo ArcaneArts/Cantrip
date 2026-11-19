@@ -175,6 +175,21 @@ impl Operations {
         admission: Value,
         run: impl AsyncFnOnce(&mut Journal<'_>) -> Result<Value>,
     ) -> Result<Value> {
+        result(
+            &self
+                .execute_record(scope, id, command, admission, run)
+                .await?,
+        )
+    }
+
+    pub async fn execute_record(
+        &self,
+        scope: &Value,
+        id: &str,
+        command: &str,
+        admission: Value,
+        run: impl AsyncFnOnce(&mut Journal<'_>) -> Result<Value>,
+    ) -> Result<Value> {
         let file = self.file(scope, id)?;
         let fingerprint = digest(Value::Array(vec![json!(command), admission]));
         let time = now();
@@ -199,7 +214,7 @@ impl Operations {
                         && &prior["scope"] == scope,
                     "The OS operation ID already belongs to a different admission."
                 );
-                return result(&prior);
+                return Ok(prior);
             }
             active.insert(file.clone());
             Active {
@@ -227,7 +242,45 @@ impl Operations {
             }
         }
         journal.save()?;
-        result(&journal.record)
+        Ok(journal.record)
+    }
+
+    pub fn complete_observed(&self, prior: &Value, receipt: Value) -> Result<Value> {
+        let id = super::text(prior, "operationId")?;
+        let file = self.file(&prior["scope"], id)?;
+        let active = self.active.lock().unwrap();
+        ensure!(!active.contains(&file), "The OS operation is still active.");
+        let mut current = self
+            .read(&file, id, false)?
+            .context("The observed OS operation disappeared.")?;
+        ensure!(
+            [
+                "command",
+                "scope",
+                "admissionFingerprint",
+                "native",
+                "processes"
+            ]
+            .into_iter()
+            .all(|field| current[field] == prior[field]),
+            "The observed OS operation identity changed."
+        );
+        if current["state"] == "ready" {
+            return Ok(current);
+        }
+        ensure!(
+            current["state"] == "unknown",
+            "Only an unknown OS operation can be recovered."
+        );
+        current["state"] = json!("ready");
+        current["receipt"] = receipt;
+        current["error"] = Value::Null;
+        let mut journal = Journal {
+            file: &file,
+            record: current,
+        };
+        journal.save()?;
+        Ok(journal.record)
     }
 }
 

@@ -133,6 +133,8 @@ export async function verifySources({
   docker,
   eventually,
   linked: linkedFixture,
+  runDefinitions,
+  stopWorker,
   restartWorker,
 }) {
   assert.equal(os.ownerId, ownerId);
@@ -356,6 +358,25 @@ export async function verifySources({
   console.log(
     "Native Cantrip OS source smoke passed: folder, atomic conflict, Git, worktree, existing source and restart recovery.",
   );
+  if (runDefinitions) {
+    const { verifyRunDefinitions } =
+      await import("./cantrip-os-run-definition-cases.mjs");
+    await verifyRunDefinitions({
+      call,
+      route: route(managed),
+      binding: managed,
+      os,
+      actual,
+      data,
+      workerId,
+      serverId,
+      hash,
+      docker,
+      container,
+      stopWorker,
+      restartWorker,
+    });
+  }
   if (!linkedFixture) return;
 
   // Materialize a real Host project through the existing public APIs. Use its
