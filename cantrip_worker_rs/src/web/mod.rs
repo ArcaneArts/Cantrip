@@ -101,6 +101,8 @@ struct Document {
 pub(crate) struct Service {
     state: Mutex<State>,
     sessions: session::Sessions,
+    visible: session::Visible,
+    browser_surfaces: Option<Arc<crate::browser_surface::Manager>>,
     network: Network,
     robots: Robots,
     extraction: Arc<Semaphore>,
@@ -116,6 +118,8 @@ impl Default for Service {
         Self {
             state: Mutex::new(State::default()),
             sessions: session::Sessions::default(),
+            visible: session::Visible::default(),
+            browser_surfaces: None,
             network: Network::default(),
             robots: Robots::default(),
             extraction: Arc::new(Semaphore::new(2)),
@@ -149,6 +153,14 @@ impl Service {
             search,
             ..Self::default()
         }
+    }
+
+    pub(crate) fn with_browser_surfaces(
+        mut self,
+        surfaces: Option<Arc<crate::browser_surface::Manager>>,
+    ) -> Self {
+        self.browser_surfaces = surfaces;
+        self
     }
 
     pub(crate) async fn read(

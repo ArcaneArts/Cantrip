@@ -169,7 +169,11 @@ pub(super) async fn navigate(page: &Page, policy: &Policy, url: &Url) -> Result<
     Ok(())
 }
 
-async fn loaded(events: &mut Subscription, loader: &JsString, frame: &JsString) -> Result<()> {
+pub(super) async fn loaded(
+    events: &mut Subscription,
+    loader: &JsString,
+    frame: &JsString,
+) -> Result<()> {
     loop {
         let event = events.next().await?;
         if event.method() == "Page.lifecycleEvent"

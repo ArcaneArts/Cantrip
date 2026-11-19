@@ -152,7 +152,7 @@ impl Broker {
         identity: Identity,
         server: Server,
     ) -> Result<Self> {
-        Self::start_with_web(data, worker, identity, server, None).await
+        Self::start_with_web(data, worker, identity, server, None, None).await
     }
 
     pub(crate) async fn start_with_web(
@@ -161,6 +161,7 @@ impl Broker {
         identity: Identity,
         server: Server,
         runtimes: Option<Arc<crate::managed_web::Runtimes>>,
+        browsers: Option<Arc<crate::browser_surface::Manager>>,
     ) -> Result<Self> {
         let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
         let endpoint = format!("http://{}", listener.local_addr()?);
@@ -170,10 +171,13 @@ impl Broker {
             worker,
             identity,
             server,
-            web: Arc::new(crate::web::Service::new(
-                runtimes.as_ref().map(|runtimes| runtimes.browser.clone()),
-                runtimes.as_ref().map(|runtimes| runtimes.search.clone()),
-            )),
+            web: Arc::new(
+                crate::web::Service::new(
+                    runtimes.as_ref().map(|runtimes| runtimes.browser.clone()),
+                    runtimes.as_ref().map(|runtimes| runtimes.search.clone()),
+                )
+                .with_browser_surfaces(browsers),
+            ),
             entries: Mutex::new(Entries::default()),
             negotiated: AsyncMutex::new(None),
         });
@@ -229,7 +233,15 @@ impl Broker {
         .chain(
             crate::web::session::TOOLS
                 .into_iter()
-                .map(|(operation, tool)| (operation, tool, sessions)),
+                .map(|(operation, tool)| {
+                    (
+                        operation,
+                        tool,
+                        sessions
+                            && (operation != "web.session.pointer"
+                                || self.inner.web.has_visible_browsers()),
+                    )
+                }),
         )
         .filter(|(operation, _, supported)| {
             *supported && requested.iter().any(|op| op == *operation)

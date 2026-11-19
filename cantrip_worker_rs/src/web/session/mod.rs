@@ -1,5 +1,9 @@
 //! Interactive research sessions and their chat-scoped ownership.
 mod page;
+mod visible;
+pub(super) use visible::Visible;
+#[cfg(test)]
+pub(crate) use visible::test_visible;
 
 use super::{Scope, Service, normalize, opaque, render, scope};
 use anyhow::{Context, Result, bail, ensure};
@@ -20,11 +24,12 @@ const TTL: Duration = Duration::from_secs(15 * 60);
 const NAVIGATION: Duration = Duration::from_secs(30);
 const OPERATION: Duration = Duration::from_secs(25);
 
-pub(crate) const TOOLS: [(&str, &str); 5] = [
+pub(crate) const TOOLS: [(&str, &str); 6] = [
     ("web.session.open", "web_session_open"),
     ("web.session.snapshot", "web_session_snapshot"),
     ("web.session.click", "web_session_click"),
     ("web.session.type", "web_session_type"),
+    ("web.session.pointer", "web_session_pointer"),
     ("web.session.close", "web_session_close"),
 ];
 
@@ -56,7 +61,7 @@ enum Request {
 
 impl Service {
     pub(crate) fn has_sessions(&self) -> bool {
-        self.renderer.is_some()
+        self.renderer.is_some() || self.has_visible_browsers()
     }
 
     pub(crate) async fn session(
@@ -78,15 +83,23 @@ impl Service {
             !*lane.borrow(),
             "Browser operation stopped with its agent turn."
         );
-        let tool = TOOLS
+        let (operation, tool) = TOOLS
             .iter()
             .find(|(name, _)| *name == operation)
-            .map(|(_, tool)| *tool)
+            .copied()
             .context("This web session operation is unavailable.")?;
         let args =
             mcp_host::parse(&format!("mcpStdioInput/{tool}"), args).map_err(response_error)?;
         let scope = scope(binding)?;
         let id = args["sessionId"].as_str();
+        if let Some(id) = id {
+            if let Some(result) = self
+                .session_on_visible(&scope, id, operation, &args, lane.clone())
+                .await?
+            {
+                return Ok(result);
+            }
+        }
         let mutating = operation != "web.session.snapshot";
         let (id, summary, data) = match operation {
             "web.session.open" => {
@@ -149,6 +162,9 @@ impl Service {
                 let id = id.unwrap();
                 let data = self.sessions.call(scope, id, Request::Close, lane).await?;
                 (id.into(), "Closed web session", data)
+            }
+            "web.session.pointer" => {
+                bail!("Pointer gestures require an exact open Browser target.")
             }
             _ => unreachable!("operation has a validated tool"),
         };
@@ -216,7 +232,10 @@ impl Service {
         opened: &mut Option<oneshot::Sender<Result<Value>>>,
         commands: mpsc::Receiver<Command>,
     ) -> Result<()> {
-        let manager = self.renderer.as_ref().unwrap();
+        let manager = self
+            .renderer
+            .as_ref()
+            .context("The managed browser session runtime is unavailable.")?;
         let mut stopped = manager.stopped();
         let _pending = self
             .render_requests

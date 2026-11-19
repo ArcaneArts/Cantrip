@@ -1,9 +1,13 @@
 //! Host browser surfaces on the authenticated worker command and data transports.
+mod agent;
 mod link;
 mod profile;
 mod session;
 
 use crate::{connection::Outbound, encryption::Service, logging::Logs};
+#[cfg(test)]
+pub(crate) use agent::with_owned_fixture;
+pub(crate) use agent::{AgentPage, Target as AgentTarget};
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use cantrip_framing::remote_surface::Frame;
 use cantrip_transport::output::{Buffered, Queued};
@@ -77,6 +81,11 @@ enum Work {
         source: FrameSource,
     },
     Refresh(JsString),
+    AgentBorrow {
+        target: AgentTarget,
+        done: oneshot::Sender<Result<AgentPage>>,
+    },
+    AgentPresentation(agent::Presentation),
 }
 
 pub(crate) fn capabilities(environment: &cantrip_config::Environment) -> Value {
@@ -417,6 +426,10 @@ async fn run(
                 }
                 Some(Work::Frame { frame, source }) => { let _ = current.frame(&frame, &source).await; }
                 Some(Work::Refresh(attachment)) => current.refresh(&attachment).await,
+                Some(Work::AgentBorrow { target, done }) => {
+                    let _ = done.send(current.agent_page(target));
+                }
+                Some(Work::AgentPresentation(presentation)) => current.present_agent(presentation),
                 None => return Ok(()),
             },
             event = async {

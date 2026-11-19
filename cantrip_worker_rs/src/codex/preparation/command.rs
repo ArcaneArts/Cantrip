@@ -85,6 +85,7 @@ struct Inner {
     preparation: Coordinator,
     broker: OnceCell<Broker>,
     web: Arc<crate::managed_web::Runtimes>,
+    browser_surfaces: Arc<crate::browser_surface::Manager>,
     cli_contexts: crate::cli::Contexts,
     permission_profiles: bool,
     autonomous: OnceLock<Autonomous>,
@@ -100,6 +101,7 @@ impl Ensurer {
         skills: Option<PathBuf>,
         cli_contexts: crate::cli::Contexts,
         web: Arc<crate::managed_web::Runtimes>,
+        browser_surfaces: Arc<crate::browser_surface::Manager>,
     ) -> Self {
         let (data, worker) = {
             let config = settings.lock().unwrap();
@@ -124,6 +126,7 @@ impl Ensurer {
             preparation,
             broker: OnceCell::new(),
             web,
+            browser_surfaces,
             cli_contexts,
             autonomous: OnceLock::new(),
             permission_profiles,
@@ -798,6 +801,7 @@ impl Ensurer {
                     }),
                     server,
                     Some(self.0.web.clone()),
+                    Some(self.0.browser_surfaces.clone()),
                 )
                 .await
             })
