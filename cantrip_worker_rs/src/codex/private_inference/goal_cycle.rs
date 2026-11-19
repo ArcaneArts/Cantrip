@@ -9,12 +9,21 @@ impl Router {
         {
             return None;
         }
+        self.active_task_goal_cycle(&gate.key.thread_id, &gate.key.runner_generation)
+    }
+
+    pub(in crate::codex) fn active_task_goal_cycle(
+        &self,
+        thread: &JsString,
+        runner: &JsString,
+    ) -> Option<Arc<GoalCycle>> {
+        self.assert_transport().ok()?;
         self.0
             .task_goals
             .lock()
             .unwrap()
-            .get(&gate.key.thread_id)
-            .filter(|input| input.runner == gate.key.runner_generation)
+            .get(thread)
+            .filter(|input| &input.runner == runner)
             .and_then(|input| input.cycle.clone())
     }
 
@@ -40,7 +49,7 @@ impl Router {
                 let turn = &gate.key.turn_id;
                 let mut input = json!({
                     "sourceKey": if recovery.is_null() { &source["key"] } else { &recovery["sourceKey"] },
-                    "nativeRuntimeGeneration":generation, "providerId":provider,
+                    "nativeRuntimeGeneration":generation, "providerId":provider["id"],
                     "chatId":owner.parent["chatId"], "threadId":thread, "turnId":turn,
                     "operationId":operation, "cycle":cycle,
                 });
@@ -61,7 +70,7 @@ impl Router {
                     Ok(())
                 };
                 owner
-                    .dispatch(input, thread.clone(), turn.clone(), signal.clone(), async {
+                    .dispatch(input, &provider, thread.clone(), turn.clone(), signal.clone(), async {
                         current()?;
                         let epoch = router.goal_settings_epoch(thread).await?;
                         let goal = router

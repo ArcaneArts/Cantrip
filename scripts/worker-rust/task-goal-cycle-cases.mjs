@@ -8,7 +8,171 @@ import {
   taskGoalCycleDispatchResultSchema,
   taskGoalOutcomeDeliverySchema,
   taskMessageRelayResultSchema,
+  taskPauseRuntimeStateSchema,
 } from "../../packages/protocol/dist/index.js";
+
+import { NativeSuspensionStore } from "../../cantrip_worker/src/native-suspension-store.ts";
+
+function checkpointTool(body) {
+  const exec = body.tools
+    .flatMap((tool) =>
+      tool.type === "namespace"
+        ? tool.tools.map((entry) => ({ ...entry, namespace: tool.name }))
+        : [tool],
+    )
+    .find((tool) => tool.name === "exec_command");
+  assert.ok(exec, "The native Goal exposes the command tool.");
+  return {
+    name: exec.name,
+    ...(exec.namespace ? { namespace: exec.namespace } : {}),
+    call_id: "goal-checkpoint-boundary",
+    arguments: JSON.stringify({
+      cmd: "printf goal-checkpoint-boundary",
+      yield_time_ms: 1000,
+    }),
+  };
+}
+
+async function pauseGoal({
+  invoke,
+  oracle,
+  modelCalls,
+  directory,
+  ownerId,
+  projectId,
+  prompt,
+  diagnostics,
+  source,
+  model,
+  serverId,
+  untilProvider,
+  setAnswer,
+  answer,
+}) {
+  const { parent, cycle, sourceKey, operationId, threadId, turnId } = source;
+  const active = { threadId, turnId };
+  const command = {
+    type: "chat.pause.set",
+    chatId: parent.chatId,
+    paused: true,
+    task: {
+      workerId: parent.workerId,
+      projectId,
+      worktreeId: parent.worktreeId,
+      threadId,
+      modelRouteId: cycle.modelRouteId,
+      providerAccountId: cycle.providerAccountId,
+      cycleId: cycle.cycleId,
+      orderEpoch: cycle.orderEpoch,
+      revision: 4,
+      taskGoalCycle: {
+        cycleId: cycle.cycleId,
+        sourceKey,
+        operationId,
+        goalEpoch: cycle.goalEpoch,
+        scopeId: cycle.scopeId,
+      },
+    },
+  };
+  const check = (reply) => {
+    assert.equal(reply.ok, true, JSON.stringify(reply) + "\n" + diagnostics());
+    return taskPauseRuntimeStateSchema.parse(reply.result);
+  };
+  assert.deepEqual(
+    check(await invoke({ ...command, waitForBoundary: false })),
+    {
+      paused: true,
+      active: null,
+    },
+  );
+  const paused = invoke(command).then(check);
+  setAnswer(answer);
+  const commentaryId = "goal-before-checkpoint";
+  model.finish([
+    {
+      type: "message",
+      role: "assistant",
+      phase: "commentary",
+      id: commentaryId,
+      content: [
+        { type: "output_text", text: "Private Goal commentary before Pause." },
+      ],
+    },
+  ]);
+  const state = await paused;
+  assert.deepEqual(state.active, active);
+  const actor = {
+    operationId,
+    operationGeneration: operationId,
+    workerGeneration: source.workerGeneration,
+    runtimeGeneration: source.runtimeGeneration,
+  };
+  assert.deepEqual(state.execution.actor, actor);
+  assert.equal(modelCalls(), model.number);
+  const wrong = await invoke({
+    ...command,
+    task: {
+      ...command.task,
+      taskGoalCycle: {
+        ...command.task.taskGoalCycle,
+        sourceKey: "f".repeat(64),
+      },
+    },
+  });
+  assert.equal(wrong.ok, false);
+  assert.match(
+    wrong.error.message,
+    /does not match its current native execution/,
+  );
+  assert.deepEqual(check(await invoke(command)), state);
+
+  const { principalId } = JSON.parse(
+    await readFile(path.join(directory, "worker-encryption-key.json"), "utf8"),
+  );
+  const store = new NativeSuspensionStore(
+    directory,
+    () => ({ serverId, ownerId, workerId: parent.workerId }),
+    { ...oracle, registration: () => ({ principalId }) },
+  );
+  const saved = await store.open(state.execution.checkpoint.storageId, {
+    chatId: parent.chatId,
+    contextKind: "project",
+    projectId,
+    placementId: parent.worktreeId,
+    threadId,
+    modelRouteId: cycle.modelRouteId,
+    providerAccountId: cycle.providerAccountId,
+    taskGoalCycle: source,
+  });
+  assert.deepEqual(saved.evidence, state.execution.checkpoint);
+  assert.equal(saved.continuation.turnId, turnId);
+  assert.equal(saved.continuation.model.routeId, cycle.modelRouteId);
+  assert.deepEqual(saved.taskContinuation.prompt, prompt);
+  assert.deepEqual(saved.taskContinuation.publication, source.publication);
+  assert.ok(
+    saved.taskContinuation.events.ids.some(
+      ([key]) => key === `agent-message:root:${turnId}:${commentaryId}`,
+    ),
+  );
+
+  const next = untilProvider();
+  const resume = invoke({
+    ...command,
+    paused: false,
+    task: { ...command.task, revision: 5 },
+  }).then(check);
+  const continued = await Promise.race([next, resume.then(() => next)]);
+  assert.equal(continued.number, model.number + 1);
+  assert.deepEqual(await resume, {
+    paused: false,
+    active,
+    execution: { actor, checkpoint: null },
+  });
+  console.log(
+    "Paused and resumed the autonomous Task Goal with its original checkpoint source and publication.",
+  );
+  return continued;
+}
 
 export function goalCycles({
   receipt,
@@ -149,6 +313,7 @@ export function goalCycles({
       available,
       openMessage,
       outcomeDirectory,
+      checkpoint,
       setAnswer,
       stop,
       start,
@@ -184,10 +349,21 @@ export function goalCycles({
         assert.ok(!JSON.stringify(record).includes(answer));
       };
       const firstAnswer = "Autonomous Goal result one.";
-      setAnswer(firstAnswer);
+      setAnswer(checkpoint ? checkpointTool : firstAnswer);
       const first = await advance(0);
       assert.notEqual(cycles[0].turnId, firstTurnId);
-      first.finish();
+      const completed = checkpoint
+        ? await pauseGoal({
+            ...checkpoint,
+            source: cycles[0],
+            model: first,
+            serverId,
+            untilProvider,
+            setAnswer,
+            answer: firstAnswer,
+          })
+        : first;
+      completed.finish();
       const record = await available(observed[0].outcome.promise);
       await assertResult(record, firstAnswer);
       const filename = path.join(outcomeDirectory, record.deliveryId + ".json");

@@ -65,6 +65,7 @@ const { values } = parseArgs({
     taskCheckpoint: { type: "boolean" },
     structuredTasks: { type: "boolean" },
     taskGoal: { type: "boolean" },
+    taskGoalCheckpoint: { type: "boolean" },
     taskPause: { type: "boolean" },
     chatGoal: { type: "boolean" },
     projectGoals: { type: "boolean" },
@@ -77,7 +78,8 @@ const { values } = parseArgs({
 });
 assert.ok(values.worker && values.codex);
 const directTask = values.directTask || values.taskCheckpoint;
-const taskGoals = values.taskGoal || values.taskPause;
+const taskGoals =
+  values.taskGoal || values.taskPause || values.taskGoalCheckpoint;
 const structuredTasks = values.structuredTasks || taskGoals;
 const requireWorker = createRequire(
   new URL("../../cantrip_worker/package.json", import.meta.url),
@@ -2288,6 +2290,7 @@ try {
             return verifyTaskGoalActivation({
               ...input,
               verifyPause: values.taskPause,
+              verifyCheckpoint: values.taskGoalCheckpoint,
               ownerId,
               key: taskKey,
               chatKey,

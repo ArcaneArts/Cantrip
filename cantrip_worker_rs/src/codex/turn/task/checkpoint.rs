@@ -1,16 +1,21 @@
-//! Snapshot the protected input and publication identities of an explicit Task.
+//! Snapshot protected Task input and publication identities.
 use super::{Messages, Turn};
 use crate::codex::turn::output::{self, Capture, Continuation};
 use cantrip_wire::{JsString, Value, value::json};
 use std::sync::Arc;
 
 pub(in crate::codex::turn) struct Checkpoint {
-    receipt: Value,
+    source: Source,
     project: Value,
     observer: Continuation,
     messages: Arc<Messages>,
     protected_input: Value,
     pub evidence: tokio::sync::Mutex<Option<(u64, Value)>>,
+}
+
+enum Source {
+    Input(Value),
+    GoalCycle(Value),
 }
 
 impl Turn {
@@ -31,7 +36,7 @@ impl Turn {
             ),
         };
         Checkpoint {
-            receipt: command["taskInferenceInput"].clone(),
+            source: Source::Input(command["taskInferenceInput"].clone()),
             project: command["policyProjectId"].clone(),
             observer: Continuation {
                 channel,
@@ -49,8 +54,32 @@ impl Turn {
 }
 
 impl Checkpoint {
+    pub(super) fn goal_cycle(
+        source: Value,
+        project: Value,
+        prompt: &Value,
+        mut seed: Value,
+        channel: Capture,
+        messages: Arc<Messages>,
+    ) -> Self {
+        seed["model"]["routeId"] = source["cycle"]["modelRouteId"].clone();
+        let protected_input = json!({
+            "version":2, "prompt":prompt, "publication":source["publication"],
+        });
+        Self {
+            source: Source::GoalCycle(source),
+            project,
+            observer: Continuation { channel, seed },
+            messages,
+            protected_input,
+            evidence: Default::default(),
+        }
+    }
+
     pub(in crate::codex::turn) fn matches_round(&self, scope: &Value) -> bool {
-        let receipt = &self.receipt;
+        let Source::Input(receipt) = &self.source else {
+            return false;
+        };
         let dispatch = &receipt["dispatch"];
         scope["projectId"] == self.project
             && [
@@ -70,20 +99,67 @@ impl Checkpoint {
                 })
     }
 
+    pub(in crate::codex::turn) fn matches_cycle(
+        &self,
+        scope: &Value,
+        chat: &JsString,
+        thread: &JsString,
+        turn: &JsString,
+        worker: &str,
+    ) -> bool {
+        let Source::GoalCycle(source) = &self.source else {
+            return false;
+        };
+        let cycle = &source["cycle"];
+        let parent = &source["parent"];
+        scope["projectId"] == self.project
+            && ["workerId", "worktreeId"]
+                .iter()
+                .all(|key| scope[*key] == parent[*key])
+            && ["cycleId", "modelRouteId", "providerAccountId"]
+                .iter()
+                .all(|key| scope[*key] == cycle[*key])
+            && source["workerGeneration"] == worker
+            && source["threadId"].as_js_string() == Some(thread)
+            && source["turnId"].as_js_string() == Some(turn)
+            && parent["chatId"].as_js_string() == Some(chat)
+            && scope["taskGoalCycle"]
+                == json!({
+                    "cycleId":cycle["cycleId"], "sourceKey":source["sourceKey"],
+                    "operationId":source["operationId"], "goalEpoch":cycle["goalEpoch"], "scopeId":cycle["scopeId"],
+                })
+    }
+
     pub(in crate::codex::turn) fn source(&self, thread: &JsString) -> Value {
-        json!({
-            "chatId":self.receipt["chatId"],"threadId":thread,"contextKind":"project",
-            "projectId":self.project,"placementId":self.receipt["worktreeId"],
-            "modelRouteId":self.receipt["modelRouteId"],"providerAccountId":self.receipt["providerAccountId"],
-            "taskInput":self.receipt,
-        })
+        let (parent, route) = match &self.source {
+            Source::Input(receipt) => (receipt, receipt),
+            Source::GoalCycle(source) => (&source["parent"], &source["cycle"]),
+        };
+        let mut result = json!({
+            "chatId":parent["chatId"],"threadId":thread,"contextKind":"project",
+            "projectId":self.project,"placementId":parent["worktreeId"],
+            "modelRouteId":route["modelRouteId"],"providerAccountId":route["providerAccountId"],
+        });
+        match &self.source {
+            Source::Input(receipt) => result["taskInput"] = receipt.clone(),
+            Source::GoalCycle(source) => result["taskGoalCycle"] = source.clone(),
+        }
+        result
     }
 
     pub(in crate::codex::turn) fn actor(&self, worker: &str, runtime: &JsString) -> Value {
-        json!({
-            "workerGeneration":worker,"runtimeGeneration":runtime,
-            "operationId":self.receipt["operationId"],"operationGeneration":self.receipt["operationId"],
-        })
+        match &self.source {
+            // Core binds tasks to inference admission, separately from the
+            // generation of the app-server transport used to hold the turn.
+            Source::Input(receipt) => json!({
+                "workerGeneration":worker,"runtimeGeneration":runtime,
+                "operationId":receipt["operationId"],"operationGeneration":receipt["operationId"],
+            }),
+            Source::GoalCycle(source) => json!({
+                "workerGeneration":source["workerGeneration"],"runtimeGeneration":source["runtimeGeneration"],
+                "operationId":source["operationId"],"operationGeneration":source["operationId"],
+            }),
+        }
     }
 
     pub(in crate::codex::turn) async fn snapshot(&self) -> anyhow::Result<(Value, Value)> {

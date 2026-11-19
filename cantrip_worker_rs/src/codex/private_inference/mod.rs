@@ -578,7 +578,7 @@ impl Router {
                         cycle.clone(),
                         pending.clone(),
                         signal.clone(),
-                        provider["id"].clone(),
+                        provider.clone(),
                     )
                 });
                 let placement = cycle.as_ref().map(|cycle| {

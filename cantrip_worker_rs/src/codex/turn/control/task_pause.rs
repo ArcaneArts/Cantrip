@@ -3,8 +3,43 @@ use super::{Selection, pause::BOUNDARY_TIMEOUT};
 use crate::codex::{
     preparation::command::task_pause::PauseTarget, suspension_store::Commit, turn::*,
 };
+use task::{checkpoint::Checkpoint, cycle::GoalCycle};
 
 pub(crate) const COMMAND: &str = "chat.pause.set";
+
+enum Observer {
+    Round(Arc<Active>),
+    Goal(Arc<GoalCycle>, Arc<Checkpoint>),
+}
+
+impl Observer {
+    fn checkpoint(&self) -> &Checkpoint {
+        match self {
+            Self::Round(active) => active.task.get().expect("matched explicit Task observer"),
+            Self::Goal(_, checkpoint) => checkpoint,
+        }
+    }
+
+    fn with_current<T>(
+        &self,
+        selected: &Selection,
+        operation: impl FnOnce() -> Result<T>,
+    ) -> Result<T> {
+        if !selected.transport_current() {
+            bail!("The Task transport changed during boundary control.");
+        }
+        match self {
+            Self::Round(active) => {
+                let phase = active.phase.lock().unwrap();
+                if !selected.current(&phase) {
+                    bail!("The Task input ended or was replaced during boundary control.");
+                }
+                operation()
+            }
+            Self::Goal(owner, capture) => owner.checkpoints.with_current(capture, operation),
+        }
+    }
+}
 
 impl Turns {
     pub(crate) async fn task_pause(&self, command: &Value) -> Result<Value> {
@@ -53,31 +88,14 @@ impl Turns {
         let mut result = json!({
             "paused":paused, "active":json!({"threadId":selected.thread,"turnId":selected.turn}),
         });
-        if !scope["taskGoalCycle"].is_null() {
-            bail!("The autonomous Goal has no compatible checkpoint observer.");
-        }
-        if scope["taskRound"].is_null() {
+        if scope["taskGoalCycle"].is_null() && scope["taskRound"].is_null() {
             target.wait_boundary(&intent, &selected.turn).await?;
         } else {
-            let active = self
-                .active
-                .lock()
-                .unwrap()
-                .active
-                .get(&key)
-                .cloned()
-                .context("The Task input has no current native owner.")?;
-            let capture = active
-                .task
-                .get()
-                .filter(|input| input.matches_round(scope))
-                .context("The Task input does not match the current native owner.")?;
+            let observer = self.task_observer(&key, scope, &target, &selected)?;
+            let capture = observer.checkpoint();
             let owned = || {
                 current()?;
-                if !selected.current(&active.phase.lock().unwrap()) {
-                    bail!("The Task input ended or was replaced during boundary control.");
-                }
-                Ok(())
+                observer.with_current(&selected, || Ok(()))
             };
             owned()?;
             let checkpoint = if paused {
@@ -91,19 +109,16 @@ impl Turns {
                 {
                     evidence.clone()
                 } else {
-                    let reply = {
-                        // Enqueue only while holding the phase of the selected turn.
-                        let phase = active.phase.lock().unwrap();
-                        if !selected.current(&phase) {
-                            bail!("The Task input changed before checkpoint capture.");
-                        }
-                        selected.runtime.request(
+                    // Select and enqueue under the observation owner lock. The
+                    // native request also carries the exact thread and turn.
+                    let reply = observer.with_current(&selected, || {
+                        Ok(selected.runtime.request(
                             "turn/suspension".into(),
                             Some(json!({"threadId":selected.thread,"operation":json!({"type":"pause","turnId":selected.turn})})),
                             Some(BOUNDARY_TIMEOUT),
                             None,
-                        )
-                    }.await?.context("Codex did not return a Task suspension.")?;
+                        ))
+                    })?.await?.context("Codex did not return a Task suspension.")?;
                     let suspension = checked("nativeTurnSuspensionSchema", &reply["suspension"])?;
                     if reply["paused"] != true
                         || suspension["threadId"].as_js_string() != Some(&selected.thread)
@@ -137,8 +152,6 @@ impl Turns {
                 Value::Null
             };
             owned()?;
-            // Core records the inference admission generation for a Task
-            // input. The Codex transport has its own separate generation.
             result["execution"] = json!({
                 "actor":capture.actor(self.task_inputs.generation(), selected.runtime.admission().generation()),
                 "checkpoint":checkpoint,
@@ -146,6 +159,52 @@ impl Turns {
         }
         current()?;
         checked("taskPauseRuntimeStateSchema", &result)
+    }
+
+    fn task_observer(
+        &self,
+        key: &Key,
+        scope: &Value,
+        target: &PauseTarget,
+        selected: &Selection,
+    ) -> Result<Observer> {
+        if !scope["taskGoalCycle"].is_null() {
+            let owner = target
+                .runtime
+                .inference_router()
+                .active_task_goal_cycle(&selected.thread, target.runner())
+                .context("The autonomous Goal has no current execution owner.")?;
+            let capture = owner
+                .checkpoints
+                .current()
+                .filter(|candidate| {
+                    candidate.matches_cycle(
+                        scope,
+                        &key.2,
+                        &selected.thread,
+                        &selected.turn,
+                        self.task_inputs.generation(),
+                    )
+                })
+                .context("The autonomous Goal does not match its current native execution.")?;
+            return Ok(Observer::Goal(owner, capture));
+        }
+        let active = self
+            .active
+            .lock()
+            .unwrap()
+            .active
+            .get(key)
+            .cloned()
+            .context("The Task input has no current native owner.")?;
+        if !active
+            .task
+            .get()
+            .is_some_and(|input| input.matches_round(scope))
+        {
+            bail!("The Task input does not match the current native owner.");
+        }
+        Ok(Observer::Round(active))
     }
 }
 
