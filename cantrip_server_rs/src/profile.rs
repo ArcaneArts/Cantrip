@@ -3,6 +3,7 @@
 mod activation;
 mod bundle;
 mod files;
+mod legacy_postgres;
 use cantrip_host::publish;
 pub mod upgrade;
 use crate::config::{DatabaseMode, Environment, ServerConfig};

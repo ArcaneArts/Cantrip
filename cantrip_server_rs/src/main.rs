@@ -63,6 +63,9 @@ struct Arguments {
     legacy_node: Option<PathBuf>,
     #[arg(long, requires = "upgrade_profile")]
     legacy_profile_converter: Option<PathBuf>,
+    /// PostgreSQL 18 tools built for the legacy PGlite storage ABI.
+    #[arg(long, requires = "upgrade_profile")]
+    legacy_postgres_bin_dir: Option<PathBuf>,
     #[arg(
         long,
         hide = true,
@@ -128,6 +131,14 @@ async fn shutdown() -> &'static str {
 }
 
 fn main() -> Result<()> {
+    if std::env::args_os().nth(1).as_deref()
+        == Some(std::ffi::OsStr::new(
+            "--internal-native-legacy-profile-export",
+        ))
+    {
+        return tokio::runtime::Runtime::new()?
+            .block_on(cantrip_server::profile::upgrade::run_native_legacy_export());
+    }
     if std::env::args_os().nth(1).as_deref()
         == Some(std::ffi::OsStr::new("--internal-profile-converter-owner"))
     {
@@ -329,6 +340,7 @@ async fn run(
                 executable: &executable,
                 legacy_node: arguments.legacy_node.as_deref(),
                 legacy_converter: arguments.legacy_profile_converter.as_deref(),
+                legacy_postgres: arguments.legacy_postgres_bin_dir.as_deref(),
             })?;
         println!(
             "{}",

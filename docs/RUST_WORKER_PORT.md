@@ -6351,3 +6351,27 @@ reopening input, and independent viewers through grant revocation. Focused
 Rust and Node reference tests also passed. Host clipboard copy, desktop
 target UI parity, guest input, WAN desktop runtime validation, and actual
 platform permissions remain open.
+
+
+
+## 155. Upgrade a stopped legacy PGlite profile without Node
+
+Reference commit `2b8a38eff616b0df4ffcced74b338a3e2852c8bd` (#3317).
+
+The server's existing offline preparation command accepts a PostgreSQL 18
+compatibility runtime after an actual native PGlite open failure. The pinned
+compatibility build reads legacy by-reference 8-byte values and four-byte
+constants in persisted PostgreSQL expressions. It opens a private source copy,
+uses a temporary authenticated PostgreSQL process, and exports the database
+with native pg_dump. The existing logical restore and directory activation
+retain the original profile as a backup.
+
+The macOS ARM64 acceptance fixture creates a stopped profile with the legacy
+PGlite engine and the real migration journal. The upgrade runs with an empty
+executable search path. It matches all 137 table snapshots, sequence states,
+stored expressions, and the retained profile bytes. The fixture also checks
+an actual wrong-engine failure that preserves the original and a repeat
+upgrade that skips conversion after successful activation.
+
+Desktop runtime assembly and Windows validation remain open. The existing
+Node-based rollback path stays available while native rollback is pending.
