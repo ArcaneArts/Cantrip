@@ -5726,3 +5726,31 @@ revocation, including when the carriers used the same connection ID.
 
 Guest and share destinations, direct brokers, and peer carriage remain
 open.
+
+## 132. Serve protected project and standalone Chat WebDAV shares
+
+Reference commit `28977a6793dd19d3d682ab276caef7ce1ef02598` (#3294).
+
+The native `project.share.open` command authenticates the stored tunnel
+record before choosing a filesystem. Project shares use the encrypted
+checkout path. Chat shares match Core's Chat and root IDs against the
+registered scratch directory, then require that prepared mount when a
+carrier opens a stream. The worker reports its Chat share capability
+and returns the established source-unavailable code for missing roots.
+
+Each share owns its Digest-protected loopback listener, locks and
+properties. DAV operations use an open directory handle so file
+operations cannot follow paths outside the authorized root. WorkerLink
+and legacy carriers use the same encrypted TCP stream implementation.
+Closing a share stops its listener and accepted HTTP connections.
+
+On macOS ARM64, the real Rust server and worker with PGlite served a
+project over WorkerLink and a standalone Chat over the legacy tunnel
+WebSocket. The TypeScript fixture verified Digest challenges, wrong
+credentials, Finder's lock and metadata behavior, file changes, DAV
+properties and directory operations, contained paths, correct Chat
+binding, and share revocation. Host TCP relay regressions and the
+focused Node share tests passed locally.
+
+Direct brokers, guest destinations and peer carriage remain open.
+System-level network-drive mounting was not exercised by this fixture.

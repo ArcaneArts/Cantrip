@@ -3,7 +3,7 @@ mod legacy;
 mod tcp;
 
 use super::{Coordinator, id};
-use crate::{encryption::Service, logging::Logs, protected_content::open_endpoint_content};
+use crate::{logging::Logs, protected_content::open_tunnel_record};
 use cantrip_framing::tunnel::{self as wire, Frame};
 use cantrip_wire::{JsString, Value, value::json};
 pub(super) use legacy::Legacy;
@@ -299,12 +299,14 @@ enum TargetError {
     RecordUnavailable,
     WorkerMismatch,
     KindMismatch,
+    ShareUnavailable,
 }
 
 impl TargetError {
     fn code(&self) -> &'static str {
         match self {
             Self::RecordUnavailable => "protected-record-unavailable",
+            Self::ShareUnavailable => "protected-endpoint-unavailable",
             Self::BindingMismatch | Self::WorkerMismatch | Self::KindMismatch => {
                 "protected-target-invalid"
             }
@@ -317,46 +319,51 @@ impl TargetError {
             Self::RecordUnavailable => "protected-record-open-failed",
             Self::WorkerMismatch => "worker-id-mismatch",
             Self::KindMismatch => "target-kind-mismatch",
+            Self::ShareUnavailable => "project-share-preparation-failed",
         }
     }
 }
 
 impl Destination {
-    fn open(service: &Service, worker: &JsString, header: &Value) -> Result<Self, TargetError> {
+    async fn open(gateway: &Coordinator, header: &Value) -> Result<Self, TargetError> {
         let target = &header["target"];
         if target["kind"] != "protected-tunnel" || target["recordId"] != header["tunnelId"] {
             return Err(TargetError::BindingMismatch);
         }
-        let record = &target["protectedRecord"];
-        let server = service
-            .server_identity()
-            .map_err(|_| TargetError::RecordUnavailable)?;
-        let scope = Value::Array(vec![json!("tunnel"), header["tunnelId"].clone()]).stringify();
-        let binding = json!({
-            "domain":"tunnel-content", "serverId":server, "workerId":worker, "scopeId":scope,
-            "operationId":record["operationId"], "operation":"tunnel.record",
-            "direction":"stored", "sequence":record["revision"],
-        });
-        let content = open_endpoint_content(
-            service,
-            &binding,
-            &record["protectedContent"],
-            "tunnelContentRecordSchema",
+        let content = open_tunnel_record(
+            &gateway.encryption,
+            &header["tunnelId"],
+            &target["protectedRecord"],
         )
         .map_err(|_| TargetError::RecordUnavailable)?;
         let destination = &content["destination"];
-        if destination["workerId"].as_js_string() != Some(worker) {
+        if destination["workerId"].as_js_string() != Some(&gateway.worker) {
             return Err(TargetError::WorkerMismatch);
         }
-        if destination["kind"] != "worker-tcp"
-            || target["targetKind"] != "tcp"
-            || content["source"]["kind"] == "worker-os-listener"
-        {
+        if content["source"]["kind"] == "worker-os-listener" {
             return Err(TargetError::KindMismatch);
         }
+        let (host, port) = match destination["kind"].as_str() {
+            Some("worker-tcp") if target["targetKind"] == "tcp" => (
+                destination["host"].as_str().unwrap().to_owned(),
+                destination["port"].as_u64().unwrap() as u16,
+            ),
+            Some("worker-project-share" | "worker-chat-share")
+                if target["targetKind"] == "project-share"
+                    && destination["resourceId"] == header["tunnelId"] =>
+            {
+                let addr = gateway
+                    .shares
+                    .endpoint(id(header, "tunnelId"), destination)
+                    .await
+                    .map_err(|_| TargetError::ShareUnavailable)?;
+                (addr.ip().to_string(), addr.port())
+            }
+            _ => return Err(TargetError::KindMismatch),
+        };
         Ok(Self {
-            host: destination["host"].as_str().unwrap().to_owned(),
-            port: destination["port"].as_u64().unwrap() as u16,
+            host,
+            port,
             protection: content["dataProtection"].clone(),
         })
     }

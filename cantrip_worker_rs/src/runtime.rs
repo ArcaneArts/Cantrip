@@ -194,12 +194,18 @@ async fn cycle(
 
     let (stop, stop_rx) = watch::channel(false);
     let outgoing = Arc::new(Outbound::default());
+    let shares = Arc::new(crate::project_shares::Manager::new(
+        encryption.clone(),
+        chat_scratch.clone(),
+        logs.clone(),
+    ));
     let worker_link = Arc::new(crate::worker_link::Coordinator::new(
         worker.clone(),
         generation.clone(),
         encryption.clone(),
         outgoing.clone(),
         logs.clone(),
+        shares.clone(),
     ));
     outgoing.observe_with(&worker_link);
     let worker_link_task = {
@@ -727,6 +733,17 @@ async fn cycle(
                     });
                     continue;
                 }
+                if crate::project_shares::Manager::supports(kind) {
+                    let shares = shares.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = shares.execute(&request["command"]).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if matches!(kind,"project.folder.materialize"|"project.folder.delete") {
                     let folders = folders.clone();
                     let runs = runs.clone();
@@ -915,6 +932,7 @@ async fn cycle(
             command_failure.get_or_insert(error);
         }
     }
+    shares.shutdown().await;
     run_definitions.close().await;
     let runs_closed = runs.close().await;
     let cli_closed = cli.close().await;

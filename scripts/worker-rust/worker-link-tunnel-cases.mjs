@@ -307,58 +307,18 @@ async function verifyLegacyTunnel({
     { clientId },
   );
   const route = "/api/tunnel-attachments/" + attachment.attachmentId;
-  const url = new URL(attachment.connectPath, origin);
-  url.protocol = "ws:";
-  const socket = new WebSocket(
-    url,
-    ["cantrip-tunnel-v1." + attachment.secret],
-    {
-      headers: { origin: "http://127.0.0.1:5173" },
-    },
-  );
-  const peer = { streams: new Map(), ready: null, failure: null };
-  socket.on("error", (error) => {
-    peer.failure ??= error;
-  });
-  socket.on("message", (bytes, binary) => {
-    try {
-      if (binary) receiveTunnelFrame(peer, bytes);
-      else
-        peer.ready = tunnelAttachmentReadySchema.parse(
-          JSON.parse(bytes.toString()),
-        );
-    } catch (error) {
-      peer.failure ??= error;
-    }
-  });
   let revoked = false;
+  let socket;
   try {
-    await once(socket, "open", { signal: AbortSignal.timeout(5000) });
-    socket.send(JSON.stringify({ type: "initialize", clientId }));
-    const ready = await until(() => {
-      if (peer.failure) throw peer.failure;
-      return peer.ready;
-    }, "legacy attachment ready");
-    assert.equal(ready.attachmentId, attachment.attachmentId);
-    assert.equal(ready.tunnelId, tunnelId);
-    assert.equal(
-      ready.sourceEndpointId,
-      `desktop:${clientId}:${attachment.attachmentId}`,
-    );
-    assert.equal(ready.destinationEndpointId, `worker:${workerId}`);
-    const binding = {
+    const legacy = await openLegacyTunnel({
+      origin,
+      attachment,
+      clientId,
       tunnelId,
-      attachmentId: ready.attachmentId,
-      sourceEndpointId: ready.sourceEndpointId,
-      destinationEndpointId: ready.destinationEndpointId,
-    };
-    const open = (id = randomUUID()) =>
-      startStream(
-        peer,
-        { protocolVersion: 1, ...binding, connectionId: id },
-        { kind: "open", initialCreditBytes: smallCredit },
-        (bytes) => socket.send(bytes),
-      );
+      workerId,
+    });
+    socket = legacy.socket;
+    const { open } = legacy;
     const working = open(connectionId);
     const retained = open();
     for (const stream of [working, retained])
@@ -415,8 +375,73 @@ async function verifyLegacyTunnel({
       JSON.stringify({ suite: "native-legacy-host-tcp", passed: true }),
     );
   } finally {
-    socket.terminate();
+    socket?.terminate();
     if (!revoked) await call("DELETE", route, 204);
+  }
+}
+
+export async function openLegacyTunnel({
+  origin,
+  attachment,
+  clientId,
+  tunnelId,
+  workerId,
+}) {
+  const url = new URL(attachment.connectPath, origin);
+  url.protocol = "ws:";
+  const socket = new WebSocket(
+    url,
+    ["cantrip-tunnel-v1." + attachment.secret],
+    {
+      headers: { origin: "http://127.0.0.1:5173" },
+    },
+  );
+  const peer = { streams: new Map(), ready: null, failure: null };
+  socket.on("error", (error) => {
+    peer.failure ??= error;
+  });
+  socket.on("message", (bytes, binary) => {
+    try {
+      if (binary) receiveTunnelFrame(peer, bytes);
+      else
+        peer.ready = tunnelAttachmentReadySchema.parse(
+          JSON.parse(bytes.toString()),
+        );
+    } catch (error) {
+      peer.failure ??= error;
+    }
+  });
+  try {
+    await once(socket, "open", { signal: AbortSignal.timeout(5000) });
+    socket.send(JSON.stringify({ type: "initialize", clientId }));
+    const ready = await until(() => {
+      if (peer.failure) throw peer.failure;
+      return peer.ready;
+    }, "legacy attachment ready");
+    assert.equal(ready.attachmentId, attachment.attachmentId);
+    assert.equal(ready.tunnelId, tunnelId);
+    assert.equal(
+      ready.sourceEndpointId,
+      `desktop:${clientId}:${attachment.attachmentId}`,
+    );
+    assert.equal(ready.destinationEndpointId, `worker:${workerId}`);
+    const binding = {
+      tunnelId,
+      attachmentId: ready.attachmentId,
+      sourceEndpointId: ready.sourceEndpointId,
+      destinationEndpointId: ready.destinationEndpointId,
+    };
+    const open = (id = randomUUID(), initialCreditBytes = smallCredit) =>
+      startStream(
+        peer,
+        { protocolVersion: 1, ...binding, connectionId: id },
+        { kind: "open", initialCreditBytes },
+        (bytes) => socket.send(bytes),
+      );
+    return { socket, open };
+  } catch (error) {
+    socket.terminate();
+    throw error;
   }
 }
 
@@ -434,7 +459,7 @@ async function receiveResponse(stream, response, configuration) {
   assert.deepEqual(Buffer.concat(chunks), response);
 }
 
-class Connection {
+export class Connection {
   constructor(url, relay) {
     this.identity = {
       protocolVersion: 1,
@@ -475,13 +500,13 @@ class Connection {
     });
   }
 
-  async open(grant) {
+  async open(grant, initialCreditBytes = outerCredit) {
     await once(this.socket, "open", { signal: AbortSignal.timeout(5000) });
     this.wire({
       kind: "open",
       openNonce: randomUUID(),
       channelKind: "reliable-stream",
-      initialCreditBytes: outerCredit,
+      initialCreditBytes,
       grant,
     });
     const header = await this.nextControl("accept", "reject");
@@ -511,14 +536,18 @@ class Connection {
     );
   }
 
-  stream({ target, ...route }, override = target) {
+  stream(
+    { target, ...route },
+    override = target,
+    initialCreditBytes = smallCredit,
+  ) {
     return startStream(
       this,
       { protocolVersion: 1, ...route, connectionId: randomUUID() },
       {
         kind: "connect",
         target: override,
-        initialCreditBytes: smallCredit,
+        initialCreditBytes,
         diagnosticTraceId: randomUUID(),
       },
       (bytes) =>

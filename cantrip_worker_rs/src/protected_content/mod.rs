@@ -17,6 +17,25 @@ pub use replay::SurfaceStreamReplayGuard;
 pub use repository::*;
 pub use surface::*;
 
+pub(crate) fn open_tunnel_record(
+    service: &crate::encryption::Service,
+    tunnel: &Value,
+    record: &Value,
+) -> Result<Value> {
+    let scope = Value::Array(vec![json!("tunnel"), tunnel.clone()]).stringify();
+    let binding = json!({
+        "domain":"tunnel-content", "serverId":service.server_identity()?,
+        "workerId":service.worker_id(), "scopeId":scope, "operationId":record["operationId"],
+        "operation":"tunnel.record", "direction":"stored", "sequence":record["revision"],
+    });
+    open_endpoint_content(
+        service,
+        &binding,
+        &record["protectedContent"],
+        "tunnelContentRecordSchema",
+    )
+}
+
 fn context(grant: &BoundComponentKey, binding: &Value) -> Value {
     json!({"ownerId":grant.owner_id,"keyRevision":grant.component.key_revision,"context":binding})
 }

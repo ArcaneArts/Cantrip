@@ -25,6 +25,7 @@ mod model_operations;
 pub mod native_items;
 pub(crate) mod outcomes;
 pub mod platform;
+mod project_shares;
 pub mod protected_content;
 pub mod protected_secrets;
 pub mod provider_access;
