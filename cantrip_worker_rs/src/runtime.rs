@@ -239,6 +239,7 @@ async fn cycle(
         routing.clone(),
         logs.clone(),
     ));
+    worker_link.configure_terminals(shells.clone(), runs.clone());
     codex.configure_inference_status({
         let outgoing = outgoing.clone();
         Arc::new(move |status| {

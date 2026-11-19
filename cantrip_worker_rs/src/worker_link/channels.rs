@@ -1,5 +1,5 @@
 //! Ordered relay channels for the native observation adapter.
-use super::{Session, id, observation::Observation};
+use super::{Coordinator, Session, id, observation::Observation, terminal::Terminal};
 use crate::connection::Outbound;
 use cantrip_framing::worker_link::{self as wire, Frame};
 use cantrip_wire::{JsString, Value, value::json};
@@ -7,10 +7,12 @@ use indexmap::IndexMap;
 use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, VecDeque},
+    sync::Arc,
     time::Duration,
 };
 use subtle::ConstantTimeEq;
 use tokio::time::Instant;
+use uuid::Uuid;
 
 const MAX_CHANNELS: usize = 1024;
 const MAX_NONCES: usize = 8192;
@@ -24,34 +26,48 @@ const LIFETIME: Duration = Duration::from_secs(12 * 60 * 60);
 
 #[derive(Default)]
 pub(super) struct Channels {
-    active: HashMap<JsString, Subscription>,
+    active: HashMap<JsString, Channel>,
     nonces: HashMap<JsString, i64>,
     invalid: HashMap<Option<JsString>, u32>,
     operation_sequences: IndexMap<JsString, u64>,
     controls: VecDeque<Frame>,
 }
 
-struct Subscription {
+struct Channel {
     routing: Value,
     grant: JsString,
-    installation: Value,
+    resource: Resource,
+    ready: bool,
+    close_after_drain: bool,
     credit: usize,
+    inbound_credit: usize,
+    credit_pending: usize,
     initial_credit: usize,
     receive: u64,
     send: u64,
-    continuity: u64,
     opened: Instant,
     activity: Instant,
     pending: VecDeque<Vec<u8>>,
     pending_bytes: usize,
 }
 
-impl Subscription {
+enum Resource {
+    Observation {
+        installation: Value,
+        continuity: u64,
+    },
+    Terminal(Terminal),
+}
+
+impl Channel {
     fn frame(&self, kind: &str, sequence: u64, fields: &[(&str, Value)], payload: &[u8]) -> Frame {
         frame(&self.routing, kind, sequence, fields, payload)
     }
 
     fn flush(&mut self, output: &Outbound) -> bool {
+        if !self.ready {
+            return true;
+        }
         if self.send == 0 {
             let accept = self.frame(
                 "accept",
@@ -63,6 +79,24 @@ impl Subscription {
                 return false;
             }
             self.send = 1;
+            self.activity = Instant::now();
+        }
+        if self.credit_pending > 0 {
+            let credit = self.frame(
+                "credit",
+                self.send,
+                &[
+                    ("direction", json!("client-to-worker")),
+                    ("bytes", json!(self.credit_pending)),
+                ],
+                &[],
+            );
+            if !output.worker_link(credit) {
+                return false;
+            }
+            self.send += 1;
+            self.inbound_credit += self.credit_pending;
+            self.credit_pending = 0;
             self.activity = Instant::now();
         }
         while let Some(bytes) = self.pending.front() {
@@ -89,6 +123,18 @@ impl Subscription {
         }
         true
     }
+
+    fn enqueue(&mut self, bytes: Vec<u8>, max_frames: usize) -> bool {
+        if bytes.len() > wire::MAX_PAYLOAD_BYTES
+            || self.pending.len() >= max_frames
+            || self.pending_bytes + bytes.len() > MAX_OBSERVATION_BYTES
+        {
+            return false;
+        }
+        self.pending_bytes += bytes.len();
+        self.pending.push_back(bytes);
+        true
+    }
 }
 
 impl Channels {
@@ -98,8 +144,9 @@ impl Channels {
         session: Option<&Session>,
         retired: &IndexMap<JsString, u64>,
         now: i64,
+        gateway: &Arc<Coordinator>,
     ) -> bool {
-        let result = self.try_open(header, session, retired, now);
+        let result = self.try_open(header, session, retired, now, gateway);
         let session_id = id(header, "sessionId");
         match result {
             Ok(()) => {
@@ -131,6 +178,7 @@ impl Channels {
         session: Option<&Session>,
         retired: &IndexMap<JsString, u64>,
         now: i64,
+        gateway: &Arc<Coordinator>,
     ) -> Result<(), &'static str> {
         let session = session.ok_or("unauthorized")?;
         if header["effectiveRoute"] != "relay"
@@ -224,14 +272,37 @@ impl Channels {
         }
 
         let installation = &grant["observation"];
-        if installed["resource"]["kind"] != "observations"
-            || installation.is_null()
-            || installation["subscriptionId"] != installed["resource"]["attachmentId"]
-            || header["lane"] != "events"
-            || header["channelKind"] != "event-subscription"
-        {
-            return Err("resource-unavailable");
-        }
+        let (resource, ready) = match installed["resource"]["kind"].as_str() {
+            Some("observations")
+                if !installation.is_null()
+                    && installation["subscriptionId"] == installed["resource"]["attachmentId"]
+                    && header["lane"] == "events"
+                    && header["channelKind"] == "event-subscription" =>
+            {
+                (
+                    Resource::Observation {
+                        installation: installation.clone(),
+                        continuity: 0,
+                    },
+                    true,
+                )
+            }
+            Some("terminal")
+                if header["lane"] == "interactive"
+                    && header["channelKind"] == "reliable-stream"
+                    && installed["operations"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&json!("stream:read")) =>
+            {
+                let adapter = gateway.terminals.get().ok_or("resource-unavailable")?;
+                let terminal = adapter
+                    .open(gateway, header, installed)
+                    .map_err(|_| "resource-unavailable")?;
+                (Resource::Terminal(terminal), false)
+            }
+            _ => return Err("resource-unavailable"),
+        };
         let expiry = super::timestamp(&installed["lease"], "absoluteExpiresAt")
             .map_err(|_| "grant-expired")?;
         self.nonces.insert(nonce.clone(), expiry);
@@ -239,15 +310,18 @@ impl Channels {
         let initial = header["initialCreditBytes"].as_u64().unwrap() as usize;
         self.active.insert(
             channel.clone(),
-            Subscription {
+            Channel {
                 routing: routing(header),
                 grant: grant_id.clone(),
-                installation: installation.clone(),
+                resource,
+                ready,
+                close_after_drain: false,
                 credit: initial,
+                inbound_credit: initial,
+                credit_pending: 0,
                 initial_credit: initial,
                 receive: 0,
                 send: 0,
-                continuity: 0,
                 opened,
                 activity: opened,
                 pending: VecDeque::new(),
@@ -257,7 +331,8 @@ impl Channels {
         Ok(())
     }
 
-    pub fn receive(&mut self, header: &Value) {
+    pub fn receive(&mut self, frame: &Frame, allow_write: bool) {
+        let header = frame.header();
         let key = id(&header["channel"], "channelId");
         let Some(channel) = self.active.get_mut(key) else {
             return;
@@ -283,6 +358,23 @@ impl Channels {
                 channel.credit =
                     (channel.credit + header["bytes"].as_u64().unwrap() as usize).min(MAX_CREDIT);
             }
+            Some("data")
+                if allow_write
+                    && header["direction"] == "client-to-worker"
+                    && header["payloadFormat"] == "raw"
+                    && !channel.close_after_drain
+                    && frame.payload().len() <= channel.inbound_credit =>
+            {
+                if let Resource::Terminal(terminal) = &channel.resource {
+                    if terminal.input.try_send(frame.payload().to_vec()).is_ok() {
+                        channel.inbound_credit -= frame.payload().len();
+                    } else {
+                        self.close(key, "congested");
+                    }
+                } else {
+                    self.close(key, "protocol-error");
+                }
+            }
             Some("close") => self.close(key, header["code"].as_str().unwrap()),
             _ => self.close(key, "protocol-error"),
         }
@@ -303,48 +395,112 @@ impl Channels {
         });
         let mut congested = Vec::new();
         for (id, channel) in &mut self.active {
-            if !channel.installation["topics"]
+            let Resource::Observation {
+                installation,
+                continuity,
+            } = &channel.resource
+            else {
+                continue;
+            };
+            if !installation["topics"]
                 .as_array()
                 .unwrap()
                 .contains(&json!(candidate.topic))
             {
                 continue;
             }
-            let Some(bytes) = candidate.envelope(
-                &channel.installation["subscriptionId"],
-                channel.continuity,
-                sequence,
-            ) else {
+            let Some(bytes) =
+                candidate.envelope(&installation["subscriptionId"], *continuity, sequence)
+            else {
                 continue;
             };
-            if bytes.len() > wire::MAX_PAYLOAD_BYTES
-                || channel.pending.len() >= MAX_OBSERVATIONS
-                || channel.pending_bytes + bytes.len() > MAX_OBSERVATION_BYTES
-            {
+            if channel.enqueue(bytes, MAX_OBSERVATIONS) {
+                let Resource::Observation { continuity, .. } = &mut channel.resource else {
+                    unreachable!()
+                };
+                *continuity += 1;
+            } else {
                 congested.push(id.clone());
-                continue;
             }
-            channel.continuity += 1;
-            channel.pending_bytes += bytes.len();
-            channel.pending.push_back(bytes);
         }
         for id in congested {
             self.close(&id, "congested");
         }
     }
 
-    pub fn flush(&mut self, output: &Outbound) {
-        while let Some(control) = self.controls.front() {
-            if !output.worker_link(control.clone()) {
-                return;
-            }
-            self.controls.pop_front();
+    fn terminal_mut(&mut self, id: &JsString, token: Uuid) -> Option<&mut Channel> {
+        self.active.get_mut(id).filter(|channel| {
+            matches!(&channel.resource, Resource::Terminal(terminal) if terminal.token == token)
+        })
+    }
+
+    pub fn terminal_ready(&mut self, id: &JsString, token: Uuid) {
+        if let Some(channel) = self.terminal_mut(id, token) {
+            channel.ready = true;
         }
-        for channel in self.active.values_mut() {
+    }
+
+    pub fn terminal_output(&mut self, id: &JsString, token: Uuid, bytes: Vec<u8>, last: bool) {
+        if let Some(channel) = self.terminal_mut(id, token) {
+            if channel.enqueue(bytes, 128) {
+                channel.close_after_drain = last;
+            } else {
+                self.terminal_error(id, token, "credit-exceeded", "congested");
+            }
+        }
+    }
+
+    pub fn terminal_credit(&mut self, id: &JsString, token: Uuid, bytes: usize) {
+        if let Some(channel) = self.terminal_mut(id, token) {
+            channel.credit_pending += bytes;
+        }
+    }
+
+    pub fn terminal_error(&mut self, id: &JsString, token: Uuid, error: &str, close: &str) {
+        let Some(channel) = self.terminal_mut(id, token) else {
+            return;
+        };
+        if channel.send > 0 {
+            let frame = channel.frame("error", channel.send, &[("code", json!(error))], &[]);
+            channel.send += 1;
+            self.push_control(frame);
+        }
+        self.close(id, close);
+    }
+
+    pub fn grant_for(&self, header: &Value) -> Option<&JsString> {
+        self.active
+            .get(id(&header["channel"], "channelId"))
+            .map(|channel| &channel.grant)
+    }
+
+    pub fn flush(&mut self, output: &Outbound) {
+        if !self.flush_controls(output) {
+            return;
+        }
+        let mut finished = Vec::new();
+        for (id, channel) in &mut self.active {
             if !channel.flush(output) {
                 break;
             }
+            if channel.close_after_drain && channel.pending.is_empty() && channel.send > 0 {
+                finished.push(id.clone());
+            }
         }
+        for id in finished {
+            self.close(&id, "normal");
+        }
+        self.flush_controls(output);
+    }
+
+    fn flush_controls(&mut self, output: &Outbound) -> bool {
+        while let Some(control) = self.controls.front() {
+            if !output.worker_link(control.clone()) {
+                return false;
+            }
+            self.controls.pop_front();
+        }
+        true
     }
 
     pub fn close_session(&mut self, session: &JsString, code: &str) {

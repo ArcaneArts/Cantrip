@@ -6,11 +6,13 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import * as crypto from "../../packages/crypto/dist/index.js";
 import { attachTerminal } from "./terminal-relay-client.mjs";
+import { attachWorkerLinkTerminal } from "./worker-link-terminal-client.mjs";
 
 export async function verifyHostTerminal({
   call,
   eventually,
   origin,
+  workerId,
   ownerId,
   serverId,
   surfaceKey,
@@ -68,6 +70,19 @@ export async function verifyHostTerminal({
     views.push(view.relay);
     return view;
   }
+  async function attachWorkerLink() {
+    const view = await attachWorkerLinkTerminal({
+      origin,
+      call,
+      workerId,
+      ownerId,
+      serverId,
+      surfaceKey,
+      id,
+    });
+    views.push(view);
+    return view;
+  }
   let deleted = false;
   try {
     const first = await attach();
@@ -84,6 +99,39 @@ export async function verifyHostTerminal({
       "shell runs in the private worktree",
     );
     assert.ok(!first.relay.history.some(({ raw }) => raw.includes(marker)));
+
+    const link = await attachWorkerLink();
+    assert.ok(
+      link.replay.includes(marker),
+      "WorkerLink replays the existing shell",
+    );
+    link.relay.send({ type: "resize", cols: 111, rows: 42 });
+    const relayToken = randomUUID();
+    await link.input(
+      "printf '%s%s\\n' link-proof- '" +
+        relayToken +
+        "'; /bin/stty size > native-link-size; printf '%s' \"$$\" > native-link-pid\r",
+    );
+    await link.read(new RegExp("link-proof-" + relayToken));
+    assert.ok(
+      !link.relay.history.some(({ raw }) =>
+        raw.includes("link-proof-" + relayToken),
+      ),
+    );
+    await eventually(
+      () =>
+        readFile(path.join(checkout, "native-link-size"), "utf8").catch(
+          () => "",
+        ),
+      (value) => assert.equal(value.trim(), "42 111"),
+      "WorkerLink resize reaches the PTY",
+    );
+    assert.equal(
+      await readFile(path.join(checkout, "native-link-pid"), "utf8"),
+      pid,
+    );
+    await link.revoke();
+    await link.close();
 
     if (cli) {
       await first.input(
@@ -166,7 +214,24 @@ export async function verifyHostTerminal({
       (value) => assert.equal(value, pid),
       "reattachment keeps the same shell",
     );
-    await second.input("exit 7\r");
+    const linkExit = await attachWorkerLink();
+    assert.ok(linkExit.replay.includes(marker));
+    assert.equal(linkExit.hydration.format, "legacy-raw");
+    assert.equal(linkExit.hydration.rows, 43);
+    assert.equal(linkExit.hydration.cols, 113);
+    assert.equal(linkExit.hydration.snapshotCharacters, linkExit.replay.length);
+    await linkExit.input("exit 7\r");
+    assert.deepEqual(await linkExit.relay.next(({ type }) => type === "exit"), {
+      type: "exit",
+      exitCode: 7,
+      signal: null,
+    });
+    assert.equal(
+      (await linkExit.relay.nextWire(({ kind }) => kind === "close")).header
+        .code,
+      "normal",
+    );
+    await linkExit.close();
     const exited = await second.relay.next((frame) =>
       ["exit", "error"].includes(frame.type),
     );
