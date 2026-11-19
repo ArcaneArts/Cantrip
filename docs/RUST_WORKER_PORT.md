@@ -5509,3 +5509,29 @@ Protected CLI policy, Explorer, terminal read/input, and browser
 navigation adapters remain open. Cwd-only inference for protected
 checkouts, managed Codex bindings and CLI launch environment, Cantrip OS
 Run execution, and production cutover remain open.
+
+## 124. Open protected CLI policy summaries and bodies
+
+Reference commit `4adc43398b5f5b24630b111890ce1ea2fba55396` (#3286).
+
+The native loopback broker supports `cantrip policy list` and
+`cantrip policy read`. Core resolves the effective policy set for the
+authorized project and returns encrypted records in its existing order.
+The worker opens each summary with its recorded key revision and
+preserves mandatory and assignment sources. For a read, the worker
+looks up the requested key locally and sends only the selected policy
+ID to Core. It checks the returned policy identity and opens the body
+against that row. Plaintext policy content is returned through the
+authenticated loopback connection.
+
+The new endpoint contract block is generated from `packages/protocol`.
+On macOS ARM64, the shipped CLI ran inside a Rust-managed Host Run
+against the Rust server with PGlite. CLI list and read results matched
+the Node decryptor for the same encrypted records. The fixture checked
+mandatory and project assignments, an unassigned policy, and a body
+encrypted for a different policy ID. Core's responses carried ciphertext.
+The Node policy and broker tests also passed locally.
+
+Managed Agent policy context and protected CLI Explorer, terminal
+read/input, and browser navigation remain open. Production still
+selects the Node worker.

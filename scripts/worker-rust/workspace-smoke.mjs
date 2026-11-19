@@ -682,6 +682,14 @@ try {
         component: "run-content",
         keyRevision: 1,
       });
+      const policyKey = values.cli
+        ? cryptoClient.deriveComponentKey({
+            accountMasterKey: master,
+            ownerId,
+            component: "policy-content",
+            keyRevision: 1,
+          })
+        : null;
       try {
         const identity = JSON.parse(
           await readFile(
@@ -689,33 +697,37 @@ try {
             "utf8",
           ),
         );
-        const wrappedKey = await cryptoClient.wrapComponentKeyForWorker({
-          ownerId,
-          workerId,
-          component: "run-content",
-          keyRevision: 1,
-          componentKey: runKey,
-          workerPublicKey: identity.publicKey,
-        });
-        const stored = await call(
-          "POST",
-          `/api/encryption/principals/${identity.principalId}/grants`,
-          {
-            component: "run-content",
+        const grants = [["run-content", runKey]];
+        if (policyKey) grants.push(["policy-content", policyKey]);
+        for (const [component, componentKey] of grants) {
+          const wrappedKey = await cryptoClient.wrapComponentKeyForWorker({
+            ownerId,
+            workerId,
+            component,
             keyRevision: 1,
-            wrappedKey,
-          },
-        );
-        assert.equal(stored.status, 201, JSON.stringify(stored));
-        const refreshed = await call(
-          "POST",
-          `/api/workers/${workerId}/encryption/refresh`,
-          {
-            component: "run-content",
-            keyRevision: 1,
-          },
-        );
-        assert.equal(refreshed.status, 200, JSON.stringify(refreshed));
+            componentKey,
+            workerPublicKey: identity.publicKey,
+          });
+          const stored = await call(
+            "POST",
+            `/api/encryption/principals/${identity.principalId}/grants`,
+            {
+              component,
+              keyRevision: 1,
+              wrappedKey,
+            },
+          );
+          assert.equal(stored.status, 201, JSON.stringify(stored));
+          const refreshed = await call(
+            "POST",
+            `/api/workers/${workerId}/encryption/refresh`,
+            {
+              component,
+              keyRevision: 1,
+            },
+          );
+          assert.equal(refreshed.status, 200, JSON.stringify(refreshed));
+        }
         await verifyHostRuns({
           call,
           eventually,
@@ -728,9 +740,11 @@ try {
           restartWorker,
           cli: values.cli && path.resolve(values.cli),
           workerDirectory,
+          policyKey,
         });
       } finally {
         runKey.fill(0);
+        policyKey?.fill(0);
       }
       break exercise;
     }
@@ -969,6 +983,7 @@ try {
         typedFlutterProvider: true,
         typedJavaProvider: true,
         nativeCliBroker: Boolean(values.cli),
+        protectedCliPolicies: Boolean(values.cli),
         realGradleSdk: Boolean(
           process.env.CANTRIP_TEST_GRADLE && process.env.CANTRIP_TEST_JDK_HOME,
         ),

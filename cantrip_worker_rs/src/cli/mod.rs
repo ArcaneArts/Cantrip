@@ -1,4 +1,5 @@
 //! Authenticated loopback relay for the shipped Cantrip CLI.
+mod policy;
 mod run;
 mod server;
 
@@ -296,8 +297,11 @@ impl Handler {
         match request["command"].as_str().context("CLI command name")? {
             "run.logs" => run::logs(&self.server, &self.encryption, request, id).await,
             "run.secret-set" => run::set_secret(&self.server, &self.encryption, request, id).await,
-            "policy.list" | "policy.read" | "explorer.list" | "explorer.read"
-            | "explorer.write" | "terminal.read" | "terminal.send" | "browser.open" => {
+            "policy.list" | "policy.read" => {
+                policy::execute(&self.server, &self.encryption, &request, id).await
+            }
+            "explorer.list" | "explorer.read" | "explorer.write" | "terminal.read"
+            | "terminal.send" | "browser.open" => {
                 anyhow::bail!("This protected CLI command is unavailable on the native worker.")
             }
             _ => self.server.execute(request, id).await,

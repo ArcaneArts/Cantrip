@@ -27,6 +27,7 @@ export async function verifyHostRuns({
   componentKey,
   restartWorker,
   cli,
+  policyKey,
   workerDirectory,
 }) {
   const secret = "native-test-secret-🗝";
@@ -316,6 +317,8 @@ exec /bin/sleep 120`;
       previous,
       workerDirectory,
       workerId,
+      ownerId,
+      policyKey,
     });
   await verifyNodeRunProvider(providerFixture);
   await verifyCargoRunProvider(providerFixture);
