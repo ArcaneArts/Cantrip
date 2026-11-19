@@ -3,6 +3,7 @@
 pub mod attachments;
 pub mod browser_probe;
 mod browser_services;
+mod browser_surface;
 pub(crate) mod chat_content;
 mod cli;
 pub mod codex;
