@@ -258,10 +258,12 @@ impl Client {
                 "managedQueueStartReceiptSchema",
                 "managedQueueStartReceiptResultSchema",
             ),
+            "import" => ("managedQueueImportSchema", "managedQueueImportResultSchema"),
+            "import-ack" => ("managedQueueImportAckSchema", "managedQueueSnapshotSchema"),
             _ => unreachable!("supported console queue action"),
         };
         scope.identity()?;
-        if matches!(action, "read" | "start-receipt") {
+        if matches!(action, "read" | "start-receipt" | "import" | "import-ack") {
             input["workerId"] = json!(self.configuration.lock().unwrap().worker_id);
         }
         let body = checked(request_schema, &input)?;
@@ -766,7 +768,7 @@ fn reconciliation(session: &Value, turn: Option<&JsString>, status: Option<&str>
     })
 }
 
-fn crypto_context(
+pub(super) fn crypto_context(
     grant: &cantrip_history::content::Material,
     chat: &Value,
     operation: &JsString,

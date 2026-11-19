@@ -1,4 +1,5 @@
 //! The terminal observes and edits Core's queue through versioned receipts.
+mod import;
 mod prompt;
 
 use super::{View, gateway::fault};
@@ -18,9 +19,9 @@ use cantrip_wire::{JsString, Value, parse_json_text, value::json};
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, Weak},
+    sync::{Arc, Mutex, Weak, atomic::AtomicBool},
 };
-use tokio::sync::watch;
+use tokio::sync::{Mutex as AsyncMutex, watch};
 
 pub(super) fn manages(method: &Value) -> bool {
     matches!(
@@ -36,31 +37,39 @@ pub(super) fn manages(method: &Value) -> bool {
     )
 }
 
-type Revision = watch::Sender<Option<u64>>;
+pub(super) struct State {
+    pub revision: watch::Sender<Option<u64>>,
+    sync_import: AsyncMutex<()>,
+    import_scheduled: AtomicBool,
+}
 
 #[derive(Clone, Default)]
-pub(in crate::codex::turn) struct Views(Arc<Mutex<HashMap<Key, Weak<Revision>>>>);
+pub(in crate::codex::turn) struct Views(Arc<Mutex<HashMap<Key, Weak<State>>>>);
 
 impl Views {
-    pub(super) fn watch(&self, key: Key) -> Arc<Revision> {
+    pub(super) fn watch(&self, key: Key) -> Arc<State> {
         let mut views = self.0.lock().unwrap();
         if let Some(current) = views.get(&key).and_then(Weak::upgrade) {
             return current;
         }
         views.retain(|_, sender| sender.strong_count() > 0);
-        let sender = Arc::new(watch::channel(None).0);
-        views.insert(key, Arc::downgrade(&sender));
-        sender
+        let state = Arc::new(State {
+            revision: watch::channel(None).0,
+            sync_import: AsyncMutex::new(()),
+            import_scheduled: AtomicBool::new(false),
+        });
+        views.insert(key, Arc::downgrade(&state));
+        state
     }
 
     pub(in crate::codex::turn) fn publish(&self, key: &Key, revision: u64) {
-        if let Some(sender) = self.0.lock().unwrap().get(key).and_then(Weak::upgrade) {
-            publish(&sender, revision);
+        if let Some(state) = self.0.lock().unwrap().get(key).and_then(Weak::upgrade) {
+            publish(&state.revision, revision);
         }
     }
 }
 
-fn publish(sender: &Revision, revision: u64) {
+fn publish(sender: &watch::Sender<Option<u64>>, revision: u64) {
     sender.send_if_modified(|current| {
         if current.is_some_and(|current| current >= revision) {
             return false;
@@ -96,6 +105,10 @@ pub(super) fn request(
     })
 }
 
+pub(super) fn native_changed(view: Arc<View>) {
+    import::schedule(view);
+}
+
 async fn execute(view: &View, session: &Value, frame: &Value, signal: &Signal) -> Result<Value> {
     signal.check()?;
     view.assert_current()?;
@@ -111,6 +124,8 @@ async fn execute(view: &View, session: &Value, frame: &Value, signal: &Signal) -
         params["threadId"] == session["threadId"],
         "Managed queue requests require their exact bound thread ID."
     );
+    import::synchronize(view, &scope).await?;
+    signal.check()?;
     let client = &view.turns.receipts;
     let admission = if method == "thread/queue/list" {
         None
@@ -225,7 +240,7 @@ fn validate_mutation(params: &Value) -> Result<()> {
 
 fn observe(view: &View, snapshot: &Value) {
     publish(
-        &view.queue_revision,
+        &view.queue_state.revision,
         snapshot["revision"]
             .as_u64()
             .expect("validated queue revision"),
@@ -325,13 +340,21 @@ async fn mutation(
     match method {
         "thread/queue/add" => {
             required(&params["clientUserMessageId"], "client message ID")?;
-            let seed = json!((&scope.server, &scope.owner, &view.chat, &operation)).stringify();
-            let digest = Sha256::digest(seed.as_bytes());
-            let mut bytes: [u8; 16] = digest[..16].try_into().unwrap();
-            bytes[6] = (bytes[6] & 15) | 64;
-            bytes[8] = (bytes[8] & 63) | 128;
-            let id = JsString::from(uuid::Uuid::from_bytes(bytes).to_string());
-            let mut prepared = prompt::prepare(view, scope, params, &operation, &id, None).await?;
+            let id = entry_id(&json!((
+                &scope.server,
+                &scope.owner,
+                &view.chat,
+                &operation
+            )));
+            let mut prepared = prompt::prepare(
+                view,
+                scope,
+                params,
+                &operation,
+                &id,
+                prompt::Preparation::Add,
+            )
+            .await?;
             prepared["kind"] = json!("add");
             Ok(prepared)
         }
@@ -346,8 +369,15 @@ async fn mutation(
                     json!({"kind":"delete","id":id,"expectedItemRevision":existing["revision"]}),
                 );
             }
-            let mut prepared =
-                prompt::prepare(view, scope, params, &operation, &id, Some(existing)).await?;
+            let mut prepared = prompt::prepare(
+                view,
+                scope,
+                params,
+                &operation,
+                &id,
+                prompt::Preparation::Edit(existing),
+            )
+            .await?;
             prepared["kind"] = json!("update");
             prepared["id"] = json!(id);
             prepared["expectedItemRevision"] = existing["revision"].clone();
@@ -371,6 +401,14 @@ async fn mutation(
         }
         _ => unreachable!("managed queue mutation"),
     }
+}
+
+fn entry_id(seed: &Value) -> JsString {
+    let digest = Sha256::digest(seed.stringify().as_bytes());
+    let mut bytes: [u8; 16] = digest[..16].try_into().unwrap();
+    bytes[6] = (bytes[6] & 15) | 64;
+    bytes[8] = (bytes[8] & 63) | 128;
+    uuid::Uuid::from_bytes(bytes).to_string().into()
 }
 
 async fn complete(

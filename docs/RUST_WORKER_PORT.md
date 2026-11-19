@@ -7017,3 +7017,30 @@ local authentication mode. The Windows x64 GNU worker compiled.
 
 Import of legacy runtime-local queue items, managed console settings,
 approval replies and runtime handoff remain open.
+
+## 180. Preserve legacy native queue items in managed consoles
+
+Reference commit 9031b0c98d076f20a207b97e9b8beb77ca439757 (#3343).
+
+The console reconciles the prepared app-server's local queue with Core.
+The worker stages each encrypted source with its existing prompt identity
+and keyed digest. Core holds the prompt from dispatch while the selected
+native runner compares and deletes the exact source. The worker
+acknowledges the durable deletion receipt through Core before the prompt
+becomes eligible. It checks outstanding imports even when the local queue
+is empty. Views for the same Chat serialize imports and refresh on native
+queue changes.
+
+The local macOS ARM64 fixture seeded the persisted queue in the disposable
+guest Chat's Codex home before reopening it. The Node codec matched the
+imported prompt and verified the protected source and digest. The fixture
+dropped the first Core acknowledgment after checking the real native
+deletion receipt. The next interaction recovered one canonical prompt with
+its original client message identity. A source for another thread remained
+in native storage. The queue controls and protected console image
+submission passed in the same run. The Rust-server PGlite queue fixture
+matched the Node reference for local authentication. The Windows x64 GNU
+worker compiled.
+
+Headless queue import observation, console settings, approval replies and
+runtime handoff remain open.

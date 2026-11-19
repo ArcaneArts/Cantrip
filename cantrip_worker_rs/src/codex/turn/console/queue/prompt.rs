@@ -70,14 +70,25 @@ pub(super) async fn open(view: &View, scope: &Scope, item: &Value) -> Result<Val
     }))
 }
 
+pub(super) enum Preparation<'a> {
+    Add,
+    Edit(&'a Value),
+    Import,
+}
+
 pub(super) async fn prepare(
     view: &View,
     scope: &Scope,
     params: &Value,
     operation: &JsString,
     id: &JsString,
-    existing: Option<&Value>,
+    preparation: Preparation<'_>,
 ) -> Result<Value> {
+    let imported = matches!(preparation, Preparation::Import);
+    let existing = match preparation {
+        Preparation::Edit(item) => Some(item),
+        _ => None,
+    };
     let empty = Value::Null;
     let previous = existing.unwrap_or(&empty);
     let configuration = &view.command;
@@ -90,10 +101,14 @@ pub(super) async fn prepare(
         .as_str()
         .or_else(|| previous["nativeAction"].as_str())
         .unwrap_or("plain");
-    let mode = previous["classification"]["mode"]
-        .as_str()
-        .or_else(|| configuration["planMode"].as_str())
-        .unwrap_or("default");
+    let default_mode = configuration["planMode"].as_str().unwrap_or("default");
+    let mode = previous["classification"]["mode"].as_str().unwrap_or(
+        if imported && default_mode != "plan" {
+            "default"
+        } else {
+            default_mode
+        },
+    );
     let (action, method, mode_override) =
         queue::classify(&json!({"input":captured.input,"action":requested}), mode)?;
     let mode = mode_override.unwrap_or(mode);
@@ -150,15 +165,20 @@ pub(super) async fn prepare(
         .filter(|value| !value.is_null())
         .cloned()
         .unwrap_or_else(|| json!(format!("managed-queue:{prompt_id}")));
+    let subagents = if imported {
+        &empty
+    } else {
+        &configuration["subagentDefaults"]
+    };
     let turn = turn_with_attachments(
         scope,
         &json!({
             "promptId":id_value,"messageId":message,"text":display,"mode":mode,"idempotencyKey":idempotency,
             "modelId":selected("modelId",&configuration["model"]["id"]),
             "reasoningEffort":selected("reasoningEffort",&configuration["model"]["reasoningEffort"]),
-            "customSubagentModel":selected("customSubagentModel",&json!(configuration["subagentDefaults"].is_object())),
-            "subagentModelId":selected("subagentModelId",&configuration["subagentDefaults"]["model"]["id"]),
-            "subagentReasoningEffort":selected("subagentReasoningEffort",&configuration["subagentDefaults"]["model"]["reasoningEffort"]),
+            "customSubagentModel":selected("customSubagentModel",&json!(subagents.is_object())),
+            "subagentModelId":selected("subagentModelId",&subagents["model"]["id"]),
+            "subagentReasoningEffort":selected("subagentReasoningEffort",&subagents["model"]["reasoningEffort"]),
         }),
         &projected.summaries,
     )?;
