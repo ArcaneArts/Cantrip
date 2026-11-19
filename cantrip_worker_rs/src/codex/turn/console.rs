@@ -3,6 +3,7 @@
 mod gateway;
 mod prompt;
 mod queue;
+mod settings;
 pub(crate) use gateway::Gateway;
 pub(super) use queue::Views as QueueViews;
 pub(in crate::codex) use queue::import;

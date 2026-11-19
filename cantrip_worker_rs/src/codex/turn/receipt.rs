@@ -6,7 +6,7 @@ use crate::{
     http::checked,
     metadata::{Guard, Signal},
 };
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use cantrip_crypto::content::{
     open_native_command_result, protect_native_command_request, protect_native_command_result,
     protect_native_command_terminal_result,
@@ -895,6 +895,32 @@ impl Client {
         Ok(receipt)
     }
 
+    pub async fn admit_console_settings(
+        &self,
+        scope: Scope,
+        session: Value,
+        operation: &str,
+        frame: &Value,
+        permission: &Value,
+        activation: Value,
+    ) -> Result<Receipt<'_>> {
+        let command = json!({
+            "permissionProfileId":permission, "nativeViewRequestId":frame["id"], "operationId":operation,
+        });
+        let (receipt, _, _) = self
+            .admit_native(
+                scope,
+                session,
+                super::settings::UPDATE,
+                &frame["params"],
+                &command,
+                activation,
+                "terminal",
+            )
+            .await?;
+        Ok(receipt)
+    }
+
     pub async fn admit_console_turn(
         &self,
         scope: Scope,
@@ -962,8 +988,25 @@ impl Client {
             intent["goalStatus"] = status.clone();
         }
         if method == super::settings::UPDATE {
-            intent["settingKeys"] = json!(vec!["collaborationMode"]);
+            intent["settingKeys"] = json!(
+                params
+                    .as_object()
+                    .context("Native settings parameters")?
+                    .keys()
+                    .filter(|key| !matches!(
+                        key.as_str(),
+                        Some("threadId" | "turnId" | "operationId" | "applyAt")
+                    ))
+                    .cloned()
+                    .collect::<Vec<_>>()
+            );
             intent["nativeSettingsOperationId"] = params["operationId"].clone();
+            if let Some(turn) = ["expectedTurnId", "turnId"]
+                .iter()
+                .find_map(|key| params[*key].as_js_string())
+            {
+                intent["expectedTurnId"] = json!(turn);
+            }
             intent["pathsWithinPlacement"] = json!(true);
         }
         let resume = params["status"] == "active"

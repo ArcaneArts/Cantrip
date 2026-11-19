@@ -323,7 +323,14 @@ impl Turns {
                 if scope.owner != key.0 || scope.server != key.1 {
                     bail!("The worker binding changed before the native settings mutation.");
                 }
-                self.settings.observe(runtime, &receipt, scope)
+                self.settings.observe(
+                    runtime,
+                    &receipt,
+                    scope,
+                    params["operationId"]
+                        .as_js_string()
+                        .context("Missing native settings operation ID.")?,
+                )
             })();
             match observation {
                 Ok(observation) => Some(observation),
@@ -338,15 +345,12 @@ impl Turns {
         let reply = runtime
             .request(method.into(), Some(params), Some(RPC_TIMEOUT), None)
             .await;
+        if let Some(settings) = settings {
+            return settings.settle(&receipt, reply).await;
+        }
         match reply {
             Ok(Some(result)) => {
-                if let Some(settings) = settings {
-                    if let Err(error) = settings.accepted(&result) {
-                        receipt.uncertain().await?;
-                        return Err(error);
-                    }
-                    receipt.applied(&json!({"result":result}), None).await?;
-                } else if awaiting_goal {
+                if awaiting_goal {
                     receipt.applied_queued_goal(&result).await?;
                 } else {
                     receipt.applied(&result, None).await?;
@@ -358,11 +362,7 @@ impl Turns {
                     .downcast_ref::<Failure>()
                     .and_then(|error| error.native_error.as_ref())
                 {
-                    let recorded = settings.map(|settings| settings.rejected(native));
                     receipt.rejected(native).await?;
-                    if let Some(recorded) = recorded {
-                        recorded?;
-                    }
                 } else {
                     receipt.uncertain().await?;
                 }
