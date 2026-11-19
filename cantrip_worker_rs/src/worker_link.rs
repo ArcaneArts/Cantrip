@@ -3,8 +3,9 @@
 mod channels;
 mod observation;
 mod terminal;
+mod tunnel;
 
-use crate::{connection::Outbound, encryption::Service, http::checked};
+use crate::{connection::Outbound, encryption::Service, http::checked, logging::Logs};
 use anyhow::{Context, Result, bail, ensure};
 use cantrip_framing::worker_link::Frame;
 use cantrip_protocol::worker_link::identity_key;
@@ -19,7 +20,7 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    sync::{Notify, watch},
+    sync::{Notify, Semaphore, watch},
     time::Instant,
 };
 
@@ -34,9 +35,11 @@ pub(crate) struct Coordinator {
     generation: String,
     encryption: Arc<Service>,
     outgoing: Arc<Outbound>,
+    logs: Arc<Logs>,
     state: Mutex<State>,
     wake: Notify,
     terminals: OnceLock<Arc<terminal::Adapter>>,
+    tunnel_streams: Arc<Semaphore>,
 }
 
 #[derive(Default)]
@@ -89,15 +92,18 @@ impl Coordinator {
         generation: String,
         encryption: Arc<Service>,
         outgoing: Arc<Outbound>,
+        logs: Arc<Logs>,
     ) -> Self {
         Self {
             worker,
             generation,
             encryption,
             outgoing,
+            logs,
             state: Mutex::default(),
             wake: Notify::new(),
             terminals: OnceLock::new(),
+            tunnel_streams: Arc::new(Semaphore::new(tunnel::MAX_STREAMS)),
         }
     }
 
@@ -282,28 +288,29 @@ impl Coordinator {
         state.channels.flush(&self.outgoing);
     }
 
-    fn update_terminal(&self, update: impl FnOnce(&mut Channels)) {
+    fn update_channels<T>(&self, update: impl FnOnce(&mut Channels) -> T) -> T {
         let mut state = self.state.lock().unwrap();
         let identity = self.encryption.bound_identity();
         state.sweep(Utc::now().timestamp_millis(), identity.as_ref().ok());
-        update(&mut state.channels);
+        let result = update(&mut state.channels);
         state.channels.flush(&self.outgoing);
+        result
     }
 
     fn terminal_ready(&self, id: &JsString, token: uuid::Uuid) {
-        self.update_terminal(|channels| channels.terminal_ready(id, token));
+        self.update_channels(|channels| channels.terminal_ready(id, token));
     }
 
     fn terminal_output(&self, id: &JsString, token: uuid::Uuid, bytes: Vec<u8>, last: bool) {
-        self.update_terminal(|channels| channels.terminal_output(id, token, bytes, last));
+        self.update_channels(|channels| channels.terminal_output(id, token, bytes, last));
     }
 
     fn terminal_credit(&self, id: &JsString, token: uuid::Uuid, bytes: usize) {
-        self.update_terminal(|channels| channels.terminal_credit(id, token, bytes));
+        self.update_channels(|channels| channels.terminal_credit(id, token, bytes));
     }
 
     fn terminal_error(&self, id: &JsString, token: uuid::Uuid, error: &str, close: &str) {
-        self.update_terminal(|channels| channels.terminal_error(id, token, error, close));
+        self.update_channels(|channels| channels.terminal_error(id, token, error, close));
     }
 
     pub(crate) fn publish_notification(&self, notification: &Value) {

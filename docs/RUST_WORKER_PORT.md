@@ -5670,3 +5670,33 @@ were validated locally.
 
 Managed Codex console launch over the terminal channel, terminal
 adapters for Cantrip OS, and direct and peer transport remain open.
+
+## 130. Serve encrypted Host TCP tunnels over WorkerLink
+
+Reference commit `7e57eafd5bae4407a9005b21bca2364436ad2b94` (#3292).
+
+The Rust worker accepts a reliable stream under an installed tunnel
+attachment and checks the exact tunnel, attachment, and endpoint IDs in
+each nested CTTN frame. It opens the protected destination record with
+the established tunnel scope, operation ID, revision, and component key.
+The decoded Host endpoint can use the protocol's IPv4 and IPv6 loopback
+addresses. The `localhost` variant tries IPv6 and then IPv4 loopback.
+The worker logs scoped connection and rejection diagnostics without
+destination addresses, keys, or payloads.
+
+Multiple logical TCP streams share the attachment with independent
+sequence and plaintext credit. The outer channel bounds ciphertext
+queued for relay credit. Source credit is returned as the local
+TCP socket accepts data. Half-close preserves delivery in the other
+direction. Closing or revoking the attachment cancels its owned streams.
+
+On macOS ARM64, the public tunnel and WorkerLink APIs exercised both
+Rust services with PGlite and an empty worker startup PATH. The local
+TCP fixture and existing TypeScript framing and crypto checked a
+protected record with the wrong binding, two concurrent connections,
+encrypted data in both directions, inner and outer credit, directional
+half-close, per-stream sequence rejection, and socket closure on grant
+revocation. The focused Node tunnel adapter tests passed locally.
+
+Guest tunnels, project and Chat share destinations, the legacy tunnel
+WebSocket, direct brokers, and peer carriage remain open.

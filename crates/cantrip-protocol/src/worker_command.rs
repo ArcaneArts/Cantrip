@@ -226,6 +226,11 @@ pub(super) fn refine(
         }
         "surface-kind" => value["classification"]["recordKind"] != parameter,
         "tunnel-domain" => value["protectedContent"]["domain"] != "tunnel-content",
+        "tunnel-guest-source" => {
+            value["source"]["kind"] == "worker-os-listener"
+                && (value["destination"]["kind"] != "worker-tcp"
+                    || value["destination"]["workerId"] != value["source"]["workerId"])
+        }
         "chat-title" => value["titleProtection"]["classification"]["recordKind"] != "chat",
         "task-model" => value["modelId"].is_null(),
         "source-path-pair" => {

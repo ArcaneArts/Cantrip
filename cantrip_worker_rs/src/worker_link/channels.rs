@@ -1,5 +1,10 @@
-//! Ordered relay channels for the native observation adapter.
-use super::{Coordinator, Session, id, observation::Observation, terminal::Terminal};
+//! Ordered relay channels and shared carrier credit.
+use super::{
+    Coordinator, Session, id,
+    observation::Observation,
+    terminal::Terminal,
+    tunnel::{Inbound, Output, Tunnel},
+};
 use crate::connection::Outbound;
 use cantrip_framing::worker_link::{self as wire, Frame};
 use cantrip_wire::{JsString, Value, value::json};
@@ -20,6 +25,8 @@ const MAX_INVALID: u32 = 32;
 const MAX_CREDIT: usize = 8 * 1024 * 1024;
 const MAX_OBSERVATIONS: usize = 256;
 const MAX_OBSERVATION_BYTES: usize = 4 * 1024 * 1024;
+const MAX_TUNNEL_QUEUE_BYTES: usize = 512 * 1024;
+const MAX_TUNNEL_QUEUE_FRAMES: usize = 32;
 const MAX_OPERATIONS: usize = 4096;
 const IDLE: Duration = Duration::from_secs(5 * 60);
 const LIFETIME: Duration = Duration::from_secs(12 * 60 * 60);
@@ -57,6 +64,16 @@ enum Resource {
         continuity: u64,
     },
     Terminal(Terminal),
+    Tunnel(Box<Tunnel>),
+}
+
+impl Resource {
+    fn payload_format(&self) -> &'static str {
+        match self {
+            Self::Tunnel(_) => "tunnel-data-plane-v1",
+            Self::Observation { .. } | Self::Terminal(_) => "raw",
+        }
+    }
 }
 
 impl Channel {
@@ -108,7 +125,7 @@ impl Channel {
                 self.send,
                 &[
                     ("direction", json!("worker-to-client")),
-                    ("payloadFormat", json!("raw")),
+                    ("payloadFormat", json!(self.resource.payload_format())),
                 ],
                 bytes,
             );
@@ -118,6 +135,9 @@ impl Channel {
             self.credit -= bytes.len();
             self.pending_bytes -= bytes.len();
             self.pending.pop_front();
+            if let Resource::Tunnel(tunnel) = &self.resource {
+                tunnel.writable();
+            }
             self.send += 1;
             self.activity = Instant::now();
         }
@@ -133,6 +153,17 @@ impl Channel {
         }
         self.pending_bytes += bytes.len();
         self.pending.push_back(bytes);
+        true
+    }
+
+    fn queue_tunnel(&mut self, bytes: &[u8]) -> bool {
+        if self.pending.len() >= MAX_TUNNEL_QUEUE_FRAMES
+            || self.pending_bytes + bytes.len() > MAX_TUNNEL_QUEUE_BYTES
+        {
+            return false;
+        }
+        self.pending_bytes += bytes.len();
+        self.pending.push_back(bytes.to_vec());
         true
     }
 }
@@ -301,6 +332,17 @@ impl Channels {
                     .map_err(|_| "resource-unavailable")?;
                 (Resource::Terminal(terminal), false)
             }
+            Some("tunnel")
+                if header["lane"] == "stream" && header["channelKind"] == "reliable-stream" =>
+            {
+                let tunnel = Tunnel::open(gateway, header, installed)?;
+                if self.active.values().any(|channel| {
+                    matches!(&channel.resource, Resource::Tunnel(active) if active.attachment == tunnel.attachment)
+                }) {
+                    return Err("resource-unavailable");
+                }
+                (Resource::Tunnel(tunnel), true)
+            }
             _ => return Err("resource-unavailable"),
         };
         let expiry = super::timestamp(&installed["lease"], "absoluteExpiresAt")
@@ -361,18 +403,29 @@ impl Channels {
             Some("data")
                 if allow_write
                     && header["direction"] == "client-to-worker"
-                    && header["payloadFormat"] == "raw"
+                    && header["payloadFormat"] == channel.resource.payload_format()
                     && !channel.close_after_drain
                     && frame.payload().len() <= channel.inbound_credit =>
             {
-                if let Resource::Terminal(terminal) = &channel.resource {
-                    if terminal.input.try_send(frame.payload().to_vec()).is_ok() {
-                        channel.inbound_credit -= frame.payload().len();
-                    } else {
-                        self.close(key, "congested");
+                let bytes = frame.payload();
+                let result = match &mut channel.resource {
+                    Resource::Terminal(terminal) => terminal
+                        .input
+                        .try_send(bytes.to_vec())
+                        .map(|()| Inbound::Retained)
+                        .map_err(|_| "congested"),
+                    Resource::Tunnel(tunnel) => tunnel.receive(bytes),
+                    Resource::Observation { .. } => Err("protocol-error"),
+                };
+                channel.inbound_credit -= bytes.len();
+                match result {
+                    Ok(Inbound::Retained) => {}
+                    Ok(Inbound::Consumed) => channel.credit_pending += bytes.len(),
+                    Ok(Inbound::Reply(reply)) if channel.queue_tunnel(reply.bytes()) => {
+                        channel.credit_pending += bytes.len();
                     }
-                } else {
-                    self.close(key, "protocol-error");
+                    Ok(Inbound::Reply(_)) => self.close(key, "congested"),
+                    Err(code) => self.close(key, code),
                 }
             }
             Some("close") => self.close(key, header["code"].as_str().unwrap()),
@@ -466,6 +519,35 @@ impl Channels {
             self.push_control(frame);
         }
         self.close(id, close);
+    }
+
+    fn tunnel_mut(&mut self, id: &JsString, token: Uuid) -> Option<&mut Channel> {
+        self.active.get_mut(id).filter(|channel| {
+            matches!(&channel.resource, Resource::Tunnel(tunnel) if tunnel.token() == token)
+        })
+    }
+
+    pub fn tunnel_active(&mut self, id: &JsString, token: Uuid) -> bool {
+        self.tunnel_mut(id, token).is_some()
+    }
+
+    pub fn tunnel_output(&mut self, id: &JsString, token: Uuid, bytes: &[u8]) -> Output {
+        match self.tunnel_mut(id, token) {
+            Some(channel) => {
+                if channel.queue_tunnel(bytes) {
+                    Output::Queued
+                } else {
+                    Output::Pending
+                }
+            }
+            None => Output::Closed,
+        }
+    }
+
+    pub fn tunnel_credit(&mut self, id: &JsString, token: Uuid, bytes: usize) {
+        if let Some(channel) = self.tunnel_mut(id, token) {
+            channel.credit_pending += bytes;
+        }
     }
 
     pub fn grant_for(&self, header: &Value) -> Option<&JsString> {
