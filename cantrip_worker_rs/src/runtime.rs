@@ -145,6 +145,11 @@ async fn cycle(
     let (direct, direct_listener) =
         crate::worker_link::DirectBroker::bind(worker.clone(), logs.clone()).await?;
     let mut heartbeat = http::heartbeat(&config, host.platform, host.architecture, &started)?;
+    let managed_chromium = Arc::new(crate::managed_chromium::Manager::configure(
+        &config.data_directory,
+        environment,
+    )?);
+    heartbeat["webRuntimes"] = managed_chromium.capabilities();
     heartbeat["directBroker"] = direct.advertisement().clone();
     heartbeat["remoteSurfaces"] = crate::browser_surface::capabilities(environment);
     heartbeat["projectReplicas"] = json!({
@@ -390,6 +395,11 @@ async fn cycle(
     let settings = turns.settings_delivery();
     let settings_delivery = tokio::spawn(settings.clone().run(stop_rx.clone(), logs.clone()));
     let (requests, mut received) = mpsc::unbounded_channel();
+    let managed_chromium_task = {
+        let manager = managed_chromium.clone();
+        let logs = logs.clone();
+        tokio::spawn(async move { manager.run(&logs).await })
+    };
     let mut heartbeat_task = tokio::spawn(publish(
         configuration.clone(),
         client,
@@ -397,7 +407,11 @@ async fn cycle(
         logs.clone(),
         stop_rx.clone(),
         registered,
-        (encryption.clone(), worker_link.clone()),
+        (
+            encryption.clone(),
+            worker_link.clone(),
+            managed_chromium.clone(),
+        ),
     ));
     let connection = Connection {
         configuration: configuration.clone(),
@@ -467,6 +481,17 @@ async fn cycle(
                         let result = tokio::task::spawn_blocking(move || {
                             crate::chat_content::execute(encryption, &command)
                         }).await.unwrap_or_else(|error| Err(error.into()));
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
+                if kind == "web-runtime.action" {
+                    let manager = managed_chromium.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = manager.action(&request["command"], &logs).await;
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
                     continue;
@@ -972,6 +997,7 @@ async fn cycle(
     };
     let began = std::time::Instant::now();
     stop.send_replace(true);
+    managed_chromium.stop();
     command_shutdown.abort(anyhow::anyhow!("Worker shutting down."));
     browser_surfaces.close().await;
     worktree_observations.close().await;
@@ -989,6 +1015,7 @@ async fn cycle(
     let task_outcomes_closed = task_outcomes.await;
     let worker_link_closed = worker_link_task.await;
     let direct_closed = direct_task.await;
+    let managed_chromium_closed = managed_chromium_task.await;
     let goal_delivery_closed = goal_delivery.await;
     let settings_delivery_closed = settings_delivery.await;
     let shells_closed = shells.shutdown().await;
@@ -1034,6 +1061,7 @@ async fn cycle(
     task_outcomes_closed?;
     worker_link_closed?;
     direct_closed?;
+    managed_chromium_closed?;
     goal_delivery_closed?;
     settings_delivery_closed?;
     encryption_closed?;
@@ -1145,7 +1173,11 @@ async fn publish(
     logs: Arc<Logs>,
     mut stop: watch::Receiver<bool>,
     registered: watch::Sender<bool>,
-    (encryption, worker_link): (Arc<Service>, Arc<crate::worker_link::Coordinator>),
+    (encryption, worker_link, managed_chromium): (
+        Arc<Service>,
+        Arc<crate::worker_link::Coordinator>,
+        Arc<crate::managed_chromium::Manager>,
+    ),
 ) {
     let mut connected = false;
     let mut next = tokio::time::Instant::now();
@@ -1167,6 +1199,7 @@ async fn publish(
             logs.repeated(format!("worker-encryption-refresh-failed:{}",worker.lossy()),"warn","Worker protected server connection is not ready",json!({"event":"worker.encryption.refresh-failed","subsystem":"worker-encryption","operation":"refresh-grants","reasonCode":"request-failed","status":"retrying","workerId":worker,"error":logging::error(&anyhow!(error))}));
         }
         heartbeat["encryption"] = encryption.status();
+        heartbeat["webRuntimes"] = managed_chromium.capabilities();
         let (url, token, worker) = {
             let config = config.lock().unwrap();
             (

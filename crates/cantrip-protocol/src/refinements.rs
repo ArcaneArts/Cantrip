@@ -871,6 +871,47 @@ pub(super) fn apply(
                 custom(&["grants"], "Worker bootstrap contains an invalid grant.");
             }
         }
+        "managed-runtime-release-url" => {
+            if !value
+                .as_str()
+                .is_some_and(|url| url.starts_with("https://"))
+            {
+                custom(&[], "Managed web runtime artifacts must use HTTPS.");
+            }
+        }
+        "managed-runtime-inventory-path" => {
+            let path = value.as_str().ok_or(ValidationError::Operation)?;
+            if path.contains('\\')
+                || matches!(path.as_bytes(), [first, b':', ..] if first.is_ascii_alphabetic())
+                || path.split('/').any(|part| matches!(part, "" | "." | ".."))
+            {
+                custom(
+                    &[],
+                    "Managed runtime inventory paths must be safe relative paths.",
+                );
+            }
+        }
+        "managed-runtime-manifest-targets" => {
+            let mut targets = std::collections::HashSet::new();
+            for (index, artifact) in value["artifacts"]
+                .as_array()
+                .ok_or(ValidationError::Operation)?
+                .iter()
+                .enumerate()
+            {
+                let target = ["component", "platform", "architecture"]
+                    .map(|key| artifact[key].as_str().unwrap_or_default());
+                if !targets.insert(target) {
+                    custom(
+                        &["artifacts", &index.to_string()],
+                        &format!(
+                            "Managed web runtime manifest contains duplicate target {}.",
+                            target.join(":")
+                        ),
+                    );
+                }
+            }
+        }
         "managed-runtime-components" => {
             if value["search"]["component"] != "searxng" {
                 custom(

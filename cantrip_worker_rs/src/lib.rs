@@ -22,6 +22,7 @@ pub mod http;
 pub mod inference;
 pub mod installation;
 pub mod logging;
+mod managed_chromium;
 pub mod mcp;
 pub mod metadata;
 mod model_operations;
