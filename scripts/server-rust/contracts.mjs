@@ -1019,6 +1019,7 @@ export const workerOperationContractRoots = [
   "codeGraphActionAcknowledgementSchema",
   "managedWebRuntimeActionRequestSchema",
   "managedWebRuntimeActionResultSchema",
+  "managedWebRuntimeReleaseManifestSchema",
 ];
 
 export const projectAdministrationContractRoots = [
@@ -1279,6 +1280,10 @@ const refinements = new Map([
   [protocol.workerEncryptionStatusSchema, "worker-encryption-status"],
   [protocol.managedWebRuntimeCapabilitiesSchema, "managed-runtime-components"],
   [protocol.managedWebRuntimeProgressSchema, "managed-runtime-progress"],
+  [
+    protocol.managedWebRuntimeReleaseManifestSchema,
+    "managed-runtime-manifest-targets",
+  ],
 ]);
 // Register individual checks where safeExtend/refine reuses them, including
 // schemas with multiple custom checks. Never infer an unknown callback's meaning.
@@ -1303,6 +1308,14 @@ function registerChecks(schema, tags) {
       "Native refinement registration no longer matches the protocol",
     );
   tags.forEach((tag, index) => registerCustom(schema, index, tag));
+}
+registerChecks(protocol.managedWebRuntimeArtifactSchema.shape.downloadUrl, [
+  "managed-runtime-release-url",
+]);
+for (const key of ["licenseManifest", "sourceManifest"]) {
+  registerChecks(protocol.managedWebRuntimeArtifactSchema.shape[key], [
+    "managed-runtime-inventory-path",
+  ]);
 }
 registerChecks(protocol.modelInputPartSchema.options[1].shape.url, [
   "model-operation-media-url",
