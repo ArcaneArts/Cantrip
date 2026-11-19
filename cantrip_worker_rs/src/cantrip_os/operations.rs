@@ -6,7 +6,6 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::HashSet,
     fs,
-    future::Future,
     io::{self, Write},
     path::{Path, PathBuf},
     sync::Mutex,
@@ -27,7 +26,7 @@ impl Drop for Active<'_> {
     }
 }
 
-fn digest(value: Value) -> String {
+pub(super) fn digest(value: Value) -> String {
     Sha256::digest(value.stringify().as_bytes())
         .iter()
         .map(|byte| format!("{byte:02x}"))
@@ -57,6 +56,33 @@ fn save(file: &Path, record: &Value, exclusive: bool) -> Result<()> {
         fs::File::open(parent)?.sync_all()?;
     }
     Ok(())
+}
+
+pub(super) struct Journal<'a> {
+    file: &'a Path,
+    record: Value,
+}
+
+impl Journal<'_> {
+    fn save(&mut self) -> Result<()> {
+        self.record["updatedAt"] = json!(now());
+        save(self.file, &self.record, false).map_err(|_| DeliveryUnknown(
+            "The OS operation outcome could not be recorded; inspect the existing operation before retrying.".into()
+        ).into())
+    }
+
+    pub fn bind(&mut self, binding: &Value, session_id: &str) -> Result<()> {
+        self.record["native"] = json!({"binding":binding,"sessionId":session_id});
+        self.save()
+    }
+
+    pub fn prepare_process(&mut self, process_id: &str, argv: &[&str]) -> Result<()> {
+        let Value::Array(processes) = &mut self.record["processes"] else {
+            anyhow::bail!("Invalid OS process journal.");
+        };
+        processes.push(json!({"processId":process_id,"argv":argv}));
+        self.save()
+    }
 }
 
 impl Operations {
@@ -139,12 +165,12 @@ impl Operations {
         id: &str,
         command: &str,
         admission: Value,
-        run: impl Future<Output = Result<Value>>,
+        run: impl AsyncFnOnce(&mut Journal<'_>) -> Result<Value>,
     ) -> Result<Value> {
         let file = self.file(scope, id)?;
         let fingerprint = digest(Value::Array(vec![json!(command), admission]));
         let time = now();
-        let mut record = json!({"version":1,"operationId":id,"command":command,"admissionFingerprint":fingerprint,
+        let record = json!({"version":1,"operationId":id,"command":command,"admissionFingerprint":fingerprint,
             "scope":scope,"state":"running","startedAt":time,"updatedAt":time,"receipt":Value::Null,
             "error":Value::Null,"native":Value::Null,"processes":Vec::<Value>::new()});
         let active = {
@@ -174,25 +200,26 @@ impl Operations {
             }
         };
 
-        match run.await {
+        let mut journal = Journal {
+            file: &active.file,
+            record,
+        };
+        match run(&mut journal).await {
             Ok(receipt) => {
-                record["state"] = json!("ready");
-                record["receipt"] = receipt;
+                journal.record["state"] = json!("ready");
+                journal.record["receipt"] = receipt;
             }
             Err(error) => {
-                record["state"] = json!(if error.is::<DeliveryUnknown>() {
+                journal.record["state"] = json!(if error.is::<DeliveryUnknown>() {
                     "unknown"
                 } else {
                     "failed"
                 });
-                record["error"] = json!(error.to_string());
+                journal.record["error"] = json!(error.to_string());
             }
         }
-        record["updatedAt"] = json!(now());
-        save(&active.file, &record, false).map_err(|_| DeliveryUnknown(
-            "The OS operation outcome could not be recorded; inspect the existing operation before retrying.".into()
-        ))?;
-        result(&record)
+        journal.save()?;
+        result(&journal.record)
     }
 }
 
@@ -228,7 +255,9 @@ mod tests {
         let command = "cantrip-os.workspaces.create";
         let admission = json!({"guestWorkspaceId":"test","transport":json!({"kind":"docker","container":"instance"})});
         let (started, running) = tokio::sync::oneshot::channel();
-        let operation = store.execute(&scope, id, command, admission.clone(), async {
+        let operation = store.execute(&scope, id, command, admission.clone(), async |journal| {
+            journal.bind(&json!({"workspace_id":"test"}), "native-session")?;
+            journal.prepare_process("native-process", &["git", "clone"])?;
             started.send(()).unwrap();
             std::future::pending().await
         });
@@ -239,7 +268,7 @@ mod tests {
                 _ = &mut operation => panic!("admission settled without a receipt"),
             }
             let duplicate = store
-                .execute(&scope, id, command, admission.clone(), async {
+                .execute(&scope, id, command, admission.clone(), async |_| {
                     panic!("active admission replayed")
                 })
                 .await?;
@@ -247,11 +276,19 @@ mod tests {
         }
 
         let reopened = Operations::new(data.path());
+        let saved = reopened
+            .read(&reopened.file(&scope, id)?, id, false)?
+            .unwrap();
+        assert_eq!(saved["native"]["sessionId"], "native-session");
+        assert_eq!(
+            saved["processes"],
+            json!([json!({"processId":"native-process","argv":["git", "clone"]})])
+        );
         let observed = reopened.inspect(&scope, id)?;
         assert_eq!(observed["state"], "unknown");
         assert_eq!(
             reopened
-                .execute(&scope, id, command, admission, async {
+                .execute(&scope, id, command, admission, async |_| {
                     panic!("uncertain admission replayed")
                 })
                 .await?,

@@ -906,12 +906,13 @@ async fn cycle(
                 if crate::cantrip_os::Controller::supports(kind) {
                     let controller = cantrip_os.clone();
                     let routing = routing.clone();
+                    let encryption = encryption.clone();
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();
                     let worker = worker.clone();
                     let lifetime = crate::filesystem::Scope::with_stop(stop_rx.clone());
                     commands.spawn(async move {
-                        let result = controller.execute(&request["command"], &routing, &lifetime).await;
+                        let result = controller.execute(&request["command"], &routing, &encryption, &lifetime).await;
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
                     continue;

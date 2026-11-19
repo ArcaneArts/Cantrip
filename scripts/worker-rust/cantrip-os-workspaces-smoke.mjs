@@ -14,6 +14,7 @@ const { values } = parseArgs({
   options: {
     worker: { type: "string" },
     server: { type: "string" },
+    repository: { type: "string" },
     image: { type: "string", default: "cantrip-os:dev" },
   },
 });
@@ -81,11 +82,13 @@ try {
   const environment = fixtureEnvironment(path.join(root, "server"));
   delete environment.CANTRIP_WORKER_TOKEN;
   environment.CANTRIP_BOOTSTRAP_MODE = "standalone";
-  server = await startServer(
-    path.resolve(values.server),
-    ["--database", "pglite", "--port", "0", "--shutdown-on-stdin-close"],
-    { cwd: root, env: environment },
-  );
+  const start = () =>
+    startServer(
+      path.resolve(values.server),
+      ["--database", "pglite", "--port", "0", "--shutdown-on-stdin-close"],
+      { cwd: root, env: environment },
+    );
+  server = await start();
   const call = async (method, url, body, expected = 200) => {
     const response = await fetch(server.origin + url, {
       method,
@@ -100,6 +103,19 @@ try {
     assert.equal(response.status, expected, `${url} ${text}`);
     return JSON.parse(text);
   };
+  let sources, projects;
+  if (values.repository) {
+    sources = await import("./cantrip-os-sources-cases.mjs");
+    await call("GET", "/api/bootstrap");
+    await server.close();
+    server = undefined;
+    projects = await sources.seedProjects(
+      values.repository,
+      root,
+      environment.CANTRIP_DATA_DIR,
+    );
+    server = await start();
+  }
   const enrollment = await call(
     "POST",
     "/api/workers/enrollment-codes",
@@ -279,6 +295,24 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
     ]),
   );
   assert.deepEqual(record.receipt, created.receipt);
+  if (sources) {
+    await sources.verifySources({
+      call,
+      projects,
+      os,
+      actual,
+      workerId,
+      data,
+      bootstrap,
+      hash,
+      container,
+      docker,
+      restartWorker: async () => {
+        await stopWorker();
+        await startWorker();
+      },
+    });
+  }
   console.log(
     JSON.stringify({
       suite: "native-cantrip-os-workspaces",
