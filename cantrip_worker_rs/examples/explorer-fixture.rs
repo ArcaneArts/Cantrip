@@ -12,7 +12,7 @@ async fn main() -> Result<()> {
         let output = match outcome {
             Ok(value) => json!({"ok":true,"value":value}),
             Err(e) => {
-                json!({"ok":false,"error":e.to_string(),"code":if e.is::<explorer::TextPreviewRequiredError>(){Some("text-preview-required")}else{None}})
+                json!({"ok":false,"error":e.to_string(),"code":explorer::failure_code(&e)})
             }
         };
         println!("{}", output.stringify());

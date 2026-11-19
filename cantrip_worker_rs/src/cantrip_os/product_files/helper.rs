@@ -143,11 +143,12 @@ fn observe(directory: &Path, context: &Value, fingerprint: &str) -> Result<Value
 }
 
 async fn execute(root: &Path, request: &Value) -> Value {
-    let outcome = match explorer::execute(root, request, &Scope::default()).await {
-        Ok(result) => json!({"ok":true,"result":result}),
-        Err(error) => explorer::failure(&error),
-    };
-    completed(outcome)
+    match explorer::execute(root, request, &Scope::default()).await {
+        Ok(result) => {
+            json!({"complete":explorer::complete(&result),"outcome":json!({"ok":true,"result":result})})
+        }
+        Err(error) => completed(explorer::failure(&error)),
+    }
 }
 
 fn completed(outcome: Value) -> Value {

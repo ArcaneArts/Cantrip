@@ -160,7 +160,11 @@ fn mutation(kind: &str) -> Result<bool> {
         "explorer.directory.list"
         | "explorer.files.search"
         | "explorer.directory.commits"
-        | "explorer.file.read" => Ok(false),
+        | "explorer.file.read"
+        | "explorer.binary.read"
+        | "explorer.file.preview"
+        | "explorer.file.tail"
+        | "explorer.media.read" => Ok(false),
         "explorer.file.write"
         | "explorer.file.create"
         | "explorer.directory.create"

@@ -71,7 +71,7 @@ impl ExplorerOperations {
             }
             if let Some(root) = command["root"].as_js_string() {
                 let result = explorer::execute_decoded(&paths::native(root), &request, &input, scope).await?;
-                return Ok((json!({"ok":true,"result":result}), true));
+                return Ok((json!({"ok":true,"result":result}), explorer::complete(&result)));
             }
             self.guests.as_ref().context("This worker does not support CantripOS file operations.")?
                 .execute(&command["root"], &request, &context, service, scope).await

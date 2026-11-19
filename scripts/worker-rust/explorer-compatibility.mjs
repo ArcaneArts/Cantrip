@@ -7,7 +7,9 @@ import {
   mkdtemp,
   realpath,
   mkdir,
+  appendFile,
   writeFile,
+  rename,
   readFile,
   symlink,
   utimes,
@@ -19,6 +21,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { executeExplorerRequest } from "../../cantrip_worker/src/commands/explorer-request.ts";
+import { BinaryFileChangedError } from "../../cantrip_worker/src/explorer-binary.ts";
 import { TextPreviewRequiredError } from "../../cantrip_worker/src/explorer-text-preview.ts";
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary, "Pass --binary explorer-fixture");
@@ -154,12 +157,12 @@ try {
   }
   async function compare(
     request,
-    { directory = "project", ignoreTimestamp = false } = {},
+    { directory = "project", ignoreTimestamp = false, sameFiles = false } = {},
   ) {
     let expected;
     try {
       const value = await executeExplorerRequest(
-        path.join(node, directory),
+        path.join(sameFiles ? rust : node, directory),
         request,
         { fileImports: null },
         {
@@ -178,7 +181,9 @@ try {
         code:
           error instanceof TextPreviewRequiredError
             ? "text-preview-required"
-            : null,
+            : error instanceof BinaryFileChangedError
+              ? "file-version-changed"
+              : null,
       };
     }
     const actual = await native(request, directory);
@@ -384,6 +389,99 @@ try {
     await readFile(path.join(rust, "outside-directory/keep.txt"), "utf8"),
     "keep",
   );
+
+  // Version tokens and log cursors contain the file identity. Read the same
+  // handles through both implementations so those fields can be compared.
+  const shared = (request) => compare(request, { sameFiles: true });
+  const inProject = (name) => path.join(rust, "project", name);
+  const binaryPath = "page.bin";
+  await writeFile(inProject(binaryPath), Buffer.from([0x12, 0x00, 0xff, 0xc1]));
+  const binaryRead = {
+    type: "explorer.binary.read",
+    path: binaryPath,
+    offset: 0,
+    limit: 2,
+  };
+  const binaryFirst = (await shared(binaryRead)).value.value;
+  const binaryNext = {
+    ...binaryRead,
+    offset: binaryFirst.nextOffset,
+    version: binaryFirst.version,
+  };
+  assert.equal((await shared(binaryNext)).value.value.eof, true);
+  await appendFile(inProject(binaryPath), Buffer.from([0xff]));
+  assert.equal((await shared(binaryNext)).code, "file-version-changed");
+
+  const previewPath = "paged-text";
+  const prefix = "\ufeff" + "line\r\n".repeat(10_000);
+  const longLine = "a".repeat(256 * 1024 - 1);
+  const full = prefix + longLine + "😀é日本語\r\nlast";
+  await writeFile(inProject(previewPath), full);
+  const preview = {
+    type: "explorer.file.preview",
+    path: previewPath,
+    offset: 0,
+  };
+  const first = (await shared(preview)).value.value;
+  const second = (
+    await shared({
+      ...preview,
+      offset: first.nextOffset,
+      version: first.version,
+    })
+  ).value.value;
+  const lastRequest = {
+    ...preview,
+    offset: second.nextOffset,
+    version: first.version,
+  };
+  const last = (await shared(lastRequest)).value.value;
+  assert.equal(first.content, prefix);
+  assert.equal(second.content, longLine);
+  assert.equal(first.content + second.content + last.content, full);
+  await appendFile(inProject(previewPath), "changed");
+  assert.equal((await shared(lastRequest)).ok, false);
+
+  const logPath = "paged.log";
+  const partial = Buffer.from("😀");
+  await writeFile(inProject(logPath), "existing\n");
+  const tail = { type: "explorer.file.tail", path: logPath };
+  const old = (await shared(tail)).value.value;
+  await appendFile(inProject(logPath), partial.subarray(0, 2));
+  const split = (await shared({ ...tail, cursor: old.cursor })).value.value;
+  assert.equal(split.content, "");
+  assert.equal(split.cursor.offset, old.cursor.offset);
+  await appendFile(inProject(logPath), partial.subarray(2));
+  const appended = (await shared({ ...tail, cursor: split.cursor })).value
+    .value;
+  assert.equal(appended.content, "😀");
+  assert.equal(appended.reset, false);
+  await rename(inProject(logPath), inProject(logPath + ".1"));
+  await writeFile(inProject(logPath), "rotated\n");
+  assert.equal(
+    (await shared({ ...tail, cursor: appended.cursor })).value.value.reset,
+    true,
+  );
+
+  await writeFile(inProject(".PICTURE.PNG"), Buffer.from([1, 2, 3, 4]));
+  await utimes(inProject(".PICTURE.PNG"), 1000.12365, 1000.12365);
+  const media = {
+    type: "explorer.media.read",
+    path: ".PICTURE.PNG",
+    offset: 1,
+    limit: 2,
+  };
+  const image = (await shared(media)).value.value;
+  assert.equal(image.mimeType, "image/png");
+  assert.equal(image.eof, false);
+  assert.equal((await shared({ ...media, offset: 3 })).value.value.eof, true);
+  const override = { kind: "audio", mimeType: "audio/mpeg" };
+  assert.equal(
+    (await shared({ ...media, path: binaryPath, mediaType: override })).value
+      .value.mimeType,
+    override.mimeType,
+  );
+
   console.log(
     JSON.stringify({
       comparisons,
