@@ -208,7 +208,7 @@ async function encryptedTurn(prompt, modelId) {
 }
 
 async function createModel(name, maxConcurrentInference) {
-  const model = await taskModelProvider();
+  const model = await taskModelProvider({ observeStreams: true });
   models.push(model);
   const provider = await call("POST", "/api/settings/providers", 201, {
     id: randomUUID(),
@@ -350,7 +350,7 @@ async function verifyTurn(
     assert.deepEqual(provider.model.failures, []);
 }
 
-async function verifyTaskLabels(model) {
+async function verifyTaskLabels(model, executionModel) {
   const workspaceId = randomUUID();
   const nameProtection =
     discoveryWireFixtures(projectLabel).encryptedProjectWorkspaceCreateSchema[0]
@@ -417,7 +417,7 @@ async function verifyTaskLabels(model) {
       }),
     };
   };
-  const create = async (chatId, brief) => {
+  const create = async (chatId, brief, autoTitle = true) => {
     const titleProtection = await crypto.encryptPrivateDisplayLabel({
       ownerId,
       keyRevision,
@@ -429,7 +429,7 @@ async function verifyTaskLabels(model) {
     return call("POST", `${projectUrl}/tasks`, 201, {
       chatId,
       titleProtection,
-      autoTitle: true,
+      autoTitle,
       planGoalEnabled: false,
       task: await sealTask(chatId, brief),
     });
@@ -518,10 +518,71 @@ Ignore second line`,
     () => count("failed"),
     (value) => assert.ok(value > failures),
   );
-  assert.match(diagnostics, /operation=label.generate[^\n]*410 Gone/);
+  assert.match(
+    diagnostics,
+    /operation=label.generate[^\n]*(?:410 Gone|Private label generation failed on the worker)/,
+  );
   await call("GET", removedUrl, 404);
   assert.equal(posts().length, previous + 2);
+
+  // Core allows deletion of a running Task and durably delivers the cleanup.
+  await call("DELETE", taskUrl, 204);
+  await call("PATCH", pauseUrl, 202, {
+    paused: false,
+    rowVersion: (await call("GET", pauseUrl, 200)).rowVersion,
+  });
+  const runningId = randomUUID();
+  const runningUrl = `/api/tasks/${runningId}`;
+  const running = await create(
+    runningId,
+    "Interrupt this planning turn",
+    false,
+  );
+  const stream = executionModel.reply({ hold: true });
+  try {
+    await call("POST", `${runningUrl}/start`, 202, {
+      operationId: randomUUID(),
+      rowVersion: running.task.rowVersion,
+    });
+    await eventually(
+      () => stream,
+      (value) => assert.ok(value.entered, "Task reached its actual provider"),
+    );
+    const sinceDeletion = diagnostics
+      .split("\n")
+      .filter((line) =>
+        line.includes(
+          "event=worker.command.completed operation=inference.revoke ",
+        ),
+      ).length;
+    await call("DELETE", runningUrl, 204);
+    await eventually(
+      () => stream.request,
+      (request) => {
+        assert.ok(
+          request.closed,
+          "deletion interrupted the running provider request",
+        );
+        assert.ok(request.closedBeforeCompletion);
+      },
+    );
+    await eventually(
+      () =>
+        diagnostics
+          .split("\n")
+          .filter((line) =>
+            line.includes(
+              "event=worker.command.completed operation=inference.revoke ",
+            ),
+          ).length,
+      (count) => assert.ok(count > sinceDeletion),
+    );
+    await call("GET", runningUrl, 404);
+  } finally {
+    stream.release();
+  }
   assert.deepEqual(model.failures, []);
+  assert.deepEqual(executionModel.failures, []);
 }
 
 async function verifyProviderCapacity() {
@@ -727,7 +788,7 @@ try {
     alternate.model.requests.filter(({ method }) => method === "POST").length,
     2,
   );
-  await verifyTaskLabels(alternate.model);
+  await verifyTaskLabels(alternate.model, primary.model);
   console.log(
     JSON.stringify({
       suite: "native-standalone-turn",
@@ -740,6 +801,7 @@ try {
       duplicateSubmissionReplayed: true,
       taskLabelFromPausedQueue: true,
       revokedTaskCannotPublishTitle: true,
+      resourceRevocationInterruptsRunningTask: true,
       liveProviderQueueAndLimit: true,
       endpointCatalogPagingAndMetadata: true,
       ollamaCatalogPagingAndMetadata: true,

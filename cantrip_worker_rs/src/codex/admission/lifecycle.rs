@@ -1,5 +1,6 @@
 use super::execution::{changed, undispatched_outcome};
 use super::*;
+use crate::codex::revocation::{REMOVED, Target};
 
 impl Adapter {
     pub fn set_chat_paused(&self, chat: &JsString, paused: bool) -> Result<()> {
@@ -93,16 +94,28 @@ impl Adapter {
         Ok(cancelled)
     }
 
-    pub fn revoke(&self, chats: &HashSet<JsString>, operations: &HashSet<JsString>) -> Result<()> {
+    pub(in crate::codex) fn revoke(&self, target: &Target) -> Result<()> {
+        let matches = |request: &Input| {
+            target.matches(
+                request.chat_id.as_ref().and_then(Value::as_js_string),
+                request.project_id.as_ref().and_then(Value::as_js_string),
+            )
+        };
+        let preparations = self.0.state.lock().unwrap().before.clone();
+        for entry in preparations {
+            if matches(&entry.request) {
+                let reason = entry
+                    .reason
+                    .lock()
+                    .unwrap()
+                    .get_or_insert_with(|| Failure::new(anyhow!(REMOVED)))
+                    .clone();
+                entry.request.lifetime.as_ref().unwrap().close();
+                entry.abort.abort(reason.error());
+            }
+        }
         for operation in self.active() {
-            if !operation
-                .input
-                .chat_id
-                .as_ref()
-                .and_then(Value::as_js_string)
-                .is_some_and(|chat| chats.contains(chat))
-                && !operations.contains(&operation.input.operation_id)
-            {
+            if !matches(&operation.input) {
                 continue;
             }
             {
@@ -113,9 +126,7 @@ impl Adapter {
                 state.revoked = true;
             }
             let (_, outcome) = cancellation_state(&operation);
-            operation
-                .ticket()?
-                .cancel(Some(anyhow!("The inference resource was removed.")));
+            operation.ticket()?.cancel(Some(anyhow!(REMOVED)));
             if let Some(outcome) = outcome {
                 self.settle(&operation, outcome)?;
             } else {

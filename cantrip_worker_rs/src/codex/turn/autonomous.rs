@@ -84,11 +84,17 @@ impl Autonomous {
             .context("The Goal runner has retired.")?;
         let (subscription, mut events, _) = output::subscribe(&runtime.history(), thread)?;
         let transport = subscription.signal();
+        let admission_signal = Signal::any(
+            [transport.clone()]
+                .into_iter()
+                .chain(attempt.resource_signal.clone())
+                .collect(),
+        );
 
         let (receipt, granted, owner, signal) = {
-            self.released(&key, &transport).await?;
+            self.released(&key, &admission_signal).await?;
             let _mutations = gate.lock().await;
-            transport.check()?;
+            admission_signal.check()?;
             runner.thread.assert_current(&runtime)?;
             authorize_settings(&runner, &attempt.request["input"]["threadSettings"]).await?;
             let queue = self.receipts.queue_snapshot(&scope, &session).await?;
@@ -106,6 +112,7 @@ impl Autonomous {
             let (abort, signal) = Abort::new();
             let active = Arc::new(Active {
                 root: Some(root),
+                project: runner.session["projectId"].as_js_string().cloned(),
                 control: OnceLock::new(),
                 task: OnceLock::new(),
                 task_input: false,
@@ -140,7 +147,7 @@ impl Autonomous {
                 receipt,
                 grant,
                 owner,
-                Signal::any(vec![signal, transport.clone()]),
+                Signal::any(vec![signal, admission_signal]),
             )
         };
         let execution = &granted["execution"];

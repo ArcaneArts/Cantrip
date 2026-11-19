@@ -18,6 +18,7 @@ use super::{
     admission::Acquire,
     managed::Runtime,
     preparation::{Intent, command::Ensurer},
+    revocation::{REMOVED, Target},
     rpc_requests::Failure,
     task_inputs,
 };
@@ -96,6 +97,7 @@ struct TaskTurn {
 
 struct Active {
     root: Option<receipt::Operation>,
+    project: Option<JsString>,
     control: OnceLock<control::Binding>,
     task: OnceLock<task::checkpoint::Checkpoint>,
     task_input: bool,
@@ -364,6 +366,48 @@ impl Turns {
         }
     }
 
+    pub(crate) fn revoke_resource(&self, command: &Value) -> Result<Value> {
+        let bound = self.preparation.identity()?;
+        let server = bound
+            .1
+            .as_js_string()
+            .context("Missing inference resource server.")?;
+        if command["ownerId"].as_js_string() != Some(&bound.0) {
+            bail!("The resource revocation belongs to another worker owner.");
+        }
+        let mut target = Target::read(&command["target"])?;
+        {
+            let mut sessions = self.active.lock().unwrap();
+            sessions
+                .active
+                .retain(|(owner, logical_server, chat), active| {
+                    if owner != &bound.0
+                        || logical_server != server
+                        || !target.matches(Some(chat), active.project.as_ref())
+                    {
+                        return true;
+                    }
+                    target.chats.insert(chat.clone());
+                    // Core deleted the logical owner. An accepted native turn
+                    // retains its physical slot until its execution is settled.
+                    active.logical_finished.store(true, Ordering::Relaxed);
+                    let phase = active.phase.lock().unwrap();
+                    active.preparation.abort(anyhow!(REMOVED));
+                    !matches!(*phase, Phase::Finished)
+                });
+            sessions
+                .cancelled
+                .retain(|((owner, logical_server, chat), _, _)| {
+                    owner != &bound.0 || logical_server != server || !target.chats.contains(chat)
+                });
+        }
+        self.preparation.revoke_resources(&bound, &mut target)?;
+        if self.preparation.identity()? != bound {
+            bail!("The worker binding changed during inference resource revocation.");
+        }
+        Ok(json!({"revoked":true,"ownerId":bound.0,"workerId":self.encryption.worker_id()}))
+    }
+
     pub(crate) async fn interrupt(&self, command: &Value) -> Result<Value> {
         if !command["taskStop"].is_null() || !command["task"].is_null() {
             return self.stop_task(command).await;
@@ -527,6 +571,7 @@ impl Turns {
         let active = Arc::new(Active {
             logical_finished: AtomicBool::new(root.is_none()),
             root: root.clone(),
+            project: incoming["policyProjectId"].as_js_string().cloned(),
             control: OnceLock::new(),
             task: OnceLock::new(),
             task_input: task.is_some(),

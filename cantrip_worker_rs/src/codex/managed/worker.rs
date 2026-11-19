@@ -7,7 +7,7 @@ use crate::{
         ownership,
     },
 };
-use futures::future::join_all;
+use futures::{FutureExt, future::join_all};
 use std::sync::{
     OnceLock, Weak,
     atomic::{AtomicBool, Ordering},
@@ -197,6 +197,44 @@ impl Worker {
             }
         }
         Ok(status)
+    }
+
+    pub(in crate::codex) fn revoke_resources(
+        &self,
+        owner: &JsString,
+        server: &JsString,
+        target: &crate::codex::revocation::Target,
+    ) -> Result<()> {
+        let scope = self.scope()?;
+        if &scope.owner != owner || &scope.server != server {
+            bail!("The worker binding changed during inference resource revocation.");
+        }
+        let (slots, manager) = {
+            let state = self.0.state.lock().unwrap();
+            let slots = state
+                .runtimes
+                .iter()
+                .filter(|(key, _)| key.scope == scope)
+                .map(|(_, slot)| slot.ready.clone())
+                .collect::<Vec<_>>();
+            let manager = state
+                .managers
+                .get(&scope)
+                .map(|entry| entry.manager.clone());
+            (slots, manager)
+        };
+        for slot in slots {
+            if let Some(Ok(runtime)) = slot.work().now_or_never() {
+                runtime.inference_router().revoke_resources(target)?;
+            }
+        }
+        if let Some(manager) = manager {
+            manager.wake_recovery(None);
+        }
+        if self.scope()? != scope {
+            bail!("The worker binding changed during inference resource revocation.");
+        }
+        Ok(())
     }
 
     pub(in crate::codex) fn project_goals(&self) -> Option<&ProjectGoals> {

@@ -84,6 +84,7 @@ impl Turns {
             let (abort, signal) = Abort::new();
             let active = Arc::new(Active {
                 root: Some(root.clone()),
+                project: session["projectId"].as_js_string().cloned(),
                 control: OnceLock::from(control::Binding::new(
                     session.clone(), command["permissionProfileId"].clone(), prepared.thread.version()
                 )),

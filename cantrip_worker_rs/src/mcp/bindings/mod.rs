@@ -319,6 +319,28 @@ impl Broker {
         self.inner.remove(&mut entries, binding_id)
     }
 
+    pub(crate) fn revoke_owned(
+        &self,
+        identity: (&JsString, &JsString),
+        matches: impl Fn(&Value) -> bool,
+    ) -> Result<()> {
+        let mut entries = self.inner.entries.lock().unwrap();
+        let keys = entries
+            .by_id
+            .iter()
+            .filter(|(_, entry)| {
+                (&entry.identity.0, &entry.identity.1) == identity && matches(&entry.claims)
+            })
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        let mut result = Ok(());
+        for key in keys {
+            let removed = self.inner.remove(&mut entries, &key).map(|_| ());
+            result = result.and(removed);
+        }
+        result
+    }
+
     pub async fn close(mut self) -> Result<()> {
         self.stop.send_replace(true);
         if let Some(task) = self.task.take() {

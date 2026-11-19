@@ -2,6 +2,7 @@
 mod history;
 mod launch;
 mod resources;
+mod revocation;
 mod worker;
 
 use super::{
@@ -23,7 +24,7 @@ use cantrip_wire::{JsString, Value, value::json};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, Weak},
+    sync::{Arc, Mutex, OnceLock, Weak},
     time::{Duration, Instant},
 };
 use tokio::{sync::mpsc, task::JoinSet};
@@ -167,7 +168,11 @@ impl Runtime {
         if let Some(auth) = &external_auth {
             profile.external_login = auth.login().await?;
         }
-        let adapter = Adapter::new(manager, on_revoked)?;
+        let revocation_session = Arc::new(OnceLock::new());
+        let on_revoked = on_revoked.unwrap_or_else(|| {
+            revocation::interrupt(revocation_session.clone(), host.logs.clone())
+        });
+        let adapter = Adapter::new(manager, Some(on_revoked))?;
         let resources = async {
             let environment = adapter.prepare_native_launch().await?;
             let (arguments, options) = host.process(&profile, environment)?;
@@ -183,6 +188,7 @@ impl Runtime {
                 return failed_start(error, adapter.process_exited().await);
             }
         };
+        let _ = revocation_session.set(session.clone());
         let router = match Router::new(session.clone(), adapter.clone(), private_inference) {
             Ok(router) => router,
             Err(error) => {
