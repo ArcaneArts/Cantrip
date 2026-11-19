@@ -15,12 +15,12 @@ const MAX_FILES: usize = 128;
 pub(super) const MAX_BYTES: u64 = 512 * 1024;
 const MAX_DIAGNOSTICS: usize = 200;
 
-pub(super) struct Repository {
+pub(crate) struct Repository {
     root: PathBuf,
 }
 
 impl Repository {
-    pub(super) fn new(root: PathBuf) -> Self {
+    pub(crate) fn new(root: PathBuf) -> Self {
         Self { root }
     }
 
@@ -129,7 +129,7 @@ impl Repository {
         Ok(inventory(inspected, diagnostics))
     }
 
-    pub(super) fn read(&self, id: &str) -> Result<Option<Value>> {
+    pub(crate) fn read(&self, id: &str) -> Result<Option<Value>> {
         let Some(dir) = self.directory(false)? else {
             return Ok(None);
         };
@@ -504,7 +504,11 @@ pub(super) fn digest(bytes: &[u8]) -> String {
         .collect()
 }
 
-pub(super) fn read_regular(path: &Path) -> io::Result<Vec<u8>> {
+pub(crate) fn read_regular(path: &Path) -> io::Result<Vec<u8>> {
+    read_bounded(path, MAX_BYTES)
+}
+
+pub(crate) fn read_bounded(path: &Path, maximum: u64) -> io::Result<Vec<u8>> {
     if !fs::symlink_metadata(path)?.is_file() {
         return Err(io::Error::other(
             "Run configuration paths must be regular files.",
@@ -531,9 +535,9 @@ pub(super) fn read_regular(path: &Path) -> io::Result<Vec<u8>> {
         ));
     }
     let mut bytes = Vec::new();
-    if metadata.len() <= MAX_BYTES {
-        file.take(MAX_BYTES + 1).read_to_end(&mut bytes)?;
-        if bytes.len() as u64 <= MAX_BYTES {
+    if metadata.len() <= maximum {
+        file.take(maximum + 1).read_to_end(&mut bytes)?;
+        if bytes.len() as u64 <= maximum {
             return Ok(bytes);
         }
     }

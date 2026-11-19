@@ -127,6 +127,10 @@ struct RawPidTerminator {
 
 #[cfg(unix)]
 impl ChildTerminator for RawPidTerminator {
+    fn terminate_gracefully(&mut self) -> std::io::Result<()> {
+        crate::process_group::terminate_process_group(self.process_group_id).map(|_| ())
+    }
+
     fn hangup(&mut self) -> std::io::Result<()> {
         crate::process_group::hangup_process_group(self.process_group_id)
     }
@@ -511,7 +515,14 @@ async fn spawn_process_preserving_fds(
     let wait_exit_status = Arc::clone(&exit_status);
     let exit_code = Arc::new(StdMutex::new(None));
     let wait_exit_code = Arc::clone(&exit_code);
+    let native_status = Arc::new(StdMutex::new(None));
+    let wait_native_status = Arc::clone(&native_status);
     let on_exit = move |status: std::io::Result<std::process::ExitStatus>| {
+        if let Ok(status) = &status
+            && let Ok(mut captured) = wait_native_status.lock()
+        {
+            *captured = Some(*status);
+        }
         let code = match status {
             Ok(status) if uses_portable_status => {
                 portable_pty::ExitStatus::from(status).exit_code() as i32
@@ -549,7 +560,8 @@ async fn spawn_process_preserving_fds(
         exit_code,
         Some(handles),
         /*resizer*/ None,
-    );
+    )
+    .with_native_exit_status(native_status);
 
     Ok(SpawnedProcess {
         session: handle,

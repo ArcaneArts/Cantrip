@@ -36,11 +36,12 @@ impl Manager {
         command: &Value,
         registry: &Registry,
         scope: &Scope,
+        before_remove: Option<&BeforeRemove>,
     ) -> Result<Value> {
         let kind = command["type"].as_str().unwrap();
         let result = async {
             let command = registry.resolve(command).await?;
-            let result = self.execute(&command, scope, None).await?;
+            let result = self.execute(&command, scope, before_remove).await?;
             registry.protect_result(kind, &result).await
         }
         .await;

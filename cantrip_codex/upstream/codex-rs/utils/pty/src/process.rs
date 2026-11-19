@@ -49,6 +49,13 @@ pub(crate) fn exit_code_from_status(status: ExitStatus) -> i32 {
 }
 
 pub(crate) trait ChildTerminator: Send + Sync {
+    fn terminate_gracefully(&mut self) -> io::Result<()> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "graceful process termination is unavailable",
+        ))
+    }
+
     fn hangup(&mut self) -> io::Result<()> {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
@@ -200,7 +207,7 @@ impl ProcessHandle {
         self.exit_code.lock().ok().and_then(|guard| *guard)
     }
 
-    /// Actual reaped status for a local pipe child. Driver/PTY backends that
+    /// Actual reaped status for a native child. Driver/PTY backends that
     /// expose only a numeric code return None. This is evidence, not PID lookup.
     pub fn native_exit_status(&self) -> Option<ExitStatus> {
         self.native_exit_status
@@ -261,6 +268,20 @@ impl ProcessHandle {
         {
             let _ = killer.kill();
         }
+    }
+
+    /// Request graceful termination only while the owned child is live.
+    pub fn terminate_gracefully(&self) -> io::Result<()> {
+        let mut killer = self
+            .killer
+            .lock()
+            .map_err(|_| io::Error::other("failed to lock process killer"))?;
+        if let Some(killer) = killer.as_mut()
+            && !self.has_exited()
+        {
+            return killer.terminate_gracefully();
+        }
+        Ok(())
     }
 
     pub fn signal(&self, signal: ProcessSignal) -> io::Result<()> {

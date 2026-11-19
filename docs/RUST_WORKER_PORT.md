@@ -5281,3 +5281,37 @@ Provider discovery and validation, the full definitions list, Flutter
 device inspection, run execution and encrypted output, Cantrip OS run
 integration, direct and WorkerLink delivery, and the production cutover
 remain open.
+
+## 117. Launch and supervise Host shell Run configurations
+
+Reference commit `72a79a20389fc1f373228c5a9ed8bf37941ded56` (#3279).
+
+The worker handles the Host Run start, restart, stop, status, output, and
+reconcile commands for the shell provider. Core retains the durable
+admission and generation. The worker verifies the exact Primary definition
+revision and authorized worktree, applies platform overrides, inspects and
+captures the admitted Codex setup, loads bounded dotenv files, opens
+project-bound secrets, and executes before-launch steps and the command in
+owned PTYs. Restart joins the old process before launching its replacement.
+Project and worktree removal use the same worker-owned retirement path.
+
+The output tail is bounded in UTF-16, redacts secret matches across native
+read boundaries, and uses the existing `run-content` response envelope.
+Unix stop uses the owned process group, applies the configured grace
+period, and reports the signal from the reaped PTY child.
+
+The public API smoke ran on macOS ARM64 using the Rust server with PGlite
+and the Rust worker with no Node executable on PATH. It exercised real
+setup and before-launch commands, layer precedence, secret redaction,
+encrypted output, idempotent lifecycle delivery, stop and restart with
+reaping, and lost-state reconciliation after worker restart. A natural
+exit and its output matched the Node supervisor. Focused native tests
+covered output redaction and worktree inventory behavior. The existing
+encrypted shell and service terminal relay smoke passed with the shared PTY
+changes.
+
+The other Run providers and their discovery and validation, CLI connection
+environment, Cantrip OS execution, direct and WorkerLink delivery, and
+production cutover remain open. Windows currently uses the available
+ConPTY job retirement path. Its graceful-stop parity and Windows and Linux
+runtime validation remain open.

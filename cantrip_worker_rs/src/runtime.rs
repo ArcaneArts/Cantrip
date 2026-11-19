@@ -210,6 +210,18 @@ async fn cycle(
     codex.configure_project_goals(project_goals.clone())?;
     let outgoing = Arc::new(Outbound::default());
     let run_definitions = Arc::new(crate::run_definitions::Definitions::default());
+    let runs = Arc::new(crate::run_runtime::Manager::new(
+        worker.clone(),
+        environment
+            .iter()
+            .map(|(name, value)| (name.clone(), value.clone()))
+            .collect(),
+        encryption.clone(),
+        outgoing.clone(),
+        worktrees.clone(),
+        routing.clone(),
+        logs.clone(),
+    ));
     codex.configure_inference_status({
         let outgoing = outgoing.clone();
         Arc::new(move |status| {
@@ -686,9 +698,21 @@ async fn cycle(
                     continue;
                 }
                 if matches!(kind,"project.folder.materialize"|"project.folder.delete") {
-                    let folders=folders.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    let folders = folders.clone();
+                    let runs = runs.clone();
+                    let routing = routing.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    let scope = crate::filesystem::Scope::with_stop(stop_rx.clone());
                     commands.spawn(async move {
-                        let result=folders.execute_routed(&request["command"],&routing,&scope).await;
+                        let command = &request["command"];
+                        let result = async {
+                            if command["type"] == "project.folder.delete" {
+                                runs.stop_project(&command["projectId"]).await?;
+                            }
+                            folders.execute_routed(command, &routing, &scope).await
+                        }.await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);
                     });
                     continue;
@@ -715,6 +739,18 @@ async fn cycle(
                     });
                     continue;
                 }
+                if crate::run_runtime::Manager::supports(kind) {
+                    let runs = runs.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    let scope = crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let result = runs.execute(&request["command"], &scope).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if crate::run_definitions::Definitions::supports(kind) {
                     let definitions = run_definitions.clone();
                     let encryption = encryption.clone();
@@ -729,6 +765,11 @@ async fn cycle(
                             .await;
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
+                    continue;
+                }
+                if kind == "terminal.input" && runs.owns_terminal(&command["terminalId"]) {
+                    let result = Err(anyhow!("Run configuration terminals are read-only."));
+                    finish(&request, &worker, logs, &outgoing, began, &result);
                     continue;
                 }
                 if crate::terminal_services::interactive::Shells::supports(kind) {
@@ -778,9 +819,23 @@ async fn cycle(
                     continue;
                 }
                 if matches!(kind,"worktree.list"|"worktree.reconcile"|"worktree.create"|"worktree.remove"|"worktree.lock"|"worktree.unlock"|"worktree.prune"|"worktree.status") {
-                    let worktrees=worktrees.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    let worktrees = worktrees.clone();
+                    let runs = runs.clone();
+                    let routing = routing.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    let scope = crate::filesystem::Scope::with_stop(stop_rx.clone());
                     commands.spawn(async move {
-                        let result=worktrees.execute_routed(&request["command"],&routing,&scope).await;
+                        let before_remove = move |path: std::path::PathBuf| {
+                            let runs = runs.clone();
+                            let work: futures::future::BoxFuture<'static, Result<()>> =
+                                Box::pin(async move { runs.stop_path(&path).await });
+                            work
+                        };
+                        let result = worktrees
+                            .execute_routed(&request["command"], &routing, &scope, Some(&before_remove))
+                            .await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);
                     });
                     continue;
@@ -830,6 +885,7 @@ async fn cycle(
         }
     }
     run_definitions.close().await;
+    let runs_closed = runs.close().await;
     if let Err(error) = project_goals.flush().await {
         project_goals.report(&error);
     }
@@ -857,6 +913,7 @@ async fn cycle(
     outgoing.close();
     terminals_closed?;
     shells_closed?;
+    runs_closed?;
     github_closed?;
     task_outcomes_closed?;
     goal_delivery_closed?;

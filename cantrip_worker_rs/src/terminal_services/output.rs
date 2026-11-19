@@ -1,7 +1,7 @@
 //! Incremental decoding at the PTY byte boundary; UTF-16 limits remain identical
 //! to the Node buffer even when a multibyte character crosses native reads.
 #[derive(Default)]
-pub(super) struct Utf8 {
+pub(crate) struct Utf8 {
     pending: Vec<u8>,
 }
 impl Utf8 {

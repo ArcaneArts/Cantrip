@@ -1,6 +1,6 @@
 //! Host PTY service supervision and shared terminal presentation.
 pub(crate) mod interactive;
-mod output;
+pub(crate) mod output;
 mod presentation;
 mod private_state;
 mod replay;
