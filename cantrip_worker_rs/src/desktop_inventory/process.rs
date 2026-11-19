@@ -11,6 +11,7 @@ use tokio::{
 
 const VERSION: i32 = 1;
 const MAX_HEADER: usize = 16 * 1024 * 1024;
+const MAX_PAYLOAD: usize = 16 * 1024 * 1024;
 const SHUTDOWN: Duration = Duration::from_secs(2);
 
 pub(super) struct Process {
@@ -81,6 +82,18 @@ impl Process {
     }
 
     pub(super) async fn request(&mut self, operation: Value) -> Result<Value> {
+        self.exchange(operation, false).await.map(|(data, _)| data)
+    }
+
+    pub(super) async fn frame(&mut self, operation: Value) -> Result<(Value, Vec<u8>)> {
+        self.exchange(operation, true).await
+    }
+
+    async fn exchange(
+        &mut self,
+        operation: Value,
+        expect_pixels: bool,
+    ) -> Result<(Value, Vec<u8>)> {
         let sequence = self.sequence + 1;
         ensure!(
             sequence <= MAX_SEQUENCE,
@@ -106,9 +119,12 @@ impl Process {
             .read_u32()
             .await
             .context("Capture helper stopped before replying.")? as usize;
-        let payload = self.output.read_u32().await?;
+        let payload = self.output.read_u32().await? as usize;
         ensure!(
-            size > 0 && size <= MAX_HEADER && payload == 0,
+            size > 0
+                && size <= MAX_HEADER
+                && payload <= MAX_PAYLOAD
+                && (expect_pixels || payload == 0),
             "Invalid capture helper inventory frame."
         );
         let mut bytes = vec![0; size];
@@ -132,14 +148,24 @@ impl Process {
             "Invalid capture helper response outcome."
         );
         match result["status"].as_str() {
-            Some("ok") => result
-                .get("data")
-                .cloned()
-                .context("Capture helper response is missing data."),
+            Some("ok") => {
+                let data = result
+                    .get("data")
+                    .cloned()
+                    .context("Capture helper response is missing data.")?;
+                ensure!(
+                    !expect_pixels || payload > 0,
+                    "Capture helper response is missing pixels."
+                );
+                let mut pixels = vec![0; payload];
+                self.output.read_exact(&mut pixels).await?;
+                Ok((data, pixels))
+            }
             Some("error") => {
                 let error = &result["error"];
                 ensure!(
-                    error.as_object().is_some_and(|fields| fields.len() == 2)
+                    payload == 0
+                        && error.as_object().is_some_and(|fields| fields.len() == 2)
                         && error["message"].as_js_string().is_some(),
                     "Invalid capture helper error."
                 );
@@ -149,7 +175,16 @@ impl Process {
                     }
                     Some("unsupported") => "Managed desktop target discovery is unavailable.",
                     Some("capture-inventory-timeout") => "Desktop target discovery timed out.",
-                    Some("capture-failed") => "Desktop target discovery failed.",
+                    Some("capture-image-timeout") => "Desktop capture timed out.",
+                    Some("capture-failed") => "Desktop capture failed.",
+                    Some("target-not-found" | "stale-target") => {
+                        "The selected desktop target changed."
+                    }
+                    Some("session-not-found" | "ownership-mismatch") => {
+                        "The desktop capture lease expired."
+                    }
+                    Some("capacity") => "Desktop capture capacity reached.",
+                    Some("invalid-request") => "The desktop capture request was rejected.",
                     Some("cancelled") => "Desktop target discovery was cancelled.",
                     _ => bail!("Unexpected capture helper inventory error."),
                 };

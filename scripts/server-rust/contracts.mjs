@@ -1086,6 +1086,7 @@ export const remoteSurfaceHttpContractRoots = [
   "remoteBrowserCursorMessageSchema",
   "remoteBrowserClipboardMessageSchema",
   "browserPrivateStateProtectedContentSchema",
+  "remoteDesktopServerMessageSchema",
 ];
 
 export const computerUseHttpContractRoots = [

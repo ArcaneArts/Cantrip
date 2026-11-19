@@ -11,9 +11,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import {
+  decryptRemoteSurfaceStreamPayload,
   decryptSurfacePrivateState,
+  encryptSurfacePrivateState,
   wrapComponentKeyForWorker,
 } from "../../packages/crypto/dist/index.js";
+import {
+  decodeRemoteSurfaceFrame,
+  remoteDesktopServerMessageSchema,
+} from "../../packages/protocol/dist/index.js";
 
 async function withTimeout(work, milliseconds, action) {
   let timer;
@@ -42,6 +48,7 @@ const require = createRequire(
   new URL("../../cantrip_worker/package.json", import.meta.url),
 );
 const { WebSocketServer } = require("ws");
+const sharp = require("sharp");
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-desktop-inventory-"));
 const serverId = randomUUID();
 const ownerId = randomUUID();
@@ -182,9 +189,10 @@ try {
     const requestId = randomUUID();
     const pending = new AbortController();
     const reply = (async () => {
-      for await (const [raw] of on(socket, "message", {
+      for await (const [raw, binary] of on(socket, "message", {
         signal: pending.signal,
       })) {
+        if (binary) continue;
         const response = JSON.parse(raw);
         if (response.kind === "response" && response.requestId === requestId)
           return response;
@@ -293,6 +301,172 @@ try {
   const limited = await inspect(scan({ limit: 1 }), [1, 0, true]);
   assert.deepEqual(limited.monitors, inventory.monitors);
   assert.deepEqual(limited.windows, []);
+  const surfaceId = randomUUID();
+  const attachmentId = randomUUID();
+  const common = { serverId, surfaceId, configuration: { kind: "desktop" } };
+  const row = "remote-desktop-row";
+  const selected = {
+    kind: "window",
+    id: "fake-window",
+    application: "Cantrip CUA fixture",
+    title: null,
+  };
+  const monitor = { kind: "monitor", id: "fake-monitor", name: null };
+  async function state(target, revision) {
+    return {
+      stateResource: row,
+      stateRevision: revision,
+      stateProtection: await encryptSurfacePrivateState({
+        ownerId,
+        componentKey: key,
+        keyRevision: 1,
+        content: {
+          version: 1,
+          classification: { recordKind: "remote-desktop-state" },
+          revision,
+          target,
+        },
+        context: {
+          serverId,
+          resourceId: surfaceId,
+          recordKind: "remote-desktop-state",
+          resource: row,
+          operationId: null,
+        },
+      }),
+    };
+  }
+
+  const frames = [];
+  socket.on("message", (raw, binary) => {
+    if (binary) frames.push(decodeRemoteSurfaceFrame(new Uint8Array(raw)));
+  });
+  const counters = new Map();
+  async function clear({ header, payload }) {
+    assert.equal(header.surfaceId, surfaceId);
+    assert.equal(header.attachmentId, attachmentId);
+    assert.ok(header.sequence > (counters.get(header.channel) ?? -1));
+    counters.set(header.channel, header.sequence);
+    return Buffer.from(
+      await decryptRemoteSurfaceStreamPayload({
+        ownerId,
+        componentKey: key,
+        keyRevision: 1,
+        context: {
+          surfaceId: header.surfaceId,
+          attachmentId: header.attachmentId,
+          channel: header.channel,
+          sequence: header.sequence,
+          surfaceKind: "desktop",
+          serverId,
+          direction: "worker-to-client",
+        },
+        protectedPayload: payload,
+      }),
+    );
+  }
+
+  async function untilFrame(accept) {
+    const deadline = Date.now() + 6000;
+    while (Date.now() < deadline) {
+      const frame = frames.shift();
+      if (frame) {
+        const bytes = await clear(frame);
+        if (await accept(frame.header.channel, bytes)) return;
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    }
+    throw new Error("Expected protected desktop frame did not arrive.");
+  }
+  async function dimensions(width, height) {
+    await untilFrame(async (channel, bytes) => {
+      if (channel !== "frame") return false;
+      const image = await sharp(bytes).metadata();
+      assert.equal(image.format, "jpeg");
+      assert.deepEqual([image.width, image.height], [width, height]);
+      return true;
+    });
+  }
+
+  const attached = await send({
+    ...common,
+    type: "surface.attach",
+    attachmentId,
+    projectId: "fixture-project",
+    preferredTransport: "websocket",
+    viewport: { width: 800, height: 600, devicePixelRatio: 1 },
+    desktopStream: { targetFps: 5, quality: "balanced" },
+    ...(await state(selected, 1)),
+  });
+  assert.equal(attached.ok, true, JSON.stringify(attached));
+  assert.deepEqual(attached.result, { accepted: true, transport: "websocket" });
+  await dimensions(320, 200);
+  const suspended = await send({ type: "surface.suspend", surfaceId });
+  assert.equal(suspended.ok, true);
+  await untilFrame(
+    (channel, bytes) =>
+      channel === "control" &&
+      remoteDesktopServerMessageSchema.parse(JSON.parse(bytes)).status ===
+        "suspended",
+  );
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  assert.ok(frames.every(({ header }) => header.channel !== "frame"));
+
+  const missing = { ...selected, id: "missing-window" };
+  assert.equal(
+    (
+      await send({
+        ...common,
+        type: "surface.configure",
+        ...(await state(missing, 2)),
+      })
+    ).ok,
+    true,
+  );
+  assert.equal((await send({ type: "surface.resume", surfaceId })).ok, true);
+  await untilFrame((channel, bytes) => {
+    assert.notEqual(
+      channel,
+      "frame",
+      "An exact missing target cannot fall back to a monitor.",
+    );
+    return (
+      channel === "control" &&
+      remoteDesktopServerMessageSchema.parse(JSON.parse(bytes)).status ===
+        "error"
+    );
+  });
+
+  assert.equal(
+    (
+      await send({
+        ...common,
+        type: "surface.configure",
+        ...(await state(monitor, 3)),
+      })
+    ).ok,
+    true,
+  );
+  await dimensions(640, 360);
+  assert.equal(
+    (
+      await send({
+        ...common,
+        type: "surface.configure",
+        ...(await state(selected, 2)),
+      })
+    ).ok,
+    false,
+  );
+  assert.equal(
+    (await send({ type: "surface.detach", surfaceId, attachmentId })).ok,
+    true,
+  );
+  frames.length = 0;
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  assert.ok(frames.every(({ header }) => header.channel !== "frame"));
+  assert.equal((await send({ type: "surface.close", surfaceId })).ok, true);
   const [pid] = await readPids();
   assert.deepEqual(await readPids(), [pid]);
 
@@ -315,7 +489,7 @@ try {
   );
 } catch (error) {
   console.error(diagnostics);
-  throw error;
+  throw failure ?? error;
 } finally {
   key.fill(0);
   try {

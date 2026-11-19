@@ -1,5 +1,6 @@
 //! Host browser surfaces on the authenticated worker command and data transports.
 mod agent;
+mod desktop;
 mod link;
 mod profile;
 mod session;
@@ -44,6 +45,7 @@ struct Registry {
 }
 
 struct Endpoint {
+    kind: &'static str,
     sender: mpsc::Sender<Work>,
     buffered: Buffered,
     attachments: Mutex<HashMap<JsString, Weak<Route>>>,
@@ -66,6 +68,7 @@ struct Shared {
     outgoing: Arc<Outbound>,
     logs: Arc<Logs>,
     profiles: profile::Profiles,
+    capture: Option<crate::desktop_inventory::Captures>,
 }
 
 type Callback = oneshot::Sender<Result<Value>>;
@@ -125,9 +128,15 @@ impl Manager {
                 outgoing,
                 logs,
                 profiles: profile::Profiles::new(data_directory, environment),
+                capture: None,
             }),
             stop: watch::channel(false).0,
         }
+    }
+
+    pub(crate) fn with_capture(mut self, capture: crate::desktop_inventory::Captures) -> Self {
+        Arc::get_mut(&mut self.shared).unwrap().capture = Some(capture);
+        self
     }
 
     pub fn submit(&self, value: &Value, epoch: u64) -> Result<oneshot::Receiver<Result<Value>>> {
@@ -155,8 +164,10 @@ impl Manager {
                 .map_err(|_| anyhow!("Browser surface command queue is unavailable."))?;
         } else if kind == "surface.attach" {
             ensure!(
-                value["configuration"]["kind"] == "browser",
-                "Native desktop surfaces are unavailable."
+                value["configuration"]["kind"] == "browser"
+                    || (value["configuration"]["kind"] == "desktop"
+                        && self.shared.capture.is_some()),
+                "The worker has no capture service for this Remote Surface."
             );
             ensure!(
                 state.running.len() < LIMIT,
@@ -167,6 +178,11 @@ impl Manager {
             let stopped = self.stop.subscribe();
             let surface = surface.clone();
             let endpoint = Arc::new(Endpoint {
+                kind: if value["configuration"]["kind"] == "desktop" {
+                    "desktop"
+                } else {
+                    "browser"
+                },
                 sender,
                 buffered: Buffered::default(),
                 attachments: Mutex::default(),
@@ -222,6 +238,10 @@ impl Manager {
             .get(surface)
             .cloned()
             .context("Browser session is not open.")?;
+        ensure!(
+            resource["kind"] == endpoint.kind,
+            "Remote Surface grant targets another surface kind."
+        );
         let route = endpoint
             .attachments
             .lock()
@@ -374,6 +394,9 @@ async fn run(
     let Some(Work::Command { value, epoch, done }) = input.recv().await else {
         return Ok(());
     };
+    if value["configuration"]["kind"] == "desktop" {
+        return desktop::run(shared, endpoint, surface, input, value, epoch, done).await;
+    }
     let current = match session::Session::new(
         shared.clone(),
         endpoint.clone(),

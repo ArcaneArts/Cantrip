@@ -1,5 +1,7 @@
 //! Authenticated Host desktop target discovery and protected fleet inventory.
+mod capture;
 mod process;
+pub(crate) use capture::{Capture, Captures, Frame, Scope};
 
 use crate::{connection::Outbound, encryption::Service, http::checked};
 use anyhow::{Context, Result, bail, ensure};
@@ -24,7 +26,13 @@ const HELPER_INVENTORY_LIMIT: usize = 4_096;
 
 pub(crate) struct DesktopInventory {
     queue: mpsc::Sender<Scan>,
+    captures: Captures,
     task: JoinHandle<()>,
+}
+
+struct Helper {
+    identity: uuid::Uuid,
+    process: Process,
 }
 
 struct Scan {
@@ -50,8 +58,17 @@ impl DesktopInventory {
                     .join(format!("cantrip-cua{}", std::env::consts::EXE_SUFFIX))
             });
         let (queue, input) = mpsc::channel(4);
-        let task = tokio::spawn(run(binary, encryption, outgoing, input, stop));
-        Self { queue, task }
+        let (captures, operations) = Captures::channel();
+        let task = tokio::spawn(run(binary, encryption, outgoing, input, operations, stop));
+        Self {
+            queue,
+            captures,
+            task,
+        }
+    }
+
+    pub(crate) fn captures(&self) -> Captures {
+        self.captures.clone()
     }
 
     pub(crate) fn submit(
@@ -82,16 +99,40 @@ async fn run(
     encryption: Arc<Service>,
     outgoing: Arc<Outbound>,
     mut input: mpsc::Receiver<Scan>,
+    mut captures: capture::Operations,
     mut stop: watch::Receiver<bool>,
 ) {
     let mut process = None;
     let mut replay = IndexSet::new();
     let mut epoch = outgoing.stream_epoch();
-    loop {
+    while !*stop.borrow() {
         tokio::select! {
-            biased;
             _ = stopped(&mut stop) => break,
             _ = epoch.changed() => retire(&mut process).await,
+            Some(release) = captures.releases.recv() => {
+                if timeout_at(Instant::now() + DEADLINE, release.close(&mut process)).await.is_err() {
+                    retire(&mut process).await;
+                }
+            }
+            Some(operation) = captures.requests.recv() => {
+                let current = operation.scope().epoch;
+                if !outgoing.stream_current(current) {
+                    operation.expired();
+                    continue;
+                }
+                let result = tokio::select! {
+                    biased;
+                    _ = stopped(&mut stop) => break,
+                    _ = connection_changed(&mut epoch, current) => {
+                        retire(&mut process).await;
+                        continue;
+                    }
+                    reply = operation.execute(&mut process, &binary, &encryption, &outgoing) => reply,
+                };
+                if result.is_err() {
+                    retire(&mut process).await;
+                }
+            }
             scan = input.recv() => {
                 let Some(scan) = scan else { break };
                 let result = authorize(&encryption, &outgoing, &scan, &mut replay);
@@ -176,20 +217,46 @@ fn authorize(
     Ok(identity.owner_id)
 }
 
-async fn targets(process: &mut Option<Process>, binary: &Path) -> Result<Inventory> {
-    if process.as_mut().is_some_and(Process::exited) {
-        retire(process).await;
+async fn helper<'a>(current: &'a mut Option<Helper>, binary: &Path) -> Result<&'a mut Helper> {
+    if current
+        .as_mut()
+        .is_some_and(|helper| helper.process.exited())
+    {
+        retire(current).await;
     }
-    if process.is_none() {
-        let child = Process::spawn(binary, &[])?;
-        process.insert(child).initialize().await?;
+    if current.is_none() {
+        let mut child = Helper {
+            identity: uuid::Uuid::new_v4(),
+            process: Process::spawn(binary, &[])?,
+        };
+        match child.process.initialize().await {
+            Ok(()) => {
+                *current = Some(child);
+            }
+            Err(error) => {
+                child.process.close().await;
+                return Err(error);
+            }
+        }
     }
-    read_inventory(process.as_mut().unwrap()).await
+    Ok(current.as_mut().unwrap())
 }
 
-async fn retire(process: &mut Option<Process>) {
-    if let Some(process) = process.take() {
-        process.close().await;
+async fn targets(current: &mut Option<Helper>, binary: &Path) -> Result<Inventory> {
+    let (targets, truncated) = read_targets(&mut helper(current, binary).await?.process).await?;
+    let mut inventory = Inventory {
+        truncated,
+        ..Inventory::default()
+    };
+    for target in &targets {
+        inventory.add(target_id(target)?, target)?;
+    }
+    Ok(inventory)
+}
+
+async fn retire(process: &mut Option<Helper>) {
+    if let Some(helper) = process.take() {
+        helper.process.close().await;
     }
 }
 
@@ -200,8 +267,8 @@ struct Inventory {
     truncated: bool,
 }
 
-async fn read_inventory(process: &mut Process) -> Result<Inventory> {
-    let mut inventory = Inventory::default();
+async fn read_targets(process: &mut Process) -> Result<(Vec<Value>, bool)> {
+    let mut collected = Vec::new();
     let mut seen = HashSet::new();
     let mut after: Option<JsString> = None;
     loop {
@@ -242,12 +309,11 @@ async fn read_inventory(process: &mut Process) -> Result<Inventory> {
                 seen.len() <= HELPER_INVENTORY_LIMIT,
                 "Capture helper inventory is too large."
             );
-            inventory.add(id, target)?;
+            collected.push(target.clone());
         }
         match page.get("nextCursor") {
             None => {
-                inventory.truncated |= page["truncated"] == true;
-                return Ok(inventory);
+                return Ok((collected, page["truncated"] == true));
             }
             Some(cursor)
                 if ordered
@@ -274,13 +340,16 @@ fn target_id(target: &Value) -> Result<&JsString> {
         .context("Invalid capture helper target identity.")
 }
 
+fn public_target_id(id: &JsString) -> &str {
+    let id = id.as_str().expect("validated native target identity");
+    id.strip_prefix("macos-window-")
+        .or_else(|| id.strip_prefix("macos-display-"))
+        .unwrap_or(id)
+}
+
 impl Inventory {
     fn add(&mut self, id: &JsString, target: &Value) -> Result<()> {
-        let id = id.as_str().unwrap();
-        let id = id
-            .strip_prefix("macos-window-")
-            .or_else(|| id.strip_prefix("macos-display-"))
-            .unwrap_or(id);
+        let id = public_target_id(id);
         let bounds = &target["bounds"];
         let coordinate = |field| -> Result<f64> {
             let number = bounds[field]
