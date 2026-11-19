@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { randomBytes, randomUUID } from "node:crypto";
+import { chmod, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import * as crypto from "../../packages/crypto/dist/index.js";
@@ -131,6 +131,8 @@ export async function verifySources({
   hash,
   container,
   docker,
+  eventually,
+  linked: linkedFixture,
   restartWorker,
 }) {
   assert.equal(os.ownerId, ownerId);
@@ -162,9 +164,8 @@ export async function verifySources({
     },
   ) => call("POST", bindings(projects[kind]), input);
 
-  async function provision(binding, source, state = "ready") {
+  async function submit(binding, intent, prepared = () => {}) {
     const operationId = randomUUID();
-    const intent = { mode: "linux-owned", source };
     const protectedRequest = await crypto.encryptRepositoryOperationPayload({
       ownerId,
       keyRevision: 1,
@@ -192,14 +193,22 @@ export async function verifySources({
       bindingGeneration: binding.bindingGeneration,
       protectedRequest,
     };
-    const outcome = await call("POST", route(binding) + "/provision", input);
     const key = hash([serverId, ownerId, workerId, os.id, os.guestInstanceId]);
-    const record = JSON.parse(
-      await readFile(
-        path.join(data, "cantrip-os-operations", key, operationId + ".json"),
-        "utf8",
-      ),
+    const journal = path.join(
+      data,
+      "cantrip-os-operations",
+      key,
+      operationId + ".json",
     );
+    prepared(operationId, journal);
+    const outcome = await call("POST", route(binding) + "/provision", input);
+    const record = JSON.parse(await readFile(journal, "utf8"));
+    return { input, outcome, record };
+  }
+
+  async function provision(binding, source, state = "ready") {
+    const intent = { mode: "linux-owned", source };
+    const { input, outcome, record } = await submit(binding, intent);
     assert.equal(outcome.state, state, record.error ?? JSON.stringify(outcome));
     assert.equal(
       record.admissionFingerprint,
@@ -346,5 +355,152 @@ export async function verifySources({
   );
   console.log(
     "Native Cantrip OS source smoke passed: folder, atomic conflict, Git, worktree, existing source and restart recovery.",
+  );
+  if (!linkedFixture) return;
+
+  // Materialize a real Host project through the existing public APIs. Use its
+  // returned routing token in both the server placement and encrypted intent.
+  const hostWorkspace = randomUUID();
+  const project = randomUUID();
+  await call(
+    "POST",
+    "/api/workspaces",
+    {
+      id: hostWorkspace,
+      storage: { kind: "managed" },
+      nameProtection: {
+        state: "encrypted",
+        ...projectLabel.protectedLabel,
+        blindIndex: randomBytes(32).toString("base64url"),
+      },
+    },
+    201,
+  );
+  await call(
+    "POST",
+    "/api/projects/from-folder",
+    {
+      id: project,
+      workerId,
+      workspaceId: hostWorkspace,
+      nameProtection: projectLabel,
+    },
+    202,
+  );
+  await eventually(async () => {
+    const setup = await call("GET", `/api/projects/${project}/folder-setup`);
+    assert.equal(setup.state, "succeeded", JSON.stringify(setup));
+  });
+  const trees = await call("GET", `/api/projects/${project}/worktrees`);
+  const primary = trees.find((tree) => tree.isPrimary);
+  assert.match(primary.path, /^ctrr_[\w-]{43}$/u);
+  const host = path.join(data, "workspaces", hostWorkspace, "folders", project);
+  await chmod(host, 0o777);
+  await mkdir(path.join(host, "node_modules"));
+  await writeFile(path.join(host, "README.md"), "original Host content");
+  await writeFile(path.join(host, "node_modules", "marker"), "Host dependency");
+  await docker(
+    "exec",
+    "--user",
+    "0",
+    container,
+    "touch",
+    "/etc/cantrip-fixture-system",
+  );
+  const dependencyOverlays = [{ path: "node_modules" }];
+  const binding = await call("POST", bindings(project), {
+    mode: "linked",
+    workspaceId: workspace.id,
+    worktreeId: primary.id,
+    dependencyOverlays,
+  });
+  const cacheKey = `${binding.projectSourceId}:${binding.worktreeId}:${binding.workspaceId}`;
+  linkedFixture.volumes.push(
+    "cantrip-os-deps-" +
+      hash([os.guestInstanceId, cacheKey, "node_modules"]).slice(0, 40),
+  );
+  let journalFile;
+  const mounted = await submit(
+    binding,
+    {
+      mode: "linked",
+      workerPath: primary.path,
+      dependencyOverlays,
+    },
+    (operation, journal) => {
+      journalFile = journal + ".docker";
+      linkedFixture.journals.push(journalFile);
+      linkedFixture.operations.push(operation);
+    },
+  );
+  assert.equal(mounted.outcome.state, "ready", mounted.record.error ?? "");
+  const source = mounted.outcome.receipt.source;
+  assert.equal(source.recreated, true);
+  assert.notEqual(source.runtimeGeneration, os.runtimeGeneration);
+  assert.deepEqual(source.dependencyOverlays, dependencyOverlays);
+  assert.deepEqual(source.cleanupWarnings, []);
+  const dockerJournal = JSON.parse(await readFile(journalFile, "utf8"));
+  assert.equal(dockerJournal.phase, "complete");
+  assert.equal(dockerJournal.original.Id, container);
+  const sidecar = JSON.parse(await readFile(journalFile + ".binding", "utf8"));
+  assert.equal(sidecar.state, "succeeded");
+  assert.equal(sidecar.receipt.workspaceId, actual.id);
+  assert.equal(dockerJournal.bindings[0].cacheKey, cacheKey);
+  assert.equal(
+    mounted.record.admissionFingerprint,
+    hash([
+      "cantrip-os.source.provision",
+      {
+        mode: "linked",
+        workerPath: dockerJournal.bindings[0].workerPath,
+        dependencyOverlays,
+      },
+    ]),
+  );
+  const candidate = dockerJournal.candidateId;
+  const inReplacement = (...args) =>
+    docker("exec", "--user", String(actual.uid), candidate, ...args);
+  await assert.rejects(docker("inspect", container), /No such object/u);
+  assert.equal(
+    await inReplacement("cat", source.guestPath + "/README.md"),
+    "original Host content",
+  );
+  await inReplacement("test", "-f", "/etc/cantrip-fixture-system");
+  await inReplacement("test", "-f", managed.guestPath + "/kept.txt");
+  await inReplacement("touch", source.guestPath + "/guest-write");
+  await readFile(path.join(host, "guest-write"));
+  await inReplacement(
+    "test",
+    "!",
+    "-e",
+    source.guestPath + "/node_modules/marker",
+  );
+  await inReplacement("touch", source.guestPath + "/node_modules/guest-only");
+  assert.equal(
+    await readFile(path.join(host, "node_modules", "marker"), "utf8"),
+    "Host dependency",
+  );
+  assert.deepEqual(await readdir(path.join(host, "node_modules")), ["marker"]);
+  assert.ok(
+    (await readdir(host)).every(
+      (name) => !name.startsWith(".cantrip-os-link-"),
+    ),
+  );
+  assert.equal((await call("POST", route(binding) + "/verify")).state, "ready");
+  await restartWorker();
+  assert.deepEqual(
+    await call("POST", route(binding) + "/recover"),
+    mounted.outcome,
+  );
+  assert.deepEqual(
+    await call("POST", route(binding) + "/provision", mounted.input),
+    mounted.outcome,
+  );
+  assert.equal(
+    await docker("inspect", "--format", "{{.Id}}", linkedFixture.name),
+    candidate,
+  );
+  console.log(
+    "Native Cantrip OS linked source smoke passed: replacement, retained state, live Host bytes, isolated dependencies and restart recovery.",
   );
 }

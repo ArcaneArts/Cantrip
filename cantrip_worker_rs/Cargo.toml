@@ -70,7 +70,7 @@ libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 junction = { version = "=2.1.0", default-features = false }
-windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Networking_WinSock", "Win32_System_Threading"] }
 
 [build-dependencies]
 embed-resource = "3.0.11"

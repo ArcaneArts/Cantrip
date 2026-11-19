@@ -54,6 +54,15 @@ pub(super) async fn intent(
         intent["mode"] == scope["mode"],
         "Source mode changed after admission."
     );
+    if intent["mode"] == "linked" {
+        intent["workerPath"] = routing.resolve(&intent["workerPath"]).await?;
+        ensure!(
+            intent["workerPath"] == scope["linkedWorkerPath"]
+                && intent["dependencyOverlays"] == scope["dependencyOverlays"],
+            "Linked mount admission does not match its canonical source."
+        );
+        return Ok(intent);
+    }
     let source = &mut intent["source"];
     let kind = match text(source, "kind")? {
         "existing" => text(source, "sourceKind")?,
@@ -84,7 +93,7 @@ impl<'a> Source<'a> {
     pub fn new(scope: &'a Value) -> Result<Self> {
         ensure!(
             scope["mode"] == "linux-owned",
-            "Native linked source mounts are unavailable."
+            "Expected a Linux-owned source."
         );
         Ok(Self {
             scope,

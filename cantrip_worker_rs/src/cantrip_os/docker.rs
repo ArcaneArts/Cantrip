@@ -1,12 +1,13 @@
+use super::carrier::DeliveryUnknown;
 use crate::filesystem::Scope;
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use bytes::Bytes;
 use cantrip_wire::{Value, parse_json_text};
-use http_body_util::{BodyExt, Empty, Limited};
-use hyper::{Request, client::conn::http1};
+use http_body_util::{BodyExt, Full, Limited};
+use hyper::{Method, Request, StatusCode, client::conn::http1};
 use hyper_util::rt::TokioIo;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
-use std::{env, ffi::OsStr, time::Duration};
+use std::{env, ffi::OsStr, fmt::Display, time::Duration};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     task::JoinSet,
@@ -17,6 +18,24 @@ use tokio::{
 pub(super) struct Identity {
     pub id: String,
     started_at: String,
+}
+
+#[derive(Debug)]
+pub(super) struct DockerApiError {
+    pub status: StatusCode,
+    message: String,
+}
+
+impl std::fmt::Display for DockerApiError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "Docker HTTP {}: {}", self.status, self.message)
+    }
+}
+
+impl std::error::Error for DockerApiError {}
+
+pub(super) fn segment(value: &str) -> impl Display + '_ {
+    utf8_percent_encode(value, NON_ALPHANUMERIC)
 }
 
 pub(super) struct LocalDocker(String);
@@ -67,19 +86,7 @@ impl LocalDocker {
     }
 
     pub async fn inspect(&self, container: &str, scope: &Scope) -> Result<Identity> {
-        tokio::select! {
-            biased;
-            _ = scope.stopped() => bail!("CantripOS observation stopped."),
-            result = timeout(Duration::from_secs(60), self.read_identity(container)) => result.context("Docker observation timed out.")?,
-        }
-    }
-
-    async fn read_identity(&self, container: &str) -> Result<Identity> {
-        #[cfg(unix)]
-        let socket = tokio::net::UnixStream::connect(&self.0).await?;
-        #[cfg(windows)]
-        let socket = tokio::net::windows::named_pipe::ClientOptions::new().open(&self.0)?;
-        let data = inspect(socket, container).await?;
+        let data = self.record(container, scope).await?;
         Ok(Identity {
             id: data["Id"]
                 .as_str()
@@ -92,33 +99,95 @@ impl LocalDocker {
                 .to_owned(),
         })
     }
+
+    pub async fn record(&self, container: &str, scope: &Scope) -> Result<Value> {
+        self.request(
+            Method::GET,
+            &format!("/containers/{}/json", segment(container)),
+            None,
+            Duration::from_secs(60),
+            scope,
+        )
+        .await
+    }
+
+    pub async fn request(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&Value>,
+        limit: Duration,
+        scope: &Scope,
+    ) -> Result<Value> {
+        scope.check()?;
+        let exchange = async {
+            #[cfg(unix)]
+            let socket = tokio::net::UnixStream::connect(&self.0).await?;
+            #[cfg(windows)]
+            let socket = tokio::net::windows::named_pipe::ClientOptions::new().open(&self.0)?;
+            exchange(socket, method, path, body).await
+        };
+        let result = tokio::select! {
+            biased;
+            _ = scope.stopped() => Err(anyhow!("Worker stopped while awaiting Docker.")),
+            result = timeout(limit, exchange) => match result {
+                Ok(receipt) => receipt,
+                Err(_) => Err(anyhow!("Docker request timed out.")),
+            },
+        };
+        result.map_err(|error| {
+            if error.is::<DockerApiError>() {
+                error
+            } else {
+                DeliveryUnknown(format!("Docker receipt is uncertain: {error}")).into()
+            }
+        })
+    }
 }
 
-async fn inspect(
+async fn exchange(
     socket: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,
-    container: &str,
+    method: Method,
+    path: &str,
+    body: Option<&Value>,
 ) -> Result<Value> {
     let (mut requests, connection) = http1::handshake(TokioIo::new(socket)).await?;
     let mut owned = JoinSet::new();
     owned.spawn(connection);
-    let request = Request::get(format!(
-        "/v1.41/containers/{}/json",
-        utf8_percent_encode(container, NON_ALPHANUMERIC)
-    ))
-    .header("host", "localhost")
-    .header("connection", "close")
-    .body(Empty::<Bytes>::new())?;
+    let mut request = Request::builder()
+        .method(method)
+        .uri(format!("/v1.41{path}"))
+        .header("host", "localhost")
+        .header("connection", "close");
+    let payload = if let Some(body) = body {
+        request = request.header("content-type", "application/json");
+        Bytes::from(body.stringify())
+    } else {
+        Bytes::new()
+    };
+    let request = request.body(Full::new(payload))?;
     let response = requests.send_request(request).await?;
-    ensure!(
-        response.status().is_success(),
-        "Docker container inspection failed ({}).",
-        response.status()
-    );
+    let status = response.status();
     let bytes = Limited::new(response.into_body(), 4 * 1024 * 1024)
         .collect()
         .await
-        .map_err(|_| anyhow::anyhow!("Docker inspection response could not be read."))?
+        .map_err(|_| anyhow!("Docker response could not be read."))?
         .to_bytes();
-    parse_json_text(std::str::from_utf8(&bytes)?)
-        .map_err(|_| anyhow!("Docker returned an invalid inspection receipt."))
+    let receipt = if bytes.is_empty() {
+        Value::Null
+    } else {
+        parse_json_text(std::str::from_utf8(&bytes)?)
+            .map_err(|_| anyhow!("Docker returned an invalid receipt."))?
+    };
+    if status.is_client_error() || status.is_server_error() {
+        return Err(DockerApiError {
+            status,
+            message: receipt["message"]
+                .as_str()
+                .unwrap_or("request refused")
+                .to_owned(),
+        }
+        .into());
+    }
+    Ok(receipt)
 }
