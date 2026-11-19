@@ -17,6 +17,7 @@ import { fixtureEnvironment, startServer } from "../server-rust/process.mjs";
 import { discoveryWireFixtures } from "../server-rust/discovery-wire-fixtures.mjs";
 import { projectLabel } from "../server-rust/security-fixtures.mjs";
 import { taskContent } from "../server-rust/task-wire-fixtures.mjs";
+import { verifyDecisions } from "./model-decision-smoke-cases.mjs";
 import { verifyEmbeddings } from "./model-embedding-smoke-cases.mjs";
 import { verifyProviderCatalog } from "./provider-catalog-smoke-cases.mjs";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
@@ -865,7 +866,7 @@ try {
     keyRevision,
     componentKey: providerKey,
   });
-  await verifyEmbeddings({
+  const modelOperations = {
     call,
     eventually,
     ownerId,
@@ -873,7 +874,9 @@ try {
     keyRevision,
     providerKey,
     operationsKey,
-  });
+  };
+  await verifyEmbeddings(modelOperations);
+  await verifyDecisions(modelOperations);
   await verifyProviderCapacity();
 
   const primary = await createModel("Response model");
@@ -924,6 +927,7 @@ try {
       resourceRevocationInterruptsRunningTask: true,
       queuedTaskTransferredProvider: true,
       protectedEmbeddingRequestsAndCancellation: true,
+      protectedDecisionRequestsAndCancellation: true,
       liveProviderQueueAndLimit: true,
       endpointCatalogPagingAndMetadata: true,
       ollamaCatalogPagingAndMetadata: true,

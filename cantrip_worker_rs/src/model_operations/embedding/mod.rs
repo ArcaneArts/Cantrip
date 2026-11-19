@@ -1,34 +1,21 @@
 mod request;
 mod vectors;
 
-use super::{MAX_BYTES, MAX_SAFE_COUNT, count, either, error, http, object, timing, usage};
-use crate::{
-    inference::admission::{DirectRequest, Manager, Source},
-    metadata::Signal,
+use super::{
+    MAX_BYTES, MAX_SAFE_COUNT, Operation, Request, count, either, error, http, merged_options,
+    object, usage,
 };
+use crate::metadata::Signal;
 use anyhow::{Context, Result};
 use cantrip_wire::{JsString, Value, payload_digest, value::json};
 use request::{Adapter, Payload};
 use std::{
     collections::HashSet,
     sync::{Arc, Mutex},
-    time::Duration,
 };
 
 const MAX_VECTOR_BYTES: usize = MAX_BYTES - 32_768;
 const RESULT_LIMIT: &str = "The embedding result exceeds 4 MiB. Submit smaller jobs.";
-
-pub(super) struct Request<'a> {
-    pub route: &'a Value,
-    pub provider: &'a Value,
-    pub input: &'a Value,
-    pub admission: Manager,
-    pub http: &'a reqwest::Client,
-    pub request_id: JsString,
-    pub signal: &'a Signal,
-    pub usage: Arc<Mutex<usage::Usage>>,
-    pub clock: &'a Arc<timing::Timing>,
-}
 
 struct BatchRequest {
     http: reqwest::Client,
@@ -59,14 +46,7 @@ impl BatchRequest {
                 "The embedding batch exceeds the 4 MiB request limit.",
             ));
         }
-        let timeout = u32::try_from(self.options["timeoutMs"].as_u64().unwrap_or(120_000))
-            .context("The embedding timeout exceeds the supported timer range.")?;
-        // Node timers use a 1 ms delay when an accepted u32 exceeds i32::MAX.
-        let timeout = Duration::from_millis(if i32::try_from(timeout).is_ok() {
-            u64::from(timeout)
-        } else {
-            1
-        });
+        let timeout = http::timeout(&self.options)?;
         let start = self.usage.lock().unwrap().begin();
         let mut counts = [None; 6];
         let request = async {
@@ -75,11 +55,12 @@ impl BatchRequest {
                 self.payload.url.clone(),
                 &body,
                 self.api_key.as_ref(),
-                "embedding",
+                Operation::Embedding,
+                false,
             )
             .await?;
             let root = vectors::root(&raw, self.payload.adapter);
-            let reported = usage::embedding_counts(root);
+            let reported = usage::reported(root, Operation::Embedding);
             counts = usage::observed(reported);
             let vectors = vectors::parse(&raw, self.payload.adapter, &self.options, self.count)?;
             let valid_usage = |value: &Value| {
@@ -167,12 +148,7 @@ fn configuration(payload: &Payload) -> Value {
 }
 
 fn options(route: &Value, request: &Value, adapter: Adapter, items: &[Value]) -> Value {
-    let mut options = object(&route["options"]);
-    options.extend(object(&request["options"]));
-    let mut params = object(&route["options"]["parameters"]);
-    params.extend(object(&request["options"]["parameters"]));
-    let mut options = Value::Object(options);
-    options["parameters"] = Value::Object(params);
+    let mut options = merged_options(route, request);
     if options["mediaFormat"].is_null()
         && ((adapter.vllm_chat() && request["expectedSpace"]["inputFormat"] == "chat")
             || adapter.uses_chat(&options, items))
@@ -248,14 +224,7 @@ pub(super) async fn run(job: Request<'_>) -> Result<Value> {
             "Normalization must be none or l2, or left at the provider default.",
         ));
     }
-    let provider_id = job.provider["id"]
-        .as_js_string()
-        .context("Embedding provider ID")?;
-    job.admission.configure(json!({
-        "providerId":provider_id,"maxConcurrentInference":job.provider["maxConcurrentInference"],
-        "inferenceConfigRevision":job.provider["inferenceConfigRevision"],
-        "inferenceCatalogCreatedRevision":job.provider["inferenceCatalogCreatedRevision"],
-    }))?;
+    job.configure()?;
     let cap = &job.route["capabilities"]["embedding"];
     let max_dimension = either(&options["dimensions"], &cap["dimensions"])
         .as_u64()
@@ -289,25 +258,6 @@ pub(super) async fn run(job: Request<'_>) -> Result<Value> {
             size = size.div_ceil(2);
         };
         batches += 1;
-        let source = Source::claimed(
-            format!("worker-command:{}:inference:{batches}", job.request_id).into(),
-            Some(job.signal.clone()),
-        );
-        let mut direct = DirectRequest::new(source.clone(), provider_id.clone());
-        direct.input.provider_creation_revision =
-            job.provider["inferenceCatalogCreatedRevision"].as_f64();
-        direct.input.signal = Some(job.signal.clone());
-        direct.yield_after = true;
-        let clock = job.clock.clone();
-        direct.input.observe = Some(Arc::new(move |phase| {
-            clock.observe(phase);
-            Ok(())
-        }));
-        let clock = job.clock.clone();
-        direct.input.admitted = Some(Arc::new(move || {
-            clock.admitted();
-            Ok(())
-        }));
         let request = BatchRequest {
             http: job.http.clone(),
             payload,
@@ -317,11 +267,8 @@ pub(super) async fn run(job: Request<'_>) -> Result<Value> {
             usage: job.usage.clone(),
         };
         let output = job
-            .admission
-            .run_direct(direct, move |signal| Box::pin(request.send(signal)))
-            .await;
-        source.close();
-        let output = output?;
+            .run_direct(batches, true, move |signal| Box::pin(request.send(signal)))
+            .await?;
         let current = space(job.route, &options, &output);
         let fingerprint = &current["fingerprint"];
         if (!identity.is_null() && &identity["fingerprint"] != fingerprint)
