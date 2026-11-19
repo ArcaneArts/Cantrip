@@ -14,6 +14,7 @@ use cantrip_history::content::{Encryption, Material};
 use cantrip_wire::{
     JsString, Value, parse_json_text, payload_digest, text::whitespace, value::json,
 };
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
 const NATIVE_INPUT: &str = "managedQueueNativeInputSchema";
@@ -84,6 +85,98 @@ pub(crate) fn open_native(
             .collect::<Vec<_>>()
     );
     Ok(opened)
+}
+
+/// Keep the native vector (including text spans and reference items) beside
+/// the ordinary protected queue display and pending user message.
+pub(crate) fn retain_console(
+    scope: &Scope,
+    chat: &JsString,
+    operation: &str,
+    params: &Value,
+    configuration: &Value,
+    mode: &str,
+) -> Result<Value> {
+    let prompt = stable_id(&json!([
+        json!("cantrip:deferred-terminal"),
+        json!(scope.server),
+        json!(chat),
+        json!(operation)
+    ]));
+    let message = stable_id(&json!([
+        json!("cantrip:managed-queue-message"),
+        json!(scope.server),
+        json!(chat),
+        json!(prompt)
+    ]));
+    let input = array(&params["input"])?;
+    let display = native_text(input)?.trim();
+    let display = if display.is_empty() {
+        join(
+            input.iter().filter_map(|item| {
+                let kind = item["type"].as_str()?;
+                match kind {
+                    "image" => Some("[Queued image]".into()),
+                    "audio" => Some("[Queued audio]".into()),
+                    "skill" => Some(crate::native_items::concat(&[
+                        "[Skill: ".into(),
+                        item["name"].as_js_string()?.clone(),
+                        "]".into(),
+                    ])),
+                    "mention" => Some(crate::native_items::concat(&[
+                        "[Mention: ".into(),
+                        item["name"].as_js_string()?.clone(),
+                        "]".into(),
+                    ])),
+                    _ => None,
+                }
+            }),
+            "\n",
+        )
+    } else {
+        display
+    };
+    let native = json!({
+        "version":1, "input":params["input"], "displayText":display, "action":"literal",
+        "executionMethod":"turn/start", "attachmentMap":Vec::<Value>::new(), "retainedTurnStart":true,
+    });
+    let raw = super::turn(
+        scope,
+        &json!({
+            "promptId":prompt, "messageId":message, "text":display, "mode":mode,
+            "idempotencyKey":format!("managed-queue:{prompt}"),
+            "modelId":configuration["model"]["id"],"reasoningEffort":configuration["model"]["reasoningEffort"],
+            "customSubagentModel":configuration["subagentDefaults"].is_object(),
+            "subagentModelId":configuration["subagentDefaults"]["model"]["id"],
+            "subagentReasoningEffort":configuration["subagentDefaults"]["model"]["reasoningEffort"],
+        }),
+    )?;
+    let client_id = params["clientUserMessageId"]
+        .as_js_string()
+        .cloned()
+        .unwrap_or_else(|| format!("cantrip:{message}").into());
+    anyhow::ensure!(
+        !client_id.is_empty() && client_id.len() <= 255,
+        "Invalid native user message identity."
+    );
+    let mut queued = raw["queuedPrompt"].clone();
+    queued["protectedNativeInput"] = seal_native(scope, &json!(chat), &json!(prompt), &native)?;
+    queued["nativeAction"] = json!("literal");
+    queued["executionMethod"] = json!("turn/start");
+    queued["nativeClientUserMessageId"] = json!(client_id);
+    queued["worktreeId"] = configuration["session"]["worktreeId"].clone();
+    Ok(json!({
+        "prompt":checked("queuedPromptOpaqueContentSchema", &queued)?,
+        "attachments":Vec::<Value>::new(),
+    }))
+}
+
+fn stable_id(parts: &Value) -> String {
+    let digest = Sha256::digest(parts.stringify().as_bytes());
+    let mut bytes: [u8; 16] = digest[..16].try_into().unwrap();
+    bytes[6] = (bytes[6] & 15) | 80;
+    bytes[8] = (bytes[8] & 63) | 128;
+    uuid::Uuid::from_bytes(bytes).to_string()
 }
 
 fn seal_native(scope: &Scope, chat: &Value, prompt: &Value, input: &Value) -> Result<Value> {

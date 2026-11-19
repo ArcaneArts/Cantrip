@@ -174,7 +174,7 @@ impl Turns {
                         transport.clone(),
                     )
                 });
-                let protection = protected::Protected::autonomous(log_scope, command["chatId"].clone());
+                let protection = protected::Protected::for_native_output(log_scope, command["chatId"].clone());
                 let publisher = protection.clone();
                 let receipts = self.receipts.clone();
                 let operation = root.clone();

@@ -728,6 +728,33 @@ impl Client {
         Ok(receipt)
     }
 
+    pub async fn admit_console_turn(
+        &self,
+        scope: Scope,
+        session: Value,
+        operation: &str,
+        frame: &Value,
+        permission: &Value,
+        retained: &Value,
+    ) -> Result<(Receipt<'_>, Value)> {
+        let command = json!({
+            "permissionProfileId":permission, "nativeViewRequestId":frame["id"],
+            "operationId":operation, "retainedInput":retained,
+        });
+        let (receipt, _, grant) = self
+            .admit_native(
+                scope,
+                session,
+                "turn/start",
+                &frame["params"],
+                &command,
+                Value::Null,
+                "terminal",
+            )
+            .await?;
+        Ok((receipt, grant))
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn admit_native(
         &self,
@@ -761,7 +788,7 @@ impl Client {
             "scope":"thread", "settingKeys":Vec::<Value>::new(), "expectedTurnId":Value::Null,
             "permissionProfileId":command["permissionProfileId"], "workerGeneration":self.generation,
         });
-        if origin == "terminal" && method == "skills/list" {
+        if origin == "terminal" && matches!(method, "skills/list" | "turn/start") {
             intent["pathsWithinPlacement"] = json!(true);
         }
         if let Some(status) = params.get("status") {
@@ -789,6 +816,13 @@ impl Client {
         if let Some(claim) = claim {
             request["queueClaim"] = claim.clone();
         }
+        if let Some(retained) = command
+            .get("retainedInput")
+            .filter(|_| origin == "terminal")
+        {
+            request["retainedInput"] = retained.clone();
+            request["intent"]["nativeClientUserMessageId"] = params["clientUserMessageId"].clone();
+        }
         let body = checked("nativeCommandAdmissionSchema", &request)?;
         let response = self
             .post("admit", &body, &Guard::metadata(None, None))
@@ -801,9 +835,12 @@ impl Client {
         if row["status"] != "accepted" {
             bail!("Core did not admit the native command.");
         }
-        let activation = if method == super::shell::METHOD {
-            id(&row["executionLaneId"], "queued shell execution lane")?;
-            Value::String(id(&row["activationGeneration"], "queued shell activation")?)
+        let activation = if matches!(method, "turn/start" | super::shell::METHOD) {
+            id(&row["executionLaneId"], "native execution lane")?;
+            Value::String(id(
+                &row["activationGeneration"],
+                "native execution activation",
+            )?)
         } else {
             activation
         };
