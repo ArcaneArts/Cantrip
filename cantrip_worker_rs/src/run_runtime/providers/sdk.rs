@@ -56,7 +56,7 @@ impl Sdk {
     }
 }
 
-fn canonical(path: &Path) -> Result<PathBuf, String> {
+pub(super) fn canonical(path: &Path) -> Result<PathBuf, String> {
     paths::canonical_sync(path).map_err(|error| {
         if error.kind() == io::ErrorKind::NotFound {
             format!(

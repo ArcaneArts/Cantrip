@@ -77,11 +77,7 @@ pub(super) fn materialize(
             baseline,
         )?);
     }
-    Ok(Launch {
-        main,
-        before,
-        environment: environment(document),
-    })
+    Ok(Launch::new(main, before, environment(document)))
 }
 
 pub(super) fn validate(

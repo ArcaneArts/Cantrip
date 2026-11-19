@@ -4,7 +4,7 @@ use super::{
     Environment, Failure, Launch, Resolved,
     dart_source::{self, Package},
     diagnose_shell, environment, executable_diagnostic, issue, quote_argument, render, sdk, shell,
-    string_arguments,
+    string_arguments, tool_invocation,
 };
 use crate::{
     filesystem::{Scope, paths},
@@ -12,7 +12,7 @@ use crate::{
 };
 use anyhow::{Result, anyhow};
 use cantrip_wire::{JsString, Value, value::json};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub(crate) use devices::inspect_devices;
 
@@ -104,11 +104,7 @@ pub(super) fn materialize(
             )?);
         }
     }
-    Ok(Launch {
-        main,
-        before,
-        environment: environment(document),
-    })
+    Ok(Launch::new(main, before, environment(document)))
 }
 
 pub(super) fn validate(
@@ -233,33 +229,6 @@ fn inspect_package(cwd: &Path) -> Result<(), &'static str> {
         return Err("pubspec.yaml does not declare the Flutter SDK dependency.");
     }
     Ok(())
-}
-
-fn tool_invocation(
-    cwd: PathBuf,
-    executable: &str,
-    arguments: Vec<String>,
-    baseline: &Environment,
-) -> Result<shell::Command, Failure> {
-    if cfg!(windows)
-        && Path::new(executable).extension().is_some_and(|extension| {
-            extension.eq_ignore_ascii_case("bat") || extension.eq_ignore_ascii_case("cmd")
-        })
-    {
-        shell::invocation(
-            cwd,
-            render(&quote_argument(executable), &arguments),
-            "cmd",
-            false,
-            baseline,
-        )
-    } else {
-        Ok(shell::Command {
-            program: executable.to_owned(),
-            arguments,
-            cwd,
-        })
-    }
 }
 
 fn flutter_arguments(document: &Value, resolved: &Resolved<'_>) -> Vec<String> {
