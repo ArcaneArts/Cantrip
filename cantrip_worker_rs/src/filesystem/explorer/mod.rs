@@ -4,6 +4,7 @@ pub(crate) mod binary_write;
 mod directory;
 mod files;
 mod git;
+pub(crate) mod imports;
 mod pages;
 mod paths;
 mod search;

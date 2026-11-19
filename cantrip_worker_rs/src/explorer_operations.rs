@@ -5,7 +5,7 @@ use crate::{
     encryption::Service,
     filesystem::{
         Scope,
-        explorer::{self, binary_write},
+        explorer::{self, binary_write, imports::Imports},
         paths,
     },
     protected_content::{
@@ -27,6 +27,7 @@ pub struct ExplorerOperations {
     replay: Arc<Mutex<SurfaceStreamReplayGuard>>,
     guests: Option<ProductFiles>,
     binary_writes: Option<binary_write::Writer>,
+    imports: Imports,
 }
 impl ExplorerOperations {
     /// All surface consumers in one runtime share admission/replay capacity.
@@ -42,6 +43,7 @@ impl ExplorerOperations {
                 directory,
                 &directory.join("binary-write-locks"),
             )),
+            imports: Imports::default(),
         }
     }
     pub async fn execute(
@@ -86,10 +88,14 @@ impl ExplorerOperations {
                         bail!("Binary write belongs to another server.");
                     }
                     writer.execute(root, &context, &request, json!(material.owner_id), material.component).await?
+                } else if matches!(request["type"].as_str(), Some("explorer.file.import"|"explorer.file.import.cancel")) {
+                    self.imports.execute(&paths::native(root), &context, &request, scope).await?
                 } else {
                     explorer::execute_decoded(&paths::native(root), &request, &input, scope).await?
                 };
-                return Ok((json!({"ok":true,"result":result}), explorer::complete(&result)));
+                let complete = explorer::complete(&result)
+                    && (request["type"] != "explorer.file.import" || request["eof"] == true);
+                return Ok((json!({"ok":true,"result":result}), complete));
             }
             self.guests.as_ref().context("This worker does not support CantripOS file operations.")?
                 .execute(&command["root"], &request, &context, service, scope).await
