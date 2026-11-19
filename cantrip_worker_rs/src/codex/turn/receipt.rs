@@ -39,6 +39,10 @@ pub(super) struct Operation {
 }
 
 impl Operation {
+    fn starts_execution(&self) -> bool {
+        matches!(self.method, "turn/start" | super::shell::METHOD)
+    }
+
     pub fn read(command: &Value) -> Result<Option<Self>> {
         let receipt = &command["nativeCommandReceipt"];
         if receipt.is_null() {
@@ -289,17 +293,21 @@ impl<'a> Receipt<'a> {
             || receipt["chatId"] != self.session["chatId"]
             || receipt["threadId"] != self.session["threadId"]
             || (!receipt["logicalOperationId"].is_null()
-                && (self.operation.method != "turn/start"
+                && (!self.operation.starts_execution()
                     || receipt["logicalOperationId"].as_js_string()
                         != Some(&self.operation.operation)))
             || !receipt["previousOperationId"].is_null()
             || receipt["method"] != self.operation.method
             || receipt["status"] != status
-            || receipt["startsExecution"] != (self.operation.method == "turn/start")
+            || receipt["startsExecution"] != self.operation.starts_execution()
         {
             bail!("Core returned an unrelated native command receipt.");
         }
         Ok(())
+    }
+
+    pub(super) fn scope(&self) -> &Scope {
+        &self.scope
     }
 
     pub fn session(&self) -> &Value {
@@ -314,12 +322,20 @@ impl<'a> Receipt<'a> {
         self.report("uncertain", Some(result), None, None).await
     }
 
-    pub async fn goal_not_started(&self) -> Result<()> {
+    pub async fn not_started(&self) -> Result<()> {
+        self.reject_start(
+            &json!({"code":-32000,"message":"The native attempt was not dispatched."}),
+            "idle",
+        )
+        .await
+    }
+
+    pub async fn reject_start(&self, error: &Value, status: &str) -> Result<()> {
         let grant = self.scope.material(None)?;
         let (envelope, digest) = protect_native_command_result(
             &grant.key,
             &crypto_context(&grant, &self.session["chatId"], &self.operation.operation),
-            &json!({"error":json!({"code":-32000,"message":"The native attempt was not dispatched."})}),
+            &json!({"error":error}),
         )?;
         let mut body = self.body();
         body["status"] = json!("rejected");
@@ -327,7 +343,7 @@ impl<'a> Receipt<'a> {
         body["protectedResult"] = envelope;
         body["rejectionCode"] = json!("native-request-rejected");
         body["executionComplete"] = json!(true);
-        body["executionStatus"] = json!("idle");
+        body["executionStatus"] = json!(status);
         self.settle(body, "rejected").await
     }
 
@@ -353,7 +369,7 @@ impl<'a> Receipt<'a> {
         self.settle(body, "rejected").await
     }
 
-    pub async fn finish_goal(&self, turn: &JsString, status: &str, result: &Value) -> Result<()> {
+    pub async fn finish_native(&self, turn: &JsString, status: &str, result: &Value) -> Result<()> {
         let grant = self.scope.material(None)?;
         let (envelope, digest) = protect_native_command_terminal_result(
             &grant.key,
@@ -617,7 +633,7 @@ impl Client {
         Ok((receipt, response))
     }
 
-    pub async fn admit_mutation(
+    pub async fn admit_command(
         &self,
         scope: Scope,
         session: Value,
@@ -625,7 +641,7 @@ impl Client {
         params: &Value,
         command: &Value,
         activation: Value,
-    ) -> Result<(Receipt<'_>, bool)> {
+    ) -> Result<(Receipt<'_>, bool, Value)> {
         let claim = command
             .get("queueClaim")
             .filter(|_| command["type"] == crate::codex::goals::QUEUE_EXECUTE);
@@ -678,8 +694,14 @@ impl Client {
             bail!("The native operation already has a receipt and cannot be replayed.");
         }
         if row["status"] != "accepted" {
-            bail!("Core did not admit the native mutation.");
+            bail!("Core did not admit the native command.");
         }
+        let activation = if method == super::shell::METHOD {
+            id(&row["executionLaneId"], "queued shell execution lane")?;
+            Value::String(id(&row["activationGeneration"], "queued shell activation")?)
+        } else {
+            activation
+        };
         let control = Receipt {
             client: self,
             operation: Operation {
@@ -694,7 +716,7 @@ impl Client {
             scope,
         };
         control.verify(&response, "accepted")?;
-        Ok((control, claim.is_some() && resume))
+        Ok((control, claim.is_some() && resume, response))
     }
 
     pub async fn admit_interrupt(

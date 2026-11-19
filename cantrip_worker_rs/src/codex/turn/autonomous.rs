@@ -124,7 +124,7 @@ impl Autonomous {
                 }
             };
             if !accepted {
-                receipt.goal_not_started().await?;
+                receipt.not_started().await?;
                 bail!("Another execution already owns this Goal chat.");
             }
             let owner = Owner {
@@ -159,7 +159,7 @@ impl Autonomous {
         }
         .await;
         if let Err(error) = admission {
-            receipt.goal_not_started().await?;
+            receipt.not_started().await?;
             return Err(error);
         }
 
@@ -260,7 +260,7 @@ impl Autonomous {
                     "interrupted" => json!({"interrupted":true}),
                     _ => json!({"failed":true}),
                 };
-                receipt.finish_goal(turn, terminal.status, &result).await
+                receipt.finish_native(turn, terminal.status, &result).await
             }.await;
             execution.not_dispatched()?;
             result
@@ -268,7 +268,7 @@ impl Autonomous {
         source.close();
         subscription.close();
         if outcome.is_err() && !attempt.forwarded() {
-            receipt.goal_not_started().await?;
+            receipt.not_started().await?;
         }
         outcome
     }
@@ -373,13 +373,13 @@ async fn authorize_settings(runner: &Runner, settings: &Value) -> Result<()> {
     Ok(())
 }
 
-async fn same_workspace(expected: &JsString, actual: &Value) -> Result<()> {
-    let expected = Path::new(expected.as_str().context("Managed Goal workspace")?);
-    let actual = Path::new(actual.as_str().context("Native Goal workspace")?);
+pub(super) async fn same_workspace(expected: &JsString, actual: &Value) -> Result<()> {
+    let expected = Path::new(expected.as_str().context("Managed execution workspace")?);
+    let actual = Path::new(actual.as_str().context("Native execution workspace")?);
     if std::path::absolute(expected)? != std::path::absolute(actual)?
         && tokio::fs::canonicalize(expected).await? != tokio::fs::canonicalize(actual).await?
     {
-        bail!("The native Goal belongs to a different workspace.");
+        bail!("The native execution belongs to a different workspace.");
     }
     Ok(())
 }

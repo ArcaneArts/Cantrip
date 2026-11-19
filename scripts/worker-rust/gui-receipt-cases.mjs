@@ -185,7 +185,7 @@ export class GuiReceiptPeer {
         scope: "thread",
         settingKeys: [],
         expectedTurnId: this.result.reconciliation.nativeTurnId,
-        permissionProfileId: ":read-only",
+        permissionProfileId: this.fields.permissionProfileId ?? ":read-only",
         pathsWithinPlacement: true,
       });
       const context = {

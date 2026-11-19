@@ -10,6 +10,7 @@ mod queued;
 pub(super) use protected::runtime_text;
 mod receipt;
 pub(in crate::codex) mod settings;
+pub(in crate::codex) mod shell;
 pub(in crate::codex) mod task;
 
 use super::{
@@ -262,9 +263,9 @@ impl Turns {
             .and_then(|active| active.root.as_ref())
             .map(|root| root.activation.clone())
             .unwrap_or(Value::Null);
-        let (receipt, awaiting_goal) = self
+        let (receipt, awaiting_goal, _) = self
             .receipts
-            .admit_mutation(scope, session, method, &params, command, activation)
+            .admit_command(scope, session, method, &params, command, activation)
             .await?;
         if let Err(error) = receipt.dispatch().await {
             receipt
