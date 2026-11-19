@@ -16,7 +16,7 @@ pub struct Configuration {
     pub expected_suspension: Option<Value>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct LoadedThread {
     id: JsString,
     generation: String,

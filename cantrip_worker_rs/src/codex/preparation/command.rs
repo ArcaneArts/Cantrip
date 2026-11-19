@@ -1,13 +1,18 @@
 //! Worker command preparation joins authenticated scope, the durable association,
 //! and the native thread. It also installs the idle MCP attachment.
 mod profile;
+mod task_pause;
 pub(in crate::codex) use profile::collaboration_mode;
 
-use super::{Coordinator, Identify, Identity, Input, Intent, Selection, Target, native};
+use super::{
+    Coordinator, Identify, Identity, Input, Intent, Selection, Target,
+    native::{self, LoadedThread},
+};
 use crate::{
     codex::{
         managed::{Runtime, WeakRuntime, Worker},
         observation::{home, provider},
+        task_pause::{Latch, Root},
         turn::autonomous::{Autonomous, Runner},
     },
     config::Config,
@@ -48,6 +53,7 @@ struct ThreadOwner {
     thread: native::LoadedThread,
     bound: (JsString, Value),
     session: Option<Value>,
+    task: Option<Root>,
 }
 
 #[derive(Clone)]
@@ -59,6 +65,7 @@ pub(in crate::codex) struct LiveThread {
 struct Inner {
     codex: Worker,
     live_threads: Mutex<HashMap<JsString, ThreadOwner>>,
+    task_pauses: Mutex<HashMap<task_pause::Key, Arc<Latch>>>,
     access: Access,
     settings: Arc<Mutex<Config>>,
     encryption: Arc<Service>,
@@ -92,6 +99,7 @@ impl Ensurer {
         Self(Arc::new(Inner {
             codex,
             live_threads: Mutex::default(),
+            task_pauses: Mutex::default(),
             access,
             settings,
             encryption,
@@ -265,6 +273,23 @@ impl Ensurer {
                     this.assert_bound(&bound)?;
                     let delivery = this.0.codex.project_goals().filter(|_| !standalone);
                     let task = command["taskOwned"] == true;
+                    let latch = task.then(|| this.task_latch(&bound, &chat)).transpose()?;
+                    let task_root = |thread: &JsString, latch: &Arc<Latch>| Root {
+                        runner: runner.clone(),
+                        binding: json!({
+                            "workerId":this.0.worker, "chatId":chat, "projectId":session["projectId"],
+                            "worktreeId":session["worktreeId"], "threadId":thread, "cycleId":command["taskCycleId"],
+                            "modelRouteId":command["model"]["routeId"], "providerAccountId":command["provider"]["accountId"],
+                        }),
+                        latch: latch.clone(),
+                    };
+                    let router = runtime.inference_router();
+                    if let Some(latch) = &latch {
+                        runtime.admission().set_chat_paused(&chat, latch.current().blocked)?;
+                        if let Some(thread) = &selection.thread_id {
+                            router.set_task_root(thread, Some(task_root(thread, latch)));
+                        }
+                    }
                     if task
                         && let (Some(delivery), Some(thread)) = (delivery, selection.thread_id.as_ref())
                     {
@@ -308,11 +333,16 @@ impl Ensurer {
                     } else {
                         runtime.inference_router().remove_goal_producer(&thread_id);
                     }
+                    let task = latch.as_ref().map(|latch| task_root(&thread_id, latch));
+                    router.set_task_root(&thread_id, task.clone());
                     let owner = ThreadOwner {
                         runtime: runtime.downgrade(), thread: loaded.clone(), bound: bound.clone(),
-                        session: native_session,
+                        session: native_session, task,
                     };
-                    this.0.live_threads.lock().unwrap().insert(chat, owner);
+                    this.0.live_threads.lock().unwrap().insert(chat.clone(), owner);
+                    if let Some(latch) = latch {
+                        this.sync_task_pause(&bound, &chat, &latch).await?;
+                    }
                     *prepared.lock().unwrap() = Some(Prepared { runtime, thread: loaded, codex_home, runner_generation: runner, admission, bound });
                     Ok(thread_id)
                 })

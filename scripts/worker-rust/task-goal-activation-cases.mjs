@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { goalCycles } from "./task-goal-cycle-cases.mjs";
 import {
   editAndResumeTaskGoal,
@@ -21,6 +22,7 @@ import {
 } from "../../packages/protocol/dist/index.js";
 
 export async function verifyTaskGoalActivation({
+  verifyPause,
   command,
   result,
   ownerId,
@@ -222,7 +224,14 @@ export async function verifyTaskGoalActivation({
     messageId: randomUUID(),
     idempotencyKey: "fixture-first-goal-result",
   };
-  const cycles = goalCycles({ receipt, threadId, serverId, generation });
+  const resumeEpoch = receipt.queueOrderEpoch + Number(Boolean(verifyPause));
+  const cycles = goalCycles({
+    receipt,
+    threadId,
+    serverId,
+    generation,
+    orderEpoch: resumeEpoch,
+  });
   const answer = "Native first Goal result.";
   const phases = [];
   const admissions = Promise.withResolvers();
@@ -331,7 +340,58 @@ export async function verifyTaskGoalActivation({
       earlyReply,
     ]),
   );
-  acknowledge();
+  if (verifyPause) {
+    const pauseScope = {
+      workerId,
+      projectId: command.policyProjectId,
+      worktreeId,
+      threadId,
+      modelRouteId: receipt.modelRouteId,
+      providerAccountId: receipt.providerAccountId,
+      cycleId: dispatch.cycleId,
+      orderEpoch: receipt.queueOrderEpoch,
+      revision: 2,
+    };
+    const notice = (paused, scope = {}) =>
+      invoke({
+        type: "chat.queue.changed",
+        chatId,
+        revision: 10 + (scope.revision ?? pauseScope.revision),
+        taskPause: { paused, scope: { ...pauseScope, ...scope } },
+      });
+    const applied = async (paused, scope) => {
+      const result = await notice(paused, scope);
+      assert.equal(
+        result.ok,
+        true,
+        JSON.stringify(result) + "\n" + diagnostics(),
+      );
+      assert.deepEqual(result.result, { acknowledged: true });
+    };
+    const wrongWorker = await notice(true, { workerId: "not-this-worker" });
+    assert.match(wrongWorker.error.message, /belongs to another worker/);
+    await applied(true);
+    await applied(true);
+    const conflict = await notice(false);
+    assert.match(conflict.error.message, /revision changed its intent/);
+    await applied(false, { revision: 1 });
+    acknowledge();
+    await Promise.race([
+      delay(150),
+      earlyReply,
+      providerRequest.then(() =>
+        assert.fail("The paused worker forwarded a model request."),
+      ),
+    ]);
+    assert.equal(modelCalls(), calls);
+    await applied(false, { revision: 3, orderEpoch: resumeEpoch });
+    await applied(true, { revision: 2 });
+    console.log(
+      "Task pause delivery held the real native Goal input, ignored stale revisions, and applied the newer Resume.",
+    );
+  } else {
+    acknowledge();
+  }
   const model = await Promise.race([providerRequest, earlyReply]);
   assert.deepEqual(phases, ["claim", "dispatch", "native"]);
   const promptText = (await openMessage(resumedMessage)).content[0].text;
