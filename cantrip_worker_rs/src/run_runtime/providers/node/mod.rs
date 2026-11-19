@@ -1,7 +1,8 @@
 mod manifest;
 
 use super::{
-    Environment, Failure, Launch, Resolved, environment, executable_diagnostic, issue, shell,
+    Environment, Failure, Launch, Resolved, diagnose_shell, environment, executable_diagnostic,
+    issue, render, shell, string_arguments,
 };
 use crate::{
     filesystem::Scope,
@@ -207,35 +208,8 @@ pub(super) fn validate(
     (effective(document, &resolved), diagnostics)
 }
 
-fn diagnose_shell(
-    root: &Path,
-    baseline: &Environment,
-    field: &str,
-    failure_code: &str,
-    issues: &mut Vec<Value>,
-) {
-    match shell::invocation(root.to_owned(), String::new(), "automatic", true, baseline) {
-        Ok(command) => issues.extend(executable_diagnostic(
-            &command.program,
-            field,
-            root,
-            baseline,
-        )),
-        Err(failure) => issues.push(issue(failure_code, &failure.message, field)),
-    }
-}
-
 fn option<'a>(resolved: &Resolved<'a>, name: &str) -> &'a str {
     resolved.option(name).as_str().unwrap()
-}
-
-fn string_arguments(value: &Value) -> Vec<String> {
-    value
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|argument| argument.as_js_string().unwrap().lossy().into_owned())
-        .collect()
 }
 
 fn package_arguments(script: &str, values: &[String]) -> Vec<String> {
@@ -306,29 +280,6 @@ fn effective(document: &Value, resolved: &Resolved<'_>) -> String {
         combined.extend(arguments);
         render(option(resolved, "runtime"), &combined)
     }
-}
-
-fn render(program: &str, arguments: &[String]) -> String {
-    let mut command = program.to_owned();
-    for value in arguments {
-        command.push(' ');
-        if !value.is_empty()
-            && value
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || b"_./:@%+=,-".contains(&byte))
-        {
-            command.push_str(value);
-        } else if cfg!(windows) {
-            command.push('"');
-            command.push_str(&value.replace('"', "\"\""));
-            command.push('"');
-        } else {
-            command.push('\'');
-            command.push_str(&value.replace('\'', "'\\''"));
-            command.push('\'');
-        }
-    }
-    command
 }
 
 pub(super) fn discover(root: &Path, scope: &Scope) -> Result<Vec<Value>> {

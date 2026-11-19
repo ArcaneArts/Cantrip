@@ -1,5 +1,6 @@
 //! Provider diagnostics are used by definition inspection. Launch builds the
 //! real command and leaves tool availability to the owned process spawn.
+mod cargo;
 mod node;
 
 use super::{
@@ -59,6 +60,7 @@ pub(super) fn materialize(
     match document["provider"].as_str() {
         Some("shell") => shell::materialize(document, root, baseline),
         Some("node") => node::materialize(document, root, baseline),
+        Some("rust") => cargo::materialize(document, root, baseline),
         _ => Err(Failure::new(
             "provider",
             "provider-unavailable",
@@ -79,6 +81,7 @@ pub(crate) fn capabilities() -> Value {
     json!(vec![
         capability("shell", "Shell", "terminal", false),
         capability("node", "Node / package", "package", true),
+        capability("rust", "Rust / Cargo", "boxes", true),
     ])
 }
 
@@ -88,7 +91,13 @@ pub(crate) fn detect(
     scope: &Scope,
 ) -> Result<(Vec<Value>, Vec<Value>)> {
     match provider {
-        None | Some("node") => Ok((node::discover(root, scope)?, vec![])),
+        None => {
+            let mut candidates = node::discover(root, scope)?;
+            candidates.extend(cargo::discover(root, scope)?);
+            Ok((candidates, vec![]))
+        }
+        Some("node") => Ok((node::discover(root, scope)?, vec![])),
+        Some("rust") => Ok((cargo::discover(root, scope)?, vec![])),
         Some("shell") => Ok((vec![], vec![])),
         Some(provider) => Ok((
             vec![],
@@ -101,10 +110,16 @@ pub(crate) fn detect(
     }
 }
 
-pub(crate) fn validation(document: &Value, root: &Path, baseline: &Environment) -> Result<Value> {
+pub(crate) fn validation(
+    document: &Value,
+    root: &Path,
+    baseline: &Environment,
+    scope: &Scope,
+) -> Result<Value> {
     let (effective, diagnostics) = match document["provider"].as_str() {
         Some("shell") => shell::validate(document, root, baseline),
         Some("node") => node::validate(document, root, baseline),
+        Some("rust") => cargo::validate(document, root, baseline, scope)?,
         _ => bail!("This Run configuration provider is unavailable on the native worker."),
     };
     Ok(json!({
@@ -138,21 +153,8 @@ pub(super) fn executable_diagnostic(
 }
 
 fn executable_on_path(program: &str, root: &Path, baseline: &Environment) -> bool {
-    fn executable(path: &Path) -> bool {
-        paths::canonical_sync(path)
-            .and_then(std::fs::metadata)
-            .is_ok_and(|metadata| {
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
-                }
-                #[cfg(not(unix))]
-                metadata.is_file()
-            })
-    }
     if program.contains(['/', '\\']) {
-        return executable(&cantrip_config::resolve(root, Path::new(program)));
+        return executable_file(&cantrip_config::resolve(root, Path::new(program)));
     }
     let Some(path) = layers::env_value(baseline, "PATH") else {
         return false;
@@ -175,6 +177,72 @@ fn executable_on_path(program: &str, root: &Path, baseline: &Environment) -> boo
         let directory = directory.strip_prefix('"').unwrap_or(directory);
         let directory = directory.strip_suffix('"').unwrap_or(directory);
         let directory = cantrip_config::resolve(root, &PathBuf::from(directory));
-        names.iter().any(|name| executable(&directory.join(name)))
+        names
+            .iter()
+            .any(|name| executable_file(&directory.join(name)))
     })
+}
+
+fn executable_file(path: &Path) -> bool {
+    paths::canonical_sync(path)
+        .and_then(std::fs::metadata)
+        .is_ok_and(|metadata| {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
+            }
+            #[cfg(not(unix))]
+            metadata.is_file()
+        })
+}
+
+fn diagnose_shell(
+    root: &Path,
+    baseline: &Environment,
+    field: &str,
+    failure_code: &str,
+    issues: &mut Vec<Value>,
+) {
+    match shell::invocation(root.to_owned(), String::new(), "automatic", true, baseline) {
+        Ok(command) => issues.extend(executable_diagnostic(
+            &command.program,
+            field,
+            root,
+            baseline,
+        )),
+        Err(failure) => issues.push(issue(failure_code, &failure.message, field)),
+    }
+}
+
+fn string_arguments(value: &Value) -> Vec<String> {
+    value
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|argument| argument.as_js_string().unwrap().lossy().into_owned())
+        .collect()
+}
+
+fn render(program: &str, arguments: &[String]) -> String {
+    let mut command = program.to_owned();
+    for value in arguments {
+        command.push(' ');
+        if !value.is_empty()
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"_./:@%+=,-".contains(&byte))
+        {
+            command.push_str(value);
+        } else if cfg!(windows) {
+            command.push('"');
+            command.push_str(&value.replace('"', "\"\""));
+            command.push('"');
+        } else {
+            command.push('\'');
+            command.push_str(&value.replace('\'', "'\\''"));
+            command.push('\'');
+        }
+    }
+    command
 }

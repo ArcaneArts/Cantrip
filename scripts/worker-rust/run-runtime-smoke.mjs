@@ -5,6 +5,7 @@ import path from "node:path";
 import * as crypto from "../../packages/crypto/dist/index.js";
 import * as definitions from "../../packages/protocol/dist/run-configuration-definitions.js";
 import * as secrets from "../../packages/protocol/dist/run-configuration-secrets.js";
+import { verifyCargoRunProvider } from "./cargo-run-provider-smoke.mjs";
 import { verifyNodeRunProvider } from "./node-run-provider-smoke.mjs";
 
 const operations = "/api/run-configuration-runtimes/operations";
@@ -290,7 +291,7 @@ exec /bin/sleep 120`;
   await restartWorker();
   assert.throws(() => process.kill(getPid(current.data), 0), { code: "ESRCH" });
   await awaitState(configurationId, "lost", 3);
-  await verifyNodeRunProvider({
+  const providerFixture = {
     call,
     projectId,
     checkout,
@@ -300,5 +301,7 @@ exec /bin/sleep 120`;
       await operate(intent("start", id), 202);
       return awaitState(id, state, 1);
     },
-  });
+  };
+  await verifyNodeRunProvider(providerFixture);
+  await verifyCargoRunProvider(providerFixture);
 }

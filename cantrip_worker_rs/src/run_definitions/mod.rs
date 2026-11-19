@@ -230,7 +230,7 @@ fn execute(
         }
         "validate" => {
             response["validation"] =
-                run_runtime::validation(&command["document"], &root, environment)?;
+                run_runtime::validation(&command["document"], &root, environment, scope)?;
             "runConfigurationValidateResponseSchema"
         }
         "list" => {
@@ -243,6 +243,7 @@ fn execute(
                         &entry["document"],
                         &root,
                         environment,
+                        scope,
                     )?);
                 }
             }
