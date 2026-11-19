@@ -953,6 +953,7 @@ try {
         suite: "actual-native-host-run-worker-server",
         passed: true,
         typedNodeProvider: true,
+        typedCargoProvider: true,
         encryptedOutput: true,
         nodeDifferential: true,
         nodeAbsentFromWorkerPath: true,

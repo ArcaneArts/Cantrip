@@ -5347,3 +5347,34 @@ Java, Dart, Flutter and Rust Run providers, mixed-provider inventory
 validation, Cantrip OS execution, and production cutover remain open.
 Windows and Linux launch paths and the Bun, pnpm, and Yarn executions were
 outside this local runtime check.
+
+## 119. Discover, validate, and run Cargo project configurations
+
+Reference commit `740012d8582160c0b3a00df736312cea3d86b581` (#3281).
+
+The Rust worker discovers declared and conventional Cargo binaries and
+examples from bounded manifests. It preserves target and package ordering,
+required feature suggestions, and ignored-directory and symlink rules.
+The definition API reports Cargo, Rustup toolchain, compiler, Clippy,
+target-library, and project diagnostics. Shell, Node, and Cargo definitions
+can appear together in the validated inventory.
+
+The existing Host supervisor executes Cargo with the admitted working
+directory, package and target selection, features, profile, toolchain,
+lock and offline flags, platform overrides, and program arguments. It also
+supports Cargo build, check, and clippy before-launch tasks. Definition
+inspection reads local files. Launch attempts the actual Cargo command
+with the Run environment and captures its exit and protected output.
+
+Local macOS ARM64 validation compared discovery, diagnostics, and mixed
+inventory with the Node worker. Both Rust services ran with PGlite and
+Node absent from the worker's PATH. An isolated project toolchain executed
+a real offline Cargo check, a binary, and an example. A missing target
+produced Cargo's own error and nonzero exit through the encrypted output
+path. The Rustup fixture exercised component and target diagnostics
+without invoking any tool. The previous Shell and Node Run smoke and
+definition file checks passed.
+
+Java, Dart, Flutter, Cantrip OS Run execution, and production cutover
+remain open. Real Cargo execution was verified on macOS, with Linux and
+Windows runtime validation pending.
