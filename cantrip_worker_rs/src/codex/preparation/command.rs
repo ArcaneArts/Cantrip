@@ -632,6 +632,39 @@ impl Ensurer {
         Ok(thread.id().clone())
     }
 
+    pub(in crate::codex) async fn label_runtime(
+        &self,
+        job: &Value,
+        bound: &(JsString, Value),
+    ) -> Result<Runtime> {
+        self.assert_bound(bound)?;
+        let owner = &bound.0;
+        let server = bound
+            .1
+            .as_js_string()
+            .context("Unverified worker server identity")?;
+        let provider = open_runtime_provider(&self.0.encryption, &job["provider"])?;
+        let scope = json!({"serverId":server,"ownerId":owner,"workerId":self.0.worker});
+        let profile = home::profile(
+            &self.0.data,
+            &scope,
+            home::Source::Current(None),
+            &field(job, "chatId")?,
+            &provider,
+            "ide",
+            self.0.skills.clone(),
+        )
+        .await?;
+        self.assert_bound(bound)?;
+        self.0
+            .codex
+            .launch_in_scope(
+                provider::launch(profile, provider, self.0.access.clone())?,
+                Some((server.clone(), owner.clone())),
+            )
+            .await
+    }
+
     pub(crate) async fn resolve_routing(&self, incoming: &Value) -> Result<Value> {
         self.0.routing.resolve(incoming).await
     }

@@ -4975,3 +4975,25 @@ rejection of unregistered directories and symlink targets.
 
 Standalone Chat file operations and full model execution through the
 production Rust pair remain open, along with production cutover.
+
+## 105. Run the default standalone Chat turn through both Rust services
+
+Reference commit `945d37f6b869e79fcd114ac61953794c66454178` (#3267).
+
+A claimed first-message title now runs through Codex's stateless inference
+RPC. The same provider shares the response's inference grant. A separate
+labeling provider finishes its own preparation first. The worker opens the
+protected user message and seals the normalized title with its authorized
+display-label key. Failure returns a null title outcome so Core can close
+the claim and continue the reply.
+
+Local macOS ARM64 validation used the public API, the linked Rust server
+with PGlite, the linked Rust worker with an empty PATH, bundled Codex,
+and loopback providers sending Responses SSE. The client recovered the
+encrypted title and stored messages for both provider selections. An
+unusable label preserved the initial title and the completed reply. An
+identical submission replayed the stored user message without a second
+provider request.
+
+The separate background `label.generate` command used by Task naming,
+other worker domains, and the production cutover remain open.
