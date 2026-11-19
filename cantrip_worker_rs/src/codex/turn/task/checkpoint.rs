@@ -10,6 +10,7 @@ pub(in crate::codex::turn) struct Checkpoint {
     observer: Continuation,
     messages: Arc<Messages>,
     protected_input: Value,
+    physical: Option<Value>,
     pub evidence: tokio::sync::Mutex<Option<(u64, Value)>>,
 }
 
@@ -35,8 +36,23 @@ impl Turn {
                     "publication":json!({"id":goal.response["messageId"],"idempotencyKey":goal.response["idempotencyKey"]})}),
             ),
         };
+        let restoration = &command["taskResumption"];
+        let (source, physical) = if restoration.is_null() {
+            (Source::Input(command["taskInferenceInput"].clone()), None)
+        } else {
+            let origin = if restoration["goalCycle"].is_null() {
+                Source::Input(restoration["source"].clone())
+            } else {
+                Source::GoalCycle(restoration["goalCycle"].clone())
+            };
+            (
+                origin,
+                Some(command["taskInferenceInput"]["operationId"].clone()),
+            )
+        };
         Checkpoint {
-            source: Source::Input(command["taskInferenceInput"].clone()),
+            source,
+            physical,
             project: command["policyProjectId"].clone(),
             observer: Continuation {
                 channel,
@@ -68,12 +84,17 @@ impl Checkpoint {
         });
         Self {
             source: Source::GoalCycle(source),
+            physical: None,
             project,
             observer: Continuation { channel, seed },
             messages,
             protected_input,
             evidence: Default::default(),
         }
+    }
+
+    pub(super) fn restore_observer(&mut self, saved: &Value) {
+        self.observer.seed = output::restored_seed(saved);
     }
 
     pub(in crate::codex::turn) fn matches_round(&self, scope: &Value) -> bool {
@@ -119,7 +140,7 @@ impl Checkpoint {
             && ["cycleId", "modelRouteId", "providerAccountId"]
                 .iter()
                 .all(|key| scope[*key] == cycle[*key])
-            && source["workerGeneration"] == worker
+            && (self.physical.is_some() || source["workerGeneration"] == worker)
             && source["threadId"].as_js_string() == Some(thread)
             && source["turnId"].as_js_string() == Some(turn)
             && parent["chatId"].as_js_string() == Some(chat)
@@ -148,6 +169,12 @@ impl Checkpoint {
     }
 
     pub(in crate::codex::turn) fn actor(&self, worker: &str, runtime: &JsString) -> Value {
+        if let Some(physical) = &self.physical {
+            return json!({
+                "workerGeneration":worker,"runtimeGeneration":runtime,
+                "operationId":physical,"operationGeneration":physical,
+            });
+        }
         match &self.source {
             // Core binds tasks to inference admission, separately from the
             // generation of the app-server transport used to hold the turn.
@@ -181,5 +208,14 @@ impl Checkpoint {
             "version":1,"mode":mode,"ids":identities,"completedRootMessage":completed,
         });
         Ok((continuation, protected))
+    }
+}
+
+impl Turn {
+    pub(super) fn restore_output(&self, saved: &Value) -> anyhow::Result<()> {
+        match self {
+            Self::Round(round) => round.messages.restore_output(saved),
+            Self::Goal(goal) => goal.messages.restore_output(saved),
+        }
     }
 }

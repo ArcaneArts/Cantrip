@@ -4887,3 +4887,36 @@ Twenty-two focused Node reference tests passed.
 
 Task restoration after restart, durable Task Stop and production
 cutover remain open.
+
+## 102. Restore a suspended Task after worker restart
+
+Reference commit `906b079601905ac3352e7e864147f7dfc0bae45f` (#3264).
+
+The worker opens the protected continuation against the original Task
+input or autonomous Goal source, placement, model route and native turn.
+It verifies the protected request or prompt and publication, restores
+the message identities, and attaches to the saved Codex home under the
+execution hold. A fresh Core receipt claims and dispatches that physical
+execution. Once Core acknowledges the native inference binding, the
+worker emits the existing Task Resume event for the original turn. Only
+the native suspension Resume is sent to Codex. The original prompt and
+tool actions stay in the native history.
+
+Restored Goal execution retains its canonical parent and publication.
+A subsequent autonomous turn waits for the restored outcome to commit.
+A resumed Task can be checkpointed against its original source and
+current physical actor. Shutdown with an unobserved terminal state
+preserves a checkpointed Task for recovery and leaves its outcome open.
+
+The macOS ARM64 smoke used the real Rust worker and bundled Codex with
+local Core and provider peers. It restarted both processes for a direct
+Task and an autonomous Goal, waited for Core's fresh native binding, and
+continued the same turns. It exercised a rejected checkpoint, a direct
+Task continuation sealed with Node's reference store, and recapture
+with the original source, preserved message ID and fresh actor. It also
+covered protected results and the next autonomous turn's outcome commit
+barrier. The same run
+covered Chat recovery, Task pause notifications and structured Task
+execution. Twenty-two focused Node reference tests passed.
+
+Durable Task Stop and production cutover remain open.

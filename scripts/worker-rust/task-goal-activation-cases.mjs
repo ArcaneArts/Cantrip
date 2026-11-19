@@ -24,6 +24,7 @@ import {
 export async function verifyTaskGoalActivation({
   verifyPause,
   verifyCheckpoint,
+  verifyRestart,
   command,
   result,
   ownerId,
@@ -239,11 +240,49 @@ export async function verifyTaskGoalActivation({
   const attempted = Promise.withResolvers();
   const replayed = Promise.withResolvers();
   let delivery;
+  let restoration;
+  const inputCommand = {
+    ...base,
+    threadId,
+    clientMessageId,
+    planMode: "default",
+    permissionProfileId: activation.permissionProfileId,
+    protectedTaskPrompt: resumedMessage,
+    resultMode,
+    taskInferenceInput: receipt,
+    taskDispatchLease: {
+      ...dispatch,
+      leaseExpiresAt: new Date(Date.now() + 60000).toISOString(),
+    },
+  };
   attach({
     answer,
     cycle: cycles.authorize,
     dispatch: (body, send) => {
       const request = taskInferenceInputDispatchSchema.parse(body);
+      if (
+        restoration &&
+        request.receipt.operationId === restoration.receipt.operationId
+      ) {
+        assert.deepEqual(request.receipt, restoration.receipt);
+        assert.equal(request.workerGeneration, generation());
+        assert.equal(
+          request.phase,
+          ["claim", "dispatch", "native"][restoration.phase++],
+        );
+        if (request.phase === "native") {
+          assert.equal(request.nativeExecution.threadId, threadId);
+          assert.equal(request.nativeExecution.turnId, restoration.turnId);
+          restoration.bound.resolve(() =>
+            send({
+              receipt: restoration.receipt,
+              nativeExecution: request.nativeExecution,
+              nativeRuntimeGeneration: request.nativeRuntimeGeneration,
+            }),
+          );
+        } else send({ receipt: restoration.receipt });
+        return;
+      }
       assert.deepEqual(request.receipt, receipt);
       assert.equal(request.serverId, serverId);
       assert.equal(request.workerId, workerId);
@@ -272,6 +311,29 @@ export async function verifyTaskGoalActivation({
       const record = taskGoalOutcomeDeliverySchema.parse(body);
       if (record.inputKind === "goal-cycle") {
         cycles.deliver(body, send);
+        return;
+      }
+      if (
+        restoration &&
+        record.notification.taskInferenceInputOperationId ===
+          restoration.receipt.operationId
+      ) {
+        assert.equal(record.inputKind, "goal");
+        assert.deepEqual(
+          record.notification.taskDispatchFence,
+          restoration.receipt.dispatch,
+        );
+        restoration.delivered.resolve({
+          record,
+          commit: () => {
+            cycles.commitRestored();
+            send({
+              committed: true,
+              deliveryId: record.deliveryId,
+              taskInferenceInputOperationId: restoration.receipt.operationId,
+            });
+          },
+        });
         return;
       }
       assert.equal(record.inputKind, "goal");
@@ -310,23 +372,7 @@ export async function verifyTaskGoalActivation({
   const notification = waitForFrame(
     (frame) => frame.notification?.clientMessageId === clientMessageId,
   );
-  const running = invoke(
-    {
-      ...base,
-      threadId,
-      clientMessageId,
-      planMode: "default",
-      permissionProfileId: activation.permissionProfileId,
-      protectedTaskPrompt: resumedMessage,
-      resultMode,
-      taskInferenceInput: receipt,
-      taskDispatchLease: {
-        ...dispatch,
-        leaseExpiresAt: new Date(Date.now() + 60000).toISOString(),
-      },
-    },
-    (event) => streaming.push(event),
-  );
+  const running = invoke(inputCommand, (event) => streaming.push(event));
   const earlyReply = running.then((reply) => {
     throw new Error(JSON.stringify(reply) + "\n" + diagnostics());
   });
@@ -461,6 +507,112 @@ export async function verifyTaskGoalActivation({
   console.log(
     "Ran the first native Goal input and waited for its exact encrypted outcome commit.",
   );
+  const restoreCycle = async ({
+    source,
+    evidence,
+    pauseCommand,
+    check,
+    model,
+    expectedAnswer,
+  }) => {
+    const previous = generation();
+    await stop();
+    await start();
+    assert.notEqual(generation(), previous);
+    assert.deepEqual(
+      check(
+        await invoke({
+          ...pauseCommand,
+          paused: false,
+          task: { ...pauseCommand.task, revision: 5 },
+        }),
+      ),
+      { paused: false, active: null },
+    );
+    const fresh = {
+      ...receipt,
+      operationId: randomUUID(),
+      dispatch: { ...dispatch, fencingToken: dispatch.fencingToken + 1 },
+    };
+    const controlId = randomUUID();
+    restoration = {
+      receipt: fresh,
+      phase: 0,
+      turnId: source.turnId,
+      bound: Promise.withResolvers(),
+      delivered: Promise.withResolvers(),
+    };
+    const resumed = Promise.withResolvers();
+    const next = untilProvider();
+    const continued = invoke(
+      {
+        ...inputCommand,
+        taskInferenceInput: fresh,
+        taskDispatchLease: {
+          ...inputCommand.taskDispatchLease,
+          ...fresh.dispatch,
+        },
+        taskResumption: {
+          controlId,
+          checkpoint: evidence,
+          source: receipt,
+          goalCycle: source,
+        },
+        resultMode: {
+          ...inputCommand.resultMode,
+          messageId: source.publication.id,
+          idempotencyKey: source.publication.idempotencyKey,
+        },
+      },
+      (event) => {
+        if (event.type === "agent.task-resumed") resumed.resolve(event);
+      },
+    );
+    const early = continued.then((reply) =>
+      assert.fail(JSON.stringify(reply) + "\n" + diagnostics()),
+    );
+    const bind = await available(
+      Promise.race([
+        restoration.bound.promise,
+        early,
+        next.then(() =>
+          assert.fail(
+            "Restored Goal reached the provider before native binding.",
+          ),
+        ),
+      ]),
+    );
+    assert.equal(modelCalls(), model.number);
+    bind();
+    assert.deepEqual(await available(Promise.race([resumed.promise, early])), {
+      type: "agent.task-resumed",
+      controlId,
+      inputOperationId: fresh.operationId,
+      threadId,
+      turnId: source.turnId,
+    });
+    const provider = await Promise.race([next, early]);
+    assert.equal(provider.number, model.number + 1);
+    provider.finish();
+    const { record, commit } = await available(
+      Promise.race([restoration.delivered.promise, early]),
+    );
+    assert.equal(record.notification.outcome.ok, true);
+    assert.equal(record.notification.outcome.result.turnId, source.turnId);
+    const message = record.notification.outcome.result.structuredResult.message;
+    assert.equal(message.id, source.publication.id);
+    assert.equal((await openMessage(message)).content[0].text, expectedAnswer);
+    console.log(
+      "Restored the original autonomous Goal turn after restarting the Rust worker and Codex.",
+    );
+    return {
+      record,
+      commit: () => {
+        commit();
+        return continued;
+      },
+    };
+  };
   await cycles.verify({
     firstTurnId: native.turnId,
     untilProvider,
@@ -477,6 +629,7 @@ export async function verifyTaskGoalActivation({
           projectId: command.policyProjectId,
           prompt: resumedMessage,
           diagnostics,
+          restoreCycle: verifyRestart ? restoreCycle : undefined,
         }
       : undefined,
     setAnswer,

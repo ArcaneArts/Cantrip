@@ -1,5 +1,5 @@
 //! Managed controls acquire a separate Core receipt for the exact active turn.
-mod pause;
+pub(super) mod pause;
 mod restore;
 mod stop;
 pub(crate) mod task_pause;
@@ -75,11 +75,11 @@ impl Binding {
     }
 }
 
-struct Selection {
-    runtime: Runtime,
-    thread: JsString,
-    turn: JsString,
-    thread_version: u64,
+pub(super) struct Selection {
+    pub(super) runtime: Runtime,
+    pub(super) thread: JsString,
+    pub(super) turn: JsString,
+    pub(super) thread_version: u64,
 }
 
 impl Selection {

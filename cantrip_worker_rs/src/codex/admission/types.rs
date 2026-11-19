@@ -17,6 +17,7 @@ pub struct Input {
     pub recovery: Option<Value>,
     pub on_queued: Option<Queued>,
     pub track: Option<Track>,
+    pub on_native_bound: Option<Arc<dyn Fn() -> Result<()> + Send + Sync>>,
 }
 impl Input {
     pub fn new(operation_id: JsString, provider: Value) -> Self {
@@ -35,6 +36,7 @@ impl Input {
             recovery: None,
             on_queued: None,
             track: None,
+            on_native_bound: None,
         }
     }
     pub(super) fn provider_id(&self) -> JsString {

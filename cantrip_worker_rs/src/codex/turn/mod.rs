@@ -88,6 +88,8 @@ struct TaskTurn {
     turn: task::Turn,
     key: Key,
     claimed: bool,
+    restored_finished: bool,
+    retained_checkpoint: bool,
     goal_commit: Option<(Complete<()>, Promise<()>)>,
 }
 
@@ -450,6 +452,8 @@ impl Turns {
                 turn,
                 key,
                 claimed: false,
+                restored_finished: false,
+                retained_checkpoint: false,
                 goal_commit: goal.then(Promise::pair),
             })
         })();
@@ -457,11 +461,30 @@ impl Turns {
             Ok(task) => task,
             Err(_) => return (Err(encrypted_error()), None),
         };
+        let restoring = !incoming["taskResumption"].is_null();
         let result = self
             .run_owned(incoming, emit, Some(&mut task))
             .await
-            .map_err(|_| encrypted_error());
-        let note = if task.claimed {
+            .map_err(|error| {
+                if !restoring {
+                    encrypted_error()
+                } else if error.is::<task::restore::Failure>() {
+                    error
+                } else {
+                    task::restore::failed(
+                        if task.restored_finished {
+                            "complete"
+                        } else {
+                            "attach"
+                        },
+                        error,
+                    )
+                }
+            });
+        let note = if task.claimed
+            && !task.retained_checkpoint
+            && (!restoring || task.restored_finished)
+        {
             self.task_outcomes
                 .task(&task.key.0, &task.key.1, incoming, &result)
                 .await
@@ -527,6 +550,12 @@ impl Turns {
             active: active.clone(),
         };
         let command = self.preparation.resolve_routing(incoming).await?;
+        if !command["taskResumption"].is_null() {
+            let task = task.context("The restored Task has no canonical owner.")?;
+            return self
+                .restore_task(&command, task, &active, &signal, emit)
+                .await;
+        }
         let (prompt, protection) = if protected_mode(&command) {
             let (prompt, protection) =
                 protected::Protected::open(self.encryption.clone(), &command, &key.0, &key.1)?;
@@ -785,23 +814,14 @@ impl Turns {
                 let (turn, reply) = if let Some((_, commit)) =
                     task.as_ref().and_then(|task| task.goal_commit.as_ref())
                 {
-                    let cycle = Arc::new(task::cycle::GoalCycle {
-                        parent: command["taskInferenceInput"].clone(),
-                        project: command["policyProjectId"].clone(),
-                        encryption: self.encryption.clone(),
-                        key: key.clone(),
-                        client: self.task_inputs.clone(),
-                        outcomes: self.task_outcomes.clone(),
-                        observation: runtime.history(),
-                        activate: self
-                            .preparation
-                            .cycle_activation(&prepared, &command["executionLaneId"]),
-                        emit: emit.clone(),
-                        reuse_published_response: command["resultMode"]["reusePublishedResponse"]
-                            == true,
-                        previous: AsyncMutex::new(commit.clone()),
-                        checkpoints: task::cycle::Checkpoints::new(&command),
-                    });
+                    let cycle = self.task_goal_cycle(
+                        &command,
+                        &key,
+                        &prepared,
+                        emit.clone(),
+                        commit,
+                        &command["taskInferenceInput"],
+                    );
                     task::first_input::start(
                         &prepared,
                         &command["taskInferenceInput"],
@@ -849,6 +869,15 @@ impl Turns {
                     result
                 };
                 let (result, applied) = tokio::join!(observe, applied);
+                if result.is_err()
+                    && transport.check().is_err()
+                    && let Some(task) = &mut task
+                    && let Some(capture) = active.task.get()
+                {
+                    // A disconnected observer cannot settle a saved Task.
+                    // Core still owns its suspended input and its next action.
+                    task.retained_checkpoint = capture.evidence.lock().await.is_some();
+                }
                 drop(emit);
                 let settled = async {
                     if transport.check().is_err() {
@@ -887,6 +916,33 @@ impl Turns {
                 (_, Some(task)) => task.turn.finish(value),
                 _ => Ok(value),
             }
+        })
+    }
+
+    fn task_goal_cycle(
+        &self,
+        command: &Value,
+        key: &Key,
+        prepared: &crate::codex::preparation::command::Prepared,
+        emit: Emit,
+        commit: &Promise<()>,
+        parent: &Value,
+    ) -> Arc<task::cycle::GoalCycle> {
+        Arc::new(task::cycle::GoalCycle {
+            parent: parent.clone(),
+            project: command["policyProjectId"].clone(),
+            encryption: self.encryption.clone(),
+            key: key.clone(),
+            client: self.task_inputs.clone(),
+            outcomes: self.task_outcomes.clone(),
+            observation: prepared.runtime.history(),
+            activate: self
+                .preparation
+                .cycle_activation(prepared, &command["executionLaneId"]),
+            emit,
+            reuse_published_response: command["resultMode"]["reusePublishedResponse"] == true,
+            previous: AsyncMutex::new(commit.clone()),
+            checkpoints: task::cycle::Checkpoints::new(command),
         })
     }
 }

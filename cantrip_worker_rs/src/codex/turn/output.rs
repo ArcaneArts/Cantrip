@@ -51,6 +51,16 @@ pub(super) fn continuation_seed(command: &Value, model: Value, schema: Option<&V
         "structuredOutputSchema":schema,"goalCompletion":Value::Null,
     })
 }
+
+pub(super) fn restored_seed(saved: &Value) -> Value {
+    let mut seed = saved.clone();
+    let now = chrono::Utc::now().timestamp_millis();
+    let captured = saved["capturedAtMs"].as_f64().unwrap_or(now as f64);
+    let started = saved["startedAtMs"].as_f64().unwrap_or(captured);
+    seed["startedAtMs"] = json!((started + (now as f64 - captured).max(0.0)).max(0.0));
+    seed
+}
+
 const STREAM_INTERVAL: Duration = Duration::from_millis(80);
 
 pub(super) fn subscribe(

@@ -63,9 +63,11 @@ const { values } = parseArgs({
     taskPreparation: { type: "boolean" },
     directTask: { type: "boolean" },
     taskCheckpoint: { type: "boolean" },
+    taskRestart: { type: "boolean" },
     structuredTasks: { type: "boolean" },
     taskGoal: { type: "boolean" },
     taskGoalCheckpoint: { type: "boolean" },
+    taskGoalRestart: { type: "boolean" },
     taskPause: { type: "boolean" },
     chatGoal: { type: "boolean" },
     projectGoals: { type: "boolean" },
@@ -77,9 +79,13 @@ const { values } = parseArgs({
   },
 });
 assert.ok(values.worker && values.codex);
-const directTask = values.directTask || values.taskCheckpoint;
+const directTask =
+  values.directTask || values.taskCheckpoint || values.taskRestart;
 const taskGoals =
-  values.taskGoal || values.taskPause || values.taskGoalCheckpoint;
+  values.taskGoal ||
+  values.taskPause ||
+  values.taskGoalCheckpoint ||
+  values.taskGoalRestart;
 const structuredTasks = values.structuredTasks || taskGoals;
 const requireWorker = createRequire(
   new URL("../../cantrip_worker/package.json", import.meta.url),
@@ -2082,15 +2088,17 @@ try {
       untilProvider,
       available,
       generation: () => workerGeneration,
-      checkpoint: values.taskCheckpoint
-        ? {
-            oracle,
-            calls: () => providerCalls,
-            respond: (answer) => {
-              taskResponse = answer;
-            },
-          }
-        : undefined,
+      checkpoint:
+        values.taskCheckpoint || values.taskRestart
+          ? {
+              cold: values.taskRestart,
+              oracle,
+              calls: () => providerCalls,
+              respond: (answer) => {
+                taskResponse = answer;
+              },
+            }
+          : undefined,
       attach: (dispatch, outcome) => {
         taskDispatch = dispatch;
         taskOutcome = outcome;
@@ -2290,7 +2298,9 @@ try {
             return verifyTaskGoalActivation({
               ...input,
               verifyPause: values.taskPause,
-              verifyCheckpoint: values.taskGoalCheckpoint,
+              verifyCheckpoint:
+                values.taskGoalCheckpoint || values.taskGoalRestart,
+              verifyRestart: values.taskGoalRestart,
               ownerId,
               key: taskKey,
               chatKey,

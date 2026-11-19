@@ -20,15 +20,11 @@ pub(super) fn validate(command: &Value) -> Result<()> {
         || command["executionProfile"] == "cantrip-os"
         || (!task
             && (!command["taskDispatchLease"].is_null()
-                || !command["taskInferenceInput"].is_null()))
-        || [
-            "computerUseAuthority",
-            "taskResumption",
-            "initialLabel",
-            "subagentDefaults",
-        ]
-        .iter()
-        .any(|field| command.get(field).is_some_and(|value| !value.is_null()))
+                || !command["taskInferenceInput"].is_null()
+                || !command["taskResumption"].is_null()))
+        || ["computerUseAuthority", "initialLabel", "subagentDefaults"]
+            .iter()
+            .any(|field| command.get(field).is_some_and(|value| !value.is_null()))
         || (!queued
             && command["attachments"]
                 .as_array()
@@ -56,7 +52,7 @@ pub(super) fn preparation(command: &Value) -> Value {
         "planMode": command["planMode"],
         "taskOwned": super::task::is_round(command) || super::task::is_goal(command),
         "taskCycleId": command["taskInferenceInput"]["dispatch"]["cycleId"],
-        "taskGoalFirstInput": if super::task::is_goal(command) { command["clientMessageId"].clone() } else { Value::Null },
+        "taskGoalFirstInput": if super::task::is_goal(command) && command["taskResumption"].is_null() { command["clientMessageId"].clone() } else { Value::Null },
         "structuredTask": super::task::is_structured(command),
         "model": command["model"],
         "provider": command["provider"],

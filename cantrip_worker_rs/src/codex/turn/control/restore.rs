@@ -115,7 +115,7 @@ impl Turns {
         );
         let (subscription, mut events, capture) = output::subscribe(&runtime.history(), &thread)?;
         let transport = subscription.signal();
-        binding.restore_capture(capture, observer_seed(saved));
+        binding.restore_capture(capture, output::restored_seed(saved));
         let active = Arc::new(Active {
             root: Some(root.clone()),
             control: OnceLock::from(binding),
@@ -351,13 +351,4 @@ impl Turns {
 
 pub(super) fn shared(result: &Result<Value>) -> Result<Value> {
     result.as_ref().cloned().map_err(|error| anyhow!("{error}"))
-}
-
-fn observer_seed(saved: &Value) -> Value {
-    let mut seed = saved.clone();
-    let now = chrono::Utc::now().timestamp_millis();
-    let captured = saved["capturedAtMs"].as_f64().unwrap_or(now as f64);
-    let started = saved["startedAtMs"].as_f64().unwrap_or(captured);
-    seed["startedAtMs"] = json!((started + (now as f64 - captured).max(0.0)).max(0.0));
-    seed
 }

@@ -27,6 +27,26 @@ impl Router {
             .and_then(|input| input.cycle.clone())
     }
 
+    pub(in crate::codex) fn restore_task_goal(
+        &self,
+        thread: &JsString,
+        runner: &JsString,
+        parent: &JsString,
+        cycle: Arc<GoalCycle>,
+    ) -> Result<()> {
+        self.assert_transport()?;
+        self.0.task_goals.lock().unwrap().insert(
+            thread.clone(),
+            TaskGoalRoot {
+                runner: runner.clone(),
+                message: parent.clone(),
+                input: FirstInput::default(),
+                cycle: Some(cycle),
+            },
+        );
+        Ok(())
+    }
+
     pub(super) fn goal_dispatch(
         &self,
         owner: Arc<GoalCycle>,

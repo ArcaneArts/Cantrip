@@ -150,11 +150,21 @@ impl Ensurer {
     }
 
     pub(crate) async fn prepare(&self, incoming: &Value, intent: Intent) -> Result<Prepared> {
-        self.prepare_inner(incoming, intent, false).await
+        self.prepare_inner(incoming, intent, false, None).await
     }
 
     pub(in crate::codex) async fn prepare_held_stop(&self, incoming: &Value) -> Result<Prepared> {
-        self.prepare_inner(incoming, Intent::Preserve, true).await
+        self.prepare_inner(incoming, Intent::Preserve, true, None)
+            .await
+    }
+
+    pub(in crate::codex) async fn prepare_restored_task(
+        &self,
+        incoming: &Value,
+        saved: Opened,
+    ) -> Result<Prepared> {
+        self.prepare_inner(incoming, Intent::Preserve, false, Some(saved))
+            .await
     }
 
     async fn prepare_inner(
@@ -162,6 +172,7 @@ impl Ensurer {
         incoming: &Value,
         intent: Intent,
         stopping: bool,
+        restored_task: Option<Opened>,
     ) -> Result<Prepared> {
         let (owner, server) = self.0.encryption.bound_identity()?;
         let logical_server = server
@@ -196,7 +207,10 @@ impl Ensurer {
             project_id: session["projectId"].as_js_string().cloned(),
             context_kind,
         };
-        let held = if let Some(expected) = session.get("heldSuspension") {
+        let task_restoration = restored_task.is_some();
+        let held = if let Some(saved) = restored_task {
+            Some(saved)
+        } else if let Some(expected) = session.get("heldSuspension") {
             if intent != Intent::Preserve || command["taskOwned"] == true {
                 bail!("This suspended thread must use its original execution.");
             }
@@ -395,7 +409,7 @@ impl Ensurer {
                         session: native_session, task,
                     };
                     this.0.live_threads.lock().unwrap().insert(chat.clone(), owner);
-                    if let Some(latch) = latch {
+                    if let Some(latch) = latch && !task_restoration {
                         this.sync_task_pause(&bound, &chat, &latch).await?;
                     }
                     *prepared.lock().unwrap() = Some(Prepared { runtime, thread: loaded, codex_home, runner_generation: runner, saved: held, admission, bound });
@@ -448,6 +462,37 @@ impl Ensurer {
             bail!("The saved suspension source belongs to a different native attachment.");
         }
         Ok(opened)
+    }
+
+    pub(in crate::codex) async fn detach_restored_task(
+        &self,
+        prepared: &Prepared,
+        chat: &JsString,
+    ) {
+        if self.assert_bound(&prepared.bound).is_err() {
+            return;
+        }
+        let request = {
+            let mut owners = self.0.live_threads.lock().unwrap();
+            if !owners.get(chat).is_some_and(|owner| {
+                owner.bound == prepared.bound && owner.thread == prepared.thread
+            }) || prepared.thread.assert_current(&prepared.runtime).is_err()
+            {
+                return;
+            }
+            owners.remove(chat);
+            prepared
+                .runtime
+                .inference_router()
+                .set_task_root(prepared.thread.id(), None);
+            prepared.runtime.request(
+                "thread/unsubscribe".into(),
+                Some(json!({"threadId":prepared.thread.id()})),
+                Some(std::time::Duration::from_secs(120)),
+                None,
+            )
+        };
+        let _ = request.await;
     }
 
     pub(crate) fn activate(&self, prepared: &Prepared, lane: &Value) -> Result<Option<Activation>> {

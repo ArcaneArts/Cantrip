@@ -53,6 +53,18 @@ impl PauseTarget {
 pub(in crate::codex) type Key = (JsString, JsString, JsString);
 
 impl Ensurer {
+    pub(in crate::codex) fn task_restore_allowed(
+        &self,
+        bound: &(JsString, Value),
+        chat: &JsString,
+    ) -> Result<()> {
+        self.assert_bound(bound)?;
+        if self.task_latch(bound, chat)?.current().blocked {
+            bail!("The Task was paused during restoration.");
+        }
+        Ok(())
+    }
+
     pub(super) fn task_latch(
         &self,
         bound: &(JsString, Value),

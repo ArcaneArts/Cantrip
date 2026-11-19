@@ -193,7 +193,11 @@ impl Adapter {
         let result = async {
             self.notify_revocation(operation)?;
             operation.lease()?.bind_native(binding)?.await?;
-            input.signal.check()
+            input.signal.check()?;
+            if let Some(bound) = &operation.input.on_native_bound {
+                bound()?;
+            }
+            Ok(())
         }
         .await;
         if result.is_err() {
