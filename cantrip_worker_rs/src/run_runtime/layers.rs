@@ -126,23 +126,47 @@ pub(super) async fn resolve(
         encryption,
     )?;
     let identity = &job.command["identity"];
-    let expected_revision = &identity["codexEnvironmentRevision"];
-    let codex = if definition["includeCodexEnvironment"] == true {
-        codex(job, roots, baseline, expected_revision).await?
-    } else {
-        if !expected_revision.is_null() {
-            return Err(error(
-                "codex-environment-revision-mismatch",
-                "The Run generation unexpectedly references a disabled Codex environment.",
-                true,
-            ));
-        }
-        Environment::new()
-    };
+    let codex = codex(
+        roots,
+        baseline,
+        definition,
+        identity,
+        async |cmd, environment| {
+            process::run(
+                cmd,
+                environment,
+                &job.control,
+                Duration::ZERO,
+                Some(Duration::from_secs(120)),
+                |output| job.append(output),
+                || {},
+            )
+            .await
+        },
+    )
+    .await?;
+    let redactions = secrets
+        .values()
+        .map(|value| Zeroizing::new(value.clone()))
+        .collect();
     let mut environment = baseline.clone();
-    merge_layer(&mut environment, codex)?;
-    merge_layer(&mut environment, files)?;
-    let variables = definition["variables"]
+    for layer in [codex, files, variables(definition), secrets, additions] {
+        merge_layer(&mut environment, layer)?;
+    }
+    let mut environment = launch_environment(roots, identity, environment);
+    put(
+        &mut environment,
+        "CANTRIP_TERMINAL_ID".into(),
+        identity["terminalId"].as_str().unwrap().into(),
+    );
+    Ok(Prepared {
+        environment,
+        redactions,
+    })
+}
+
+fn variables(definition: &Value) -> Environment {
+    definition["variables"]
         .as_array()
         .unwrap()
         .iter()
@@ -153,14 +177,14 @@ pub(super) async fn resolve(
                 entry["value"].as_js_string().unwrap().lossy().into_owned(),
             )
         })
-        .collect();
-    merge_layer(&mut environment, variables)?;
-    let redactions = secrets
-        .values()
-        .map(|value| Zeroizing::new(value.clone()))
-        .collect();
-    merge_layer(&mut environment, secrets)?;
-    merge_layer(&mut environment, additions)?;
+        .collect()
+}
+
+fn launch_environment(
+    roots: &Roots,
+    identity: &Value,
+    mut environment: Environment,
+) -> Environment {
     for (name, value) in [
         ("TERM", "xterm-256color".to_owned()),
         ("COLORTERM", "truecolor".to_owned()),
@@ -186,7 +210,6 @@ pub(super) async fn resolve(
         ("CANTRIP_RUN_OPERATION_ID", "operationId"),
         ("CANTRIP_RUN_RUNTIME_ID", "runtimeId"),
         ("CANTRIP_RUN_TERMINAL_ID", "terminalId"),
-        ("CANTRIP_TERMINAL_ID", "terminalId"),
         ("CANTRIP_RUN_WORKTREE_ID", "worktreeId"),
     ] {
         let value = identity[field]
@@ -194,10 +217,66 @@ pub(super) async fn resolve(
             .map_or_else(|| identity[field].stringify(), str::to_owned);
         put(&mut environment, name.to_owned(), value);
     }
-    Ok(Prepared {
-        environment,
-        redactions,
-    })
+    environment
+}
+
+#[cfg(all(feature = "guest-run-definitions", target_os = "linux"))]
+pub(super) async fn guest(
+    input: &Value,
+    roots: &Roots,
+    definition: &Value,
+    additions: Environment,
+    baseline: &Environment,
+    output: &mut String,
+) -> Result<Environment, Failure> {
+    let files = files(&roots.target, &definition["files"])?;
+    let identity = &input["identity"];
+    let codex = codex(
+        roots,
+        baseline,
+        definition,
+        identity,
+        async |cmd, environment| {
+            process::guest_setup(cmd, environment, output)
+                .await
+                .map(Some)
+        },
+    )
+    .await?;
+    let supplied: std::collections::HashMap<_, _> = input["secrets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|secret| (secret["reference"].as_str().unwrap(), &secret["value"]))
+        .collect();
+    let mut secrets = Environment::new();
+    for entry in definition["secrets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| row["enabled"] == true)
+    {
+        let reference = entry["secret"].as_str().unwrap();
+        let value = supplied.get(reference).ok_or_else(|| {
+            error(
+                "linux-preparation-failed",
+                format!("Run secret reference {reference} is unavailable."),
+                true,
+            )
+        })?;
+        put(
+            &mut secrets,
+            entry["name"].as_str().unwrap().into(),
+            value.as_js_string().unwrap().lossy().into_owned(),
+        );
+    }
+    // The guest contract permits dotenv keys with dots and dashes, and
+    // bounds the response values after applying all the guest layers.
+    let mut environment = baseline.clone();
+    for layer in [codex, files, variables(definition), secrets, additions] {
+        environment.extend(layer.into_iter().filter(|(name, _)| !reserved(name)));
+    }
+    Ok(launch_environment(roots, identity, environment))
 }
 
 fn files(root: &Path, paths_value: &Value) -> Result<Environment, Failure> {
@@ -375,11 +454,23 @@ fn secrets(
 }
 
 async fn codex(
-    job: &LaunchJob,
     roots: &Roots,
     baseline: &Environment,
-    expected: &Value,
+    definition: &Value,
+    identity: &Value,
+    run: impl AsyncFnOnce(&shell::Command, &Environment) -> Result<Option<process::Exit>, Failure>,
 ) -> Result<Environment, Failure> {
+    let expected = &identity["codexEnvironmentRevision"];
+    if definition["includeCodexEnvironment"] != true {
+        if !expected.is_null() {
+            return Err(error(
+                "codex-environment-revision-mismatch",
+                "The Run generation unexpectedly references a disabled Codex environment.",
+                true,
+            ));
+        }
+        return Ok(Environment::new());
+    }
     let inspect = || {
         environment::inspect(&roots.source).map_err(|_| {
             error(
@@ -412,7 +503,7 @@ async fn codex(
         ));
     }
     let captured = match setup {
-        Some(setup) => capture(job, roots, baseline, &setup).await?,
+        Some(setup) => capture(roots, baseline, &setup, run).await?,
         None => Environment::new(),
     };
     let current = inspect()?;
@@ -434,10 +525,10 @@ async fn codex(
 }
 
 async fn capture(
-    job: &LaunchJob,
     roots: &Roots,
     baseline: &Environment,
     script: &str,
+    run: impl AsyncFnOnce(&shell::Command, &Environment) -> Result<Option<process::Exit>, Failure>,
 ) -> Result<Environment, Failure> {
     let dir = tempfile::Builder::new()
         .prefix("cantrip-run-environment-")
@@ -477,16 +568,7 @@ async fn capture(
         true,
         baseline,
     )?;
-    let result = process::run(
-        &cmd,
-        &capture,
-        &job.control,
-        Duration::ZERO,
-        Some(Duration::from_secs(120)),
-        |output| job.append(output),
-        || {},
-    )
-    .await?;
+    let result = run(&cmd, &capture).await?;
     let Some(result) = result else {
         return Ok(Environment::new());
     };

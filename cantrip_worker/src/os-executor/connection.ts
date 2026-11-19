@@ -12,6 +12,7 @@ export interface OsExecutorBinding {
   executor_generation: string;
   uid: number;
   home: string;
+  native_run_plan?: boolean;
   url: string;
 }
 

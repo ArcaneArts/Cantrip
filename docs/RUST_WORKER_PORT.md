@@ -143,7 +143,7 @@ loaded by a production service.
 | WorkerLink/direct/tunnels | Gateways, peer/WebRTC, direct broker, tunnel protection and routing | Native installed authority, live observations, encrypted Host terminals and TCP, WebDAV shares, direct tickets, and LAN and WAN peer carriage | Continue managed console and guest/surface adapters. Local peer fixtures cover authenticated negotiation, encrypted TCP, credit, renewal, and revocation. |
 | Browsers/surfaces/computer use | Browser discovery, browser/desktop adapters, remote surfaces, computer use, and managed web runtimes | Native browser discovery, Chromium and CDP, encrypted surfaces with recovery, and signed managed Chromium installation | Public browser transport and Chromium recovery fixtures pass locally. The native installer verifies signed releases and probes Chromium. Legacy browser WebRTC, desktop capture, computer use, managed web sessions and search remain open. |
 | MCP/CLI/CodeGraph                  | `mcp/*`, CLI broker, computer-use MCP, codegraph/runtime/supervisor                                                                       | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Native stdio/HTTP helpers, generated/persisted launch commands, binding/generation scopes, CLI and managed-runtime fixtures                                                                                                                                                                                                      |
-| Cantrip OS | `cantrip_os/host`, `os-executor/*`, native MCP/run execution | Native guest inspection, attachment, workspace listing and creation, operation inspection, Linux-owned source provisioning and verification, linked Host mounts, and guest Run definitions | Continue guest Run execution, lifecycle, files, PTYs, tunnels, packages, backups, system operations and checkpoints. |
+| Cantrip OS | `cantrip_os/host`, `os-executor/*`, native MCP/run execution | Native guest inspection, attachment, workspace listing and creation, operation inspection, Linux-owned source provisioning and verification, linked Host mounts, guest Run definitions, and native Run preparation | Continue Rust supervision of guest Runs, lifecycle, files, PTYs, tunnels, packages, backups, system operations and checkpoints. |
 | Upgrade and packaging              | profile converter/database-transfer, server profile preparation, desktop services/worker, distribution/runtime scripts, worker Dockerfile | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Node-free legacy conversion/export/restore, desktop/standalone artifacts, existing-profile reopen and actual child-process/runtime audit                                                                                                                                                                                         |
 
 The source index includes existing tests with their source hashes. Each port must
@@ -6556,3 +6556,31 @@ after worker restart. Node served as a read and validation oracle. The
 saved native process and guest file ownership verified execution as the
 workspace account. The full release image build, Linux AMD64, Flutter device
 inspection, and launch of a configured guest Run were outside this validation.
+
+## 163. Prepare configured guest Runs with the native helper
+
+Reference commit `1bb79a04beae095ce7d26320134e00e3b3f15dae` (#3326).
+
+Cantrip OS executor 0.14.0 adds the native planning command to its finite
+workspace helper. The Node worker uses the capability advertised on its
+captured guest executor binding to select the native planner. Older
+guest packages keep their existing preparation path during the transition.
+The plan contract comes from the shared protocol for both implementations.
+
+The helper checks the admitted Primary definition revision and exact
+worktree paths. It reuses the Rust providers and applies setup from the
+Primary and dotenv files from the target worktree before the configured
+variables, resolved secrets and provider additions. The guest executor
+retains process ownership. The planner returns the launch commands and
+environment to the worker through the existing finite process exchange.
+
+Local ARM64 tests built the native helper and assembled a development
+Debian package with the existing executor bundle. The shell plan matched
+the Node oracle across separate Primary and target worktrees, including
+setup, a dotted dotenv key, precedence, and stale definition rejection.
+The existing supervisor then ran that configuration through the native
+planner with the legacy planner file moved aside in the disposable guest.
+The Run executed its before-launch step and redacted protected output.
+The focused Rust Run tests passed. Package release builds, AMD64, SSH,
+and other live providers were outside this validation. The guest Run
+lifecycle supervisor remains to be ported to Rust.

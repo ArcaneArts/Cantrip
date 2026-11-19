@@ -16,6 +16,7 @@ const { values } = parseArgs({
     server: { type: "string" },
     repository: { type: "string" },
     "executor-package": { type: "string" },
+    "run-plan": { type: "boolean", default: false },
     linked: { type: "boolean", default: false },
     image: { type: "string", default: "cantrip-os:dev" },
   },
@@ -28,6 +29,10 @@ assert.ok(
 assert.ok(
   !values["executor-package"] || values.repository,
   "--executor-package uses the source fixture",
+);
+assert.ok(
+  !values["run-plan"] || values["executor-package"],
+  "--run-plan uses the upgraded executor",
 );
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-rust-os-workspaces-"));
 const name = `cantrip-rust-os-${randomUUID()}`;
@@ -357,6 +362,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       eventually,
       linked,
       runDefinitions: !!values["executor-package"],
+      runPlan: values["run-plan"],
       stopWorker,
       restartWorker: async () => {
         await stopWorker();

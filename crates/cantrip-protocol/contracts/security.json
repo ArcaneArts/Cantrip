@@ -961,7 +961,9 @@
     "runConfigurationSecretValueContentSchema": 14251,
     "workerObservationEnvelopeSchema": 14255,
     "cantripOsRunDefinitionWorkerCommandSchema": 6591,
-    "runConfigurationOperationResponseSchema": 12168
+    "runConfigurationOperationResponseSchema": 12168,
+    "osRunPlanInputSchema": 14275,
+    "osRunPlanResponseSchema": 14282
   },
   "nodes": [
     {
@@ -86007,6 +86009,147 @@
       "checks": []
     },
     { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "osRunPlanInputSchema",
+      "shape": {
+        "identity": 4300,
+        "sourceRoot": 3244,
+        "targetRoot": 3244,
+        "secrets": 14276
+      },
+      "catchall": 14281,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 14277,
+      "checks": [{ "check": "max_length", "maximum": 256, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": { "reference": 14278, "value": 14279 },
+      "catchall": 14280,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 16384, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "run-secret-no-nul",
+          "messageAfterPath": true
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "osRunPlanResponseSchema",
+      "options": [14283, 14295],
+      "discriminator": "state",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "state": 14284,
+        "command": 14285,
+        "beforeLaunch": 14290,
+        "environment": 14291,
+        "preparationOutput": 14293,
+        "stopGracePeriodMs": 3985
+      },
+      "catchall": 14294,
+      "checks": []
+    },
+    { "type": "literal", "values": ["ready"], "checks": [] },
+    {
+      "type": "object",
+      "name": "osRunCommandSchema",
+      "shape": {
+        "executable": 14286,
+        "arguments": 14287,
+        "workingDirectory": 3244
+      },
+      "catchall": 14289,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 14288,
+      "checks": [{ "check": "max_length", "maximum": 1024, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "element": 14285,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    { "type": "record", "keyType": 14292, "valueType": 14279, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 256, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1048576, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "state": 14296,
+        "phase": 14297,
+        "code": 14298,
+        "message": 14299
+      },
+      "catchall": 14300,
+      "checks": []
+    },
+    { "type": "literal", "values": ["failed"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["definition", "target", "environment", "provider"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
     { "type": "never", "checks": [] }
   ]
 }
