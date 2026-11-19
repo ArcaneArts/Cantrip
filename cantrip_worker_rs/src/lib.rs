@@ -10,6 +10,7 @@ pub mod codex;
 pub mod config;
 pub mod connection;
 pub mod credentials;
+mod desktop_inventory;
 pub mod encryption;
 pub mod error;
 pub mod explorer_operations;
