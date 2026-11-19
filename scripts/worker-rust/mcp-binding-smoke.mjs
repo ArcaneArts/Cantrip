@@ -88,7 +88,12 @@ try {
     rootKind: "git-worktree",
     scratchRootId: null,
     permissionProfileId: ":workspace",
-    allowedOperations: ["context.get", "tool.help", "terminal.send"],
+    allowedOperations: [
+      "context.get",
+      "tool.help",
+      "terminal.send",
+      "web.read",
+    ],
   };
   const lane = { ...claims, executionLaneId: "mcp-lane" };
   assert.match(
@@ -103,7 +108,11 @@ try {
   const attachment = await expectResult("prepare", { worker, claims });
   const { configuration } = attachment;
   const document = JSON.parse(await readFile(attachment.path, "utf8"));
-  assert.deepEqual(configuration.enabled_tools, ["context_get", "tool_help"]);
+  assert.deepEqual(configuration.enabled_tools, [
+    "context_get",
+    "tool_help",
+    "web_read",
+  ]);
   assert.deepEqual(configuration.args, [
     "mcp",
     "--connection",
@@ -163,6 +172,18 @@ try {
     client.callTool({ name: "context_get", arguments: {} }, undefined, {
       timeout: 5000,
     });
+  const webRead = () =>
+    client.callTool(
+      {
+        name: "web_read",
+        arguments: { url: "http://127.0.0.1/", render: "never" },
+      },
+      undefined,
+      { timeout: 5000 },
+    );
+  const webIdle = await webRead();
+  assert.equal(webIdle.isError, true);
+  assert.match(webIdle.content[0].text, /no active execution binding/);
   const idle = await context();
   assert.equal(idle.isError, true);
   assert.match(idle.content[0].text, /no active execution binding/);
@@ -178,6 +199,12 @@ try {
     );
   }
   const first = await expectResult("activate", { claims: lane });
+  const webLocal = await webRead();
+  assert.equal(webLocal.isError, true);
+  assert.match(
+    webLocal.content[0].text,
+    /cannot access local or private addresses/,
+  );
   const proof = await context();
   assert.equal(proof.isError, undefined, JSON.stringify(proof));
   assert.equal(

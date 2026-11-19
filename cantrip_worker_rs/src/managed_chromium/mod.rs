@@ -55,7 +55,7 @@ impl Manager {
     }
 
     pub(crate) fn capabilities(&self) -> Value {
-        json!({"schemaVersion":1,"search":status("searxng", false),"browser":self.snapshot(),"staticReading":false})
+        json!({"schemaVersion":1,"search":status("searxng", false),"browser":self.snapshot(),"staticReading":true})
     }
 
     pub(crate) fn stop(&self) {

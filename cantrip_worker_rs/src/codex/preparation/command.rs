@@ -406,7 +406,7 @@ impl Ensurer {
                             "worktreeId": session["worktreeId"], "rootKind": session["rootKind"],
                             "scratchRootId": session["scratchRootId"],
                             "permissionProfileId": command["permissionProfileId"],
-                            "allowedOperations": vec!["context.get", "tool.help"],
+                            "allowedOperations": vec!["context.get", "tool.help", "web.read"],
                         });
                         let attachment = broker.prepare(admission.clone(), legacy_root).await?;
                         if let Err(error) = resource.signal.check() {
