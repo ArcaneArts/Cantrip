@@ -1,7 +1,8 @@
-//! First-party Cantrip MCP stdio child. Binding authority remains with the
+//! First-party Cantrip MCP. Binding authority remains with the
 //! authenticated worker broker.
 pub mod bindings;
 mod broker;
+mod rpc;
 mod stdio;
 
 use anyhow::{Result, bail};

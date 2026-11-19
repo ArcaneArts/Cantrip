@@ -9,7 +9,7 @@ use std::{io::ErrorKind, path::Path, sync::Arc, time::Duration};
 
 const WAIT: Duration = Duration::from_secs(120);
 
-pub(super) fn external_servers(servers: Vec<Value>) -> Value {
+pub(super) fn external_servers(servers: Vec<Value>, guest: bool) -> Result<Value> {
     let mut mcp = json!({});
     for server in servers {
         let name = server["name"].as_str().unwrap();
@@ -20,6 +20,11 @@ pub(super) fn external_servers(servers: Vec<Value>) -> Value {
             continue;
         }
         mcp[name] = if server["transport"] == "stdio" {
+            if guest {
+                bail!(
+                    "CantripOS cannot start the worker-local stdio MCP server '{name}'. Disable it for this chat or configure a network MCP transport."
+                );
+            }
             json!({
                 "command": server["command"], "args": server["args"],
                 "env": server["environment"], "enabled": true,
@@ -35,7 +40,7 @@ pub(super) fn external_servers(servers: Vec<Value>) -> Value {
             http
         };
     }
-    mcp
+    Ok(mcp)
 }
 
 pub(super) async fn configuration(

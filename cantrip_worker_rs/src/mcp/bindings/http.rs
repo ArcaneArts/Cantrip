@@ -1,3 +1,5 @@
+mod streamable;
+
 use super::{Active, Entry, Inner, MAXIMUM_OPERATIONS, now, server::Rejected, store};
 use anyhow::{Result, anyhow};
 use bytes::Bytes;
@@ -89,29 +91,27 @@ impl Inner {
             .headers
             .get(header::AUTHORIZATION)
             .and_then(|head| head.to_str().ok());
+        if let Some(id) = binding_path(path, "/v1/mcp/") {
+            return self.streamable(&id, credential, &parts, body).await;
+        }
         if parts.method == Method::GET
-            && let Some(id) = path.strip_prefix("/v1/bindings/")
-            && !id.is_empty()
-            && id
-                .bytes()
-                .all(|c| c.is_ascii_digit() || matches!(c, b'a'..=b'f' | b'-'))
+            && let Some(id) = binding_path(path, "/v1/bindings/")
         {
-            let id = id.into();
             return self.authenticated(&id, credential, |entry| {
                 Ok(json_response(StatusCode::OK, json!({
                     "protocolVersion":1,"bindingId":id,"expiresAt":entry.attachment.connection["expiresAt"]
                 })))
-            }).unwrap_or_else(|reply| *reply);
+            }).unwrap_or_else(Failure::reply);
         }
         if parts.method != Method::POST || path != "/v1/execute" {
-            return failure(StatusCode::NOT_FOUND, None, "Not found");
+            return Failure::new(StatusCode::NOT_FOUND, None, "Not found").reply();
         }
         let body = match Limited::new(body, MAXIMUM_REQUEST).collect().await {
             Ok(body) => body.to_bytes(),
-            Err(_) => return invalid("MCP broker request is too large."),
+            Err(_) => return Failure::invalid("MCP broker request is too large.").reply(),
         };
         if body.is_empty() {
-            return invalid("MCP broker request body is required.");
+            return Failure::invalid("MCP broker request body is required.").reply();
         }
         let request = parse_json_text(&String::from_utf8_lossy(&body))
             .ok()
@@ -119,44 +119,47 @@ impl Inner {
                 mcp_host::parse("cantripMcpBrokerOperationRequestSchema", Some(&value)).ok()
             });
         let Some(request) = request else {
-            return invalid("Cantrip MCP operation validation failed on the worker.");
+            return Failure::invalid("Cantrip MCP operation validation failed on the worker.")
+                .reply();
         };
         let id = request["bindingId"].as_js_string().unwrap();
         let call = &request["request"];
+        match self.operate(id, credential, call).await {
+            Ok(output) => json_response(StatusCode::OK, output),
+            Err(error) => error.reply(),
+        }
+    }
+
+    async fn operate(
+        &self,
+        id: &JsString,
+        credential: Option<&str>,
+        call: &Value,
+    ) -> Result<Value, Failure> {
         let operation = call["operation"].as_str().unwrap();
-        let authorization =
-            match self.authenticated(id, credential, |entry| admit(entry, operation)) {
-                Ok(authorization) => authorization,
-                Err(reply) => return *reply,
-            };
+        let authorization = self.authenticated(id, credential, |entry| admit(entry, operation))?;
         if (self.identity)().as_ref().ok() != Some(&authorization.identity) {
-            return unauthorized();
+            return Err(unauthorized());
         }
         let output = self.execute(&authorization, call.clone(), operation).await;
         if (self.identity)().as_ref().ok() != Some(&authorization.identity) {
-            return unauthorized();
+            return Err(unauthorized());
         }
         // An accepted request may finish after its lane is replaced. Completion
         // and stale latches can affect only the exact activation it captured.
-        let output = match output {
-            Ok(output) => output,
-            Err(error) => {
-                if let Some(error) = error.downcast_ref::<Rejected>() {
-                    return self.rejection(id, &authorization.active, error);
-                }
-                return invalid(&error.to_string());
-            }
-        };
-        json_response(StatusCode::OK, output)
+        output.map_err(|error| match error.downcast_ref::<Rejected>() {
+            Some(error) => self.rejection(id, &authorization.active, error),
+            None => Failure::invalid(&error.to_string()),
+        })
     }
 
     fn authenticated<T>(
         &self,
         binding_id: &JsString,
         credential: Option<&str>,
-        action: impl FnOnce(&mut Entry) -> Result<T, Box<Reply>>,
-    ) -> Result<T, Box<Reply>> {
-        let identity = (self.identity)().map_err(|_| Box::new(unauthorized()))?;
+        action: impl FnOnce(&mut Entry) -> Result<T, Failure>,
+    ) -> Result<T, Failure> {
+        let identity = (self.identity)().map_err(|_| unauthorized())?;
         let mut entries = self.entries.lock().unwrap();
         let entry = entries
             .by_id
@@ -170,10 +173,10 @@ impl Inner {
                             .unwrap(),
                     )
             })
-            .ok_or_else(|| Box::new(unauthorized()))?;
+            .ok_or_else(unauthorized)?;
         if entry.expires_at <= now() {
             let _ = self.remove(&mut entries, binding_id);
-            return Err(Box::new(unauthorized()));
+            return Err(unauthorized());
         }
         action(entry)
     }
@@ -192,7 +195,7 @@ impl Inner {
                             anyhow!("Cantrip MCP operation validation failed on the worker.")
                         })?;
                 let tool = arguments["tool"].as_str().unwrap();
-                Ok(super::super::stdio::catalog()["help"][tool].clone())
+                Ok(super::super::rpc::catalog()["help"][tool].clone())
             }
             "web.search" => {
                 self.web
@@ -268,7 +271,7 @@ impl Inner {
         Ok(())
     }
 
-    fn rejection(&self, id: &JsString, active: &Arc<Active>, error: &Rejected) -> Reply {
+    fn rejection(&self, id: &JsString, active: &Arc<Active>, error: &Rejected) -> Failure {
         let message = match error.code.as_ref().and_then(JsString::as_str) {
             Some("expired") => {
                 let _ = self.revoke_current(id, active);
@@ -292,7 +295,7 @@ impl Inner {
             }
             _ => error.message.clone(),
         };
-        failure(
+        Failure::new(
             StatusCode::from_u16(error.status).unwrap_or(StatusCode::BAD_REQUEST),
             error.code.as_ref().and_then(JsString::as_str),
             message,
@@ -300,13 +303,13 @@ impl Inner {
     }
 }
 
-fn admit(entry: &mut Entry, operation: &str) -> Result<Authorized, Box<Reply>> {
+fn admit(entry: &mut Entry, operation: &str) -> Result<Authorized, Failure> {
     let active = entry.active.as_ref().ok_or_else(|| {
-        Box::new(failure(
+        Failure::new(
             StatusCode::CONFLICT,
             Some("inactive-binding"),
             "This MCP session has no active execution binding.",
-        ))
+        )
     })?;
     if !active.binding["allowedOperations"]
         .as_array()
@@ -314,25 +317,25 @@ fn admit(entry: &mut Entry, operation: &str) -> Result<Authorized, Box<Reply>> {
         .iter()
         .any(|allowed| allowed == operation)
     {
-        return Err(Box::new(failure(
+        return Err(Failure::new(
             StatusCode::FORBIDDEN,
             Some("forbidden"),
             "This MCP binding does not allow that operation.",
-        )));
+        ));
     }
     if let Some(stale) = active.stale.lock().unwrap().as_ref() {
-        return Err(Box::new(failure(
+        return Err(Failure::new(
             StatusCode::CONFLICT,
             Some("stale-binding"),
             stale.clone(),
-        )));
+        ));
     }
     if entry.requests.load(Ordering::Acquire) >= MAXIMUM_OPERATIONS {
-        return Err(Box::new(failure(
+        return Err(Failure::new(
             StatusCode::TOO_MANY_REQUESTS,
             Some("busy"),
             "This MCP binding has too many operations in flight.",
-        )));
+        ));
     }
     entry.requests.fetch_add(1, Ordering::AcqRel);
     Ok(Authorized {
@@ -344,22 +347,46 @@ fn admit(entry: &mut Entry, operation: &str) -> Result<Authorized, Box<Reply>> {
     })
 }
 
-fn unauthorized() -> Reply {
-    failure(StatusCode::UNAUTHORIZED, None, "Unauthorized")
+fn binding_path(path: &str, prefix: &str) -> Option<JsString> {
+    let id = path.strip_prefix(prefix)?;
+    (!id.is_empty()
+        && id
+            .bytes()
+            .all(|c| c.is_ascii_digit() || matches!(c, b'a'..=b'f' | b'-')))
+    .then(|| id.into())
 }
 
-fn invalid(message: &str) -> Reply {
-    let message = JsString::new(message.encode_utf16().take(2_000).collect());
-    failure(StatusCode::BAD_REQUEST, Some("invalid"), message)
+struct Failure {
+    status: StatusCode,
+    code: Option<JsString>,
+    message: JsString,
 }
 
-fn failure(status: StatusCode, code: Option<&str>, error: impl Into<JsString>) -> Reply {
-    let error = error.into();
-    let payload = match code {
-        Some(code) => json!({"code":code,"error":error}),
-        None => json!({"error":error}),
-    };
-    json_response(status, payload)
+impl Failure {
+    fn new(status: StatusCode, code: Option<&str>, message: impl Into<JsString>) -> Self {
+        Self {
+            status,
+            code: code.map(JsString::from),
+            message: message.into(),
+        }
+    }
+
+    fn invalid(message: &str) -> Self {
+        let message = JsString::new(message.encode_utf16().take(2_000).collect());
+        Self::new(StatusCode::BAD_REQUEST, Some("invalid"), message)
+    }
+
+    fn reply(self) -> Reply {
+        let payload = match self.code {
+            Some(code) => json!({"code":code,"error":self.message}),
+            None => json!({"error":self.message}),
+        };
+        json_response(self.status, payload)
+    }
+}
+
+fn unauthorized() -> Failure {
+    Failure::new(StatusCode::UNAUTHORIZED, None, "Unauthorized")
 }
 
 fn json_response(mut status: StatusCode, payload: Value) -> Reply {

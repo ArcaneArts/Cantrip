@@ -37,6 +37,22 @@ pub struct Attachment {
 }
 
 impl Attachment {
+    /// The guest environment connects to the worker-owned app-server. Its MCP
+    /// client makes this authenticated request on the worker's own loopback.
+    pub fn codex_http_configuration(&self) -> Value {
+        let endpoint = self.connection["endpoint"].as_str().unwrap();
+        let id = self.connection["bindingId"].as_str().unwrap();
+        let credential = self.connection["credential"].as_str().unwrap();
+        json!({
+            "url": format!("{endpoint}/v1/mcp/{id}"),
+            "http_headers": json!({"Authorization":format!("Bearer {credential}")}),
+            "enabled": true,
+            "required": true,
+            "tool_timeout_sec": 0,
+            "enabled_tools": self.tools,
+        })
+    }
+
     /// Entry for the native Codex managed MCP overlay.
     pub fn codex_configuration(&self, executable: &Path) -> Result<Value> {
         let executable = std::path::absolute(executable)?;

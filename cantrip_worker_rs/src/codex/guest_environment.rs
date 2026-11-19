@@ -134,7 +134,7 @@ impl Environment {
             "This is a non-Git folder. Initialize Git only if the user requests it."
         };
         let instructions = format!(
-            "This Chat uses the CantripOS Linux workspace {} at {}, UID {}. Shell and filesystem tools operate in the selected guest. Provider credentials stay on the owning worker. {source} After transport loss, observe the existing state before retrying a mutation.",
+            "This Chat uses the CantripOS Linux workspace {} at {}, UID {}. Shell and filesystem tools operate in the selected guest. Use the managed cantrip MCP tools advertised for this placement. MCP and provider credentials stay on the owning worker. {source} After transport loss, observe the existing state before retrying a mutation.",
             workspace.stringify(),
             cwd.lossy(),
             uid.stringify(),

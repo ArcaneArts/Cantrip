@@ -136,6 +136,7 @@ try {
       ...options,
       headers: {
         authorization: "Bearer " + token,
+        accept: "application/json, text/event-stream",
         "content-type": "application/json",
       },
       signal: AbortSignal.timeout(5000),
@@ -150,6 +151,16 @@ try {
       body: JSON.stringify({
         bindingId: document.bindingId,
         request: { operation, arguments: args },
+      }),
+    });
+  const httpContext = () =>
+    request("/v1/mcp/" + document.bindingId, {
+      method: "POST",
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "context_get", arguments: {} },
       }),
     });
   assert.equal((await request(handshake, {}, "wrong")).status, 401);
@@ -213,6 +224,10 @@ try {
   );
   assert.equal(proof.structuredContent.data.context.worktreeId, worktreeId);
   assert.equal(proof.structuredContent.data.binding.status, "read-only");
+  assert.deepEqual(await httpContext(), {
+    status: 200,
+    body: { jsonrpc: "2.0", id: 1, result: proof },
+  });
   assert.equal((await direct("terminal.send", {})).status, 403);
   assert.equal((await direct("context.get", { other: true })).status, 400);
   assert.equal(
@@ -275,17 +290,25 @@ try {
 
   assert.equal(await expectResult("release", { index: second }), true);
   assert.equal((await direct("context.get", {})).body.code, "inactive-binding");
+  assert.match(
+    (await httpContext()).body.result.content[0].text,
+    /no active execution binding/u,
+  );
   assert.equal(
     await expectResult("revoke", { bindingId: document.bindingId }),
     true,
   );
   assert.equal((await request(handshake)).status, 401);
+  assert.deepEqual(await httpContext(), {
+    status: 401,
+    body: { error: "Unauthorized" },
+  });
   await assert.rejects(stat(attachment.path), { code: "ENOENT" });
   child.stdin.end();
   assert.deepEqual(await closed, [0, null]);
   await assert.rejects(stat(missing.path), { code: "ENOENT" });
   console.log(
-    "Native MCP binding, stdio, and authenticated Rust server smoke passed.",
+    "Native MCP binding, stdio and HTTP, and authenticated Rust server smoke passed.",
   );
 } finally {
   try {

@@ -349,7 +349,7 @@ impl Ensurer {
             open_runtime_provider(&self.0.encryption, &defaults["provider"])?;
         }
         let structured = command["structuredTask"] == true;
-        let mut user_servers = if structured {
+        let user_servers = if structured {
             Vec::new()
         } else {
             open_mcp_servers(
@@ -359,9 +359,7 @@ impl Ensurer {
                     .context("Managed MCP configurations")?,
             )?
         };
-        if guest {
-            user_servers.retain(|server| server["transport"] == "http");
-        }
+        let mcp = profile::external_servers(user_servers, guest)?;
         let target = Target {
             thread_id: command["threadId"].as_js_string().cloned(),
             cwd: cwd.clone(),
@@ -429,12 +427,12 @@ impl Ensurer {
                     };
                     resource.signal.check()?;
                     let session = &command["session"];
-                    let mut mcp = profile::external_servers(user_servers);
-                    let admission = if structured || guest {
+                    let mut mcp = mcp;
+                    let admission = if structured {
                         None
                     } else {
                         let broker = this.broker().await?;
-                        let legacy_root = if standalone {
+                        let legacy_root = if standalone || guest {
                             None
                         } else {
                             Some(this.0.routing.protect_metadata(&json!({"path":cwd})).await?["path"].clone())
@@ -456,7 +454,12 @@ impl Ensurer {
                             broker.revoke(&binding)?;
                             return Err(error);
                         }
-                        mcp["cantrip"] = attachment.codex_configuration(&std::env::current_exe()?)?;
+                        mcp["cantrip"] = if guest {
+                            runtime.remember_secret(field(&attachment.connection, "credential")?);
+                            attachment.codex_http_configuration()
+                        } else {
+                            attachment.codex_configuration(&std::env::current_exe()?)?
+                        };
                         Some(admission)
                     };
                     let runner: JsString = payload_digest(&json!([
@@ -546,7 +549,7 @@ impl Ensurer {
                             let thread = thread_id.clone();
                             let activate = Arc::new(move |lane: &Value| {
                                 broker.upgrade().context("The managed MCP broker has closed.")?
-                                    .activate(&authority, &thread, admission.as_ref(), lane)
+                                    .activate(&authority, Some(&thread), admission.as_ref(), lane)
                             });
                             runtime.inference_router().register_goal_producer(
                                 thread_id.clone(), runner.clone(), Arc::new(autonomous.producer(Runner {
@@ -658,7 +661,7 @@ impl Ensurer {
         prepared.thread.assert_current(&prepared.runtime)?;
         self.0.activate(
             &prepared.bound,
-            prepared.thread.id(),
+            prepared.environment.is_none().then(|| prepared.thread.id()),
             prepared.admission.as_ref(),
             lane,
         )
@@ -667,14 +670,17 @@ impl Ensurer {
     pub(in crate::codex) fn cycle_activation(&self, prepared: &Prepared, lane: &Value) -> Activate {
         let ensurer = Arc::downgrade(&self.0);
         let identity = prepared.bound.clone();
-        let thread = prepared.thread.id().clone();
+        let thread = prepared
+            .environment
+            .is_none()
+            .then(|| prepared.thread.id().clone());
         let admission = prepared.admission.clone();
         let lane = lane.clone();
         Arc::new(move || {
             ensurer
                 .upgrade()
                 .context("The managed MCP broker has closed.")?
-                .activate(&identity, &thread, admission.as_ref(), &lane)
+                .activate(&identity, thread.as_ref(), admission.as_ref(), &lane)
         })
     }
 
@@ -865,7 +871,7 @@ impl Inner {
     fn activate(
         &self,
         identity: &(JsString, Value),
-        thread: &JsString,
+        cli_thread: Option<&JsString>,
         admission: Option<&Value>,
         lane: &Value,
     ) -> Result<Option<Activation>> {
@@ -882,8 +888,10 @@ impl Inner {
             .context("Cantrip MCP attachment was not prepared.")?
             .activate(&admission)?
             .context("Cantrip MCP attachment no longer matches the admitted turn.")?;
-        self.cli_contexts
-            .bind(thread, identity, &admission["chatId"], lane);
+        if let Some(thread) = cli_thread {
+            self.cli_contexts
+                .bind(thread, identity, &admission["chatId"], lane);
+        }
         Ok(Some(activation))
     }
 }
