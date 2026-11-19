@@ -47,7 +47,7 @@ pub(crate) struct Prepared {
     pub(in crate::codex) saved: Option<Opened>,
     pub(in crate::codex) environment: Option<Arc<Environment>>,
     admission: Option<Value>,
-    bound: (JsString, Value),
+    pub(in crate::codex) bound: (JsString, Value),
 }
 
 enum TaskAttachment {
@@ -724,6 +724,22 @@ impl Ensurer {
                 session: owner.session.clone(),
             },
         ))
+    }
+
+    pub(in crate::codex) fn assert_console(
+        &self,
+        chat: &JsString,
+        prepared: &Prepared,
+    ) -> Result<()> {
+        self.assert_bound(&prepared.bound)?;
+        prepared.thread.assert_current(&prepared.runtime)?;
+        let selected = self.live_thread(chat, prepared.thread.id(), &prepared.bound);
+        if selected
+            .is_none_or(|selected| selected.runtime.generation() != prepared.runtime.generation())
+        {
+            bail!("The managed console belongs to a replaced native runtime.");
+        }
+        Ok(())
     }
 
     pub(crate) fn identity(&self) -> Result<(JsString, Value)> {

@@ -32,6 +32,7 @@ pub(super) fn spawn(
         writer,
         resize,
         state: state.clone(),
+        managed_generation: Default::default(),
     };
     let actor = async move {
         let result = match drive(&mut pty, stopping, input, sizes, &state).await {

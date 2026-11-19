@@ -701,6 +701,44 @@ impl Client {
         command: &Value,
         activation: Value,
     ) -> Result<(Receipt<'_>, bool, Value)> {
+        self.admit_native(scope, session, method, params, command, activation, "gui")
+            .await
+    }
+
+    pub async fn admit_console(
+        &self,
+        scope: Scope,
+        session: Value,
+        method: &'static str,
+        frame: &Value,
+        permission: &Value,
+    ) -> Result<Receipt<'_>> {
+        let command = json!({"permissionProfileId":permission, "nativeViewRequestId":frame["id"]});
+        let (receipt, _, _) = self
+            .admit_native(
+                scope,
+                session,
+                method,
+                &frame["params"],
+                &command,
+                Value::Null,
+                "terminal",
+            )
+            .await?;
+        Ok(receipt)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn admit_native(
+        &self,
+        scope: Scope,
+        session: Value,
+        method: &'static str,
+        params: &Value,
+        command: &Value,
+        activation: Value,
+        origin: &'static str,
+    ) -> Result<(Receipt<'_>, bool, Value)> {
         let claim = command
             .get("queueClaim")
             .filter(|_| command["type"] == crate::codex::goals::QUEUE_EXECUTE);
@@ -708,16 +746,24 @@ impl Client {
             .as_js_string()
             .cloned()
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string().into());
+        let request_id = if origin == "terminal" {
+            command["nativeViewRequestId"].clone()
+        } else {
+            json!(operation)
+        };
         let grant = scope.material(None)?;
         let (envelope, digest) = protect_native_command_request(
             &grant.key,
             &crypto_context(&grant, &session["chatId"], &operation),
-            &json!({"id":operation,"method":method,"params":params}),
+            &json!({"id":request_id,"method":method,"params":params}),
         )?;
         let mut intent = json!({
             "scope":"thread", "settingKeys":Vec::<Value>::new(), "expectedTurnId":Value::Null,
             "permissionProfileId":command["permissionProfileId"], "workerGeneration":self.generation,
         });
+        if origin == "terminal" && method == "skills/list" {
+            intent["pathsWithinPlacement"] = json!(true);
+        }
         if let Some(status) = params.get("status") {
             intent["goalStatus"] = status.clone();
         }
@@ -736,7 +782,7 @@ impl Client {
         }
         let mut request = json!({
             "workerId":self.configuration.lock().unwrap().worker_id, "operationId":operation,
-            "origin":"gui", "session":session, "method":method, "intent":intent,
+            "origin":origin, "session":session, "method":method, "intent":intent,
             "payloadDigest":digest, "protectedPayload":envelope,
             "expectedActivationGeneration":activation,
         });

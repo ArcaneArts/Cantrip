@@ -19,9 +19,12 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { parseArgs, promisify } from "node:util";
+import { parseArgs, promisify, stripVTControlCharacters } from "node:util";
 import {
   mcpServerConfigurationSchema,
+  nativeCommandAdmissionSchema,
+  nativeCommandDispatchSchema,
+  nativeCommandSettlementSchema,
   nativeTurnRecoveryObservationSchema,
   workerCliCommandCallSchema,
 } from "../../packages/protocol/dist/index.js";
@@ -40,6 +43,7 @@ import {
   decryptQueuedPromptProtectedContent,
   decryptPrivateDisplayLabel,
   decryptSurfacePrivateState,
+  decryptSurfaceStreamPayload,
   encryptProtectedSecret,
   wrapComponentKeyForWorker,
 } from "../../packages/crypto/dist/index.js";
@@ -49,6 +53,7 @@ import {
   protectChatMessage,
 } from "../../cantrip_worker/src/chat-message-encryption.ts";
 import { protectChatPlanState } from "../../cantrip_worker/src/chat-plan-encryption.ts";
+import { openNativeCommandContent } from "../../cantrip_worker/src/native-command-content.ts";
 import { admit, GuiReceiptPeer, logical } from "./gui-receipt-cases.mjs";
 import { RestoredSuspensionPeer } from "./cold-resume-cases.mjs";
 import { GuiHistoryPeer } from "./gui-history-cases.mjs";
@@ -152,7 +157,8 @@ let guiPeer,
   goalQueue,
   projectGoal,
   taskResponse,
-  holdHandshake;
+  holdHandshake,
+  consolePeer;
 const outcomeFrames = new EventEmitter();
 const outputText = "Native host turn fixture.";
 const privatePrompt = "Protected input fixture, only for the worker.";
@@ -346,6 +352,22 @@ const server = createServer(async (request, response) => {
         url.pathname.split("/").at(-1),
         await requestBody(request),
         response,
+        send,
+      );
+    } catch (error) {
+      upstream.emit("failure", error);
+      response.writeHead(400).end("{}");
+    }
+    return;
+  }
+  if (
+    url.pathname.startsWith("/api/internal/native-commands/") &&
+    consolePeer
+  ) {
+    try {
+      await consolePeer(
+        url.pathname.split("/").at(-1),
+        await requestBody(request),
         send,
       );
     } catch (error) {
@@ -647,7 +669,7 @@ async function ensure(
         fields.type === "chat.queue.changed" ||
         fields.type?.startsWith("chat.native-logical.") ||
         fields.type?.startsWith("cantrip-os.") ||
-        fields.type === "terminal.prepare-state" ||
+        fields.type?.startsWith("terminal.") ||
         fields.type?.startsWith("task.")
           ? fields
           : {
@@ -2513,6 +2535,243 @@ async function verifyConsoleState() {
     (await ensure({ ...command, serverId: randomUUID() })).ok,
     false,
   );
+  return result;
+}
+
+async function verifyGuestConsole({ session, threadId, provider, state }) {
+  const terminalId = state.id;
+  const operationId = randomUUID();
+  const attachmentId = randomUUID();
+  const preparation = randomUUID();
+  const steps = [];
+  const grants = new Map();
+  const skills = Promise.withResolvers();
+  consolePeer = async (action, input, send) => {
+    if (action === "admit") {
+      const call = nativeCommandAdmissionSchema.parse(input);
+      assert.equal(call.origin, "terminal");
+      assert.ok(
+        ["thread/resume", "thread/unsubscribe", "skills/list"].includes(
+          call.method,
+        ),
+      );
+      assert.equal(call.expectedActivationGeneration, null);
+      assert.equal(call.workerId, workerId);
+      assert.equal(call.session.chatId, session.chatId);
+      assert.equal(call.session.threadId, threadId);
+      assert.equal(call.session.placementId, session.worktreeId);
+      assert.equal(call.session.modelRouteId, "fixture-route");
+      const payload = await openNativeCommandContent({
+        service: oracle,
+        context: {
+          chatId: session.chatId,
+          operationId: call.operationId,
+          direction: "request",
+        },
+        envelope: call.protectedPayload,
+      });
+      const guestPath = session.osExecution.scope.guestPath;
+      assert.equal(payload.method, call.method);
+      if (call.method === "skills/list") {
+        assert.equal(call.intent.pathsWithinPlacement, true);
+        assert.deepEqual(payload.params.cwds, [guestPath]);
+      } else {
+        assert.equal(payload.params.threadId, threadId);
+        assert.equal(payload.params.cwd ?? null, null);
+        assert.equal(payload.params.approvalPolicy ?? null, null);
+        assert.equal(payload.params.serviceTier, undefined);
+      }
+      const receipt = {
+        operationId: call.operationId,
+        operationGeneration: randomUUID(),
+        activationGeneration: null,
+        chatId: session.chatId,
+        startsExecution: false,
+        executionLaneId: null,
+        status: "accepted",
+        method: call.method,
+        payloadDigest: call.payloadDigest,
+        rejectionCode: null,
+        threadId,
+        createdAt: stamp,
+        updatedAt: stamp,
+      };
+      grants.set(call.operationId, { receipt, session: call.session });
+      if (call.method === "thread/resume") steps.push(action);
+      send({
+        replayed: false,
+        receipt,
+        execution: null,
+        computerUseAuthority: null,
+      });
+      return;
+    }
+    const entry = grants.get(input.operationId);
+    assert.ok(entry, JSON.stringify(input));
+    assert.equal(input.operationGeneration, entry.receipt.operationGeneration);
+    if (action === "dispatch") {
+      const evidence = nativeCommandDispatchSchema.parse(input);
+      assert.equal(evidence.workerGeneration, workerGeneration);
+      assert.deepEqual(evidence.session, entry.session);
+      assert.equal(entry.receipt.status, "accepted");
+      entry.receipt.status = "dispatched";
+    } else {
+      assert.equal(action, "receipt");
+      const evidence = nativeCommandSettlementSchema.parse(input);
+      assert.equal(entry.receipt.status, "dispatched");
+      assert.equal(evidence.status, "applied");
+      const content = await openNativeCommandContent({
+        service: oracle,
+        context: {
+          chatId: session.chatId,
+          operationId: input.operationId,
+          direction: "result",
+        },
+        envelope: evidence.protectedResult,
+      });
+      if (entry.receipt.method === "thread/resume") {
+        assert.equal(content.result.thread.id, threadId);
+        assert.equal(
+          content.result.thread.cwd,
+          session.osExecution.scope.guestPath,
+        );
+      } else if (entry.receipt.method === "skills/list") {
+        assert.ok(Array.isArray(content.result.data));
+        skills.resolve();
+      }
+      entry.receipt.status = "applied";
+    }
+    if (entry.receipt.method === "thread/resume") steps.push(action);
+    send(
+      action === "dispatch"
+        ? {
+            receipt: entry.receipt,
+            execution: null,
+            computerUseAuthority: null,
+          }
+        : { receipt: entry.receipt },
+    );
+  };
+  let ready = false,
+    transcript = "",
+    sequence = 0;
+  let output = Promise.resolve();
+  const drawn = Promise.withResolvers();
+  const terminal = ensure(
+    {
+      type: "terminal.open",
+      terminalId,
+      attachmentId,
+      operationId,
+      serverId,
+      worktreePath: session.osExecution,
+      stateProtection: state.stateProtection,
+      cols: 100,
+      rows: 35,
+      managedPreparationGeneration: preparation,
+      launch: {
+        type: "codex",
+        session,
+        threadId,
+        provider,
+        model: {
+          id: "gpt-5",
+          routeId: "fixture-route",
+          name: "gpt-5",
+          reasoningEffort: null,
+        },
+        permissionProfileId: ":read-only",
+      },
+    },
+    (event) => {
+      output = output.then(async () => {
+        if (event.type === "terminal.ready") {
+          ready = true;
+          return;
+        }
+        assert.equal(event.type, "terminal.output");
+        assert.equal(event.sequence, sequence);
+        const bytes = await decryptSurfaceStreamPayload({
+          ownerId,
+          keyRevision: 1,
+          componentKey: surfaceStateKey,
+          context: {
+            serverId,
+            surfaceKind: "terminal",
+            surfaceId: terminalId,
+            operationId,
+            direction: "output",
+            sequence: sequence++,
+          },
+          opaque: event.protectedData,
+        });
+        const data = JSON.parse(Buffer.from(bytes).toString());
+        transcript += data.data;
+        if (
+          stripVTControlCharacters(transcript)
+            .replace(/\s/gu, "")
+            .includes(outputText.replace(/\s/gu, ""))
+        )
+          drawn.resolve();
+      });
+      output.catch(drawn.reject);
+    },
+  );
+  const captured = () =>
+    stripVTControlCharacters(transcript)
+      .replace(/ws:\/\/127\.0\.0\.1[^\s]*/gu, "[loopback URL]")
+      .slice(-8000);
+  const premature = terminal.then((reply) => {
+    throw new Error(
+      JSON.stringify(reply) + "\n" + captured() + "\n" + diagnostics,
+    );
+  });
+  const watchFailure = new AbortController();
+  const failure = once(upstream, "failure", {
+    signal: watchFailure.signal,
+  }).then(([error]) => {
+    throw error;
+  });
+  const calls = providerCalls;
+  try {
+    await Promise.race([
+      available(Promise.all([drawn.promise, skills.promise]), 20_000).catch(
+        (error) => {
+          throw new Error(
+            `Console transcript did not render (phases ${steps.join(", ")}).\n` +
+              captured(),
+            { cause: error },
+          );
+        },
+      ),
+      premature,
+      failure,
+    ]);
+    assert.ok(ready);
+    assert.deepEqual(steps, ["admit", "dispatch", "receipt"]);
+    assert.equal(providerCalls, calls);
+    const observer = waitForFrame(
+      (frame) =>
+        frame.notification?.type === "terminal.runtime.observed" &&
+        frame.notification.terminalId === terminalId,
+    );
+    await expectSuccess({ type: "terminal.close", terminalId });
+    const [exited, notified] = await Promise.all([
+      terminal,
+      available(observer),
+    ]);
+    assert.equal(exited.result.status, "exited");
+    assert.equal(
+      notified.notification.managedPreparationGeneration,
+      preparation,
+    );
+    console.log(
+      "Managed guest Codex console used the exact native thread and Core receipts.",
+    );
+  } finally {
+    watchFailure.abort();
+    consolePeer = undefined;
+  }
 }
 
 async function verifyGuestThread() {
@@ -2556,7 +2815,7 @@ async function verifyGuestThread() {
       await delay(100);
     }
     await start();
-    await verifyConsoleState();
+    const consoleState = await verifyConsoleState();
     const observed = await expectSuccess({
       type: "cantrip-os.inspect",
       ownerId,
@@ -2782,6 +3041,12 @@ async function verifyGuestThread() {
       threadId,
     );
     assert.equal(recovered.recovery.status, "completed");
+    await verifyGuestConsole({
+      session,
+      threadId,
+      provider,
+      state: consoleState,
+    });
     await stop();
     console.log(
       "Native guest shell, authenticated MCP and lane retirement, protected Chat and History, Node placement compatibility, and restart passed.",

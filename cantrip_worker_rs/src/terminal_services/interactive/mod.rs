@@ -11,6 +11,7 @@ use super::{
 };
 use crate::{
     cantrip_os::terminal,
+    codex::turn::Turns,
     connection::Outbound,
     encryption::Service,
     filesystem::Scope,
@@ -20,7 +21,7 @@ use crate::{
 };
 use anyhow::{Context, Result, anyhow, bail};
 use cantrip_crypto::checked;
-use cantrip_wire::{JsString, Value, value::json};
+use cantrip_wire::{JsString, Value, payload_digest, value::json};
 use codex_utils_pty::TerminalSize;
 use std::{
     collections::HashMap,
@@ -45,17 +46,20 @@ struct Entry {
     writer: mpsc::Sender<Vec<u8>>,
     resize: mpsc::Sender<Resize>,
     state: Arc<Mutex<Display>>,
+    managed_generation: Arc<Mutex<Value>>,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum Location {
     Host(PathBuf),
     Guest(String),
+    Console(String),
 }
 
 enum Launch {
     Host(Configuration),
     Guest(terminal::Target),
+    Console { command: Value, cwd: JsString },
 }
 
 #[derive(Default)]
@@ -79,6 +83,8 @@ pub(crate) struct Ports<'a> {
     pub encryption: &'a Arc<Service>,
     pub routes: &'a Registry,
     pub scope: &'a Scope,
+    pub codex_binary: &'a std::path::Path,
+    pub turns: &'a Turns,
     pub outbound: &'a Arc<Outbound>,
     pub request_id: &'a Value,
     pub socket_epoch: u64,
@@ -187,20 +193,54 @@ impl Shells {
     }
 
     async fn open(&self, command: &Value, key: Key, ports: &Ports<'_>) -> Result<Value> {
-        if command["launch"]["type"] != "shell" {
-            bail!("The terminal requires a different runtime.");
-        }
         let command = ports.routes.resolve(command).await?;
-        let launch = if command["worktreePath"].is_object() {
-            let state = private_state::open_state(&command, ports.encryption)?;
-            Launch::Guest(terminal::Target::new(
-                &command,
-                &state["directory"],
-                &key.authority.0,
-                ports.encryption.worker_id(),
-            )?)
-        } else {
-            Launch::Host(private_state::open_host(&command, ports.encryption)?)
+        let guest = command["worktreePath"].is_object();
+        let launch = match (command["launch"]["type"].as_str(), guest) {
+            (Some("shell"), false) => {
+                Launch::Host(private_state::open_host(&command, ports.encryption)?)
+            }
+            (Some("shell" | "codex"), true) => {
+                let state = private_state::open_state(&command, ports.encryption)?;
+                let target = terminal::Target::new(
+                    &command,
+                    &state["directory"],
+                    &key.authority.0,
+                    ports.encryption.worker_id(),
+                )?;
+                if command["launch"]["type"] == "shell" {
+                    Launch::Guest(target)
+                } else {
+                    let mut launch = command["launch"].clone();
+                    anyhow::ensure!(
+                        launch["session"].is_object(),
+                        "The managed console requires a Chat session."
+                    );
+                    if let Some(declared) = launch["session"].get("osExecution") {
+                        anyhow::ensure!(
+                            *declared == command["worktreePath"],
+                            "The console's Linux placement changed."
+                        );
+                    }
+                    launch["session"]["osExecution"] = command["worktreePath"].clone();
+                    Launch::Console {
+                        command: launch,
+                        cwd: target.cwd().into(),
+                    }
+                }
+            }
+            (Some("codex"), false) => {
+                let configuration = private_state::open_host(&command, ports.encryption)?;
+                let launch = command["launch"].clone();
+                anyhow::ensure!(
+                    launch["session"].is_object() && launch["session"]["osExecution"].is_null(),
+                    "The console requires a managed Host Chat session."
+                );
+                Launch::Console {
+                    command: launch,
+                    cwd: crate::filesystem::paths::text(&configuration.cwd),
+                }
+            }
+            _ => bail!("The terminal requires a different runtime."),
         };
         let view_id = command["attachmentId"].as_js_string().unwrap();
         let mut connection = ports.outbound.stream_epoch();
@@ -232,7 +272,7 @@ impl Shells {
                 authority(ports.encryption)? == key.authority,
                 "Terminal owner changed."
             );
-            if matches!(launch, Launch::Host(_)) {
+            if !matches!(launch, Launch::Guest(_)) {
                 self.guests.assert_host(&key.terminal, &key.authority)?;
             }
             let display = if let Some(view) =
@@ -244,7 +284,14 @@ impl Shells {
                 );
                 view.state.lock().unwrap().display.clone()
             } else {
-                self.shell(&key, launch, size(&command), ports).await?
+                self.shell(
+                    &key,
+                    launch,
+                    size(&command),
+                    &command["managedPreparationGeneration"],
+                    ports,
+                )
+                .await?
             };
             let finished = display.lock().unwrap().attach(view_id, view)?;
             if let Some(result) = finished {
@@ -270,6 +317,7 @@ impl Shells {
         key: &Key,
         launch: Launch,
         size: TerminalSize,
+        managed_generation: &Value,
         ports: &Ports<'_>,
     ) -> Result<Arc<Mutex<Display>>> {
         let mut inner = self.inner.lock().await;
@@ -280,6 +328,11 @@ impl Shells {
         let location = match &launch {
             Launch::Host(configuration) => Location::Host(configuration.cwd.clone()),
             Launch::Guest(target) => Location::Guest(target.identity.clone()),
+            Launch::Console { command, cwd } => Location::Console(payload_digest(&json!({
+                "session":command["session"], "threadId":command["threadId"],
+                "modelRouteId":command["model"]["routeId"], "providerId":command["provider"]["id"],
+                "providerAccountId":command["provider"]["accountId"], "cwd":cwd,
+            }))),
         };
         if inner
             .entries
@@ -289,33 +342,68 @@ impl Shells {
             inner.entries.remove(key);
         }
         if !inner.entries.contains_key(key) {
+            let preparation = Arc::new(Mutex::new(managed_generation.clone()));
             let exited = {
                 let key = key.clone();
                 let generation = self.generation.clone();
                 let encryption = ports.encryption.clone();
                 let outbound = ports.outbound.clone();
+                let preparation = preparation.clone();
                 move |result: &Value| {
                     if encryption.bound_identity().is_ok_and(|(owner, server)| {
                         owner == key.authority.0 && server.as_js_string() == Some(&key.authority.1)
                     }) {
-                        let _ = outbound.notification(json!({"type":"terminal.runtime.observed",
+                        let mut notification = json!({"type":"terminal.runtime.observed",
                             "workerProcessGeneration":generation,"terminalId":key.terminal,
                             "status":"exited","exitCode":result["exitCode"],"signal":result["signal"],
-                        }));
+                        });
+                        if let Some(preparation) = preparation.lock().unwrap().as_js_string() {
+                            notification["managedPreparationGeneration"] = json!(preparation);
+                        }
+                        let _ = outbound.notification(notification);
                     }
                 }
             };
             match launch {
                 Launch::Host(configuration) => {
-                    let (entry, actor) = process::spawn(
-                        configuration.cwd,
+                    let (mut entry, actor) = process::spawn(
+                        process::Local::Shell(configuration.cwd, self.environment.clone()),
+                        location.clone(),
                         key.terminal.clone(),
                         size,
-                        self.environment.clone(),
                         self.logs.clone(),
                         exited,
                     )
                     .await?;
+                    entry.managed_generation = preparation;
+                    inner.jobs.spawn(actor);
+                    inner.entries.insert(key.clone(), entry);
+                }
+                Launch::Console { command, cwd } => {
+                    let launch = ports
+                        .turns
+                        .launch_console(
+                            ports.codex_binary.to_path_buf(),
+                            command,
+                            cwd,
+                            self.environment.clone(),
+                        )
+                        .await?;
+                    ports.scope.check()?;
+                    anyhow::ensure!(
+                        authority(ports.encryption)? == key.authority,
+                        "Terminal owner changed."
+                    );
+                    let (mut entry, actor) = process::spawn(
+                        process::Local::Console(Box::new(launch)),
+                        location.clone(),
+                        key.terminal.clone(),
+                        size,
+                        self.logs.clone(),
+                        exited,
+                    )
+                    .await?;
+                    entry.managed_generation = preparation;
                     inner.jobs.spawn(actor);
                     inner.entries.insert(key.clone(), entry);
                 }
@@ -346,6 +434,9 @@ impl Shells {
             entry.location == location && !*entry.stop.borrow(),
             "Terminal belongs to another source folder or is stopping.",
         );
+        if !managed_generation.is_null() {
+            *entry.managed_generation.lock().unwrap() = managed_generation.clone();
+        }
         Ok(entry.state.clone())
     }
 

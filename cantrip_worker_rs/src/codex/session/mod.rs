@@ -58,6 +58,7 @@ struct Inner {
     history: Hub,
     threads: ThreadVersions,
     generation: String,
+    endpoint: JsString,
 }
 impl Drop for Inner {
     fn drop(&mut self) {
@@ -116,11 +117,11 @@ impl Session {
                     anyhow!("Codex app-server WebSocket did not connect within 120 seconds.")
                 })??
                 .0;
-                Ok::<_, anyhow::Error>(socket)
+                Ok::<_, anyhow::Error>((socket, endpoint))
             }
             .await;
-            let socket = match connected {
-                Ok(socket) => socket,
+            let (socket, endpoint) = match connected {
+                Ok(connection) => connection,
                 Err(error) => {
                     if let Err(cleanup) = process.close().await {
                         return Err(cleanup.context(error.to_string()));
@@ -179,6 +180,7 @@ impl Session {
                     history,
                     threads,
                     generation,
+                    endpoint,
                 })),
                 observations,
             ))
@@ -187,6 +189,10 @@ impl Session {
     pub fn generation(&self) -> Option<&str> {
         (!self.0.closed.load(Ordering::Acquire)).then_some(self.0.generation.as_str())
     }
+    pub(super) fn endpoint(&self) -> &JsString {
+        &self.0.endpoint
+    }
+
     pub(super) fn history(&self) -> Hub {
         self.0.history.clone()
     }

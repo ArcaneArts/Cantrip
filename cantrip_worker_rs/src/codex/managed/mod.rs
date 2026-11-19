@@ -17,7 +17,7 @@ use crate::{
     inference::admission::{Manager, Promise},
     logging::Logs,
 };
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use cantrip_history::projection::Work;
 use cantrip_transport::lifecycle::owned;
 use cantrip_wire::{JsString, Value, value::json};
@@ -253,6 +253,15 @@ impl Runtime {
 
     pub(in crate::codex) fn codex_home(&self) -> &Path {
         &self.0.codex_home
+    }
+
+    pub(in crate::codex) fn endpoint(&self) -> Result<&str> {
+        self.assert_live()?;
+        self.0
+            .session
+            .endpoint()
+            .as_str()
+            .context("Native app-server endpoint")
     }
 
     pub fn generation(&self) -> &str {
