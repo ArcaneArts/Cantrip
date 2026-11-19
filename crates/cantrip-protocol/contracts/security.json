@@ -946,7 +946,8 @@
     "githubReleaseListSchema": 14049,
     "worktreePolicySchema": 1363,
     "nativeCommandAdmissionResultSchema": 14052,
-    "nativeCommandSettlementResultSchema": 14054
+    "nativeCommandSettlementResultSchema": 14054,
+    "standaloneChatScratchResolveResultSchema": 14056
   },
   "nodes": [
     {
@@ -84848,6 +84849,33 @@
       "shape": { "receipt": 5757 },
       "catchall": 14055,
       "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "standaloneChatScratchResolveResultSchema",
+      "shape": {
+        "rootId": 3198,
+        "chatId": 3198,
+        "path": 14057,
+        "displayPath": 14058
+      },
+      "catchall": 14059,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 32768, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 32768, "when": "length" }
+      ]
     },
     { "type": "never", "checks": [] }
   ]

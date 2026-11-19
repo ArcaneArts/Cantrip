@@ -970,6 +970,7 @@ export const contractRoots = [
   "worktreePolicySchema",
   "nativeCommandAdmissionResultSchema",
   "nativeCommandSettlementResultSchema",
+  "standaloneChatScratchResolveResultSchema",
 ];
 
 export const projectExportContractRoots = [
