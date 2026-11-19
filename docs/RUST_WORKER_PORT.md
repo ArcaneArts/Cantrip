@@ -5147,3 +5147,27 @@ Deletion revocation and the preceding standalone, catalog, capacity,
 and title cases passed in the same run.
 
 Provider operation adapters and production cutover remain open.
+
+## 112. Run protected embedding operations in the Rust worker
+
+Reference commit `7413f8610332ca9ad9588bf349c9fce79af91ee4` (#3274).
+
+The Rust worker handles `model.embedding` and `model.operation.cancel`.
+It opens the request and seals the result with the existing endpoint
+grant and model-operation context. All seven existing embedding
+adapters preserve provider-native request forms, vector shapes, token
+observations and the canonical embedding-space fingerprint. Each batch
+rejoins the same provider admission queue used by other worker inference.
+The worker shares active duplicate delivery and retains replay metadata
+after the encrypted result is released.
+
+Local macOS ARM64 validation used both Rust services, PGlite, bundled
+Codex, an empty worker PATH, and an authenticated loopback provider.
+Through the public API the smoke test exercised encrypted multi-batch
+results, reversed provider indices, fingerprint pinning, reported and
+unknown usage, replay, cancellation of an active provider response,
+a sanitized HTTP 429, and redirect rejection. Focused native tests
+exercised all seven adapter payloads and response shapes. The Node reference
+verified the same two-batch result ordering, usage and pinned space.
+
+Decision adapters and production cutover remain open.

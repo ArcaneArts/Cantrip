@@ -20,6 +20,7 @@ pub mod installation;
 pub mod logging;
 pub mod mcp;
 pub mod metadata;
+mod model_operations;
 pub mod native_items;
 pub(crate) mod outcomes;
 pub mod platform;

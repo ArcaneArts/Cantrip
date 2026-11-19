@@ -973,6 +973,8 @@ export const contractRoots = [
   "standaloneChatScratchResolveResultSchema",
   "endpointModelInventoryItemSchema",
   "ollamaModelInventoryItemSchema",
+  "embeddingInputSchema",
+  "embeddingOutcomeSchema",
 ];
 
 export const projectExportContractRoots = [
@@ -1285,6 +1287,22 @@ function registerChecks(schema, tags) {
     );
   tags.forEach((tag, index) => registerCustom(schema, index, tag));
 }
+registerChecks(protocol.modelInputPartSchema.options[1].shape.url, [
+  "model-operation-media-url",
+]);
+registerChecks(protocol.embeddingInputSchema, [
+  "embedding-unique-items",
+  "model-operation-content-bytes",
+]);
+registerChecks(protocol.embeddingOutcomeSchema, [
+  "model-operation-content-bytes",
+]);
+registerChecks(protocol.embeddingItemSchema.options[2], [
+  "embedding-sparse-coordinates",
+]);
+registerChecks(protocol.embeddingItemSchema.options[3].shape.sparse, [
+  "embedding-sparse-coordinates",
+]);
 registerChecks(
   protocol.mcpServerConfigurationSchema.options[0].shape.environment.unwrap(),
   ["mcp-key-value-count", "mcp-key-value-size"],
@@ -1675,6 +1693,11 @@ registerChecks(protocol.nativeCommandEventSchema.shape.event._zod.def.in, [
   "native-command-event",
 ]);
 const transforms = new Map([
+  [
+    protocol.embeddingItemSchema.options[0].shape.metadata.unwrap()._zod.def
+      .out,
+    "bounded-json-value",
+  ],
   [
     protocol.compatibleWorkerCantripMcpOperationCallSchema._zod.def.in._zod.def
       .out,

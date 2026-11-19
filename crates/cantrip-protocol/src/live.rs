@@ -22,12 +22,7 @@ pub fn scope_key(scope: &Value) -> JsString {
 pub fn datetime_millis(value: &Value) -> Option<i64> {
     super::js_date::parse(value.as_js_string()?)
 }
-fn bounded_object(
-    root: Option<&Value>,
-    max_bytes: usize,
-    max_string_length: usize,
-) -> Option<String> {
-    let root = root.filter(|v| v.is_object())?;
+fn bounded_value(root: &Value, max_bytes: usize, max_string_length: usize) -> Option<String> {
     let mut stack = vec![(0, root)];
     let mut nodes = 0;
     while let Some((depth, value)) = stack.pop() {
@@ -107,14 +102,16 @@ pub(super) fn transform(
     }
     let (max_bytes, max_string_length) = match tag {
         "live-json-object" => (768 * 1024, 300000),
-        "bounded-json-object" => (1000000, 100000),
+        "bounded-json-object" | "bounded-json-value" => (1000000, 100000),
         _ => return Err(ValidationError::Operation),
     };
-    let error = if !result.value.as_ref().is_some_and(Value::is_object) {
-        Some("Expected a JSON object.".into())
-    } else {
-        bounded_object(result.value.as_ref(), max_bytes, max_string_length)
-    };
+    let error =
+        if tag != "bounded-json-value" && !result.value.as_ref().is_some_and(Value::is_object) {
+            Some("Expected a JSON object.".into())
+        } else {
+            let value = result.value.as_ref().ok_or(ValidationError::Operation)?;
+            bounded_value(value, max_bytes, max_string_length)
+        };
     if let Some(error) = error {
         result.issue(json!({"code":"custom"}), path, error, true);
     }
