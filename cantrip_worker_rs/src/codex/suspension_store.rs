@@ -114,6 +114,33 @@ impl Store {
         tokio::task::spawn_blocking(move || store.open_at(&path, &scope, &source, &id)).await?
     }
 
+    /// The Stop command carries only the Goal source selector. Authenticate
+    /// the complete saved record before the caller matches that selector.
+    pub(in crate::codex) async fn open_task_for_stop(
+        &self,
+        chat: &JsString,
+        id: &str,
+    ) -> Result<Opened> {
+        let scope = self.scope()?;
+        let chat = json!(chat);
+        let directory = self.directory(&scope, &chat);
+        let id = id.to_owned();
+        let store = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let record = read_record(&directory, &scope, &chat, &id)?;
+            let opened = store.decode_record(&record, Component::Task)?;
+            if opened.source["chatId"] != chat
+                || component(&opened.source) != Component::Task
+                || opened.task_continuation.is_none()
+            {
+                bail!("The saved Task does not belong to this chat.");
+            }
+            store.assert_scope(&scope)?;
+            Ok(opened)
+        })
+        .await?
+    }
+
     fn open_at(&self, directory: &Path, scope: &Value, source: &Value, id: &str) -> Result<Opened> {
         let record = read_record(directory, scope, &source["chatId"], id)?;
         let opened = self.open_record(&record, source)?;
@@ -122,7 +149,14 @@ impl Store {
     }
 
     fn open_record(&self, record: &Value, source: &Value) -> Result<Opened> {
-        let component = component(source);
+        let opened = self.decode_record(record, component(source))?;
+        if &opened.source != source {
+            bail!("Native suspension belongs to a different source.");
+        }
+        Ok(opened)
+    }
+
+    fn decode_record(&self, record: &Value, component: Component) -> Result<Opened> {
         let binding = &record["evidence"]["suspension"];
         let envelope = component.envelope(&record["protectedSource"])?;
         let revision = envelope["keyRevision"]
@@ -139,7 +173,6 @@ impl Store {
         let snapshot = validate(SNAPSHOT, &snapshot)?;
         if snapshot["scope"] != record["scope"]
             || snapshot["version"] != record["version"]
-            || &snapshot["source"] != source
             || &snapshot["suspension"] != binding
         {
             bail!("Native suspension belongs to a different source.");

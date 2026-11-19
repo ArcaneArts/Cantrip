@@ -108,6 +108,7 @@ impl Autonomous {
                 root: Some(root),
                 control: OnceLock::new(),
                 task: OnceLock::new(),
+                task_input: false,
                 logical_finished: AtomicBool::new(true),
                 preparation: abort,
                 phase: Mutex::new(Phase::Preparing(Some(thread.clone()))),

@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { copyFile, readFile, readdir } from "node:fs/promises";
+import {
+  copyFile,
+  readFile,
+  readdir,
+  rename,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   taskGoalOutcomeDeliverySchema,
   taskInferenceInputDispatchSchema,
   taskPauseRuntimeStateSchema,
+  taskTurnStopResultSchema,
 } from "../../packages/protocol/dist/index.js";
 import { NativeSuspensionStore } from "../../cantrip_worker/src/native-suspension-store.ts";
 import { openTaskOperationRelayResult } from "../../packages/crypto/dist/index.js";
@@ -113,7 +120,7 @@ export async function verifyDirectTask({
       assert.equal(record.workerId, workerId);
       assert.equal(
         record.notification.outcome.ok,
-        true,
+        !checkpoint?.stop,
         JSON.stringify(record.notification.outcome),
       );
       assert.deepEqual(record.notification.taskDispatchFence, current.dispatch);
@@ -144,7 +151,7 @@ export async function verifyDirectTask({
   assert.equal(altered.ok, false);
   assert.deepEqual(phases, []);
 
-  if (checkpoint)
+  if (checkpoint && checkpoint.stop !== "raw")
     checkpoint.respond((body) => boundaryTool(body, "direct-task-boundary"));
   const providerRequest = untilProvider();
   const note = waitForFrame(
@@ -201,6 +208,26 @@ export async function verifyDirectTask({
         },
       },
     };
+    if (checkpoint.stop === "raw") {
+      const raw = await invoke({
+        type: "chat.interrupt",
+        chatId: command.chatId,
+        threadId,
+        task: { ...control.task, taskRound: undefined, modelRouteId: null },
+      });
+      assert.equal(raw.ok, true, JSON.stringify(raw) + "\n" + diagnostics());
+      assert.deepEqual(raw.result, { interrupted: true });
+      await available(model.closed);
+      assert.equal((await running).ok, false);
+      await available(deliveries.promise);
+      assert.equal(checkpoint.calls(), model.number);
+      await stop();
+      attach(undefined, undefined);
+      console.log(
+        "Raw Task interrupt stopped the actual native owner with its model route absent.",
+      );
+      return;
+    }
     const check = (reply) => {
       assert.equal(
         reply.ok,
@@ -282,6 +309,129 @@ export async function verifyDirectTask({
         ([, id]) => id === published.message.id,
       ),
     );
+    if (checkpoint.stop === "named") {
+      const taskStop = {
+        controlId: randomUUID(),
+        source: receipt,
+        active: { threadId, turnId },
+        checkpoint: saved.evidence,
+        scope: { ...control.task, revision: 2 },
+        cwd: checkpoint.cwd,
+        permissionProfileId: ":read-only",
+      };
+      const packet = {
+        type: "chat.interrupt",
+        chatId: command.chatId,
+        threadId,
+        taskStop,
+      };
+      let checkpointFile;
+      const damaged = "synthetic damaged Task native checkpoint";
+      if (checkpoint.cold) {
+        await stop();
+        assert.deepEqual(await running, { ok: false, disconnected: true });
+        checkpointFile = path.join(
+          saved.home,
+          "turn-suspensions",
+          createHash("sha256").update(threadId).digest("hex") + ".json",
+        );
+        assert.ok((await readFile(checkpointFile)).length > 0);
+        await writeFile(checkpointFile, damaged);
+        const digest = (value) =>
+          createHash("sha256").update(JSON.stringify(value)).digest("hex");
+        const record = path.join(
+          directory,
+          "native-turn-suspensions",
+          digest(scope),
+          digest(command.chatId),
+          saved.evidence.storageId + ".json",
+        );
+        await rename(record, path.join(directory, "detached-task-record.json"));
+
+        packet.taskStop.model = {
+          id: "gpt-5",
+          name: "gpt-5",
+          routeId: receipt.modelRouteId,
+          reasoningEffort: null,
+        };
+        packet.taskStop.provider = command.provider;
+        await start();
+      }
+      const wrong = await invoke({
+        ...packet,
+        taskStop: { ...taskStop, active: { threadId, turnId: randomUUID() } },
+      });
+      assert.equal(wrong.ok, false);
+      const stopped = invoke(packet);
+      const duplicate = invoke(packet);
+      const response = await stopped;
+      assert.equal(
+        response.ok,
+        true,
+        JSON.stringify(response) + "\n" + diagnostics(),
+      );
+      const proof = taskTurnStopResultSchema.parse(response.result);
+      assert.deepEqual(proof, {
+        controlId: taskStop.controlId,
+        interrupted: true,
+        active: { threadId, turnId },
+        outcome: "stopped",
+        actor: {
+          workerGeneration: generation(),
+          runtimeGeneration: proof.actor.runtimeGeneration,
+          operationId: taskStop.controlId,
+          operationGeneration: taskStop.controlId,
+        },
+      });
+      assert.match(proof.actor.runtimeGeneration, /^[0-9a-f-]{36}$/u);
+      assert.notEqual(proof.actor.runtimeGeneration, runtimeGeneration);
+      assert.deepEqual((await duplicate).result, proof);
+      assert.deepEqual((await invoke(packet)).result, proof);
+      assert.equal(checkpoint.calls(), model.number);
+      assert.deepEqual(phases, ["claim", "dispatch", "native"]);
+      if (checkpoint.cold) {
+        const nativeDir = path.dirname(checkpointFile);
+        const retired = path.basename(checkpointFile, ".json") + ".retired-";
+        const retained = await Promise.all(
+          (await readdir(nativeDir))
+            .filter((file) => file.startsWith(retired))
+            .map((file) => readFile(path.join(nativeDir, file), "utf8")),
+        );
+        assert.ok(retained.includes(damaged));
+        await stop();
+        await start();
+        const replayed = await invoke(packet);
+        assert.equal(
+          replayed.ok,
+          true,
+          JSON.stringify(replayed) + "\n" + diagnostics(),
+        );
+        assert.deepEqual(taskTurnStopResultSchema.parse(replayed.result), {
+          ...proof,
+          actor: {
+            ...proof.actor,
+            workerGeneration: generation(),
+            runtimeGeneration: replayed.result.actor.runtimeGeneration,
+          },
+        });
+        assert.notEqual(
+          replayed.result.actor.runtimeGeneration,
+          proof.actor.runtimeGeneration,
+        );
+        assert.equal(checkpoint.calls(), model.number);
+      } else {
+        assert.equal((await running).ok, false);
+        await available(deliveries.promise);
+      }
+      await stop();
+      attach(undefined, undefined);
+      console.log(
+        checkpoint.cold
+          ? "Cold Task Stop committed interruption of the named turn and retained the damaged native checkpoint."
+          : "Live Task Stop committed interruption of the named turn without a model request.",
+      );
+      return;
+    }
     if (checkpoint.cold) {
       const oldGeneration = generation();
       const priorRuntime = runtimeGeneration;

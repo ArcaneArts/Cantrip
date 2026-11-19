@@ -4920,3 +4920,35 @@ covered Chat recovery, Task pause notifications and structured Task
 execution. Twenty-two focused Node reference tests passed.
 
 Durable Task Stop and production cutover remain open.
+
+## 103. Stop live and saved Task turns in the Rust worker
+
+Reference commit `e58044f6fd4c455ef7da83ba000d8a135b21104f` (#3265).
+
+A named Task Stop closes new admission at Core's current revision,
+targets the original native turn, and returns the stopping control's
+actor and committed native outcome. Live Stop uses the attached private
+runner even when launch settings are unavailable. Cold Stop uses the
+authenticated Task source and saved home. When the worker's local
+record or its Task-content grant is unavailable, it tries the authorized
+provider home with the exact native checkpoint. Codex must still prove
+the selected turn's terminal state.
+
+The raw Task interrupt uses the current private runner and revision,
+cancels eligible waiting work, and settles active execution through
+Codex. A missing model route does not prevent interrupting the attached
+Task. Named retries read the existing terminal history.
+
+Local macOS ARM64 smoke ran the Rust worker and bundled Codex with
+Core and provider peers. It exercised live named Stop, raw interruption
+without a model route, a cold direct Task with a missing worker record
+and damaged native checkpoint, and a cold autonomous Goal matched to
+its saved source. It also covered stale or unrelated input, duplicate
+requests, and replay of the stopped turn after a further restart.
+The cold fixture preserved the damaged native bytes. The provider
+request count stayed unchanged during named Stop. Restart Resume for
+Chat, direct Tasks and autonomous Goals and 19 focused Node reference
+tests also passed.
+
+Broader worker parity, service packaging and production cutover remain
+open.

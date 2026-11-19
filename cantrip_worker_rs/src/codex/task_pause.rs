@@ -6,13 +6,13 @@ use cantrip_wire::{JsString, Value};
 use tokio::sync::{Mutex as AsyncMutex, watch};
 
 #[derive(Clone, Default)]
-pub(super) struct Desired {
+pub(in crate::codex) struct Desired {
     pub intent: Option<Value>,
     pub blocked: bool,
     order_epoch: u64,
 }
 
-pub(super) struct Latch {
+pub(in crate::codex) struct Latch {
     desired: watch::Sender<Desired>,
     pub applied: AsyncMutex<Option<Applied>>,
 }
@@ -137,6 +137,10 @@ pub(super) struct Root {
 }
 
 impl Root {
+    pub fn matches_placement(&self, scope: &Value) -> bool {
+        same_placement(&self.binding, scope)
+    }
+
     pub fn matches(&self, scope: &Value) -> bool {
         let binding = &self.binding;
         same_placement(binding, scope)

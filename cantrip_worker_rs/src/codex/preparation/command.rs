@@ -47,6 +47,11 @@ pub(crate) struct Prepared {
     bound: (JsString, Value),
 }
 
+enum TaskAttachment {
+    Saved(Box<Opened>),
+    StopWithoutLocalRecord(Value),
+}
+
 #[derive(Clone)]
 pub(crate) struct Ensurer(Arc<Inner>);
 
@@ -163,7 +168,25 @@ impl Ensurer {
         incoming: &Value,
         saved: Opened,
     ) -> Result<Prepared> {
-        self.prepare_inner(incoming, Intent::Preserve, false, Some(saved))
+        self.prepare_inner(
+            incoming,
+            Intent::Preserve,
+            false,
+            Some(TaskAttachment::Saved(Box::new(saved))),
+        )
+        .await
+    }
+
+    pub(in crate::codex) async fn prepare_task_stop(
+        &self,
+        incoming: &Value,
+        saved: Option<Opened>,
+        checkpoint: &Value,
+    ) -> Result<Prepared> {
+        let attachment = saved
+            .map(|saved| TaskAttachment::Saved(Box::new(saved)))
+            .unwrap_or_else(|| TaskAttachment::StopWithoutLocalRecord(checkpoint.clone()));
+        self.prepare_inner(incoming, Intent::Preserve, true, Some(attachment))
             .await
     }
 
@@ -172,7 +195,7 @@ impl Ensurer {
         incoming: &Value,
         intent: Intent,
         stopping: bool,
-        restored_task: Option<Opened>,
+        restored_task: Option<TaskAttachment>,
     ) -> Result<Prepared> {
         let (owner, server) = self.0.encryption.bound_identity()?;
         let logical_server = server
@@ -208,15 +231,21 @@ impl Ensurer {
             context_kind,
         };
         let task_restoration = restored_task.is_some();
-        let held = if let Some(saved) = restored_task {
-            Some(saved)
-        } else if let Some(expected) = session.get("heldSuspension") {
-            if intent != Intent::Preserve || command["taskOwned"] == true {
-                bail!("This suspended thread must use its original execution.");
+        let (held, native_stop) = match restored_task {
+            Some(TaskAttachment::Saved(saved)) => (Some(*saved), None),
+            Some(TaskAttachment::StopWithoutLocalRecord(checkpoint)) => (None, Some(checkpoint)),
+            None => {
+                let held = match session.get("heldSuspension") {
+                    Some(expected) => {
+                        if intent != Intent::Preserve || command["taskOwned"] == true {
+                            bail!("This suspended thread must use its original execution.");
+                        }
+                        Some(self.open_held(&command, expected, placement).await?)
+                    }
+                    None => None,
+                };
+                (held, None)
             }
-            Some(self.open_held(&command, expected, placement).await?)
-        } else {
-            None
         };
         let provider = open_runtime_provider(&self.0.encryption, &command["provider"])?;
         if let Some(defaults) = command
@@ -329,8 +358,10 @@ impl Ensurer {
                     this.assert_bound(&bound)?;
                     if let Some(saved) = &held {
                         configuration.expected_suspension = Some(saved.evidence["suspension"].clone());
+                    } else {
+                        configuration.expected_suspension = native_stop;
                     }
-                    let delivery = this.0.codex.project_goals().filter(|_| !standalone && held.is_none());
+                    let delivery = this.0.codex.project_goals().filter(|_| !standalone && held.is_none() && !task_restoration);
                     let task = command["taskOwned"] == true;
                     let latch = task.then(|| this.task_latch(&bound, &chat)).transpose()?;
                     let task_root = |thread: &JsString, latch: &Arc<Latch>| Root {

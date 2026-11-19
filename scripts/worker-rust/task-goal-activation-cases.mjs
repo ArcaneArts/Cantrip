@@ -25,6 +25,7 @@ export async function verifyTaskGoalActivation({
   verifyPause,
   verifyCheckpoint,
   verifyRestart,
+  verifyStop,
   command,
   result,
   ownerId,
@@ -629,6 +630,9 @@ export async function verifyTaskGoalActivation({
           projectId: command.policyProjectId,
           prompt: resumedMessage,
           diagnostics,
+          stopCycle: verifyStop
+            ? { start, stop, provider, generation }
+            : undefined,
           restoreCycle: verifyRestart ? restoreCycle : undefined,
         }
       : undefined,
@@ -636,6 +640,7 @@ export async function verifyTaskGoalActivation({
     stop,
     start,
   });
+  if (verifyStop) return;
   await observer.afterRestart();
   const beforeClear = modelCalls();
   await verifyManagedGoalClear({

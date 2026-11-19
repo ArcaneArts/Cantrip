@@ -64,10 +64,14 @@ const { values } = parseArgs({
     directTask: { type: "boolean" },
     taskCheckpoint: { type: "boolean" },
     taskRestart: { type: "boolean" },
+    taskStop: { type: "boolean" },
+    taskStopRestart: { type: "boolean" },
+    taskRawStop: { type: "boolean" },
     structuredTasks: { type: "boolean" },
     taskGoal: { type: "boolean" },
     taskGoalCheckpoint: { type: "boolean" },
     taskGoalRestart: { type: "boolean" },
+    taskGoalStop: { type: "boolean" },
     taskPause: { type: "boolean" },
     chatGoal: { type: "boolean" },
     projectGoals: { type: "boolean" },
@@ -79,13 +83,16 @@ const { values } = parseArgs({
   },
 });
 assert.ok(values.worker && values.codex);
+const taskStop =
+  values.taskStop || values.taskStopRestart || values.taskRawStop;
 const directTask =
-  values.directTask || values.taskCheckpoint || values.taskRestart;
+  values.directTask || values.taskCheckpoint || values.taskRestart || taskStop;
 const taskGoals =
   values.taskGoal ||
   values.taskPause ||
   values.taskGoalCheckpoint ||
-  values.taskGoalRestart;
+  values.taskGoalRestart ||
+  values.taskGoalStop;
 const structuredTasks = values.structuredTasks || taskGoals;
 const requireWorker = createRequire(
   new URL("../../cantrip_worker/package.json", import.meta.url),
@@ -581,6 +588,7 @@ async function ensure(
         fields.type === "chat.native-control" ||
         fields.type === "chat.suspension.resume" ||
         fields.type === "chat.suspension.stop" ||
+        fields.type === "chat.interrupt" ||
         fields.type === "chat.pause.set" ||
         fields.type === "chat.queue.prepare" ||
         fields.type === "chat.queue.changed" ||
@@ -2089,10 +2097,12 @@ try {
       available,
       generation: () => workerGeneration,
       checkpoint:
-        values.taskCheckpoint || values.taskRestart
+        values.taskCheckpoint || values.taskRestart || taskStop
           ? {
-              cold: values.taskRestart,
+              cold: values.taskRestart || values.taskStopRestart,
+              stop: values.taskRawStop ? "raw" : taskStop ? "named" : undefined,
               oracle,
+              cwd: root,
               calls: () => providerCalls,
               respond: (answer) => {
                 taskResponse = answer;
@@ -2105,9 +2115,11 @@ try {
       },
       diagnostics: () => diagnostics,
     });
-    console.log(
-      "Direct Task claim, native binding, encrypted result, and persistent replay passed.",
-    );
+    if (!taskStop) {
+      console.log(
+        "Direct Task claim, native binding, encrypted result, and persistent replay passed.",
+      );
+    }
   }
   if (values.chatGoal) {
     await verifyChatGoalCreate({
@@ -2299,8 +2311,11 @@ try {
               ...input,
               verifyPause: values.taskPause,
               verifyCheckpoint:
-                values.taskGoalCheckpoint || values.taskGoalRestart,
+                values.taskGoalCheckpoint ||
+                values.taskGoalRestart ||
+                values.taskGoalStop,
               verifyRestart: values.taskGoalRestart,
+              verifyStop: values.taskGoalStop,
               ownerId,
               key: taskKey,
               chatKey,
