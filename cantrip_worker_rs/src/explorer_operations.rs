@@ -25,7 +25,7 @@ use std::{
 #[derive(Default)]
 pub struct ExplorerOperations {
     replay: Arc<Mutex<SurfaceStreamReplayGuard>>,
-    guests: Option<ProductFiles>,
+    guests: Option<Arc<ProductFiles>>,
     binary_writes: Option<binary_write::Writer>,
     imports: Imports,
 }
@@ -40,10 +40,11 @@ impl ExplorerOperations {
     pub(crate) fn with_replay(
         replay: Arc<Mutex<SurfaceStreamReplayGuard>>,
         directory: &Path,
+        guests: Arc<ProductFiles>,
     ) -> Self {
         Self {
             replay,
-            guests: Some(ProductFiles::new(directory)),
+            guests: Some(guests),
             binary_writes: Some(binary_write::Writer::new(
                 directory,
                 &directory.join("binary-write-locks"),

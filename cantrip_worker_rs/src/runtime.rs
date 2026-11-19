@@ -143,10 +143,14 @@ async fn cycle(
     let surface_replay = Arc::new(Mutex::new(
         crate::protected_content::SurfaceStreamReplayGuard::default(),
     ));
+    let guest_files = Arc::new(crate::cantrip_os::product_files::ProductFiles::new(
+        &config.data_directory,
+    ));
     let explorer_operations =
         Arc::new(crate::explorer_operations::ExplorerOperations::with_replay(
             surface_replay.clone(),
             &config.data_directory,
+            guest_files.clone(),
         ));
     let (direct, direct_listener) =
         crate::worker_link::DirectBroker::bind(worker.clone(), logs.clone()).await?;
@@ -375,6 +379,7 @@ async fn cycle(
         history.clone(),
         task_inputs.clone(),
         task_delivery.clone(),
+        guest_files,
     )?;
     thread_preparation.configure_autonomous(turns.autonomous(routing.clone()))?;
     let model_catalog = crate::codex::catalog::Catalog::new(

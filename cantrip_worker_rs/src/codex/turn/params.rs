@@ -26,7 +26,8 @@ pub(super) fn validate(command: &Value) -> Result<()> {
                 || !command["taskResumption"].is_null()))
         || !command["computerUseAuthority"].is_null()
         || (!guest && !command["subagentDefaults"].is_null())
-        || ((guest || !queued)
+        || (!guest
+            && !queued
             && command["attachments"]
                 .as_array()
                 .is_some_and(|items| !items.is_empty()))
@@ -91,7 +92,7 @@ pub(super) async fn native_input(
         }
         if input
             .iter()
-            .any(|item| item["type"] != "text" && item["type"] != "image")
+            .any(|item| !matches!(item["type"].as_str(), Some("text" | "image" | "audio")))
         {
             bail!("This Linux turn requires guest attachment or skill materialization.");
         }

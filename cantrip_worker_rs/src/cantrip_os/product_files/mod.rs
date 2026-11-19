@@ -1,4 +1,5 @@
 //! Protected Explorer and document requests routed to the captured workspace.
+mod attachments;
 #[cfg(all(feature = "guest-files", target_os = "linux"))]
 pub(crate) mod helper;
 mod records;
@@ -234,7 +235,16 @@ fn receipt(response: &Value, context: &Value) -> Result<(Value, bool)> {
         "OS file helper returned an unexpected operation; outcome is unknown."
     );
     let result = &response["result"];
-    let outcome = checked("surfaceOperationOutcomeContentSchema", &result["outcome"])?;
+    let raw = &result["outcome"];
+    let outcome = if context["surfaceKind"] == "chat-files"
+        && raw["ok"] == true
+        && raw["result"]["type"] == attachments::RESULT
+    {
+        attachments::validate_receipt(&raw["result"]["value"])?;
+        raw.clone()
+    } else {
+        checked("surfaceOperationOutcomeContentSchema", raw)?
+    };
     let complete = result["complete"]
         .as_bool()
         .context("Invalid OS file helper receipt.")?;
@@ -267,7 +277,8 @@ fn mutation(kind: &str) -> Result<bool> {
         | "explorer.file.tail"
         | "explorer.media.read"
         | "explorer.binary.write.status" => Ok(false),
-        "explorer.file.write"
+        attachments::REQUEST
+        | "explorer.file.write"
         | "explorer.file.create"
         | "explorer.directory.create"
         | "explorer.entry.rename"

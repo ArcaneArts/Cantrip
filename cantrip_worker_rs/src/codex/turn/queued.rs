@@ -2,8 +2,10 @@
 use super::{RPC_TIMEOUT, Runtime};
 use crate::{
     attachments::{Store, content},
+    cantrip_os::product_files::ProductFiles,
     chat_content::{Scope, queue},
     filesystem::paths,
+    metadata::Signal,
     native_items::{array, concat, join, text},
 };
 use anyhow::{Context, Result, bail};
@@ -87,15 +89,28 @@ fn strip_plan(input: &[Value]) -> Result<Vec<Value>> {
     Ok(output)
 }
 
+pub(super) struct InputSource<'a> {
+    pub store: &'a Store,
+    pub keys: &'a content::ServiceKeys,
+    pub scope: &'a Scope,
+    pub guest: Option<&'a ProductFiles>,
+    pub signal: &'a Signal,
+}
+
 pub(super) async fn inputs(
     command: &Value,
     prompt: &JsString,
     retained: Option<Value>,
     runtime: &Runtime,
-    store: &Store,
-    keys: &content::ServiceKeys,
-    scope: &Scope,
+    source: InputSource<'_>,
 ) -> Result<Vec<Value>> {
+    let InputSource {
+        store,
+        keys,
+        scope,
+        guest,
+        signal,
+    } = source;
     let mut attachments = Vec::new();
     for raw in array(&command["attachments"])? {
         if raw["chatId"] != command["chatId"] {
@@ -113,7 +128,7 @@ pub(super) async fn inputs(
             text(&metadata["id"])?,
             text(&metadata["fileName"])?,
         )?;
-        attachments.push((metadata, paths::text(&path)));
+        attachments.push((metadata, path));
     }
     let is_retained = retained.is_some();
     let mut input = if let Some(retained) = retained {
@@ -134,20 +149,43 @@ pub(super) async fn inputs(
         .any(|(metadata, _)| metadata["kind"] == "image");
     let with_images =
         images && supports_images(runtime, &command["model"], &command["provider"]).await;
+    let mut image_inputs = Vec::new();
     if !attachments.is_empty() {
-        let references = attachments.iter().map(|(metadata, path)| {
-            concat(&[
+        let mut references = Vec::with_capacity(attachments.len());
+        for (metadata, path) in attachments {
+            signal.check()?;
+            scope.identity()?;
+            let image_input = with_images && metadata["kind"] == "image";
+            let (path, image) = if let Some(guest) = guest {
+                guest
+                    .materialize(
+                        &command["osExecution"],
+                        &metadata,
+                        &path,
+                        &scope.server,
+                        image_input,
+                        &keys.0,
+                    )
+                    .await?
+            } else {
+                let path = paths::text(&path);
+                let image = image_input.then(|| json!({"type":"localImage","path":path}));
+                (path, image)
+            };
+            image_inputs.extend(image);
+            references.push(concat(&[
                 "- ".into(),
                 metadata["fileName"].as_js_string().unwrap().clone(),
                 " (".into(),
                 metadata["mimeType"].as_js_string().unwrap().clone(),
                 format!(", {} bytes): ", metadata["sizeBytes"].stringify()).into(),
-                path.clone(),
-            ])
-        });
+                path,
+            ]));
+        }
+        let location = guest.map_or("on this worker", |_| "in this Linux workspace");
         display = concat(&[
             display,
-            "\n\nAttachments are stored outside the repository on this worker. Read them from these paths as needed:\n".into(),
+            format!("\n\nAttachments are stored outside the repository {location}. Read them from these paths as needed:\n").into(),
             join(references, "\n"),
             if images && !with_images {
                 "\n\nThe selected model is text-only. Image files were not sent as model image input; inspect their listed paths with the current environment tools if needed.".into()
@@ -158,11 +196,7 @@ pub(super) async fn inputs(
     }
     scope.identity()?;
     input.push(queue::text_input(&display));
-    if with_images {
-        input.extend(attachments.into_iter().filter_map(|(metadata, path)| {
-            (metadata["kind"] == "image").then(|| json!({"type":"localImage","path":path}))
-        }));
-    }
+    input.extend(image_inputs);
     Ok(input)
 }
 

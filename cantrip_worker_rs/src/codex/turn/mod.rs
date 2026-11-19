@@ -25,6 +25,7 @@ use super::{
 };
 use crate::{
     attachments::{Store, content::ServiceKeys},
+    cantrip_os::product_files::ProductFiles,
     chat_content::Scope,
     config::Config,
     encryption::Service,
@@ -82,6 +83,7 @@ pub(crate) struct Turns {
     settings: Arc<settings::Delivery>,
     history: History,
     attachments: Store,
+    guest_files: Arc<ProductFiles>,
     task_inputs: task_inputs::Client,
     task_outcomes: Arc<TaskDelivery>,
     suspensions: super::suspension_store::Store,
@@ -216,6 +218,7 @@ impl Turns {
         history: History,
         task_inputs: task_inputs::Client,
         task_outcomes: Arc<TaskDelivery>,
+        guest_files: Arc<ProductFiles>,
     ) -> Result<Self> {
         let (data, worker) = {
             let config = configuration.lock().unwrap();
@@ -238,6 +241,7 @@ impl Turns {
             settings,
             history,
             attachments,
+            guest_files,
             task_inputs,
             task_outcomes,
         })
@@ -782,15 +786,29 @@ impl Turns {
                 title.report(&emit, result)?;
             }
             signal.check()?;
-            let input = if is_queued {
+            let guest = prepared.environment.is_some();
+            let input = if is_queued
+                || (guest
+                    && command["attachments"]
+                        .as_array()
+                        .is_some_and(|items| !items.is_empty()))
+            {
+                let scope = Scope::new(self.encryption.clone())?;
+                if scope.owner != key.0 || scope.server != key.1 {
+                    bail!("The worker binding changed before opening turn attachments.");
+                }
                 queued::inputs(
                     &command,
                     &prompt,
                     retained,
                     runtime,
-                    &self.attachments,
-                    &ServiceKeys(self.encryption.clone()),
-                    protection.as_ref().unwrap().scope(),
+                    queued::InputSource {
+                        store: &self.attachments,
+                        keys: &ServiceKeys(self.encryption.clone()),
+                        scope: &scope,
+                        guest: guest.then_some(self.guest_files.as_ref()),
+                        signal: &signal,
+                    },
                 )
                 .await?
             } else {

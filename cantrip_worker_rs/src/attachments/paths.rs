@@ -64,7 +64,7 @@ pub fn safe_filename(value: &JsString) -> JsString {
     }
 }
 
-pub(super) fn segment(value: &JsString, label: &str) -> anyhow::Result<String> {
+pub(crate) fn segment(value: &JsString, label: &str) -> anyhow::Result<String> {
     if value.is_empty()
         || value.len() > 200
         || !value
