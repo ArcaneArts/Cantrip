@@ -237,6 +237,7 @@ async fn suspension(input: &Value, service: &Arc<Service>) -> Result<Value> {
                 runtime_fingerprint: &input["runtimeFingerprint"],
                 continuation: input.get("continuation"),
                 task_continuation: input.get("taskContinuation"),
+                binding: None,
             })
             .await;
     }

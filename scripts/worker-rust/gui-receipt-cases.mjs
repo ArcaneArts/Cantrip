@@ -171,7 +171,20 @@ export class GuiReceiptPeer {
       const body = nativeCommandAdmissionSchema.parse(input);
       assert.equal(this.rootAcknowledged, true);
       assert.equal(this.controls.has(body.operationId), false);
-      assert.equal(body.method, "turn/interrupt");
+      assert.ok(["turn/interrupt", "turn/pause"].includes(body.method));
+      const pause =
+        body.method === "turn/pause" ? body.intent.paused : undefined;
+      if (body.method === "turn/pause") assert.equal(typeof pause, "boolean");
+      if (
+        pause === false &&
+        this.suspensionControlId &&
+        body.intent.expectedSuspensionControlId !== this.suspensionControlId
+      ) {
+        response
+          .writeHead(409)
+          .end(JSON.stringify({ code: "suspension-control-stale" }));
+        return;
+      }
       assert.equal(body.origin, "gui");
       assert.equal(
         body.expectedActivationGeneration,
@@ -187,6 +200,12 @@ export class GuiReceiptPeer {
         expectedTurnId: this.result.reconciliation.nativeTurnId,
         permissionProfileId: this.fields.permissionProfileId ?? ":read-only",
         pathsWithinPlacement: true,
+        ...(pause === undefined
+          ? {}
+          : { paused: pause, durableSuspension: true }),
+        ...(pause === false && this.suspensionControlId
+          ? { expectedSuspensionControlId: this.suspensionControlId }
+          : {}),
       });
       const context = {
         chatId: this.receipt.chatId,
@@ -195,10 +214,11 @@ export class GuiReceiptPeer {
       };
       const frame = {
         id: body.operationId,
-        method: "turn/interrupt",
+        method: body.method,
         params: {
           threadId: this.session.threadId,
           turnId: body.intent.expectedTurnId,
+          ...(pause === undefined ? {} : { paused: pause }),
         },
       };
       assert.deepEqual(
@@ -226,12 +246,13 @@ export class GuiReceiptPeer {
         logicalOperationId: null,
         payloadDigest: body.payloadDigest,
         startsExecution: false,
-        method: "turn/interrupt",
+        method: body.method,
         status: "accepted",
       });
       this.controls.set(body.operationId, {
         receipt,
         session: body.session,
+        pause,
         steps: [action],
       });
       send({ receipt, execution: null, computerUseAuthority: null });
@@ -256,6 +277,7 @@ export class GuiReceiptPeer {
         response.destroy();
       } else {
         send({ receipt, execution: null, computerUseAuthority: null });
+        this.controlDispatched?.(control);
       }
       return;
     }
@@ -266,6 +288,17 @@ export class GuiReceiptPeer {
     assert.equal(body.reconciliation, undefined);
     if (control.settlement) {
       assert.deepEqual(body, control.settlement);
+      send({ receipt });
+      return;
+    }
+    if (control.dispatchLost && control.pause !== undefined) {
+      assert.equal(body.status, "uncertain");
+      assert.equal(body.durableSuspension, true);
+      assert.equal(body.workerGeneration, this.workerGeneration);
+      assert.equal(body.protectedResult, null);
+      assert.equal(body.suspensionEvidence, undefined);
+      control.settlement = body;
+      receipt.status = "uncertain";
       send({ receipt });
       return;
     }
@@ -298,7 +331,29 @@ export class GuiReceiptPeer {
     } else {
       assert.equal(body.status, "applied");
       assert.equal(body.rejectionCode, null);
-      assert.deepEqual(content, { result: {} });
+      if (control.pause === undefined) {
+        assert.deepEqual(content, { result: {} });
+      } else {
+        assert.equal(body.durableSuspension, true);
+        assert.equal(body.workerGeneration, this.workerGeneration);
+        assert.equal(content.result.paused, control.pause);
+        if (control.pause) {
+          assert.deepEqual(
+            content.result.suspension,
+            body.suspensionEvidence.suspension,
+          );
+          assert.equal(
+            body.suspensionEvidence.suspension.turnId,
+            this.result.reconciliation.nativeTurnId,
+          );
+          assert.equal(
+            body.suspensionEvidence.suspension.threadId,
+            this.session.threadId,
+          );
+        } else {
+          assert.equal(body.suspensionEvidence, undefined);
+        }
+      }
     }
     control.settlement = body;
     receipt.status = body.status;

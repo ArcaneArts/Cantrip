@@ -94,7 +94,7 @@ impl Turns {
                 phase: Mutex::new(Phase::Preparing(Some(thread.clone()))),
                 changed: watch::channel(0).0,
             });
-            let (subscription, mut events) = output::subscribe(&runtime.history(), &thread)?;
+            let (subscription, mut events, _) = output::subscribe(&runtime.history(), &thread)?;
             let reserved = {
                 let mut sessions = self.active.lock().unwrap();
                 if sessions.active.contains_key(&key) || sessions.cancelled.contains(&(

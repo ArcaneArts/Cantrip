@@ -433,7 +433,7 @@ async fn cycle(
                     finish(&request, &worker, logs, &outgoing, began, &result);
                     continue;
                 }
-                if matches!(kind, crate::codex::turn::RUN | crate::codex::turn::INTERRUPT | crate::codex::turn::CONTROL) {
+                if matches!(kind, crate::codex::turn::RUN | crate::codex::turn::INTERRUPT | crate::codex::turn::CONTROL | crate::codex::turn::RESUME) {
                     let turns = turns.clone();
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();
@@ -443,6 +443,7 @@ async fn cycle(
                         let (result, note) = match command["type"].as_str() {
                             Some(crate::codex::turn::INTERRUPT) => (turns.interrupt(command).await, None),
                             Some(crate::codex::turn::CONTROL) => (turns.control(command).await, None),
+                            Some(crate::codex::turn::RESUME) => (turns.resume_suspension(command).await, None),
                             _ => {
                                 let request_id = request["requestId"].clone();
                                 let stream = outgoing.clone();

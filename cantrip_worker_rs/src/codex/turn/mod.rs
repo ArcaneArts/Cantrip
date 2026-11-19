@@ -46,6 +46,7 @@ use tokio::sync::{Mutex as AsyncMutex, watch};
 pub(crate) const RUN: &str = "chat.turn";
 pub(crate) const INTERRUPT: &str = "chat.interrupt";
 pub(crate) const CONTROL: &str = "chat.native-control";
+pub(crate) const RESUME: &str = "chat.suspension.resume";
 pub(crate) const COMPLETE: &str = "chat.native-logical.complete";
 pub(crate) const CANCEL: &str = "chat.native-logical.cancel";
 const RPC_TIMEOUT: Duration = Duration::from_secs(120);
@@ -71,6 +72,7 @@ pub(crate) struct Turns {
     attachments: Store,
     task_inputs: task_inputs::Client,
     task_outcomes: Arc<TaskDelivery>,
+    suspensions: super::suspension_store::Store,
 }
 
 struct TaskTurn {
@@ -204,6 +206,7 @@ impl Turns {
             &data,
         ));
         Ok(Self {
+            suspensions: super::suspension_store::Store::new(&data, encryption.clone()),
             preparation,
             encryption,
             active: Arc::default(),
@@ -660,7 +663,8 @@ impl Turns {
                 params["outputSchema"] = schema.clone();
             }
             prepared.thread.assert_current(runtime)?;
-            let (subscription, mut events) = output::subscribe(&runtime.history(), thread)?;
+            let (subscription, mut events, capture) =
+                output::subscribe(&runtime.history(), thread)?;
             let transport = subscription.signal();
             let result = async {
                 execution.bind_thread(thread.clone())?;
@@ -714,6 +718,9 @@ impl Turns {
                     if let Err(error) = execution.dispatched() {
                         execution.rejected()?;
                         return Err(error);
+                    }
+                    if let Some(binding) = active.control.get() {
+                        binding.capture(&command, capture, prepared.thread.version());
                     }
                     let reply = runtime
                         .request("turn/start".into(), Some(params), Some(RPC_TIMEOUT), None)

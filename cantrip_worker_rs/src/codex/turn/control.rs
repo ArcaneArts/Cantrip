@@ -1,16 +1,48 @@
-//! Managed desktop Stop must acquire a separate Core control receipt before
-//! forwarding the mutation to the exact active native turn.
-use super::{Active, Phase, RPC_TIMEOUT, Runtime, Turns};
+//! Managed controls acquire a separate Core receipt for the exact active turn.
+mod pause;
+use super::{Active, Phase, RPC_TIMEOUT, Runtime, Turns, output};
 use crate::{chat_content::Scope, codex::rpc_requests::Failure, http::checked};
 use anyhow::{Context, Result, bail};
 use cantrip_wire::{JsString, Value, value::json};
-use std::sync::atomic::Ordering;
-use tokio::sync::watch;
+use std::sync::{OnceLock, atomic::Ordering};
+use tokio::sync::{Mutex, watch};
+
+#[derive(Clone, Copy)]
+pub(super) enum Action<'a> {
+    Stop,
+    Pause(bool),
+    Resume(&'a Value),
+}
+
+impl Action<'_> {
+    pub(super) fn paused(self) -> Option<bool> {
+        match self {
+            Self::Stop => None,
+            Self::Pause(paused) => Some(paused),
+            Self::Resume(_) => Some(false),
+        }
+    }
+
+    pub(super) fn control_id(self) -> Option<Value> {
+        match self {
+            Self::Resume(command) => Some(command["controlId"].clone()),
+            _ => None,
+        }
+    }
+}
 
 pub(super) struct Binding {
     session: Value,
     permission: Value,
     published: watch::Sender<Option<bool>>,
+    checkpoint: OnceLock<Capture>,
+    pause_control: Mutex<()>,
+}
+
+struct Capture {
+    events: output::Capture,
+    seed: Value,
+    thread_version: u64,
 }
 
 impl Binding {
@@ -19,6 +51,8 @@ impl Binding {
             session,
             permission,
             published: watch::channel(None).0,
+            checkpoint: OnceLock::new(),
+            pause_control: Mutex::default(),
         }
     }
 
@@ -39,19 +73,24 @@ struct Selection {
     runtime: Runtime,
     thread: JsString,
     turn: JsString,
+    thread_version: u64,
 }
 
 impl Selection {
     fn current(&self, phase: &Phase) -> bool {
         matches!(phase, Phase::Running { runtime, thread, turn }
             if runtime.generation() == self.runtime.generation()
-                && thread == &self.thread && turn == &self.turn && runtime.is_live()
+                && thread == &self.thread && turn == &self.turn && self.transport_current()
         )
+    }
+
+    fn transport_current(&self) -> bool {
+        self.runtime.is_live() && self.runtime.thread_version(&self.thread) == self.thread_version
     }
 }
 
 impl Active {
-    async fn select_stop(&self, binding: &Binding) -> Result<Option<Selection>> {
+    async fn select_control(&self, binding: &Binding) -> Result<Option<Selection>> {
         let mut phase_updates = self.changed.subscribe();
         let mut receipt_updates = binding.published.subscribe();
         loop {
@@ -72,9 +111,16 @@ impl Active {
                                 runtime: runtime.clone(),
                                 thread: thread.clone(),
                                 turn: turn.clone(),
+                                thread_version: binding
+                                    .checkpoint
+                                    .get()
+                                    .context("The native turn observer was not attached.")?
+                                    .thread_version,
                             }));
                         }
-                        Some(false) => bail!("Core did not bind the current native turn for Stop."),
+                        Some(false) => {
+                            bail!("Core did not bind the current native turn for control.")
+                        }
                         None => {}
                     },
                     Phase::Terminal | Phase::Finished => return Ok(None),
@@ -93,9 +139,28 @@ impl Active {
 
 impl Turns {
     pub(crate) async fn control(&self, command: &Value) -> Result<Value> {
-        if command["control"]["kind"] != "interrupt" {
-            bail!("This native control requires a different managed execution path.");
-        }
+        let action = match command["control"]["kind"].as_str() {
+            Some("interrupt") => Action::Stop,
+            Some("pause") => Action::Pause(command["control"]["paused"] == true),
+            _ => bail!("This native control requires a different managed execution path."),
+        };
+        self.control_active(command, action).await
+    }
+
+    pub(crate) async fn resume_suspension(&self, command: &Value) -> Result<Value> {
+        let command = self.preparation.resolve_routing(command).await?;
+        let binding = json!({
+            "chatId":command["chatId"],"threadId":command["threadId"],
+            "nativeActivationGeneration":command["nativeActivationGeneration"],
+            "nativeRuntimeGeneration":command["nativeRuntimeGeneration"],
+            "modelRouteId":command["model"]["routeId"],
+            "providerAccountId":command["provider"]["accountId"],
+        });
+        self.control_active(&binding, Action::Resume(&command))
+            .await
+    }
+
+    async fn control_active(&self, command: &Value, action: Action<'_>) -> Result<Value> {
         let mismatch = "The native control does not identify one connected managed session.";
         let key = self.key(command)?;
         let active = self
@@ -116,26 +181,50 @@ impl Turns {
             .get()
             .filter(|binding| binding.matches(command))
             .context(mismatch)?;
+        let _pause = if action.paused().is_some() {
+            Some(binding.pause_control.lock().await)
+        } else {
+            None
+        };
         let result = |interrupted| {
             checked(
                 "chatInterruptAcceptedSchema",
                 &json!({"interrupted": interrupted}),
             )
         };
-        let Some(selected) = active.select_stop(binding).await? else {
-            return result(false);
+        let Some(selected) = active.select_control(binding).await? else {
+            return match action {
+                Action::Pause(paused) => pause::result(paused, None),
+                Action::Resume(_) => Err(anyhow::anyhow!(
+                    "The suspended native turn is no longer attached."
+                )),
+                Action::Stop => result(false),
+            };
         };
         let scope = Scope::new(self.encryption.clone())?;
         if scope.owner != key.0 || scope.server != key.1 {
-            bail!("The worker binding changed before native Stop.");
+            bail!("The worker binding changed before native control.");
         }
         let mut session = binding.session.clone();
         session["connectionId"] = json!(format!("gui-control:{}", selected.runtime.generation()));
-        let params = json!({"threadId": selected.thread, "turnId": selected.turn});
+        let checkpoint = if let Action::Resume(command) = action {
+            Some(binding.resume_checkpoint(command, &selected)?)
+        } else {
+            None
+        };
+        let mut params = json!({"threadId": selected.thread, "turnId": selected.turn});
+        if let Some(paused) = action.paused() {
+            params["paused"] = json!(paused);
+        }
         let receipt = self
             .receipts
-            .admit_interrupt(root, scope, session, &params, &binding.permission)
+            .admit_control(root, scope, session, &params, &binding.permission, action)
             .await?;
+        if let Some(paused) = action.paused() {
+            return self
+                .pause(&active, binding, selected, &receipt, paused, checkpoint)
+                .await;
+        }
         if let Err(error) = receipt.dispatch().await {
             receipt
                 .rejected(&json!({"code": -32000, "message": "Native dispatch did not complete."}))

@@ -52,6 +52,7 @@ const { values } = parseArgs({
     codex: { type: "string" },
     turns: { type: "boolean" },
     held: { type: "boolean" },
+    durablePause: { type: "boolean" },
     protected: { type: "boolean" },
     receipts: { type: "boolean" },
     outcomes: { type: "boolean" },
@@ -179,7 +180,8 @@ async function responses(request, response) {
     plan,
     body,
     closed,
-    finish: () => {
+    finish: (before = []) => {
+      for (const item of before) write("response.output_item.done", { item });
       write("response.output_item.done", { item });
       write("response.completed", {
         response: {
@@ -343,6 +345,7 @@ const server = createServer(async (request, response) => {
         [
           ...(values.protected ||
           values.held ||
+          values.durablePause ||
           values.receipts ||
           values.chatGoal ||
           values.projectGoals ||
@@ -552,6 +555,7 @@ async function ensure(fields, event = () => {}, requestId = randomUUID()) {
       requestId,
       command:
         fields.type === "chat.native-control" ||
+        fields.type === "chat.suspension.resume" ||
         fields.type === "chat.queue.prepare" ||
         fields.type === "chat.queue.changed" ||
         fields.type?.startsWith("chat.native-logical.") ||
@@ -1055,6 +1059,262 @@ function summary(message, chatId, sequence) {
     idempotencyKey: message.idempotencyKey,
     createdAt: stamp,
   };
+}
+
+async function verifyDurableChatPause() {
+  await start();
+  let running;
+  try {
+    const chatId = randomUUID(),
+      projectId = randomUUID(),
+      worktreeId = randomUUID();
+    const promptId = randomUUID();
+    const prompt = await protectChatMessage({
+      id: promptId,
+      message: {
+        id: promptId,
+        role: "user",
+        mode: "default",
+        idempotencyKey: "durable-pause-input",
+        content: [{ type: "text", text: "Synthetic durable pause input." }],
+      },
+      service: oracle,
+    });
+    const fields = {
+      type: "chat.turn",
+      contextKind: "project",
+      executionProfile: "ide",
+      chatId,
+      clientMessageId: promptId,
+      executionLaneId: "durable-pause-lane",
+      worktreeId,
+      scratchRootId: null,
+      rootKind: "folder-root",
+      isPrimary: true,
+      worktreeMode: "agent-managed",
+      worktreePolicy: "direct",
+      policyProjectId: projectId,
+      threadId: null,
+      provider: {
+        id: "durable-pause-fixture",
+        kind: "openai-compatible",
+        name: "Fixture",
+        baseUrl: `http://127.0.0.1:${server.address().port}/fixture/v1`,
+      },
+      protectedPrompt: prompt,
+      protectedHistory: [],
+      resultMode: {
+        kind: "chat-message-encrypted",
+        messageId: randomUUID(),
+        idempotencyKey: "durable-pause-result",
+      },
+    };
+    const receipt = admit(fields, stamp);
+    guiHistory = new GuiHistoryPeer({
+      fields,
+      receipt,
+      workerId,
+      stamp,
+      oracle,
+    });
+    guiPeer = new GuiReceiptPeer(fields, receipt, {
+      oracle,
+      workerGeneration,
+      workerId,
+    });
+    const read = untilProvider();
+    taskResponse = (body) => {
+      const tools = body.tools.flatMap((tool) =>
+        tool.type === "namespace"
+          ? tool.tools.map((entry) => ({ ...entry, namespace: tool.name }))
+          : [tool],
+      );
+      const exec = tools.find((tool) => tool.name === "exec_command");
+      assert.ok(
+        exec,
+        "The native runtime must advertise the genuine command tool.",
+      );
+      return {
+        name: exec.name,
+        ...(exec.namespace ? { namespace: exec.namespace } : {}),
+        call_id: "durable-pause-tool-" + providerCalls,
+        arguments: JSON.stringify({
+          cmd: "printf durable-pause-boundary",
+          yield_time_ms: 1000,
+        }),
+      };
+    };
+    running = ensure({ ...fields, nativeCommandReceipt: receipt });
+    const first = await Promise.race([
+      read,
+      running.then((response) => {
+        throw new Error(JSON.stringify(response) + "\n" + diagnostics);
+      }),
+    ]);
+    const dispatched = Promise.withResolvers();
+    guiPeer.controlDispatched = dispatched.resolve;
+    const { threadId, runtimeGeneration } = guiPeer.session;
+    const command = {
+      type: "chat.native-control",
+      chatId,
+      threadId,
+      nativeActivationGeneration: receipt.activationGeneration,
+      nativeRuntimeGeneration: runtimeGeneration,
+      modelRouteId: "fixture-route",
+      providerAccountId: null,
+      control: { kind: "pause", paused: true },
+    };
+    guiPeer.loseNextControlDispatch = true;
+    const unacknowledged = await ensure(command);
+    assert.equal(unacknowledged.ok, false);
+    const [uncertain] = guiPeer.controls.values();
+    assert.equal(uncertain.settlement.status, "uncertain");
+    assert.equal(uncertain.settlement.suspensionEvidence, undefined);
+    const paused = ensure(command);
+    await available(
+      Promise.race([
+        dispatched.promise,
+        paused.then((response) => {
+          throw new Error(JSON.stringify(response) + "\n" + diagnostics);
+        }),
+      ]),
+    );
+    const beforePause = "Output from before the native checkpoint.";
+    first.finish([
+      {
+        type: "message",
+        role: "assistant",
+        phase: "final_answer",
+        id: "before-durable-pause",
+        content: [{ type: "output_text", text: beforePause }],
+      },
+    ]);
+    const response = await paused;
+    assert.equal(
+      response.ok,
+      true,
+      JSON.stringify(response) + "\n" + diagnostics,
+    );
+    const [, control] = guiPeer.controls.values();
+    const evidence = control.settlement.suspensionEvidence;
+    assert.deepEqual(response.result, {
+      active: { threadId, turnId: evidence.suspension.turnId },
+      paused: true,
+    });
+    assert.deepEqual(control.steps, [
+      "admit",
+      "dispatch",
+      "receipt",
+      "receipt",
+    ]);
+    assert.equal(
+      providerCalls,
+      first.number,
+      "Pause held the turn at the next model boundary.",
+    );
+
+    const { principalId } = JSON.parse(
+      await readFile(
+        path.join(directory, "worker-encryption-key.json"),
+        "utf8",
+      ),
+    );
+    const store = new NativeSuspensionStore(
+      directory,
+      () => ({ serverId, ownerId, workerId }),
+      { ...oracle, registration: () => ({ principalId }) },
+    );
+    const opened = await store.open(evidence.storageId, {
+      chatId,
+      threadId,
+      contextKind: "project",
+      projectId,
+      placementId: worktreeId,
+      modelRouteId: "fixture-route",
+      providerAccountId: null,
+    });
+    assert.deepEqual(opened.evidence, evidence);
+    assert.equal(opened.continuation.turnId, evidence.suspension.turnId);
+    assert.equal(opened.home, path.join(directory, "codex-home"));
+    assert.equal(opened.continuation.providerId, fields.provider.id);
+    assert.equal(opened.continuation.finalText, beforePause);
+
+    const resumeId = randomUUID();
+    guiPeer.suspensionControlId = resumeId;
+    const resume = {
+      type: "chat.suspension.resume",
+      chatId,
+      threadId,
+      controlId: resumeId,
+      checkpoint: evidence,
+      nativeActivationGeneration: receipt.activationGeneration,
+      nativeRuntimeGeneration: runtimeGeneration,
+      session: {
+        contextKind: "project",
+        chatId,
+        projectId,
+        worktreeId,
+        rootKind: "folder-root",
+        scratchRootId: null,
+        computerUseEnabled: false,
+        heldSuspension: evidence,
+      },
+      cwd: root,
+      executionProfile: "ide",
+      model: {
+        id: "gpt-5",
+        routeId: "fixture-route",
+        name: "gpt-5",
+        reasoningEffort: null,
+      },
+      provider: fields.provider,
+      permissionProfileId: ":read-only",
+      planMode: "default",
+      subagentDefaults: null,
+      mcpServers: [],
+    };
+    const stale = await ensure({ ...resume, controlId: randomUUID() });
+    assert.equal(stale.ok, false);
+    assert.equal(
+      providerCalls,
+      first.number,
+      "A stale Core control did not resume Codex.",
+    );
+    taskResponse = "Resumed the same original turn.";
+    const nextRequest = untilProvider();
+    const resumed = ensure(resume);
+    const next = await nextRequest;
+    assert.equal(next.number, first.number + 1);
+    const resumedResponse = await resumed;
+    assert.equal(
+      resumedResponse.ok,
+      true,
+      JSON.stringify(resumedResponse) + "\n" + diagnostics,
+    );
+    assert.deepEqual(resumedResponse.result, {
+      active: response.result.active,
+      paused: false,
+    });
+    next.finish();
+    const completed = await running;
+    assert.equal(
+      completed.ok,
+      true,
+      JSON.stringify(completed) + "\n" + diagnostics,
+    );
+    assert.equal(guiPeer.terminal.nativeTurnId, evidence.suspension.turnId);
+    assert.equal(guiPeer.terminal.terminalStatus, "completed");
+    await expectSuccess(logical(receipt));
+  } finally {
+    taskResponse = undefined;
+    await stop();
+    guiPeer = undefined;
+    guiHistory = undefined;
+    await running?.catch(() => {});
+  }
+  console.log(
+    "Durable GUI Chat pause captured a Node-readable continuation and live Resume completed the same native turn.",
+  );
 }
 
 async function verifyProtectedTurns() {
@@ -1675,6 +1935,7 @@ try {
     "Native project and standalone preparation, MCP, and restart recovery passed.",
   );
   if (values.held) await verifyHeldAttachment(session, threadId);
+  if (values.durablePause) await verifyDurableChatPause();
   if (values.turns || values.outcomes) await verifyTurns();
   if (values.outcomes) {
     await verifyTaskOutcomeRecovery({

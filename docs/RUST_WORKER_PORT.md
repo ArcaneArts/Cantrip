@@ -4739,3 +4739,33 @@ checkpoint bytes were absent. Seventeen existing Node tests passed.
 Durable Pause and Resume still need to capture and restore the actual
 native turn and the worker's saved bookkeeping through production
 controls. Full Task boundary handling and the production cutover remain open.
+
+## 97. Capture a durable Chat checkpoint and resume its live owner
+
+Reference commit `08c6ce56eb8354f712611d95f645f3fa7d73dcd0` (#3259).
+
+Managed GUI Chat Pause obtains and dispatches a separate Core receipt for
+the exact active turn. It holds new inference for the chat, requests the
+native suspension boundary, and snapshots the worker observer after the
+earlier native notifications. It saves the continuation under the current
+worker grant and checks the checkpoint with Codex before settling the
+receipt. A lost dispatch acknowledgment leaves native work untouched and
+reports uncertain settlement. An unanswered or failed checkpoint operation
+retains the hold for recovery.
+
+For an attached owner, `chat.suspension.resume` binds the exact Core
+control ID and confirms the held checkpoint with Codex before resuming
+the existing turn. The observer, native turn identity, and logical
+result publication stay with the original execution.
+
+The macOS ARM64 smoke used bundled Codex with local Core and provider peers.
+Node opened the Rust-written continuation and recovered pre-Pause text.
+The smoke exercised a lost dispatch acknowledgment, repeated receipt
+settlement, stale Resume authority, and completion on the original turn.
+The Rust worker build, strict Clippy, 126 compatibility comparisons, and
+32 Node reference tests passed locally.
+
+Cold restoration through the dedicated Resume command, durable Stop, and
+Task boundary capture and resumption remain open. The saved continuation
+contains the progress tracked by the current Rust Chat observer. The
+remaining observer parity and production cutover are still in scope.

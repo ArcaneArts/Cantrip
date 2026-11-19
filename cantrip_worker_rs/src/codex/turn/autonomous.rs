@@ -82,7 +82,7 @@ impl Autonomous {
             .inference_router()
             .goal_mutations(thread)
             .context("The Goal runner has retired.")?;
-        let (subscription, mut events) = output::subscribe(&runtime.history(), thread)?;
+        let (subscription, mut events, _) = output::subscribe(&runtime.history(), thread)?;
         let transport = subscription.signal();
 
         let (receipt, granted, owner, signal) = {

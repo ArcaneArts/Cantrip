@@ -487,6 +487,17 @@ impl<'a> Receipt<'a> {
         evidence: Option<Value>,
         goal_epoch: Option<&JsString>,
     ) -> Result<()> {
+        let mut body = self.result_body(status, content)?;
+        if let Some(evidence) = evidence {
+            body["reconciliation"] = evidence;
+        }
+        if let Some(epoch) = goal_epoch {
+            body["goalEpoch"] = json!(epoch);
+        }
+        self.settle(body, status).await
+    }
+
+    fn result_body(&self, status: &str, content: Option<&Value>) -> Result<Value> {
         let (envelope, digest) = if let Some(content) = content {
             self.seal_result(content)?
         } else {
@@ -501,11 +512,33 @@ impl<'a> Receipt<'a> {
         } else {
             Value::Null
         };
-        if let Some(evidence) = evidence {
-            body["reconciliation"] = evidence;
+        Ok(body)
+    }
+
+    pub async fn dispatch_pause(&self) -> Result<()> {
+        let result = self.dispatch().await;
+        if result
+            .as_ref()
+            .is_err_and(|error| error.is::<Unacknowledged>())
+        {
+            // Core may have committed dispatch before the reply was lost.
+            // Preserve that uncertainty while leaving the native turn untouched.
+            let _ = self.settle_pause("uncertain", None, None).await;
         }
-        if let Some(epoch) = goal_epoch {
-            body["goalEpoch"] = json!(epoch);
+        result
+    }
+
+    pub async fn settle_pause(
+        &self,
+        status: &str,
+        content: Option<&Value>,
+        evidence: Option<&Value>,
+    ) -> Result<()> {
+        let mut body = self.result_body(status, content)?;
+        body["durableSuspension"] = json!(true);
+        body["workerGeneration"] = json!(self.client.generation);
+        if let Some(evidence) = evidence {
+            body["suspensionEvidence"] = evidence.clone();
         }
         self.settle(body, status).await
     }
@@ -719,15 +752,21 @@ impl Client {
         Ok((control, claim.is_some() && resume, response))
     }
 
-    pub async fn admit_interrupt(
+    pub async fn admit_control(
         &self,
         root: &Operation,
         scope: Scope,
         session: Value,
         params: &Value,
         permission: &Value,
+        action: super::control::Action<'_>,
     ) -> Result<Receipt<'_>> {
-        let name = "turn/interrupt";
+        let pause = action.paused();
+        let name = if pause.is_some() {
+            "turn/pause"
+        } else {
+            "turn/interrupt"
+        };
         let operation = JsString::from(uuid::Uuid::new_v4().to_string());
         let grant = scope.material(None)?;
         let (envelope, digest) = protect_native_command_request(
@@ -735,17 +774,24 @@ impl Client {
             &crypto_context(&grant, &session["chatId"], &operation),
             &json!({"id": operation, "method": name, "params": params}),
         )?;
+        let mut intent = json!({
+            "scope": "thread", "settingKeys": Vec::<Value>::new(),
+            "expectedTurnId": params["turnId"], "permissionProfileId": permission, "pathsWithinPlacement": true,
+        });
+        if let Some(paused) = pause {
+            intent["paused"] = json!(paused);
+            intent["durableSuspension"] = json!(true);
+        }
+        if let Some(control_id) = action.control_id() {
+            intent["expectedSuspensionControlId"] = control_id;
+        }
         let body = checked(
             "nativeCommandAdmissionSchema",
             &json!({
                 "workerId": self.configuration.lock().unwrap().worker_id,
                 "operationId": operation, "origin": "gui", "session": session, "method": name,
                 "payloadDigest": digest, "protectedPayload": envelope,
-                "expectedActivationGeneration": root.activation,
-                "intent": json!({
-                    "scope": "thread", "settingKeys": Vec::<Value>::new(),
-                    "expectedTurnId": params["turnId"], "permissionProfileId": permission, "pathsWithinPlacement": true,
-                }),
+                "expectedActivationGeneration": root.activation, "intent": intent,
             }),
         )?;
         let response = self
@@ -753,6 +799,9 @@ impl Client {
             .await?;
         scope.identity()?;
         if response["replayed"] == true || response["receipt"]["status"] != "accepted" {
+            if pause.is_some() {
+                bail!("Core did not admit the native Pause control.");
+            }
             bail!("Core did not admit the native Stop command.");
         }
         let control = Receipt {
