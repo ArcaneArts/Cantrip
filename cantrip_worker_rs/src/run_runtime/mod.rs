@@ -35,7 +35,7 @@ use tokio::{
 };
 
 pub(crate) type Environment = HashMap<String, String>;
-pub(crate) use providers::{capabilities, detect, validation};
+pub(crate) use providers::{capabilities, detect, inspect_devices, validation};
 const PREFIX: &str = "project.run-configuration-runtime.";
 const RETAINED: usize = 256;
 

@@ -72,6 +72,7 @@ impl Definitions {
                     | "capabilities"
                     | "detect"
                     | "validate"
+                    | "flutter-devices"
                     | "list"
             )
         )
@@ -119,6 +120,19 @@ impl Definitions {
             .as_str()
             .and_then(|kind| kind.strip_prefix(PREFIX))
             .context("Run configuration action")?;
+        if operation == "flutter-devices" {
+            let document = &command["document"];
+            let (devices, diagnostics) =
+                run_runtime::inspect_devices(document, &root, &self.environment, &scope).await?;
+            return checked(
+                "runConfigurationFlutterDevicesResponseSchema",
+                &json!({
+                    "operation":operation, "operationId":command["operationId"], "projectId":command["projectId"],
+                    "configurationId":document["id"], "platform":crate::platform::platform(),
+                    "devices":devices, "diagnostics":diagnostics,
+                }),
+            );
+        }
         let lock = if matches!(operation, "write" | "delete") {
             Some(self.mutation_lock(&root).await)
         } else {

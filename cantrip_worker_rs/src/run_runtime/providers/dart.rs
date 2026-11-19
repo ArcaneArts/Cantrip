@@ -1,8 +1,6 @@
-mod discovery;
-
 use super::{
-    Environment, Failure, Launch, Resolved, diagnose_shell, environment, executable_diagnostic,
-    executable_file, issue, render, shell, string_arguments,
+    Environment, Failure, Launch, Resolved, dart_source, diagnose_shell, environment,
+    executable_diagnostic, issue, render, sdk, shell, string_arguments,
 };
 use crate::{
     filesystem::{Scope, paths},
@@ -10,13 +8,12 @@ use crate::{
 };
 use anyhow::{Result, anyhow};
 use cantrip_wire::{JsString, Value, value::json};
-use std::{
-    io,
-    path::{Path, PathBuf},
-};
+use std::path::Path;
 
-const SDK_ABSOLUTE: &str =
-    "The selected Dart SDK home must be an absolute path for the target platform.";
+const SDK: sdk::Sdk = sdk::Sdk {
+    name: "Dart",
+    program: if cfg!(windows) { "dart.exe" } else { "dart" },
+};
 const FLUTTER_PACKAGE: &str =
     "The start directory is a Flutter package; use a Flutter Run configuration.";
 const TASK_UNSUPPORTED: &str =
@@ -37,16 +34,10 @@ pub(super) fn materialize(
             Failure::new("provider", "dart-entrypoint-invalid", message, true)
         })?;
         let program = if let Some(home) = resolved.option("sdkHome").as_js_string() {
-            let home = paths::native(home);
-            if !paths::absolute(&home) {
-                return Err(Failure::new(
-                    "provider",
-                    "dart-sdk-invalid",
-                    SDK_ABSOLUTE,
-                    true,
-                ));
-            }
-            sdk_executable(&home).to_string_lossy().into_owned()
+            SDK.configured(&paths::native(home))
+                .map_err(|message| Failure::new("provider", "dart-sdk-invalid", message, true))?
+                .to_string_lossy()
+                .into_owned()
         } else {
             "dart".into()
         };
@@ -110,7 +101,7 @@ pub(super) fn validate(
                 diagnostics.push(issue("dart-entrypoint-invalid", message, "target.path"));
             }
             if let Some(home) = resolved.option("sdkHome").as_js_string() {
-                if let Err(message) = inspect_sdk(&paths::native(home)) {
+                if let Err(message) = SDK.inspect(&paths::native(home)) {
                     diagnostics.push(issue("dart-sdk-invalid", &message, "options.sdkHome"));
                 }
             } else {
@@ -165,7 +156,7 @@ pub(super) fn validate(
 }
 
 fn inspect_package(cwd: &Path) -> Result<(), (&'static str, &'static str)> {
-    let pubspec = discovery::read_pubspec(&cwd.join("pubspec.yaml")).ok_or((
+    let pubspec = dart_source::read_pubspec(&cwd.join("pubspec.yaml")).ok_or((
         "dart-package-invalid",
         "The start directory does not contain a readable pubspec.yaml file.",
     ))?;
@@ -181,44 +172,6 @@ fn inspect_package(cwd: &Path) -> Result<(), (&'static str, &'static str)> {
     Ok(())
 }
 
-fn inspect_sdk(home: &Path) -> Result<(), String> {
-    if !paths::absolute(home) {
-        return Err(SDK_ABSOLUTE.into());
-    }
-    let home = canonical_sdk_path(home)?;
-    if !home.is_dir() {
-        return Err("The selected Dart SDK home is not a directory.".into());
-    }
-    let executable = canonical_sdk_path(&sdk_executable(&home))?;
-    if !executable_file(&executable) {
-        return Err("The selected Dart SDK home does not contain a Dart executable.".into());
-    }
-    Ok(())
-}
-
-fn canonical_sdk_path(path: &Path) -> Result<PathBuf, String> {
-    paths::canonical_sync(path).map_err(|error| {
-        if error.kind() == io::ErrorKind::NotFound {
-            format!(
-                "ENOENT: no such file or directory, realpath '{}'",
-                path.display()
-            )
-        } else {
-            error.to_string()
-        }
-    })
-}
-
-fn sdk_executable(home: &Path) -> PathBuf {
-    let program = if cfg!(windows) { "dart.exe" } else { "dart" };
-    let path = home.join("bin").join(program);
-    if paths::absolute(home) {
-        cantrip_config::resolve(Path::new(""), &path)
-    } else {
-        path
-    }
-}
-
 fn target_path(document: &Value, resolved: &Resolved<'_>) -> Value {
     let directory = resolved
         .field("workingDirectory")
@@ -226,7 +179,7 @@ fn target_path(document: &Value, resolved: &Resolved<'_>) -> Value {
         .unwrap()
         .lossy();
     let target = document["target"]["path"].as_js_string().unwrap().lossy();
-    json!(discovery::portable_join(&directory, &target))
+    json!(dart_source::portable_join(&directory, &target))
 }
 
 fn dart_arguments(document: &Value, resolved: &Resolved<'_>) -> Vec<String> {
@@ -253,7 +206,7 @@ fn effective(document: &Value, resolved: &Resolved<'_>) -> String {
     let program = resolved.option("sdkHome").as_js_string().map_or_else(
         || "dart".into(),
         |home| {
-            sdk_executable(&paths::native(home))
+            SDK.executable(&paths::native(home))
                 .to_string_lossy()
                 .into_owned()
         },
@@ -265,13 +218,13 @@ fn steps(document: &Value) -> &[Value] {
     document["beforeLaunch"].as_array().unwrap()
 }
 
-pub(super) fn discover(root: &Path, scope: &Scope) -> Result<Vec<Value>> {
+pub(super) fn discover(packages: &[dart_source::Package], scope: &Scope) -> Result<Vec<Value>> {
     let collator = collator()?;
     let mut candidates = Vec::new();
-    'packages: for package in discovery::scan(root, scope)? {
+    'packages: for package in packages.iter().filter(|package| !package.flutter) {
         for entrypoint in &package.entrypoints {
             scope.check()?;
-            candidates.push(candidate(&package, entrypoint)?);
+            candidates.push(candidate(package, entrypoint)?);
             if candidates.len() == 128 {
                 break 'packages;
             }
@@ -291,7 +244,7 @@ pub(super) fn discover(root: &Path, scope: &Scope) -> Result<Vec<Value>> {
         .collect())
 }
 
-fn candidate(package: &discovery::Package, entrypoint: &str) -> Result<(bool, Value)> {
+fn candidate(package: &dart_source::Package, entrypoint: &str) -> Result<(bool, Value)> {
     let conventional =
         entrypoint == "bin/main.dart" || entrypoint == format!("bin/{}.dart", package.name);
     let only = package.entrypoints.len() == 1;

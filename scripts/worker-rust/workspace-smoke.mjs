@@ -955,6 +955,8 @@ try {
         typedNodeProvider: true,
         typedCargoProvider: true,
         typedDartProvider: true,
+        typedFlutterProvider: true,
+        realFlutterSdkTask: Boolean(process.env.CANTRIP_TEST_FLUTTER_SDK),
         realDartSdk: Boolean(process.env.CANTRIP_TEST_DART_SDK),
         encryptedOutput: true,
         nodeDifferential: true,
