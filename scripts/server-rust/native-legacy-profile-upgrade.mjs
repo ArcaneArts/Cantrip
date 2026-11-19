@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
+import { constants } from "node:fs";
 import {
   appendFile,
   cp,
@@ -20,15 +21,19 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
-import { fixtureEnvironment } from "./process.mjs";
+import { fixtureEnvironment, startServer } from "./process.mjs";
 import { snapshot } from "./profile-snapshots.mjs";
 
 const { values } = parseArgs({
   options: Object.fromEntries(
-    ["server", "probe", "legacy-postgres", "stock-postgres"].map((name) => [
-      name,
-      { type: "string" },
-    ]),
+    [
+      "server",
+      "probe",
+      "legacy-postgres",
+      "stock-postgres",
+      "desktop-probe",
+      "desktop-runtime",
+    ].map((name) => [name, { type: "string" }]),
   ),
 });
 assert.ok(
@@ -36,6 +41,10 @@ assert.ok(
     values.probe &&
     values["legacy-postgres"] &&
     values["stock-postgres"],
+);
+assert.equal(
+  Boolean(values["desktop-probe"]),
+  Boolean(values["desktop-runtime"]),
 );
 const execute = promisify(execFile);
 const require = createRequire(
@@ -115,21 +124,94 @@ function prepare(binaries) {
   ]);
 }
 
-async function nativeSnapshot(sql) {
+async function nativeSnapshot(sql, directory = profile) {
   const native = await execute(
     path.resolve(values.probe),
     [
       "--no-migrate",
       "--directory",
-      path.join(profile, "server-db"),
+      path.join(directory, "server-db"),
       ...(sql ? ["--sql", sql] : []),
     ],
-    { env: { ...fixtureEnvironment(profile), PATH: emptyPath } },
+    { env: { ...fixtureEnvironment(directory), PATH: emptyPath } },
   );
   const result = events(native).find((event) => event.tables);
   assert.equal(result?.migrationsApplied, 0);
   const { tables, sequences, probe } = result;
   return { tables, sequences, probe };
+}
+
+async function verifyDesktopUpgrade(original) {
+  const resources = path.join(root, "desktop runtime without Node");
+  const desktop = path.join(root, "desktop data");
+  const data = path.join(desktop, "server");
+  const copy = (source, destination) =>
+    cp(source, destination, {
+      recursive: true,
+      mode: constants.COPYFILE_FICLONE,
+    });
+  await mkdir(resources);
+  await mkdir(desktop);
+  // Use the packaged server tree with its configuration and private tools.
+  // The independently shipped worker and its Node binary stay outside the probe.
+  await copy(
+    path.resolve(values["desktop-runtime"], "server"),
+    path.join(resources, "server"),
+  );
+  await copy(profile, data);
+  const environment = {
+    ...fixtureEnvironment(data),
+    CANTRIP_DATABASE_MODE: "pglite",
+    PATH: emptyPath,
+  };
+  delete environment.PGLITE_RUNTIME_DIR;
+  const launch = () =>
+    startServer(
+      path.resolve(values["desktop-probe"]),
+      [resources, desktop, "--without-worker"],
+      { env: environment, startupTimeoutMs: 120_000 },
+    );
+  async function startAndStop() {
+    const server = await launch();
+    let identity;
+    try {
+      const response = await fetch(server.origin + "/api/bootstrap", {
+        signal: AbortSignal.timeout(10_000),
+      });
+      assert.equal(response.status, 200);
+      identity = (await response.json()).server.id;
+      assert.ok(identity);
+    } finally {
+      await server.close();
+    }
+    const completed = server.events.find(
+      (event) => event.event === "profile.upgrade.completed",
+    );
+    return { server, identity, completed };
+  }
+  const initial = await startAndStop();
+  assert.equal(initial.completed?.upgraded, true);
+  assert.match(
+    initial.server.diagnostics(),
+    /profile\.upgrade\.native-legacy-export\.started/u,
+  );
+  assert.deepEqual(
+    await files(initial.completed.receipt.backupDirectory),
+    original,
+  );
+  assert.deepEqual(await readFile(path.join(data, file)), asset);
+
+  const next = await startAndStop();
+  assert.equal(next.completed?.upgraded, false);
+  assert.equal(next.identity, initial.identity);
+  const state = (await nativeSnapshot(undefined, data)).tables[
+    "public.system_state"
+  ];
+  assert.deepEqual(
+    state.map(JSON.parse).find((row) => row.key === "legacy-upgrade-fixture")
+      .value,
+    { persisted: true },
+  );
 }
 
 try {
@@ -176,6 +258,7 @@ try {
   }
 
   const original = await files(profile);
+  if (values["desktop-probe"]) await verifyDesktopUpgrade(original);
   // The exporter stages the private recovery server beside its output. An
   // archive inside the stopped profile must omit that server and its secrets.
   const inside = path.join(profile, "archives", "inner");
@@ -355,6 +438,7 @@ try {
       suite: "native-legacy-profile-round-trip",
       tables: Object.keys(expected.tables).length,
       originalFiles: Object.keys(original).length,
+      ...(values["desktop-probe"] ? { desktopUpgradeAndRestart: true } : {}),
       passed: true,
     }),
   );

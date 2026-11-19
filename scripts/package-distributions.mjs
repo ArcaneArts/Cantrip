@@ -3,7 +3,7 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { normalizeTarget } from "./native-target.mjs";
+import { hostTarget, normalizeTarget } from "./native-target.mjs";
 import { buildCantripCli, bundleCantripCli } from "./cantrip-cli/build.mjs";
 import { buildCantripCua, bundleCantripCua } from "./cantrip-cua/build.mjs";
 import { pnpmCommand } from "./pnpm-command.mjs";
@@ -259,18 +259,23 @@ async function packageDesktopRuntime() {
       standalone: false,
     });
   }
-  // Also build this small package in --from-artifacts mode. Reusing worker
-  // artifacts must not rebuild Codex, and the converter has no server code.
-  runPnpm(["--filter", "@cantrip/profile-converter", "build"]);
-  runPnpm([
-    "--config.node-linker=hoisted",
-    "--filter",
-    "@cantrip/profile-converter",
-    "deploy",
-    "--prod",
-    path.join(runtime, "profile-converter"),
-  ]);
-  await configureDesktopServer(path.join(runtime, "server"), serverRuntime);
+  // Build the private compatibility engine for matching native build hosts.
+  const nativeLegacyUpgrade =
+    platform === hostTarget() && packageTarget.platform !== "win32";
+  if (!nativeLegacyUpgrade) {
+    runPnpm(["--filter", "@cantrip/profile-converter", "build"]);
+    runPnpm([
+      "--config.node-linker=hoisted",
+      "--filter",
+      "@cantrip/profile-converter",
+      "deploy",
+      "--prod",
+      path.join(runtime, "profile-converter"),
+    ]);
+  }
+  await configureDesktopServer(path.join(runtime, "server"), {
+    nativeLegacyUpgrade,
+  });
   await bundleNodeRuntime(runtime);
   await verifyPackagedWorkerCua(path.join(runtime, "worker"));
   console.log(
