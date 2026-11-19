@@ -5123,3 +5123,27 @@ catalog discovery, and MCP attachment coverage passed.
 Task-input route revocation, provider operation adapters, and production
 cutover remain open. Computer-use and OS-hosted execution need their
 respective revocation integrations as those worker services are ported.
+
+## 111. Drain an exact Task input during a provider transfer
+
+Reference commit `f5234859d8522e9f76b982c28c93116c4b16155c` (#3273).
+
+The Rust worker handles `inference.task-revoke` against the existing
+Task turn owner. It matches the authenticated namespace and full
+canonical input receipt, including the dispatch fence. The former
+attempt cancels preparation and releases or interrupts only its own
+admission. Its owner remains registered through physical settlement.
+The settled notification wakes Core's durable route delivery, and the
+worker joins its actual native ownership keeper before confirming that
+a missing live owner is settled. The revoked input does not publish a
+Task outcome over the replacement.
+
+Local macOS ARM64 validation used both Rust services, PGlite, bundled
+Codex, and an empty worker PATH. A held Chat exhausted the source
+provider's capacity. Core transferred a queued Task to a second
+provider, which received the same input while the Chat retained its
+source reservation. The revoked attempt made no provider request.
+Deletion revocation and the preceding standalone, catalog, capacity,
+and title cases passed in the same run.
+
+Provider operation adapters and production cutover remain open.

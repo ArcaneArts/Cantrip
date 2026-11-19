@@ -163,7 +163,7 @@ impl Turns {
                 .unwrap()
                 .active
                 .get(key)
-                .filter(|owner| owner.task_input)
+                .filter(|owner| owner.task_input.is_some())
                 .cloned();
             if let Some(active) = active {
                 interrupted = active

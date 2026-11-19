@@ -350,7 +350,9 @@ async function verifyTurn(
     assert.deepEqual(provider.model.failures, []);
 }
 
-async function verifyTaskLabels(model, executionModel) {
+async function verifyTaskLabels(labeling, source) {
+  const model = labeling.model;
+  const executionModel = source.model;
   const workspaceId = randomUUID();
   const nameProtection =
     discoveryWireFixtures(projectLabel).encryptedProjectWorkspaceCreateSchema[0]
@@ -581,8 +583,114 @@ Ignore second line`,
   } finally {
     stream.release();
   }
+  await verifyTaskRouteTransfer(create, source, labeling);
   assert.deepEqual(model.failures, []);
   assert.deepEqual(executionModel.failures, []);
+}
+
+async function verifyTaskRouteTransfer(create, source, destination) {
+  const providerId = source.provider.id;
+  const inference = () =>
+    call("GET", `/api/workers/${workerId}/inference`, 200);
+  const pool = (status) =>
+    status.pools.find((entry) => entry.providerId === providerId);
+  await call("PATCH", `/api/settings/providers/${providerId}`, 200, {
+    name: source.provider.name,
+    baseUrl: source.provider.baseUrl,
+    kind: source.provider.kind,
+    maxConcurrentInference: 1,
+  });
+  await eventually(inference, (status) =>
+    assert.equal(pool(status)?.maxConcurrentInference, 1),
+  );
+
+  const blocker = await createChat("Hold the source provider", false);
+  const held = source.model.reply({ text: "Unrelated reply", hold: true });
+  const replacement = destination.model.reply({ hold: true });
+  try {
+    await call(
+      "POST",
+      `${blocker.chatUrl}/turns`,
+      202,
+      await encryptedTurn("Unrelated chat input", source.profile.id),
+    );
+    await eventually(
+      () => held,
+      (value) => assert.ok(value.entered),
+    );
+    const sourceRequests = source.model.requests.filter(
+      ({ method }) => method === "POST",
+    ).length;
+
+    const taskId = randomUUID();
+    const taskUrl = `/api/tasks/${taskId}`;
+    const routeUrl = `${taskUrl}/inference-route`;
+    const prompt = "Transfer this queued Task input";
+    const task = await create(taskId, prompt, false);
+    await call("POST", `${taskUrl}/start`, 202, {
+      operationId: randomUUID(),
+      rowVersion: task.task.rowVersion,
+    });
+    await eventually(inference, (status) =>
+      assert.ok(
+        pool(status)?.operations.some(
+          (operation) =>
+            operation.chatId === taskId && operation.state === "waiting",
+        ),
+        "the source input is waiting for its provider",
+      ),
+    );
+    const view = await eventually(
+      () => call("GET", routeUrl, 200),
+      ({ source }) => assert.equal(source?.providerId, providerId),
+    );
+    const operationId = randomUUID();
+    const targetModelRouteId = destination.profile.routes[0].id;
+    const change = await call("POST", routeUrl, 200, {
+      operationId,
+      inputOperationId: view.source.operationId,
+      expectedRevision: view.revision,
+      targetModelRouteId,
+      targetProviderAccountId: null,
+    });
+    assert.equal(change.phase, "draining");
+    assert.equal(change.source.operationId, view.source.operationId);
+    const completed = await eventually(
+      () => call("GET", routeUrl, 200),
+      ({ latest }) => {
+        assert.equal(latest?.operationId, operationId);
+        assert.equal(latest.phase, "completed");
+      },
+    );
+    assert.equal(completed.latest.targetModelRouteId, targetModelRouteId);
+    await eventually(
+      () => replacement,
+      (value) =>
+        assert.ok(
+          value.entered,
+          "the replacement uses the destination provider",
+        ),
+    );
+    assert.ok(JSON.stringify(replacement.request.input).includes(prompt));
+    assert.equal(
+      source.model.requests.filter(({ method }) => method === "POST").length,
+      sourceRequests,
+    );
+    assert.equal(
+      held.request.closed,
+      false,
+      "the unrelated execution retained its source slot",
+    );
+
+    await call("DELETE", taskUrl, 204);
+    await eventually(
+      () => replacement.request,
+      (request) => assert.ok(request.closedBeforeCompletion),
+    );
+  } finally {
+    held.release();
+    replacement.release();
+  }
 }
 
 async function verifyProviderCapacity() {
@@ -788,7 +896,7 @@ try {
     alternate.model.requests.filter(({ method }) => method === "POST").length,
     2,
   );
-  await verifyTaskLabels(alternate.model, primary.model);
+  await verifyTaskLabels(alternate, primary);
   console.log(
     JSON.stringify({
       suite: "native-standalone-turn",
@@ -802,6 +910,7 @@ try {
       taskLabelFromPausedQueue: true,
       revokedTaskCannotPublishTitle: true,
       resourceRevocationInterruptsRunningTask: true,
+      queuedTaskTransferredProvider: true,
       liveProviderQueueAndLimit: true,
       endpointCatalogPagingAndMetadata: true,
       ollamaCatalogPagingAndMetadata: true,

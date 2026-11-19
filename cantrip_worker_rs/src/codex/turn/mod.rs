@@ -13,6 +13,7 @@ mod receipt;
 pub(in crate::codex) mod settings;
 pub(in crate::codex) mod shell;
 pub(in crate::codex) mod task;
+pub(crate) mod task_route;
 
 use super::{
     admission::Acquire,
@@ -88,6 +89,7 @@ pub(crate) struct Turns {
 
 struct TaskTurn {
     turn: task::Turn,
+    input: Arc<task_route::Attempt>,
     key: Key,
     claimed: bool,
     restored_finished: bool,
@@ -100,7 +102,7 @@ struct Active {
     project: Option<JsString>,
     control: OnceLock<control::Binding>,
     task: OnceLock<task::checkpoint::Checkpoint>,
-    task_input: bool,
+    task_input: Option<Arc<task_route::Attempt>>,
     logical_finished: AtomicBool,
     preparation: Abort,
     phase: Mutex<Phase>,
@@ -501,8 +503,10 @@ impl Turns {
             params::validate(incoming)?;
             let key = self.key(incoming)?;
             let turn = task::Turn::open(self.encryption.clone(), incoming, &key)?;
+            let input = task_route::Attempt::new(incoming, self.encryption.worker_id())?;
             Ok::<_, anyhow::Error>(TaskTurn {
                 turn,
+                input: Arc::new(input),
                 key,
                 claimed: false,
                 restored_finished: false,
@@ -534,6 +538,9 @@ impl Turns {
                     )
                 }
             });
+        if task.input.revoked() {
+            return (result, self.task_route_notification(&task));
+        }
         let note = if task.claimed
             && !task.retained_checkpoint
             && (!restoring || task.restored_finished)
@@ -574,7 +581,7 @@ impl Turns {
             project: incoming["policyProjectId"].as_js_string().cloned(),
             control: OnceLock::new(),
             task: OnceLock::new(),
-            task_input: task.is_some(),
+            task_input: task.as_ref().map(|task| task.input.clone()),
             preparation: abort,
             phase: Mutex::new(Phase::Preparing(
                 incoming["threadId"].as_js_string().cloned(),
@@ -588,6 +595,16 @@ impl Turns {
                 || entries.stopping.contains_key(&key)
             {
                 bail!("This chat already has an active native turn.");
+            }
+            if let Some(input) = &active.task_input
+                && entries.active.values().any(|owned| {
+                    owned.task_input.as_ref().is_some_and(|other| {
+                        other.operation() == input.operation()
+                            && !matches!(*owned.phase.lock().unwrap(), Phase::Finished)
+                    })
+                })
+            {
+                bail!("The Task input already has a live physical command owner.");
             }
             if root.as_ref().is_some_and(|root| {
                 entries.cancelled.contains(&(
@@ -755,6 +772,9 @@ impl Turns {
             }
         };
         let result = async {
+            if let Some(input) = &active.task_input {
+                input.bind(&execution)?;
+            }
             if let Some(title) = shared_title {
                 let result = title
                     .shared(runtime, &execution, self.encryption.clone())
@@ -990,6 +1010,9 @@ impl Turns {
         .await;
         let cleanup = execution.not_dispatched();
         source.close();
+        if task.is_some() {
+            execution.settled().await?;
+        }
         result.and_then(|value| {
             cleanup?;
             match (protection, task) {

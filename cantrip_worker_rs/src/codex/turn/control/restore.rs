@@ -121,7 +121,7 @@ impl Turns {
             project: receipt.session()["projectId"].as_js_string().cloned(),
             control: OnceLock::from(binding),
             task: OnceLock::new(),
-            task_input: false,
+            task_input: None,
             logical_finished: AtomicBool::new(false),
             preparation: abort,
             phase: Mutex::new(Phase::Preparing(Some(thread.clone()))),

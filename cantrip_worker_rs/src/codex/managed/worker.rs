@@ -153,15 +153,35 @@ impl Worker {
             .map_err(|_| anyhow!("Inference status is already configured."))
     }
 
+    fn scoped_manager(&self, scope: &Scope) -> Result<Manager> {
+        let mut state = self.0.state.lock().unwrap();
+        if state.closing.is_some() {
+            bail!("Worker Codex runtimes are closing.");
+        }
+        Ok(self.manager_for(&mut state, scope))
+    }
+
+    pub(in crate::codex) async fn confirm_inference_ownership(
+        &self,
+        owner: &JsString,
+        server: &JsString,
+    ) -> Result<()> {
+        let scope = self.scope()?;
+        if &scope.owner != owner || &scope.server != server {
+            bail!("The worker binding changed during inference ownership reconciliation.");
+        }
+        self.scoped_manager(&scope)?
+            .confirm_native_ownership()
+            .await?;
+        if self.scope()? != scope {
+            bail!("The worker binding changed during inference ownership reconciliation.");
+        }
+        Ok(())
+    }
+
     pub(crate) fn inference_command(&self, command: &Value) -> Result<Value> {
         let scope = self.scope()?;
-        let manager = {
-            let mut state = self.0.state.lock().unwrap();
-            if state.closing.is_some() {
-                bail!("Worker Codex runtimes are closing.");
-            }
-            self.manager_for(&mut state, &scope)
-        };
+        let manager = self.scoped_manager(&scope)?;
         let configure = command["type"] == "inference.configure";
         if configure {
             manager.wake_recovery(None);

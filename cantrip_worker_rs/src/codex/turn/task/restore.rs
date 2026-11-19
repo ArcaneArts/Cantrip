@@ -178,6 +178,7 @@ impl Turns {
                     let cleanup = execution.not_dispatched();
                     source.close();
                     cleanup?;
+                    execution.settled().await?;
                     return Err(failed("admit", error));
                 }
             };
@@ -186,6 +187,7 @@ impl Turns {
         observer.restore_observer(saved);
         let _ = active.task.set(observer);
         let result = async {
+            task.input.bind(&execution)?;
             let dispatch = async {
                 execution.bind_thread(thread.clone())?;
                 execution.bind_turn(turn.clone())?;
@@ -234,6 +236,7 @@ impl Turns {
         let cleanup = execution.not_dispatched();
         source.close();
         cleanup?;
+        execution.settled().await?;
         result
     }
 
