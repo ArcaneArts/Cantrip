@@ -2,9 +2,11 @@
 //! Its sandbox, working directory and model execution remain app-server owned.
 mod gateway;
 mod prompt;
+mod queue;
 pub(crate) use gateway::Gateway;
+pub(super) use queue::Views as QueueViews;
 
-use super::{Scope, Turns, id};
+use super::{Key, Scope, Turns, id};
 use crate::{
     codex::{
         managed::Profile,
@@ -37,6 +39,8 @@ struct View {
     local_directory: PathBuf,
     permission: Value,
     command: Value,
+    queue_key: Key,
+    queue_revision: Arc<tokio::sync::watch::Sender<Option<u64>>>,
 }
 
 impl View {
@@ -108,6 +112,12 @@ impl Turns {
         // needs only its local provider bootstrap configuration.
         provider::configure(&mut profile, &provider, false)?;
         environment.extend(profile.provider_environment);
+        let queue_key = (
+            prepared.bound.0.clone(),
+            id(&prepared.bound.1, "managed console logical server")?,
+            chat.clone(),
+        );
+        let queue_revision = self.console_queues.watch(queue_key.clone());
         let view = Arc::new(View {
             turns: self.clone(),
             prepared,
@@ -117,6 +127,8 @@ impl Turns {
             local_directory: cwd.clone(),
             permission: command["permissionProfileId"].clone(),
             command,
+            queue_key,
+            queue_revision,
         });
         let gateway = Gateway::start(view).await?;
         let mut args = vec!["--remote".into(), gateway.url.clone()];

@@ -1,15 +1,23 @@
 //! Core's durable GUI receipt is independent of the physical inference grant.
 use super::{Key, Runtime, id};
-use crate::{chat_content::Scope, config::Config, http::checked, metadata::Guard};
+use crate::{
+    chat_content::Scope,
+    config::Config,
+    http::checked,
+    metadata::{Guard, Signal},
+};
 use anyhow::{Result, bail};
 use cantrip_crypto::content::{
-    protect_native_command_request, protect_native_command_result,
+    open_native_command_result, protect_native_command_request, protect_native_command_result,
     protect_native_command_terminal_result,
 };
 use cantrip_history::content::Encryption;
 use cantrip_wire::{JsString, Value, parse_json_text, value::json};
 use sha2::{Digest, Sha256};
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 #[derive(Clone)]
 pub(super) struct Client {
@@ -19,7 +27,7 @@ pub(super) struct Client {
 }
 
 #[derive(Debug)]
-struct Unacknowledged(String);
+pub(super) struct Unacknowledged(pub(super) String);
 
 impl std::fmt::Display for Unacknowledged {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -27,6 +35,19 @@ impl std::fmt::Display for Unacknowledged {
     }
 }
 impl std::error::Error for Unacknowledged {}
+
+#[derive(Debug)]
+pub(super) struct QueueHttpError {
+    pub status: u16,
+    pub code: Value,
+    message: String,
+}
+impl std::fmt::Display for QueueHttpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+impl std::error::Error for QueueHttpError {}
 
 #[derive(Clone)]
 pub(super) struct Operation {
@@ -158,20 +179,44 @@ impl Client {
             )
         };
         let unacknowledged = || Unacknowledged(action.to_owned());
+        let queue = path.starts_with("/api/internal/native-queue/");
+        let mut request = self
+            .http
+            .post(url)
+            .bearer_auth(token)
+            .header("content-type", "application/json")
+            .body(body.stringify());
+        if action == "queue start-receipt" {
+            request = request.timeout(Duration::from_secs(95));
+        }
         let response = guard
-            .run(async {
-                self.http
-                    .post(url)
-                    .bearer_auth(token)
-                    .header("content-type", "application/json")
-                    .body(body.stringify())
-                    .send()
-                    .await
-                    .map_err(|_| unacknowledged().into())
-            })
+            .run(async { request.send().await.map_err(|_| unacknowledged().into()) })
             .await?;
         let status = response.status().as_u16();
         if !response.status().is_success() {
+            if queue && status < 500 {
+                let body = guard
+                    .run(async {
+                        Ok(response
+                            .bytes()
+                            .await
+                            .ok()
+                            .and_then(|bytes| {
+                                parse_json_text(&String::from_utf8_lossy(&bytes)).ok()
+                            })
+                            .unwrap_or(Value::Null))
+                    })
+                    .await?;
+                return Err(QueueHttpError {
+                    status,
+                    code: body["code"].clone(),
+                    message: body["error"]
+                        .as_str()
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| format!("Managed {action} failed with HTTP {status}.")),
+                }
+                .into());
+            }
             if status >= 500 || matches!(status, 408 | 429) {
                 return Err(unacknowledged().into());
             }
@@ -186,28 +231,148 @@ impl Client {
     }
 
     pub async fn queue_snapshot(&self, scope: &Scope, session: &Value) -> Result<Value> {
-        scope.identity()?;
         let mut session = session.clone();
         session["connectionId"] = json!(crate::native_items::concat(&[
             "queue-owner:".into(),
             id(&session["runtimeGeneration"], "queue owner runtime")?,
         ]));
-        let input = checked(
-            "managedQueueReadSchema",
-            &json!({
-                "workerId":self.configuration.lock().unwrap().worker_id, "session":session,
-            }),
-        )?;
+        self.queue(scope, "read", json!({"session":session}), None)
+            .await
+    }
+
+    pub(super) async fn queue(
+        &self,
+        scope: &Scope,
+        action: &str,
+        mut input: Value,
+        signal: Option<Signal>,
+    ) -> Result<Value> {
+        let (request_schema, response_schema) = match action {
+            "read" => ("managedQueueReadSchema", "managedQueueSnapshotSchema"),
+            "lookup" => ("managedQueueLookupSchema", "managedQueueLookupResultSchema"),
+            "mutate" => (
+                "managedQueueMutateSchema",
+                "managedQueueMutationResultSchema",
+            ),
+            "start-receipt" => (
+                "managedQueueStartReceiptSchema",
+                "managedQueueStartReceiptResultSchema",
+            ),
+            _ => unreachable!("supported console queue action"),
+        };
+        scope.identity()?;
+        if matches!(action, "read" | "start-receipt") {
+            input["workerId"] = json!(self.configuration.lock().unwrap().worker_id);
+        }
+        let body = checked(request_schema, &input)?;
+        let timeout = if action == "start-receipt" { 95 } else { 30 };
+        let guard = Guard::metadata_timeout(signal, None, Duration::from_secs(timeout));
         let reply = self
             .exchange(
-                "queue read",
-                "/api/internal/native-queue/read",
-                &input,
-                &Guard::metadata(None, None),
+                &format!("queue {action}"),
+                &format!("/api/internal/native-queue/{action}"),
+                &body,
+                &guard,
             )
             .await?;
         scope.identity()?;
-        checked("managedQueueSnapshotSchema", &reply)
+        checked(response_schema, &reply)
+            .map_err(|_| Unacknowledged(format!("queue {action}")).into())
+    }
+
+    pub(super) fn queue_admission(
+        &self,
+        scope: &Scope,
+        session: &Value,
+        permission: &Value,
+        operation: &JsString,
+        frame: &Value,
+        activation: Value,
+    ) -> Result<Value> {
+        let grant = scope.material(None)?;
+        let (payload, digest) = protect_native_command_request(
+            &grant.key,
+            &crypto_context(&grant, &session["chatId"], operation),
+            frame,
+        )?;
+        let mut intent = json!({
+            "scope":"thread", "settingKeys":Vec::<Value>::new(), "expectedTurnId":Value::Null,
+            "permissionProfileId":permission, "pathsWithinPlacement":true,
+        });
+        if matches!(
+            frame["method"].as_str(),
+            Some("thread/queue/add" | "thread/queue/start")
+        ) {
+            intent["resumeAutonomy"] = json!(true);
+        }
+        Ok(json!({
+            "workerId":self.configuration.lock().unwrap().worker_id, "operationId":operation,
+            "origin":"terminal", "session":session, "method":frame["method"], "intent":intent,
+            "payloadDigest":digest, "protectedPayload":payload, "expectedActivationGeneration":activation,
+        }))
+    }
+
+    pub(super) fn open_queue_start(
+        &self,
+        scope: &Scope,
+        session: &Value,
+        claim: &Value,
+        reply: &Value,
+    ) -> Result<Value> {
+        let receipt = &reply["receipt"];
+        let actual = &reply["claim"];
+        let method = receipt["method"].as_str();
+        if actual["id"] != claim["id"]
+            || actual["chatId"] != session["chatId"]
+            || receipt["chatId"] != session["chatId"]
+            || receipt["threadId"] != session["threadId"]
+            || actual["operationId"] != receipt["operationId"]
+            || actual["operationGeneration"] != receipt["operationGeneration"]
+            || receipt["status"] != "applied"
+            || !matches!(
+                method,
+                Some(
+                    "turn/start"
+                        | "thread/shellCommand"
+                        | "thread/settings/update"
+                        | "thread/goal/set"
+                        | "thread/goal/clear"
+                )
+            )
+        {
+            return Err(Unacknowledged("queue start receipt".into()).into());
+        }
+        let operation = id(&receipt["operationId"], "queued native execution")?;
+        let envelope = &reply["protectedResult"];
+        let revision = envelope["keyRevision"]
+            .as_u64()
+            .ok_or_else(|| Unacknowledged("queue result key".into()))?;
+        let grant = scope.material(Some(revision))?;
+        let content = open_native_command_result(
+            &grant.key,
+            &crypto_context(&grant, &session["chatId"], &operation),
+            envelope,
+        )?;
+        let result = if content.get("error").is_none() && content["result"].is_object() {
+            &content["result"]
+        } else if content.get("error").is_none()
+            && method == Some("turn/start")
+            && content["turn"].is_object()
+        {
+            &content
+        } else {
+            return Err(Unacknowledged("queue action result".into()).into());
+        };
+        if method == Some("turn/start") {
+            if !result["turn"]["id"].is_string() || result["turn"]["id"] != actual["nativeTurnId"] {
+                return Err(Unacknowledged("queued native turn".into()).into());
+            }
+            Ok(result.clone())
+        } else {
+            Ok(
+                json!({"managedAction":json!({"operationId":claim["requestOperationId"],"executionOperationId":operation,"method":receipt["method"],"status":"applied"})}),
+            )
+        }
     }
 
     pub(super) async fn publish_settings(&self, event: &Value) -> Result<()> {

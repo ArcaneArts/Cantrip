@@ -6992,3 +6992,28 @@ runtime were outside this validation.
 
 Canonical console queue operations, settings, approval replies and
 runtime handoff remain open.
+
+## 179. Use Core's canonical queue from the managed Codex console
+
+Reference commit f1fda95e8308638bb676e3481d5daade304cd62c (#3342).
+
+The Rust gateway negotiates the managed queue with bundled Codex. List,
+add, update, delete, reorder and start use the worker-authenticated Core
+queue endpoints. The worker encrypts mutations and reconciles the same
+operation ID before sending a write. It preserves accepted item identities
+and attachment mappings. Queue start waits for the protected execution
+receipt and checks the claim and native turn together. Core queue revision
+notifications reach open views on the bound thread.
+
+The macOS ARM64 fixture opened the bundled console and observed its
+queue read. A second scoped connection exercised all six methods against
+a fixture Core peer. It verified receipt lookup after a lost response,
+pagination and stale cursor rejection, protected edits with retained
+media, and external revision delivery. The Node codec matched the sealed
+input and stable identities. Actual Host queued execution, guest Chat,
+and console image submission passed in the same fixture. The existing
+Rust-server and Node-reference PGlite queue HTTP comparison passed for
+local authentication mode. The Windows x64 GNU worker compiled.
+
+Import of legacy runtime-local queue items, managed console settings,
+approval replies and runtime handoff remain open.

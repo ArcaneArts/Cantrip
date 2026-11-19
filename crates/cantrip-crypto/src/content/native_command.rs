@@ -1,8 +1,7 @@
 use super::aad;
-use crate::{derive_field_key, encrypt_payload};
+use crate::{decrypt_payload, derive_field_key, encrypt_payload, hmac_sha256};
 use anyhow::Result;
-use cantrip_wire::{Value, value::json};
-use hkdf::hmac::{Hmac, KeyInit, Mac};
+use cantrip_wire::{Value, parse_json_text, value::json};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
@@ -32,6 +31,18 @@ pub fn protect_native_command_request(
     protect(component_key, context, "request", content)
 }
 
+pub fn open_native_command_result(
+    component_key: &[u8],
+    context: &Value,
+    envelope: &Value,
+) -> Result<Value> {
+    let associated = associated(context, "result")?;
+    let key = derive_field_key(component_key, &associated)?;
+    let bytes = decrypt_payload(&key, envelope, &associated)?;
+    parse_json_text(&String::from_utf8_lossy(&bytes))
+        .map_err(|_| anyhow::anyhow!("Invalid protected native command result."))
+}
+
 pub fn protect_native_settings_evidence(
     component_key: &[u8],
     context: &Value,
@@ -49,6 +60,15 @@ fn protect(
     field: &str,
     content: &Value,
 ) -> Result<(Value, String)> {
+    let associated = associated(context, field)?;
+    let key = derive_field_key(component_key, &associated)?;
+    let bytes = Zeroizing::new(content.stringify().into_bytes());
+    let digest = hmac_sha256(&key, &[associated.stringify().as_bytes(), &bytes])?;
+    let digest = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    Ok((encrypt_payload(&key, &bytes, &associated)?, digest))
+}
+
+fn associated(context: &Value, field: &str) -> Result<Value> {
     let mut identity = vec![
         context["serverId"].clone(),
         context["chatId"].clone(),
@@ -59,19 +79,11 @@ fn protect(
     }
     let row = Sha256::digest(Value::Array(identity).stringify().as_bytes());
     let row: String = row.iter().map(|byte| format!("{byte:02x}")).collect();
-    let associated = aad(
+    aad(
         context,
         &json!("chat-content"),
         &json!("native-command-admission"),
         &json!(row),
         &json!(field),
-    )?;
-    let key = derive_field_key(component_key, &associated)?;
-    let bytes = Zeroizing::new(content.stringify().into_bytes());
-    let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(&key).expect("32-byte HMAC key");
-    mac.update(associated.stringify().as_bytes());
-    mac.update(&bytes);
-    let digest = mac.finalize().into_bytes();
-    let digest = digest.iter().map(|byte| format!("{byte:02x}")).collect();
-    Ok((encrypt_payload(&key, &bytes, &associated)?, digest))
+    )
 }

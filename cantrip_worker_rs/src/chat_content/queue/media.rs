@@ -11,7 +11,7 @@ use crate::{
     http::checked,
     native_items::text,
 };
-use anyhow::{Context, Result, ensure};
+use anyhow::{Result, ensure};
 use base64::{
     Engine,
     alphabet::STANDARD as ALPHABET,
@@ -20,66 +20,80 @@ use base64::{
 use cantrip_crypto::{Zeroizing, content::attachment_digest, hmac_sha256};
 use cantrip_history::content::Encryption;
 use cantrip_wire::{JsString, Value, value::json};
-use std::{fmt::Write, path::Path};
+use std::{collections::HashMap, fmt::Write, path::Path};
+
+pub(crate) struct Captured {
+    pub input: Vec<Value>,
+    local: HashMap<usize, (JsString, Zeroizing<Vec<u8>>)>,
+}
+
+pub(crate) async fn capture(mut input: Vec<Value>, directory: &Path) -> Result<Captured> {
+    let mut local = HashMap::new();
+    for (index, item) in input.iter_mut().enumerate() {
+        let kind = match item["type"].as_str() {
+            Some("localImage") => "image",
+            Some("localAudio") => "audio",
+            _ => continue,
+        };
+        let supplied = text(&item["path"])?.clone();
+        let path = directory.join(paths::native(&supplied));
+        let bytes = media::read(&path).await?;
+        let mime = local_mime(&path);
+        let url = format!("data:{mime};base64,{}", STANDARD.encode(&bytes));
+        let detail = item.get("detail").cloned();
+        *item = json!({"type":kind, "url":url});
+        if let Some(detail) = detail {
+            item["detail"] = detail;
+        }
+        local.insert(index, (supplied, bytes));
+    }
+    Ok(Captured { input, local })
+}
 
 #[derive(Default)]
-pub(super) struct Projection {
+pub(crate) struct Projection {
     pub input: Vec<Value>,
     pub attachments: Vec<Value>,
     pub summaries: Vec<Value>,
     pub map: Vec<Value>,
 }
 
-pub(super) async fn project(
+pub(crate) async fn project(
     scope: &Scope,
     store: &Store,
     chat: &JsString,
-    prompt: &str,
-    operation: &str,
-    input: Vec<Value>,
-    console_directory: &Path,
+    prompt: &JsString,
+    operation: &JsString,
+    mut captured: Captured,
+    mut output: Projection,
 ) -> Result<Projection> {
-    let mut output = Projection::default();
-    for (index, mut item) in input.into_iter().enumerate() {
-        let (kind, source_name, bytes, mime) = match item["type"].as_str() {
-            Some("localImage" | "localAudio") => {
-                let kind = if item["type"] == "localImage" {
-                    "image"
-                } else {
-                    "audio"
-                };
-                let supplied = item["path"]
-                    .as_js_string()
-                    .context("The console media path is required.")?
-                    .clone();
-                let native = console_directory.join(paths::native(&supplied));
-                let bytes = media::read(&native).await?;
-                let mime = local_mime(&native);
-                let url = format!("data:{mime};base64,{}", STANDARD.encode(&bytes));
-                let detail = item.get("detail").cloned();
-                item = json!({"type":kind, "url":url});
-                if let Some(detail) = detail {
-                    item["detail"] = detail;
-                }
-                (kind, Some(supplied), bytes, JsString::from(mime))
-            }
-            Some("image" | "audio")
-                if item["url"]
-                    .as_str()
-                    .is_some_and(|url| url.starts_with("data:")) =>
-            {
-                let kind = if item["type"] == "image" {
-                    "image"
-                } else {
-                    "audio"
-                };
-                let (mime, bytes) = inline(&item["url"])?;
-                (kind, None, bytes, mime)
-            }
-            _ => {
-                output.input.push(item);
-                continue;
-            }
+    for (index, item) in captured.input.iter().enumerate() {
+        if output
+            .map
+            .iter()
+            .any(|entry| entry["index"].as_u64() == Some(index as u64))
+        {
+            continue;
+        }
+        let Some(kind @ ("image" | "audio")) = item["type"].as_str() else {
+            continue;
+        };
+        let Some(url) = item["url"].as_str().filter(|url| url.starts_with("data:")) else {
+            continue;
+        };
+        let (source_name, bytes, mime) = if let Some((name, bytes)) = captured.local.remove(&index)
+        {
+            let mime = url
+                .strip_prefix("data:")
+                .unwrap()
+                .split_once(';')
+                .unwrap()
+                .0
+                .into();
+            (Some(name), bytes, mime)
+        } else {
+            let (mime, bytes) = inline(&item["url"])?;
+            (None, bytes, mime)
         };
         let grant = scope.attachment_material()?;
         let seed = json!((
@@ -134,12 +148,12 @@ pub(super) async fn project(
         tokio::fs::File::open(&saved).await?.sync_all().await?;
         tokio::task::spawn_blocking(move || cantrip_history::files::flush_directory(&directory))
             .await??;
-        output.input.push(item);
         output.map.push(json!({"id":id,"index":index}));
         output.attachments.push(attachment);
         output.summaries.push(summary);
     }
     scope.identity()?;
+    output.input = captured.input;
     Ok(output)
 }
 
