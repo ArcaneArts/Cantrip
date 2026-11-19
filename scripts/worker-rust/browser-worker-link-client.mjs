@@ -11,9 +11,6 @@ import {
 } from "../../packages/protocol/dist/worker-link.js";
 import { openLocalWorkerLink, openWorkerLinkSocket } from "./direct-client.mjs";
 
-// Less credit than one of our fixture JPEGs, so a complete frame requires
-// credit returns. This also puts a bound on maximum messages at the test peer.
-const CREDIT = 40 * 1024;
 const LANES = ["interactive", "realtime"];
 
 export class BrowserWorkerLink {
@@ -94,6 +91,8 @@ export class BrowserWorkerLink {
     this.grant = grant;
     this.call = call;
     this.route = route;
+    // LAN has enough credit to exceed its 64 KiB SCTP message limit.
+    this.initialCredit = (route === "lan" ? 96 : 40) * 1024;
     this.attachment = grant.binding.resource.attachmentId;
     this.lanes = new Map();
     this.frameId = 0;
@@ -114,7 +113,7 @@ export class BrowserWorkerLink {
         if (header.kind === "data") {
           assert.equal(header.payloadFormat, "raw");
           assert.equal(header.direction, "worker-to-client");
-          assert.ok(payload.byteLength <= CREDIT);
+          assert.ok(payload.byteLength <= this.initialCredit);
           if (header.lane === "realtime") this.screenshotChunks++;
           const assembled = lane.assembler.push(payload);
           this.wire(lane, {
@@ -186,7 +185,7 @@ export class BrowserWorkerLink {
         expected: 0,
         sequence: 0,
         messages: [],
-        credit: CREDIT,
+        credit: this.initialCredit,
         assembler: new WorkerLinkRemoteSurfaceFrameAssembler(
           name === "realtime",
         ),
@@ -196,13 +195,13 @@ export class BrowserWorkerLink {
         kind: "open",
         openNonce: randomUUID(),
         channelKind: "reliable-stream",
-        initialCreditBytes: CREDIT,
+        initialCreditBytes: this.initialCredit,
         grant: this.grant,
       });
       await this.wait(() => lane.messages.length > 0);
       const reply = lane.messages.shift();
       assert.equal(reply.kind, "accept", JSON.stringify(reply));
-      assert.equal(reply.initialCreditBytes, CREDIT);
+      assert.equal(reply.initialCreditBytes, this.initialCredit);
     }
   }
 

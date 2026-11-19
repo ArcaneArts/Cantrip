@@ -513,7 +513,10 @@ try {
   const image = await first.clear(screenshot);
   assert.deepEqual([...image.slice(0, 2)], [0xff, 0xd8]);
   assert.ok(image.byteLength > 64 * 1024);
-  if (first.link) assert.ok(first.link.fragmentedScreenshot);
+  if (first.link) {
+    assert.ok(image.byteLength > first.link.initialCredit);
+    assert.ok(first.link.fragmentedScreenshot);
+  }
   const operationId = randomUUID();
   const navigation = {
     type: "navigate",
