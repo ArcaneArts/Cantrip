@@ -35,10 +35,14 @@ pub(in crate::codex) struct Attempt {
     pub request: Value,
     forwarded: Arc<AtomicBool>,
     declined: watch::Receiver<bool>,
+    pub resource_signal: Option<Signal>,
 }
 
 impl Attempt {
     pub async fn allow(&self, operation: &JsString) -> Result<Value> {
+        if let Some(signal) = &self.resource_signal {
+            signal.check()?;
+        }
         {
             let mut state = self.router.0.producers.lock().unwrap();
             let pending = state
@@ -173,6 +177,9 @@ impl Router {
                 request,
                 forwarded: forwarded.clone(),
                 declined,
+                resource_signal: self
+                    .resource(&key.thread_id)
+                    .map(|resource| resource.signal.clone()),
             };
             (selected.handler)(attempt).await
         } else {

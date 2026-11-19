@@ -3,11 +3,13 @@
 mod goal_cycle;
 mod pending;
 mod producer;
+mod resources;
 pub(in crate::codex) use producer::Attempt as GoalAttempt;
 mod wire;
 
 use super::{
     admission::{Adapter, NativeRequest, TaskDispatch, TaskQueued},
+    revocation::Resource,
     rpc_protocol::is_private_inference,
     session::{Event, EventKind, Session},
     task_pause::Root as TaskRoot,
@@ -83,6 +85,7 @@ struct Inner {
     task_goals: Mutex<HashMap<JsString, TaskGoalRoot>>,
     task_roots: Mutex<HashMap<JsString, TaskRoot>>,
     producers: Mutex<producer::Producers>,
+    resources: Mutex<HashMap<JsString, Arc<Resource>>>,
     version: watch::Sender<u64>,
 }
 
@@ -112,6 +115,7 @@ impl Router {
             task_goals: Mutex::new(HashMap::new()),
             task_roots: Mutex::new(HashMap::new()),
             producers: Mutex::default(),
+            resources: Mutex::default(),
             version: watch::channel(0).0,
         })))
     }
@@ -485,14 +489,20 @@ impl Router {
             entries.insert(gate.key.attempt_id.clone(), pending.clone());
         }
         self.changed();
-        let own_signal = pending.signal();
+        let resource = self.resource(gate.root_thread());
         let signal = Signal::any(
-            [Some(own_signal), context.resource_signal.clone()]
-                .into_iter()
-                .flatten()
-                .collect(),
+            [
+                Some(pending.signal()),
+                context.resource_signal,
+                resource.as_ref().map(|resource| resource.signal.clone()),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
         );
-        let result = self.allow_gate(&gate, &pending, &signal).await;
+        let result = self
+            .allow_gate(&gate, &pending, &signal, resource.as_deref())
+            .await;
         let result = match result {
             Ok(()) => Ok(()),
             Err(error) => {
@@ -549,7 +559,13 @@ impl Router {
         result
     }
 
-    async fn allow_gate(&self, gate: &Gate, pending: &Pending, signal: &Signal) -> Result<()> {
+    async fn allow_gate(
+        &self,
+        gate: &Gate,
+        pending: &Pending,
+        signal: &Signal,
+        resource: Option<&Resource>,
+    ) -> Result<()> {
         signal.check()?;
         if let Some(first_input) = pending.first_input() {
             if !first_input.dispatching() {
@@ -622,11 +638,22 @@ impl Router {
                             .as_ref()
                             .map(|cycle| cycle.parent["chatId"].clone())
                             .or_else(|| task.as_ref().map(|root| root.binding["chatId"].clone()))
+                            .or_else(|| {
+                                resource.map(|resource| cantrip_wire::value::json!(resource.chat))
+                            })
                             .or(context.chat_id),
                         project_id: cycle
                             .as_ref()
                             .map(|cycle| cycle.project.clone())
                             .or_else(|| task.as_ref().map(|root| root.binding["projectId"].clone()))
+                            .or_else(|| {
+                                resource.and_then(|resource| {
+                                    resource
+                                        .project
+                                        .as_ref()
+                                        .map(|id| cantrip_wire::value::json!(id))
+                                })
+                            })
                             .or(context.project_id),
                         independent: gate.phase == Phase::BeginIndependent,
                     })

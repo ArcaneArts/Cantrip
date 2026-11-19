@@ -5094,3 +5094,32 @@ in the same run.
 
 Provider operation adapters, inference resource-revocation delivery,
 and production cutover remain open.
+
+## 110. Revoke native inference when Core removes a resource
+
+Reference commit `8dbc793aac41716c4a902f02f92b22b935e34506` (#3272).
+
+The Rust worker handles `inference.revoke` in its verified owner and
+server scope. It matches a deleted chat or a deleted project and its
+captured chat IDs. It seals active preparation, revokes matching managed
+inference and MCP authority, removes cached Task pause and Goal producer
+state, and wakes admission recovery. Requests from a revoked native
+thread cannot use its previous managed binding.
+
+Queued work can be cancelled locally. An already dispatched execution
+retains its reservation until the native finish boundary or confirmed
+process exit. The adapter sends the exact thread and turn interrupt
+through the owning session and retries within that generation when
+the native request fails. A repeated Core delivery does not create
+another retry owner.
+
+Local macOS ARM64 validation used the Rust server and worker, PGlite,
+bundled Codex, and an empty worker PATH. Deleting a Task through Core
+interrupted a held provider stream and removed the Task. The admission
+test exercised project matching, duplicate revocation, unrelated work,
+and the private finish boundary. Existing Chat history, private labels,
+catalog discovery, and MCP attachment coverage passed.
+
+Task-input route revocation, provider operation adapters, and production
+cutover remain open. Computer-use and OS-hosted execution need their
+respective revocation integrations as those worker services are ported.

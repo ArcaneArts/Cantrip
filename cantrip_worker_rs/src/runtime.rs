@@ -399,6 +399,11 @@ async fn cycle(
                     });
                     continue;
                 }
+                if kind == crate::codex::revocation::COMMAND {
+                    let result = turns.revoke_resource(command);
+                    finish(&request, &worker, logs, &outgoing, began, &result);
+                    continue;
+                }
                 if matches!(kind, "inference.configure" | "inference.status") {
                     let result = codex.inference_command(command);
                     finish(&request, &worker, logs, &outgoing, began, &result);

@@ -1,6 +1,9 @@
 use super::*;
 use crate::{
-    codex::rpc_requests::{Ports, Requests},
+    codex::{
+        revocation::Target,
+        rpc_requests::{Ports, Requests},
+    },
     inference::{admission::Options, ownership},
 };
 use futures::FutureExt;
@@ -367,6 +370,73 @@ async fn pre_acquisition_preparation_does_not_reserve_response_capacity() {
     assert!(adapter.acquire(input).await.is_err());
 
     unrelated.not_dispatched().unwrap();
+    within(adapter.process_exited()).await.unwrap();
+    within(manager.close()).await.unwrap();
+}
+
+#[tokio::test]
+async fn project_revocation_cancels_waiters_and_interrupts_once_without_releasing_native_work() {
+    let manager = Manager::new(Options::local(scope()));
+    let (interrupted, mut interruptions) = mpsc::unbounded_channel();
+    let adapter = Adapter::new(
+        manager.clone(),
+        Some(Arc::new(move |execution| Ok(interrupted.send(execution)?))),
+    )
+    .unwrap();
+    let mut input = request(&adapter, "running");
+    input.chat_id = Some(json!("running-chat"));
+    input.project_id = Some(json!("deleted-project"));
+    input.thread_id = Some("thread".into());
+    let running = within(adapter.acquire(input)).await.unwrap();
+    running.dispatched().unwrap();
+    let gate = native("thread", "turn", "physical-scope", "begin");
+    within(adapter.enter_native(gate)).await.unwrap();
+
+    let mut waiting = request(&adapter, "waiting");
+    waiting.chat_id = Some(json!("listed-chat"));
+    let waiting = adapter.acquire(waiting);
+    let mut other = request(&adapter, "other");
+    other.chat_id = Some(json!("other-chat"));
+    other.project_id = Some(json!("other-project"));
+    let mut other = adapter.acquire(other);
+    within(async {
+        while manager.snapshot()["pools"].as_array().unwrap()[0]["queuedCount"] != json!(2) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await;
+
+    let target = Target::read(&json!({
+        "kind":"project","projectId":"deleted-project","chatIds":["listed-chat"],
+    }))
+    .unwrap();
+    adapter.revoke(&target).unwrap();
+    adapter.revoke(&target).unwrap();
+    let stopped = within(interruptions.recv()).await.unwrap();
+    assert_eq!(stopped.thread_id.as_str(), Some("thread"));
+    assert_eq!(stopped.turn_id.as_str(), Some("turn"));
+    assert!(interruptions.try_recv().is_err());
+    assert!(within(waiting).await.is_err());
+    assert_eq!(running.ticket.status()["state"], "cancelling");
+    assert!(stopped.settled.work().now_or_never().is_none());
+    assert!(other.as_mut().now_or_never().is_none());
+    adapter
+        .observe(
+            "turn/completed",
+            &json!({"threadId":"thread","turn":json!({"id":"turn","status":"interrupted"})}),
+        )
+        .unwrap();
+    assert!(stopped.settled.work().now_or_never().is_none());
+    adapter
+        .finish_native(
+            &"thread".into(),
+            &"turn".into(),
+            &"physical-scope".into(),
+            false,
+        )
+        .unwrap();
+    within(stopped.settled.work()).await.unwrap();
+    within(other).await.unwrap().not_dispatched().unwrap();
     within(adapter.process_exited()).await.unwrap();
     within(manager.close()).await.unwrap();
 }
