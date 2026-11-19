@@ -63,6 +63,22 @@ test("allows the GitHub Actions workflow_runs response field", () => {
   );
 });
 
+test("allows the GitHub response object key in Rust worker fixtures and still flags SQL", () => {
+  const file = "scripts/worker-rust/github-operations-fixture.mjs";
+  const violations = forbiddenWorkflowReferences([
+    {
+      file,
+      sourceText: [
+        "const response = { workflow_runs: [] };",
+        'const query = "SELECT * FROM workflow_runs";',
+      ].join("\n"),
+    },
+  ]);
+  assert.deepEqual(violations, [
+    `${file}:2: retired workflow table: workflow_runs`,
+  ]);
+});
+
 test("requires the forward migration and its journal entry to remain complete", async () => {
   const [migrationSql, journal] = await Promise.all([
     readFile(

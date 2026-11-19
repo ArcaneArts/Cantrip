@@ -128,9 +128,13 @@ const selfPaths = new Set([
   "scripts/verify-workflow-removal.test.mjs",
 ]);
 
-const githubActionsSqlFieldPaths = new Set([
+const githubActionsResponsePaths = new Set([
   "cantrip_worker/src/github.ts",
   "cantrip_worker/test/github.test.ts",
+]);
+const githubActionsFixturePaths = new Set([
+  "scripts/worker-rust/github-operations-compatibility.mjs",
+  "scripts/worker-rust/github-operations-fixture.mjs",
 ]);
 
 const forbiddenPatterns = [
@@ -143,8 +147,11 @@ const forbiddenPatterns = [
     name: "retired workflow table",
     expression:
       /\bworkflow_(?:definitions|revisions|revision_nodes|revision_edges|runs|run_nodes|run_node_dependencies|run_node_items|node_attempts|worktree_leases|run_events|approval_gates|automation_triggers|trigger_deliveries)\b/gu,
-    isAllowed: ({ file, value }) =>
-      value === "workflow_runs" && githubActionsSqlFieldPaths.has(file),
+    isAllowed: ({ file, value, sourceText, offset }) =>
+      value === "workflow_runs" &&
+      (githubActionsResponsePaths.has(file) ||
+        (githubActionsFixturePaths.has(file) &&
+          /^\s*:/u.test(sourceText.slice(offset + value.length)))),
   },
   {
     name: "retired workflow HTTP surface",
@@ -221,9 +228,11 @@ export function forbiddenWorkflowReferences(files) {
     for (const pattern of forbiddenPatterns) {
       pattern.expression.lastIndex = 0;
       for (const match of sourceText.matchAll(pattern.expression)) {
-        if (pattern.isAllowed?.({ file, value: match[0] })) continue;
+        const offset = match.index ?? 0;
+        if (pattern.isAllowed?.({ file, value: match[0], sourceText, offset }))
+          continue;
         violations.push(
-          `${file}:${lineForOffset(sourceText, match.index ?? 0)}: ${pattern.name}: ${match[0]}`,
+          `${file}:${lineForOffset(sourceText, offset)}: ${pattern.name}: ${match[0]}`,
         );
       }
     }
