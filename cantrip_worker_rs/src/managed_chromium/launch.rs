@@ -134,7 +134,7 @@ pub(super) async fn probe(
     Ok(())
 }
 
-fn environment(runtime: &Path, state: &Path) -> Result<Vec<(OsString, OsString)>> {
+pub(super) fn environment(runtime: &Path, state: &Path) -> Result<Vec<(OsString, OsString)>> {
     let mut environment = vec![("PATH".into(), OsString::new())];
     for directory in ["home", "tmp", "cache"] {
         storage::private(&state.join(directory))?;

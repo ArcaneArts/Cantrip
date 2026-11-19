@@ -22,6 +22,7 @@ use tokio_tungstenite::{
 use url::Url;
 
 const MESSAGE_LIMIT: usize = 16 * 1024 * 1024;
+const INTERCEPTED_MESSAGE_LIMIT: usize = 28 * 1024 * 1024;
 const EVENT_BUFFER: usize = 8 * 1024 * 1024;
 const REQUEST_LIMIT: usize = 64;
 const TARGET_CLOSED: &str = "Chromium page was detached or crashed.";
@@ -40,6 +41,7 @@ pub struct Client {
 }
 
 struct State {
+    message_limit: usize,
     last_id: AtomicU64,
     requests: Semaphore,
     write_buffer: Arc<Semaphore>,
@@ -116,6 +118,7 @@ impl Event {
 
 pub struct Subscription {
     session: Option<JsString>,
+    all_sessions: bool,
     target: Option<Arc<Target>>,
     events: broadcast::Receiver<Event>,
     stop: watch::Receiver<bool>,
@@ -138,7 +141,7 @@ impl Subscription {
                 } => return Err(anyhow!(TARGET_CLOSED)),
                 event = self.events.recv() => event.context("Chromium event delivery interrupted.")?,
             };
-            if event.session_id() == self.session.as_ref() {
+            if self.all_sessions || event.session_id() == self.session.as_ref() {
                 return Ok(event);
             }
         }
@@ -165,11 +168,16 @@ pub(super) fn loopback_endpoint(address: &str) -> Result<Url> {
 }
 
 impl Client {
-    pub(super) async fn connect(url: Url) -> Result<Self> {
+    pub(super) async fn connect(url: Url, intercepted: bool) -> Result<Self> {
+        let message_limit = if intercepted {
+            INTERCEPTED_MESSAGE_LIMIT
+        } else {
+            MESSAGE_LIMIT
+        };
         let config = WebSocketConfig::default()
-            .max_message_size(Some(MESSAGE_LIMIT))
-            .max_frame_size(Some(MESSAGE_LIMIT))
-            .max_write_buffer_size(MESSAGE_LIMIT + 256 * 1024);
+            .max_message_size(Some(message_limit))
+            .max_frame_size(Some(message_limit))
+            .max_write_buffer_size(message_limit + 256 * 1024);
         let (socket, _) = timeout(
             CONNECT_TIMEOUT,
             connect_async_with_config(url.as_str(), Some(config), false),
@@ -177,12 +185,13 @@ impl Client {
         .await
         .context("Timed out connecting to Chromium CDP.")??;
         let (writer, writes) = mpsc::channel(REQUEST_LIMIT);
-        let (events, _) = broadcast::channel(32);
+        let (events, _) = broadcast::channel(if intercepted { 512 } else { 32 });
         let (stop, done) = watch::channel(false);
         let state = Arc::new(State {
+            message_limit,
             last_id: AtomicU64::new(0),
             requests: Semaphore::new(REQUEST_LIMIT),
-            write_buffer: Arc::new(Semaphore::new(MESSAGE_LIMIT)),
+            write_buffer: Arc::new(Semaphore::new(message_limit)),
             pending: Mutex::new(HashMap::new()),
             events,
             targets: Mutex::default(),
@@ -195,10 +204,17 @@ impl Client {
     pub fn subscribe(&self, session: Option<&JsString>) -> Subscription {
         Subscription {
             session: session.cloned(),
+            all_sessions: false,
             target: None,
             events: self.state.events.subscribe(),
             stop: self.state.stop.subscribe(),
         }
+    }
+
+    pub fn subscribe_all(&self) -> Subscription {
+        let mut subscription = self.subscribe(None);
+        subscription.all_sessions = true;
+        subscription
     }
 
     pub(super) fn watch_target(&self, id: &JsString, session: &JsString) -> Arc<Target> {
@@ -259,7 +275,7 @@ impl Client {
         }
         let text = value.stringify();
         ensure!(
-            text.len() <= MESSAGE_LIMIT,
+            text.len() <= self.state.message_limit,
             "Chromium command is too large."
         );
         let buffer = self
@@ -426,7 +442,7 @@ mod tests {
             let _ = socket.next().await;
             socket.close(None).await.unwrap();
         });
-        let client = Client::connect(url).await.unwrap();
+        let client = Client::connect(url, false).await.unwrap();
         let session = JsString::from("current");
         let target = JsString::from("owned-tab");
         let watched = client.watch_target(&target, &session);

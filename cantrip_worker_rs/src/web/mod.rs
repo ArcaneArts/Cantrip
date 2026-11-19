@@ -1,4 +1,5 @@
 mod network;
+mod render;
 mod robots;
 
 use anyhow::{Context, Result, anyhow, bail, ensure};
@@ -72,6 +73,10 @@ pub(crate) struct Service {
     network: Network,
     robots: Robots,
     extraction: Arc<Semaphore>,
+    renderer: Option<Arc<crate::managed_chromium::Manager>>,
+    render_slots: Semaphore,
+    render_requests: Semaphore,
+    render_assets: Semaphore,
 }
 
 impl Default for Service {
@@ -81,12 +86,37 @@ impl Default for Service {
             network: Network::default(),
             robots: Robots::default(),
             extraction: Arc::new(Semaphore::new(2)),
+            renderer: None,
+            render_slots: Semaphore::new(4),
+            render_requests: Semaphore::new(20),
+            render_assets: Semaphore::new(8),
         }
     }
 }
 
 impl Service {
-    pub(crate) async fn read(&self, binding: &Value, args: Option<&Value>) -> Result<Value> {
+    #[cfg(test)]
+    pub(crate) fn with_fixture(
+        renderer: Arc<crate::managed_chromium::Manager>,
+        address: std::net::SocketAddr,
+    ) -> Arc<Self> {
+        let mut service = Self::new(Some(renderer));
+        service.network.fixture = Some(address);
+        Arc::new(service)
+    }
+
+    pub(crate) fn new(renderer: Option<Arc<crate::managed_chromium::Manager>>) -> Self {
+        Self {
+            renderer,
+            ..Self::default()
+        }
+    }
+
+    pub(crate) async fn read(
+        self: &Arc<Self>,
+        binding: &Value,
+        args: Option<&Value>,
+    ) -> Result<Value> {
         let args = mcp_host::parse("mcpStdioInput/web_read", args).map_err(response_error)?;
         let scope = (
             binding["ownerId"]
@@ -111,7 +141,8 @@ impl Service {
         let render = args["render"].as_str().unwrap();
         if render == "always" {
             self.robots.check(&self.network, &url).await?;
-            bail!("Rendered reading is unavailable on this worker.");
+            let document = self.render(url).await?;
+            return self.page(scope, Arc::new(document), 0, maximum);
         }
         let page = timeout(
             PAGE_TIMEOUT,
@@ -127,16 +158,55 @@ impl Service {
             "Web read returned HTTP {}.",
             page.status
         );
+        let final_url = page.url.clone();
+        let document = self.extract(page).await?;
+        let document = if render == "auto" && document.content.units().len() < 100 {
+            self.render(final_url).await?
+        } else {
+            document
+        };
+        self.page(scope, Arc::new(document), 0, maximum)
+    }
+
+    async fn extract(&self, page: Page) -> Result<Document> {
         let budget = self.extraction.clone().acquire_owned().await?;
-        let document = tokio::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || {
             let _budget = budget;
             document(page)
         })
-        .await??;
-        if render == "auto" && document.content.units().len() < 100 {
-            bail!("Rendered reading is unavailable on this worker.");
+        .await?
+    }
+
+    async fn render(self: &Arc<Self>, url: Url) -> Result<Document> {
+        let manager = self
+            .renderer
+            .clone()
+            .context("Rendered reading is unavailable on this worker.")?;
+        let owner = self.clone();
+        let (keep_running, cancelled) = tokio::sync::oneshot::channel::<()>();
+        let task =
+            tokio::spawn(async move { render::managed(owner, manager, url, cancelled).await });
+        let result = task.await?;
+        drop(keep_running);
+        let rendered = result?;
+        let mut document = self
+            .extract(Page {
+                url: rendered.url,
+                bytes: rendered.html.into_bytes(),
+                content_type: "text/html".into(),
+                charset: None,
+                status: 200,
+            })
+            .await?;
+        ensure!(
+            !document.content.is_empty(),
+            "Rendered reading found no usable page content."
+        );
+        if document.title.is_empty() {
+            document.title = compact(&rendered.title, 1_000);
         }
-        self.page(scope, Arc::new(document), 0, maximum)
+        document.method = "rendered";
+        Ok(document)
     }
 
     fn consume(&self, scope: &Scope) -> Result<()> {
@@ -340,6 +410,7 @@ mod tests {
         });
         let mut service = Service::default();
         service.network.fixture = Some(address);
+        let service = Arc::new(service);
         let binding = json!({"ownerId":"owner","chatId":"chat"});
         let attempt =
             |path: &str| json!({"url":format!("http://docs.example{path}"),"render":"never"});

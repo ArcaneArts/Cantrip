@@ -84,6 +84,7 @@ struct Inner {
     worker: JsString,
     preparation: Coordinator,
     broker: OnceCell<Broker>,
+    chromium: Arc<crate::managed_chromium::Manager>,
     cli_contexts: crate::cli::Contexts,
     permission_profiles: bool,
     autonomous: OnceLock<Autonomous>,
@@ -98,6 +99,7 @@ impl Ensurer {
         routing: Arc<Registry>,
         skills: Option<PathBuf>,
         cli_contexts: crate::cli::Contexts,
+        chromium: Arc<crate::managed_chromium::Manager>,
     ) -> Self {
         let (data, worker) = {
             let config = settings.lock().unwrap();
@@ -121,6 +123,7 @@ impl Ensurer {
             worker,
             preparation,
             broker: OnceCell::new(),
+            chromium,
             cli_contexts,
             autonomous: OnceLock::new(),
             permission_profiles,
@@ -777,7 +780,7 @@ impl Ensurer {
                     Arc::new(move || Ok(settings.lock().unwrap().token.clone())),
                 )?;
                 let encryption = self.0.encryption.clone();
-                Broker::start(
+                Broker::start_with_web(
                     &self.0.data,
                     self.0.worker.clone(),
                     Arc::new(move || {
@@ -791,6 +794,7 @@ impl Ensurer {
                         ))
                     }),
                     server,
+                    Some(self.0.chromium.clone()),
                 )
                 .await
             })

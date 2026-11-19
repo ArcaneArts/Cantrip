@@ -1,5 +1,9 @@
 use anyhow::{Context, Result, anyhow, bail, ensure};
-use reqwest::{Client, header, redirect::Policy};
+use reqwest::{
+    Client, Method,
+    header::{self, HeaderMap},
+    redirect::Policy,
+};
 use std::{
     collections::HashMap,
     io::{Cursor, Read},
@@ -7,12 +11,17 @@ use std::{
     sync::{Arc, Mutex, Weak},
     time::Duration,
 };
-use tokio::{net::lookup_host, sync::Semaphore, time::timeout};
+use tokio::{
+    net::lookup_host,
+    sync::{OwnedSemaphorePermit, Semaphore},
+    time::timeout,
+};
 use url::{Host, Url};
 
 const REDIRECTS: usize = 5;
 const ACCEPT: &str = "text/html,application/xhtml+xml,text/plain,text/markdown;q=0.9,*/*;q=0.1";
-const USER_AGENT: &str = "CantripResearchBot/1.0 (+https://github.com/ArcaneArts/Cantrip)";
+pub(super) const USER_AGENT: &str =
+    "CantripResearchBot/1.0 (+https://github.com/ArcaneArts/Cantrip)";
 const READ_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub(super) struct Limits {
@@ -158,7 +167,12 @@ where
 }
 
 impl Network {
-    pub(super) async fn get(&self, url: Url, limits: &Limits) -> Result<Response> {
+    async fn send(
+        &self,
+        url: Url,
+        method: Method,
+        headers: HeaderMap,
+    ) -> Result<(reqwest::Response, [OwnedSemaphorePermit; 2])> {
         let host = url.host().context("Web reads require a host.")?;
         let key = url.host_str().unwrap().trim_end_matches('.');
         let host_limit = {
@@ -201,15 +215,22 @@ impl Network {
             let chosen = resolve(name, port).await?;
             client = client.resolve(name, chosen);
         }
-        let mut response = client
+        let response = client
             .build()?
-            .get(url.clone())
-            .header(header::ACCEPT, ACCEPT)
-            .header(header::ACCEPT_ENCODING, "gzip, deflate, br")
-            .header(header::USER_AGENT, USER_AGENT)
+            .request(method, url)
+            .headers(headers)
             .send()
             .await
             .map_err(reqwest::Error::without_url)?;
+        Ok((response, [host_permit, global_permit]))
+    }
+
+    pub(super) async fn get(&self, url: Url, limits: &Limits) -> Result<Response> {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::ACCEPT, ACCEPT.parse()?);
+        headers.insert(header::ACCEPT_ENCODING, "gzip, deflate, br".parse()?);
+        headers.insert(header::USER_AGENT, USER_AGENT.parse()?);
+        let (mut response, permits) = self.send(url.clone(), Method::GET, headers).await?;
         let status = response.status().as_u16();
         let location = if (300..400).contains(&status) {
             response
@@ -251,28 +272,14 @@ impl Network {
         } else {
             "Web response exceeds the compressed byte limit."
         };
-        ensure!(
-            response
-                .content_length()
-                .is_none_or(|len| len <= limits.compressed as u64),
-            "{message}"
-        );
-        let mut bytes = Vec::new();
-        while let Some(chunk) = response
-            .chunk()
-            .await
-            .map_err(reqwest::Error::without_url)?
-        {
-            ensure!(chunk.len() <= limits.compressed - bytes.len(), "{message}");
-            bytes.extend_from_slice(&chunk);
-        }
+        let bytes = collect(&mut response, limits.compressed, message).await?;
         if let Some(location) = location {
             return Ok(Response::Redirect(redirect(&url, &location)?));
         }
 
         let expanded = limits.expanded;
         let bytes = tokio::task::spawn_blocking(move || {
-            let _permits = (host_permit, global_permit);
+            let _permits = permits;
             expand(bytes, &encoding, expanded)
         })
         .await??;
@@ -284,6 +291,92 @@ impl Network {
             url,
         }))
     }
+
+    pub(super) async fn resource(
+        &self,
+        url: Url,
+        method: Method,
+        headers: HeaderMap,
+    ) -> Result<Resource> {
+        const LIMIT: usize = 20_000_000;
+        let is_head = method == Method::HEAD;
+        let (mut response, permits) = self.send(url.clone(), method, headers).await?;
+        let status = response.status();
+        ensure!(
+            status.as_u16() >= 200,
+            "Browser resource returned an unsupported status."
+        );
+        let headers = response.headers().clone();
+        if status.is_redirection()
+            && let Some(location) = headers.get(header::LOCATION)
+        {
+            redirect(&url, location.to_str()?)?;
+        }
+        ensure!(
+            !head(&response, header::CONTENT_TYPE)
+                .split(';')
+                .next()
+                .is_some_and(|value| value.trim().eq_ignore_ascii_case("text/event-stream")),
+            "Browser event streams are disabled for rendered reading."
+        );
+        let body = if is_head {
+            Vec::new()
+        } else {
+            collect(
+                &mut response,
+                LIMIT,
+                "Browser resource exceeds the response byte limit.",
+            )
+            .await?
+        };
+        let encoding = headers
+            .get(header::CONTENT_ENCODING)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        let body = if body.is_empty() {
+            body
+        } else {
+            tokio::task::spawn_blocking(move || {
+                let _permits = permits;
+                expand(body, &encoding, LIMIT)
+            })
+            .await??
+        };
+        Ok(Resource {
+            status: status.as_u16(),
+            headers,
+            body,
+            is_head,
+        })
+    }
+}
+
+pub(super) struct Resource {
+    pub status: u16,
+    pub headers: HeaderMap,
+    pub body: Vec<u8>,
+    pub is_head: bool,
+}
+
+async fn collect(response: &mut reqwest::Response, limit: usize, message: &str) -> Result<Vec<u8>> {
+    ensure!(
+        response
+            .content_length()
+            .is_none_or(|length| length <= limit as u64),
+        "{message}"
+    );
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(reqwest::Error::without_url)?
+    {
+        ensure!(chunk.len() <= limit - body.len(), "{message}");
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
 }
 
 async fn resolve(name: &str, port: u16) -> Result<SocketAddr> {

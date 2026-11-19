@@ -334,6 +334,7 @@ async fn cycle(
         routing.clone(),
         skill_root.clone(),
         cli.contexts(),
+        managed_chromium.clone(),
     );
     let history = crate::history::managed::runtime::open(
         configuration.clone(),
