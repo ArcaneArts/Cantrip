@@ -1,6 +1,6 @@
 use super::native::{Configuration, LoadedThread};
 use crate::{
-    codex::managed::Runtime,
+    codex::{guest_environment::Environment, managed::Runtime},
     history::live::observation::{Observer, Runtime as _},
 };
 use anyhow::{Context, Result, bail};
@@ -46,14 +46,21 @@ pub(super) async fn configuration(
     provider: &str,
     standalone: bool,
     permission_profiles: bool,
+    environment: Option<&Environment>,
 ) -> Result<Configuration> {
-    let workspace = std::path::absolute(Path::new(
-        cwd.as_str().context("Invalid Unicode workspace path")?,
-    ))?;
-    let instructions = developer_instructions(standalone, &workspace).await;
-    let cwd = workspace
-        .to_str()
-        .context("Invalid Unicode workspace path")?;
+    let path = cwd.as_str().context("Invalid Unicode workspace path")?;
+    let (workspace, instructions) = if let Some(environment) = environment {
+        (path.to_owned(), environment.instructions.clone())
+    } else {
+        let workspace = std::path::absolute(Path::new(path))?;
+        let instructions = developer_instructions(standalone, &workspace).await;
+        let workspace = workspace
+            .to_str()
+            .context("Invalid Unicode workspace path")?
+            .to_owned();
+        (workspace, instructions)
+    };
+    let cwd = workspace.as_str();
     let defaults = if standalone {
         &Value::Null
     } else {
@@ -76,6 +83,9 @@ pub(super) async fn configuration(
             "mcp_servers": mcp,
         }),
     });
+    if let Some(environment) = environment {
+        start["environments"] = json!(vec![environment.selection.clone()]);
+    }
     if structured {
         start["sandbox"] = json!("read-only");
     } else if permission_profiles {

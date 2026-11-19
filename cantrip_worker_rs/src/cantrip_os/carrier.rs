@@ -42,6 +42,17 @@ pub(super) enum Program {
 }
 
 impl Transport {
+    pub(crate) fn executor_connection(
+        &self,
+        binding: &Value,
+    ) -> Result<(&'static OsStr, Vec<OsString>)> {
+        let workspace = super::text(binding, "workspace_id")?;
+        Ok(self.spec(
+            Program::Executor,
+            &["connect", workspace, "--expect", &binding.stringify()],
+        ))
+    }
+
     pub(crate) fn from_value(value: &Value) -> Result<Self> {
         let field = |name: &str| {
             value[name]

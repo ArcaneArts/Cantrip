@@ -98,11 +98,7 @@ impl Session {
         resume_session_id: Option<&str>,
         lifetime: &Scope,
     ) -> Result<(Self, String)> {
-        let workspace = text(&binding, "workspace_id")?;
-        let (program, args) = transport.spec(
-            Program::Executor,
-            &["connect", workspace, "--expect", &binding.stringify()],
-        );
+        let (program, args) = transport.executor_connection(&binding)?;
         lifetime.check()?;
         let mut command = Command::new(program);
         command

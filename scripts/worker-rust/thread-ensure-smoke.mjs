@@ -1,7 +1,7 @@
 // Real worker command socket, owned Codex transport and native MCP attachment.
 // The server peer supplies only the enrollment/command contracts the worker uses.
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter, once } from "node:events";
 import {
@@ -10,19 +10,24 @@ import {
   readFile,
   readdir,
   rm,
+  stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { parseArgs } from "node:util";
+import { setTimeout as delay } from "node:timers/promises";
+import { parseArgs, promisify } from "node:util";
 import {
   nativeTurnRecoveryObservationSchema,
   workerCliCommandCallSchema,
 } from "../../packages/protocol/dist/index.js";
 import { NativeSuspensionStore } from "../../cantrip_worker/src/native-suspension-store.ts";
 import { CodexRpcClient } from "../../cantrip_worker/src/codex/rpc-client.ts";
+import { OsAgentPlacements } from "../../cantrip_worker/src/os-executor/agent-placements.ts";
+import { OsNativeEnvironment } from "../../cantrip_worker/src/os-executor/native-environment.ts";
 import {
   decryptChatMessageProtectedContent,
   decryptChatPlanProtectedContent,
@@ -54,6 +59,7 @@ const { values } = parseArgs({
   options: {
     worker: { type: "string" },
     codex: { type: "string" },
+    "guest-image": { type: "string" },
     turns: { type: "boolean" },
     held: { type: "boolean" },
     durablePause: { type: "boolean" },
@@ -536,7 +542,9 @@ async function start() {
     cwd: root,
     stdio: "pipe",
     env: {
-      PATH: "/usr/bin:/bin",
+      PATH: values["guest-image"]
+        ? `${root}/bin:/usr/bin:/bin`
+        : "/usr/bin:/bin",
       HOME: root,
       NO_COLOR: "1",
       ...(values.outcomes || values.autonomousGoal
@@ -599,6 +607,7 @@ async function ensure(
         fields.type === "chat.queue.prepare" ||
         fields.type === "chat.queue.changed" ||
         fields.type?.startsWith("chat.native-logical.") ||
+        fields.type?.startsWith("cantrip-os.") ||
         fields.type?.startsWith("task.")
           ? fields
           : {
@@ -2005,6 +2014,163 @@ async function expectSuccess(fields) {
   return reply.result;
 }
 
+async function verifyGuestThread() {
+  const execute = promisify(execFile);
+  const dockerPath = (await execute("which", ["docker"])).stdout.trim();
+  const docker = async (...args) =>
+    (await execute(dockerPath, args, { timeout: 20_000 })).stdout.trim();
+  await mkdir(path.join(root, "bin"));
+  await symlink(dockerPath, path.join(root, "bin", "docker"));
+  const name = `cantrip-native-guest-thread-${randomUUID()}`;
+  const transport = { kind: "docker", container: name };
+  let container;
+  try {
+    container = await docker(
+      "run",
+      "-d",
+      "--rm",
+      "--pull=never",
+      "--network",
+      "none",
+      "--name",
+      name,
+      values["guest-image"],
+    );
+    const guest = (...args) =>
+      docker("exec", "--user", "0", container, ...args);
+    const deadline = Date.now() + 15_000;
+    for (;;) {
+      const status = JSON.parse(await guest("cantrip-executor", "status"));
+      if (status.service === "running") break;
+      assert.ok(Date.now() < deadline, JSON.stringify(status));
+      await delay(100);
+    }
+    await start();
+    const observed = await expectSuccess({
+      type: "cantrip-os.inspect",
+      ownerId,
+      workerId,
+      transport,
+    });
+    const dispatch = {
+      ownerId,
+      workerId,
+      serverId,
+      instanceId: randomUUID(),
+      guestInstanceId: observed.guestInstanceId,
+      attachmentGeneration: randomUUID(),
+      runtimeGeneration: observed.runtimeGeneration,
+    };
+    await expectSuccess({
+      type: "cantrip-os.attach",
+      scope: dispatch,
+      transport,
+    });
+    const guestWorkspaceId = "native-chat";
+    const created = await expectSuccess({
+      type: "cantrip-os.workspaces.create",
+      scope: dispatch,
+      transport,
+      guestWorkspaceId,
+      operationId: randomUUID(),
+    });
+    assert.equal(created.state, "ready", JSON.stringify(created));
+    const { uid, gid, homeGuestPath } = created.receipt.workspace;
+    const cwd = homeGuestPath + "/checkout";
+    await guest("install", "-d", "-o", String(uid), "-g", String(gid), cwd);
+    const { serverId: _, ...admission } = dispatch;
+    const scope = {
+      ...admission,
+      bindingId: randomUUID(),
+      bindingGeneration: randomUUID(),
+      projectId: randomUUID(),
+      projectSourceId: randomUUID(),
+      sourceKind: "folder",
+      worktreeId: randomUUID(),
+      workspaceId: randomUUID(),
+      guestWorkspaceId,
+      uid,
+      gid,
+      homeGuestPath,
+      guestPath: cwd,
+      dependencyOverlays: [],
+      mode: "linux-owned",
+      linkedWorkerPath: null,
+    };
+    const osExecution = { kind: "cantrip-os", scope, transport };
+    const session = {
+      contextKind: "project",
+      chatId: randomUUID(),
+      computerUseEnabled: false,
+      projectId: scope.projectId,
+      worktreeId: scope.worktreeId,
+      rootKind: "folder-root",
+      scratchRootId: null,
+      osExecution,
+    };
+    const identity = { serverId, ownerId, workerId, chatId: session.chatId };
+    const { threadId } = await expectThread({ cwd, session });
+    assert.deepEqual(
+      new OsAgentPlacements(directory).resolve(identity),
+      osExecution,
+    );
+    const oracleHome = path.join(root, "legacy-environment");
+    const oracle = new OsNativeEnvironment({ ...scope, serverId }, transport, {
+      captureExecutionBinding: async () =>
+        JSON.parse(await guest("cantrip-executor", "open", guestWorkspaceId)),
+    });
+    await oracle.prepare(oracleHome);
+    const homeId = createHash("sha256")
+      .update(
+        JSON.stringify([
+          oracle.id,
+          path.join(directory, "codex-home"),
+          "fixture",
+          null,
+        ]),
+      )
+      .digest("hex");
+    const file = path.join(
+      directory,
+      "codex-os-homes",
+      homeId,
+      "environments.toml",
+    );
+    assert.equal(
+      await readFile(file, "utf8"),
+      await readFile(path.join(oracleHome, "environments.toml"), "utf8"),
+    );
+    assert.equal((await stat(file)).mode & 0o777, 0o600);
+
+    await stop();
+    await start();
+    const { osExecution: _placement, ...reopen } = session;
+    await expectThread({ cwd, session: reopen, threadId }, threadId);
+    const mismatch = await ensure({
+      cwd,
+      session: {
+        ...session,
+        osExecution: {
+          ...osExecution,
+          scope: { ...scope, bindingGeneration: randomUUID() },
+        },
+      },
+      threadId,
+    });
+    assert.equal(mismatch.ok, false, JSON.stringify(mismatch));
+    assert.match(
+      JSON.stringify(mismatch),
+      /already captured a different OS placement/u,
+    );
+    await stop();
+    console.log(
+      "Native guest preparation, Node placement and environment compatibility, and restart passed.",
+    );
+  } finally {
+    if (container) await docker("stop", "--time", "1", container);
+  }
+}
+
 try {
   await mkdir(path.join(root, "scratch"));
   const session = {
@@ -2093,6 +2259,7 @@ try {
   console.log(
     "Native project and standalone preparation, MCP, and restart recovery passed.",
   );
+  if (values["guest-image"]) await verifyGuestThread();
   if (values.held) await verifyHeldAttachment(session, threadId);
   if (values.durablePause) await verifyDurableChatPause();
   if (values.coldResume) await verifyDurableChatPause(true);

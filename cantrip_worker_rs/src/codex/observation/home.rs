@@ -1,6 +1,11 @@
 use crate::{
-    codex::{catalog::account_home, managed::Profile, provider_errors::surround},
-    http::checked,
+    codex::{
+        catalog::account_home,
+        guest_environment::{self, Environment},
+        managed::Profile,
+        provider_errors::surround,
+    },
+    filesystem::paths,
 };
 use anyhow::{Result, anyhow, bail};
 use cantrip_wire::{JsString, Value, parse_json_text, payload_digest, value::json};
@@ -24,6 +29,7 @@ pub(in crate::codex) async fn profile(
     provider: &Value,
     execution: &str,
     global_skill_root: Option<PathBuf>,
+    environment: Option<&Environment>,
 ) -> Result<Profile> {
     let standalone = execution == "standalone-chat";
     let skill_root = if standalone { None } else { global_skill_root };
@@ -47,29 +53,29 @@ pub(in crate::codex) async fn profile(
     } else {
         data.join("codex-home")
     };
-    let placement_key = payload_digest(&json!([
-        scope["serverId"].clone(),
-        scope["ownerId"].clone(),
-        scope["workerId"].clone(),
-        json!(chat)
-    ]));
-    let placement = data
-        .join("os-agent-placements")
-        .join(format!("{placement_key}.json"));
-    match tokio::fs::read(placement).await {
-        // This is the authoritative local placement record. A captured OS
-        // thread stays on that OS even while its Rust read transport is pending.
-        Ok(raw) => {
-            let placement = parse_json_text(&String::from_utf8_lossy(&raw))
-                .map_err(|_| anyhow!("Invalid OS agent placement JSON."))?;
-            checked("cantripOsExecutionSchema", &placement)?;
-            bail!("Native observation of an OS-hosted conversation is not implemented yet.");
-        }
-        Err(error) if error.kind() == ErrorKind::NotFound => {}
-        Err(error) => return Err(error.into()),
+    // Callers without the admitted guest authority must never reopen a
+    // recorded OS conversation in the default worker-local environment.
+    if environment.is_none()
+        && guest_environment::stored(&guest_environment::record_path(data, scope, chat))?.is_some()
+    {
+        bail!("Native observation of an OS-hosted conversation is not implemented yet.");
     }
 
     let mut overlay = None;
+    let guest_home = environment.map(|environment| {
+        id = surround("", &id, &format!(":os:{}", environment.id));
+        overlay = Some(configuration_home.clone());
+        let home = sha256(
+            &Value::Array(vec![
+                json!(&environment.id),
+                json!(paths::text(&configuration_home)),
+                provider["id"].clone(),
+                provider["credentialHomeKey"].clone(),
+            ])
+            .stringify(),
+        );
+        data.join("codex-os-homes").join(home)
+    });
     let runtime_home = match source {
         Source::Held(saved) => {
             let operation = cantrip_history::source_digest(&json!([
@@ -99,7 +105,7 @@ pub(in crate::codex) async fn profile(
                 overlay = Some(configuration_home);
                 home
             } else {
-                configuration_home
+                guest_home.unwrap_or(configuration_home)
             }
         }
     };
