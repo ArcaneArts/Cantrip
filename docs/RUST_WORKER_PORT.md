@@ -5441,3 +5441,35 @@ used the SDK fixture, with no physical devices or simulators involved.
 
 Java, Cantrip OS Run execution, and production cutover remain open.
 Flutter runtime validation in this cycle covers macOS ARM64.
+
+## 122. Discover and run Java projects with Gradle and Maven
+
+Reference commit `86920cf58c66b1dfde8cefe1169d304fc49aa6df` (#3284).
+
+The native worker statically discovers Gradle build roots and project
+paths, Maven reactors and modules, Java main classes, and application
+tasks and goals. Discovery preserves wrapper selection, name ordering,
+and confidence. Validation reports the existing JDK, wrapper, build
+root, module, main class, goal, and before-launch diagnostics. All six
+Host providers can appear together in the validated definition inventory.
+
+The Host supervisor dispatches Gradle tasks and main classes, Maven
+goals and main classes, custom commands, and ordered before-launch
+steps. Java-specific environment additions preserve the explicit JDK
+and VM option precedence. The generated Gradle init script is private
+to the Run and is removed after the supervisor retires the process.
+The supervisor launches the build tool directly for the authorized
+target so the tool reports errors from its actual execution.
+
+On macOS ARM64, the public API smoke compared Java discovery,
+validation, and mixed inventory with the Node worker while both Rust
+services used PGlite. The worker startup PATH excluded Node. Fixtures
+verified wrapper dispatch, Maven module and goal arguments, Java
+environment overrides, and Gradle launcher cleanup. With
+`CANTRIP_TEST_GRADLE` and `CANTRIP_TEST_JDK_HOME` set, an offline
+Gradle 8.14.3 build ran a Java 21 main class and returned its program
+arguments and VM property through encrypted output. The actual Maven
+runtime and non-macOS platform launches were outside this cycle.
+
+Cantrip OS Run execution, CLI connection environment, direct and
+WorkerLink delivery, and production cutover remain open.

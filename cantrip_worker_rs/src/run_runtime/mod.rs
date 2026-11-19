@@ -739,6 +739,7 @@ impl Manager {
         }
         let document = &definition["document"];
         let launch = providers::materialize(document, &roots.target, &self.environment)?;
+        let _scratch = launch.scratch;
         let grace = Duration::from_millis(document["stop"]["gracePeriodMs"].as_u64().unwrap());
         {
             let mut state = job.session.lock().unwrap();
@@ -751,6 +752,7 @@ impl Manager {
             job,
             &roots,
             &launch.environment,
+            launch.additions,
             &self.environment,
             &self.encryption,
         )

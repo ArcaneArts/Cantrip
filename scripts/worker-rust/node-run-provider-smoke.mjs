@@ -129,7 +129,7 @@ export async function verifyNodeRunProvider({
     assert.deepEqual(capabilities, {
       ...reference,
       capabilities: reference.capabilities.filter(({ provider }) =>
-        ["shell", "node", "dart", "flutter", "rust"].includes(provider),
+        ["shell", "node", "java", "dart", "flutter", "rust"].includes(provider),
       ),
     });
 

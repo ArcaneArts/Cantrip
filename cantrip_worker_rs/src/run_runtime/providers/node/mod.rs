@@ -76,11 +76,7 @@ pub(super) fn materialize(
             )?);
         }
     }
-    Ok(Launch {
-        main,
-        before,
-        environment: environment(document),
-    })
+    Ok(Launch::new(main, before, environment(document)))
 }
 
 fn provider_failure(code: &str, message: impl Into<String>) -> Failure {

@@ -956,6 +956,10 @@ try {
         typedCargoProvider: true,
         typedDartProvider: true,
         typedFlutterProvider: true,
+        typedJavaProvider: true,
+        realGradleSdk: Boolean(
+          process.env.CANTRIP_TEST_GRADLE && process.env.CANTRIP_TEST_JDK_HOME,
+        ),
         realFlutterSdkTask: Boolean(process.env.CANTRIP_TEST_FLUTTER_SDK),
         realDartSdk: Boolean(process.env.CANTRIP_TEST_DART_SDK),
         encryptedOutput: true,

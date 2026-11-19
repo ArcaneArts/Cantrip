@@ -114,6 +114,7 @@ pub(super) async fn resolve(
     job: &LaunchJob,
     roots: &Roots,
     definition: &Value,
+    additions: Environment,
     baseline: &Environment,
     encryption: &Service,
 ) -> Result<Prepared, Failure> {
@@ -159,6 +160,7 @@ pub(super) async fn resolve(
         .map(|value| Zeroizing::new(value.clone()))
         .collect();
     merge_layer(&mut environment, secrets)?;
+    merge_layer(&mut environment, additions)?;
     for (name, value) in [
         ("TERM", "xterm-256color".to_owned()),
         ("COLORTERM", "truecolor".to_owned()),

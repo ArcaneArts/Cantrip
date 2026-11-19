@@ -16,6 +16,21 @@ pub(super) struct Launch {
     pub main: Command,
     pub before: Vec<Command>,
     pub environment: Value,
+    pub additions: Environment,
+    // A generated launcher must survive the before-launch steps and main process.
+    pub scratch: Option<tempfile::TempDir>,
+}
+
+impl Launch {
+    pub(super) fn new(main: Command, before: Vec<Command>, environment: Value) -> Self {
+        Self {
+            main,
+            before,
+            environment,
+            additions: Environment::new(),
+            scratch: None,
+        }
+    }
 }
 
 pub(super) fn invocation(
@@ -115,11 +130,7 @@ pub(super) fn materialize(
         )?);
     }
     let environment = providers::environment(document);
-    Ok(Launch {
-        main,
-        before,
-        environment,
-    })
+    Ok(Launch::new(main, before, environment))
 }
 
 fn options<'a>(resolved: &Resolved<'a>) -> (&'a str, bool) {

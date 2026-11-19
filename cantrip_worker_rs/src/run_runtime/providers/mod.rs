@@ -4,6 +4,7 @@ mod cargo;
 mod dart;
 mod dart_source;
 mod flutter;
+mod java;
 mod node;
 mod sdk;
 
@@ -66,6 +67,7 @@ pub(super) fn materialize(
     match document["provider"].as_str() {
         Some("shell") => shell::materialize(document, root, baseline),
         Some("node") => node::materialize(document, root, baseline),
+        Some("java") => java::materialize(document, root, baseline),
         Some("dart") => dart::materialize(document, root, baseline),
         Some("flutter") => flutter::materialize(document, root, baseline),
         Some("rust") => cargo::materialize(document, root, baseline),
@@ -89,6 +91,7 @@ pub(crate) fn capabilities() -> Value {
     json!(vec![
         capability("shell", "Shell", "terminal", false),
         capability("node", "Node / package", "package", true),
+        capability("java", "Java", "coffee", true),
         capability("dart", "Dart", "file-code", true),
         capability("flutter", "Flutter", "smartphone", true),
         capability("rust", "Rust / Cargo", "boxes", true),
@@ -103,6 +106,7 @@ pub(crate) fn detect(
     match provider {
         None => {
             let mut candidates = node::discover(root, scope)?;
+            candidates.extend(java::discover(root, scope)?);
             let packages = dart_source::scan(root, scope)?;
             candidates.extend(dart::discover(&packages, scope)?);
             candidates.extend(flutter::discover(&packages, scope)?);
@@ -110,6 +114,7 @@ pub(crate) fn detect(
             Ok((candidates, vec![]))
         }
         Some("node") => Ok((node::discover(root, scope)?, vec![])),
+        Some("java") => Ok((java::discover(root, scope)?, vec![])),
         Some("dart" | "flutter") => {
             let packages = dart_source::scan(root, scope)?;
             let candidates = if provider == Some("dart") {
@@ -141,6 +146,7 @@ pub(crate) fn validation(
     let (effective, diagnostics) = match document["provider"].as_str() {
         Some("shell") => shell::validate(document, root, baseline),
         Some("node") => node::validate(document, root, baseline),
+        Some("java") => java::validate(document, root, baseline, scope)?,
         Some("dart") => dart::validate(document, root, baseline),
         Some("flutter") => flutter::validate(document, root, baseline),
         Some("rust") => cargo::validate(document, root, baseline, scope)?,
@@ -270,5 +276,32 @@ fn quote_argument(value: &str) -> String {
         format!("\"{}\"", value.replace('"', "\"\""))
     } else {
         format!("'{}'", value.replace('\'', "'\\''"))
+    }
+}
+
+fn tool_invocation(
+    cwd: PathBuf,
+    executable: &str,
+    arguments: Vec<String>,
+    baseline: &Environment,
+) -> Result<shell::Command, Failure> {
+    if cfg!(windows)
+        && Path::new(executable).extension().is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("bat") || extension.eq_ignore_ascii_case("cmd")
+        })
+    {
+        shell::invocation(
+            cwd,
+            render(&quote_argument(executable), &arguments),
+            "cmd",
+            false,
+            baseline,
+        )
+    } else {
+        Ok(shell::Command {
+            program: executable.to_owned(),
+            arguments,
+            cwd,
+        })
     }
 }

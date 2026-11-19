@@ -8,6 +8,7 @@ import * as secrets from "../../packages/protocol/dist/run-configuration-secrets
 import { verifyCargoRunProvider } from "./cargo-run-provider-smoke.mjs";
 import { verifyDartRunProvider } from "./dart-run-provider-smoke.mjs";
 import { verifyFlutterRunProvider } from "./flutter-run-provider-smoke.mjs";
+import { verifyJavaRunProvider } from "./java-run-provider-smoke.mjs";
 import { verifyNodeRunProvider } from "./node-run-provider-smoke.mjs";
 
 const operations = "/api/run-configuration-runtimes/operations";
@@ -308,4 +309,5 @@ exec /bin/sleep 120`;
   await verifyCargoRunProvider(providerFixture);
   await verifyDartRunProvider(providerFixture);
   await verifyFlutterRunProvider(providerFixture);
+  await verifyJavaRunProvider(providerFixture);
 }
