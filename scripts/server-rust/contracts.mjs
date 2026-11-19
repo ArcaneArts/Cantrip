@@ -975,6 +975,9 @@ export const contractRoots = [
   "ollamaModelInventoryItemSchema",
   "embeddingInputSchema",
   "embeddingOutcomeSchema",
+  "decisionInputSchema",
+  "decisionOutcomeSchema",
+  "decisionResultSchema",
 ];
 
 export const projectExportContractRoots = [
@@ -1303,6 +1306,17 @@ registerChecks(protocol.embeddingItemSchema.options[2], [
 registerChecks(protocol.embeddingItemSchema.options[3].shape.sparse, [
   "embedding-sparse-coordinates",
 ]);
+registerChecks(protocol.decisionInputSchema, ["model-operation-content-bytes"]);
+registerChecks(protocol.decisionOutcomeSchema, [
+  "model-operation-content-bytes",
+]);
+for (const schema of [
+  protocol.decisionInputSchema.shape.questions,
+  protocol.decisionQuestionSchema.options[1].shape.choices,
+  protocol.decisionQuestionSchema.options[2].shape.levels,
+]) {
+  registerChecks(schema, ["decision-unique-ids"]);
+}
 registerChecks(
   protocol.mcpServerConfigurationSchema.options[0].shape.environment.unwrap(),
   ["mcp-key-value-count", "mcp-key-value-size"],

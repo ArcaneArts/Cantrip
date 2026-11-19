@@ -31,9 +31,9 @@ export async function modelOperationProvider() {
     });
     try {
       assert.equal(request.method, "POST");
-      assert.ok(["/v1/embeddings", "/v1/decisions"].includes(path));
       assert.equal(request.headers.authorization, `Bearer ${apiKey}`);
       entry.authenticated = true;
+      entry.typesafeImages = request.headers["typesafe-danger-zone-images"];
       const chunks = [];
       for await (const chunk of request) chunks.push(chunk);
       entry.body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
@@ -41,7 +41,8 @@ export async function modelOperationProvider() {
       assert.ok(plan, "Unexpected provider inference request");
       assert.equal(
         path,
-        plan.operation === "embedding" ? "/v1/embeddings" : "/v1/decisions",
+        plan.path ??
+          (plan.operation === "embedding" ? "/v1/embeddings" : "/v1/decisions"),
       );
       plan.entry = entry;
       plan.entered = true;
@@ -74,50 +75,52 @@ export async function modelOperationProvider() {
                     output_tokens_details: { reasoning_tokens: 1 },
                   },
           };
-      const body = plan.status
-        ? { error: { message: "Private provider diagnostic" } }
-        : plan.operation === "embedding"
-          ? {
-              model: "owned-embedding-model",
-              data: entry.body.input
-                .map((_, index) => ({
-                  index,
-                  embedding: [index + 1, 0.5, -0.25],
-                }))
-                .reverse(),
-              ...usage,
-            }
-          : {
-              model: "owned-decision-model",
-              provider: "owned-provider",
-              answers: plan.malformed
-                ? []
-                : entry.body.questions
-                    .map((question) => ({
-                      name: question.name,
-                      type: question.type,
-                      ...(question.type === "predicate"
-                        ? { probability: 0.75 }
-                        : question.type === "choice"
-                          ? {
-                              choice: "continue",
-                              confidence: 0.8,
-                              probabilities: [
-                                { value: "continue", probability: 0.8 },
-                                { value: "stop", probability: 0.2 },
-                              ],
-                            }
-                          : {
-                              score: 0.75,
-                              probabilities: [
-                                { value: 0, probability: 0.25 },
-                                { value: 1, probability: 0.75 },
-                              ],
-                            }),
-                    }))
-                    .reverse(),
-              ...usage,
-            };
+      const body =
+        plan.response ??
+        (plan.status
+          ? { error: { message: "Private provider diagnostic" } }
+          : plan.operation === "embedding"
+            ? {
+                model: "owned-embedding-model",
+                data: entry.body.input
+                  .map((_, index) => ({
+                    index,
+                    embedding: [index + 1, 0.5, -0.25],
+                  }))
+                  .reverse(),
+                ...usage,
+              }
+            : {
+                model: "owned-decision-model",
+                provider: "owned-provider",
+                answers: plan.malformed
+                  ? []
+                  : entry.body.questions
+                      .map((question) => ({
+                        name: question.name,
+                        type: question.type,
+                        ...(question.type === "predicate"
+                          ? { probability: 0.75 }
+                          : question.type === "choice"
+                            ? {
+                                choice: "continue",
+                                confidence: 0.8,
+                                probabilities: [
+                                  { value: "continue", probability: 0.8 },
+                                  { value: "stop", probability: 0.2 },
+                                ],
+                              }
+                            : {
+                                score: 0.75,
+                                probabilities: [
+                                  { value: 0, probability: 0.25 },
+                                  { value: 1, probability: 0.75 },
+                                ],
+                              }),
+                      }))
+                      .reverse(),
+                ...usage,
+              });
       response.end(JSON.stringify(body));
     } catch (error) {
       entry.failure = error.message;

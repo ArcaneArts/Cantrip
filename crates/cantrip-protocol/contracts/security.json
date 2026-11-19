@@ -951,7 +951,10 @@
     "endpointModelInventoryItemSchema": 7140,
     "ollamaModelInventoryItemSchema": 7116,
     "embeddingInputSchema": 14060,
-    "embeddingOutcomeSchema": 14103
+    "embeddingOutcomeSchema": 14103,
+    "decisionInputSchema": 14162,
+    "decisionOutcomeSchema": 14193,
+    "decisionResultSchema": 14196
   },
   "nodes": [
     {
@@ -85381,6 +85384,448 @@
       ]
     },
     { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "decisionInputSchema",
+      "shape": {
+        "state": 14112,
+        "media": 14163,
+        "questions": 14166,
+        "options": 14191
+      },
+      "catchall": 14192,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "model-operation-content-bytes",
+          "messageAfterPath": true,
+          "message": "Decision input exceeds 4 MiB."
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14164,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 14165,
+      "checks": [{ "check": "max_length", "maximum": 128, "when": "length" }]
+    },
+    {
+      "type": "union",
+      "options": [14069, 14073, 14076],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 14167,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 400, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "decision-unique-ids",
+          "messageAfterPath": true,
+          "message": "Question IDs must be unique."
+        }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "decisionQuestionSchema",
+      "options": [14168, 14179, 14187],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 14169,
+        "type": 14170,
+        "instructions": 14171,
+        "instructionImages": 14173,
+        "criteria": 14175
+      },
+      "catchall": 14178,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_.-]{1,100}$",
+          "flags": "",
+          "displayPattern": "/^[A-Za-z0-9_.-]{1,100}$/"
+        }
+      ]
+    },
+    { "type": "literal", "values": ["predicate"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14172,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100000, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14174,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 14069,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 128, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14176,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "true": 14172, "false": 14172 },
+      "catchall": 14177,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 14169,
+        "type": 14180,
+        "instructions": 14171,
+        "instructionImages": 14173,
+        "choices": 14181
+      },
+      "catchall": 14186,
+      "checks": []
+    },
+    { "type": "literal", "values": ["choice"], "checks": [] },
+    {
+      "type": "array",
+      "element": 14182,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "decision-unique-ids",
+          "messageAfterPath": true,
+          "message": "Choice IDs must be unique."
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "id": 14169, "description": 14183 },
+      "catchall": 14185,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14184,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14172, "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 14169,
+        "type": 14188,
+        "instructions": 14171,
+        "instructionImages": 14173,
+        "levels": 14189
+      },
+      "catchall": 14190,
+      "checks": []
+    },
+    { "type": "literal", "values": ["score"], "checks": [] },
+    {
+      "type": "array",
+      "element": 14182,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "decision-unique-ids",
+          "messageAfterPath": true,
+          "message": "Level IDs must be unique."
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 34,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "decisionOutcomeSchema",
+      "options": [14194, 14244],
+      "discriminator": "status",
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "model-operation-content-bytes",
+          "messageAfterPath": true,
+          "message": "Decision output exceeds 4 MiB."
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "status": 14195, "value": 14196 },
+      "catchall": 14243,
+      "checks": []
+    },
+    { "type": "literal", "values": ["succeeded"], "checks": [] },
+    {
+      "type": "object",
+      "name": "decisionResultSchema",
+      "shape": {
+        "modelId": 14197,
+        "routeId": 14198,
+        "providerId": 14199,
+        "requestedModel": 14200,
+        "actualModel": 14201,
+        "actualProvider": 14203,
+        "adapter": 14205,
+        "status": 14206,
+        "answers": 14207,
+        "usage": 14236
+      },
+      "catchall": 14242,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 14202, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 14204, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "values": ["openai-decisions", "system-one", "openrouter-decisions"],
+      "checks": []
+    },
+    { "type": "enum", "values": ["complete", "partial"], "checks": [] },
+    {
+      "type": "array",
+      "element": 14208,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 400, "when": "length" }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "decisionAnswerSchema",
+      "options": [14209, 14213, 14221, 14228, 14233],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 14169,
+        "nativeAnswer": 14112,
+        "type": 14210,
+        "probability": 14211
+      },
+      "catchall": 14212,
+      "checks": []
+    },
+    { "type": "literal", "values": ["predicate"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 14169,
+        "nativeAnswer": 14112,
+        "type": 14214,
+        "choice": 14169,
+        "probabilities": 14215,
+        "confidence": 14219
+      },
+      "catchall": 14220,
+      "checks": []
+    },
+    { "type": "literal", "values": ["choice"], "checks": [] },
+    { "type": "nullable", "innerType": 14216, "checks": [] },
+    {
+      "type": "array",
+      "element": 14217,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "id": 14169, "probability": 14211 },
+      "catchall": 14218,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 14211, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 14169,
+        "nativeAnswer": 14112,
+        "type": 14222,
+        "score": 14223,
+        "probabilities": 14215,
+        "confidence": 14224,
+        "levels": 14225,
+        "semantics": 14226
+      },
+      "catchall": 14227,
+      "checks": []
+    },
+    { "type": "literal", "values": ["score"], "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "nullable", "innerType": 14211, "checks": [] },
+    {
+      "type": "array",
+      "element": 14182,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    {
+      "type": "literal",
+      "values": ["probability-weighted-zero-based-index"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 14169,
+        "nativeAnswer": 14112,
+        "type": 14229,
+        "reason": 14230
+      },
+      "catchall": 14232,
+      "checks": []
+    },
+    { "type": "literal", "values": ["refusal"], "checks": [] },
+    { "type": "nullable", "innerType": 14231, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 14169,
+        "nativeAnswer": 14112,
+        "type": 14234,
+        "error": 14112
+      },
+      "catchall": 14235,
+      "checks": []
+    },
+    { "type": "literal", "values": ["error"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "inputTokens": 14237,
+        "outputTokens": 14237,
+        "totalTokens": 14237,
+        "cost": 14239
+      },
+      "catchall": 14241,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14238, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 14240, "checks": [] },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "status": 14245, "error": 14154 },
+      "catchall": 14246,
+      "checks": []
+    },
+    { "type": "literal", "values": ["failed"], "checks": [] },
     { "type": "never", "checks": [] }
   ]
 }

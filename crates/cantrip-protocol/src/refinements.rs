@@ -378,6 +378,16 @@ pub(super) fn apply(
                 custom(&[], message.ok_or(ValidationError::Operation)?);
             }
         }
+        "decision-unique-ids" => {
+            let entries = value.as_array().ok_or(ValidationError::Operation)?;
+            let mut ids = std::collections::HashSet::with_capacity(entries.len());
+            if entries
+                .iter()
+                .any(|entry| !ids.insert(entry["id"].as_js_string()))
+            {
+                custom(&[], message.ok_or(ValidationError::Operation)?);
+            }
+        }
         "embedding-sparse-coordinates" => {
             let indices = value["indices"]
                 .as_array()

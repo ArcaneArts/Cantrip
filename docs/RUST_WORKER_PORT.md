@@ -5171,3 +5171,26 @@ exercised all seven adapter payloads and response shapes. The Node reference
 verified the same two-batch result ordering, usage and pinned space.
 
 Decision adapters and production cutover remain open.
+
+## 113. Run protected decisions in the Rust worker
+
+Reference commit `dbb130bb8902da6ca800aaeb9f875d7b8dd83652` (#3275).
+
+The Rust worker handles `model.decision` through the same sealed
+operation dispatch, provider admission, cancellation, replay and
+usage reporting as embeddings. OpenAI Decisions, System One and
+OpenRouter Decisions preserve their native question and media forms.
+The worker returns predicate, choice and score answers in question
+order, preserving distributions, refusals, partial errors and native
+answer metadata. TypeSafe assets use fresh references for shared and
+question-specific images.
+
+Local macOS ARM64 validation used both Rust services, PGlite, bundled
+Codex, an empty worker PATH and an authenticated loopback provider.
+The public API smoke test covered all three adapters, encrypted
+results, duplicate-question validation, malformed provider answers,
+replay, cancellation and usage export. A local run of the Node
+reference matched the three adapters' request formats and normalized
+answers in the representative cases.
+
+Worker runtime parity and production cutover remain open.

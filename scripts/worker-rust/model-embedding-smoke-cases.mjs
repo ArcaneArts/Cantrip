@@ -1,65 +1,26 @@
 // Exercise the public API and both Rust services. Only the provider is local.
 import assert from "node:assert/strict";
-import { createHash, randomUUID } from "node:crypto";
-import * as crypto from "../../packages/crypto/dist/index.js";
-import {
-  embeddingInputSchema,
-  embeddingOutcomeSchema,
-  modelOperationContentContext,
-  protectedEmbeddingResponseSchema,
-  providerApiKeyProtectedContentSchema,
-} from "../../packages/protocol/dist/index.js";
+import { createHash } from "node:crypto";
+import { embeddingInputSchema } from "../../packages/protocol/dist/index.js";
 import { modelOperationProvider } from "../server-rust/model-operation-provider.mjs";
+import { modelOperationClient } from "./model-operation-smoke-client.mjs";
 
-export async function verifyEmbeddings({
-  call,
-  eventually,
-  ownerId,
-  workerId,
-  keyRevision,
-  providerKey,
-  operationsKey,
-}) {
+export async function verifyEmbeddings(ports) {
+  const { eventually } = ports;
   const upstream = await modelOperationProvider();
   try {
-    const { server } = await call("GET", "/api/bootstrap", 200);
-    const id = randomUUID();
-    const protectedApiKey = await crypto.encryptProtectedSecret({
-      ownerId,
-      keyRevision,
-      componentKey: providerKey,
-      component: "provider-credential",
-      table: "model_providers",
-      rowId: id,
-      field: "protected_api_key",
-      content: { version: 1, apiKey: upstream.apiKey },
-      contentSchema: providerApiKeyProtectedContentSchema,
-      maximumBytes: 16 * 1024,
-    });
-    const provider = await call("POST", "/api/settings/providers", 201, {
-      id,
-      kind: "openai-compatible",
-      name: "Embedding fixture provider",
-      baseUrl: upstream.baseUrl,
-      protectedApiKey,
-      initialAccount: null,
-      maxConcurrentInference: 1,
-    });
+    const client = await modelOperationClient(
+      ports,
+      upstream,
+      "Embedding fixture provider",
+    );
     const modelName = "owned-embedding-model";
-    const model = await call("POST", "/api/settings/models", 201, {
-      operation: "embedding",
+    const model = await client.model("embedding", {
       name: "Embedding fixture model",
-      routes: [
-        {
-          providerId: provider.id,
-          modelName,
-          enabled: true,
-          operationAdapter: "openai-embeddings",
-          operationOptions: { maxBatchSize: 2 },
-        },
-      ],
+      modelName,
+      adapter: "openai-embeddings",
+      options: { maxBatchSize: 2 },
     });
-    const scope = { workerId, modelId: model.id, routeId: model.routes[0].id };
     const marker = "Private semantic document 🧭";
     const content = ({ n = 1, ...options } = {}) =>
       embeddingInputSchema.parse({
@@ -69,65 +30,8 @@ export async function verifyEmbeddings({
         })),
         ...options,
       });
-    const make = async (input) => {
-      const operationId = randomUUID();
-      const context = (direction) =>
-        modelOperationContentContext({
-          serverId: server.id,
-          operationId,
-          scope,
-          direction,
-        });
-      const key = {
-        ownerId,
-        keyRevision,
-        componentKey: operationsKey,
-      };
-      const protectedRequest = await crypto.encryptEndpointContentPayload({
-        ...key,
-        context: context("request"),
-        plaintext: Buffer.from(JSON.stringify(input)),
-      });
-      const wire = { operationId, scope, protectedRequest };
-      return {
-        operationId,
-        async run() {
-          const raw = await call(
-            "POST",
-            "/api/model-operations/embedding",
-            200,
-            wire,
-          );
-          const response = protectedEmbeddingResponseSchema.parse(raw);
-          assert.equal(response.operationId, operationId);
-          assert.deepEqual(response.scope, scope);
-          assert.ok(!JSON.stringify(raw).includes(marker));
-          const plaintext = await crypto.decryptEndpointContentPayload({
-            ...key,
-            context: context("response"),
-            opaque: response.protectedResponse,
-          });
-          return embeddingOutcomeSchema.parse(
-            JSON.parse(Buffer.from(plaintext)),
-          );
-        },
-        cancel: () =>
-          call("POST", "/api/model-operations/embedding/cancel", 200, {
-            operationId,
-            scope,
-          }),
-      };
-    };
-    const usage = async (id, verify) =>
-      eventually(async () => {
-        const report = await call(
-          "GET",
-          `/api/analytics/provider-telemetry/${provider.id}/export`,
-          200,
-        );
-        return report.tokenUsage.find((row) => row.executionAttemptId === id)
-          ?.modelOperationUsage?.receipt;
-      }, verify);
+    const make = (input) => client.make("embedding", model, input, marker);
+    const { usage } = client;
 
     upstream.reply("embedding");
     upstream.reply("embedding");

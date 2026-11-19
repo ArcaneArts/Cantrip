@@ -1,5 +1,6 @@
 //! Protected, worker-owned provider operations. The worker keeps only replay
 //! metadata after the encrypted response has been delivered.
+mod decision;
 mod embedding;
 mod http;
 mod timing;
@@ -9,12 +10,13 @@ use crate::{
     codex::managed::Worker,
     encryption::Service,
     http::checked,
-    inference::admission::Promise,
+    inference::admission::{DirectRequest, Manager, Promise, Source},
     metadata::{Abort, Signal},
     protected_content::{open_endpoint_content, protect_endpoint_content},
     protected_secrets::open_runtime_provider,
 };
 use anyhow::{Context, Result, bail};
+use cantrip_history::projection::Work;
 use cantrip_wire::{JsString, Value, value::json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -23,6 +25,7 @@ use std::{
 };
 
 pub(crate) const EMBEDDING: &str = "model.embedding";
+pub(crate) const DECISION: &str = "model.decision";
 pub(crate) const CANCEL: &str = "model.operation.cancel";
 const MAX_BYTES: usize = 4 * 1024 * 1024;
 const MAX_RECORDS: usize = 10_000;
@@ -59,6 +62,109 @@ fn either<'a>(value: &'a Value, default: &'a Value) -> &'a Value {
 }
 fn object(value: &Value) -> cantrip_wire::value::Object {
     value.as_object().cloned().unwrap_or_default()
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Operation {
+    Embedding,
+    Decision,
+}
+
+impl Operation {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Embedding => "embedding",
+            Self::Decision => "decision",
+        }
+    }
+
+    fn input_schema(self) -> &'static str {
+        match self {
+            Self::Embedding => "embeddingInputSchema",
+            Self::Decision => "decisionInputSchema",
+        }
+    }
+
+    fn outcome_schema(self) -> &'static str {
+        match self {
+            Self::Embedding => "embeddingOutcomeSchema",
+            Self::Decision => "decisionOutcomeSchema",
+        }
+    }
+
+    fn malformed(self) -> anyhow::Error {
+        error(
+            "invalid-response",
+            match self {
+                Self::Embedding => "The provider returned malformed embedding data.",
+                Self::Decision => "The provider returned malformed decision answers.",
+            },
+        )
+    }
+}
+
+struct Request<'a> {
+    route: &'a Value,
+    provider: &'a Value,
+    input: &'a Value,
+    admission: Manager,
+    http: &'a reqwest::Client,
+    request_id: JsString,
+    signal: &'a Signal,
+    usage: Arc<Mutex<usage::Usage>>,
+    clock: &'a Arc<timing::Timing>,
+}
+
+impl Request<'_> {
+    fn configure(&self) -> Result<()> {
+        self.admission.configure(json!({
+            "providerId":self.provider["id"],
+            "maxConcurrentInference":self.provider["maxConcurrentInference"],
+            "inferenceConfigRevision":self.provider["inferenceConfigRevision"],
+            "inferenceCatalogCreatedRevision":self.provider["inferenceCatalogCreatedRevision"],
+        }))?;
+        Ok(())
+    }
+
+    async fn run_direct<T: Clone + Send + Sync + 'static>(
+        &self,
+        attempt: usize,
+        yield_after: bool,
+        execute: impl FnOnce(Signal) -> Work<T> + Send + 'static,
+    ) -> Result<T> {
+        let provider_id = self.provider["id"].as_js_string().context("Provider ID")?;
+        let source = Source::claimed(
+            format!("worker-command:{}:inference:{attempt}", self.request_id).into(),
+            Some(self.signal.clone()),
+        );
+        let mut direct = DirectRequest::new(source.clone(), provider_id.clone());
+        direct.input.provider_creation_revision =
+            self.provider["inferenceCatalogCreatedRevision"].as_f64();
+        direct.input.signal = Some(self.signal.clone());
+        direct.yield_after = yield_after;
+        let clock = self.clock.clone();
+        direct.input.observe = Some(Arc::new(move |phase| {
+            clock.observe(phase);
+            Ok(())
+        }));
+        let clock = self.clock.clone();
+        direct.input.admitted = Some(Arc::new(move || {
+            clock.admitted();
+            Ok(())
+        }));
+        let result = self.admission.run_direct(direct, execute).await;
+        source.close();
+        result
+    }
+}
+
+fn merged_options(route: &Value, input: &Value) -> Value {
+    let mut options = object(&route["options"]);
+    options.extend(object(&input["options"]));
+    let mut parameters = object(&route["options"]["parameters"]);
+    parameters.extend(object(&input["options"]["parameters"]));
+    options.insert("parameters".into(), Value::Object(parameters));
+    Value::Object(options)
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -230,6 +336,11 @@ impl Commands {
         clock: &Arc<timing::Timing>,
         ended: Option<Ended>,
     ) -> Result<Value> {
+        let operation = match command["type"].as_str() {
+            Some(EMBEDDING) => Operation::Embedding,
+            Some(DECISION) => Operation::Decision,
+            _ => bail!("Unknown model operation command."),
+        };
         let scope = &command["scope"];
         let context = |direction| {
             json!({
@@ -240,7 +351,7 @@ impl Commands {
                     scope["modelId"].clone(),
                     scope["routeId"].clone(),
                 ]).stringify(),
-                "operationId":key.operation,"operation":"embedding","direction":direction,"sequence":0,
+                "operationId":key.operation,"operation":operation.name(),"direction":direction,"sequence":0,
             })
         };
         let route = &command["route"];
@@ -270,13 +381,13 @@ impl Commands {
                 &self.encryption,
                 &context("request"),
                 &command["protectedRequest"],
-                "embeddingInputSchema",
+                operation.input_schema(),
             )?;
             if self.key(command)? != *key {
                 bail!("The worker binding changed during the model operation.");
             }
             let admission = self.worker.inference_manager(&key.owner, &key.server)?;
-            embedding::run(embedding::Request {
+            let request = Request {
                 route,
                 provider: &provider,
                 input: &input,
@@ -286,13 +397,16 @@ impl Commands {
                 signal: &signal,
                 usage: usage.clone(),
                 clock,
-            })
-            .await
+            };
+            match operation {
+                Operation::Embedding => embedding::run(request).await,
+                Operation::Decision => decision::run(request).await,
+            }
         }
         .await
         .and_then(|value| {
             checked(
-                "embeddingOutcomeSchema",
+                operation.outcome_schema(),
                 &json!({"status":"succeeded","value":value}),
             )
         });
@@ -327,7 +441,7 @@ impl Commands {
             &self.encryption,
             &context("response"),
             &outcome,
-            "embeddingOutcomeSchema",
+            operation.outcome_schema(),
         )?;
         let mut result = checked(
             "protectedEmbeddingResponseSchema",
@@ -336,7 +450,10 @@ impl Commands {
             }),
         )?;
         if ended.is_none()
-            && let Ok(receipt) = usage.lock().unwrap().receipt("embedding", route, status)
+            && let Ok(receipt) = usage
+                .lock()
+                .unwrap()
+                .receipt(operation.name(), route, status)
         {
             result["usageReceipt"] = receipt;
         }

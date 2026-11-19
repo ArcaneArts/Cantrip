@@ -1,4 +1,4 @@
-use super::{MAX_SAFE_COUNT, count};
+use super::{MAX_SAFE_COUNT, Operation, count, either};
 use anyhow::Result;
 use cantrip_wire::{Value, value::json};
 use std::time::Instant;
@@ -90,9 +90,8 @@ impl Usage {
     }
 }
 
-pub(super) fn embedding_counts(raw: &Value) -> [&Value; 6] {
+pub(super) fn reported(raw: &Value, operation: Operation) -> [&Value; 6] {
     let usage = &raw["usage"];
-    use super::either;
     let input = either(
         &usage["input_tokens_details"],
         &usage["prompt_tokens_details"],
@@ -102,18 +101,24 @@ pub(super) fn embedding_counts(raw: &Value) -> [&Value; 6] {
         &usage["completion_tokens_details"],
     );
     [
-        either(
-            &usage["prompt_tokens"],
-            either(
-                &usage["input_tokens"],
+        match operation {
+            Operation::Embedding => either(
+                &usage["prompt_tokens"],
                 either(
-                    &raw["prompt_eval_count"],
-                    &raw["meta"]["billed_units"]["input_tokens"],
+                    &usage["input_tokens"],
+                    either(
+                        &raw["prompt_eval_count"],
+                        &raw["meta"]["billed_units"]["input_tokens"],
+                    ),
                 ),
             ),
-        ),
+            Operation::Decision => either(&usage["input_tokens"], &usage["prompt_tokens"]),
+        },
         either(&usage["output_tokens"], &usage["completion_tokens"]),
-        either(&usage["total_tokens"], &raw["prompt_eval_count"]),
+        match operation {
+            Operation::Embedding => either(&usage["total_tokens"], &raw["prompt_eval_count"]),
+            Operation::Decision => &usage["total_tokens"],
+        },
         &input["cached_tokens"],
         &input["cache_write_tokens"],
         &output["reasoning_tokens"],

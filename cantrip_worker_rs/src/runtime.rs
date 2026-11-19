@@ -408,7 +408,7 @@ async fn cycle(
                     finish(&request, &worker, logs, &outgoing, began, &result);
                     continue;
                 }
-                if kind == crate::model_operations::EMBEDDING {
+                if matches!(kind, crate::model_operations::EMBEDDING | crate::model_operations::DECISION) {
                     let operations = model_operations.clone();
                     let signal = command_signal.clone();
                     let outgoing = outgoing.clone();
