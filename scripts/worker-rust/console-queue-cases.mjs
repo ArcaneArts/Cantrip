@@ -474,6 +474,7 @@ export async function verifyConsoleQueue({
   peer,
   available,
   expectSuccess,
+  verifySettings,
 }) {
   await available(peer.imported ?? peer.firstRead);
   const socket = new WebSocket((await readFile(socketFile, "utf8")).trim());
@@ -518,6 +519,7 @@ export async function verifyConsoleQueue({
       version: 1,
     });
     socket.send(JSON.stringify({ method: "initialized" }));
+    if (verifySettings) await verifySettings(call);
     assert.ok((await queue("list", { threadId: "unrelated-thread" })).error);
     if (peer.imported) {
       const list = await result("list");

@@ -202,8 +202,8 @@ async fn relay<'a>(
 ) -> Result<()> {
     let mut initialized = false;
     let mut starting: Option<(String, Work<Value>)> = None;
-    let mut queue_requests = FuturesUnordered::new();
-    let mut queue_ids = HashSet::new();
+    let mut managed_requests = FuturesUnordered::new();
+    let mut managed_ids = HashSet::new();
     let mut queue_revision = view.queue.state.revision.subscribe();
     let thread = &session["threadId"];
     loop {
@@ -214,9 +214,9 @@ async fn relay<'a>(
                 starting = None;
                 send(client, response?).await?;
             }
-            response = queue_requests.next(), if !queue_requests.is_empty() => {
-                let (id, response) = response.expect("pending console queue request")?;
-                queue_ids.remove(&id);
+            response = managed_requests.next(), if !managed_requests.is_empty() => {
+                let (id, response) = response.expect("pending managed console request")?;
+                managed_ids.remove(&id);
                 send(client, response).await?;
             }
             changed = queue_revision.changed(), if initialized => {
@@ -234,19 +234,26 @@ async fn relay<'a>(
                 let Some(mut frame) = frame else { continue; };
                 let id = &frame["id"];
                 let key = id.stringify();
-                if queue_ids.contains(&key) || starting.as_ref().is_some_and(|(existing, _)| *existing == key) {
+                if managed_ids.contains(&key) || starting.as_ref().is_some_and(|(existing, _)| *existing == key) {
                     send(client, fault(id, -32001, "Duplicate in-flight native request ID.")).await?;
                     continue;
                 }
-                if queue::manages(&frame["method"]) {
+                let settings = frame["method"] == super::super::settings::UPDATE;
+                if settings || queue::manages(&frame["method"]) {
                     if initialized && valid_id(id) && !pending.contains_key(&key)
-                        && queue_ids.len() < 16 && scope_matches(&frame, thread)
+                        && managed_ids.len() < 16 && scope_matches(&frame, thread)
                         && frame["params"]["threadId"] == *thread
                     {
-                        queue_ids.insert(key);
-                        queue_requests.push(queue::request(view.clone(), session.clone(), frame, open.clone()));
+                        managed_ids.insert(key);
+                        let request = if settings { super::settings::request } else { queue::request };
+                        managed_requests.push(request(view.clone(), session.clone(), frame, open.clone()));
                     } else {
-                        send(client, fault(id, -32001, "The native console cannot submit this queue request.")).await?;
+                        let message = if settings {
+                            "The native console cannot submit this settings request."
+                        } else {
+                            "The native console cannot submit this queue request."
+                        };
+                        send(client, fault(id, -32001, message)).await?;
                     }
                     continue;
                 }

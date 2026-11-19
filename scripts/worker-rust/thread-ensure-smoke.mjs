@@ -72,6 +72,7 @@ import { verifyChatGoalCreate } from "./chat-goal-create-cases.mjs";
 import { verifyTaskGoalActivation } from "./task-goal-activation-cases.mjs";
 import { verifyQueuedTurns } from "./queued-turn-cases.mjs";
 import { verifyQueuedSettings } from "./queued-settings-cases.mjs";
+import { consoleSettings } from "./console-settings-cases.mjs";
 import { verifyQueuedShell } from "./queued-shell-cases.mjs";
 import {
   queuePeer,
@@ -2626,6 +2627,12 @@ async function verifyGuestConsole({
       worktreeId: session.worktreeId,
     }),
   });
+  const settings = consoleSettings({
+    available,
+    oracle,
+    threadId,
+    chatId: session.chatId,
+  });
   consolePeer = async (action, input, send) => {
     if (action === "admit") {
       const call = nativeCommandAdmissionSchema.parse(input);
@@ -2635,6 +2642,7 @@ async function verifyGuestConsole({
           "thread/resume",
           "thread/unsubscribe",
           "skills/list",
+          "thread/settings/update",
           "turn/start",
         ].includes(call.method),
       );
@@ -2763,6 +2771,8 @@ async function verifyGuestConsole({
           worktreeMode: "agent-managed",
           worktreePolicy: "required-for-writes",
         };
+      } else if (call.method === "thread/settings/update") {
+        await settings.admit(call, payload);
       } else if (call.method === "skills/list") {
         assert.equal(call.intent.pathsWithinPlacement, true);
         assert.deepEqual(payload.params.cwds, [guestPath]);
@@ -2804,6 +2814,10 @@ async function verifyGuestConsole({
     const entry = grants.get(input.operationId);
     assert.ok(entry, JSON.stringify(input));
     assert.equal(input.operationGeneration, entry.receipt.operationGeneration);
+    if (action === "settings-evidence") {
+      await settings.evidence(input, entry.receipt, send);
+      return;
+    }
     if (entry.receipt.method === "turn/start") promptSteps.push(action);
     if (action === "events") {
       assert.equal(entry.receipt.method, "turn/start");
@@ -2856,6 +2870,8 @@ async function verifyGuestConsole({
       } else if (entry.receipt.method === "skills/list") {
         assert.ok(Array.isArray(content.result.data));
         skills.resolve();
+      } else if (entry.receipt.method === "thread/settings/update") {
+        await settings.settle(evidence, content);
       } else if (entry.receipt.method === "turn/start") {
         assert.equal(
           evidence.reconciliation.nativeTurnId,
@@ -2986,6 +3002,7 @@ async function verifyGuestConsole({
         threadId,
         chatId: session.chatId,
         peer: consoleQueue,
+        verifySettings: settings.verify,
         available,
         expectSuccess,
       }),

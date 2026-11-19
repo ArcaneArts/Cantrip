@@ -5,6 +5,7 @@ use super::{
     receipt::{Client, Receipt},
 };
 use crate::{
+    codex::rpc_requests::{Failure, Response},
     encryption::Service,
     history::live::observation::{Observer, Runtime as _, Subscription},
     http::checked,
@@ -79,6 +80,7 @@ impl Delivery {
         runtime: &Runtime,
         receipt: &Receipt<'_>,
         bound: Scope,
+        native_operation: &JsString,
     ) -> Result<Observation> {
         let operation = receipt.operation();
         let session = receipt.session();
@@ -86,14 +88,14 @@ impl Delivery {
         let identity = json!({
             "chatId":session["chatId"],"operationId":operation.operation,
             "operationGeneration":operation.generation,"threadId":thread,
-            "runtimeGeneration":session["runtimeGeneration"],"nativeOperationId":operation.operation,
+            "runtimeGeneration":session["runtimeGeneration"],"nativeOperationId":native_operation,
         });
         let (send, events) = mpsc::unbounded_channel();
         let subscription = runtime.history().observe(
             thread.clone(),
             Observer {
                 capture: Arc::new({
-                    let operation = operation.operation.clone();
+                    let operation = native_operation.clone();
                     move |frame| {
                         if frame["params"]["threadId"].as_js_string() == Some(&thread)
                             && observation_kind(&frame, &operation).is_some()
@@ -346,7 +348,41 @@ pub(super) struct Observation {
     registration: Registration,
 }
 impl Observation {
-    pub(super) fn accepted(self, result: &Value) -> Result<()> {
+    pub(super) async fn settle(
+        self,
+        receipt: &Receipt<'_>,
+        reply: Result<Response>,
+    ) -> Result<Value> {
+        match reply {
+            Ok(Some(result)) => {
+                if let Err(error) = self.accepted(&result) {
+                    receipt.uncertain().await?;
+                    return Err(error);
+                }
+                receipt.applied(&json!({"result":result}), None).await?;
+                Ok(result)
+            }
+            Ok(None) => {
+                receipt.uncertain().await?;
+                bail!("Codex did not return a native settings result.")
+            }
+            Err(error) => {
+                if let Some(native) = error
+                    .downcast_ref::<Failure>()
+                    .and_then(|failure| failure.native_error.as_ref())
+                {
+                    let recorded = self.rejected(native);
+                    receipt.rejected(native).await?;
+                    recorded?;
+                } else {
+                    receipt.uncertain().await?;
+                }
+                Err(error)
+            }
+        }
+    }
+
+    fn accepted(self, result: &Value) -> Result<()> {
         let operation = &self.registration.identity["nativeOperationId"];
         let reply = json!({"result":result});
         if &result["operationId"] != operation
@@ -369,7 +405,7 @@ impl Observation {
         Ok(())
     }
 
-    pub(super) fn rejected(self, error: &Value) -> Result<()> {
+    fn rejected(self, error: &Value) -> Result<()> {
         self.registration
             .record("rejected", &Value::Null, &json!({"error":error}))
     }

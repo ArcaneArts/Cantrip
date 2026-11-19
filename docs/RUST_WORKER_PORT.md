@@ -7072,3 +7072,35 @@ cross-compilation check.
 
 Managed console settings, the permission-settlement queue resume path,
 approval replies, and runtime handoff remain open.
+
+## 182. Apply settings from the managed Codex console
+
+Reference commit 2e7fd7386b90a12f6fd3b93b6d1f567d2ac7e99f (#3345).
+
+The console submits ordinary thread settings through Core's native command
+admission, dispatch and receipt endpoints. The worker sends the admitted
+payload on its own app-server connection. A supplied native operation ID
+remains distinct from the Core receipt ID. If the console omits the native
+operation ID, the worker supplies the Core receipt's operation ID. The
+worker preserves explicit null effort and service tier selections, and
+checks that any working-directory override resolves to the prepared
+placement. Security changes require the managed permission transition.
+
+The existing settings outbox records the native response and independently
+observed application. Both the console and Core-originated settings paths
+reuse that settlement, which retains the evidence beyond the lifetime of
+a console socket.
+
+The macOS ARM64 smoke used the production worker, bundled Codex, an
+isolated Linux guest and a Core fixture. The Node codec decoded and
+verified the admitted request, reply and application evidence. Native
+reads confirmed explicit standard service tier, clearing the tier
+override, and setting and clearing reasoning effort. The console
+rejected a different thread, another workspace and an unadmitted
+permission change. The existing queued Plan Mode smoke passed with
+restart replay and recovery of an older Node outbox record. The Windows
+x64 GNU worker passed a cross-compilation check.
+
+Live-turn settings, the managed settings snapshot publisher and account
+defaults, permission transitions and their queue resumption, approval
+replies, and runtime handoff remain open.
