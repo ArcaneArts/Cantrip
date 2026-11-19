@@ -199,6 +199,13 @@ async fn cycle(
     )?);
     codex.configure_project_goals(project_goals.clone())?;
     let outgoing = Arc::new(Outbound::default());
+    codex.configure_inference_status({
+        let outgoing = outgoing.clone();
+        Arc::new(move |status| {
+            outgoing.notification(json!({"type":"inference.status","status":status}))?;
+            Ok(())
+        })
+    })?;
     let auth_observations = crate::provider_auth_observer::Observer::new({
         let outgoing = outgoing.clone();
         Arc::new(move |notification| {
@@ -386,6 +393,11 @@ async fn cycle(
                         }).await.unwrap_or_else(|error| Err(error.into()));
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
+                    continue;
+                }
+                if matches!(kind, "inference.configure" | "inference.status") {
+                    let result = codex.inference_command(command);
+                    finish(&request, &worker, logs, &outgoing, began, &result);
                     continue;
                 }
                 if kind == crate::codex::turn::label::COMMAND {
