@@ -27,7 +27,7 @@ use uuid::Uuid;
 
 const CHUNK_BYTES: usize = 256 * 1024;
 const MAX_ACTIVE: usize = 16;
-const IDLE: Duration = Duration::from_secs(5 * 60);
+pub(crate) const IDLE: Duration = Duration::from_secs(5 * 60);
 const CHUNK_ENCODING: GeneralPurpose = GeneralPurpose::new(
     &STANDARD,
     GeneralPurposeConfig::new().with_decode_allow_trailing_bits(true),
@@ -99,6 +99,11 @@ impl Reservation<'_> {
 }
 
 impl Imports {
+    #[cfg(all(feature = "guest-files", target_os = "linux"))]
+    pub(crate) fn is_active(&self) -> bool {
+        !self.transfers.lock().unwrap().is_empty()
+    }
+
     pub(crate) async fn execute(
         &self,
         root: &Path,

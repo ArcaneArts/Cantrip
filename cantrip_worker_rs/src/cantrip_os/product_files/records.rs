@@ -3,15 +3,13 @@ use super::{RpcError, Session, Transport, digest, text};
 use crate::{
     cantrip_os::operations::save, filesystem::Scope, run_definitions::repository::read_bounded,
 };
-use anyhow::{Result, anyhow, bail, ensure};
+use anyhow::{Result, anyhow, ensure};
 use cantrip_wire::{Value, parse_json_text, value::json};
 use std::{
     fs,
     io::ErrorKind,
     path::{Path, PathBuf},
-    time::Duration,
 };
-use tokio::time::Instant;
 use uuid::Uuid;
 
 pub(super) struct Records {
@@ -129,41 +127,14 @@ impl Records {
             }
             result => result?,
         };
-        let stopped =
-            async {
-                ensure!(
-                    id == expected,
-                    "The retained Linux file helper session changed."
-                );
-                let request_timeout = Duration::from_secs(5);
-                let result = session
-                    .request_with_timeout(
-                        "process/terminate",
-                        json!({"processId":process_id}),
-                        request_timeout,
-                    )
-                    .await?;
-                if result["running"] == false {
-                    return Ok(());
-                }
-                ensure!(
-                    result["running"] == true,
-                    "Invalid native file helper termination receipt."
-                );
-                let deadline = Instant::now() + Duration::from_secs(10);
-                loop {
-                    let page = session.request_with_timeout("process/read", json!({
-                    "processId":process_id,"afterSeq":Value::Null,"maxBytes":1,"waitMs":200,
-                }), request_timeout).await?;
-                    if page["exited"] == true && page["closed"] == true {
-                        return Ok(());
-                    }
-                    if Instant::now() >= deadline {
-                        bail!("The previous Linux file helper did not confirm termination.");
-                    }
-                }
-            }
-            .await;
+        let stopped = async {
+            ensure!(
+                id == expected,
+                "The retained Linux file helper session changed."
+            );
+            super::process::terminate(&mut session, process_id).await
+        }
+        .await;
         session.close().await;
         stopped?;
         self.finished(identity)

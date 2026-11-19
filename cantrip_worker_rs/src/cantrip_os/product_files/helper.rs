@@ -1,12 +1,11 @@
-//! A finite workspace-account child. It reads one operation and keeps the
-//! version-one file journal in the existing per-placement guest directory.
-use super::{digest, mutation, records, text};
+//! Workspace-account file operations with the existing version-one journal.
+use super::{digest, is_import, mutation, records, stream, text};
 use crate::{
     cantrip_os::operations::save,
     encryption::ComponentKey,
     filesystem::{
         Scope,
-        explorer::{self, binary_write},
+        explorer::{self, binary_write, imports::Imports},
         paths,
     },
 };
@@ -17,15 +16,20 @@ use std::{
     env,
     fs::File,
     io::{self, BufRead, Read, Write},
+    os::fd::AsFd,
     path::{Path, PathBuf},
+};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncReadExt, BufReader},
+    net::unix::pipe::Receiver,
+    time::timeout,
 };
 use uuid::Uuid;
 
 const FRAME_LIMIT: usize = 8 * 1024 * 1024;
 
 pub async fn run() -> Result<()> {
-    // This is the sole application operation in this child. Match the previous
-    // guest service's file creation mask before opening any paths.
+    // Match the previous guest service's creation mask before opening paths.
     unsafe {
         libc::umask(0o077);
     }
@@ -36,8 +40,10 @@ pub async fn run() -> Result<()> {
         .to_str()
         .filter(|identity| valid_digest(identity))
         .context("Invalid Linux file helper identity.")?;
+    let mode = args.next();
+    let streaming = mode.as_deref().is_some_and(|mode| mode == "--stream");
     ensure!(
-        root.is_absolute() && args.next().is_none(),
+        root.is_absolute() && (mode.is_none() || streaming) && args.next().is_none(),
         "Invalid Linux file helper invocation."
     );
     let home =
@@ -46,16 +52,46 @@ pub async fn run() -> Result<()> {
     let directory = home
         .join(".local/state/cantrip-os-executor/files")
         .join(identity);
+    if streaming {
+        let reader = Receiver::from_owned_fd(io::stdin().as_fd().try_clone_to_owned()?)?;
+        let mut reader = BufReader::new(reader);
+        let imports = Imports::default();
+        emit(&json!({"ready":true,"version":1,"identity":identity}))?;
+        let mut input = Vec::new();
+        loop {
+            input.clear();
+            let mut bounded = (&mut reader).take((FRAME_LIMIT + 1) as u64);
+            match timeout(stream::IDLE, bounded.read_until(b'\n', &mut input)).await {
+                Ok(Ok(0)) | Err(_) => return Ok(()),
+                Ok(result) => {
+                    result?;
+                }
+            }
+            if !respond(&root, &directory, Some(&imports), &input).await? {
+                return Ok(());
+            }
+        }
+    }
     let mut input = Vec::new();
     io::stdin()
         .lock()
         .take((FRAME_LIMIT + 1) as u64)
         .read_until(b'\n', &mut input)?;
+    respond(&root, &directory, None, &input).await?;
+    Ok(())
+}
+
+async fn respond(
+    root: &Path,
+    directory: &Path,
+    imports: Option<&Imports>,
+    input: &[u8],
+) -> Result<bool> {
     ensure!(
         input.len() <= FRAME_LIMIT && input.last() == Some(&b'\n'),
         "The Linux file helper request is incomplete."
     );
-    let frame = parse_json_text(std::str::from_utf8(&input)?)
+    let frame = parse_json_text(std::str::from_utf8(input)?)
         .map_err(|_| anyhow::anyhow!("Invalid Linux file helper request."))?;
     let id = text(&frame, "id")?;
     Uuid::parse_str(id)?;
@@ -75,12 +111,22 @@ pub async fn run() -> Result<()> {
         "Misrouted OS file request."
     );
     let context = super::record_context(&surface);
-    let response = match dispatch(&root, &directory, &frame, &context).await {
+    let response = match dispatch(root, directory, imports, &frame, &context).await {
         Ok(result) => result,
         Err(error) => completed(explorer::failure(&error)),
     };
+    let mut frame = json!({"id":id,"result":response});
+    let retained = imports.is_some_and(Imports::is_active);
+    if imports.is_some() {
+        frame["retained"] = json!(retained);
+    }
+    emit(&frame)?;
+    Ok(retained)
+}
+
+fn emit(frame: &Value) -> Result<()> {
     let mut output = io::stdout().lock();
-    writeln!(output, "{}", json!({"id":id,"result":response}).stringify())?;
+    writeln!(output, "{}", frame.stringify())?;
     output.flush()?;
     Ok(())
 }
@@ -92,7 +138,13 @@ fn valid_digest(value: &str) -> bool {
             .all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f'))
 }
 
-async fn dispatch(root: &Path, directory: &Path, frame: &Value, context: &Value) -> Result<Value> {
+async fn dispatch(
+    root: &Path,
+    directory: &Path,
+    imports: Option<&Imports>,
+    frame: &Value,
+    context: &Value,
+) -> Result<Value> {
     let id = &frame["id"];
     if frame["action"] == "observe" {
         let fingerprint = text(frame, "digest")?;
@@ -108,7 +160,7 @@ async fn dispatch(root: &Path, directory: &Path, frame: &Value, context: &Value)
     );
     let request = checked("explorerOperationRequestContentSchema", &frame["request"])?;
     if !mutation(text(&request, "type")?)? {
-        return Ok(execute(root, directory, context, &request).await);
+        return Ok(execute(root, directory, imports, context, &request).await);
     }
     let fingerprint = digest(json!({"id":id,"request":request,"context":context}));
     let path = receipt_path(directory, context);
@@ -124,7 +176,7 @@ async fn dispatch(root: &Path, directory: &Path, frame: &Value, context: &Value)
         }
         Err(error) => return Err(error),
     }
-    let result = execute(root, directory, context, &request).await;
+    let result = execute(root, directory, imports, context, &request).await;
     save(&path, &json!({"digest":fingerprint,"result":result}), false)?;
     Ok(result)
 }
@@ -148,15 +200,29 @@ fn observe(directory: &Path, context: &Value, fingerprint: &str) -> Result<Value
     Ok(result.clone())
 }
 
-async fn execute(root: &Path, directory: &Path, context: &Value, request: &Value) -> Value {
+async fn execute(
+    root: &Path,
+    directory: &Path,
+    imports: Option<&Imports>,
+    context: &Value,
+    request: &Value,
+) -> Value {
+    let scope = Scope::default();
     let result = if binary_write::action(request).is_some() {
         guest_binary(root, directory, context, request).await
+    } else if is_import(request["type"].as_str().unwrap_or_default()) {
+        match imports {
+            Some(imports) if context["surfaceKind"] == "explorer" => {
+                imports.execute(root, context, request, &scope).await
+            }
+            _ => Err(anyhow::anyhow!("Misrouted OS file import.")),
+        }
     } else {
-        explorer::execute(root, request, &Scope::default()).await
+        explorer::execute(root, request, &scope).await
     };
     match result {
         Ok(result) => {
-            json!({"complete":explorer::complete(&result),"outcome":json!({"ok":true,"result":result})})
+            json!({"complete":explorer::complete(&result, request),"outcome":json!({"ok":true,"result":result})})
         }
         Err(error) => completed(explorer::failure(&error)),
     }

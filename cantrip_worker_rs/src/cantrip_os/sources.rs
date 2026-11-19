@@ -106,7 +106,7 @@ impl<'a> Source<'a> {
 
     pub async fn provision(
         &self,
-        session: &mut Session<'_>,
+        session: &mut Session,
         operation_id: &str,
         intent: &Value,
         journal: &mut Journal<'_>,
@@ -132,12 +132,12 @@ impl<'a> Source<'a> {
         Ok(json!({"kind":"source","source":self.receipt(session, &metadata)?}))
     }
 
-    pub async fn inspect(&self, session: &mut Session<'_>) -> Result<Value> {
+    pub async fn inspect(&self, session: &mut Session) -> Result<Value> {
         let metadata = self.observe(session, self.path, false, None).await?;
         self.receipt(session, &metadata)
     }
 
-    fn receipt(&self, session: &Session<'_>, metadata: &Value) -> Result<Value> {
+    fn receipt(&self, session: &Session, metadata: &Value) -> Result<Value> {
         checked(
             "cantripOsSourceReceiptSchema",
             json!({
@@ -156,7 +156,7 @@ impl<'a> Source<'a> {
 
     async fn observe(
         &self,
-        session: &mut Session<'_>,
+        session: &mut Session,
         path: &str,
         root: bool,
         mut journal: Option<&mut Journal<'_>>,
@@ -204,7 +204,7 @@ impl<'a> Source<'a> {
 
     async fn metadata(
         &self,
-        session: &mut Session<'_>,
+        session: &mut Session,
         path: &str,
         mut journal: Option<&mut Journal<'_>>,
     ) -> Result<Value> {
@@ -255,7 +255,7 @@ impl<'a> Source<'a> {
 
     async fn checkout(
         &self,
-        session: &mut Session<'_>,
+        session: &mut Session,
         operation_id: &str,
         source: &Value,
         journal: &mut Journal<'_>,
@@ -337,7 +337,7 @@ impl<'a> Source<'a> {
 
     async fn worktree(
         &self,
-        session: &mut Session<'_>,
+        session: &mut Session,
         source: &Value,
         journal: &mut Journal<'_>,
     ) -> Result<Value> {
@@ -373,7 +373,7 @@ impl<'a> Source<'a> {
     }
 }
 
-async fn mkdir(session: &mut Session<'_>, path: &str, recursive: bool) -> Result<()> {
+async fn mkdir(session: &mut Session, path: &str, recursive: bool) -> Result<()> {
     session
         .request(
             "fs/createDirectory",
@@ -385,7 +385,7 @@ async fn mkdir(session: &mut Session<'_>, path: &str, recursive: bool) -> Result
     Ok(())
 }
 
-async fn write(session: &mut Session<'_>, path: &str, content: &Value) -> Result<()> {
+async fn write(session: &mut Session, path: &str, content: &Value) -> Result<()> {
     session.request("fs/writeFile", json!({
         "path":file_uri(path)?.as_str(),"dataBase64":STANDARD.encode(content.stringify()),"sandbox":Value::Null
     })).await?;

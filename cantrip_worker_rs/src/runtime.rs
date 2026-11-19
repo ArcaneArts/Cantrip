@@ -1071,6 +1071,7 @@ async fn cycle(
             command_failure.get_or_insert(error);
         }
     }
+    explorer_operations.close().await;
     shares.shutdown().await;
     run_definitions.close().await;
     let runs_closed = runs.close().await;

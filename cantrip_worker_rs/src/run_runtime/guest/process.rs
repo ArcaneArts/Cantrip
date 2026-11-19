@@ -29,7 +29,7 @@ pub(super) struct Executor<'a> {
     transport: Transport,
     binding: Value,
     lifetime: &'a Scope,
-    session: Option<Session<'a>>,
+    session: Option<Session>,
 }
 
 #[derive(Default)]

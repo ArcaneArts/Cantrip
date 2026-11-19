@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /source
 
 # Both helpers run as the existing guest workspace account. Reuse the
-# worker's filesystem and definitions code in the finite guest entry points.
+# worker's filesystem and definitions code in the guest entry points.
 FROM toolchain AS native-helpers
 ARG CARGO_BUILD_JOBS=6
 RUN --mount=type=bind,source=.,target=/source,readonly \
