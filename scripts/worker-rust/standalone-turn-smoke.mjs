@@ -17,6 +17,7 @@ import { fixtureEnvironment, startServer } from "../server-rust/process.mjs";
 import { discoveryWireFixtures } from "../server-rust/discovery-wire-fixtures.mjs";
 import { projectLabel } from "../server-rust/security-fixtures.mjs";
 import { taskContent } from "../server-rust/task-wire-fixtures.mjs";
+import { LiveProbe } from "../server-rust/live-sockets.mjs";
 import { taskModelProvider } from "../server-rust/task-model-provider.mjs";
 
 const { values } = parseArgs({
@@ -203,7 +204,7 @@ async function encryptedTurn(prompt, modelId) {
   });
 }
 
-async function createModel(name) {
+async function createModel(name, maxConcurrentInference) {
   const model = await taskModelProvider();
   models.push(model);
   const provider = await call("POST", "/api/settings/providers", 201, {
@@ -213,6 +214,7 @@ async function createModel(name) {
     baseUrl: model.baseUrl,
     initialAccount: null,
     protectedApiKey: null,
+    maxConcurrentInference,
   });
   const profile = await call("POST", "/api/settings/models", 201, {
     name,
@@ -220,19 +222,12 @@ async function createModel(name) {
       { providerId: provider.id, modelName: model.model, enabled: true },
     ],
   });
-  return { model, profile };
+  return { model, provider, profile };
 }
 
-async function verifyTurn(
-  response,
-  naming,
-  scenario,
-  titleResponse,
-  expectedTitle,
-) {
+async function createChat(label, autoTitle) {
   const chatId = randomUUID();
   const chatUrl = `/api/chats/${chatId}`;
-  const label = "New chat";
   const titleProtection = await crypto.encryptPrivateDisplayLabel({
     ownerId,
     keyRevision,
@@ -244,7 +239,7 @@ async function verifyTurn(
   await call("POST", "/api/chats", 202, {
     id: chatId,
     titleProtection,
-    autoTitle: true,
+    autoTitle,
   });
   await eventually(
     () =>
@@ -256,6 +251,17 @@ async function verifyTurn(
       ),
     (event) => assert.equal(event?.status, "succeeded", JSON.stringify(event)),
   );
+  return { chatId, chatUrl };
+}
+
+async function verifyTurn(
+  response,
+  naming,
+  scenario,
+  titleResponse,
+  expectedTitle,
+) {
+  const { chatId, chatUrl } = await createChat("New chat", true);
   const prompt = `This is an encrypted ${scenario} prompt 🌲`;
   const answer = "This is a streamed fixture answer 🍄";
   const labelReply = naming.model.reply({ text: titleResponse });
@@ -515,6 +521,123 @@ Ignore second line`,
   assert.deepEqual(model.failures, []);
 }
 
+async function verifyProviderCapacity() {
+  const live = new LiveProbe({ server, client: () => ({ cookies: [] }) });
+  try {
+    await live.open();
+    await live.initialized();
+    await live.subscribed();
+    const { model, provider, profile } = await createModel(
+      "Capacity fixture",
+      1,
+    );
+    await call("PATCH", "/api/settings", 200, {
+      defaultModelId: profile.id,
+      autoNameChats: false,
+    });
+    const poolFor = (status) =>
+      status.pools.find((pool) => pool.providerId === provider.id);
+    const status = () => call("GET", `/api/workers/${workerId}/inference`, 200);
+    const configured = await eventually(status, (snapshot) => {
+      assert.equal(snapshot.ownerId, ownerId);
+      assert.equal(snapshot.workerId, workerId);
+      assert.equal(poolFor(snapshot)?.maxConcurrentInference, 1);
+      assert.ok(Number.isInteger(snapshot.providerCatalogRevision));
+    });
+    const firstChat = await createChat("First capacity fixture", false);
+    const secondChat = await createChat("Second capacity fixture", false);
+    const firstReply = model.reply({ text: "First visible reply", hold: true });
+    const secondReply = model.reply({
+      text: "Second visible reply",
+      hold: true,
+    });
+    const submit = async (chatUrl, prompt) => {
+      const turn = await encryptedTurn(prompt, profile.id);
+      const receipt = await call("POST", `${chatUrl}/turns`, 202, turn);
+      assert.equal(receipt.status, "queued");
+    };
+    try {
+      await submit(firstChat.chatUrl, "First private capacity prompt");
+      await eventually(
+        () => firstReply,
+        (value) => assert.ok(value.entered),
+      );
+      await submit(secondChat.chatUrl, "Second private capacity prompt");
+      const waiting = (pool) =>
+        pool?.activeCount === 1 &&
+        pool.queuedCount === 1 &&
+        pool.operations.some(
+          (op) =>
+            op.chatId === secondChat.chatId &&
+            op.state === "waiting" &&
+            op.queuePosition === 1,
+        );
+      const snapshot = await eventually(status, (value) =>
+        assert.ok(waiting(poolFor(value))),
+      );
+      const event = await live.message(
+        (frame) =>
+          frame.type === "event" &&
+          frame.resource === "worker-inference" &&
+          frame.action === "status" &&
+          frame.entityId === workerId &&
+          waiting(poolFor(frame.payload)),
+      );
+      assert.equal(event.payload.workerGeneration, snapshot.workerGeneration);
+      assert.equal(secondReply.entered, false);
+
+      const changed = await call(
+        "PATCH",
+        `/api/settings/providers/${provider.id}`,
+        200,
+        {
+          name: provider.name,
+          baseUrl: provider.baseUrl,
+          kind: provider.kind,
+          maxConcurrentInference: 2,
+        },
+      );
+      await eventually(
+        () => secondReply,
+        (value) => assert.ok(value.entered),
+      );
+      assert.equal(firstReply.request.completed, false);
+      await eventually(status, (value) => {
+        assert.equal(value.workerGeneration, configured.workerGeneration);
+        const pool = poolFor(value);
+        assert.equal(pool?.maxConcurrentInference, 2);
+        assert.equal(
+          pool?.inferenceConfigRevision,
+          changed.inferenceConfigRevision,
+        );
+        assert.equal(pool?.activeCount, 2);
+        assert.equal(pool?.queuedCount, 0);
+      });
+    } finally {
+      firstReply.release();
+      secondReply.release();
+    }
+    for (const chat of [firstChat, secondChat]) {
+      await eventually(
+        () => call("GET", `${chat.chatUrl}/messages`, 200),
+        ({ messages }) =>
+          assert.ok(
+            messages.some(
+              (message) =>
+                (message.classification?.role ?? message.role) === "assistant",
+            ),
+          ),
+      );
+    }
+    await eventually(status, (snapshot) =>
+      assert.equal(poolFor(snapshot)?.activeCount, 0),
+    );
+    assert.deepEqual(model.failures, []);
+  } finally {
+    await live.close();
+  }
+}
+
 try {
   const data = path.join(root, "worker");
   const home = path.join(root, "home");
@@ -560,6 +683,7 @@ try {
     (value) => assert.match(value, /event=worker\.connection\.connected/),
   );
   await setupEncryption();
+  await verifyProviderCapacity();
 
   const primary = await createModel("Response model");
   const alternate = await createModel("Title model");
@@ -606,6 +730,7 @@ try {
       duplicateSubmissionReplayed: true,
       taskLabelFromPausedQueue: true,
       revokedTaskCannotPublishTitle: true,
+      liveProviderQueueAndLimit: true,
     }),
   );
 } catch (error) {

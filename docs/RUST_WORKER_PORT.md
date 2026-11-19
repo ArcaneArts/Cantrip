@@ -5021,3 +5021,26 @@ deleted draft. The standalone Chat naming and replay cases still passed.
 
 General inference resource-revocation delivery, provider catalog and
 configuration commands, and production cutover remain open.
+
+## 107. Apply Core provider limits and publish the Rust inference queue
+
+Reference commit `6f46f2634777a450fb1ba682d316e3435fd568f8` (#3269).
+
+The production Rust worker handles `inference.configure` and
+`inference.status`. Core's revisioned configuration, legacy updates,
+and Codex launches share the same manager for the authenticated server
+and owner. Core can fetch the authoritative snapshot and receives live
+queue changes from that manager. Configuration delivery also republishes
+the current snapshot on reconnect.
+
+Local macOS ARM64 validation used both Rust services, PGlite, bundled
+Codex, an empty worker PATH, and a controlled Responses endpoint. The
+limit of one arrived before either Chat turn. The HTTP snapshot and
+public Live stream showed the second turn waiting at position one.
+Raising the limit to two let the second request reach the provider
+while the first was still held. Both replies persisted and both
+slots were released. The existing Chat and Task naming cases passed in
+the same run.
+
+Provider model discovery, general resource-revocation delivery, and
+production cutover remain open.

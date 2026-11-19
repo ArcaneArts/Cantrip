@@ -2,7 +2,10 @@ use super::*;
 use crate::{
     codex::{goals::delivery::Delivery as ProjectGoals, task_inputs},
     encryption::Service,
-    inference::{admission::Options as AdmissionOptions, ownership},
+    inference::{
+        admission::{Options as AdmissionOptions, Subscription},
+        ownership,
+    },
 };
 use futures::future::join_all;
 use std::sync::{
@@ -13,6 +16,7 @@ use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 
 pub type Binding = Arc<dyn Fn() -> Result<(JsString, JsString)> + Send + Sync>;
 type GrokResolver = Arc<dyn Fn(GrokAccount) -> Work<String> + Send + Sync>;
+type InferenceStatus = Arc<dyn Fn(Value) -> Result<()> + Send + Sync>;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct Scope {
@@ -41,9 +45,14 @@ struct Slot {
     retiring: Arc<AtomicBool>,
 }
 
+struct ScopedAdmission {
+    manager: Manager,
+    _status: Option<Subscription>,
+}
+
 #[derive(Default)]
 struct State {
-    managers: HashMap<Scope, Manager>,
+    managers: HashMap<Scope, ScopedAdmission>,
     runtimes: HashMap<Key, Slot>,
     homes: HashMap<PathBuf, Weak<AsyncMutex<()>>>,
     closing: Option<Promise<()>>,
@@ -59,6 +68,7 @@ struct Inner {
     task_inputs: OnceLock<task_inputs::Client>,
     resource_protection: OnceLock<Arc<Service>>,
     project_goals: OnceLock<Arc<ProjectGoals>>,
+    inference_status: OnceLock<InferenceStatus>,
     state: Mutex<State>,
 }
 
@@ -85,6 +95,7 @@ impl Worker {
             task_inputs: OnceLock::new(),
             resource_protection: OnceLock::new(),
             project_goals: OnceLock::new(),
+            inference_status: OnceLock::new(),
             state: Mutex::new(State::default()),
         }))
     }
@@ -135,6 +146,59 @@ impl Worker {
             .map_err(|_| anyhow!("Project Goal observations are already configured."))
     }
 
+    pub(crate) fn configure_inference_status(&self, publish: InferenceStatus) -> Result<()> {
+        self.0
+            .inference_status
+            .set(publish)
+            .map_err(|_| anyhow!("Inference status is already configured."))
+    }
+
+    pub(crate) fn inference_command(&self, command: &Value) -> Result<Value> {
+        let scope = self.scope()?;
+        let manager = {
+            let mut state = self.0.state.lock().unwrap();
+            if state.closing.is_some() {
+                bail!("Worker Codex runtimes are closing.");
+            }
+            self.manager_for(&mut state, &scope)
+        };
+        let configure = command["type"] == "inference.configure";
+        if configure {
+            manager.wake_recovery(None);
+            if let Some(revision) = command.get("catalogRevision") {
+                manager.configure_catalog(json!({
+                    "catalogRevision": revision, "configurations": command["configurations"],
+                }))?;
+            } else {
+                let configurations = command["configurations"]
+                    .as_array()
+                    .ok_or_else(|| anyhow!("Invalid provider inference configurations."))?;
+                for configuration in configurations {
+                    let mut configuration = configuration.clone();
+                    if let Value::Object(fields) = &mut configuration {
+                        fields.shift_remove("inferenceCatalogCreatedRevision");
+                    }
+                    manager.configure(configuration)?;
+                }
+            }
+        }
+        let status = crate::http::checked("workerInferenceStatusSchema", &manager.snapshot())?;
+        if self.scope()? != scope {
+            bail!("The inference status account binding changed.");
+        }
+        if configure && let Some(publish) = self.0.inference_status.get() {
+            // Core resends configuration on reconnect, including unchanged revisions.
+            if publish(status.clone()).is_err() {
+                warn(
+                    &self.0.host.logs,
+                    "Inference status observer failed",
+                    "inference.status.observer-failed",
+                );
+            }
+        }
+        Ok(status)
+    }
+
     pub(in crate::codex) fn project_goals(&self) -> Option<&ProjectGoals> {
         self.0.project_goals.get().map(Arc::as_ref)
     }
@@ -149,7 +213,14 @@ impl Worker {
             owner: owner.clone(),
             server: server.clone(),
         };
-        let manager = self.0.state.lock().unwrap().managers.get(&scope).cloned();
+        let manager = self
+            .0
+            .state
+            .lock()
+            .unwrap()
+            .managers
+            .get(&scope)
+            .map(|entry| entry.manager.clone());
         if let Some(manager) = manager {
             manager.wake_recovery(Some(chat.clone()));
         }
@@ -221,11 +292,7 @@ impl Worker {
                         }
                         (slot.clone(), None)
                     } else {
-                        let manager = state
-                            .managers
-                            .entry(key.scope.clone())
-                            .or_insert_with(|| this.create_manager(&key.scope))
-                            .clone();
+                        let manager = this.manager_for(&mut state, &key.scope);
                         let (complete, ready) = Promise::pair();
                         let slot = Slot {
                             ready,
@@ -426,7 +493,17 @@ impl Worker {
         }
     }
 
-    fn create_manager(&self, scope: &Scope) -> Manager {
+    fn manager_for(&self, state: &mut State, scope: &Scope) -> Manager {
+        state
+            .managers
+            .entry(scope.clone())
+            .or_insert_with(|| self.create_manager(scope))
+            .manager
+            .clone()
+    }
+
+    fn create_manager(&self, scope: &Scope) -> ScopedAdmission {
+        let binding = scope.clone();
         let scope = ownership::Scope {
             server_id: scope.server.clone(),
             owner_id: scope.owner.clone(),
@@ -480,7 +557,34 @@ impl Worker {
             );
             Ok(())
         });
-        Manager::new(admission)
+        let logs = self.0.host.logs.clone();
+        admission.observer_error = Arc::new(move |_| {
+            warn(
+                &logs,
+                "Inference status observer failed",
+                "inference.status.observer-failed",
+            );
+            Ok(())
+        });
+        let manager = Manager::new(admission);
+        let status = self.0.inference_status.get().map(|publish| {
+            let publish = publish.clone();
+            let owner = Arc::downgrade(&self.0);
+            manager.subscribe(Arc::new(move |snapshot| {
+                if let Some(owner) = owner.upgrade()
+                    && Worker(owner)
+                        .scope()
+                        .is_ok_and(|current| current == binding)
+                {
+                    return publish(snapshot);
+                }
+                Ok(())
+            }))
+        });
+        ScopedAdmission {
+            manager,
+            _status: status,
+        }
     }
 
     /// Close admission to new launches synchronously, then join all accepted
@@ -501,7 +605,7 @@ impl Worker {
                 }
             }))
             .await;
-            let fenced = join_all(managers.into_values().map(|manager| manager.close())).await;
+            let fenced = join_all(managers.into_values().map(|entry| entry.manager.close())).await;
             closed.into_iter().chain(fenced).collect::<Result<()>>()
         });
         state.closing = Some(pending.clone());
