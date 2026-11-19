@@ -71,6 +71,7 @@ const { values } = parseArgs({
     "replica-provision-only": { type: "boolean", default: false },
     "replica-lifecycle-only": { type: "boolean", default: false },
     "terminal-relay-only": { type: "boolean", default: false },
+    "terminal-direct-broker": { type: "string" },
     "worker-link-local": { type: "boolean", default: false },
     "shares-only": { type: "boolean", default: false },
     "run-definitions-only": { type: "boolean", default: false },
@@ -807,6 +808,9 @@ try {
           projectId,
           checkout,
           cli: values.cli && path.resolve(values.cli),
+          directBroker:
+            values["terminal-direct-broker"] &&
+            path.resolve(values["terminal-direct-broker"]),
           connectionPath: path.join(workerDirectory, "cli-connection.json"),
         });
         const reopen = await verifyTerminalServices({
@@ -1054,6 +1058,7 @@ try {
         passed: true,
         encryptedHostTerminalRelay: true,
         encryptedWorkerLinkTerminal: true,
+        encryptedDirectTerminal: Boolean(values["terminal-direct-broker"]),
         protectedCliTerminal: Boolean(values.cli),
         nativeCliBroker: Boolean(values.cli),
         encryptedServiceRelayAcrossRestarts: true,

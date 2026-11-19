@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import * as crypto from "../../packages/crypto/dist/index.js";
+import { verifyLegacyDirectTerminal } from "./terminal-direct-smoke.mjs";
 import { attachTerminal } from "./terminal-relay-client.mjs";
 import { attachWorkerLinkTerminal } from "./worker-link-terminal-client.mjs";
 
@@ -20,6 +21,7 @@ export async function verifyHostTerminal({
   projectId,
   checkout,
   cli,
+  directBroker,
   connectionPath,
 }) {
   const id = randomUUID();
@@ -83,9 +85,22 @@ export async function verifyHostTerminal({
     views.push(view);
     return view;
   }
+  const verifyDirect = (proof = {}) =>
+    verifyLegacyDirectTerminal({
+      binary: directBroker,
+      call,
+      checkout,
+      ownerId,
+      serverId,
+      surfaceKey,
+      id,
+      ...proof,
+    });
   let deleted = false;
   try {
+    const bootstrap = directBroker && (await verifyDirect());
     const first = await attach();
+    if (bootstrap) assert.ok(first.replay.includes(bootstrap.marker));
     // A marker assembled by the shell cannot match the PTY's command echo.
     const token = marker.slice("shell-proof-".length);
     await first.input(
@@ -99,6 +114,11 @@ export async function verifyHostTerminal({
       "shell runs in the private worktree",
     );
     assert.ok(!first.relay.history.some(({ raw }) => raw.includes(marker)));
+
+    if (bootstrap) {
+      assert.equal(pid, bootstrap.pid);
+      await verifyDirect({ marker, pid });
+    }
 
     const link = await attachWorkerLink();
     assert.ok(

@@ -1,4 +1,6 @@
 //! Per-channel terminal tasks serialize input and detach with the channel.
+mod direct;
+
 use super::{Coordinator, id};
 use crate::{
     encryption::Service,
@@ -7,6 +9,7 @@ use crate::{
     terminal_services::interactive::{LinkTarget, LinkedTerminal, Shells},
 };
 use cantrip_wire::{JsString, Value, parse_json_text, value::json};
+pub(super) use direct::DirectTerminal;
 use std::sync::{Arc, Mutex, Weak};
 use tokio::{
     sync::{mpsc, oneshot, watch},
@@ -133,8 +136,7 @@ impl Adapter {
                     let message = {
                         std::str::from_utf8(&payload)
                             .ok()
-                            .and_then(|text| parse_json_text(text.strip_prefix('\u{feff}').unwrap_or(text)).ok())
-                            .and_then(|message| checked("terminalClientMessageSchema", &message).ok())
+                            .and_then(client_message)
                     };
                     let Some(message) = message else {
                         channel.fail("payload-invalid", "protocol-error");
@@ -188,13 +190,9 @@ impl Channel {
         }
     }
 
-    fn ended(&self, mut result: Value) {
-        if let Value::Object(fields) = &mut result {
-            fields.shift_remove("status");
-        }
-        result["type"] = json!("exit");
+    fn ended(&self, result: Value) {
         if let Some(gateway) = self.gateway.upgrade() {
-            if let Ok(message) = checked("terminalServerMessageSchema", &result) {
+            if let Ok(message) = checked("terminalServerMessageSchema", &exit_message(result)) {
                 gateway.terminal_output(
                     &self.id,
                     self.token,
@@ -218,4 +216,17 @@ impl Channel {
             gateway.terminal_error(&self.id, self.token, error, close);
         }
     }
+}
+
+fn client_message(text: &str) -> Option<Value> {
+    let message = parse_json_text(text.strip_prefix('\u{feff}').unwrap_or(text)).ok()?;
+    checked("terminalClientMessageSchema", &message).ok()
+}
+
+fn exit_message(mut result: Value) -> Value {
+    if let Value::Object(fields) = &mut result {
+        fields.shift_remove("status");
+    }
+    result["type"] = json!("exit");
+    result
 }
