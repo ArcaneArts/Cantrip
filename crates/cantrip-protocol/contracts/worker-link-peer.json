@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "roots": { "workerLinkPeerHandshakeSchema": 0 },
+  "nodes": [
+    {
+      "type": "object",
+      "name": "workerLinkPeerHandshakeSchema",
+      "shape": {
+        "type": 1,
+        "protocolVersion": 2,
+        "role": 3,
+        "peerSessionId": 4,
+        "sessionId": 5,
+        "routeGeneration": 6,
+        "route": 7,
+        "identity": 8,
+        "challenge": 11
+      },
+      "catchall": 12,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": ["worker-link-peer-handshake"],
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    { "type": "enum", "values": ["client", "worker"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "workerLinkPeerRouteSchema",
+      "values": ["lan", "wan"],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "workerLinkSessionIdentitySchema",
+      "shape": {
+        "serverId": 9,
+        "serverGeneration": 9,
+        "ownerId": 9,
+        "accountSessionId": 9,
+        "clientInstanceId": 9,
+        "workerId": 9,
+        "workerProcessGeneration": 9
+      },
+      "catchall": 10,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" },
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$",
+          "flags": "u",
+          "displayPattern": "/^[^\\u0000-\\u001f\\u007f]+$/u"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 43, "when": "length" },
+        { "check": "max_length", "maximum": 128, "when": "length" },
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]+$/u"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] }
+  ]
+}

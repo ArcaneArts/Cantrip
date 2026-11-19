@@ -1,4 +1,5 @@
 //! Keep channel output and ownership tied to the carrier that opened it.
+use super::peer::{PeerCarrier, lane_index};
 use crate::connection::Outbound;
 use bytes::Bytes;
 use cantrip_framing::worker_link::Frame;
@@ -17,21 +18,38 @@ const LOW_WATER: usize = 256 * 1024;
 pub(super) enum Carrier {
     Relay,
     Local(Weak<Local>),
+    Peer(Weak<PeerCarrier>),
 }
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) enum CarrierKey {
+    Relay,
+    Local(*const Local),
+    Peer(*const PeerCarrier),
+}
+
+pub(super) type OutputKey = (CarrierKey, Option<usize>);
 
 impl Carrier {
     pub fn route(&self) -> &'static str {
         match self {
             Self::Relay => "relay",
             Self::Local(_) => "local",
+            Self::Peer(_) => "lan",
         }
     }
 
-    pub fn key(&self) -> Option<*const Local> {
+    pub fn key(&self) -> CarrierKey {
         match self {
-            Self::Relay => None,
-            Self::Local(local) => Some(local.as_ptr()),
+            Self::Relay => CarrierKey::Relay,
+            Self::Local(local) => CarrierKey::Local(local.as_ptr()),
+            Self::Peer(peer) => CarrierKey::Peer(peer.as_ptr()),
         }
+    }
+
+    pub fn output_key(&self, lane: &str) -> OutputKey {
+        let lane = matches!(self, Self::Peer(_)).then(|| lane_index(lane).unwrap());
+        (self.key(), lane)
     }
 
     pub fn offer(&self, outbound: &Outbound, frame: &Frame) -> Output {
@@ -42,6 +60,9 @@ impl Carrier {
                 Some(local) if local.active() => local.output.offer(frame.bytes()),
                 _ => Output::Closed,
             },
+            Self::Peer(peer) => peer
+                .upgrade()
+                .map_or(Output::Closed, |peer| peer.offer(frame)),
         }
     }
 }

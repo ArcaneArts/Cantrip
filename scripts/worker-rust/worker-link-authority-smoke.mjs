@@ -24,6 +24,7 @@ const { values } = parseArgs({
     server: { type: "string" },
     worker: { type: "string" },
     tunnel: { type: "boolean" },
+    peer: { type: "boolean" },
   },
 });
 assert.ok(values.server && values.worker, "Pass --server and --worker.");
@@ -35,6 +36,7 @@ const workerId = "native-workerlink-authority";
 const environment = fixtureEnvironment(path.join(root, "server"));
 environment.CANTRIP_BOOTSTRAP_MODE = "standalone";
 environment.CANTRIP_WORKER_LINK_LOCAL_ENABLED = "true";
+if (values.peer) environment.CANTRIP_WORKER_LINK_LAN_ENABLED = "true";
 delete environment.CANTRIP_WORKER_TOKEN;
 let server;
 let child;
@@ -204,7 +206,7 @@ try {
       "Native worker completed " + command,
     );
   }
-  if (values.tunnel) {
+  if (values.tunnel || values.peer) {
     const { verifyWorkerLinkTunnel } =
       await import("./worker-link-tunnel-cases.mjs");
     const relay = await call(
@@ -221,6 +223,7 @@ try {
       workerId,
       workerDirectory: path.join(root, "worker"),
       master,
+      peer: values.peer,
     });
     assert.ok(tunnelConnected, "Native worker logged a tunnel connection");
     assert.ok(

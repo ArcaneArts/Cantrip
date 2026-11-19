@@ -50,6 +50,7 @@ export async function verifyWorkerLinkTunnel({
   workerId,
   workerDirectory,
   master,
+  peer,
 }) {
   const component = "tunnel-content";
   const keyRevision = 1;
@@ -304,11 +305,114 @@ export async function verifyWorkerLinkTunnel({
       received,
       sockets,
     });
+    if (peer)
+      await verifyPeerTunnel({
+        call,
+        workerId,
+        tunnelId,
+        configuration,
+        response,
+        received,
+        sockets,
+      });
   } finally {
     componentKey.fill(0);
     connection?.socket.terminate();
     for (const socket of sockets) socket.destroy();
     if (tcp.listening) await new Promise((resolve) => tcp.close(resolve));
+    await call("DELETE", base, 204);
+  }
+}
+
+async function verifyPeerTunnel({
+  call,
+  workerId,
+  tunnelId,
+  configuration,
+  response,
+  received,
+  sockets,
+}) {
+  const { connectPeerWorkerLink } =
+    await import("./worker-link-peer-client.mjs");
+  const clientInstanceId = randomUUID();
+  const opened = await call(
+    "POST",
+    "/api/workers/" + workerId + "/worker-link/sessions",
+    201,
+    {
+      clientInstanceId,
+    },
+  );
+  const base = "/api/worker-links/" + opened.sessionId;
+  let peer;
+  try {
+    const session = await call("POST", base + "/route", 200, {
+      preferredRoute: "lan",
+    });
+    const { attachmentId } = await call(
+      "POST",
+      `/api/tunnels/${tunnelId}/attachments`,
+      201,
+      {
+        clientId: clientInstanceId,
+      },
+    );
+    const { grant, route } = workerLinkTunnelGrantSchema.parse(
+      await call(
+        "POST",
+        base + "/tunnel-attachments/" + attachmentId + "/grant",
+        201,
+        {},
+      ),
+    );
+    peer = await connectPeerWorkerLink(call, session);
+    const link = new Connection(peer.socket, session, "lan");
+    await link.open(grant);
+    const renewed = await call("POST", base + "/renew", 200);
+    assert.ok(
+      Date.parse(renewed.lease.expiresAt) > Date.parse(session.lease.expiresAt),
+    );
+    const active = link.stream(route);
+    await active.next("accepted");
+    const request = Buffer.from("peer-private-request-" + randomUUID());
+    active.send({ kind: "data", direction: source }, request, configuration);
+    active.send({ kind: "half-close", direction: source });
+    assert.equal((await active.next("credit")).header.bytes, request.length);
+    await until(() => received.at(-1)?.equals(request), "Peer tunnel request");
+    const head = await active.next("data");
+    assert.deepEqual(
+      openTunnelDataFrame(configuration, head.header, head.payload),
+      response.subarray(0, smallCredit),
+    );
+    active.send({
+      kind: "credit",
+      direction: destination,
+      bytes: response.length,
+    });
+    link.wire({
+      kind: "credit",
+      direction: "worker-to-client",
+      bytes: 1024 * 1024,
+    });
+    await receiveResponse(active, response, configuration);
+    assert.equal((await active.next("close")).header.code, "normal");
+    const retained = link.stream(route);
+    await retained.next("accepted");
+    await call("DELETE", base + "/grants/" + grant.binding.grantId, 204);
+    assert.equal((await link.nextControl("close")).code, "revoked");
+    await until(() => sockets.size === 0, "Peer grant revokes TCP streams");
+    const replaced = await call("POST", base + "/route", 200, {
+      preferredRoute: "relay",
+    });
+    assert.equal(replaced.routeGeneration, session.routeGeneration + 1);
+    await call("POST", peer.path + "/mailbox", 409, {});
+    await peer.waitClosed();
+    console.log(
+      JSON.stringify({ suite: "native-workerlink-lan-peer", passed: true }),
+    );
+  } finally {
+    await peer?.close();
     await call("DELETE", base, 204);
   }
 }
@@ -761,11 +865,11 @@ export class Connection {
     this.control = [];
     this.streams = new Map();
     this.socket =
-      address instanceof WebSocket
-        ? address
-        : new WebSocket(address, {
+      address instanceof URL
+        ? new WebSocket(address, {
             headers: { origin: "http://127.0.0.1:5173" },
-          });
+          })
+        : address;
     this.socket.on("error", (error) => {
       this.failure ??= error;
     });

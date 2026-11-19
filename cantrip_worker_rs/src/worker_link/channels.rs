@@ -1,7 +1,7 @@
 //! Ordered WorkerLink channels and shared carrier credit.
 use super::{
     Coordinator, Session,
-    carrier::{Carrier, Local, Output},
+    carrier::{Carrier, Output, OutputKey},
     id,
     observation::Observation,
     terminal::Terminal,
@@ -578,7 +578,9 @@ impl Channels {
         let mut blocked = self.flush_controls(output);
         let mut finished = Vec::new();
         for (id, channel) in &mut self.active {
-            let carrier = channel.carrier.key();
+            let carrier = channel
+                .carrier
+                .output_key(channel.routing["lane"].as_str().unwrap());
             if blocked.contains(&carrier) {
                 continue;
             }
@@ -598,14 +600,14 @@ impl Channels {
         }
     }
 
-    fn flush_controls(&mut self, output: &Outbound) -> HashSet<Option<*const Local>> {
+    fn flush_controls(&mut self, output: &Outbound) -> HashSet<OutputKey> {
         let mut blocked = HashSet::new();
         for _ in 0..self.controls.len() {
             let (carrier, frame) = self
                 .controls
                 .pop_front()
                 .expect("queued WorkerLink control");
-            let key = carrier.key();
+            let key = carrier.output_key(frame.header()["lane"].as_str().unwrap());
             if blocked.contains(&key) || matches!(carrier.offer(output, &frame), Output::Pending) {
                 blocked.insert(key);
                 self.controls.push_back((carrier, frame));

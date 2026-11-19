@@ -4,6 +4,7 @@ mod carrier;
 mod channels;
 mod direct_broker;
 mod observation;
+mod peer;
 mod terminal;
 mod tunnel;
 
@@ -18,6 +19,8 @@ use chrono::Utc;
 pub(crate) use direct_broker::Broker as DirectBroker;
 use indexmap::IndexMap;
 use observation::Observation;
+pub(crate) use peer::supports as supports_peer;
+use peer::{PeerCarrier, Peers};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex, OnceLock},
@@ -53,6 +56,7 @@ struct State {
     sessions: HashMap<JsString, Session>,
     tombstones: IndexMap<JsString, u64>,
     channels: Channels,
+    peers: Peers,
     legacy_tunnels: tunnel::Legacy,
     transport_ready: bool,
     disconnect: Option<Instant>,
@@ -129,6 +133,46 @@ impl Coordinator {
         result
     }
 
+    pub(crate) async fn execute_peer(self: &Arc<Self>, command: &Value) -> Result<Value> {
+        let settlement = {
+            let mut state = self.state.lock().unwrap();
+            let identity = self.encryption.bound_identity();
+            let now = Utc::now().timestamp_millis();
+            state.sweep(now, identity.as_ref().ok());
+            ensure!(
+                state.transport_ready || state.disconnect.is_some(),
+                "WorkerLink command transport is disconnected."
+            );
+            let State {
+                sessions, peers, ..
+            } = &mut *state;
+            match command["type"].as_str() {
+                Some("worker-link.peer.install") => {
+                    let session = &command["peerSession"];
+                    peer::authorized(sessions, session, now)?;
+                    peers.install(session, &command["configuration"], self)?;
+                    None
+                }
+                Some("worker-link.peer.renew") => {
+                    peers.renew(sessions, command, now)?;
+                    None
+                }
+                Some("worker-link.peer.revoke") => {
+                    peers.revoke(command);
+                    None
+                }
+                Some("worker-link.peer.signal") => Some(peers.signal(&command["envelope"])?),
+                _ => bail!("Unknown WorkerLink peer command."),
+            }
+        };
+        if let Some(settlement) = settlement {
+            settlement
+                .await
+                .context("WorkerLink peer signaling stopped.")??;
+        }
+        Ok(json!({"accepted":true}))
+    }
+
     fn execute_authority(
         &self,
         state: &mut State,
@@ -199,6 +243,7 @@ impl Coordinator {
                     );
                     current.value["routeGeneration"] = generation.clone();
                     current.value["preferredRoute"] = route.clone();
+                    state.peers.revoke_session(session, "route-replaced");
                     state.channels.close_session(session, "route-replaced");
                 }
                 None
@@ -277,6 +322,7 @@ impl Coordinator {
                     && header["effectiveRoute"] == "local"
                     && id(header, "sessionId") == &local.session
             }),
+            Carrier::Peer(peer) => peer.upgrade().is_some_and(|peer| peer.permits(header)),
         };
         let accepted = if !admitted {
             false
@@ -328,6 +374,14 @@ impl Coordinator {
         self.update_channels(|channels| {
             channels.disconnect(&Carrier::Local(Arc::downgrade(local)))
         });
+    }
+
+    fn handle_peer_frame(self: &Arc<Self>, peer: &Arc<PeerCarrier>, frame: &Frame) {
+        self.handle_carrier_frame(&Carrier::Peer(Arc::downgrade(peer)), frame);
+    }
+
+    fn disconnect_peer(&self, peer: &Arc<PeerCarrier>) {
+        self.update_channels(|channels| channels.disconnect(&Carrier::Peer(Arc::downgrade(peer))));
     }
 
     fn local_writable(&self) {
@@ -449,6 +503,8 @@ impl Coordinator {
             }
         }
         self.revoke_all();
+        let mut peers = self.state.lock().unwrap().peers.take_tasks();
+        while peers.join_next().await.is_some() {}
         if let Some(terminals) = self.terminals.get() {
             terminals.close().await;
         }
@@ -560,6 +616,7 @@ impl State {
     }
 
     fn revoke_session(&mut self, session: &JsString, code: &str) -> bool {
+        self.peers.revoke_session(session, code);
         self.channels.close_session(session, code);
         let Some(session) = self.sessions.remove(session) else {
             return false;
@@ -660,6 +717,7 @@ impl State {
         for (session, grant, generation) in removed_grants {
             self.revoke_grant(&session, &grant, generation, "lifetime-expired");
         }
+        self.peers.reconcile(&self.sessions, now);
         self.channels.sweep(now);
     }
 }
