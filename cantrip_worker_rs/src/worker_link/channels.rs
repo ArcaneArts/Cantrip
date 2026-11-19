@@ -1,9 +1,11 @@
-//! Ordered relay channels and shared carrier credit.
+//! Ordered WorkerLink channels and shared carrier credit.
 use super::{
-    Coordinator, Session, id,
+    Coordinator, Session,
+    carrier::{Carrier, Local, Output},
+    id,
     observation::Observation,
     terminal::Terminal,
-    tunnel::{Inbound, Output, Tunnel},
+    tunnel::{Inbound, Tunnel},
 };
 use crate::connection::Outbound;
 use cantrip_framing::worker_link::{self as wire, Frame};
@@ -11,7 +13,7 @@ use cantrip_wire::{JsString, Value, value::json};
 use indexmap::IndexMap;
 use sha2::{Digest, Sha256};
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
     time::Duration,
 };
@@ -37,10 +39,11 @@ pub(super) struct Channels {
     nonces: HashMap<JsString, i64>,
     invalid: HashMap<Option<JsString>, u32>,
     operation_sequences: IndexMap<JsString, u64>,
-    controls: VecDeque<Frame>,
+    controls: VecDeque<(Carrier, Frame)>,
 }
 
 struct Channel {
+    carrier: Carrier,
     routing: Value,
     grant: JsString,
     resource: Resource,
@@ -92,7 +95,7 @@ impl Channel {
                 &[("initialCreditBytes", json!(self.initial_credit))],
                 &[],
             );
-            if !output.worker_link(accept) {
+            if !matches!(self.carrier.offer(output, &accept), Output::Queued) {
                 return false;
             }
             self.send = 1;
@@ -108,7 +111,7 @@ impl Channel {
                 ],
                 &[],
             );
-            if !output.worker_link(credit) {
+            if !matches!(self.carrier.offer(output, &credit), Output::Queued) {
                 return false;
             }
             self.send += 1;
@@ -129,7 +132,7 @@ impl Channel {
                 ],
                 bytes,
             );
-            if !output.worker_link(frame) {
+            if !matches!(self.carrier.offer(output, &frame), Output::Queued) {
                 return false;
             }
             self.credit -= bytes.len();
@@ -171,13 +174,14 @@ impl Channel {
 impl Channels {
     pub fn open(
         &mut self,
+        carrier: &Carrier,
         header: &Value,
         session: Option<&Session>,
         retired: &IndexMap<JsString, u64>,
         now: i64,
         gateway: &Arc<Coordinator>,
     ) -> bool {
-        let result = self.try_open(header, session, retired, now, gateway);
+        let result = self.try_open(carrier, header, session, retired, now, gateway);
         let session_id = id(header, "sessionId");
         match result {
             Ok(()) => {
@@ -191,13 +195,16 @@ impl Channels {
                     .or_default();
                 *count = count.saturating_add(1);
                 let retire = *count > MAX_INVALID;
-                self.push_control(frame(
-                    header,
-                    "reject",
-                    0,
-                    &[("code", json!(if retire { "limit-exceeded" } else { code }))],
-                    &[],
-                ));
+                self.push_control(
+                    carrier.clone(),
+                    frame(
+                        header,
+                        "reject",
+                        0,
+                        &[("code", json!(if retire { "limit-exceeded" } else { code }))],
+                        &[],
+                    ),
+                );
                 retire
             }
         }
@@ -205,6 +212,7 @@ impl Channels {
 
     fn try_open(
         &mut self,
+        carrier: &Carrier,
         header: &Value,
         session: Option<&Session>,
         retired: &IndexMap<JsString, u64>,
@@ -212,7 +220,7 @@ impl Channels {
         gateway: &Arc<Coordinator>,
     ) -> Result<(), &'static str> {
         let session = session.ok_or("unauthorized")?;
-        if header["effectiveRoute"] != "relay"
+        if header["effectiveRoute"] != carrier.route()
             || header["routeGeneration"] != session.value["routeGeneration"]
             || !super::route_enabled(&session.value, &header["effectiveRoute"])
         {
@@ -353,6 +361,7 @@ impl Channels {
         self.active.insert(
             channel.clone(),
             Channel {
+                carrier: carrier.clone(),
                 routing: routing(header),
                 grant: grant_id.clone(),
                 resource,
@@ -373,17 +382,18 @@ impl Channels {
         Ok(())
     }
 
-    pub fn receive(&mut self, frame: &Frame, allow_write: bool) {
+    pub fn receive(&mut self, carrier: &Carrier, frame: &Frame, allow_write: bool) -> bool {
         let header = frame.header();
         let key = id(&header["channel"], "channelId");
         let Some(channel) = self.active.get_mut(key) else {
-            return;
+            return false;
         };
-        if ["sessionId", "effectiveRoute", "channel", "lane"]
-            .iter()
-            .any(|field| header[*field] != channel.routing[*field])
+        if channel.carrier.key() != carrier.key()
+            || ["sessionId", "effectiveRoute", "channel", "lane"]
+                .iter()
+                .any(|field| header[*field] != channel.routing[*field])
         {
-            return;
+            return false;
         }
         let sequence = header["sequence"].as_u64().unwrap();
         if channel.send == 0
@@ -391,7 +401,7 @@ impl Channels {
             || header["routeGeneration"] != channel.routing["routeGeneration"]
         {
             self.close(key, "protocol-error");
-            return;
+            return false;
         }
         channel.receive = sequence;
         channel.activity = Instant::now();
@@ -425,12 +435,19 @@ impl Channels {
                         channel.credit_pending += bytes.len();
                     }
                     Ok(Inbound::Reply(_)) => self.close(key, "congested"),
-                    Err(code) => self.close(key, code),
+                    Err(code) => {
+                        self.close(key, code);
+                        return code != "protocol-error";
+                    }
                 }
             }
             Some("close") => self.close(key, header["code"].as_str().unwrap()),
-            _ => self.close(key, "protocol-error"),
+            _ => {
+                self.close(key, "protocol-error");
+                return false;
+            }
         }
+        true
     }
 
     pub fn publish(&mut self, candidate: Observation) {
@@ -516,7 +533,8 @@ impl Channels {
         if channel.send > 0 {
             let frame = channel.frame("error", channel.send, &[("code", json!(error))], &[]);
             channel.send += 1;
-            self.push_control(frame);
+            let carrier = channel.carrier.clone();
+            self.push_control(carrier, frame);
         }
         self.close(id, close);
     }
@@ -557,32 +575,50 @@ impl Channels {
     }
 
     pub fn flush(&mut self, output: &Outbound) {
-        if !self.flush_controls(output) {
-            return;
-        }
+        let mut blocked = self.flush_controls(output);
         let mut finished = Vec::new();
         for (id, channel) in &mut self.active {
+            let carrier = channel.carrier.key();
+            if blocked.contains(&carrier) {
+                continue;
+            }
             if !channel.flush(output) {
-                break;
+                blocked.insert(carrier);
+                continue;
             }
             if channel.close_after_drain && channel.pending.is_empty() && channel.send > 0 {
                 finished.push(id.clone());
             }
         }
-        for id in finished {
-            self.close(&id, "normal");
+        if !finished.is_empty() {
+            for id in finished {
+                self.close(&id, "normal");
+            }
+            self.flush_controls(output);
         }
-        self.flush_controls(output);
     }
 
-    fn flush_controls(&mut self, output: &Outbound) -> bool {
-        while let Some(control) = self.controls.front() {
-            if !output.worker_link(control.clone()) {
-                return false;
+    fn flush_controls(&mut self, output: &Outbound) -> HashSet<Option<*const Local>> {
+        let mut blocked = HashSet::new();
+        for _ in 0..self.controls.len() {
+            let (carrier, frame) = self
+                .controls
+                .pop_front()
+                .expect("queued WorkerLink control");
+            let key = carrier.key();
+            if blocked.contains(&key) || matches!(carrier.offer(output, &frame), Output::Pending) {
+                blocked.insert(key);
+                self.controls.push_back((carrier, frame));
             }
-            self.controls.pop_front();
         }
-        true
+        blocked
+    }
+
+    pub fn disconnect(&mut self, carrier: &Carrier) {
+        let key = carrier.key();
+        self.active
+            .retain(|_, channel| channel.carrier.key() != key);
+        self.controls.retain(|(carrier, _)| carrier.key() != key);
     }
 
     pub fn close_session(&mut self, session: &JsString, code: &str) {
@@ -661,12 +697,13 @@ impl Channels {
                 },
             )
         };
-        self.push_control(channel.frame(kind, channel.send, &[("code", json!(code))], &[]));
+        let frame = channel.frame(kind, channel.send, &[("code", json!(code))], &[]);
+        self.push_control(channel.carrier, frame);
     }
 
-    fn push_control(&mut self, frame: Frame) {
+    fn push_control(&mut self, carrier: Carrier, frame: Frame) {
         if self.controls.len() < MAX_CHANNELS * 2 {
-            self.controls.push_back(frame);
+            self.controls.push_back((carrier, frame));
         }
     }
 }

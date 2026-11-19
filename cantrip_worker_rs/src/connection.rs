@@ -202,10 +202,6 @@ impl Outbound {
         self.binary_capacity.notified().await;
     }
 
-    pub(crate) fn worker_link(&self, frame: cantrip_framing::worker_link::Frame) -> bool {
-        self.binary(frame.bytes())
-    }
-
     pub(crate) fn binary(&self, bytes: &[u8]) -> bool {
         let mut queue = self.queue.lock().unwrap();
         if queue.closed || !queue.ready || queue.bytes + queue.in_flight + bytes.len() > MAX_PENDING

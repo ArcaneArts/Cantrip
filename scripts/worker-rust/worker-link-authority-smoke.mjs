@@ -40,6 +40,8 @@ let server;
 let child;
 let completion;
 let diagnostics = "";
+let tunnelConnected = false;
+let protectedTargetRejected = false;
 const master = generateAccountMasterKey();
 
 async function call(method, route, expected, body) {
@@ -119,7 +121,12 @@ try {
   });
   for (const stream of [child.stdout, child.stderr]) {
     stream.on("data", (chunk) => {
-      diagnostics = (diagnostics + chunk).slice(-24_000);
+      const recent = diagnostics + chunk;
+      tunnelConnected ||= recent.includes("event=tunnel.destination.connected");
+      protectedTargetRejected ||= recent.includes(
+        "event=tunnel.protected-target.rejected",
+      );
+      diagnostics = recent.slice(-24_000);
     });
   }
   const ready = /event=worker\.connection\.connected/;
@@ -215,8 +222,11 @@ try {
       workerDirectory: path.join(root, "worker"),
       master,
     });
-    assert.match(diagnostics, /event=tunnel\.destination\.connected/);
-    assert.match(diagnostics, /event=tunnel\.protected-target\.rejected/);
+    assert.ok(tunnelConnected, "Native worker logged a tunnel connection");
+    assert.ok(
+      protectedTargetRejected,
+      "Native worker logged a protected target rejection",
+    );
   }
   console.log(
     JSON.stringify({ suite: "native-workerlink-authority", passed: true }),

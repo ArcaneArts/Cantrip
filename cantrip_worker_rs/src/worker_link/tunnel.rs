@@ -3,6 +3,7 @@ mod direct;
 mod legacy;
 mod tcp;
 
+pub(super) use super::carrier::Output;
 use super::{Coordinator, id};
 use crate::{logging::Logs, protected_content::open_tunnel_record};
 use cantrip_framing::tunnel::{self as wire, Frame};
@@ -29,12 +30,6 @@ pub(super) enum Inbound {
     Retained,
     Consumed,
     Reply(Frame),
-}
-
-pub(super) enum Output {
-    Queued,
-    Pending,
-    Closed,
 }
 
 pub(super) struct Tunnel {

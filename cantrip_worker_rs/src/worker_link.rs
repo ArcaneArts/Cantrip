@@ -1,5 +1,6 @@
 //! Worker-side installation of Core-issued session and resource authority.
 //! These leases are process-local. They never authorize a carrier by themselves.
+mod carrier;
 mod channels;
 mod direct_broker;
 mod observation;
@@ -11,6 +12,7 @@ use anyhow::{Context, Result, bail, ensure};
 use cantrip_framing::worker_link::Frame;
 use cantrip_protocol::worker_link::identity_key;
 use cantrip_wire::{JsString, Value, value::json};
+use carrier::{Carrier, Local};
 use channels::Channels;
 use chrono::Utc;
 pub(crate) use direct_broker::Broker as DirectBroker;
@@ -259,42 +261,77 @@ impl Coordinator {
     }
 
     pub(crate) fn handle_frame(self: &Arc<Self>, frame: &Frame) {
+        self.handle_carrier_frame(&Carrier::Relay, frame);
+    }
+
+    fn handle_carrier_frame(self: &Arc<Self>, carrier: &Carrier, frame: &Frame) -> bool {
         let mut state = self.state.lock().unwrap();
         let identity = self.encryption.bound_identity();
         let now = Utc::now().timestamp_millis();
         state.sweep(now, identity.as_ref().ok());
-        if state.transport_ready {
-            let header = frame.header();
-            if header["kind"] == "open" {
-                let session = id(header, "sessionId");
-                let State {
-                    sessions,
-                    channels,
-                    tombstones,
-                    ..
-                } = &mut *state;
-                if channels.open(header, sessions.get(session), tombstones, now, self) {
-                    state.revoke_session(session, "protocol-error");
-                }
-            } else {
-                let allow_write = state
-                    .channels
-                    .grant_for(header)
-                    .and_then(|grant| {
-                        state
-                            .sessions
-                            .get(id(header, "sessionId"))
-                            .and_then(|session| session.grants.get(grant))
-                    })
-                    .is_some_and(|grant| {
-                        grant["binding"]["operations"]
-                            .as_array()
-                            .is_some_and(|operations| operations.contains(&json!("stream:write")))
-                    });
-                state.channels.receive(frame, allow_write);
+        let header = frame.header();
+        let admitted = match carrier {
+            Carrier::Relay => state.transport_ready,
+            Carrier::Local(local) => local.upgrade().is_some_and(|local| {
+                local.active()
+                    && header["effectiveRoute"] == "local"
+                    && id(header, "sessionId") == &local.session
+            }),
+        };
+        let accepted = if !admitted {
+            false
+        } else if header["kind"] == "open" {
+            let session = id(header, "sessionId");
+            let State {
+                sessions,
+                channels,
+                tombstones,
+                ..
+            } = &mut *state;
+            if channels.open(
+                carrier,
+                header,
+                sessions.get(session),
+                tombstones,
+                now,
+                self,
+            ) {
+                state.revoke_session(session, "protocol-error");
             }
-        }
+            true
+        } else {
+            let allow_write = state
+                .channels
+                .grant_for(header)
+                .and_then(|grant| {
+                    state
+                        .sessions
+                        .get(id(header, "sessionId"))
+                        .and_then(|session| session.grants.get(grant))
+                })
+                .is_some_and(|grant| {
+                    grant["binding"]["operations"]
+                        .as_array()
+                        .is_some_and(|operations| operations.contains(&json!("stream:write")))
+                });
+            state.channels.receive(carrier, frame, allow_write)
+        };
         state.channels.flush(&self.outgoing);
+        accepted
+    }
+
+    fn handle_local_frame(self: &Arc<Self>, local: &Arc<Local>, frame: &Frame) -> bool {
+        self.handle_carrier_frame(&Carrier::Local(Arc::downgrade(local)), frame)
+    }
+
+    fn disconnect_local(&self, local: &Arc<Local>) {
+        self.update_channels(|channels| {
+            channels.disconnect(&Carrier::Local(Arc::downgrade(local)))
+        });
+    }
+
+    fn local_writable(&self) {
+        self.update_channels(|_| {});
     }
 
     pub(crate) fn handle_tunnel_frame(self: &Arc<Self>, frame: cantrip_framing::tunnel::Frame) {

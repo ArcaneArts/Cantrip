@@ -71,6 +71,7 @@ const { values } = parseArgs({
     "replica-provision-only": { type: "boolean", default: false },
     "replica-lifecycle-only": { type: "boolean", default: false },
     "terminal-relay-only": { type: "boolean", default: false },
+    "worker-link-local": { type: "boolean", default: false },
     "shares-only": { type: "boolean", default: false },
     "run-definitions-only": { type: "boolean", default: false },
     "run-runtime-only": { type: "boolean", default: false },
@@ -164,6 +165,8 @@ const workerId = "native-workspace-worker",
   projectId = "99999999-9999-4999-8999-000000000007";
 const environment = fixtureEnvironment(serverDirectory);
 environment.CANTRIP_BOOTSTRAP_MODE = "standalone";
+if (values["worker-link-local"])
+  environment.CANTRIP_WORKER_LINK_LOCAL_ENABLED = "true";
 delete environment.CANTRIP_WORKER_TOKEN;
 let server,
   child,
