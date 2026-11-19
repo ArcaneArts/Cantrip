@@ -979,6 +979,9 @@ export const contractRoots = [
   "decisionOutcomeSchema",
   "decisionResultSchema",
   "runConfigurationPathSuggestionSchema",
+  "runConfigurationRuntimeWorkerLookupSchema",
+  "runConfigurationRuntimeOutputContentSchema",
+  "runConfigurationSecretValueContentSchema",
 ];
 
 export const projectExportContractRoots = [
@@ -1235,6 +1238,10 @@ const refinements = new Map([
   [
     runDefinitions.runConfigurationCodexEnvironmentSourceStatusSchema,
     "run-codex-source",
+  ],
+  [
+    runSecrets.runConfigurationSecretValueContentSchema.shape.value,
+    "run-secret-no-nul",
   ],
   [runSecrets.runConfigurationSecretSummarySchema, "run-secret-summary"],
   [

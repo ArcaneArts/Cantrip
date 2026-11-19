@@ -8,6 +8,7 @@ pub(super) fn refine(
         tag,
         "run-repository-entry"
             | "run-codex-source"
+            | "run-secret-no-nul"
             | "run-secret-summary"
             | "run-secret-summaries"
             | "run-provider-validation"
@@ -25,6 +26,15 @@ pub(super) fn refine(
         result.issue(json!({"code":"custom"}), &at, message.into(), false);
     };
     match tag {
+        "run-secret-no-nul" => {
+            if value
+                .as_js_string()
+                .is_some_and(|value| value.units().contains(&0))
+            {
+                issue(&[], "Secret values cannot contain NUL characters.");
+            }
+        }
+
         "run-provider-validation" => {
             let errors = value["diagnostics"]
                 .as_array()

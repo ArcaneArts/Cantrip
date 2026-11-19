@@ -955,7 +955,10 @@
     "decisionInputSchema": 14162,
     "decisionOutcomeSchema": 14193,
     "decisionResultSchema": 14196,
-    "runConfigurationPathSuggestionSchema": 8045
+    "runConfigurationPathSuggestionSchema": 8045,
+    "runConfigurationRuntimeWorkerLookupSchema": 8136,
+    "runConfigurationRuntimeOutputContentSchema": 14247,
+    "runConfigurationSecretValueContentSchema": 14251
   },
   "nodes": [
     {
@@ -85827,6 +85830,40 @@
       "checks": []
     },
     { "type": "literal", "values": ["failed"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "data": 14248, "truncated": 14249 },
+      "catchall": 14250,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "runConfigurationSecretValueContentSchema",
+      "shape": { "version": 14252, "value": 14253 },
+      "catchall": 14254,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 16384, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "run-secret-no-nul",
+          "messageAfterPath": true,
+          "message": "Secret values cannot contain NUL characters."
+        }
+      ]
+    },
     { "type": "never", "checks": [] }
   ]
 }

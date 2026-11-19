@@ -1,7 +1,7 @@
 //! Project-owned run definitions on the registered Primary source.
 mod discovery;
-mod environment;
-mod repository;
+pub(super) mod environment;
+pub(super) mod repository;
 mod watch;
 
 use crate::{

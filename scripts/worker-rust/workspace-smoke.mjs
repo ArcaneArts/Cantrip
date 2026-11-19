@@ -29,6 +29,7 @@ import {
   assertSurfaceGrantRefresh,
   verifyExplorer,
 } from "./explorer-smoke-cases.mjs";
+import { verifyHostRuns } from "./run-runtime-smoke.mjs";
 import { verifyRunDefinitions } from "./run-definitions-smoke.mjs";
 import { verifyTerminalServices } from "./terminal-services-smoke.mjs";
 import { verifyHostTerminal } from "./host-terminal-relay-smoke.mjs";
@@ -70,6 +71,7 @@ const { values } = parseArgs({
     "replica-lifecycle-only": { type: "boolean", default: false },
     "terminal-relay-only": { type: "boolean", default: false },
     "run-definitions-only": { type: "boolean", default: false },
+    "run-runtime-only": { type: "boolean", default: false },
   },
 });
 assert.ok(
@@ -95,7 +97,7 @@ await symlink(git, path.join(bin, "git"));
 await symlink("/usr/bin/true", path.join(bin, "true"));
 // Git's native submodule shell frontend uses these system utilities. Keep the
 // fixture's explicit native dependencies available while excluding Node.
-for (const name of ["basename", "sed", "uname"])
+for (const name of ["basename", "sed", "uname", "env"])
   await symlink(`/usr/bin/${name}`, path.join(bin, name));
 if (
   !values["github-catalog-only"] &&
@@ -106,6 +108,7 @@ if (
   !values["github-operations-only"] &&
   !values["terminal-relay-only"] &&
   !values["run-definitions-only"] &&
+  !values["run-runtime-only"] &&
   !(values["replica-provision-only"] || values["replica-lifecycle-only"])
 )
   await symlink(
@@ -213,7 +216,9 @@ function startWorker(code) {
   const workerEnvironment = {
     ...fixtureEnvironment(path.join(root, "unused")),
     PATH: bin,
-    ...(values["terminal-relay-only"] ? { SHELL: "/bin/sh" } : {}),
+    ...(values["terminal-relay-only"] || values["run-runtime-only"]
+      ? { SHELL: "/bin/sh" }
+      : {}),
     NO_COLOR: "1",
     CANTRIP_WORKER_DATA_DIR: workerDirectory,
     CANTRIP_WORKER_ID: workerId,
@@ -661,6 +666,64 @@ try {
       "actual native checkout validation and durable import",
     );
     assert.equal(await readFile(sentinel, "utf8"), "private dirty content\n");
+    if (values["run-runtime-only"]) {
+      const ownerId = repository.ownerId;
+      const runKey = cryptoClient.deriveComponentKey({
+        accountMasterKey: master,
+        ownerId,
+        component: "run-content",
+        keyRevision: 1,
+      });
+      try {
+        const identity = JSON.parse(
+          await readFile(
+            path.join(workerDirectory, "worker-encryption-key.json"),
+            "utf8",
+          ),
+        );
+        const wrappedKey = await cryptoClient.wrapComponentKeyForWorker({
+          ownerId,
+          workerId,
+          component: "run-content",
+          keyRevision: 1,
+          componentKey: runKey,
+          workerPublicKey: identity.publicKey,
+        });
+        const stored = await call(
+          "POST",
+          `/api/encryption/principals/${identity.principalId}/grants`,
+          {
+            component: "run-content",
+            keyRevision: 1,
+            wrappedKey,
+          },
+        );
+        assert.equal(stored.status, 201, JSON.stringify(stored));
+        const refreshed = await call(
+          "POST",
+          `/api/workers/${workerId}/encryption/refresh`,
+          {
+            component: "run-content",
+            keyRevision: 1,
+          },
+        );
+        assert.equal(refreshed.status, 200, JSON.stringify(refreshed));
+        await verifyHostRuns({
+          call,
+          eventually,
+          projectId,
+          checkout,
+          ownerId,
+          serverId: repository.serverId,
+          workerId,
+          componentKey: runKey,
+          restartWorker,
+        });
+      } finally {
+        runKey.fill(0);
+      }
+      break exercise;
+    }
     if (values["run-definitions-only"]) {
       await verifyRunDefinitions({ call, projectId, checkout, restartWorker });
       break exercise;
@@ -884,7 +947,17 @@ try {
   await stopWorker();
   await server.close();
   server = undefined;
-  if (values["run-definitions-only"])
+  if (values["run-runtime-only"])
+    console.log(
+      JSON.stringify({
+        suite: "actual-native-host-run-worker-server",
+        passed: true,
+        encryptedOutput: true,
+        nodeDifferential: true,
+        nodeAbsentFromWorkerPath: true,
+      }),
+    );
+  else if (values["run-definitions-only"])
     console.log(
       JSON.stringify({
         suite: "actual-native-run-definitions-worker-server",

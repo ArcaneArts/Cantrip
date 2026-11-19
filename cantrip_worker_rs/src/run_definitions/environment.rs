@@ -16,7 +16,7 @@ pub(super) fn status(root: &Path, enabled: bool) -> Result<Value> {
             json!({"configured":false,"valid":true,"revision":Value::Null,"hasSetup":false,"diagnostics":Vec::<Value>::new()})
         }
         Source::Ready { revision, setup } => {
-            json!({"configured":true,"valid":true,"revision":revision,"hasSetup":setup,"diagnostics":Vec::<Value>::new()})
+            json!({"configured":true,"valid":true,"revision":revision,"hasSetup":setup.is_some(),"diagnostics":Vec::<Value>::new()})
         }
         Source::Invalid {
             revision,
@@ -30,11 +30,11 @@ pub(super) fn status(root: &Path, enabled: bool) -> Result<Value> {
     Ok(result)
 }
 
-enum Source {
+pub(crate) enum Source {
     Absent,
     Ready {
         revision: String,
-        setup: bool,
+        setup: Option<String>,
     },
     Invalid {
         revision: Option<String>,
@@ -57,7 +57,7 @@ fn invalid(
     }
 }
 
-fn inspect(root: &Path) -> Result<Source> {
+pub(crate) fn inspect(root: &Path) -> Result<Source> {
     let directory = root.join(".codex/environments");
     let Some(metadata) = optional(fs::symlink_metadata(&directory))? else {
         return Ok(Source::Absent);
@@ -143,7 +143,10 @@ fn inspect(root: &Path) -> Result<Source> {
     }
 }
 
-fn setup(table: &toml::Table, platform: &str) -> std::result::Result<bool, (String, String)> {
+fn setup(
+    table: &toml::Table,
+    platform: &str,
+) -> std::result::Result<Option<String>, (String, String)> {
     fn valid(value: Option<&toml::Value>) -> bool {
         value.and_then(toml::Value::as_str).is_some_and(|script| {
             !cantrip_wire::text::trim(script).is_empty()
@@ -157,7 +160,7 @@ fn setup(table: &toml::Table, platform: &str) -> std::result::Result<bool, (Stri
         (field, message)
     }
     let Some(setup) = table.get("setup") else {
-        return Ok(false);
+        return Ok(None);
     };
     let setup = setup
         .as_table()
@@ -167,7 +170,7 @@ fn setup(table: &toml::Table, platform: &str) -> std::result::Result<bool, (Stri
         return Err(script_error("setup.script".into()));
     }
     let Some(platform_setup) = setup.get(platform) else {
-        return Ok(default.is_some());
+        return Ok(default.and_then(toml::Value::as_str).map(str::to_owned));
     };
     let field = format!("setup.{platform}");
     let platform_setup = platform_setup
@@ -176,5 +179,8 @@ fn setup(table: &toml::Table, platform: &str) -> std::result::Result<bool, (Stri
     if !valid(platform_setup.get("script")) {
         return Err(script_error(format!("{field}.script")));
     }
-    Ok(true)
+    Ok(platform_setup
+        .get("script")
+        .and_then(toml::Value::as_str)
+        .map(str::to_owned))
 }
