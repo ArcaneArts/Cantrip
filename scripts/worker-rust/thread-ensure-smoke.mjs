@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { nativeTurnRecoveryObservationSchema } from "../../packages/protocol/dist/index.js";
+import { NativeSuspensionStore } from "../../cantrip_worker/src/native-suspension-store.ts";
 import { CodexRpcClient } from "../../cantrip_worker/src/codex/rpc-client.ts";
 import {
   decryptChatMessageProtectedContent,
@@ -50,6 +51,7 @@ const { values } = parseArgs({
     worker: { type: "string" },
     codex: { type: "string" },
     turns: { type: "boolean" },
+    held: { type: "boolean" },
     protected: { type: "boolean" },
     receipts: { type: "boolean" },
     outcomes: { type: "boolean" },
@@ -340,6 +342,7 @@ const server = createServer(async (request, response) => {
       grants: await Promise.all(
         [
           ...(values.protected ||
+          values.held ||
           values.receipts ||
           values.chatGoal ||
           values.projectGoals ||
@@ -673,6 +676,77 @@ async function assertPersistedSettings(threadId) {
     );
   });
 }
+async function verifyHeldAttachment(session, threadId) {
+  // Use a saved Codex thread with no corresponding Core checkpoint. The
+  // record locates the original home, including its absolute rollout paths.
+  const heldHome = path.join(directory, "codex-home");
+  const { principalId } = JSON.parse(
+    await readFile(path.join(directory, "worker-encryption-key.json"), "utf8"),
+  );
+  const store = new NativeSuspensionStore(
+    directory,
+    () => ({ serverId, ownerId, workerId }),
+    { ...oracle, registration: () => ({ principalId }) },
+  );
+  const evidence = await store.commit({
+    source: {
+      chatId: session.chatId,
+      threadId,
+      contextKind: "project",
+      projectId: session.projectId,
+      placementId: session.worktreeId,
+      modelRouteId: "fixture-route",
+      providerAccountId: null,
+    },
+    suspension: {
+      threadId,
+      turnId: "unavailable-turn",
+      checkpointId: "unavailable-checkpoint",
+      revision: 1,
+    },
+    home: heldHome,
+    runtimeVersion: "0.166.0",
+    runtimeFingerprint: null,
+  });
+  await start();
+  try {
+    const attach = (heldSuspension) =>
+      ensure({ threadId, session: { ...session, heldSuspension } });
+    const missing = await attach({ ...evidence, storageId: randomUUID() });
+    assert.equal(missing.ok, false);
+    assert.match(missing.error.message, /saved suspension source is missing/);
+    const wrong = await attach({
+      ...evidence,
+      suspension: { ...evidence.suspension, revision: 2 },
+    });
+    assert.equal(wrong.ok, false);
+    assert.match(wrong.error.message, /different native attachment/);
+
+    const held = { ...evidence, runtimeVersion: "diagnostic-only" };
+    const attached = await attach(held);
+    assert.equal(
+      attached.ok,
+      true,
+      JSON.stringify(attached) + "\n" + diagnostics,
+    );
+    assert.equal(attached.result.threadId, threadId);
+    // Core found the thread in the recorded home and kept the absent
+    // checkpoint held. Reattaching to the live Core must report its read error.
+    const reattached = await attach(held);
+    assert.equal(reattached.ok, false);
+    assert.equal(reattached.error.message, "Model inference failed.");
+    assert.match(
+      diagnostics,
+      /operation=thread\/resume status=failed.*:namespace:suspension:/u,
+    );
+  } finally {
+    await stop();
+  }
+  console.log(
+    "Node-written source located the saved native thread, and Core enforced the exact hold.",
+  );
+}
+
 async function assertIdle(file) {
   const client = new Client({ name: "thread-ensure-fixture", version: "1" });
   try {
@@ -1600,6 +1674,7 @@ try {
   console.log(
     "Native project and standalone preparation, MCP, and restart recovery passed.",
   );
+  if (values.held) await verifyHeldAttachment(session, threadId);
   if (values.turns || values.outcomes) await verifyTurns();
   if (values.outcomes) {
     await verifyTaskOutcomeRecovery({

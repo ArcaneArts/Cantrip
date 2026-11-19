@@ -12,18 +12,19 @@ use crate::{
     codex::{
         managed::{Runtime, WeakRuntime, Worker},
         observation::{home, provider},
+        suspension_store::{self, Opened, Store},
         task_pause::{Latch, Root},
         turn::autonomous::{Autonomous, Runner},
     },
     config::Config,
-    encryption::Service,
+    encryption::{Service, ServiceError},
     http::checked,
     mcp::bindings::{Activation, Broker, Server},
     protected_secrets::{open_mcp_servers, open_runtime_provider},
     provider_access::Access,
     routing::Registry,
 };
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use cantrip_wire::{JsString, Value, payload_digest, value::json};
 use std::sync::OnceLock;
 use std::{
@@ -158,7 +159,7 @@ impl Ensurer {
         if !session.is_object() {
             bail!("This native preparation requires the managed chat session from the server.");
         }
-        if session.get("osExecution").is_some() || session.get("heldSuspension").is_some() {
+        if session.get("osExecution").is_some() {
             bail!("This managed thread must prepare in its recorded execution environment.");
         }
         if session["computerUseEnabled"] == true {
@@ -180,6 +181,14 @@ impl Ensurer {
             placement_id: field(session, placement)?,
             project_id: session["projectId"].as_js_string().cloned(),
             context_kind,
+        };
+        let held = if let Some(expected) = session.get("heldSuspension") {
+            if intent != Intent::Preserve || command["taskOwned"] == true {
+                bail!("This suspended thread must use its original execution.");
+            }
+            Some(self.open_held(&command, expected, placement).await?)
+        } else {
+            None
         };
         let provider = open_runtime_provider(&self.0.encryption, &command["provider"])?;
         if let Some(defaults) = command
@@ -225,17 +234,34 @@ impl Ensurer {
                 let bound = bound.clone();
                 let prepared = prepared.clone();
                 move |selection, identify| Box::pin(async move {
+                    if let Some(saved) = &held
+                        && (selection.intent != Intent::Preserve
+                            || selection.thread_id.as_ref() != saved.source["threadId"].as_js_string())
+                    {
+                        bail!("The saved suspension source belongs to a different native attachment.");
+                    }
+                    let model_provider = provider::model_provider(&provider);
+                    let source = held.as_ref().map_or(home::Source::Current(selection.thread_id.as_ref()), home::Source::Held);
                     let profile = home::profile(
-                        &this.0.data, &scope, selection.thread_id.as_ref(), &chat,
-                        &provider, execution, this.0.skills.clone(),
+                        &this.0.data, &scope, source, &chat, &provider, execution, this.0.skills.clone(),
                     ).await?;
                     this.assert_bound(&bound)?;
                     let codex_home = profile.codex_home.clone();
-                    let model_provider = provider::model_provider(&provider);
-                    let runtime = this.0.codex.launch_in_scope(
-                        provider::launch(profile, provider, this.0.access.clone())?,
-                        Some((logical_server, bound.0.clone())),
-                    ).await?;
+                    let attached = held.as_ref().and_then(|saved| {
+                        let live = this.live_thread(&chat, selection.thread_id.as_ref()?, &bound)?;
+                        let session = live.session.as_ref()?;
+                        (live.runtime.codex_home().as_os_str() == saved.home.as_os_str()
+                            && ["contextKind", "projectId", "placementId", "modelRouteId", "providerAccountId"]
+                                .iter().all(|field| session[*field] == saved.source[*field]))
+                            .then_some(live.runtime)
+                    });
+                    let runtime = match attached {
+                        Some(runtime) => runtime,
+                        None => this.0.codex.launch_in_scope(
+                            provider::launch(profile, provider, this.0.access.clone())?,
+                            Some((logical_server, bound.0.clone())),
+                        ).await?,
+                    };
                     let session = &command["session"];
                     let mut mcp = profile::external_servers(user_servers);
                     let admission = if structured {
@@ -266,12 +292,15 @@ impl Ensurer {
                     if let (Some(message), Some(thread)) = (first_message, selection.thread_id.as_ref()) {
                         runtime.inference_router().reserve_task_first_input(thread.clone(), runner.clone(), message.clone());
                     }
-                    let configuration = profile::configuration(
+                    let mut configuration = profile::configuration(
                         &command, &cwd, mcp, runner.clone(), model_provider, standalone,
                         this.0.permission_profiles,
                     ).await?;
                     this.assert_bound(&bound)?;
-                    let delivery = this.0.codex.project_goals().filter(|_| !standalone);
+                    if let Some(saved) = &held {
+                        configuration.expected_suspension = Some(saved.evidence["suspension"].clone());
+                    }
+                    let delivery = this.0.codex.project_goals().filter(|_| !standalone && held.is_none());
                     let task = command["taskOwned"] == true;
                     let latch = task.then(|| this.task_latch(&bound, &chat)).transpose()?;
                     let task_root = |thread: &JsString, latch: &Arc<Latch>| Root {
@@ -315,6 +344,7 @@ impl Ensurer {
                     let native_session = (!task).then(|| native_session(&command, &runtime, loaded.id()));
                     if let (Some(autonomous), Some(session)) = (this.0.autonomous.get(), native_session.as_ref())
                         && context_kind == "project"
+                        && held.is_none()
                     {
                         let broker = Arc::downgrade(&this.0);
                         let authority = bound.clone();
@@ -355,6 +385,44 @@ impl Ensurer {
             .take()
             .context("Managed thread ownership was lost.")?;
         Ok(result)
+    }
+
+    async fn open_held(
+        &self,
+        command: &Value,
+        expected: &Value,
+        placement: &str,
+    ) -> Result<Opened> {
+        let session = &command["session"];
+        let source = json!({
+            "chatId":session["chatId"],"threadId":command["threadId"],
+            "contextKind":session["contextKind"],"projectId":session["projectId"],
+            "placementId":session[placement],"modelRouteId":command["model"]["routeId"],
+            "providerAccountId":command["provider"]["accountId"],
+        });
+        let store = Store::new(&self.0.data, self.0.encryption.clone());
+        let id = expected["storageId"]
+            .as_str()
+            .context("Invalid native suspension locator.")?;
+        let opened = store.open(id, &source).await.map_err(|error| {
+            let message = if error.is::<ServiceError>() {
+                "This suspended chat needs a current chat-content encryption grant."
+            } else if suspension_store::missing(&error) {
+                "The saved suspension source is missing from this worker."
+            } else {
+                "The saved suspension source could not be opened for this chat."
+            };
+            anyhow!(message)
+        })?;
+        // Version and fingerprint are diagnostic. Core decides whether it can
+        // attach to the exact checkpoint under the current native runtime.
+        if opened.evidence["storageId"] != expected["storageId"]
+            || opened.evidence["suspension"] != expected["suspension"]
+            || opened.source["threadId"] != expected["suspension"]["threadId"]
+        {
+            bail!("The saved suspension source belongs to a different native attachment.");
+        }
+        Ok(opened)
     }
 
     pub(crate) fn activate(&self, prepared: &Prepared, lane: &Value) -> Result<Option<Activation>> {

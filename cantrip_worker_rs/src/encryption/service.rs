@@ -96,6 +96,9 @@ impl Service {
         let state = self.state.lock().unwrap();
         Ok((state.owner_id()?, state.server_identity()?))
     }
+    pub(crate) fn worker_id(&self) -> &JsString {
+        &self.worker_id
+    }
     pub fn registration(&self) -> Value {
         self.state.lock().unwrap().identity.registration()
     }

@@ -10,6 +10,10 @@ import { CantripDecryptionError as WorkerDecryptionError } from "../../packages/
 import * as p from "../../packages/protocol/src/index.ts";
 import { WorkerEncryptionService } from "../../cantrip_worker/src/worker-encryption.ts";
 import * as worker from "../../cantrip_worker/src/protected-secrets.ts";
+import { NativeSuspensionStore } from "../../cantrip_worker/src/native-suspension-store.ts";
+import { captureWorkerTurn } from "../../cantrip_worker/src/codex/worker-turn-continuation.ts";
+import { workerTurnState } from "../../cantrip_worker/src/codex/worker-turn-continuation.test-fixture.ts";
+import { taskOperationRelayRequestSchema } from "../../packages/protocol/dist/tasks.js";
 import {
   createNativeResourceProtection,
   createNativeSuspensionSourceProtection,
@@ -773,6 +777,234 @@ try {
   assert.equal(
     (await native({ op: "accept", payload: authorization })).state,
     "ready",
+  );
+  const checkpointAuthority = bootstrap([
+    providerGrant,
+    mcpGrant,
+    await makeGrant("chat-content", 1, 11),
+    await makeGrant("task-content", 1, 14),
+  ]);
+  await service.acceptBootstrap(checkpointAuthority);
+  await native({ op: "accept", payload: checkpointAuthority });
+  const scope = { serverId: checkpointAuthority.serverId, ownerId, workerId };
+  const nodeSuspensions = new NativeSuspensionStore(
+    nodeDirectory,
+    () => scope,
+    service,
+  );
+  const rustSuspensions = new NativeSuspensionStore(
+    rustDirectory,
+    () => scope,
+    service,
+  );
+  const source = {
+    chatId: "chat",
+    threadId: "thread",
+    contextKind: "project",
+    projectId: "project",
+    placementId: "placement",
+    modelRouteId: "route",
+    providerAccountId: "account",
+  };
+  const suspension = {
+    threadId: source.threadId,
+    turnId: "turn",
+    checkpointId: "checkpoint",
+    revision: 1,
+  };
+  const continuation = {
+    ...captureWorkerTurn(workerTurnState(), suspension.turnId),
+    structuredOutputSchema: {
+      properties: { result: { enum: ["safe", null] } },
+    },
+  };
+  const fixtures = JSON.parse(
+    await readFile(
+      new URL(
+        "../server-rust/worker-command-alternatives.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const request = taskOperationRelayRequestSchema.parse({
+    ...fixtures.cases.find(
+      ({ input }) => input.command.resultMode?.kind === "task-encrypted",
+    ).input.command.resultMode.operation,
+    operationId: crypto.randomUUID(),
+    chatId: source.chatId,
+  });
+  const taskInput = p.taskInferenceInputReceiptSchema.parse({
+    operationId: crypto.randomUUID(),
+    chatId: source.chatId,
+    clientMessageId: request.userMessage.id,
+    workerId,
+    worktreeId: source.placementId,
+    executionLaneId: crypto.randomUUID(),
+    executionLaneActivatedAt: at,
+    providerId: "provider",
+    modelRouteId: source.modelRouteId,
+    providerAccountId: source.providerAccountId,
+    dispatch: {
+      operationId: request.operationId,
+      cycleId: crypto.randomUUID(),
+      leaseOwner: "original-owner",
+      fencingToken: 1,
+    },
+  });
+  const taskContinuation = {
+    version: 1,
+    request,
+    events: {
+      version: 1,
+      mode: request.classification.kind === "direct" ? "default" : "plan",
+      ids: [],
+      completedRootMessage: null,
+    },
+  };
+  const goalContinuation = {
+    version: 2,
+    prompt: {
+      ...request.userMessage,
+      classification: { role: "user", mode: "goal", attachmentIds: [] },
+    },
+    publication: {
+      id: crypto.randomUUID(),
+      idempotencyKey: "fixture-goal-publication",
+    },
+    events: { ...taskContinuation.events, mode: "goal" },
+  };
+  const cycle = {
+    cycleId: taskInput.dispatch.cycleId,
+    goalEpoch: crypto.randomUUID(),
+    scopeId: crypto.randomUUID(),
+    gateAttemptId: crypto.randomUUID(),
+    runnerGeneration: crypto.randomUUID(),
+    modelRouteId: taskInput.modelRouteId,
+    providerAccountId: taskInput.providerAccountId,
+    orderEpoch: 0,
+  };
+  const goalSuspension = { ...suspension, checkpointId: "goal-checkpoint" };
+  const taskGoalCycle = p.taskGoalCycleSuspensionSourceSchema.parse({
+    kind: "goal-cycle",
+    sourceKey: "b".repeat(64),
+    operationId: `native-inference:${source.threadId}:${goalSuspension.turnId}:${cycle.scopeId}:${cycle.gateAttemptId}`,
+    workerGeneration: crypto.randomUUID(),
+    runtimeGeneration: crypto.randomUUID(),
+    threadId: source.threadId,
+    turnId: goalSuspension.turnId,
+    cycle,
+    parent: { ...taskInput, kind: "goal" },
+    publication: goalContinuation.publication,
+  });
+  const locator = {
+    source,
+    home: path.join(nodeDirectory, "checkpoint-home"),
+    suspension,
+    runtimeVersion: "0.166.0",
+    runtimeFingerprint: null,
+  };
+  const storageIds = new Set();
+  for (const input of [
+    locator,
+    { ...locator, continuation },
+    {
+      ...locator,
+      source: { ...source, taskInput },
+      continuation,
+      taskContinuation,
+    },
+    {
+      ...locator,
+      source: { ...source, taskGoalCycle },
+      suspension: goalSuspension,
+      continuation,
+      taskContinuation: goalContinuation,
+    },
+  ]) {
+    const nodeEvidence = await nodeSuspensions.commit(input);
+    const rustEvidence = await native({
+      op: "suspension-commit",
+      directory: rustDirectory,
+      workerId,
+      ...input,
+    });
+    storageIds.add(nodeEvidence.storageId);
+    same(rustEvidence, nodeEvidence, "same immutable checkpoint locator");
+    const read = {
+      op: "suspension-open",
+      workerId,
+      source: input.source,
+      storageId: nodeEvidence.storageId,
+    };
+    same(
+      await native({ ...read, directory: nodeDirectory }),
+      await rustSuspensions.open(nodeEvidence.storageId, input.source),
+      "both workers opened the other worker's immutable checkpoint",
+    );
+    assert.equal(
+      (
+        await rust({
+          ...read,
+          directory: nodeDirectory,
+          source: { ...input.source, projectId: "different-project" },
+        })
+      ).ok,
+      false,
+    );
+    same(
+      await native({
+        ...input,
+        op: "suspension-commit",
+        directory: nodeDirectory,
+        workerId,
+        runtimeVersion: "diagnostic-only",
+      }),
+      nodeEvidence,
+      "repeat publication retained the original evidence",
+    );
+    assert.equal(
+      (
+        await rust({
+          ...input,
+          op: "suspension-commit",
+          directory: nodeDirectory,
+          workerId,
+          home: path.join(nodeDirectory, "different-home"),
+        })
+      ).ok,
+      false,
+    );
+  }
+  assert.equal(storageIds.size, 4);
+  assert.equal(
+    (
+      await rust({
+        ...locator,
+        directory: rustDirectory,
+        workerId,
+        op: "suspension-commit",
+        continuation: {
+          ...continuation,
+          baseline: [...continuation.baseline, ...continuation.baseline],
+        },
+      })
+    ).ok,
+    false,
+  );
+  await service.acceptBootstrap(authorization);
+  await native({ op: "accept", payload: authorization });
+  assert.equal(
+    (
+      await rust({
+        op: "suspension-open",
+        directory: nodeDirectory,
+        workerId,
+        source,
+        storageId: [...storageIds][0],
+      })
+    ).ok,
+    false,
   );
   const provider = {
     id: "provider-1",

@@ -11,10 +11,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub(in crate::codex) enum Source<'a> {
+    Current(Option<&'a JsString>),
+    Held(&'a crate::codex::suspension_store::Opened),
+}
+
 pub(in crate::codex) async fn profile(
     data: &Path,
     scope: &Value,
-    thread: Option<&JsString>,
+    source: Source<'_>,
     chat: &JsString,
     provider: &Value,
     execution: &str,
@@ -65,17 +70,38 @@ pub(in crate::codex) async fn profile(
     }
 
     let mut overlay = None;
-    let runtime_home = if standalone {
-        data.join("codex-standalone-homes")
-            .join(sha256(&id.lossy()))
-    } else if let Some(thread) = thread
-        && let Some((operation, home)) = selection(data, scope, thread, chat, provider).await?
-    {
-        id = surround("", &id, &format!(":namespace:{operation}"));
-        overlay = Some(configuration_home);
-        home
-    } else {
-        configuration_home
+    let runtime_home = match source {
+        Source::Held(saved) => {
+            let operation = cantrip_history::source_digest(&json!([
+                json!(
+                    saved
+                        .home
+                        .to_str()
+                        .ok_or_else(|| anyhow!("Invalid native suspension home."))?
+                ),
+                json!(chat),
+                saved.source["threadId"].clone(),
+                saved.evidence["suspension"]["checkpointId"].clone(),
+            ]));
+            id = surround("", &id, &format!(":namespace:suspension:{operation}"));
+            overlay = Some(configuration_home);
+            saved.home.clone()
+        }
+        Source::Current(_) if standalone => data
+            .join("codex-standalone-homes")
+            .join(sha256(&id.lossy())),
+        Source::Current(thread) => {
+            if let Some(thread) = thread
+                && let Some((operation, home)) =
+                    selection(data, scope, thread, chat, provider).await?
+            {
+                id = surround("", &id, &format!(":namespace:{operation}"));
+                overlay = Some(configuration_home);
+                home
+            } else {
+                configuration_home
+            }
+        }
     };
     let mut profile = Profile::new(id, runtime_home);
     profile.configuration_home = overlay;

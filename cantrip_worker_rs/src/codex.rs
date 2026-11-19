@@ -16,6 +16,7 @@ pub mod rpc_protocol;
 pub mod rpc_requests;
 pub mod session;
 pub mod startup;
+pub mod suspension_store;
 pub(crate) mod task_inputs;
 mod task_pause;
 pub(crate) mod turn;
