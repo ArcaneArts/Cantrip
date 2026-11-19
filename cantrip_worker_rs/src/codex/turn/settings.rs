@@ -1,5 +1,7 @@
 //! Native settings application is a separate fact from the RPC acknowledgment.
 //! Use the existing worker outbox so captured facts survive a worker upgrade.
+pub(in crate::codex) mod snapshot;
+
 use super::{
     RPC_TIMEOUT, Runtime, Scope, id,
     receipt::{Client, Receipt},

@@ -965,7 +965,10 @@
     "osRunPlanInputSchema": 14275,
     "osRunPlanResponseSchema": 14282,
     "chatFileReferencesRequestContentSchema": 14301,
-    "chatFileReferencesResultContentSchema": 12988
+    "chatFileReferencesResultContentSchema": 12988,
+    "nativeSettingsSnapshotContextSchema": 623,
+    "nativeThreadSettingsSchema": 14306,
+    "nativeModelAttributionSchema": 631
   },
   "nodes": [
     {
@@ -86169,6 +86172,105 @@
         { "check": "max_length", "maximum": 8192, "when": "length" }
       ]
     },
-    { "type": "never", "checks": [] }
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeThreadSettingsSchema",
+      "shape": {
+        "settingsVersion": 14307,
+        "cwd": 14308,
+        "approvalPolicy": 14309,
+        "approvalsReviewer": 14314,
+        "sandboxPolicy": 14315,
+        "activePermissionProfile": 14318,
+        "model": 14319,
+        "modelProvider": 14320,
+        "effort": 14321,
+        "serviceTier": 14323,
+        "summary": 14325,
+        "collaborationMode": 14327,
+        "multiAgentMode": 14333,
+        "multiAgentEnabled": 14335,
+        "subagentModel": 14337,
+        "subagentReasoningEffort": 14340,
+        "personality": 14343
+      },
+      "catchall": 14345,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 624,
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    { "type": "union", "options": [14310, 14311], "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "record", "keyType": 14312, "valueType": 14313, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "json", "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "record", "keyType": 14316, "valueType": 14317, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "json", "checks": [] },
+    { "type": "json", "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 14322, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 14324, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 14326, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "mode": 14328, "settings": 14329 },
+      "catchall": 14332,
+      "checks": []
+    },
+    { "type": "enum", "values": ["default", "plan"], "checks": [] },
+    { "type": "record", "keyType": 14330, "valueType": 14331, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "json", "checks": [] },
+    { "type": "json", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14334,
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14336,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14338,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14339, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14341,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14342, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 14344, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "json", "checks": [] }
   ]
 }

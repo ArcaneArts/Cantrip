@@ -32,6 +32,7 @@ const { values } = parseArgs({
     worker: { type: "string" },
     codex: { type: "string" },
     cli: { type: "string" },
+    settings: { type: "boolean" },
   },
 });
 assert.ok(
@@ -356,6 +357,7 @@ async function verifyTurn(
   assert.equal(replay.message.id, turn.message.id);
   for (const provider of new Set([response, naming]))
     assert.deepEqual(provider.model.failures, []);
+  return { chatId, chatUrl };
 }
 
 async function verifyManagedCli(response, workerDirectory) {
@@ -906,6 +908,55 @@ async function verifyProviderCapacity() {
   }
 }
 
+async function verifySettingsSnapshot() {
+  const model = await createModel("Settings snapshot model");
+  await call("PATCH", "/api/settings", 200, {
+    defaultModelId: model.profile.id,
+    autoNameChats: true,
+  });
+  const { chatId, chatUrl } = await verifyTurn(
+    model,
+    model,
+    "settings",
+    "Snapshot test title",
+    "Snapshot test title",
+  );
+  const url = `${chatUrl}/native-settings`;
+  const read = await eventually(
+    () => call("GET", url, 200),
+    (state) => assert.ok(state.binding && state.effective),
+  );
+  const explicit = await call("POST", `${url}/refresh`, 200, {});
+  assert.equal(explicit.binding.bindingId, read.binding.bindingId);
+  assert.equal(
+    explicit.effective.contentFingerprint,
+    read.effective.contentFingerprint,
+  );
+  const serverId = (await call("GET", "/api/bootstrap", 200)).server.id;
+  assert.ok(serverId);
+  assert.equal(read.effective.context.chatId, chatId);
+  assert.equal(read.effective.context.workerId, workerId);
+  assert.equal(read.effective.context.threadId, read.binding.threadId);
+  assert.equal(
+    read.effective.context.runtimeGeneration,
+    read.binding.runtimeGeneration,
+  );
+  const settings = await crypto.decryptNativeSettingsSnapshot({
+    ownerId,
+    serverId,
+    keyRevision,
+    componentKey: chatKey,
+    context: explicit.effective.context,
+    snapshot: explicit.effective,
+  });
+  assert.equal(settings.model, model.model.model);
+  assert.equal(settings.settingsVersion.epoch, explicit.binding.nativeEpoch);
+  assert.ok(!JSON.stringify(read).includes(settings.cwd));
+  console.log(
+    "Production Rust Core and worker bound and reopened a protected native settings snapshot.",
+  );
+}
+
 async function verifyStandaloneBehavior() {
   await verifyProviderCatalog({
     call,
@@ -1043,6 +1094,8 @@ try {
         staleLaneRejectedByCore: true,
       }),
     );
+  } else if (values.settings) {
+    await verifySettingsSnapshot();
   } else {
     await verifyStandaloneBehavior();
   }

@@ -7104,3 +7104,41 @@ x64 GNU worker passed a cross-compilation check.
 Live-turn settings, the managed settings snapshot publisher and account
 defaults, permission transitions and their queue resumption, approval
 replies, and runtime handoff remain open.
+
+## 183. Publish protected native thread settings
+
+Reference commit 601a080d49aab327b80566f977201b50ef9d45c1 (#3346).
+
+Core can read the selected native thread's settings through
+`chat.settings.read`. The worker checks the selected chat, placement,
+provider account, thread, and runtime before and after the actual
+app-server read. The read can reconcile a lagging projected model route
+while preserving the native source. It never starts or resumes a thread.
+
+The selected thread owns publication independent of a console. The worker
+refreshes the Core binding on attachment and reconnect, seals versioned
+native notifications, and posts them through the existing observation
+endpoint. It coalesces newer observations, retries lost deliveries, and
+refreshes if Core replaces the binding. The existing operation evidence
+outbox still records historical outcomes. Snapshot encryption preserves
+the Node codec's UTF-16 canonical ordering and its separate fingerprints
+for settings content and model attribution. An exact configured model
+can be attributed using its admitted route. Discovery of alternative
+models and aliases remains open.
+
+A local standalone test ran the production Rust server with PGlite and
+the production Rust worker with an empty PATH. Bundled Codex provided
+the live settings read. The public settings endpoint returned the
+background binding, and an explicit refresh kept the same binding and
+content fingerprint. The Node codec decoded the opaque snapshot.
+
+The macOS ARM64 guest smoke matched the Node codec for settings reads
+and subsequent observations from bundled Codex. It rejected a different
+worker and placement, allowed the selected source to reconcile a lagging
+route, and recovered after the fixture dropped a publication response.
+The worker passed its Windows x64 GNU cross-check and the server passed
+its native PGlite build check.
+
+Permission transitions and recovery, live-turn settings, client settings
+updates, account defaults, approval replies, and runtime handoff remain
+open.

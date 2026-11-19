@@ -7,7 +7,7 @@ use crate::{
     chat_content::Scope,
     codex::turn::{
         Key,
-        receipt::{QueueHttpError, Unacknowledged},
+        receipt::{MetadataHttpError, Unacknowledged},
     },
     metadata::Signal,
     native_items::array,
@@ -90,7 +90,7 @@ pub(super) fn request(
             Ok(result) => json!({"id":request_id,"result":result}),
             Err(error) => {
                 let mut result = fault(request_id, -32001, &error.to_string());
-                if let Some(rejected) = error.downcast_ref::<QueueHttpError>() {
+                if let Some(rejected) = error.downcast_ref::<MetadataHttpError>() {
                     result["error"]["data"] =
                         json!({"code":rejected.code,"status":rejected.status});
                 } else if error.is::<Unacknowledged>() {
