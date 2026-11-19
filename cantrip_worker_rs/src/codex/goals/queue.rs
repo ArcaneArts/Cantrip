@@ -1,9 +1,12 @@
-//! Materialize authenticated queued Goal input for its selected native session.
+//! Materialize authenticated queued actions for their selected native session.
 use super::Goals;
 use crate::{
     attachments::{Store, content},
     chat_content::{Scope, queue},
-    codex::turn::{Turns, runtime_text},
+    codex::{
+        preparation::command::collaboration_mode,
+        turn::{Turns, runtime_text, settings::UPDATE},
+    },
     native_items::{array, concat, join, text},
 };
 use anyhow::{Context, Result, bail};
@@ -29,20 +32,40 @@ impl Goals {
         let method = match command["executionMethod"].as_str() {
             Some("thread/goal/set") => "thread/goal/set",
             Some("thread/goal/clear") => "thread/goal/clear",
+            Some(UPDATE) => UPDATE,
             _ => bail!("This queued native action is unavailable."),
         };
         let bound = self.encryption.bound_identity()?;
         let mut command = self.preparation.resolve_routing(command).await?;
         let scope = Scope::new(self.encryption.clone())?;
         if scope.owner != bound.0 || bound.1.as_js_string() != Some(&scope.server) {
-            bail!("The worker binding changed before opening queued Goal input.");
+            bail!("The worker binding changed before opening queued native input.");
         }
         let input = open_input(&scope, &command)?;
         let (thread, owner) = self.chat_goal_thread(&command, &bound).await?;
         if command["threadId"].as_js_string() != Some(&thread) || owner.session.is_none() {
-            bail!("The queued Goal requires its bound managed thread.");
+            bail!("The queued action requires its bound managed thread.");
         }
         let mut params = json!({"threadId":thread});
+        command["operationId"] = json!(concat(&[
+            "queue:".into(),
+            text(&command["queueClaim"]["id"])?.clone()
+        ]));
+        if method == UPDATE {
+            let submitted = queue::native_text(&input.items)?;
+            if input.action != "parseSlash"
+                || !queue::slash_argument(&submitted, "/plan")
+                    .is_some_and(|argument| argument.is_empty())
+            {
+                bail!("The queued settings action differs from its protected input.");
+            }
+            params["operationId"] = command["operationId"].clone();
+            params["collaborationMode"] =
+                collaboration_mode(&owner.runtime, &json!("plan"), &command["model"]).await?;
+            return self
+                .apply_mutation(&command, turns, &bound, owner, method, params)
+                .await;
+        }
         let home = owner.runtime.codex_home().to_path_buf();
         let work = command.clone();
         let store = self.attachments.clone();
@@ -60,10 +83,6 @@ impl Goals {
             }
             _ => bail!("The queued Goal classification changed."),
         }
-        command["operationId"] = json!(concat(&[
-            "queue:".into(),
-            text(&command["queueClaim"]["id"])?.clone()
-        ]));
         self.watch_project(&command, &bound, &thread, &owner.runtime);
         self.apply_mutation(&command, turns, &bound, owner, method, params)
             .await
@@ -79,7 +98,7 @@ struct Input {
 fn open_input(scope: &Scope, command: &Value) -> Result<Input> {
     let prompt = &command["protectedPrompt"];
     if prompt["classification"]["role"] != "user" {
-        bail!("Queued Goal input must be a protected user message.");
+        bail!("Queued native input must be a protected user message.");
     }
     let material = scope.material(None)?;
     let parts = open_message(&material.key, &json!(material.owner_id), prompt)?;

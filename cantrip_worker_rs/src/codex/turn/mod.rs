@@ -9,6 +9,7 @@ pub(crate) mod queue_wake;
 mod queued;
 pub(super) use protected::runtime_text;
 mod receipt;
+pub(in crate::codex) mod settings;
 pub(in crate::codex) mod task;
 
 use super::{
@@ -64,6 +65,7 @@ pub(crate) struct Turns {
     encryption: Arc<Service>,
     active: Sessions,
     receipts: receipt::Client,
+    settings: Arc<settings::Delivery>,
     history: History,
     attachments: Store,
     task_inputs: task_inputs::Client,
@@ -188,17 +190,33 @@ impl Turns {
         task_inputs: task_inputs::Client,
         task_outcomes: Arc<TaskDelivery>,
     ) -> Result<Self> {
-        let attachments = Store::new(&configuration.lock().unwrap().data_directory, None)?;
+        let (data, worker) = {
+            let config = configuration.lock().unwrap();
+            (config.data_directory.clone(), config.worker_id.clone())
+        };
+        let attachments = Store::new(&data, None)?;
+        let receipts = receipt::Client::new(configuration, generation)?;
+        let settings = Arc::new(settings::Delivery::new(
+            receipts.clone(),
+            encryption.clone(),
+            worker,
+            &data,
+        ));
         Ok(Self {
             preparation,
             encryption,
             active: Arc::default(),
-            receipts: receipt::Client::new(configuration, generation)?,
+            receipts,
+            settings,
             history,
             attachments,
             task_inputs,
             task_outcomes,
         })
+    }
+
+    pub(crate) fn settings_delivery(&self) -> Arc<settings::Delivery> {
+        self.settings.clone()
     }
 
     fn key(&self, command: &Value) -> Result<Key> {
@@ -210,7 +228,7 @@ impl Turns {
         ))
     }
 
-    pub(in crate::codex) async fn goal_mutation(
+    pub(in crate::codex) async fn native_mutation(
         &self,
         runtime: &Runtime,
         binding: &(JsString, Value),
@@ -226,7 +244,7 @@ impl Turns {
             || key.0 != binding.0
             || binding.1.as_js_string() != Some(&key.1)
         {
-            bail!("The worker binding changed before the Goal mutation.");
+            bail!("The worker binding changed before the native mutation.");
         }
         let gate = session["threadId"]
             .as_js_string()
@@ -246,7 +264,7 @@ impl Turns {
             .unwrap_or(Value::Null);
         let (receipt, awaiting_goal) = self
             .receipts
-            .admit_goal(scope, session, method, &params, command, activation)
+            .admit_mutation(scope, session, method, &params, command, activation)
             .await?;
         if let Err(error) = receipt.dispatch().await {
             receipt
@@ -264,12 +282,36 @@ impl Turns {
                     .abort(anyhow!("The Goal was stopped before native dispatch."));
             }
         }
+        let settings = if method == settings::UPDATE {
+            let observation = (|| {
+                let scope = Scope::new(self.encryption.clone())?;
+                if scope.owner != key.0 || scope.server != key.1 {
+                    bail!("The worker binding changed before the native settings mutation.");
+                }
+                self.settings.observe(runtime, &receipt, scope)
+            })();
+            match observation {
+                Ok(observation) => Some(observation),
+                Err(error) => {
+                    receipt.rejected(&json!({"code":-32000,"message":"Native settings observation did not start."})).await?;
+                    return Err(error);
+                }
+            }
+        } else {
+            None
+        };
         let reply = runtime
             .request(method.into(), Some(params), Some(RPC_TIMEOUT), None)
             .await;
         match reply {
             Ok(Some(result)) => {
-                if awaiting_goal {
+                if let Some(settings) = settings {
+                    if let Err(error) = settings.accepted(&result) {
+                        receipt.uncertain().await?;
+                        return Err(error);
+                    }
+                    receipt.applied(&json!({"result":result}), None).await?;
+                } else if awaiting_goal {
                     receipt.applied_queued_goal(&result).await?;
                 } else {
                     receipt.applied(&result, None).await?;
@@ -281,7 +323,11 @@ impl Turns {
                     .downcast_ref::<Failure>()
                     .and_then(|error| error.native_error.as_ref())
                 {
+                    let recorded = settings.map(|settings| settings.rejected(native));
                     receipt.rejected(native).await?;
+                    if let Some(recorded) = recorded {
+                        recorded?;
+                    }
                 } else {
                     receipt.uncertain().await?;
                 }
@@ -289,7 +335,7 @@ impl Turns {
             }
             Ok(None) => {
                 receipt.uncertain().await?;
-                bail!("Codex did not return a Goal mutation result.");
+                bail!("Codex did not return a native mutation result.");
             }
         }
     }

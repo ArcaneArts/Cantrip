@@ -139,15 +139,40 @@ pub(super) async fn apply_plan_mode(
     if status["threadSettings"]["collaborationMode"]["mode"] == *mode {
         return Ok(());
     }
+    let collaboration = collaboration_mode(runtime, mode, &command["model"]).await?;
+    let expected = collaboration["settings"].clone();
+    apply_settings(
+        runtime,
+        thread,
+        json!({"collaborationMode":collaboration}),
+        |settings| {
+            let actual = &settings["collaborationMode"];
+            if actual["mode"] != *mode
+                || actual["settings"]["model"] != expected["model"]
+                || actual["settings"]["reasoning_effort"] != expected["reasoning_effort"]
+            {
+                bail!("Native preparation applied different collaboration settings.");
+            }
+            Ok(())
+        },
+    )
+    .await
+}
+
+pub(in crate::codex) async fn collaboration_mode(
+    runtime: &Runtime,
+    mode: &Value,
+    model: &Value,
+) -> Result<Value> {
     let presets = call(runtime, "collaborationMode/list", json!({})).await?;
     let preset = presets["data"]
         .as_array()
         .and_then(|list| list.iter().find(|preset| preset["mode"] == *mode))
         .context("Codex does not advertise the requested collaboration mode.")?;
-    let model = preset
+    let name = preset
         .get("model")
         .filter(|v| !v.is_null())
-        .unwrap_or(&command["model"]["name"]);
+        .unwrap_or(&model["name"]);
     let effort = preset
         .get("reasoning_effort")
         .filter(|v| !v.is_null())
@@ -156,29 +181,13 @@ pub(super) async fn apply_plan_mode(
             if mode == "plan" {
                 json!("medium")
             } else {
-                command["model"]["reasoningEffort"].clone()
+                model["reasoningEffort"].clone()
             }
         });
-    let collaboration = json!({
+    Ok(json!({
         "mode": mode,
-        "settings": json!({"model": model, "reasoning_effort": effort, "developer_instructions": Value::Null}),
-    });
-    apply_settings(
-        runtime,
-        thread,
-        json!({"collaborationMode":collaboration}),
-        |settings| {
-            let actual = &settings["collaborationMode"];
-            if actual["mode"] != *mode
-                || actual["settings"]["model"] != *model
-                || actual["settings"]["reasoning_effort"] != effort
-            {
-                bail!("Native preparation applied different collaboration settings.");
-            }
-            Ok(())
-        },
-    )
-    .await
+        "settings": json!({"model": name, "reasoning_effort": effort, "developer_instructions": Value::Null}),
+    }))
 }
 
 pub(super) async fn apply_goal_permissions(

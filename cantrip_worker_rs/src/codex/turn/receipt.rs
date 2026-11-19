@@ -190,6 +190,26 @@ impl Client {
         checked("managedQueueSnapshotSchema", &reply)
     }
 
+    pub(super) async fn publish_settings(&self, event: &Value) -> Result<()> {
+        let reply = self
+            .exchange(
+                "settings-evidence",
+                "/api/internal/native-commands/settings-evidence",
+                event,
+                &Guard::metadata(None, None),
+            )
+            .await?;
+        let reply = checked("nativeSettingsEvidenceResultSchema", &reply)?;
+        if ["operationId", "operationGeneration", "eventId"]
+            .iter()
+            .any(|key| reply[*key] != event[*key])
+            || reply["application"]["nativeOperationId"] != event["nativeOperationId"]
+        {
+            bail!("Core returned unrelated native settings evidence acknowledgment.");
+        }
+        Ok(())
+    }
+
     pub async fn event(&self, scope: &Scope, operation: &Operation, event: Value) -> Result<()> {
         scope.identity()?;
         let input = checked(
@@ -597,7 +617,7 @@ impl Client {
         Ok((receipt, response))
     }
 
-    pub async fn admit_goal(
+    pub async fn admit_mutation(
         &self,
         scope: Scope,
         session: Value,
@@ -626,6 +646,11 @@ impl Client {
         if let Some(status) = params.get("status") {
             intent["goalStatus"] = status.clone();
         }
+        if method == super::settings::UPDATE {
+            intent["settingKeys"] = json!(vec!["collaborationMode"]);
+            intent["nativeSettingsOperationId"] = params["operationId"].clone();
+            intent["pathsWithinPlacement"] = json!(true);
+        }
         let resume = params["status"] == "active"
             || (claim.is_some()
                 && method == "thread/goal/set"
@@ -650,16 +675,16 @@ impl Client {
         scope.identity()?;
         let row = &response["receipt"];
         if response["replayed"] == true {
-            bail!("The native Goal operation already has a receipt and cannot be replayed.");
+            bail!("The native operation already has a receipt and cannot be replayed.");
         }
         if row["status"] != "accepted" {
-            bail!("Core did not admit the native Goal mutation.");
+            bail!("Core did not admit the native mutation.");
         }
         let control = Receipt {
             client: self,
             operation: Operation {
                 operation,
-                generation: id(&row["operationGeneration"], "Goal operation generation")?,
+                generation: id(&row["operationGeneration"], "native operation generation")?,
                 activation,
                 payload: json!(digest),
                 lane: row["executionLaneId"].clone(),

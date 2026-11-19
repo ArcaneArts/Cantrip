@@ -42,6 +42,7 @@ import { verifyAutonomousGoal } from "./autonomous-goal-cases.mjs";
 import { verifyChatGoalCreate } from "./chat-goal-create-cases.mjs";
 import { verifyTaskGoalActivation } from "./task-goal-activation-cases.mjs";
 import { verifyQueuedTurns } from "./queued-turn-cases.mjs";
+import { verifyQueuedSettings } from "./queued-settings-cases.mjs";
 
 const { values } = parseArgs({
   options: {
@@ -60,6 +61,7 @@ const { values } = parseArgs({
     autonomousGoal: { type: "boolean" },
     queueWake: { type: "boolean" },
     queuedTurn: { type: "boolean" },
+    queuedSettings: { type: "boolean" },
   },
 });
 assert.ok(values.worker && values.codex);
@@ -340,6 +342,7 @@ const server = createServer(async (request, response) => {
           values.autonomousGoal ||
           values.queueWake ||
           values.queuedTurn ||
+          values.queuedSettings ||
           values.taskPreparation ||
           values.directTask ||
           structuredTasks
@@ -1679,6 +1682,31 @@ try {
       stamp,
       provider: {
         id: "queued-turn-fixture",
+        kind: "openai-compatible",
+        name: "Fixture",
+        baseUrl: "http://127.0.0.1:" + server.address().port + "/fixture/v1",
+      },
+    });
+  }
+  if (values.queuedSettings) {
+    await verifyQueuedSettings({
+      start,
+      stop,
+      request: ensure,
+      expectThread,
+      expectSuccess,
+      available,
+      modelCalls: () => providerCalls,
+      attach: (handler) => {
+        goalMutation = handler;
+      },
+      workerId,
+      generation: () => workerGeneration,
+      directory,
+      oracle,
+      stamp,
+      provider: {
+        id: "queued-settings-fixture",
         kind: "openai-compatible",
         name: "Fixture",
         baseUrl: "http://127.0.0.1:" + server.address().port + "/fixture/v1",
