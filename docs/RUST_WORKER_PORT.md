@@ -6701,3 +6701,29 @@ crash. The legacy and native guest helpers each completed an upload staged
 by the other. All 12 shared crypto tests and the Windows x64 GNU cross-check
 passed. Windows runtime, SSH and release image builds were outside this
 validation. File imports and chat file integration remain open.
+
+## 168. Import dropped files through the native Host Explorer
+
+Reference commit 6385ac8377a9ab70cedd14902ee577d524970c1e (#3331).
+
+The Host worker accepts protected import chunks and cancellation through the
+existing Explorer surface. A transfer reserves one of 16 slots and stages
+bytes in an anonymous temporary file. The worker binds subsequent chunks to
+the original destination and exact offset. Cancellation, invalid input,
+five minutes of inactivity, or worker exit close the open stage.
+
+At EOF the worker checks that the captured folder still exists at the
+authorized location. It prepares a private file on the destination filesystem
+and exclusively links the complete bytes through a directory handle.
+Competing files and dangling links keep their original entries.
+
+The production Rust server and worker passed the local macOS ARM64 Explorer
+smoke against the existing Node import implementation. The fixture checks
+multiple chunks, exact bytes and compatible receipts, no visible partial file,
+empty files, collisions, cancellation, changed offsets, the active transfer
+limit, a replaced directory, and worker restart. Windows x64 GNU worker
+compilation passed, and the existing Host binary-save smoke passed. Windows
+runtime and other destination filesystems were outside this validation.
+Exclusive publication currently requires filesystem hard-link support.
+Cantrip OS imports still need the native helper to retain its import state
+across executor requests.

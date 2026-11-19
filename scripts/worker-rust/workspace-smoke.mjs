@@ -76,6 +76,7 @@ const { values } = parseArgs({
     "shares-only": { type: "boolean", default: false },
     "run-definitions-only": { type: "boolean", default: false },
     "binary-writes-only": { type: "boolean", default: false },
+    "file-imports-only": { type: "boolean", default: false },
     "run-runtime-only": { type: "boolean", default: false },
   },
 });
@@ -114,6 +115,7 @@ if (
   !values["terminal-relay-only"] &&
   !values["run-definitions-only"] &&
   !values["binary-writes-only"] &&
+  !values["file-imports-only"] &&
   !values["run-runtime-only"] &&
   !(values["replica-provision-only"] || values["replica-lifecycle-only"])
 )
@@ -774,7 +776,7 @@ try {
       await verifyRunDefinitions({ call, projectId, checkout, restartWorker });
       break exercise;
     }
-    if (values["binary-writes-only"]) {
+    if (values["binary-writes-only"] || values["file-imports-only"]) {
       const metadataKey = cryptoClient.deriveComponentKey({
         accountMasterKey: master,
         ownerId: repository.ownerId,
@@ -791,6 +793,7 @@ try {
           projectId,
           workerId,
           checkout,
+          fileImports: values["file-imports-only"] && { restartWorker },
           binary: {
             workerDirectory,
             stopWorker,
@@ -1084,6 +1087,10 @@ try {
   else if (values["binary-writes-only"])
     console.log(
       JSON.stringify({ suite: "native-Host-binary-saves", passed: true }),
+    );
+  else if (values["file-imports-only"])
+    console.log(
+      JSON.stringify({ suite: "native-Host-Explorer-imports", passed: true }),
     );
   else if (values["shares-only"])
     console.log(

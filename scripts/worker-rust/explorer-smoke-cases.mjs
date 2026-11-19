@@ -20,6 +20,7 @@ export async function verifyExplorer({
   workerId,
   checkout,
   binary,
+  fileImports,
 }) {
   const explorerId = crypto.randomUUID(),
     documentId = crypto.randomUUID();
@@ -131,6 +132,17 @@ export async function verifyExplorer({
   assert.ok(
     listing.result.value.entries.some((e) => e.name === "untouched.txt"),
   );
+  if (fileImports) {
+    const { verifyHostFileImports } =
+      await import("./explorer-import-smoke.mjs");
+    await verifyHostFileImports({
+      checkout,
+      send: async (request, options) =>
+        (await operation("explorer", explorerId, request, options)).outcome,
+      restartWorker: fileImports.restartWorker,
+    });
+    return;
+  }
   const file = "native-explorer.md";
   const newFile = await explore({
     type: "explorer.file.create",
