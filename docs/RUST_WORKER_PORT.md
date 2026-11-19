@@ -6755,3 +6755,29 @@ Explorer imports and guest Run supervision passed their local regressions.
 The Windows x64 GNU worker compiled. Windows runtime, SSH and release image
 builds were outside this validation. Guest chat files and attachment
 materialization remain open.
+
+## 170. Resolve protected chat file references in Host and Cantrip OS
+
+Reference commit 23214927daef64ea1db067971084e063bb4fbad8 (#3333).
+
+The native worker dispatches the existing protected Chat file-reference
+operation through the shared surface replay guard and the authoritative
+protocol schemas. Executor 0.19.0 resolves Linux chat references as the
+workspace account in the selected placement. The Host path uses the same
+resolver on the local checkout.
+
+The resolver preserves reference order, line and column suffix handling,
+file URLs, and canonical checkout aliases. It returns an unresolved kind
+for missing files and paths beyond the checkout, including links that lead
+outside. Lookup only examines the supplied entries.
+
+The protected Host and ARM64 Docker guest routes matched the Node resolver
+for line suffixes, file URLs, missing references, and links outside the
+checkout. The local fixtures also compared the exact lexical result for
+a lone UTF-16 surrogate. The guest ran the production Rust server and
+worker with executor 0.19.0 installed and the legacy helper moved aside
+for the native query. Guest Explorer, file documents and imports passed
+their local regressions. The Windows x64 GNU worker compiled. SSH and
+Windows runtime were outside this validation.
+
+Guest Codex turn preparation and attachment materialization remain open.

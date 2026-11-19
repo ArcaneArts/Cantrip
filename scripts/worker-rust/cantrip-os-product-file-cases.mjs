@@ -73,6 +73,25 @@ export async function verifyProductFiles({
   const file = "les données.md";
   const explorer = randomUUID();
   const document = randomUUID();
+  const chat = randomUUID();
+  await call(
+    "POST",
+    "/api/projects/" + projectId + "/chats",
+    {
+      id: chat,
+      cantripOsBindingId: target.id,
+      attachToTabLayout: false,
+      titleProtection: await c.encryptPrivateDisplayLabel({
+        ownerId,
+        keyRevision: 1,
+        componentKey: metadataKey,
+        rowId: chat,
+        recordKind: "chat",
+        label: "Guest file references",
+      }),
+    },
+    201,
+  );
   await call(
     "POST",
     "/api/projects/" + projectId + "/explorers",
@@ -121,7 +140,11 @@ export async function verifyProductFiles({
     operationId = randomUUID(),
     sequence = 0,
   ) {
-    const request = p.explorerOperationRequestContentSchema.parse(input);
+    const schema =
+      surfaceKind === "chat-files"
+        ? p.chatFileReferencesRequestContentSchema
+        : p.explorerOperationRequestContentSchema;
+    const request = schema.parse(input);
     const context = {
       serverId,
       surfaceKind,
@@ -140,11 +163,13 @@ export async function verifyProductFiles({
     });
     plaintext.fill(0);
     const route =
-      (surfaceKind === "explorer"
-        ? "/api/explorers/"
-        : "/api/file-documents/") +
-      surfaceId +
-      "/operation";
+      surfaceKind === "chat-files"
+        ? `/api/chats/${surfaceId}/file-references`
+        : (surfaceKind === "explorer"
+            ? "/api/explorers/"
+            : "/api/file-documents/") +
+          surfaceId +
+          "/operation";
     return {
       context,
       request,
@@ -566,7 +591,54 @@ export async function verifyProductFiles({
     await root("mv", legacy + ".fixture", legacy);
   }
   assert.deepEqual(await oracle(completedDrop, true), completion);
+  await guest("mkdir", guestPath + "/folder.ext");
+  await guest("ln", "-s", file, guestPath + "/inside");
+  await guest("ln", "-s", "/etc", guestPath + "/outside");
+  const references = await operation("chat-files", chat, {
+    type: "chat.files.references",
+    references: [
+      ".",
+      "folder.ext",
+      file + ":12:4",
+      file + "#l12C4",
+      "file://" + guestPath + "/" + encodeURIComponent(file),
+      guestPath + "/inside",
+      "outside/passwd",
+      "/etc/passwd",
+      "missing",
+      "missing-\ud800.txt",
+      "file://wrong-host/tmp/data",
+      "folder.ext\\..\\" + file,
+    ],
+  });
+  const legacyReferences = await oracle(references);
+  await root("mv", legacy, legacy + ".fixture");
+  try {
+    const nativeReferences = await references.send();
+    assert.deepEqual(nativeReferences, legacyReferences);
+    assert.equal(nativeReferences.result.value.root, guestPath);
+    assert.deepEqual(
+      nativeReferences.result.value.entries.map(({ kind }) => kind),
+      [
+        "directory",
+        "directory",
+        "file",
+        "file",
+        "file",
+        "file",
+        null,
+        null,
+        null,
+        null,
+        null,
+        "file",
+      ],
+    );
+    assert.match((await references.send(502)).error, /already completed/u);
+  } finally {
+    await root("mv", legacy + ".fixture", legacy);
+  }
   console.log(
-    "Native guest files passed: protected edits, retained imports, compatible receipts, and observation-only crash recovery.",
+    "Native guest files passed: protected edits, imports, chat references, and compatible recovery receipts.",
   );
 }

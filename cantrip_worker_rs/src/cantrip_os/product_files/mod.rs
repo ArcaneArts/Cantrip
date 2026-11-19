@@ -258,6 +258,7 @@ fn record_context(context: &Value) -> Value {
 fn mutation(kind: &str) -> Result<bool> {
     match kind {
         "explorer.directory.list"
+        | "chat.files.references"
         | "explorer.files.search"
         | "explorer.directory.commits"
         | "explorer.file.read"

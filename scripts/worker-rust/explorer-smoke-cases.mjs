@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { chmod, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import * as c from "../../packages/crypto/dist/index.js";
 import * as p from "../../packages/protocol/dist/index.js";
 
@@ -76,8 +77,12 @@ export async function verifyExplorer({
       direction: "request",
       sequence,
     };
+    const schema =
+      kind === "chat-files"
+        ? p.chatFileReferencesRequestContentSchema
+        : p.explorerOperationRequestContentSchema;
     const plaintext = new TextEncoder().encode(
-      JSON.stringify(p.explorerOperationRequestContentSchema.parse(request)),
+      JSON.stringify(schema.parse(request)),
     );
     let protectedRequest;
     try {
@@ -98,9 +103,11 @@ export async function verifyExplorer({
       ...(kind === "explorer" ? { binding } : {}),
     };
     const route =
-      kind === "explorer"
-        ? `/api/explorers/${id}/operation`
-        : `/api/file-documents/${id}/operation`;
+      kind === "chat-files"
+        ? `/api/chats/${id}/file-references`
+        : kind === "explorer"
+          ? `/api/explorers/${id}/operation`
+          : `/api/file-documents/${id}/operation`;
     const result = await call("POST", route, body);
     assert.equal(result.status, 200, JSON.stringify(result));
     assert.equal(
@@ -140,6 +147,43 @@ export async function verifyExplorer({
       send: async (request, options) =>
         (await operation("explorer", explorerId, request, options)).outcome,
       restartWorker: fileImports.restartWorker,
+    });
+    const chatId = crypto.randomUUID();
+    const chat = await call("POST", `/api/projects/${projectId}/chats`, {
+      id: chatId,
+      worktreeId: binding.worktreeId,
+      attachToTabLayout: false,
+      titleProtection: await c.encryptPrivateDisplayLabel({
+        ownerId,
+        recordKind: "chat",
+        rowId: chatId,
+        keyRevision: 1,
+        componentKey: metadataKey,
+        label: "Host references",
+      }),
+    });
+    assert.equal(chat.status, 201, JSON.stringify(chat));
+    const references = [
+      ".",
+      "drop",
+      "untouched.txt#L5C3",
+      pathToFileURL(path.join(checkout, "root.bin")).href,
+      "external",
+      "missing",
+      "missing-\ud800.txt",
+    ];
+    const { outcome } = await operation("chat-files", chatId, {
+      type: "chat.files.references",
+      references,
+    });
+    const { chatFileReferences } =
+      await import("../../cantrip_worker/src/chat-file-references.ts");
+    assert.deepEqual(outcome, {
+      ok: true,
+      result: {
+        type: "chat.files.references",
+        value: await chatFileReferences(checkout, references),
+      },
     });
     return;
   }

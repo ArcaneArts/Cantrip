@@ -963,7 +963,9 @@
     "cantripOsRunDefinitionWorkerCommandSchema": 6591,
     "runConfigurationOperationResponseSchema": 12168,
     "osRunPlanInputSchema": 14275,
-    "osRunPlanResponseSchema": 14282
+    "osRunPlanResponseSchema": 14282,
+    "chatFileReferencesRequestContentSchema": 14301,
+    "chatFileReferencesResultContentSchema": 12988
   },
   "nodes": [
     {
@@ -86148,6 +86150,23 @@
       "checks": [
         { "check": "min_length", "minimum": 1, "when": "length" },
         { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "chatFileReferencesRequestContentSchema",
+      "shape": { "type": 14302, "references": 14303 },
+      "catchall": 14305,
+      "checks": []
+    },
+    { "type": "literal", "values": ["chat.files.references"], "checks": [] },
+    { "type": "array", "element": 14304, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
       ]
     },
     { "type": "never", "checks": [] }

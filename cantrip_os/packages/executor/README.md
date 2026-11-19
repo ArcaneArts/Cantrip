@@ -35,14 +35,14 @@ requested.
 Workspace support remains enabled by default. Including the executor requires
 the workspace package; apt enforces that dependency.
 
-Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.18.0_<arch>.deb`.
+Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.19.0_<arch>.deb`.
 It contains the source/patch fingerprint manifest, binary hashes, licenses, and
 sandbox helper. Docker and ISO recipes install the same package.
 
 Inside Linux, after copying the package there:
 
 ```sh
-sudo apt install ./cantrip-os-executor_0.18.0_arm64.deb  # amd64 for the VM edition
+sudo apt install ./cantrip-os-executor_0.19.0_arm64.deb  # amd64 for the VM edition
 sudo cantrip-executor enable
 sudo cantrip-executor status
 sudo cantrip-executor attach OWNER_ID WORKER_ID
@@ -269,6 +269,9 @@ Version 0.16.0 adds binary pages, read-only text previews, log tailing and
 media chunks to the native Explorer helper. The Rust worker preserves the
 existing file versions and log cursors. Media requests stay in the same
 protected stream until the last chunk.
+
+Version 0.19.0 resolves protected chat references inside the admitted
+Linux workspace.
 
 Version 0.18.0 enables native Explorer imports across chunks. The
 workspace helper holds the temporary stage only while a drop is active.

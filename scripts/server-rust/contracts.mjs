@@ -987,6 +987,8 @@ export const contractRoots = [
   "runConfigurationOperationResponseSchema",
   "osRunPlanInputSchema",
   "osRunPlanResponseSchema",
+  "chatFileReferencesRequestContentSchema",
+  "chatFileReferencesResultContentSchema",
 ];
 
 export const projectExportContractRoots = [
