@@ -52,6 +52,15 @@ impl Carrier {
         (self.key(), lane)
     }
 
+    pub fn message_limit(&self, lane: &str) -> Option<usize> {
+        if let Self::Peer(peer) = self {
+            return peer
+                .upgrade()
+                .map(|peer| peer.message_limit(lane_index(lane).unwrap()));
+        }
+        None
+    }
+
     pub fn offer(&self, outbound: &Outbound, frame: &Frame) -> Output {
         match self {
             Self::Relay if outbound.binary(frame.bytes()) => Output::Queued,

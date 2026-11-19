@@ -5852,7 +5852,25 @@ On macOS ARM64, the Rust worker and Rust server with PGlite negotiated
 with headless Chromium and WebKit through the public WorkerLink API.
 The fixture verified all lane labels, the control challenge, encrypted
 Host TCP in both directions, lease renewal, and grant and route
-revocation. The Werift offerer negotiated successfully but timed out
-waiting for data in the larger TCP response.
+revocation. The initial Werift larger-response timeout is addressed in
+the following cycle.
 
 WAN peer transport and production cutover remain open.
+
+## 137. Fit protected WorkerLink tunnel frames to the negotiated peer limit
+
+Reference commit `8ddf530b5a62a90c63e4bad1f9bb34de672fe88e` (#3299).
+
+The Rust worker reads the negotiated SCTP message size before the peer
+control handshake. Each lane also has its configured byte and rate
+ceilings. The tunnel producer reserves room for the CWLK envelope and
+uses the encoded CTTN header and authentication tag to size the
+plaintext. It charges stream credit for the emitted bytes. A frame that
+cannot fit retires its channel without stalling the rest of the peer.
+
+On macOS ARM64, Chromium and WebKit with an advertised 65,536-byte
+receive limit and a Werift peer with its default limit transferred the
+larger encrypted TCP response through both Rust services with PGlite.
+All exercised the existing half-close, grant revocation, and route
+replacement. The local WorkerLink, direct and legacy TCP, terminal,
+and WebDAV regressions passed.

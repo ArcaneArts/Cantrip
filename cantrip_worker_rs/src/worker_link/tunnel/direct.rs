@@ -83,6 +83,7 @@ impl DirectTunnel {
         let link = Link {
             gateway: Arc::downgrade(gateway),
             logs: gateway.logs.clone(),
+            frame_limit: None,
             carrier: Carrier::Direct(Arc::downgrade(self)),
         };
         let routed = if header["kind"] == "open" {

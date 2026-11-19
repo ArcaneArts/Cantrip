@@ -76,6 +76,7 @@ struct Link {
     gateway: Weak<Coordinator>,
     logs: Arc<Logs>,
     carrier: Carrier,
+    frame_limit: Option<usize>,
 }
 
 impl Tunnel {
@@ -83,6 +84,7 @@ impl Tunnel {
         gateway: &Arc<Coordinator>,
         header: &Value,
         grant: &Value,
+        frame_limit: Option<usize>,
     ) -> Result<Box<Self>, &'static str> {
         let resource = &grant["resource"];
         let attachment = resource["attachmentId"]
@@ -104,6 +106,7 @@ impl Tunnel {
             link: Link {
                 gateway: Arc::downgrade(gateway),
                 logs: gateway.logs.clone(),
+                frame_limit,
                 carrier: Carrier::WorkerLink {
                     channel: id(&header["channel"], "channelId").clone(),
                     token: Uuid::new_v4(),

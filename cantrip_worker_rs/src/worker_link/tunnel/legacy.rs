@@ -47,6 +47,7 @@ impl Legacy {
         let link = Link {
             gateway: Arc::downgrade(gateway),
             logs: gateway.logs.clone(),
+            frame_limit: None,
             carrier: Carrier::Legacy { token: self.token },
         };
         if let Ok(Inbound::Reply(rejection)) =

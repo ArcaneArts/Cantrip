@@ -8,7 +8,7 @@ use std::{
     collections::VecDeque,
     sync::{
         Arc, Mutex, Weak,
-        atomic::{AtomicBool, AtomicU8, Ordering},
+        atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
     },
     time::Duration,
 };
@@ -30,6 +30,7 @@ pub(in crate::worker_link) struct PeerCarrier {
     authenticated: AtomicBool,
     closed: AtomicBool,
     open: AtomicU8,
+    message_limit: AtomicUsize,
     pub(super) changed: Notify,
     lanes: [Lane; LANES.len()],
 }
@@ -73,6 +74,7 @@ impl PeerCarrier {
             authenticated: AtomicBool::new(false),
             closed: AtomicBool::new(false),
             open: AtomicU8::new(0),
+            message_limit: AtomicUsize::new(MAX_MESSAGE),
             changed: Notify::new(),
             lanes,
         };
@@ -85,6 +87,23 @@ impl PeerCarrier {
 
     pub(super) fn authenticate(&self) {
         self.authenticated.store(true, Ordering::Release);
+    }
+
+    pub(super) fn set_message_limit(&self, bytes: u32) {
+        let limit = if bytes == 0 {
+            MAX_MESSAGE
+        } else {
+            MAX_MESSAGE.min(bytes as usize)
+        };
+        self.message_limit.store(limit, Ordering::Release);
+    }
+
+    pub fn message_limit(&self, lane: usize) -> usize {
+        let output = &self.lanes[lane];
+        self.message_limit
+            .load(Ordering::Acquire)
+            .min(output.limit)
+            .min(output.max_rate)
     }
 
     pub(super) fn ready(&self) -> bool {
@@ -109,6 +128,9 @@ impl PeerCarrier {
         }
         let lane =
             index(frame.header()["lane"].as_str().unwrap()).expect("validated WorkerLink lane");
+        if frame.bytes().len() > self.message_limit(lane) {
+            return Output::Closed;
+        }
         let output = &self.lanes[lane];
         if self.open.load(Ordering::Acquire) & (1 << lane) == 0 {
             output.blocked.store(true, Ordering::Release);
