@@ -4857,3 +4857,33 @@ Node reference tests passed.
 
 Autonomous Goal checkpoint capture, post-restart Task restoration,
 durable Task Stop, and production cutover remain open.
+
+## 101. Capture checkpoints for autonomous Task Goal cycles
+
+Reference commit `9edd54d60a5469c165048dcb96a9738fdb489223` (#3263).
+
+Each admitted autonomous Goal turn keeps a checkpoint observer on its
+current private Codex runner until native observation ends. A Task
+Pause with a Goal source matches Core's source key, operation, Goal
+epoch, inference scope, placement and exact native turn. It shares the
+existing encrypted checkpoint path with explicit Task inputs and
+returns the same evidence for a retry of the current revision.
+
+The checkpoint uses the admitted Goal cycle source, canonical parent
+prompt, publication identity and protected messages observed for the
+active turn. The Pause and live Resume responses retain the actor
+recorded in the Goal's admission. Starting a subsequent cycle still
+waits for Core's acknowledgement of the predecessor's outcome.
+
+On macOS ARM64, the real Rust worker and bundled Codex paused the
+autonomous Goal at a tool boundary with local Core and provider peers.
+The fixture verified mismatched source rejection, identical repeated
+Pause evidence, no provider continuation during the hold, and a
+Node-readable checkpoint with the expected prompt, publication and
+message identity. Live Resume continued the same turn and committed
+its original publication. The same run exercised direct Task Pause
+and Resume, structured Task results and autonomous outcome replay.
+Twenty-two focused Node reference tests passed.
+
+Task restoration after restart, durable Task Stop and production
+cutover remain open.

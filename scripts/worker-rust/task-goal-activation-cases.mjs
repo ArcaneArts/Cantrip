@@ -23,6 +23,7 @@ import {
 
 export async function verifyTaskGoalActivation({
   verifyPause,
+  verifyCheckpoint,
   command,
   result,
   ownerId,
@@ -466,6 +467,18 @@ export async function verifyTaskGoalActivation({
     available,
     openMessage,
     outcomeDirectory: path.dirname(pending),
+    checkpoint: verifyCheckpoint
+      ? {
+          invoke,
+          oracle,
+          modelCalls,
+          directory,
+          ownerId,
+          projectId: command.policyProjectId,
+          prompt: resumedMessage,
+          diagnostics,
+        }
+      : undefined,
     setAnswer,
     stop,
     start,

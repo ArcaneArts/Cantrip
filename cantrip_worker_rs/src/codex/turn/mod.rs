@@ -800,6 +800,7 @@ impl Turns {
                         reuse_published_response: command["resultMode"]["reusePublishedResponse"]
                             == true,
                         previous: AsyncMutex::new(commit.clone()),
+                        checkpoints: task::cycle::Checkpoints::new(&command),
                     });
                     task::first_input::start(
                         &prepared,

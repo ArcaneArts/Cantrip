@@ -14,6 +14,10 @@ pub(in crate::codex) struct PauseTarget {
 }
 
 impl PauseTarget {
+    pub(in crate::codex) fn runner(&self) -> &JsString {
+        &self.root.runner
+    }
+
     pub(in crate::codex) async fn apply(&self, intent: &Value, wait: bool) -> Result<()> {
         let timeout = if wait || intent["paused"] == false {
             Duration::from_secs(24 * 60 * 60)

@@ -1,5 +1,5 @@
 //! Publish actual autonomous Goal turns through the canonical Task outbox.
-use super::{Messages, finish_goal, task_key};
+use super::{Messages, checkpoint::Checkpoint, finish_goal, task_key};
 use crate::{
     codex::{preparation::command::Activate, task_inputs},
     encryption::Service,
@@ -8,7 +8,7 @@ use crate::{
     metadata::Signal,
     outcomes::TaskDelivery,
 };
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use cantrip_wire::{JsString, Value, value::json};
 use std::{
     future::Future,
@@ -30,6 +30,61 @@ pub(in crate::codex) struct GoalCycle {
     pub emit: Emit,
     pub reuse_published_response: bool,
     pub previous: AsyncMutex<Promise<()>>,
+    pub(in crate::codex::turn) checkpoints: Checkpoints,
+}
+
+pub(in crate::codex::turn) struct Checkpoints {
+    prompt: Value,
+    seed: Value,
+    current: Arc<Mutex<Option<Arc<Checkpoint>>>>,
+}
+
+impl Checkpoints {
+    pub(in crate::codex::turn) fn new(command: &Value) -> Self {
+        Self {
+            prompt: command["protectedTaskPrompt"].clone(),
+            seed: output::continuation_seed(command, command["model"].clone(), None),
+            current: Arc::default(),
+        }
+    }
+
+    fn observe(&self, checkpoint: Arc<Checkpoint>) -> Result<ObservedCheckpoint> {
+        let mut current = self.current.lock().unwrap();
+        if current.is_some() {
+            bail!("A previous autonomous Goal still owns its checkpoint observer.");
+        }
+        *current = Some(checkpoint);
+        Ok(ObservedCheckpoint(self.current.clone()))
+    }
+
+    pub(in crate::codex::turn) fn current(&self) -> Option<Arc<Checkpoint>> {
+        self.current.lock().unwrap().clone()
+    }
+
+    pub(in crate::codex::turn) fn with_current<T>(
+        &self,
+        expected: &Arc<Checkpoint>,
+        operation: impl FnOnce() -> Result<T>,
+    ) -> Result<T> {
+        let current = self.current.lock().unwrap();
+        if !current
+            .as_ref()
+            .is_some_and(|value| Arc::ptr_eq(value, expected))
+        {
+            bail!("The autonomous Goal checkpoint observer ended or was replaced.");
+        }
+        operation()
+    }
+}
+
+struct ObservedCheckpoint(Arc<Mutex<Option<Arc<Checkpoint>>>>);
+
+impl Drop for ObservedCheckpoint {
+    fn drop(&mut self) {
+        // Only one observer can be installed at a time. Retire it before the
+        // terminal outcome releases the next producer.
+        self.0.lock().unwrap().take();
+    }
 }
 
 impl GoalCycle {
@@ -43,6 +98,7 @@ impl GoalCycle {
     pub async fn dispatch(
         &self,
         input: Value,
+        provider: &Value,
         thread: JsString,
         turn: JsString,
         signal: Signal,
@@ -70,7 +126,7 @@ impl GoalCycle {
             output: Mutex::default(),
         });
         let activation = (self.activate)()?;
-        let (observation, mut events, _) = output::subscribe(&self.observation, &thread)?;
+        let (observation, mut events, capture) = output::subscribe(&self.observation, &thread)?;
         let source = match self
             .client
             .authorize_goal_cycle(owner, server, &self.parent, input, signal)
@@ -83,6 +139,19 @@ impl GoalCycle {
             }
         };
 
+        let mut seed = self.checkpoints.seed.clone();
+        seed["providerId"] = provider["id"].clone();
+        seed["providerKind"] = provider["kind"].clone();
+        seed["startedAtMs"] = json!(chrono::Utc::now().timestamp_millis());
+        let checkpoint = self.checkpoints.observe(Arc::new(Checkpoint::goal_cycle(
+            source.clone(),
+            self.project.clone(),
+            &self.checkpoints.prompt,
+            seed,
+            capture,
+            messages.clone(),
+        )))?;
+
         let outcomes = self.outcomes.clone();
         let (owner, server) = (owner.clone(), server.clone());
         let emit = messages.events(self.emit.clone());
@@ -90,6 +159,7 @@ impl GoalCycle {
         *previous = Promise::spawn(async move {
             let transport = observation.signal();
             let settled = output::collect(&mut events, &transport, &thread, &turn, &emit).await;
+            drop(checkpoint);
             observation.close();
             drop(activation);
             // A lost observation never proves the native turn failed.
