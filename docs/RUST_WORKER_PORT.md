@@ -6805,3 +6805,26 @@ compiled. SSH and Windows guest execution were outside this validation.
 
 Guest turn dispatch, the guest console, attachment materialization,
 first-party guest MCP, and cold guest observation remain open.
+
+## 172. Dispatch protected Chat turns in the captured Cantrip OS workspace
+
+Reference commit 091c7142ec8ffe1f91e10d386c55bf3895ef6a53 (#3335).
+
+The existing `chat.turn` handler prepares and runs text input on the
+admitted guest Codex thread. It sends the selected environment and exact
+Linux working directory to Codex. Guest threads disable native subagents,
+as in the Node worker. The worker uses the existing inference admission,
+GUI receipts, encrypted streaming and canonical History paths. A saved
+guest placement cannot fall through to a Host turn.
+
+The local macOS ARM64 fixture ran the production worker and bundled Codex
+with a Core command peer and a loopback provider. The provider requested
+a shell command and received the guest checkout path, Linux workspace UID,
+and bytes from a guest-only file. The test verified the protected reply,
+canonical message identities and History commit replay, and found the
+completed turn after restarting the worker. The Host streaming, Stop, GUI
+receipt and History smoke tests passed. The Windows x64 GNU worker compiled.
+SSH and Windows guest execution were outside this validation.
+
+Guest attachment and skill materialization, first-party MCP, console,
+suspended turns, computer use and cold guest observation remain open.

@@ -45,6 +45,7 @@ pub(crate) struct Prepared {
     pub codex_home: PathBuf,
     pub runner_generation: JsString,
     pub(in crate::codex) saved: Option<Opened>,
+    pub(in crate::codex) environment: Option<Arc<Environment>>,
     admission: Option<Value>,
     bound: (JsString, Value),
 }
@@ -280,7 +281,10 @@ impl Ensurer {
         let cwd = field(&command, "cwd")?;
         let chat = field(session, "chatId")?;
         let project = session["projectId"].as_js_string().cloned();
-        if incoming["type"] != COMMAND && session.get("osExecution").is_some() {
+        let guest_allowed = incoming["type"] == COMMAND
+            || (incoming["type"] == crate::codex::turn::RUN
+                && session.get("osExecution").is_some());
+        if !guest_allowed && session.get("osExecution").is_some() {
             bail!(
                 "This command requires guest execution support beyond native thread preparation."
             );
@@ -291,7 +295,7 @@ impl Ensurer {
             .map(Arc::new);
         let guest = environment.is_some();
         if guest
-            && (incoming["type"] != COMMAND
+            && (!guest_allowed
                 || stopping
                 || restored_task.is_some()
                 || session.get("heldSuspension").is_some()
@@ -565,7 +569,7 @@ impl Ensurer {
                     if let Some(latch) = latch && !task_restoration {
                         this.sync_task_pause(&bound, &chat, &latch).await?;
                     }
-                    *prepared.lock().unwrap() = Some(Prepared { runtime, thread: loaded, codex_home, runner_generation: runner, saved: held, admission, bound });
+                    *prepared.lock().unwrap() = Some(Prepared { runtime, thread: loaded, codex_home, runner_generation: runner, saved: held, environment, admission, bound });
                     Ok(thread_id)
                 })
             }),

@@ -1,4 +1,5 @@
 use super::{RPC_TIMEOUT, Runtime, protected_mode};
+use crate::codex::guest_environment::Environment;
 use anyhow::{Context, Result, bail};
 use cantrip_wire::{JsString, Value, value::json};
 use std::path::Path;
@@ -6,6 +7,7 @@ use std::path::Path;
 pub(super) fn validate(command: &Value) -> Result<()> {
     let task = super::task::is_round(command) || super::task::is_goal(command);
     let queued = super::queued::is_queued(command);
+    let guest = command["executionProfile"] == "cantrip-os";
     let supported_content = if task {
         command["contextKind"] == "project" && command["taskDispatchLease"].is_object()
     } else if protected_mode(command) {
@@ -17,15 +19,14 @@ pub(super) fn validate(command: &Value) -> Result<()> {
         || (queued
             && (task || !protected_mode(command) || !command["nativeCommandReceipt"].is_object()))
         || (!queued && !command["protectedNativeInput"].is_null())
-        || command["executionProfile"] == "cantrip-os"
+        || (guest && task)
         || (!task
             && (!command["taskDispatchLease"].is_null()
                 || !command["taskInferenceInput"].is_null()
                 || !command["taskResumption"].is_null()))
-        || ["computerUseAuthority", "subagentDefaults"]
-            .iter()
-            .any(|field| command.get(field).is_some_and(|value| !value.is_null()))
-        || (!queued
+        || !command["computerUseAuthority"].is_null()
+        || (!guest && !command["subagentDefaults"].is_null())
+        || ((guest || !queued)
             && command["attachments"]
                 .as_array()
                 .is_some_and(|items| !items.is_empty()))
@@ -40,13 +41,14 @@ pub(super) fn validate(command: &Value) -> Result<()> {
                 .is_some_and(|value| !value.is_empty())
         })
     {
-        bail!("This turn requires native features outside the host text execution path.");
+        bail!("This turn requires native features outside the text execution path.");
     }
     Ok(())
 }
 
 pub(super) fn preparation(command: &Value) -> Value {
-    json!({
+    let mut target = json!({
+        "type": command["type"],
         "cwd": command["cwd"],
         "threadId": command["threadId"],
         "planMode": command["planMode"],
@@ -64,7 +66,11 @@ pub(super) fn preparation(command: &Value) -> Value {
             "scratchRootId": command["scratchRootId"], "rootKind": command["rootKind"],
             "computerUseEnabled": false,
         }),
-    })
+    });
+    if let Some(placement) = command.get("osExecution") {
+        target["session"]["osExecution"] = placement.clone();
+    }
+    target
 }
 
 pub(super) async fn native_input(
@@ -73,14 +79,29 @@ pub(super) async fn native_input(
     runtime: &Runtime,
     thread: &JsString,
     permission_profiles: bool,
+    environment: Option<&Environment>,
 ) -> Result<Value> {
     let cwd = command["cwd"]
         .as_str()
         .context("Invalid native workspace path")?;
-    let workspace = cantrip_config::resolve(&std::env::current_dir()?, Path::new(cwd));
-    let cwd = workspace
-        .to_str()
-        .context("Invalid native workspace path")?;
+    let workspace;
+    let cwd = if let Some(environment) = environment {
+        if environment.selection["cwd"] != cwd {
+            bail!("The native turn does not match its captured Linux cwd.");
+        }
+        if input
+            .iter()
+            .any(|item| item["type"] != "text" && item["type"] != "image")
+        {
+            bail!("This Linux turn requires guest attachment or skill materialization.");
+        }
+        cwd
+    } else {
+        workspace = cantrip_config::resolve(&std::env::current_dir()?, Path::new(cwd));
+        workspace
+            .to_str()
+            .context("Invalid native workspace path")?
+    };
     let standalone = command["contextKind"] == "standalone";
     let structured = super::task::is_structured(command);
     let primary_read_only = command["rootKind"] == "git-worktree"
@@ -137,6 +158,11 @@ pub(super) async fn native_input(
         });
     let mut context = json!({});
     context[context_key] = json!({"kind": "application", "value": instructions});
+    if let Some(environment) = environment {
+        context["cantrip.os-placement"] = json!({
+            "kind":"application", "value":environment.instructions,
+        });
+    }
     let mut params = json!({
         "threadId": thread,
         "cwd": cwd,
@@ -147,6 +173,9 @@ pub(super) async fn native_input(
         "collaborationMode": settings["collaborationMode"],
         "additionalContext": context,
     });
+    if let Some(environment) = environment {
+        params["environments"] = json!(vec![environment.selection.clone()]);
+    }
     if !command["model"]["reasoningEffort"].is_null() {
         params["effort"] = command["model"]["reasoningEffort"].clone();
     }
