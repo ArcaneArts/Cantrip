@@ -6,7 +6,10 @@ import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright-core";
 import {
   WORKER_LINK_PEER_CONTROL_CHANNEL,
+  classifyWorkerLinkPeerAddress,
   filterWorkerLinkPeerSdp,
+  parseWorkerLinkPeerCandidate,
+  workerLinkPeerCandidateAllowed,
   workerLinkPeerLaneChannelLabel,
   workerLinkPeerMailboxSchema,
   workerLinkPeerSessionDescriptorSchema,
@@ -15,11 +18,16 @@ import {
 
 const MESSAGE_LIMIT = 64 * 1024;
 
-export async function connectPeerWorkerLink(call, session) {
+export async function connectPeerWorkerLink(
+  call,
+  session,
+  peerRoute,
+  stunMapping,
+) {
   const base = "/api/worker-links/" + session.sessionId + "/peers";
   const { peerSession } = workerLinkPeerSessionDescriptorSchema.parse(
     await call("POST", base, 201, {
-      route: "lan",
+      route: peerRoute,
       routeGeneration: session.routeGeneration,
     }),
   );
@@ -40,7 +48,13 @@ export async function connectPeerWorkerLink(call, session) {
   };
   let browser;
   try {
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({
+      headless: true,
+      args:
+        peerRoute === "wan"
+          ? ["--disable-features=WebRtcHideLocalIpsWithMdns"]
+          : [],
+    });
     const page = await browser.newPage();
     const socket = new EventEmitter();
     await page.exposeFunction("peerFrame", (bytes) => {
@@ -104,12 +118,16 @@ export async function connectPeerWorkerLink(call, session) {
         hello,
       },
     );
-    const allowed = candidates.filter(
-      (value) =>
-        filterWorkerLinkPeerSdp("a=" + value.candidate, "lan")
-          .removedCandidates === 0,
-    );
-    assert.ok(allowed.length, "Chromium candidates for the LAN fixture");
+    function candidateAllowed(candidate) {
+      const parsed = parseWorkerLinkPeerCandidate(candidate.candidate);
+      assert.ok(parsed);
+      const addressKind = classifyWorkerLinkPeerAddress(parsed.address);
+      return workerLinkPeerCandidateAllowed(candidate, peerRoute, {
+        vpn: peerRoute === "wan" && ["private", "mdns"].includes(addressKind),
+      });
+    }
+    const allowed = candidates.filter(candidateAllowed);
+    assert.ok(allowed.length, "Chromium candidates for the peer fixture");
     assert.match(sdp, /^a=max-message-size:\d+/mu);
     const limitedOffer = sdp.replace(
       /^a=max-message-size:\d+/mu,
@@ -117,7 +135,10 @@ export async function connectPeerWorkerLink(call, session) {
     );
     await call("POST", path + "/signals", 204, {
       signals: [
-        { type: "offer", sdp: limitedOffer },
+        {
+          type: "offer",
+          sdp: filterWorkerLinkPeerSdp(limitedOffer, peerRoute).sdp,
+        },
         ...allowed.map(
           ({ candidate, sdpMid, sdpMLineIndex, usernameFragment }) => ({
             type: "candidate",
@@ -141,9 +162,10 @@ export async function connectPeerWorkerLink(call, session) {
     let afterAdvertisementSequence = null;
     let accepted = false;
     let advertised = 0;
+    let stunAdvertised = false;
     let connected = false;
     const deadline = Date.now() + 12_000;
-    while (!connected) {
+    while (!connected || (stunMapping && !stunAdvertised)) {
       assert.ok(Date.now() < deadline, "Native WorkerLink peer negotiation");
       const mailbox = workerLinkPeerMailboxSchema.parse(
         await call("POST", path + "/mailbox", 200, {
@@ -186,11 +208,19 @@ export async function connectPeerWorkerLink(call, session) {
         assert.equal(accepted, true);
         afterAdvertisementSequence = advertisement.advertisementSequence;
         for (const candidate of advertisement.candidates) {
-          assert.equal(
-            filterWorkerLinkPeerSdp("a=" + candidate.candidate, "lan")
-              .removedCandidates,
-            0,
+          assert.ok(
+            candidateAllowed(candidate),
+            "Worker candidate follows the route policy",
           );
+          const parsed = parseWorkerLinkPeerCandidate(candidate.candidate);
+          if (parsed.type === "srflx" && parsed.address === stunMapping) {
+            // This controlled mapping proves STUN gathering from an interface
+            // whose host candidate is suppressed. It is not reachable.
+            stunAdvertised ||=
+              classifyWorkerLinkPeerAddress(parsed.relatedAddress ?? "") ===
+              "private";
+            continue;
+          }
           await page.evaluate(
             (candidate) => window.workerLinkPeer.pc.addIceCandidate(candidate),
             candidate,
@@ -202,7 +232,7 @@ export async function connectPeerWorkerLink(call, session) {
             window.workerLinkPeer.pc.addIceCandidate(null),
           );
       }
-      if (!connected) await delay(20);
+      if (!connected || (stunMapping && !stunAdvertised)) await delay(20);
     }
     assert.ok(advertised > 0);
     const handshake = await page.waitForFunction(

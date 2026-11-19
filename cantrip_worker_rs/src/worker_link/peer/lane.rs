@@ -1,4 +1,5 @@
 use super::super::{Coordinator, carrier::Output};
+use super::PeerRoute;
 use anyhow::{Context, Result, ensure};
 use bytes::BytesMut;
 use cantrip_framing::worker_link::{self as wire, Frame};
@@ -27,6 +28,7 @@ pub(super) type Queue = mpsc::Receiver<Queued<BytesMut>>;
 
 pub(in crate::worker_link) struct PeerCarrier {
     session: Value,
+    route: PeerRoute,
     authenticated: AtomicBool,
     closed: AtomicBool,
     open: AtomicU8,
@@ -53,7 +55,11 @@ pub(super) fn from_label(label: &str) -> Option<usize> {
 }
 
 impl PeerCarrier {
-    pub(super) fn new(session: Value, config: &Value) -> (Arc<Self>, [Option<Queue>; LANES.len()]) {
+    pub(super) fn new(
+        session: Value,
+        config: &Value,
+        route: PeerRoute,
+    ) -> (Arc<Self>, [Option<Queue>; LANES.len()]) {
         let mut queues = std::array::from_fn(|_| None);
         let lanes = std::array::from_fn(|i| {
             let limits = &config["laneLimits"][LANES[i]];
@@ -71,6 +77,7 @@ impl PeerCarrier {
         });
         let carrier = Self {
             session,
+            route,
             authenticated: AtomicBool::new(false),
             closed: AtomicBool::new(false),
             open: AtomicU8::new(0),
@@ -79,6 +86,10 @@ impl PeerCarrier {
             lanes,
         };
         (Arc::new(carrier), queues)
+    }
+
+    pub fn route(&self) -> PeerRoute {
+        self.route
     }
 
     pub(super) fn authenticated(&self) -> bool {

@@ -51,6 +51,7 @@ export async function verifyWorkerLinkTunnel({
   workerDirectory,
   master,
   peer,
+  stunMapping,
 }) {
   const component = "tunnel-content";
   const keyRevision = 1;
@@ -314,6 +315,8 @@ export async function verifyWorkerLinkTunnel({
         response,
         received,
         sockets,
+        peer,
+        stunMapping,
       });
   } finally {
     componentKey.fill(0);
@@ -332,6 +335,8 @@ async function verifyPeerTunnel({
   response,
   received,
   sockets,
+  peer: peerRoute,
+  stunMapping,
 }) {
   const { connectPeerWorkerLink } =
     await import("./worker-link-peer-client.mjs");
@@ -348,7 +353,7 @@ async function verifyPeerTunnel({
   let peer;
   try {
     const session = await call("POST", base + "/route", 200, {
-      preferredRoute: "lan",
+      preferredRoute: peerRoute,
     });
     const { attachmentId } = await call(
       "POST",
@@ -366,8 +371,8 @@ async function verifyPeerTunnel({
         {},
       ),
     );
-    peer = await connectPeerWorkerLink(call, session);
-    const link = new Connection(peer.socket, session, "lan");
+    peer = await connectPeerWorkerLink(call, session, peerRoute, stunMapping);
+    const link = new Connection(peer.socket, session, peerRoute);
     await link.open(grant);
     const renewed = await call("POST", base + "/renew", 200);
     assert.ok(
@@ -409,7 +414,10 @@ async function verifyPeerTunnel({
     await call("POST", peer.path + "/mailbox", 409, {});
     await peer.waitClosed();
     console.log(
-      JSON.stringify({ suite: "native-workerlink-lan-peer", passed: true }),
+      JSON.stringify({
+        suite: "native-workerlink-" + peerRoute + "-peer",
+        passed: true,
+      }),
     );
   } finally {
     await peer?.close();

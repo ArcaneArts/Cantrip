@@ -322,7 +322,7 @@ impl Coordinator {
                     && header["effectiveRoute"] == "local"
                     && id(header, "sessionId") == &local.session
             }),
-            Carrier::Peer(peer) => peer.upgrade().is_some_and(|peer| peer.permits(header)),
+            Carrier::Peer(peer, _) => peer.upgrade().is_some_and(|peer| peer.permits(header)),
         };
         let accepted = if !admitted {
             false
@@ -377,11 +377,11 @@ impl Coordinator {
     }
 
     fn handle_peer_frame(self: &Arc<Self>, peer: &Arc<PeerCarrier>, frame: &Frame) {
-        self.handle_carrier_frame(&Carrier::Peer(Arc::downgrade(peer)), frame);
+        self.handle_carrier_frame(&Carrier::peer(peer), frame);
     }
 
     fn disconnect_peer(&self, peer: &Arc<PeerCarrier>) {
-        self.update_channels(|channels| channels.disconnect(&Carrier::Peer(Arc::downgrade(peer))));
+        self.update_channels(|channels| channels.disconnect(&Carrier::peer(peer)));
     }
 
     fn local_writable(&self) {

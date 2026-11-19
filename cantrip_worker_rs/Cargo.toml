@@ -54,7 +54,7 @@ cap-std = "=4.0.3"
 async-trait = "0.1"
 rtc = "=0.21.1"
 rtc-shared = "=0.21.1"
-webrtc = "=0.21.1"
+webrtc = { version = "=0.21.1", path = "third-party/webrtc" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
