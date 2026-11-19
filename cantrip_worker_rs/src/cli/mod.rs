@@ -9,7 +9,7 @@ use anyhow::{Context, Result, anyhow};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use bytes::Bytes;
 use cantrip_config::Environment;
-use cantrip_wire::{Value, parse_json_text, value::json};
+use cantrip_wire::{JsString, Value, parse_json_text, value::json};
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::{
     Method, Request, Response, StatusCode, body::Incoming, header, server::conn::http1,
@@ -17,6 +17,7 @@ use hyper::{
 };
 use hyper_util::rt::{TokioIo, TokioTimer};
 use std::{
+    collections::HashMap,
     convert::Infallible,
     io::Write,
     net::Ipv4Addr,
@@ -42,6 +43,7 @@ type Reply = Response<Full<Bytes>>;
 pub(crate) struct Broker {
     connection: ConnectionFile,
     cli: Option<PathBuf>,
+    contexts: Contexts,
     stop: watch::Sender<bool>,
     task: Option<JoinHandle<Result<()>>>,
 }
@@ -56,6 +58,50 @@ struct Handler {
     handshake: Value,
     server: server::Server,
     encryption: Arc<Service>,
+    contexts: Contexts,
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct Contexts(Arc<Mutex<HashMap<JsString, ThreadContext>>>);
+
+#[derive(Clone)]
+struct ThreadContext {
+    identity: (JsString, Value),
+    claim: Value,
+}
+
+impl Contexts {
+    pub(crate) fn bind(
+        &self,
+        thread: &JsString,
+        identity: &(JsString, Value),
+        chat: &Value,
+        lane: &Value,
+    ) {
+        // Keep the last lane after a turn settles. Core must reject a stale
+        // lane instead of falling back to resolving an idle thread or cwd.
+        self.0.lock().unwrap().insert(
+            thread.clone(),
+            ThreadContext {
+                identity: identity.clone(),
+                claim: json!({"chatId":chat,"executionLaneId":lane}),
+            },
+        );
+    }
+
+    fn lookup(&self, thread: &Value, encryption: &Service) -> Value {
+        let Some(thread) = thread.as_js_string() else {
+            return Value::Null;
+        };
+        let context = self.0.lock().unwrap().get(thread).cloned();
+        context
+            .filter(|entry| {
+                encryption
+                    .bound_identity()
+                    .is_ok_and(|identity| identity == entry.identity)
+            })
+            .map_or(Value::Null, |entry| entry.claim)
+    }
 }
 
 impl Broker {
@@ -88,11 +134,13 @@ impl Broker {
             "version":1,"endpoint":endpoint,"serverUrl":server_url,
             "sessionToken":token.as_str(),"workerId":worker,
         }))?;
+        let contexts = Contexts::default();
         let handler = Arc::new(Handler {
             token,
             handshake: json!({"protocolVersion":1,"serverUrl":server_url,"workerId":worker}),
             server,
             encryption,
+            contexts: contexts.clone(),
         });
         let cli = cli_binary(environment, cwd, worker_root);
         let (stop, stopped) = watch::channel(false);
@@ -100,9 +148,14 @@ impl Broker {
         Ok(Self {
             connection,
             cli,
+            contexts,
             stop,
             task: Some(task),
         })
+    }
+
+    pub(crate) fn contexts(&self) -> Contexts {
+        self.contexts.clone()
     }
 
     pub(crate) fn child_environment(&self, environment: &Environment) -> Environment {
@@ -295,20 +348,22 @@ impl Handler {
     }
 
     async fn execute(&self, request: Value, id: &str) -> Result<Value> {
+        let relay = self.server.relay(
+            self.contexts
+                .lookup(&request["context"]["codexThreadId"], &self.encryption),
+        );
         match request["command"].as_str().context("CLI command name")? {
-            "run.logs" => run::logs(&self.server, &self.encryption, request, id).await,
-            "run.secret-set" => run::set_secret(&self.server, &self.encryption, request, id).await,
+            "run.logs" => run::logs(&relay, &self.encryption, request, id).await,
+            "run.secret-set" => run::set_secret(&relay, &self.encryption, request, id).await,
             "policy.list" | "policy.read" => {
-                policy::execute(&self.server, &self.encryption, &request, id).await
+                policy::execute(&relay, &self.encryption, &request, id).await
             }
             "explorer.list" | "explorer.read" | "explorer.write" | "terminal.read"
-            | "terminal.send" => {
-                surface::execute(&self.server, &self.encryption, &request, id).await
-            }
+            | "terminal.send" => surface::execute(&relay, &self.encryption, &request, id).await,
             "browser.open" => {
                 anyhow::bail!("This protected CLI command is unavailable on the native worker.")
             }
-            _ => self.server.execute(request, id).await,
+            _ => relay.execute(request, id).await,
         }
     }
 }

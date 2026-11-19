@@ -151,24 +151,8 @@ async fn cycle(
     heartbeat["encryption"] = encryption.status();
     http::enroll(&client, &mut config, &heartbeat, logs).await?;
     let catalog_version = codex_compatibility["version"]["raw"].clone();
-    let codex_host = crate::codex::managed::Host {
-        binary: config.codex_installation.binary.clone(),
-        cwd: cwd.into(),
-        environment: environment
-            .iter()
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect(),
-        compatibility: codex_compatibility.clone(),
-        logs: Some(logs.clone()),
-    };
-    let codex = crate::codex::managed::Worker::bound_to_encryption(
-        codex_host.clone(),
-        config.data_directory.clone(),
-        worker.clone(),
-        generation.clone().into(),
-        encryption.clone(),
-    );
     let data_directory = config.data_directory.clone();
+    let codex_binary = config.codex_installation.binary.clone();
     let configuration = Arc::new(Mutex::new(config));
     let cli = crate::cli::Broker::start(
         configuration.clone(),
@@ -179,6 +163,23 @@ async fn cycle(
     )
     .await?;
     let host_environment = cli.child_environment(environment);
+    let codex_host = crate::codex::managed::Host {
+        binary: codex_binary,
+        cwd: cwd.into(),
+        environment: host_environment
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+        compatibility: codex_compatibility.clone(),
+        logs: Some(logs.clone()),
+    };
+    let codex = crate::codex::managed::Worker::bound_to_encryption(
+        codex_host.clone(),
+        data_directory.clone(),
+        worker.clone(),
+        generation.clone().into(),
+        encryption.clone(),
+    );
     let terminals = Arc::new(crate::terminal_services::Manager::new(
         host_environment.clone(),
         logs.clone(),
@@ -289,7 +290,7 @@ async fn cycle(
         encryption.clone(),
         routing.clone(),
         skill_root.clone(),
-        &codex_compatibility,
+        cli.contexts(),
     );
     let history = crate::history::managed::runtime::open(
         configuration.clone(),

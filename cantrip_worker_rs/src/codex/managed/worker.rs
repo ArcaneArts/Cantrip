@@ -125,6 +125,10 @@ impl Worker {
         worker
     }
 
+    pub(in crate::codex) fn compatibility(&self) -> &Value {
+        &self.0.host.compatibility
+    }
+
     pub(crate) fn configure_grok(&self, resolve: GrokResolver) -> Result<()> {
         self.0
             .grok

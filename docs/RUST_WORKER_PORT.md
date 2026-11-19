@@ -5559,3 +5559,29 @@ ciphertext and that a successful write changed the file version.
 
 Browser navigation, managed Codex CLI bindings, direct and WorkerLink
 delivery, and production cutover remain open.
+
+## 126. Bind managed Codex CLI calls to their admitted chat lane
+
+Reference commit `f2938cba87ded672fcf860fd3317e2409da5d4ce` (#3288).
+
+The Rust worker supplies the CLI directory and the private broker document
+to the managed Codex app-server. When the existing managed execution path
+activates the admitted lane, the worker records that lane and chat for the
+native thread within the current owner and server binding. A CLI request
+captures the claim once and includes it on every Core call for the command.
+The last binding stays available for Core to reject after settlement and
+is replaced by the next admitted lane for that thread.
+
+On macOS ARM64, the actual bundled Codex shell invoked the shipped CLI
+through both Rust services with PGlite and Node absent from the worker's
+startup PATH. A disposable standalone Chat used the existing permission
+profile that permits loopback access. The CLI received Core's existing
+standalone capability error during the turn. A repeat using the same
+native thread after settlement received Core's stale-lane conflict, and
+an unknown thread produced a missing-context error. A separate real
+Codex project-turn fixture captured the exact upstream lane before and
+after replacement. The existing Host Run CLI smoke and eight Node broker
+tests passed locally.
+
+Protected browser navigation, protected cwd-only inference, Cantrip OS
+execution, and production cutover remain open.
