@@ -48,6 +48,7 @@ async function pauseGoal({
   untilProvider,
   setAnswer,
   answer,
+  restoreCycle,
 }) {
   const { parent, cycle, sourceKey, operationId, threadId, turnId } = source;
   const active = { threadId, turnId };
@@ -155,6 +156,16 @@ async function pauseGoal({
     ),
   );
 
+  if (restoreCycle)
+    return restoreCycle({
+      source,
+      evidence: saved.evidence,
+      pauseCommand: command,
+      check,
+      model,
+      expectedAnswer: answer,
+    });
+
   const next = untilProvider();
   const resume = invoke({
     ...command,
@@ -171,7 +182,7 @@ async function pauseGoal({
   console.log(
     "Paused and resumed the autonomous Task Goal with its original checkpoint source and publication.",
   );
-  return continued;
+  return { continued };
 }
 
 export function goalCycles({
@@ -307,6 +318,9 @@ export function goalCycles({
     commitParent() {
       parentCommitted = true;
     },
+    commitRestored() {
+      committed++;
+    },
     async verify({
       firstTurnId,
       untilProvider,
@@ -352,7 +366,7 @@ export function goalCycles({
       setAnswer(checkpoint ? checkpointTool : firstAnswer);
       const first = await advance(0);
       assert.notEqual(cycles[0].turnId, firstTurnId);
-      const completed = checkpoint
+      const paused = checkpoint
         ? await pauseGoal({
             ...checkpoint,
             source: cycles[0],
@@ -362,16 +376,21 @@ export function goalCycles({
             setAnswer,
             answer: firstAnswer,
           })
-        : first;
-      completed.finish();
-      const record = await available(observed[0].outcome.promise);
-      await assertResult(record, firstAnswer);
-      const filename = path.join(outcomeDirectory, record.deliveryId + ".json");
-      const bytes = await readFile(filename, "utf8");
-      assert.deepEqual(JSON.parse(bytes), record);
-      const commit = await available(retry.promise);
-      assert.equal(await readFile(filename, "utf8"), bytes);
-
+        : { continued: first };
+      let commit = paused.commit;
+      if (paused.continued) {
+        paused.continued.finish();
+        const record = await available(observed[0].outcome.promise);
+        await assertResult(record, firstAnswer);
+        const filename = path.join(
+          outcomeDirectory,
+          record.deliveryId + ".json",
+        );
+        const bytes = await readFile(filename, "utf8");
+        assert.deepEqual(JSON.parse(bytes), record);
+        commit = await available(retry.promise);
+        assert.equal(await readFile(filename, "utf8"), bytes);
+      }
       const finalAnswer = "Autonomous Goal result two.";
       setAnswer((body) => {
         if (
@@ -398,7 +417,13 @@ export function goalCycles({
         };
       });
       const next = advance(1);
-      commit();
+      const restored = commit();
+      if (checkpoint?.restoreCycle) {
+        assert.deepEqual(
+          (await restored).result,
+          paused.record.notification.outcome.result,
+        );
+      }
       const second = await next;
       const final = untilProvider();
       second.finish();

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { copyFile, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
@@ -10,6 +10,26 @@ import {
 } from "../../packages/protocol/dist/index.js";
 import { NativeSuspensionStore } from "../../cantrip_worker/src/native-suspension-store.ts";
 import { openTaskOperationRelayResult } from "../../packages/crypto/dist/index.js";
+
+function boundaryTool(body, callId) {
+  const exec = body.tools
+    .flatMap((tool) =>
+      tool.type === "namespace"
+        ? tool.tools.map((entry) => ({ ...entry, namespace: tool.name }))
+        : [tool],
+    )
+    .find((tool) => tool.name === "exec_command");
+  assert.ok(exec);
+  return {
+    name: exec.name,
+    ...(exec.namespace ? { namespace: exec.namespace } : {}),
+    call_id: callId,
+    arguments: JSON.stringify({
+      cmd: "printf task-checkpoint-boundary",
+      yield_time_ms: 1000,
+    }),
+  };
+}
 
 export async function verifyDirectTask({
   source,
@@ -43,25 +63,34 @@ export async function verifyDirectTask({
   const deliveries = Promise.withResolvers();
   const replay = Promise.withResolvers();
   const native = Promise.withResolvers();
+  const restored = Promise.withResolvers();
   const states = [];
   let restart = false;
+  let current = receipt;
+  let currentCommand = command;
+  const namespace = createHash("sha256")
+    .update(JSON.stringify([serverId, ownerId, workerId]))
+    .digest("hex");
   let runtimeGeneration;
   attach(
     (body, send, response) => {
       const request = taskInferenceInputDispatchSchema.parse(body);
-      assert.deepEqual(request.receipt, receipt);
+      assert.deepEqual(request.receipt, current);
       assert.equal(request.workerId, workerId);
       assert.equal(request.serverId, serverId);
       assert.equal(request.workerGeneration, generation());
-      if (request.phase === "claim" && phases.length) {
+      if (
+        (request.phase === "claim" && phases.length % 3 !== 0) ||
+        phases.length === (checkpoint?.cold ? 6 : 3)
+      ) {
         response.writeHead(409).end("{}");
         return;
       }
       assert.equal(
         request.phase,
-        ["claim", "dispatch", "native"][phases.length],
+        ["claim", "dispatch", "native"][phases.length % 3],
       );
-      const acknowledgment = { receipt };
+      const acknowledgment = { receipt: current };
       phases.push(request.phase);
       if (request.phase === "native") {
         states.push(request.nativeExecution);
@@ -69,7 +98,9 @@ export async function verifyDirectTask({
         acknowledgment.nativeExecution = request.nativeExecution;
         acknowledgment.nativeRuntimeGeneration =
           request.nativeRuntimeGeneration;
-        native.resolve(() => send(acknowledgment));
+        (current === receipt ? native : restored).resolve(() =>
+          send(acknowledgment),
+        );
         return;
       }
       send(acknowledgment);
@@ -80,14 +111,19 @@ export async function verifyDirectTask({
       assert.equal(record.ownerId, ownerId);
       assert.equal(record.serverId, serverId);
       assert.equal(record.workerId, workerId);
-      assert.deepEqual(record.notification.taskDispatchFence, fence);
+      assert.equal(
+        record.notification.outcome.ok,
+        true,
+        JSON.stringify(record.notification.outcome),
+      );
+      assert.deepEqual(record.notification.taskDispatchFence, current.dispatch);
       assert.equal(
         record.notification.taskInferenceInputOperationId,
-        receipt.operationId,
+        current.operationId,
       );
       send({
         deliveryId: restart ? record.deliveryId : randomUUID(),
-        taskInferenceInputOperationId: receipt.operationId,
+        taskInferenceInputOperationId: current.operationId,
         committed: true,
       });
       (restart ? replay : deliveries).resolve(record);
@@ -108,35 +144,22 @@ export async function verifyDirectTask({
   assert.equal(altered.ok, false);
   assert.deepEqual(phases, []);
 
-  if (checkpoint) {
-    checkpoint.respond((body) => {
-      const exec = body.tools
-        .flatMap((tool) =>
-          tool.type === "namespace"
-            ? tool.tools.map((entry) => ({ ...entry, namespace: tool.name }))
-            : [tool],
-        )
-        .find((tool) => tool.name === "exec_command");
-      assert.ok(exec);
-      return {
-        name: exec.name,
-        ...(exec.namespace ? { namespace: exec.namespace } : {}),
-        call_id: "direct-task-boundary",
-        arguments: JSON.stringify({
-          cmd: "printf task-checkpoint-boundary",
-          yield_time_ms: 1000,
-        }),
-      };
-    });
-  }
+  if (checkpoint)
+    checkpoint.respond((body) => boundaryTool(body, "direct-task-boundary"));
   const providerRequest = untilProvider();
   const note = waitForFrame(
     (frame) => frame.notification?.clientMessageId === clientMessageId,
   );
   const events = [];
-  const running = invoke(command, (event) => events.push(event));
+  let running = invoke(
+    command,
+    (event) => events.push(event),
+    undefined,
+    checkpoint?.cold,
+  );
   const failed = running.then((reply) => {
-    throw new Error(JSON.stringify(reply) + "\n" + diagnostics());
+    if (!reply.disconnected)
+      throw new Error(JSON.stringify(reply) + "\n" + diagnostics());
   });
   const acknowledge = await available(
     Promise.race([
@@ -223,12 +246,13 @@ export async function verifyDirectTask({
         "utf8",
       ),
     );
-    const store = new NativeSuspensionStore(
-      directory,
-      () => ({ serverId, ownerId, workerId }),
-      { ...checkpoint.oracle, registration: () => ({ principalId }) },
-    );
-    const saved = await store.open(state.execution.checkpoint.storageId, {
+    const scope = { serverId, ownerId, workerId };
+    const protection = {
+      ...checkpoint.oracle,
+      registration: () => ({ principalId }),
+    };
+    const store = new NativeSuspensionStore(directory, () => scope, protection);
+    const savedSource = {
       chatId: command.chatId,
       threadId,
       contextKind: "project",
@@ -237,7 +261,11 @@ export async function verifyDirectTask({
       modelRouteId: receipt.modelRouteId,
       providerAccountId: null,
       taskInput: receipt,
-    });
+    };
+    const saved = await store.open(
+      state.execution.checkpoint.storageId,
+      savedSource,
+    );
     assert.deepEqual(saved.evidence, state.execution.checkpoint);
     assert.equal(saved.continuation.turnId, turnId);
     assert.equal(saved.continuation.executionKind, "chat");
@@ -254,23 +282,202 @@ export async function verifyDirectTask({
         ([, id]) => id === published.message.id,
       ),
     );
-    const next = untilProvider();
-    const resume = invoke({
-      ...control,
-      paused: false,
-      task: { ...control.task, revision: 2 },
-    }).then(check);
-    const resumed = await Promise.race([next, resume.then(() => next)]);
-    assert.equal(resumed.number, model.number + 1);
-    assert.deepEqual(await resume, {
-      paused: false,
-      active: { threadId, turnId },
-      execution: { actor: state.execution.actor, checkpoint: null },
-    });
-    resumed.finish();
-    console.log(
-      "Direct Task pause saved an authenticated Node-readable checkpoint and resumed the same turn.",
-    );
+    if (checkpoint.cold) {
+      const oldGeneration = generation();
+      const priorRuntime = runtimeGeneration;
+      await stop();
+      assert.deepEqual(await running, { ok: false, disconnected: true });
+      const outcomes = await readdir(
+        path.join(directory, "task-goal-outcomes", namespace),
+      ).catch((error) => {
+        if (error.code === "ENOENT") return [];
+        throw error;
+      });
+      assert.ok(
+        !outcomes.some((name) => name.endsWith(".json")),
+        "Stopping a held Task must leave its checkpoint instead of publishing a failed outcome.",
+      );
+      // Re-seal the captured continuation through the independent Node
+      // reference. The actual Codex checkpoint and source identity stay intact.
+      const nodeDirectory = path.join(
+        directory,
+        "node-task-checkpoint-fixture",
+      );
+      const nodeStore = new NativeSuspensionStore(
+        nodeDirectory,
+        () => scope,
+        protection,
+      );
+      const reference = await nodeStore.commit({
+        ...saved,
+        suspension: saved.evidence.suspension,
+        runtimeVersion: saved.evidence.runtimeVersion,
+        runtimeFingerprint: saved.evidence.runtimeFingerprint,
+      });
+      assert.deepEqual(reference, saved.evidence);
+      const digest = (value) =>
+        createHash("sha256").update(JSON.stringify(value)).digest("hex");
+      const record = path.join(
+        "native-turn-suspensions",
+        digest(scope),
+        digest(command.chatId),
+        reference.storageId + ".json",
+      );
+      await copyFile(
+        path.join(nodeDirectory, record),
+        path.join(directory, record),
+      );
+      current = {
+        ...receipt,
+        operationId: randomUUID(),
+        dispatch: { ...fence, fencingToken: fence.fencingToken + 1 },
+      };
+      await start();
+      assert.notEqual(generation(), oldGeneration);
+      assert.deepEqual(
+        check(
+          await invoke({
+            ...control,
+            paused: false,
+            task: { ...control.task, revision: 2 },
+          }),
+        ),
+        { paused: false, active: null },
+      );
+      const commandAfterRestart = {
+        ...command,
+        threadId,
+        taskInferenceInput: current,
+        taskDispatchLease: {
+          ...command.taskDispatchLease,
+          ...current.dispatch,
+        },
+        taskResumption: {
+          controlId: randomUUID(),
+          checkpoint: saved.evidence,
+          source: receipt,
+        },
+      };
+      currentCommand = commandAfterRestart;
+      const unknown = await invoke({
+        ...commandAfterRestart,
+        taskResumption: {
+          ...commandAfterRestart.taskResumption,
+          checkpoint: { ...saved.evidence, storageId: randomUUID() },
+        },
+      });
+      assert.equal(unknown.ok, false);
+      assert.match(unknown.error.message, /^Task restoration failed at attach/);
+      assert.equal(phases.length, 3);
+
+      checkpoint.respond((body) =>
+        boundaryTool(body, "restored-task-boundary"),
+      );
+      const continued = untilProvider();
+      const bound = Promise.withResolvers();
+      running = invoke(commandAfterRestart, (event) => {
+        events.push(event);
+        if (event.type === "agent.task-resumed") bound.resolve(event);
+      });
+      const rejected = running.then((reply) => {
+        throw new Error(JSON.stringify(reply) + "\n" + diagnostics());
+      });
+      const ack = await available(
+        Promise.race([
+          restored.promise,
+          rejected,
+          continued.then(() =>
+            assert.fail(
+              "Task recovery reached the provider before Core bound the original turn.",
+            ),
+          ),
+        ]),
+      );
+      assert.equal(checkpoint.calls(), model.number);
+      assert.deepEqual(states[1], { ...states[1], threadId, turnId });
+      assert.notEqual(runtimeGeneration, priorRuntime);
+      assert.ok(!events.some((event) => event.type === "agent.task-resumed"));
+      ack();
+      const event = await available(Promise.race([bound.promise, rejected]));
+      assert.deepEqual(event, {
+        type: "agent.task-resumed",
+        controlId: commandAfterRestart.taskResumption.controlId,
+        inputOperationId: current.operationId,
+        threadId,
+        turnId,
+      });
+      const resumed = await Promise.race([continued, rejected]);
+      assert.equal(resumed.number, model.number + 1);
+      assert.equal(JSON.stringify(resumed.body.input).split(marker).length, 2);
+      assert.equal(
+        JSON.stringify(resumed.body.input).split("direct-task-boundary").length,
+        3,
+      );
+      const pauseAgain = { ...control, task: { ...control.task, revision: 3 } };
+      assert.deepEqual(
+        check(await invoke({ ...pauseAgain, waitForBoundary: false })),
+        {
+          paused: true,
+          active: null,
+        },
+      );
+      const recapturing = invoke(pauseAgain).then(check);
+      checkpoint.respond(undefined);
+      resumed.finish();
+      const recaptured = await recapturing;
+      assert.deepEqual(recaptured.active, { threadId, turnId });
+      assert.deepEqual(recaptured.execution.actor, {
+        workerGeneration: generation(),
+        runtimeGeneration,
+        operationId: current.operationId,
+        operationGeneration: current.operationId,
+      });
+      const held = await store.open(
+        recaptured.execution.checkpoint.storageId,
+        savedSource,
+      );
+      assert.ok(
+        held.taskContinuation.events.ids.some(
+          ([, id]) => id === published.message.id,
+        ),
+      );
+      const next = untilProvider();
+      const live = invoke({
+        ...pauseAgain,
+        paused: false,
+        task: { ...pauseAgain.task, revision: 4 },
+      }).then(check);
+      const afterLive = await Promise.race([next, live.then(() => next)]);
+      assert.equal(afterLive.number, resumed.number + 1);
+      assert.deepEqual(await live, {
+        paused: false,
+        active: { threadId, turnId },
+        execution: { actor: recaptured.execution.actor, checkpoint: null },
+      });
+      afterLive.finish();
+
+      console.log(
+        "Restarted the worker and Codex and restored the original Task under a fresh Core receipt.",
+      );
+    } else {
+      const next = untilProvider();
+      const resume = invoke({
+        ...control,
+        paused: false,
+        task: { ...control.task, revision: 2 },
+      }).then(check);
+      const resumed = await Promise.race([next, resume.then(() => next)]);
+      assert.equal(resumed.number, model.number + 1);
+      assert.deepEqual(await resume, {
+        paused: false,
+        active: { threadId, turnId },
+        execution: { actor: state.execution.actor, checkpoint: null },
+      });
+      resumed.finish();
+      console.log(
+        "Direct Task pause saved an authenticated Node-readable checkpoint and resumed the same turn.",
+      );
+    }
   } else {
     model.finish();
   }
@@ -314,9 +521,6 @@ export async function verifyDirectTask({
     ok: true,
     result: reply.result,
   });
-  const namespace = createHash("sha256")
-    .update(JSON.stringify([serverId, ownerId, workerId]))
-    .digest("hex");
   const filename = path.join(
     directory,
     "task-goal-outcomes",
@@ -325,9 +529,14 @@ export async function verifyDirectTask({
   );
   const pending = await readFile(filename, "utf8");
   assert.deepEqual(JSON.parse(pending), saved);
-  const duplicate = await invoke(command);
+  const duplicate = await invoke(currentCommand);
   assert.equal(duplicate.ok, false);
-  assert.deepEqual(phases, ["claim", "dispatch", "native"]);
+  assert.deepEqual(
+    phases,
+    checkpoint?.cold
+      ? ["claim", "dispatch", "native", "claim", "dispatch", "native"]
+      : ["claim", "dispatch", "native"],
+  );
   await stop();
   assert.equal(await readFile(filename, "utf8"), pending);
 

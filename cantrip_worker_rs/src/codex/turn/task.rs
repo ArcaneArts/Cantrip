@@ -2,6 +2,7 @@
 pub(super) mod checkpoint;
 pub(in crate::codex) mod cycle;
 pub(super) mod first_input;
+pub(super) mod restore;
 mod structured;
 use super::{Emit, Key};
 use crate::{
@@ -23,14 +24,12 @@ pub(super) fn is_round(command: &Value) -> bool {
     command["resultMode"]["kind"] == "task-encrypted"
         && command["taskInferenceInput"].is_object()
         && command["taskInferenceInput"]["kind"].is_null()
-        && command["taskResumption"].is_null()
 }
 
 pub(super) fn is_goal(command: &Value) -> bool {
     command["resultMode"]["kind"] == "task-message-encrypted"
         && command["taskInferenceInput"]["kind"] == "goal"
         && command["threadId"].is_string()
-        && command["taskResumption"].is_null()
 }
 
 pub(super) enum Turn {
@@ -251,6 +250,34 @@ impl Messages {
                 thread: message["correlation"]["threadId"].clone(),
                 text: message["text"].clone(),
                 cipher,
+            });
+        }
+        Ok(())
+    }
+
+    fn restore_output(&self, saved: &Value) -> Result<()> {
+        self.assert_bound()?;
+        let mut output = self.output.lock().unwrap();
+        for entry in saved["ids"]
+            .as_array()
+            .context("Missing saved Task message identities")?
+        {
+            let Some([key, id]) = entry.as_array().map(Vec::as_slice) else {
+                bail!("Invalid saved Task message identity pair.");
+            };
+            let key = key
+                .as_js_string()
+                .context("Invalid saved Task message identity")?;
+            let id = id.as_str().context("Invalid saved Task message UUID")?;
+            output.ids.insert(key.clone(), id.to_owned());
+        }
+        let message = &saved["completedRootMessage"];
+        if !message.is_null() {
+            output.final_message = Some(FinalMessage {
+                turn: message["turnId"].clone(),
+                thread: message["threadId"].clone(),
+                text: message["text"].clone(),
+                cipher: message["message"].clone(),
             });
         }
         Ok(())

@@ -168,7 +168,20 @@ impl Turns {
         target: &PauseTarget,
         selected: &Selection,
     ) -> Result<Observer> {
+        let local = self.active.lock().unwrap().active.get(key).cloned();
         if !scope["taskGoalCycle"].is_null() {
+            let matches = |candidate: &Checkpoint| {
+                candidate.matches_cycle(
+                    scope,
+                    &key.2,
+                    &selected.thread,
+                    &selected.turn,
+                    self.task_inputs.generation(),
+                )
+            };
+            if let Some(local) = local.filter(|local| local.task.get().is_some_and(&matches)) {
+                return Ok(Observer::Round(local));
+            }
             let owner = target
                 .runtime
                 .inference_router()
@@ -177,26 +190,11 @@ impl Turns {
             let capture = owner
                 .checkpoints
                 .current()
-                .filter(|candidate| {
-                    candidate.matches_cycle(
-                        scope,
-                        &key.2,
-                        &selected.thread,
-                        &selected.turn,
-                        self.task_inputs.generation(),
-                    )
-                })
+                .filter(|candidate| matches(candidate))
                 .context("The autonomous Goal does not match its current native execution.")?;
             return Ok(Observer::Goal(owner, capture));
         }
-        let active = self
-            .active
-            .lock()
-            .unwrap()
-            .active
-            .get(key)
-            .cloned()
-            .context("The Task input has no current native owner.")?;
+        let active = local.context("The Task input has no current native owner.")?;
         if !active
             .task
             .get()

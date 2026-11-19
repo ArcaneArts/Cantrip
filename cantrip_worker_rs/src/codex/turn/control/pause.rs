@@ -8,7 +8,7 @@ use cantrip_history::content::Encryption;
 use cantrip_wire::{Value, value::json};
 use std::time::Duration;
 
-pub(super) const BOUNDARY_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
+pub(in crate::codex::turn) const BOUNDARY_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
 
 impl Binding {
     pub(in crate::codex::turn) fn capture(&self, command: &Value, channel: output::Capture) {
@@ -218,7 +218,7 @@ impl Turns {
 }
 
 impl Selection {
-    pub(super) async fn confirm_held(&self, suspension: &Value) -> Result<()> {
+    pub(in crate::codex::turn) async fn confirm_held(&self, suspension: &Value) -> Result<()> {
         let result = self
             .runtime
             .request(
