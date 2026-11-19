@@ -140,7 +140,7 @@ async fn cycle(
         crate::protected_content::SurfaceStreamReplayGuard::default(),
     ));
     let explorer_operations = Arc::new(
-        crate::explorer_operations::ExplorerOperations::with_replay(surface_replay),
+        crate::explorer_operations::ExplorerOperations::with_replay(surface_replay.clone()),
     );
     let terminals = Arc::new(crate::terminal_services::Manager::new(
         environment
@@ -148,6 +148,16 @@ async fn cycle(
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect(),
         logs.clone(),
+    ));
+    let shells = Arc::new(crate::terminal_services::interactive::Shells::new(
+        environment
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+        logs.clone(),
+        terminals.clone(),
+        surface_replay,
+        generation.clone(),
     ));
     let mut heartbeat = http::heartbeat(&config, host.platform, host.architecture, &started)?;
     heartbeat["projectReplicas"] = json!({
@@ -704,10 +714,21 @@ async fn cycle(
                     });
                     continue;
                 }
-                if matches!(kind,"terminal.services.reconcile"|"terminal.service.restart") {
-                    let terminals=terminals.clone();let encryption=encryption.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
+                if crate::terminal_services::interactive::Shells::supports(kind) {
+                    let shells=shells.clone();let encryption=encryption.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
                     commands.spawn(async move {
-                        let result=terminals.execute(&request["command"],&encryption,&routing,&scope).await;
+                        let result=shells.execute(&request["command"], crate::terminal_services::interactive::Ports {
+                            encryption:&encryption,routes:&routing,scope:&scope,outbound:&outgoing,
+                            request_id:&request["requestId"],socket_epoch:request["socketEpoch"].as_u64().unwrap_or_default(),
+                        }).await;
+                        finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
+                if matches!(kind,"terminal.services.reconcile"|"terminal.service.restart") {
+                    let shells=shells.clone();let terminals=terminals.clone();let encryption=encryption.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let result=terminals.execute(&request["command"],&encryption,&routing,&scope,&shells).await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);
                     });
                     continue;
@@ -785,6 +806,7 @@ async fn cycle(
     let task_outcomes_closed = task_outcomes.await;
     let goal_delivery_closed = goal_delivery.await;
     let settings_delivery_closed = settings_delivery.await;
+    let shells_closed = shells.shutdown().await;
     while let Some(result) = commands.join_next().await {
         if let Err(error) = result {
             command_failure.get_or_insert(error);
@@ -816,6 +838,7 @@ async fn cycle(
     );
     outgoing.close();
     terminals_closed?;
+    shells_closed?;
     github_closed?;
     task_outcomes_closed?;
     goal_delivery_closed?;

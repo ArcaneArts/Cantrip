@@ -1,5 +1,6 @@
 //! Real host PTY service supervision. Terminal attachment/canonical rendering
 //! are separate consumers of these process/output lifetimes and remain pending.
+pub(crate) mod interactive;
 mod output;
 mod private_state;
 mod service;
@@ -96,12 +97,13 @@ impl Manager {
             delay,
         }
     }
-    pub async fn execute(
+    pub(crate) async fn execute(
         &self,
         command: &Value,
         encryption: &Service,
         registry: &Registry,
         scope: &Scope,
+        shells: &interactive::Shells,
     ) -> Result<Value> {
         scope.check()?;
         let command = registry.resolve(command).await?;
@@ -115,6 +117,10 @@ impl Manager {
                         .map(|value| Configuration::open_host(value, encryption))
                         .collect::<Result<Vec<_>>>()?;
                     scope.check()?;
+                    let _transition = shells.transition().await;
+                    shells
+                        .retire_for_services(encryption, &configurations)
+                        .await?;
                     self.reconcile(configurations).await
                 }
                 .await;
@@ -226,6 +232,25 @@ impl Manager {
             .append("\r\n\x1b[90m[Restarting service]\x1b[0m\r\n");
         entry.control.send_modify(|control| control.restart += 1);
         Ok(())
+    }
+    pub(crate) async fn enabled(&self, id: &JsString) -> bool {
+        self.inner
+            .lock()
+            .await
+            .entries
+            .get(id)
+            .is_some_and(|entry| {
+                entry.control.borrow().configuration.is_some()
+                    || matches!(entry.state.lock().unwrap().phase, "starting" | "running")
+            })
+    }
+    pub(super) async fn disable(&self, id: &JsString) {
+        if let Some(entry) = self.inner.lock().await.entries.get(id) {
+            entry.control.send_modify(|control| {
+                control.configuration = None;
+                control.restart += 1;
+            });
+        }
     }
     /// Internal output retained for the future terminal attachment adapter; it
     /// is not a plaintext transport endpoint or a canonical terminal snapshot.

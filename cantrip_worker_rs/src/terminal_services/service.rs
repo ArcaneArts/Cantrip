@@ -145,13 +145,9 @@ fn append(state: &Mutex<State>, text: &str) {
     }
 }
 fn launch(command: &JsString, environment: &HashMap<String, String>) -> (String, Vec<String>) {
+    let shell = shell(environment);
     #[cfg(windows)]
     {
-        let shell = environment
-            .get("COMSPEC")
-            .filter(|s| !s.is_empty())
-            .cloned()
-            .unwrap_or_else(|| "powershell.exe".into());
         let name = shell.rsplit(['\\', '/']).next().unwrap_or("");
         let args = if name.eq_ignore_ascii_case("cmd") || name.eq_ignore_ascii_case("cmd.exe") {
             vec!["/d", "/s", "/c"]
@@ -164,7 +160,22 @@ fn launch(command: &JsString, environment: &HashMap<String, String>) -> (String,
     }
     #[cfg(not(windows))]
     {
-        let shell = environment
+        (shell, vec!["-lc".into(), command.lossy().into_owned()])
+    }
+}
+
+pub(super) fn shell(environment: &HashMap<String, String>) -> String {
+    #[cfg(windows)]
+    {
+        environment
+            .get("COMSPEC")
+            .filter(|s| !s.is_empty())
+            .cloned()
+            .unwrap_or_else(|| "powershell.exe".into())
+    }
+    #[cfg(not(windows))]
+    {
+        environment
             .get("SHELL")
             .filter(|s| !s.is_empty())
             .cloned()
@@ -174,7 +185,6 @@ fn launch(command: &JsString, environment: &HashMap<String, String>) -> (String,
                 } else {
                     "/bin/bash".into()
                 }
-            });
-        (shell, vec!["-lc".into(), command.lossy().into_owned()])
+            })
     }
 }
