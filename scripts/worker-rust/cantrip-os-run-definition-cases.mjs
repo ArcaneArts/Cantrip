@@ -12,6 +12,8 @@ export async function verifyRunDefinitions({
   call,
   route,
   binding,
+  target,
+  workspace,
   os,
   actual,
   data,
@@ -22,6 +24,7 @@ export async function verifyRunDefinitions({
   container,
   stopWorker,
   restartWorker,
+  runPlan,
 }) {
   const projectId = binding.projectId;
   const configurationId = randomUUID();
@@ -138,6 +141,23 @@ export async function verifyRunDefinitions({
   assert.equal(deleted.result.result.outcome, "deleted");
   const after = request("get", { configurationId });
   assert.deepEqual((await definition(after)).result, await oracle(after));
+  if (runPlan) {
+    const { verifyRunPlan } = await import("./cantrip-os-run-plan-cases.mjs");
+    await verifyRunPlan({
+      definition,
+      request,
+      binding,
+      target,
+      workspace,
+      os,
+      actual,
+      data,
+      workerId,
+      serverId,
+      docker,
+      container,
+    });
+  }
   console.log(
     "Native Linux Run definitions passed: package upgrade, Node read parity, revision guards and observation after worker restart.",
   );

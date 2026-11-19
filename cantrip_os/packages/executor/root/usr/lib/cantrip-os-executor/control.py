@@ -16,7 +16,7 @@ import uuid
 sys.path.insert(0, "/usr/lib/cantrip-os-workspaces")
 from service import Store, atomic_json, request as workspace_request
 
-VERSION = "0.13.0"
+VERSION = "0.14.0"
 CONFIG = "/etc/cantrip-os/executor.json"
 HERE = Path(__file__).parent
 
@@ -143,7 +143,8 @@ class Manager:
             ready.unlink(missing_ok=True)
 
     def public(self, name):
-        return {key: value for key, value in self.endpoints[name].items() if key != "token"}
+        return {**{key: value for key, value in self.endpoints[name].items() if key != "token"},
+                "native_run_plan": True}
 
     def connect(self, name, expected):
         if name not in self.children or self.children[name].poll() is not None:

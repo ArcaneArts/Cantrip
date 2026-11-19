@@ -799,8 +799,12 @@ export class OsRunGeneration {
         });
       const prepared = await this.process(
         {
-          executable: "/usr/bin/node",
-          arguments: ["/usr/lib/cantrip-os-executor/run-plan.mjs"],
+          executable: this.binding.native_run_plan
+            ? "/usr/lib/cantrip-os-executor/cantrip-os-run-definitions"
+            : "/usr/bin/node",
+          arguments: this.binding.native_run_plan
+            ? ["--plan"]
+            : ["/usr/lib/cantrip-os-executor/run-plan.mjs"],
           workingDirectory: this.input.target.scope.guestPath,
         },
         {},

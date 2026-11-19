@@ -985,6 +985,8 @@ export const contractRoots = [
   "workerObservationEnvelopeSchema",
   "cantripOsRunDefinitionWorkerCommandSchema",
   "runConfigurationOperationResponseSchema",
+  "osRunPlanInputSchema",
+  "osRunPlanResponseSchema",
 ];
 
 export const projectExportContractRoots = [
@@ -1267,6 +1269,10 @@ const refinements = new Map([
   ],
   [
     runSecrets.runConfigurationSecretValueContentSchema.shape.value,
+    "run-secret-no-nul",
+  ],
+  [
+    protocol.osRunPlanInputSchema.shape.secrets.element.shape.value,
     "run-secret-no-nul",
   ],
   [runSecrets.runConfigurationSecretSummarySchema, "run-secret-summary"],

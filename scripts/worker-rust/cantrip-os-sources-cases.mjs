@@ -134,6 +134,7 @@ export async function verifySources({
   eventually,
   linked: linkedFixture,
   runDefinitions,
+  runPlan,
   stopWorker,
   restartWorker,
 }) {
@@ -365,6 +366,8 @@ export async function verifySources({
       call,
       route: route(managed),
       binding: managed,
+      target: tree,
+      workspace,
       os,
       actual,
       data,
@@ -375,6 +378,7 @@ export async function verifySources({
       container,
       stopWorker,
       restartWorker,
+      runPlan,
     });
   }
   if (!linkedFixture) return;

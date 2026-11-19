@@ -130,3 +130,82 @@ async fn deadline(at: Option<Instant>) {
         std::future::pending::<()>().await;
     }
 }
+
+/// The Linux preparation helper inherits the executor's process ownership.
+/// Its setup command uses ordinary pipes, preserving preparation output
+/// without terminal echo or translated line endings.
+#[cfg(all(feature = "guest-run-definitions", target_os = "linux"))]
+pub(super) async fn guest_setup(
+    command: &Command,
+    environment: &Environment,
+    output: &mut String,
+) -> Result<Exit, Failure> {
+    use std::{os::unix::process::ExitStatusExt, process::Stdio};
+    use tokio::{io::AsyncReadExt, process::Command as Process};
+    let failure = |message| Failure::new("environment", "linux-preparation-failed", message, true);
+    let mut child = Process::new(&command.program)
+        .args(&command.arguments)
+        .current_dir(&command.cwd)
+        .env_clear()
+        .envs(environment)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .process_group(0)
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|_| failure("The Linux environment setup could not start."))?;
+    let mut stdout = child.stdout.take().unwrap();
+    let mut stderr = child.stderr.take().unwrap();
+    let result = tokio::time::timeout(Duration::from_secs(120), async {
+        let mut out_buffer = [0; 8192];
+        let mut err_buffer = [0; 8192];
+        let mut open = [true; 2];
+        let mut decoders = [Utf8::default(), Utf8::default()];
+        let mut bytes = 0;
+        while open.iter().any(|open| *open) {
+            let (stream, count) = tokio::select! {
+                count = stdout.read(&mut out_buffer), if open[0] => (0, count),
+                count = stderr.read(&mut err_buffer), if open[1] => (1, count),
+            };
+            let count =
+                count.map_err(|_| failure("Linux environment output could not be read."))?;
+            bytes += count;
+            if bytes > 1024 * 1024 {
+                return Err(failure("Linux environment preparation exceeded its bound."));
+            }
+            if count == 0 {
+                open[stream] = false;
+                output.push_str(&decoders[stream].finish());
+            } else {
+                let buffer = if stream == 0 {
+                    &out_buffer
+                } else {
+                    &err_buffer
+                };
+                output.push_str(&decoders[stream].push(&buffer[..count]));
+            }
+        }
+        let status = child
+            .wait()
+            .await
+            .map_err(|_| failure("The Linux environment setup exit could not be read."))?;
+        Ok(Exit {
+            code: Some(status.code().unwrap_or(1)),
+            signal: status.signal().map(|signal| signal.to_string()),
+        })
+    })
+    .await;
+    let result = result
+        .unwrap_or_else(|_| Err(failure("Linux environment preparation exceeded its bound.")));
+    if result.is_err() && child.id().is_some() {
+        let _ = cantrip_host::process::signal_owned(
+            &child,
+            libc::SIGKILL,
+            true,
+            "Owned Linux environment setup",
+        );
+        let _ = child.wait().await;
+    }
+    result
+}
