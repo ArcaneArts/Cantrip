@@ -228,5 +228,6 @@ export class GuiHistoryPeer {
       ),
       "The Node reader reopened the Rust worker's terminal source evidence.",
     );
+    return records;
   }
 }

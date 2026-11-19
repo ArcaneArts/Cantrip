@@ -5,7 +5,7 @@ use crate::{
     chat_content::{Scope, queue},
     codex::{
         preparation::command::collaboration_mode,
-        turn::{Turns, runtime_text, settings::UPDATE},
+        turn::{Turns, runtime_text, settings::UPDATE, shell},
     },
     native_items::{array, concat, join, text},
 };
@@ -28,11 +28,17 @@ use uuid::Uuid;
 pub(crate) const EXECUTE: &str = "chat.queue.execute";
 
 impl Goals {
-    pub(crate) async fn execute_queued(&self, command: &Value, turns: &Turns) -> Result<Value> {
+    pub(crate) async fn execute_queued(
+        &self,
+        command: &Value,
+        turns: &Turns,
+        acknowledge: impl FnOnce(&Value) + Send,
+    ) -> Result<Value> {
         let method = match command["executionMethod"].as_str() {
             Some("thread/goal/set") => "thread/goal/set",
             Some("thread/goal/clear") => "thread/goal/clear",
             Some(UPDATE) => UPDATE,
+            Some(shell::METHOD) => shell::METHOD,
             _ => bail!("This queued native action is unavailable."),
         };
         let bound = self.encryption.bound_identity()?;
@@ -42,15 +48,30 @@ impl Goals {
             bail!("The worker binding changed before opening queued native input.");
         }
         let input = open_input(&scope, &command)?;
+        command["operationId"] = json!(concat(&[
+            "queue:".into(),
+            text(&command["queueClaim"]["id"])?.clone()
+        ]));
+        if method == shell::METHOD {
+            if input.action != "runShell" {
+                bail!("The queued shell action differs from its protected input.");
+            }
+            let program = queue::native_text(&input.items)?;
+            let units = program.units();
+            let program = if units.first() == Some(&(b'!' as u16)) {
+                JsString::new(units[1..].to_vec())
+            } else {
+                program
+            };
+            return turns
+                .run_queued_shell(&command, scope, program, acknowledge)
+                .await;
+        }
         let (thread, owner) = self.chat_goal_thread(&command, &bound).await?;
         if command["threadId"].as_js_string() != Some(&thread) || owner.session.is_none() {
             bail!("The queued action requires its bound managed thread.");
         }
         let mut params = json!({"threadId":thread});
-        command["operationId"] = json!(concat(&[
-            "queue:".into(),
-            text(&command["queueClaim"]["id"])?.clone()
-        ]));
         if method == UPDATE {
             let submitted = queue::native_text(&input.items)?;
             if input.action != "parseSlash"

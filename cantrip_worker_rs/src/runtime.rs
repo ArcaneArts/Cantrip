@@ -406,14 +406,25 @@ async fn cycle(
                     let worker = worker.clone();
                     commands.spawn(async move {
                         let command = &request["command"];
+                        let mut acknowledged = false;
                         let result = match command["type"].as_str().unwrap_or_default() {
                             crate::codex::goals::GET => goals.get(command).await,
                             crate::codex::goals::UPDATE => goals.update(command, &turns).await,
                             crate::codex::goals::CLEAR => goals.clear(command, &turns).await,
-                            crate::codex::goals::QUEUE_EXECUTE => goals.execute_queued(command, &turns).await,
+                            crate::codex::goals::QUEUE_EXECUTE => goals.execute_queued(command, &turns, |reply| {
+                                acknowledged = true;
+                                finish(&request, &worker, &logs, &outgoing, began, &Ok(reply.clone()));
+                            }).await,
                             _ => goals.create(command, &turns).await,
                         };
-                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                        if !acknowledged {
+                            finish(&request, &worker, &logs, &outgoing, began, &result);
+                        } else if let Err(error) = result {
+                            logs.event("warn", "Queued shell terminal result remains unconfirmed", json!({
+                                "event":"codex.shell.settlement-failed","workerId":worker,"requestId":request["requestId"],
+                                "error":logging::error(&error),
+                            }));
+                        }
                     });
                     continue;
                 }

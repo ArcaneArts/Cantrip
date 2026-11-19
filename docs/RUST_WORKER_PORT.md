@@ -4626,3 +4626,31 @@ tests ran locally.
 Queued shell execution, Task pause notifications, native queue and gateway
 cutover, saved permission recovery, and cold Goal recovery remain open.
 Production still selects Node.
+
+## 93. Execute Core-claimed queued shell commands
+
+Reference commit `55b99273cc56884db899581424dfe21186567a1c` (#3255).
+
+The Rust worker authenticates the retained shell input against its chat and
+prompt and removes only the native UI's leading `!`. It preserves quoting
+and multiline input. Shell execution requires the same full-access profile
+as Node. Core rechecks the profile at dispatch and grants the operation its
+own lane. The worker checks the grant's thread, placement, route, and
+workspace before forwarding anything to Codex.
+
+The worker returns the native RPC acknowledgment as soon as its protected
+receipt is recorded. It keeps observing the exact native turn, binds that
+turn for managed Stop, and reports completion with a separate protected
+terminal receipt. History capture records the shell output under the
+admitted operation. Replayed queue claims do not forward the command again.
+
+The macOS ARM64 smoke ran bundled Codex with a real shell and local Core and
+provider peers. It compared the protected request with the Node queue
+materializer, held Core dispatch, checked early acknowledgment and exact
+Stop correlation, dropped terminal receipt responses to verify exact
+retry, and reopened saved History with Node. The worker build, Clippy, and
+focused Node contract tests passed locally.
+
+The native queue and gateway cutover, live terminal-style command telemetry,
+cold recovery of unsettled shell executions, Task pause notifications, and
+saved permission and Goal recovery remain open. Production still selects Node.
