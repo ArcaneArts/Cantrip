@@ -67,7 +67,7 @@ impl Drop for DenyProxy {
 
 pub(super) async fn managed(
     service: Arc<Service>,
-    manager: Arc<crate::managed_chromium::Manager>,
+    manager: Arc<crate::managed_web::Manager>,
     url: Url,
     mut cancelled: oneshot::Receiver<()>,
 ) -> Result<Rendered> {

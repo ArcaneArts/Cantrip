@@ -6122,3 +6122,31 @@ requests, and cleanup after cancellation. The fixture matched the Node
 reference result for the same rendered markup. Linux and Windows browser
 runtime validation, interactive research sessions and managed search
 remain open.
+
+
+## 147. Run managed search and open search results in the Rust worker
+
+Reference commit `07e79fff99a8f9f2093e4c67fec21eeca01a18d8` (#3309).
+
+The Rust worker installs the existing signed SearXNG release and launches its
+bundled Python with isolated settings and a loopback listener. It verifies
+the archive, checks the installed inventory and runs the offline engine probe
+before promotion. The worker owns the child process, restarts it after request
+timeouts or unexpected exit, and retains the prior verified release for
+rollback. Search status and maintenance use the existing Core APIs.
+
+The native MCP broker enables `web_search` for admitted standalone and project
+bindings. It preserves the SearXNG query parameters, filtering, result limit,
+engine diagnostics and response schema. Search result IDs expire and stay
+scoped to the owner and chat. `web_read` resolves them through the existing
+static and rendered read paths.
+
+On macOS ARM64, the published SearXNG archive passed signature verification,
+extraction, the offline query and launch with its bundled interpreter. The
+extractor accepts the published POSIX template names containing colons while
+preserving Windows path restrictions. An owned local process fixture matched
+the Node query and result, read the selected document, refused a cross-chat
+reference and recovered after the search child exited. The signed Chromium
+fixture still passed against the shared installer. A production Rust server
+and worker exercised the search heartbeat and maintenance action. Windows and
+Linux runtime validation and interactive research sessions remain open.

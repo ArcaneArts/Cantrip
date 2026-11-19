@@ -178,7 +178,17 @@ async function verifyCoreAction() {
     );
     assert.equal(advertised.webRuntimes.browser.component, "playwright");
     assert.equal(advertised.webRuntimes.browser.supported, true);
+    assert.equal(advertised.webRuntimes.search.component, "searxng");
+    assert.equal(advertised.webRuntimes.search.supported, true);
     const route = "/api/workers/" + workerId + "/web-runtimes/actions";
+    const search = await call("POST", route, 200, {
+      component: "searxng",
+      action: "retry",
+    });
+    assert.equal(search.accepted, true);
+    assert.equal(search.status.component, "searxng");
+    assert.equal(search.status.failure.category, "download");
+
     const failed = await call("POST", route, 200, {
       component: "playwright",
       action: "retry",
@@ -288,7 +298,7 @@ try {
       "test",
       "--offline",
       "--lib",
-      "managed_chromium::tests::signed_release_install_update_and_failure",
+      "managed_web::tests::signed_release_install_update_and_failure",
       "--",
       "--ignored",
       "--exact",

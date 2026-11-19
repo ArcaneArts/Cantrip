@@ -1,6 +1,7 @@
 mod network;
 mod render;
 mod robots;
+mod search;
 
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -26,7 +27,6 @@ const CURSOR_TTL: Duration = Duration::from_secs(600);
 const RATE_WINDOW: Duration = Duration::from_secs(60);
 const PAGE_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_CURSORS: usize = 100;
-const READS_PER_WINDOW: u32 = 60;
 const LIMITS: Limits = Limits {
     compressed: 5_000_000,
     expanded: 10_000_000,
@@ -41,9 +41,38 @@ const LIMITS: Limits = Limits {
 
 type Scope = (JsString, JsString);
 
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+enum Operation {
+    Read,
+    Search,
+}
+
+impl Operation {
+    fn limit(self) -> (&'static str, u32) {
+        match self {
+            Self::Read => ("read", 60),
+            Self::Search => ("search", 30),
+        }
+    }
+}
+
+fn scope(binding: &Value) -> Result<Scope> {
+    Ok((
+        binding["ownerId"]
+            .as_js_string()
+            .context("Missing MCP owner.")?
+            .clone(),
+        binding["chatId"]
+            .as_js_string()
+            .context("Missing MCP chat.")?
+            .clone(),
+    ))
+}
+
 #[derive(Default)]
 struct State {
-    windows: HashMap<Scope, Window>,
+    windows: HashMap<(Scope, Operation), Window>,
+    references: IndexMap<String, search::Reference>,
     cursors: IndexMap<String, Continuation>,
 }
 
@@ -73,7 +102,8 @@ pub(crate) struct Service {
     network: Network,
     robots: Robots,
     extraction: Arc<Semaphore>,
-    renderer: Option<Arc<crate::managed_chromium::Manager>>,
+    renderer: Option<Arc<crate::managed_web::Manager>>,
+    search: Option<Arc<crate::managed_web::Search>>,
     render_slots: Semaphore,
     render_requests: Semaphore,
     render_assets: Semaphore,
@@ -87,6 +117,7 @@ impl Default for Service {
             robots: Robots::default(),
             extraction: Arc::new(Semaphore::new(2)),
             renderer: None,
+            search: None,
             render_slots: Semaphore::new(4),
             render_requests: Semaphore::new(20),
             render_assets: Semaphore::new(8),
@@ -97,17 +128,22 @@ impl Default for Service {
 impl Service {
     #[cfg(test)]
     pub(crate) fn with_fixture(
-        renderer: Arc<crate::managed_chromium::Manager>,
+        renderer: Option<Arc<crate::managed_web::Manager>>,
+        search: Option<Arc<crate::managed_web::Search>>,
         address: std::net::SocketAddr,
     ) -> Arc<Self> {
-        let mut service = Self::new(Some(renderer));
+        let mut service = Self::new(renderer, search);
         service.network.fixture = Some(address);
         Arc::new(service)
     }
 
-    pub(crate) fn new(renderer: Option<Arc<crate::managed_chromium::Manager>>) -> Self {
+    pub(crate) fn new(
+        renderer: Option<Arc<crate::managed_web::Manager>>,
+        search: Option<Arc<crate::managed_web::Search>>,
+    ) -> Self {
         Self {
             renderer,
+            search,
             ..Self::default()
         }
     }
@@ -118,26 +154,17 @@ impl Service {
         args: Option<&Value>,
     ) -> Result<Value> {
         let args = mcp_host::parse("mcpStdioInput/web_read", args).map_err(response_error)?;
-        let scope = (
-            binding["ownerId"]
-                .as_js_string()
-                .context("Missing MCP owner.")?
-                .clone(),
-            binding["chatId"]
-                .as_js_string()
-                .context("Missing MCP chat.")?
-                .clone(),
-        );
-        self.consume(&scope)?;
+        let scope = scope(binding)?;
+        self.consume(&scope, Operation::Read)?;
         let maximum = args["maxChars"].as_u64().unwrap() as usize;
         if let Some(id) = args["cursor"].as_str() {
             let cursor = self.take_cursor(&scope, id)?;
             return self.page(scope, cursor.document, cursor.offset, maximum);
         }
-        if args["searchResultId"].is_string() {
-            bail!("Search result reference is expired or belongs to another task.");
-        }
-        let url = normalize(Url::parse(args["url"].as_str().unwrap())?)?;
+        let url = match args["searchResultId"].as_str() {
+            Some(id) => self.search_url(&scope, id)?,
+            None => normalize(Url::parse(&args["url"].as_js_string().unwrap().lossy())?)?,
+        };
         let render = args["render"].as_str().unwrap();
         if render == "always" {
             self.robots.check(&self.network, &url).await?;
@@ -209,23 +236,27 @@ impl Service {
         Ok(document)
     }
 
-    fn consume(&self, scope: &Scope) -> Result<()> {
+    fn consume(&self, scope: &Scope, operation: Operation) -> Result<()> {
         let mut state = self.state.lock().unwrap();
         let now = Instant::now();
         state.windows.retain(|_, window| window.expires > now);
         state.cursors.retain(|_, cursor| cursor.expires > now);
+        state
+            .references
+            .retain(|_, reference| reference.expires > now);
         let window = state
             .windows
-            .entry(scope.clone())
+            .entry((scope.clone(), operation))
             .or_insert_with(|| Window {
                 count: 0,
                 expires: now + RATE_WINDOW,
                 retry_at: chrono::Utc::now().timestamp_millis() + RATE_WINDOW.as_millis() as i64,
             });
-        if window.count >= READS_PER_WINDOW {
+        let (name, limit) = operation.limit();
+        if window.count >= limit {
             let retry =
                 date_iso_milliseconds(window.retry_at).context("Invalid retry timestamp.")?;
-            bail!("Web read rate limit reached. Retry after {retry}.");
+            bail!("Web {name} rate limit reached. Retry after {retry}.");
         }
         window.count += 1;
         Ok(())
@@ -255,10 +286,7 @@ impl Service {
         let truncated = next < count;
         let content = JsString::new(document.content.units()[offset..next].to_vec());
         let cursor = if truncated {
-            let mut random = [0; 24];
-            getrandom::fill(&mut random)
-                .map_err(|_| anyhow!("Could not generate a web read cursor."))?;
-            let id = format!("wrc_{}", URL_SAFE_NO_PAD.encode(random));
+            let id = opaque("wrc")?;
             let mut state = self.state.lock().unwrap();
             state.cursors.insert(
                 id.clone(),
@@ -296,14 +324,30 @@ impl Service {
     }
 }
 
+fn opaque(prefix: &str) -> Result<String> {
+    let mut random = [0; 24];
+    getrandom::fill(&mut random).map_err(|_| anyhow!("Could not generate a web reference."))?;
+    Ok(format!("{prefix}_{}", URL_SAFE_NO_PAD.encode(random)))
+}
+
 fn compact(contents: &str, limit: usize) -> JsString {
+    compact_chars(contents.chars().map(Ok), limit)
+}
+
+fn compact_chars(
+    contents: impl Iterator<Item = std::result::Result<char, u16>>,
+    limit: usize,
+) -> JsString {
     let mut units = Vec::new();
     let mut space = false;
-    for ch in contents.chars() {
-        if matches!(ch, '\0'..='\u{8}' | '\u{b}' | '\u{c}' | '\u{e}'..='\u{1f}' | '\u{7f}') {
+    for value in contents {
+        if matches!(
+            value,
+            Ok('\0'..='\u{8}' | '\u{b}' | '\u{c}' | '\u{e}'..='\u{1f}' | '\u{7f}')
+        ) {
             continue;
         }
-        if text::whitespace(ch) {
+        if value.is_ok_and(text::whitespace) {
             space = !units.is_empty();
             continue;
         }
@@ -311,7 +355,10 @@ fn compact(contents: &str, limit: usize) -> JsString {
             units.push(u16::from(b' '));
             space = false;
         }
-        units.extend_from_slice(ch.encode_utf16(&mut [0; 2]));
+        match value {
+            Ok(ch) => units.extend_from_slice(ch.encode_utf16(&mut [0; 2])),
+            Err(unit) => units.push(unit),
+        }
         if units.len() >= limit {
             units.truncate(limit);
             break;

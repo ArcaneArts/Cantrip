@@ -49,12 +49,14 @@ pub(super) struct Pointer {
 
 pub(super) struct Storage {
     pub root: PathBuf,
+    component: &'static str,
 }
 
 impl Storage {
-    pub fn new(data: &Path) -> Self {
+    pub fn new(data: &Path, component: &'static str) -> Self {
         Self {
-            root: data.join("managed-runtimes").join("playwright"),
+            root: data.join("managed-runtimes").join(component),
+            component,
         }
     }
 
@@ -124,7 +126,7 @@ impl Storage {
         let value = parse_json_text(&read_small(&path)?)
             .map_err(|_| anyhow::anyhow!("Managed runtime pointer is invalid."))?;
         ensure!(
-            value["schemaVersion"] == 1 && value["component"] == "playwright",
+            value["schemaVersion"] == 1 && value["component"] == self.component,
             "Managed runtime pointer has an unsupported format."
         );
         let verified_at = value["verifiedAt"]
@@ -170,9 +172,9 @@ impl Storage {
         require_directory(&directory)
     }
 
-    fn write(&self, pointer: &Pointer) -> Result<()> {
+    pub fn write(&self, pointer: &Pointer) -> Result<()> {
         let previous = pointer.previous.as_ref().map_or(Value::Null, Entry::wire);
-        let value = json!({"schemaVersion":1,"component":"playwright","version":pointer.current.version,
+        let value = json!({"schemaVersion":1,"component":self.component,"version":pointer.current.version,
             "archiveSha256":pointer.current.archive,"previous":previous,"verifiedAt":pointer.verified_at});
         let mut file = tempfile::NamedTempFile::new_in(&self.root)?;
         writeln!(&mut file, "{}", value.stringify())?;

@@ -84,7 +84,7 @@ struct Inner {
     worker: JsString,
     preparation: Coordinator,
     broker: OnceCell<Broker>,
-    chromium: Arc<crate::managed_chromium::Manager>,
+    web: Arc<crate::managed_web::Runtimes>,
     cli_contexts: crate::cli::Contexts,
     permission_profiles: bool,
     autonomous: OnceLock<Autonomous>,
@@ -99,7 +99,7 @@ impl Ensurer {
         routing: Arc<Registry>,
         skills: Option<PathBuf>,
         cli_contexts: crate::cli::Contexts,
-        chromium: Arc<crate::managed_chromium::Manager>,
+        web: Arc<crate::managed_web::Runtimes>,
     ) -> Self {
         let (data, worker) = {
             let config = settings.lock().unwrap();
@@ -123,7 +123,7 @@ impl Ensurer {
             worker,
             preparation,
             broker: OnceCell::new(),
-            chromium,
+            web,
             cli_contexts,
             autonomous: OnceLock::new(),
             permission_profiles,
@@ -409,7 +409,7 @@ impl Ensurer {
                             "worktreeId": session["worktreeId"], "rootKind": session["rootKind"],
                             "scratchRootId": session["scratchRootId"],
                             "permissionProfileId": command["permissionProfileId"],
-                            "allowedOperations": vec!["context.get", "tool.help", "web.read"],
+                            "allowedOperations": vec!["context.get", "tool.help", "web.read", "web.search"],
                         });
                         let attachment = broker.prepare(admission.clone(), legacy_root).await?;
                         if let Err(error) = resource.signal.check() {
@@ -794,7 +794,7 @@ impl Ensurer {
                         ))
                     }),
                     server,
-                    Some(self.0.chromium.clone()),
+                    Some(self.0.web.clone()),
                 )
                 .await
             })

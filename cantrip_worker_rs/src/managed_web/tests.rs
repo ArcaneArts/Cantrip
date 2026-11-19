@@ -16,6 +16,7 @@ fn archive_entries_must_remain_inside_staging() {
     ] {
         assert!(archive::relative(name).is_err(), "{name}");
     }
+    assert!(archive::relative("config/virtual-host.conf:socket").is_ok() == !cfg!(windows));
     assert_eq!(
         archive::relative("browsers/chrome-headless-shell").unwrap(),
         PathBuf::from("browsers").join("chrome-headless-shell")
@@ -37,7 +38,7 @@ async fn signed_release_install_update_and_failure() -> Result<()> {
         key_id: "fixture-ed25519".into(),
         key: VerifyingKey::from_bytes(key.as_slice().try_into()?)?,
     };
-    let mut manager = Manager::new(data.path(), source);
+    let mut manager = Manager::new(data.path(), source, Component::Chromium);
     let logs = Logs::initialize(data.path(), &Environment::default(), data.path()).await;
     let action = |name| json!({"component":"playwright","action":name});
     let first = manager.action(&action("check-update"), &logs).await?;
@@ -116,7 +117,7 @@ async fn rendered_read(manager: Arc<Manager>, data: &Path) -> Result<()> {
     let log: Observed = Arc::default();
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
     let address = listener.local_addr()?;
-    let service = crate::web::Service::with_fixture(manager.clone(), address);
+    let service = crate::web::Service::with_fixture(Some(manager.clone()), None, address);
     let stalled = Arc::new(tokio::sync::Notify::new());
     let fixture = tokio::spawn({
         let log = log.clone();
@@ -262,4 +263,32 @@ async fn rendered_read(manager: Arc<Manager>, data: &Path) -> Result<()> {
     .await;
     fixture.abort();
     result
+}
+
+#[tokio::test]
+#[ignore = "downloads the pinned signed SearXNG release and runs its offline probe"]
+async fn published_searxng_release_runs_its_offline_probe() -> Result<()> {
+    let data = tempfile::tempdir()?;
+    let logs = Logs::initialize(data.path(), &Environment::default(), data.path()).await;
+    let installer = Manager::new(
+        data.path(),
+        Source::configured(source::MANIFEST.into())?,
+        Component::Searxng,
+    );
+    let search = Search::new(installer, None)?;
+    let result = search
+        .action(
+            &json!({"component":"searxng","action":"check-update"}),
+            &logs,
+        )
+        .await?;
+    ensure!(
+        result["status"]["state"] == "ready" && result["status"]["component"] == "searxng",
+        "Published SearXNG runtime did not start. {}",
+        result.stringify(),
+    );
+    search.stop();
+    search.run(&logs).await?;
+    logs.close().await;
+    Ok(())
 }
