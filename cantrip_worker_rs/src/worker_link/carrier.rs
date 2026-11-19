@@ -1,5 +1,5 @@
 //! Keep channel output and ownership tied to the carrier that opened it.
-use super::peer::{PeerCarrier, lane_index};
+use super::peer::{PeerCarrier, PeerRoute, lane_index};
 use crate::connection::Outbound;
 use bytes::Bytes;
 use cantrip_framing::worker_link::Frame;
@@ -18,7 +18,7 @@ const LOW_WATER: usize = 256 * 1024;
 pub(super) enum Carrier {
     Relay,
     Local(Weak<Local>),
-    Peer(Weak<PeerCarrier>),
+    Peer(Weak<PeerCarrier>, PeerRoute),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -31,11 +31,15 @@ pub(super) enum CarrierKey {
 pub(super) type OutputKey = (CarrierKey, Option<usize>);
 
 impl Carrier {
+    pub fn peer(peer: &Arc<PeerCarrier>) -> Self {
+        Self::Peer(Arc::downgrade(peer), peer.route())
+    }
+
     pub fn route(&self) -> &'static str {
         match self {
             Self::Relay => "relay",
             Self::Local(_) => "local",
-            Self::Peer(_) => "lan",
+            Self::Peer(_, route) => route.name(),
         }
     }
 
@@ -43,17 +47,17 @@ impl Carrier {
         match self {
             Self::Relay => CarrierKey::Relay,
             Self::Local(local) => CarrierKey::Local(local.as_ptr()),
-            Self::Peer(peer) => CarrierKey::Peer(peer.as_ptr()),
+            Self::Peer(peer, _) => CarrierKey::Peer(peer.as_ptr()),
         }
     }
 
     pub fn output_key(&self, lane: &str) -> OutputKey {
-        let lane = matches!(self, Self::Peer(_)).then(|| lane_index(lane).unwrap());
+        let lane = matches!(self, Self::Peer(..)).then(|| lane_index(lane).unwrap());
         (self.key(), lane)
     }
 
     pub fn message_limit(&self, lane: &str) -> Option<usize> {
-        if let Self::Peer(peer) = self {
+        if let Self::Peer(peer, _) = self {
             return peer
                 .upgrade()
                 .map(|peer| peer.message_limit(lane_index(lane).unwrap()));
@@ -69,7 +73,7 @@ impl Carrier {
                 Some(local) if local.active() => local.output.offer(frame.bytes()),
                 _ => Output::Closed,
             },
-            Self::Peer(peer) => peer
+            Self::Peer(peer, _) => peer
                 .upgrade()
                 .map_or(Output::Closed, |peer| peer.offer(frame)),
         }

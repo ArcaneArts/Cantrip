@@ -12,6 +12,7 @@ exclude = [
     "cantrip_codex/upstream/codex-rs",
     "cantrip_codex/.build",
     "cantrip_server_rs/third-party",
+    "cantrip_worker_rs/third-party/webrtc",
     "scripts/cantrip-cua/feasibility/javascript",
 ]
 

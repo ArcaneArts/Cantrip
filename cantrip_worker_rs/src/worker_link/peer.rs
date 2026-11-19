@@ -9,6 +9,7 @@ use anyhow::{Context, Result, bail, ensure};
 use cantrip_wire::{JsString, Value, parse_json_text, value::json};
 use lane::{CONTROL, LANES, MAX_MESSAGE, Queue};
 pub(super) use lane::{PeerCarrier, index as lane_index};
+pub(super) use network::PeerRoute;
 use rtc::peer_connection::configuration::setting_engine::{
     SctpMaxMessageSize, SettingEngineBuilder,
 };
@@ -96,14 +97,14 @@ impl Peers {
         config: &Value,
         gateway: &Arc<Coordinator>,
     ) -> Result<()> {
-        let route = session["route"].as_str().unwrap();
+        let route = match session["route"].as_str() {
+            Some("lan") => PeerRoute::Lan,
+            Some("wan") => PeerRoute::Wan,
+            _ => bail!("Invalid WorkerLink peer route."),
+        };
         ensure!(
-            config["relayOnly"] == false && config["directRoutes"][route] == true,
+            config["relayOnly"] == false && config["directRoutes"][route.name()] == true,
             "The WorkerLink peer route is disabled by policy."
-        );
-        ensure!(
-            route == "lan",
-            "WorkerLink WAN peer carriage is unavailable."
         );
         let key = id(session, "peerSessionId");
         if let Some(round) = self.active.get(key) {
@@ -137,7 +138,7 @@ impl Peers {
         );
         let (stop, stopped) = watch::channel(None);
         let (signals, input) = mpsc::channel(4);
-        let (carrier, queues) = PeerCarrier::new(session.clone(), config);
+        let (carrier, queues) = PeerCarrier::new(session.clone(), config, route);
         let actor = Actor::new(
             session.clone(),
             config.clone(),
@@ -262,6 +263,7 @@ struct Actor {
     queues: [Option<Queue>; LANES.len()],
     gateway: Weak<Coordinator>,
     connection: Option<Arc<dyn PeerConnection>>,
+    network: Option<Arc<network::PeerRuntime>>,
     application_media: Option<(usize, Option<String>)>,
     channels: JoinSet<Result<()>>,
     control: bool,
@@ -335,6 +337,7 @@ impl Actor {
             queues,
             gateway,
             connection: None,
+            network: None,
             application_media: None,
             channels: JoinSet::new(),
             control: false,
@@ -408,18 +411,17 @@ impl Actor {
                 event = incoming.recv() => match event {
                     Some(Event::Channel(channel)) => self.attach(channel).await?,
                     Some(Event::Candidate(candidate)) => {
-                        if network::candidate_allowed(&candidate.candidate, true) {
-                            // The library's generic candidate constructor uses
-                            // MID "0". Answer using the offer's negotiated MID.
-                            let (index, mid) = self.application_media.as_ref().context("Missing WorkerLink peer media section.")?;
-                            let candidate = json!({
-                                "candidate":candidate.candidate,
-                                "sdpMid":mid,
-                                "sdpMLineIndex":index,
-                                "usernameFragment":candidate.username_fragment,
-                            });
-                            self.advertise(Value::Array(vec![candidate]), false)?;
-                        }
+                        // The gatherer admits candidates before publishing them.
+                        // The library's generic candidate constructor uses MID
+                        // "0". Answer using the offer's negotiated MID.
+                        let (index, mid) = self.application_media.as_ref().context("Missing WorkerLink peer media section.")?;
+                        let candidate = json!({
+                            "candidate":candidate.candidate,
+                            "sdpMid":mid,
+                            "sdpMLineIndex":index,
+                            "usernameFragment":candidate.username_fragment,
+                        });
+                        self.advertise(Value::Array(vec![candidate]), false)?;
                     }
                     Some(Event::Complete) => self.advertise(Value::Array(Vec::new()), true)?,
                     Some(Event::Closed) | None => return Ok("peer-disconnected".into()),
@@ -443,6 +445,7 @@ impl Actor {
         signal: &Value,
         handler: Arc<EventHandler>,
     ) -> Result<Option<String>> {
+        let route = self.carrier.route();
         match signal["type"].as_str().unwrap() {
             "offer" => {
                 ensure!(self.connection.is_none(), "Peer offer was replayed.");
@@ -450,7 +453,7 @@ impl Actor {
                     .as_str()
                     .context("Peer offer has invalid text.")?;
                 ensure!(
-                    !network::has_forbidden_candidate(sdp),
+                    route.offer_allowed(sdp),
                     "Peer offer contained a disallowed ICE candidate."
                 );
                 let duration =
@@ -464,17 +467,21 @@ impl Actor {
                     )
                     .with_sctp_max_message_size(SctpMaxMessageSize::Bounded(MAX_MESSAGE as u32))
                     .build();
+                let (network, addresses) = network::PeerRuntime::bind(route, &self.config)?;
+                let network = Arc::new(network);
                 let connection = timeout(
                     duration,
                     PeerConnectionBuilder::new()
-                        .with_runtime(Arc::new(network::LanRuntime))
-                        .with_udp_addrs(network::interfaces(&self.config)?)
+                        .with_runtime(network.clone())
+                        .with_udp_addrs(addresses)
+                        .with_configuration(route.configuration(&self.config))
                         .with_setting_engine(settings)
                         .with_handler(handler)
                         .build(),
                 )
                 .await??;
                 let connection: Arc<dyn PeerConnection> = Arc::new(connection);
+                self.network = Some(network);
                 self.connection = Some(connection.clone());
                 let answer = timeout(duration, async {
                     connection
@@ -510,7 +517,7 @@ impl Actor {
                     .as_str()
                     .context("Peer candidate has invalid text.")?;
                 ensure!(
-                    network::candidate_allowed(candidate, false),
+                    route.remote_candidate_allowed(candidate, true),
                     "Peer signal contained a disallowed ICE candidate."
                 );
                 connection
@@ -558,6 +565,18 @@ impl Actor {
                 .sctp()
                 .await
                 .context("WorkerLink SCTP transport is unavailable.")?;
+            let pair = sctp
+                .transport()
+                .ice_transport()
+                .get_selected_candidate_pair()
+                .await?
+                .context("WorkerLink peer has no selected ICE route.")?;
+            ensure!(
+                self.network
+                    .as_ref()
+                    .is_some_and(|network| network.pair_allowed(pair.local(), pair.remote())),
+                "WorkerLink peer selected a disallowed ICE route."
+            );
             carrier.set_message_limit(sctp.max_message_size().await?);
             self.control = true;
             self.channels

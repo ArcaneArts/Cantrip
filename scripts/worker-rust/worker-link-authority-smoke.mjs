@@ -2,6 +2,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { createSocket } from "node:dgram";
+import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -25,6 +27,7 @@ const { values } = parseArgs({
     worker: { type: "string" },
     tunnel: { type: "boolean" },
     peer: { type: "boolean" },
+    "wan-peer": { type: "boolean" },
   },
 });
 assert.ok(values.server && values.worker, "Pass --server and --worker.");
@@ -36,15 +39,20 @@ const workerId = "native-workerlink-authority";
 const environment = fixtureEnvironment(path.join(root, "server"));
 environment.CANTRIP_BOOTSTRAP_MODE = "standalone";
 environment.CANTRIP_WORKER_LINK_LOCAL_ENABLED = "true";
-if (values.peer) environment.CANTRIP_WORKER_LINK_LAN_ENABLED = "true";
+const peer = values["wan-peer"] ? "wan" : values.peer ? "lan" : undefined;
+if (peer)
+  environment["CANTRIP_WORKER_LINK_" + peer.toUpperCase() + "_ENABLED"] =
+    "true";
 delete environment.CANTRIP_WORKER_TOKEN;
 let server;
 let child;
 let completion;
+let stun;
 let diagnostics = "";
 let tunnelConnected = false;
 let protectedTargetRejected = false;
 const master = generateAccountMasterKey();
+const stunMapping = peer === "wan" ? "192.0.2.77" : undefined;
 
 async function call(method, route, expected, body) {
   const response = await fetch(server.origin + route, {
@@ -69,6 +77,33 @@ function assertRenewed(before, after) {
 }
 
 try {
+  if (stunMapping) {
+    stun = createSocket("udp4");
+    stun.bind(0, "127.0.0.1");
+    await once(stun, "listening");
+    // Reply to an actual STUN transaction with a controlled IPv4 mapping.
+    stun.on("message", (request, remote) => {
+      if (
+        request.length < 20 ||
+        request.readUInt16BE(0) !== 0x0001 ||
+        request.readUInt32BE(4) !== 0x2112a442
+      )
+        return;
+      const response = Buffer.alloc(32);
+      request.copy(response, 4, 4, 20);
+      response.writeUInt16BE(0x0101, 0);
+      response.writeUInt16BE(12, 2);
+      response.writeUInt16BE(0x0020, 20);
+      response.writeUInt16BE(8, 22);
+      response[25] = 1;
+      response.writeUInt16BE(remote.port ^ 0x2112, 26);
+      const address = Buffer.from(stunMapping.split(".").map(Number));
+      response.writeUInt32BE((address.readUInt32BE() ^ 0x2112a442) >>> 0, 28);
+      stun.send(response, remote.port, remote.address);
+    });
+    environment.CANTRIP_WORKER_LINK_STUN_URLS =
+      "stuns:127.0.0.1:" + stun.address().port;
+  }
   server = await startServer(
     path.resolve(values.server),
     ["--database", "pglite", "--port", "0", "--shutdown-on-stdin-close"],
@@ -206,7 +241,7 @@ try {
       "Native worker completed " + command,
     );
   }
-  if (values.tunnel || values.peer) {
+  if (values.tunnel || peer) {
     const { verifyWorkerLinkTunnel } =
       await import("./worker-link-tunnel-cases.mjs");
     const relay = await call(
@@ -223,7 +258,8 @@ try {
       workerId,
       workerDirectory: path.join(root, "worker"),
       master,
-      peer: values.peer,
+      peer,
+      stunMapping,
     });
     assert.ok(tunnelConnected, "Native worker logged a tunnel connection");
     assert.ok(
@@ -238,6 +274,7 @@ try {
   console.error(diagnostics, server?.diagnostics());
   throw error;
 } finally {
+  stun?.close();
   master.fill(0);
   try {
     if (child) {
