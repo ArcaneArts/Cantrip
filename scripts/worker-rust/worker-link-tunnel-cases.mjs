@@ -1,7 +1,13 @@
 // The Rust server relays CTTN frames between the existing TypeScript crypto
 // consumer and a real Rust worker. The destination is an owned TCP listener.
 import assert from "node:assert/strict";
-import { randomBytes, randomUUID } from "node:crypto";
+import {
+  createHash,
+  createPublicKey,
+  randomBytes,
+  randomUUID,
+  verify,
+} from "node:crypto";
 import { once } from "node:events";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -18,6 +24,11 @@ import {
   encodeTunnelDataPlaneFrame,
 } from "../../packages/protocol/dist/tunnel-data-plane.js";
 import { tunnelAttachmentReadySchema } from "../../packages/protocol/dist/tunnels.js";
+import {
+  directAttachmentTicketSchema,
+  directBrokerReadySchema,
+  directTunnelTicketSchema,
+} from "../../packages/protocol/dist/direct-data-plane.js";
 import {
   decodeWorkerLinkFrame,
   encodeWorkerLinkFrame,
@@ -276,6 +287,16 @@ export async function verifyWorkerLinkTunnel({
       "owned TCP sockets close on revocation",
     );
     assert.equal(openedSockets, 6);
+    await verifyDirectTunnel({
+      call,
+      workerId,
+      tunnelId,
+      configuration,
+      response,
+      received,
+      sockets,
+    });
+    assert.equal(openedSockets, 8);
     console.log(
       JSON.stringify({ suite: "native-workerlink-host-tcp", passed: true }),
     );
@@ -285,6 +306,206 @@ export async function verifyWorkerLinkTunnel({
     for (const socket of sockets) socket.destroy();
     if (tcp.listening) await new Promise((resolve) => tcp.close(resolve));
     await call("DELETE", base, 204);
+  }
+}
+
+async function verifyDirectTunnel({
+  call,
+  workerId,
+  tunnelId,
+  configuration,
+  response,
+  received,
+  sockets,
+}) {
+  const probe = directAttachmentTicketSchema.parse(
+    await call("POST", `/api/workers/${workerId}/direct-probe`, 201, {}),
+  );
+  await connectDirect(
+    probe,
+    { ...probe, secret: randomBytes(32).toString("base64url") },
+    1008,
+  );
+  const first = await connectDirect(probe);
+  try {
+    await connectDirect(probe, probe, 1008);
+    const stopped = once(first.socket, "close", {
+      signal: AbortSignal.timeout(5000),
+    });
+    await call(
+      "DELETE",
+      "/api/direct-attachments/" + probe.binding.capabilityId,
+      204,
+    );
+    assert.equal((await stopped)[0], 1008);
+  } finally {
+    first.socket.terminate();
+  }
+
+  const { attachmentId } = await call(
+    "POST",
+    `/api/tunnels/${tunnelId}/attachments`,
+    201,
+    { clientId: randomUUID() },
+  );
+  const client = await openDirectTunnel(call, attachmentId);
+  try {
+    const working = client.open();
+    const retained = client.open();
+    for (const stream of [working, retained])
+      assert.equal(
+        (await stream.next("accepted")).header.initialCreditBytes,
+        256 * 1024,
+      );
+    assert.equal(sockets.size, 2);
+    const request = Buffer.from("direct-private-request-" + randomUUID());
+    working.send({ kind: "data", direction: source }, request, configuration);
+    working.send({ kind: "half-close", direction: source });
+    assert.equal((await working.next("credit")).header.bytes, request.length);
+    const firstResponse = await working.next("data");
+    assert.deepEqual(
+      openTunnelDataFrame(
+        configuration,
+        firstResponse.header,
+        firstResponse.payload,
+      ),
+      response.subarray(0, smallCredit),
+    );
+    assert.deepEqual(received.at(-1), request);
+    working.send({
+      kind: "credit",
+      direction: destination,
+      bytes: response.length,
+    });
+    await receiveResponse(working, response, configuration);
+    assert.equal((await working.next("close")).header.code, "normal");
+    working.send({ kind: "close", code: "normal" });
+    await until(
+      () => sockets.size === 1,
+      "one direct TCP stream remains before revocation",
+    );
+    const stopped = once(client.socket, "close", {
+      signal: AbortSignal.timeout(5000),
+    });
+    await client.revoke();
+    assert.equal((await stopped)[0], 1008);
+    await until(
+      () => sockets.size === 0,
+      "direct revocation closes its TCP stream",
+    );
+  } finally {
+    client.socket.terminate();
+  }
+  console.log(
+    JSON.stringify({ suite: "native-direct-host-tcp", passed: true }),
+  );
+}
+
+export async function openDirectTunnel(call, attachmentId) {
+  const base = "/api/tunnel-attachments/" + attachmentId;
+  const ticket = directTunnelTicketSchema.parse(
+    await call("POST", base + "/direct", 201, {}),
+  );
+  const client = await connectDirect(ticket);
+  try {
+    await call("POST", base + "/direct-activate", 204, {
+      capabilityId: ticket.binding.capabilityId,
+    });
+    return {
+      socket: client.socket,
+      open: (initialCreditBytes = smallCredit) =>
+        startStream(
+          client,
+          { protocolVersion: 1, ...ticket.route, connectionId: randomUUID() },
+          { kind: "open", initialCreditBytes },
+          (bytes) => client.socket.send(bytes),
+        ),
+      revoke: () =>
+        call(
+          "DELETE",
+          "/api/direct-attachments/" + ticket.binding.capabilityId,
+          204,
+        ),
+    };
+  } catch (error) {
+    client.socket.terminate();
+    throw error;
+  }
+}
+
+async function connectDirect(ticket, initialize = ticket, expectClose) {
+  const { broker, binding } = ticket;
+  assert.equal(broker.loopbackHost, "127.0.0.1");
+  assert.equal(broker.leaseRenewal, true);
+  const socket = new WebSocket(
+    `ws://${broker.loopbackHost}:${broker.loopbackPort}/direct/v1`,
+  );
+  const client = { socket, streams: new Map(), ready: null, failure: null };
+  socket.on("error", (error) => {
+    client.failure ??= error;
+  });
+  socket.on("message", (bytes, binary) => {
+    try {
+      if (binary) receiveTunnelFrame(client, bytes);
+      else
+        client.ready = directBrokerReadySchema.parse(
+          JSON.parse(bytes.toString()),
+        );
+    } catch (error) {
+      client.failure ??= error;
+    }
+  });
+  try {
+    await once(socket, "open", { signal: AbortSignal.timeout(5000) });
+    const challenge = randomBytes(32).toString("base64url");
+    const stopped =
+      expectClose === undefined
+        ? null
+        : once(socket, "close", { signal: AbortSignal.timeout(5000) });
+    socket.send(
+      JSON.stringify({
+        type: "initialize",
+        binding: initialize.binding,
+        secret: initialize.secret,
+        challenge,
+      }),
+    );
+    if (stopped) {
+      assert.equal((await stopped)[0], expectClose);
+      assert.equal(client.ready, null);
+      return null;
+    }
+    const ready = await until(() => {
+      if (client.failure) throw client.failure;
+      return client.ready;
+    }, "signed direct broker readiness");
+    assert.equal(ready.brokerInstanceId, broker.instanceId);
+    assert.equal(ready.challenge, challenge);
+    assert.equal(ready.leaseExpiresAt, binding.leaseExpiresAt);
+    const raw = Buffer.from(broker.publicKey, "base64url");
+    assert.equal(
+      createHash("sha256").update(raw).digest("hex"),
+      ready.fingerprint,
+    );
+    assert.equal(ready.fingerprint, broker.fingerprint);
+    const key = createPublicKey({
+      key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), raw]),
+      format: "der",
+      type: "spki",
+    });
+    assert.equal(
+      verify(
+        null,
+        Buffer.from(`cantrip-direct-v1\0${binding.capabilityId}\0${challenge}`),
+        key,
+        Buffer.from(ready.signature, "base64url"),
+      ),
+      true,
+    );
+    return client;
+  } catch (error) {
+    socket.terminate();
+    throw error;
   }
 }
 

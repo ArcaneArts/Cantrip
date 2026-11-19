@@ -618,6 +618,7 @@ dependencies = [
  "chrono",
  "codex-utils-pty",
  "dav-server",
+ "ed25519-dalek",
  "embed-resource",
  "flate2",
  "futures",

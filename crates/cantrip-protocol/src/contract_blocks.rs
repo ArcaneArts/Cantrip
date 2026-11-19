@@ -106,6 +106,10 @@ pub(super) fn load() -> Contracts {
         serde_json::from_str(include_str!("../contracts/worker-tunnel-content.json"))
             .expect("embedded worker tunnel content contracts"),
     );
+    contracts.append(
+        serde_json::from_str(include_str!("../contracts/worker-direct-broker.json"))
+            .expect("embedded worker direct broker contracts"),
+    );
     contracts.compile_patterns();
     contracts
 }
