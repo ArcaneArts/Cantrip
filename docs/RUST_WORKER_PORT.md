@@ -143,7 +143,7 @@ loaded by a production service.
 | WorkerLink/direct/tunnels | Gateways, peer/WebRTC, direct broker, tunnel protection and routing | Native installed authority, live observations, encrypted Host terminals and TCP, WebDAV shares, direct tickets, and LAN and WAN peer carriage | Continue managed console and guest/surface adapters. Local peer fixtures cover authenticated negotiation, encrypted TCP, credit, renewal, and revocation. |
 | Browsers/surfaces/computer use | Browser discovery, browser/desktop adapters, remote surfaces, computer use, and managed web runtimes | Native browser discovery, Chromium and CDP, encrypted surfaces with recovery, and signed managed Chromium installation | Public browser transport and Chromium recovery fixtures pass locally. The native installer verifies signed releases and probes Chromium. Legacy browser WebRTC, desktop capture, computer use, managed web sessions and search remain open. |
 | MCP/CLI/CodeGraph                  | `mcp/*`, CLI broker, computer-use MCP, codegraph/runtime/supervisor                                                                       | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Native stdio/HTTP helpers, generated/persisted launch commands, binding/generation scopes, CLI and managed-runtime fixtures                                                                                                                                                                                                      |
-| Cantrip OS | `cantrip_os/host`, `os-executor/*`, native MCP/run execution | Native guest inspection, attachment, workspace listing and creation, and operation inspection | Continue source provisioning, guest execution, lifecycle, files, PTYs, tunnels, packages, backups, system operations and checkpoints. |
+| Cantrip OS | `cantrip_os/host`, `os-executor/*`, native MCP/run execution | Native guest inspection, attachment, workspace listing and creation, operation inspection, and Linux-owned source provisioning and verification | Continue linked Host mounts, guest execution, lifecycle, files, PTYs, tunnels, packages, backups, system operations and checkpoints. |
 | Upgrade and packaging              | profile converter/database-transfer, server profile preparation, desktop services/worker, distribution/runtime scripts, worker Dockerfile | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Node-free legacy conversion/export/restore, desktop/standalone artifacts, existing-profile reopen and actual child-process/runtime audit                                                                                                                                                                                         |
 
 The source index includes existing tests with their source hashes. Each port must
@@ -6471,3 +6471,31 @@ uncertainty without replaying the mutation. The fixture compared the journal
 path and admission fingerprint with the Node controller's JSON and SHA-256
 encoding. SSH and Windows runtime validation, source provisioning, and the
 remaining Cantrip OS services are still open.
+
+## 160. Provision and verify Linux-owned Cantrip OS sources in Rust
+
+Reference commit `af3f8b423e4e376a88b55f10dc44951e083bb1df` (#3323).
+
+The worker opens the protected source intent using the existing repository
+component grant and validates it against the admitted binding. A private
+Docker or SSH carrier connects to the selected guest executor generation.
+Managed folders and Git checkouts publish atomically from an operation
+reservation. Existing sources are observed in place. Linux Git worktrees
+check the primary common-directory fingerprint before creating the worktree.
+
+The version-one journal records the native binding, session, and each
+finite process ID before dispatch. Process reads have bounded output and
+an observed exit. Uncertain delivery retains the recovery record and the
+worker does not start another process for the same admission. Guest
+receipts and Git fingerprints retain the existing JSON formats.
+
+The local Docker smoke used both production Rust services, TypeScript
+repository-content encryption, and the actual guest programs. It covered a
+managed folder, collision with an existing directory, exact detached Git
+checkout, linked Linux Git worktree, registration of an existing Git source
+with spaces and Unicode in its path, read-only verification, and recovery
+through the server after restarting the worker. It compared admission digests
+and Git fingerprints with JavaScript encoding and checked protected branch
+routing and persistence. The worker executable ran with only the Docker
+carrier on its search path. Linked Host mounts and guest execution remain
+open. SSH and Windows carrier execution were not run for this cycle.

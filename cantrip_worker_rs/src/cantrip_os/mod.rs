@@ -2,13 +2,17 @@
 mod carrier;
 mod docker;
 mod operations;
+mod process;
+mod session;
+mod sources;
 
-use crate::{filesystem::Scope, routing::Registry};
+use crate::{encryption::Service, filesystem::Scope, routing::Registry};
 use anyhow::{Context, Result, ensure};
 use cantrip_wire::{JsString, Value, value::json};
 use carrier::{Program, Transport, workspace};
 use docker::{Identity, LocalDocker};
 use operations::Operations;
+use session::Session;
 use std::path::Path;
 
 const INSPECT: &str = "cantrip-os.inspect";
@@ -16,6 +20,9 @@ const ATTACH: &str = "cantrip-os.attach";
 const LIST: &str = "cantrip-os.workspaces.list";
 const CREATE: &str = "cantrip-os.workspaces.create";
 const OPERATION: &str = "cantrip-os.operation.inspect";
+const SOURCE_INSPECT: &str = "cantrip-os.source.inspect";
+const SOURCE_PROVISION: &str = "cantrip-os.source.provision";
+const SOURCE_CLIENT: &str = "cantrip-source-dispatch";
 
 pub(crate) struct Controller {
     worker: JsString,
@@ -113,26 +120,39 @@ impl Controller {
     }
 
     pub fn supports(kind: &str) -> bool {
-        matches!(kind, INSPECT | ATTACH | LIST | CREATE | OPERATION)
+        matches!(
+            kind,
+            INSPECT | ATTACH | LIST | CREATE | OPERATION | SOURCE_INSPECT | SOURCE_PROVISION
+        )
     }
 
     pub async fn execute(
         &self,
         command: &Value,
         routing: &Registry,
+        encryption: &Service,
         lifetime: &Scope,
     ) -> Result<Value> {
         let kind = command["type"].as_str().context("OS command type")?;
         let result = async {
             let resolved = routing.resolve(command).await?;
-            let result = self.handle(kind, &resolved, lifetime).await?;
+            let result = self
+                .handle(kind, &resolved, routing, encryption, lifetime)
+                .await?;
             routing.protect_result(kind, &result).await
         }
         .await;
         result.map_err(|error| crate::routing::protect_error(kind, error))
     }
 
-    async fn handle(&self, kind: &str, command: &Value, lifetime: &Scope) -> Result<Value> {
+    async fn handle(
+        &self,
+        kind: &str,
+        command: &Value,
+        routing: &Registry,
+        encryption: &Service,
+        lifetime: &Scope,
+    ) -> Result<Value> {
         let dispatch = &command["scope"];
         let worker = if kind == INSPECT {
             &command["workerId"]
@@ -152,6 +172,39 @@ impl Controller {
         let transport = Transport::from_value(&transport_value)?;
         if kind == INSPECT {
             return observed(&transport, lifetime).await;
+        }
+        if matches!(kind, SOURCE_PROVISION | SOURCE_INSPECT) {
+            let scope = checked("cantripOsSourceDispatchScopeSchema", dispatch.clone())?;
+            let source = sources::Source::new(&scope)?;
+            if kind == SOURCE_INSPECT {
+                ensure!(
+                    command["sourceKind"] == scope["sourceKind"],
+                    "Source kind changed after admission."
+                );
+                assert_scope(&transport, &scope, true, lifetime).await?;
+                let (mut session, _) =
+                    Session::open(&transport, &scope, SOURCE_CLIENT, lifetime).await?;
+                let result = source.inspect(&mut session).await;
+                session.close().await;
+                return result;
+            }
+            let intent = sources::intent(command, &scope, encryption, routing).await?;
+            let id = text(command, "operationId")?;
+            assert_scope(&transport, &scope, true, lifetime).await?;
+            return self
+                .operations
+                .execute(&scope, id, kind, intent.clone(), async |journal| {
+                    let (mut session, session_id) =
+                        Session::open(&transport, &scope, SOURCE_CLIENT, lifetime).await?;
+                    let result = async {
+                        journal.bind(&session.binding, &session_id)?;
+                        source.provision(&mut session, id, &intent, journal).await
+                    }
+                    .await;
+                    session.close().await;
+                    result
+                })
+                .await;
         }
         let dispatch = checked("cantripOsDispatchScopeSchema", dispatch.clone())?;
         assert_scope(&transport, &dispatch, kind != ATTACH, lifetime).await?;
@@ -181,7 +234,7 @@ impl Controller {
                         text(command, "operationId")?,
                         kind,
                         admission,
-                        async {
+                        async |_| {
                             let actual = transport
                                 .control(Program::Workspaces, &["create", guest], lifetime)
                                 .await?;

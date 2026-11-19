@@ -62,7 +62,11 @@ impl Transport {
         })
     }
 
-    fn spec(&self, program: Program, arguments: &[&str]) -> (&'static OsStr, Vec<OsString>) {
+    pub(super) fn spec(
+        &self,
+        program: Program,
+        arguments: &[&str],
+    ) -> (&'static OsStr, Vec<OsString>) {
         let guest = match program {
             Program::Executor => "/usr/bin/cantrip-executor",
             Program::Workspaces => "/usr/bin/cantrip-workspaces",
