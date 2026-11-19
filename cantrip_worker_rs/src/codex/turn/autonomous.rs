@@ -208,7 +208,7 @@ impl Autonomous {
                     },
                     transport.clone(),
                 );
-                let protection = protected::Protected::autonomous(scope, json!(chat));
+                let protection = protected::Protected::for_native_output(scope, json!(chat));
                 let publisher = protection.clone();
                 let client = self.receipts.clone();
                 let operation = root.clone();

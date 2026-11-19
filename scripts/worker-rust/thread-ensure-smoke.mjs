@@ -44,6 +44,7 @@ import {
   decryptPrivateDisplayLabel,
   decryptSurfacePrivateState,
   decryptSurfaceStreamPayload,
+  encryptSurfaceStreamPayload,
   encryptProtectedSecret,
   wrapComponentKeyForWorker,
 } from "../../packages/crypto/dist/index.js";
@@ -54,6 +55,7 @@ import {
 } from "../../cantrip_worker/src/chat-message-encryption.ts";
 import { protectChatPlanState } from "../../cantrip_worker/src/chat-plan-encryption.ts";
 import { openNativeCommandContent } from "../../cantrip_worker/src/native-command-content.ts";
+import { createManagedQueueInputCodec } from "../../cantrip_worker/src/managed-queue-input.ts";
 import { admit, GuiReceiptPeer, logical } from "./gui-receipt-cases.mjs";
 import { RestoredSuspensionPeer } from "./cold-resume-cases.mjs";
 import { GuiHistoryPeer } from "./gui-history-cases.mjs";
@@ -2486,7 +2488,7 @@ async function verifyGuestTurn({
     assert.ok(!published.includes(mcp.credential));
     assert.ok(!diagnostics.includes(mcp.credential));
     assert.equal(guiPeer.terminal.terminalStatus, "completed");
-    return turn.turnId;
+    return { turnId: turn.turnId, history: guiHistory };
   } finally {
     taskResponse = undefined;
     guiHistory = undefined;
@@ -2538,22 +2540,48 @@ async function verifyConsoleState() {
   return result;
 }
 
-async function verifyGuestConsole({ session, threadId, provider, state }) {
+async function verifyGuestConsole({
+  session,
+  threadId,
+  provider,
+  state,
+  history,
+}) {
   const terminalId = state.id;
   const operationId = randomUUID();
   const attachmentId = randomUUID();
   const preparation = randomUUID();
   const steps = [];
+  const promptSteps = [];
   const grants = new Map();
   const skills = Promise.withResolvers();
+  const acknowledged = Promise.withResolvers();
+  const finished = Promise.withResolvers();
+  const consoleMessage = "Private console fixture " + randomUUID();
+  const consoleAnswer = "Console fixture completed in Linux.";
+  let finalMessage;
+  const guestPath = session.osExecution.scope.guestPath;
+  const codec = createManagedQueueInputCodec({
+    encryption: oracle,
+    chatId: session.chatId,
+    defaults: () => ({
+      mode: "default",
+      modelId: "gpt-5",
+      reasoningEffort: null,
+      worktreeId: session.worktreeId,
+    }),
+  });
   consolePeer = async (action, input, send) => {
     if (action === "admit") {
       const call = nativeCommandAdmissionSchema.parse(input);
       assert.equal(call.origin, "terminal");
       assert.ok(
-        ["thread/resume", "thread/unsubscribe", "skills/list"].includes(
-          call.method,
-        ),
+        [
+          "thread/resume",
+          "thread/unsubscribe",
+          "skills/list",
+          "turn/start",
+        ].includes(call.method),
       );
       assert.equal(call.expectedActivationGeneration, null);
       assert.equal(call.workerId, workerId);
@@ -2570,9 +2598,76 @@ async function verifyGuestConsole({ session, threadId, provider, state }) {
         },
         envelope: call.protectedPayload,
       });
-      const guestPath = session.osExecution.scope.guestPath;
       assert.equal(payload.method, call.method);
-      if (call.method === "skills/list") {
+      const startsExecution = call.method === "turn/start";
+      const lane = startsExecution ? randomUUID() : null;
+      let execution = null;
+      if (startsExecution) {
+        promptSteps.push(action);
+        assert.equal(payload.params.threadId, threadId);
+        assert.equal(payload.params.cwd, guestPath);
+        assert.equal(call.intent.pathsWithinPlacement, true);
+        assert.equal(
+          call.intent.nativeClientUserMessageId,
+          payload.params.clientUserMessageId,
+        );
+        assert.deepEqual(call.retainedInput.attachments, []);
+        assert.ok(!JSON.stringify(call).includes(consoleMessage));
+        const prompt = call.retainedInput.prompt;
+        const reference = await codec.retainTerminalPrompt({
+          operationId: call.operationId,
+          origin: "terminal",
+          method: "turn/start",
+          kind: "start",
+          identity: { ...call.session, serverId, ownerId },
+          frame: payload,
+        });
+        assert.equal(reference.retainedPrompt.id, prompt.id);
+        assert.equal(
+          reference.retainedPrompt.pendingMessage.id,
+          prompt.pendingMessage.id,
+        );
+        const open = (source) =>
+          codec.openNativeInput({
+            promptId: source.id,
+            payload: source.protectedNativeInput,
+          });
+        assert.deepEqual(
+          await open(prompt),
+          await open(reference.retainedPrompt),
+        );
+        assert.equal((await open(prompt)).displayText, consoleMessage);
+        assert.equal(
+          prompt.nativeClientUserMessageId,
+          payload.params.clientUserMessageId,
+        );
+        history.fields = {
+          ...history.fields,
+          protectedPrompt: prompt.pendingMessage,
+          nativeClientUserMessageId: prompt.nativeClientUserMessageId,
+        };
+        guiHistory = history;
+        execution = {
+          ...session,
+          threadId,
+          workerId,
+          executionLaneId: lane,
+          cwd: guestPath,
+          experience: "agent",
+          status: "running",
+          automationPaused: false,
+          isPrimary: true,
+          modelId: "gpt-5",
+          reasoningEffort: null,
+          modelRouteId: "fixture-route",
+          providerAccountId: null,
+          permissionProfileId: ":workspace",
+          modelConfiguration: { modelId: "gpt-5" },
+          planMode: "default",
+          worktreeMode: "agent-managed",
+          worktreePolicy: "required-for-writes",
+        };
+      } else if (call.method === "skills/list") {
         assert.equal(call.intent.pathsWithinPlacement, true);
         assert.deepEqual(payload.params.cwds, [guestPath]);
       } else {
@@ -2584,10 +2679,10 @@ async function verifyGuestConsole({ session, threadId, provider, state }) {
       const receipt = {
         operationId: call.operationId,
         operationGeneration: randomUUID(),
-        activationGeneration: null,
+        activationGeneration: startsExecution ? randomUUID() : null,
         chatId: session.chatId,
-        startsExecution: false,
-        executionLaneId: null,
+        startsExecution,
+        executionLaneId: lane,
         status: "accepted",
         method: call.method,
         payloadDigest: call.payloadDigest,
@@ -2596,12 +2691,16 @@ async function verifyGuestConsole({ session, threadId, provider, state }) {
         createdAt: stamp,
         updatedAt: stamp,
       };
-      grants.set(call.operationId, { receipt, session: call.session });
+      grants.set(call.operationId, {
+        receipt,
+        session: call.session,
+        execution,
+      });
       if (call.method === "thread/resume") steps.push(action);
       send({
         replayed: false,
         receipt,
-        execution: null,
+        execution,
         computerUseAuthority: null,
       });
       return;
@@ -2609,6 +2708,18 @@ async function verifyGuestConsole({ session, threadId, provider, state }) {
     const entry = grants.get(input.operationId);
     assert.ok(entry, JSON.stringify(input));
     assert.equal(input.operationGeneration, entry.receipt.operationGeneration);
+    if (entry.receipt.method === "turn/start") promptSteps.push(action);
+    if (action === "events") {
+      assert.equal(entry.receipt.method, "turn/start");
+      if (
+        input.event.type === "agent.protected-message" &&
+        !input.event.telemetry.streaming
+      ) {
+        finalMessage = input.event.message;
+      }
+      send({ applied: true });
+      return;
+    }
     if (action === "dispatch") {
       const evidence = nativeCommandDispatchSchema.parse(input);
       assert.equal(evidence.workerGeneration, workerGeneration);
@@ -2618,8 +2729,19 @@ async function verifyGuestConsole({ session, threadId, provider, state }) {
     } else {
       assert.equal(action, "receipt");
       const evidence = nativeCommandSettlementSchema.parse(input);
-      assert.equal(entry.receipt.status, "dispatched");
       assert.equal(evidence.status, "applied");
+      if (evidence.executionComplete) {
+        assert.equal(entry.receipt.method, "turn/start");
+        assert.equal(entry.receipt.status, "applied");
+        assert.equal(evidence.reconciliation.nativeTurnId, entry.turnId);
+        assert.equal(evidence.reconciliation.terminalStatus, "completed");
+        assert.equal(evidence.executionStatus, "idle");
+        assert.ok(evidence.terminalResult?.protectedResult);
+        send({ receipt: entry.receipt });
+        finished.resolve(entry.turnId);
+        return;
+      }
+      assert.equal(entry.receipt.status, "dispatched");
       const content = await openNativeCommandContent({
         service: oracle,
         context: {
@@ -2638,6 +2760,13 @@ async function verifyGuestConsole({ session, threadId, provider, state }) {
       } else if (entry.receipt.method === "skills/list") {
         assert.ok(Array.isArray(content.result.data));
         skills.resolve();
+      } else if (entry.receipt.method === "turn/start") {
+        assert.equal(
+          evidence.reconciliation.nativeTurnId,
+          content.result.turn.id,
+        );
+        entry.turnId = content.result.turn.id;
+        acknowledged.resolve();
       }
       entry.receipt.status = "applied";
     }
@@ -2646,7 +2775,7 @@ async function verifyGuestConsole({ session, threadId, provider, state }) {
       action === "dispatch"
         ? {
             receipt: entry.receipt,
-            execution: null,
+            execution: entry.execution,
             computerUseAuthority: null,
           }
         : { receipt: entry.receipt },
@@ -2657,6 +2786,7 @@ async function verifyGuestConsole({ session, threadId, provider, state }) {
     sequence = 0;
   let output = Promise.resolve();
   const drawn = Promise.withResolvers();
+  const echoed = Promise.withResolvers();
   const terminal = ensure(
     {
       type: "terminal.open",
@@ -2707,12 +2837,13 @@ async function verifyGuestConsole({ session, threadId, provider, state }) {
         });
         const data = JSON.parse(Buffer.from(bytes).toString());
         transcript += data.data;
-        if (
-          stripVTControlCharacters(transcript)
-            .replace(/\s/gu, "")
-            .includes(outputText.replace(/\s/gu, ""))
-        )
-          drawn.resolve();
+        const rendered = stripVTControlCharacters(transcript).replace(
+          /\s/gu,
+          "",
+        );
+        if (rendered.includes(outputText.replace(/\s/gu, ""))) drawn.resolve();
+        if (rendered.includes(consoleMessage.replace(/\s/gu, "")))
+          echoed.resolve();
       });
       output.catch(drawn.reject);
     },
@@ -2750,6 +2881,69 @@ async function verifyGuestConsole({ session, threadId, provider, state }) {
     assert.ok(ready);
     assert.deepEqual(steps, ["admit", "dispatch", "receipt"]);
     assert.equal(providerCalls, calls);
+    let inputSequence = 0;
+    const write = async (text) => {
+      const sequence = inputSequence++;
+      const protectedData = await encryptSurfaceStreamPayload({
+        ownerId,
+        keyRevision: 1,
+        componentKey: surfaceStateKey,
+        context: {
+          serverId,
+          surfaceKind: "terminal",
+          surfaceId: terminalId,
+          operationId,
+          direction: "input",
+          sequence,
+        },
+        plaintext: Buffer.from(
+          JSON.stringify({ type: "terminal.input", data: text }),
+        ),
+      });
+      await expectSuccess({
+        type: "terminal.input",
+        terminalId,
+        serverId,
+        operationId,
+        sequence,
+        protectedData,
+      });
+    };
+    const callId = "console-guest-cwd";
+    taskResponse = (body) => {
+      if (
+        body.input.some(
+          (item) =>
+            item.type === "function_call_output" && item.call_id === callId,
+        )
+      )
+        return consoleAnswer;
+      assert.ok(JSON.stringify(body.input).includes(consoleMessage));
+      const name = body.tools.find((tool) =>
+        ["exec_command", "shell_command"].includes(tool.name),
+      )?.name;
+      assert.ok(name);
+      const command = "pwd && uname -s";
+      return {
+        name,
+        call_id: callId,
+        arguments: JSON.stringify(
+          name === "exec_command" ? { cmd: command } : { command },
+        ),
+      };
+    };
+    const incoming = untilProvider();
+    await write(`\x1b[200~${consoleMessage}\x1b[201~`);
+    await Promise.race([available(echoed.promise), premature, failure]);
+    await write("\r");
+    const first = await Promise.race([
+      incoming.catch((error) => {
+        throw new Error(captured(), { cause: error });
+      }),
+      premature,
+      failure,
+    ]);
+    await Promise.race([available(acknowledged.promise), premature, failure]);
     const observer = waitForFrame(
       (frame) =>
         frame.notification?.type === "terminal.runtime.observed" &&
@@ -2765,12 +2959,42 @@ async function verifyGuestConsole({ session, threadId, provider, state }) {
       notified.notification.managedPreparationGeneration,
       preparation,
     );
+    const further = untilProvider();
+    first.finish();
+    const second = await Promise.race([further, failure]);
+    const tool = second.body.input.find(
+      (item) => item.type === "function_call_output" && item.call_id === callId,
+    );
+    assert.ok(JSON.stringify(tool).includes(guestPath));
+    assert.ok(JSON.stringify(tool).includes("Linux"));
+    second.finish();
+    const turnId = await Promise.race([available(finished.promise), failure]);
+    assert.ok(finalMessage);
+    const [content] = (await actualMessage(finalMessage)).content;
+    assert.equal(content.type, "text");
+    assert.equal(content.text, consoleAnswer);
+    assert.equal(content.correlation.turnId, turnId);
+    assert.equal(
+      await available(
+        history.verify(turnId, finalMessage, [consoleMessage, consoleAnswer]),
+      ),
+      consoleAnswer,
+    );
+    assert.equal(providerCalls, calls + 2);
     console.log(
-      "Managed guest Codex console used the exact native thread and Core receipts.",
+      "Protected console input ran in Linux and committed after the console closed.",
+    );
+    return turnId;
+  } catch (error) {
+    throw new Error(
+      `Console prompt phases ${promptSteps.join(", ")}.\n${captured()}`,
+      { cause: error },
     );
   } finally {
     watchFailure.abort();
     consolePeer = undefined;
+    taskResponse = undefined;
+    guiHistory = undefined;
   }
 }
 
@@ -2997,10 +3221,10 @@ async function verifyGuestThread() {
     await rejectGuestStdio({ cwd, session, provider, threadId });
     const [mcp] = await bindings();
     const client = await guestMcpClient(mcp);
-    let recoveryTurnId;
+    let guestTurn;
     try {
       await assertGuestMcpIdle(client);
-      recoveryTurnId = await verifyGuestTurn({
+      guestTurn = await verifyGuestTurn({
         session,
         cwd,
         provider,
@@ -3037,16 +3261,30 @@ async function verifyGuestThread() {
     }
     await start();
     const recovered = await expectThread(
-      { cwd, session: reopen, threadId, provider, recoveryTurnId },
+      {
+        cwd,
+        session: reopen,
+        threadId,
+        provider,
+        recoveryTurnId: guestTurn.turnId,
+      },
       threadId,
     );
     assert.equal(recovered.recovery.status, "completed");
-    await verifyGuestConsole({
+    const consoleTurn = await verifyGuestConsole({
       session,
       threadId,
       provider,
       state: consoleState,
+      history: guestTurn.history,
     });
+    await stop();
+    await start();
+    const recoveredConsole = await expectThread(
+      { cwd, session: reopen, threadId, provider, recoveryTurnId: consoleTurn },
+      threadId,
+    );
+    assert.equal(recoveredConsole.recovery.status, "completed");
     await stop();
     console.log(
       "Native guest shell, authenticated MCP and lane retirement, protected Chat and History, Node placement compatibility, and restart passed.",

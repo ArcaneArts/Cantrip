@@ -1,6 +1,7 @@
 //! The managed TUI runs on the worker and attaches to Core's prepared thread.
 //! Its sandbox, working directory and model execution remain app-server owned.
 mod gateway;
+mod prompt;
 pub(crate) use gateway::Gateway;
 
 use super::{Scope, Turns, id};
@@ -34,6 +35,7 @@ struct View {
     chat: JsString,
     cwd: JsString,
     permission: Value,
+    command: Value,
 }
 
 impl View {
@@ -112,6 +114,7 @@ impl Turns {
             chat,
             cwd: placement,
             permission: command["permissionProfileId"].clone(),
+            command,
         });
         let gateway = Gateway::start(view).await?;
         let mut args = vec!["--remote".into(), gateway.url.clone()];

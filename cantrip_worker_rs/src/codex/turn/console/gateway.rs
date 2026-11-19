@@ -1,9 +1,13 @@
 //! A loopback capability connects a terminal view to its native app-server
 //! subscription. Attaching and detaching get Core receipts before dispatch.
-use super::{Scope, View};
-use crate::codex::turn::receipt::Receipt;
+use super::{Scope, View, prompt};
+use crate::{
+    codex::turn::receipt::Receipt,
+    metadata::{Abort, Signal},
+};
 use anyhow::{Result, bail, ensure};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use cantrip_history::projection::Work;
 use cantrip_wire::{Value, parse_json_text, value::json};
 use futures::{SinkExt, StreamExt};
 use std::{collections::HashMap, sync::Arc, time::Duration};
@@ -125,7 +129,7 @@ fn limits() -> WebSocketConfig {
 async fn attach(
     socket: TcpStream,
     path: Arc<String>,
-    view: &View,
+    view: &Arc<View>,
     mut stop: watch::Receiver<bool>,
 ) -> Result<()> {
     let handshake = accept_hdr_async_with_config(
@@ -158,6 +162,7 @@ async fn attach(
     let mut session = view.session.clone();
     session["connectionId"] = json!(uuid::Uuid::new_v4().to_string());
     let mut pending = HashMap::<String, Pending<'_>>::new();
+    let (closed, open) = Abort::new();
     let result = relay(
         &mut client,
         &mut core,
@@ -165,8 +170,10 @@ async fn attach(
         &session,
         &mut pending,
         &mut stop,
+        open,
     )
     .await;
+    closed.abort(anyhow::anyhow!("The console view closed before dispatch."));
     for request in pending.into_values() {
         if let Some(receipt) = request.receipt {
             let _ = receipt.uncertain().await;
@@ -183,20 +190,43 @@ struct Pending<'a> {
 async fn relay<'a>(
     client: &mut WebSocketStream<TcpStream>,
     core: &mut WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>,
-    view: &'a View,
+    view: &'a Arc<View>,
     session: &Value,
     pending: &mut HashMap<String, Pending<'a>>,
     stop: &mut watch::Receiver<bool>,
+    open: Signal,
 ) -> Result<()> {
     let mut initialized = false;
+    let mut starting: Option<(String, Work<Value>)> = None;
     let thread = &session["threadId"];
     loop {
         tokio::select! {
             biased;
             _ = stop.changed() => return Ok(()),
+            response = async { starting.as_mut().unwrap().1.as_mut().await }, if starting.is_some() => {
+                starting = None;
+                send(client, response?).await?;
+            }
             input = client.next() => {
                 let Some(frame) = frame(input)? else { return Ok(()); };
                 let Some(mut frame) = frame else { continue; };
+                let id = &frame["id"];
+                let key = id.stringify();
+                if starting.as_ref().is_some_and(|(existing, _)| *existing == key) {
+                    send(client, fault(id, -32001, "Duplicate in-flight native request ID.")).await?;
+                    continue;
+                }
+                if frame["method"] == "turn/start" {
+                    if initialized && valid_id(id) && pending.len() < 1024
+                        && !pending.contains_key(&key) && starting.is_none()
+                        && scope_matches(&frame, thread)
+                    {
+                        starting = Some((key, prompt::start(view.clone(), session.clone(), frame, open.clone())));
+                    } else {
+                        send(client, fault(id, -32001, "The native console cannot submit this request.")).await?;
+                    }
+                    continue;
+                }
                 let request = client_request(view, session, &mut frame, pending, initialized).await;
                 match request {
                     Ok(Some((key, request))) => {
@@ -418,7 +448,7 @@ fn valid_id(id: &Value) -> bool {
             .is_some_and(|n| n.unsigned_abs() <= 9_007_199_254_740_991)
 }
 
-fn fault(id: &Value, code: i32, message: &str) -> Value {
+pub(super) fn fault(id: &Value, code: i32, message: &str) -> Value {
     let id = if valid_id(id) { id } else { &Value::Null };
     json!({"id":id,"error":json!({"code":code,"message":message})})
 }

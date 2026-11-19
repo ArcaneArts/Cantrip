@@ -103,7 +103,7 @@ impl Protected {
         ))
     }
 
-    pub(super) fn autonomous(scope: Scope, chat: Value) -> Arc<Self> {
+    pub(super) fn for_native_output(scope: Scope, chat: Value) -> Arc<Self> {
         Arc::new(Self {
             scope,
             chat,

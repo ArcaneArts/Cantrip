@@ -6940,3 +6940,31 @@ The terminal view handles attachment and discovery. Direct prompt
 admission, canonical queue operations, settings, approval replies and
 managed runtime handoff remain open. Those operations require their
 canonical command owners before console parity can be declared.
+
+## 177. Submit protected prompts from the managed Codex console
+
+Reference commit 5bca3dbae99d0c7780db0a96ae96359df698b8f1 (#3340).
+
+The worker sends console prompt admission through Core for the prepared
+thread and placement. The admission contains the encrypted native input,
+queue display and pending user message with the existing stable identities.
+The worker requests inference on the admitted lane, uses the prepared
+app-server connection, and acknowledges native acceptance through Core.
+After dispatch the worker owns the turn beyond the terminal view's lifetime
+and publishes protected output and canonical History on that thread.
+
+The local macOS ARM64 fixture used the production worker, bundled Codex,
+a fixture Core peer and a network-isolated ARM64 Docker guest. It typed a
+prompt over the protected PTY, compared the decrypted input and retained
+identities with the Node codec, and closed the console after acceptance.
+The guest command still completed, its protected History committed, and
+the same native turn was recovered after a worker restart. Host
+preparation, streaming, MCP and Stop passed in the same fixture. The
+fixture also exercised a read-only console on a primary checkout with a
+stored workspace-write selection. The Windows x64 GNU worker compiled.
+The existing Rust-server and Node-reference HTTP fixture matched encrypted
+terminal input recovery on PGlite for all three authentication modes.
+
+Local and inline console media still need durable attachment
+materialization. Canonical console queue operations, settings, approval
+replies and managed runtime handoff remain open.
