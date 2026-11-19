@@ -30,6 +30,7 @@ import {
   verifyExplorer,
 } from "./explorer-smoke-cases.mjs";
 import { verifyTerminalServices } from "./terminal-services-smoke.mjs";
+import { verifyHostTerminal } from "./host-terminal-relay-smoke.mjs";
 import { verifyGit } from "./git-smoke-cases.mjs";
 import { verifyNativeWorktrees } from "./worktree-smoke-cases.mjs";
 import { githubCatalogFixture } from "./github-catalog-fixture.mjs";
@@ -66,6 +67,7 @@ const { values } = parseArgs({
     "github-operations-only": { type: "boolean", default: false },
     "replica-provision-only": { type: "boolean", default: false },
     "replica-lifecycle-only": { type: "boolean", default: false },
+    "terminal-relay-only": { type: "boolean", default: false },
   },
 });
 assert.ok(
@@ -100,6 +102,7 @@ if (
   !values["pull-request-actions-only"] &&
   !values["pull-request-lifecycle-only"] &&
   !values["github-operations-only"] &&
+  !values["terminal-relay-only"] &&
   !(values["replica-provision-only"] || values["replica-lifecycle-only"])
 )
   await symlink(
@@ -207,6 +210,7 @@ function startWorker(code) {
   const workerEnvironment = {
     ...fixtureEnvironment(path.join(root, "unused")),
     PATH: bin,
+    ...(values["terminal-relay-only"] ? { SHELL: "/bin/sh" } : {}),
     NO_COLOR: "1",
     CANTRIP_WORKER_DATA_DIR: workerDirectory,
     CANTRIP_WORKER_ID: workerId,
@@ -526,7 +530,10 @@ try {
     observationCoverage,
     recoveryCoverage,
     replicaCoverage;
-  if (values["replica-provision-only"] || values["replica-lifecycle-only"]) {
+  exercise: if (
+    values["replica-provision-only"] ||
+    values["replica-lifecycle-only"]
+  ) {
     replicaCoverage = await verifyReplicaProvision({
       seedSiblings: seedReplicaSiblings,
       lifecycle: values["replica-lifecycle-only"]
@@ -651,6 +658,42 @@ try {
       "actual native checkout validation and durable import",
     );
     assert.equal(await readFile(sentinel, "utf8"), "private dirty content\n");
+    if (values["terminal-relay-only"]) {
+      const metadataKey = cryptoClient.deriveComponentKey({
+        accountMasterKey: master,
+        ownerId: repository.ownerId,
+        component: "private-surface-metadata",
+        keyRevision: 1,
+      });
+      try {
+        await verifyHostTerminal({
+          call,
+          eventually,
+          origin: server.origin,
+          ownerId: repository.ownerId,
+          serverId: repository.serverId,
+          surfaceKey,
+          metadataKey,
+          projectId,
+          checkout,
+        });
+        const reopen = await verifyTerminalServices({
+          call,
+          eventually,
+          ownerId: repository.ownerId,
+          serverId: repository.serverId,
+          surfaceKey,
+          metadataKey,
+          projectId,
+          checkout,
+        });
+        await restartWorker();
+        await reopen();
+      } finally {
+        metadataKey.fill(0);
+      }
+      break exercise;
+    }
     if (
       !values["observations-only"] &&
       !values["recovery-only"] &&
@@ -833,7 +876,17 @@ try {
   await stopWorker();
   await server.close();
   server = undefined;
-  if (replicaCoverage)
+  if (values["terminal-relay-only"])
+    console.log(
+      JSON.stringify({
+        suite: "actual-native-host-terminal-worker-server",
+        passed: true,
+        encryptedHostTerminalRelay: true,
+        realTerminalServiceEnableRestartAndRecovery: true,
+        nodeAbsentFromWorkerPath: true,
+      }),
+    );
+  else if (replicaCoverage)
     console.log(
       JSON.stringify({
         suite: values["replica-lifecycle-only"]

@@ -101,8 +101,12 @@ pub fn reconnect_delay(base_ms: u64, failed_attempts: u32, random: f64) -> Durat
             .max(1.) as u64,
     )
 }
+struct Frame {
+    encoded: String,
+    terminal: bool,
+}
 struct Queue {
-    frames: VecDeque<String>,
+    frames: VecDeque<Frame>,
     bytes: usize,
     in_flight: usize,
     ready: bool,
@@ -111,6 +115,7 @@ struct Queue {
 pub struct Outbound {
     queue: Mutex<Queue>,
     wake: Notify,
+    stream_epoch: watch::Sender<u64>,
 }
 impl Default for Outbound {
     fn default() -> Self {
@@ -123,6 +128,7 @@ impl Default for Outbound {
                 closed: false,
             }),
             wake: Notify::new(),
+            stream_epoch: watch::channel(0).0,
         }
     }
 }
@@ -145,7 +151,10 @@ impl Outbound {
             return Ok(false);
         }
         queue.bytes += encoded.len();
-        queue.frames.push_back(encoded);
+        queue.frames.push_back(Frame {
+            encoded,
+            terminal: false,
+        });
         drop(queue);
         self.wake.notify_one();
         Ok(true)
@@ -161,40 +170,76 @@ impl Outbound {
                 let Some(old) = queue.frames.pop_front() else {
                     break;
                 };
-                queue.bytes -= old.len();
+                queue.bytes -= old.encoded.len();
             }
             if encoded.len() > MAX_PENDING {
                 return Ok(false);
             }
         }
         queue.bytes += encoded.len();
-        queue.frames.push_back(encoded);
+        queue.frames.push_back(Frame {
+            encoded,
+            terminal: false,
+        });
+        drop(queue);
+        self.wake.notify_one();
+        Ok(true)
+    }
+    pub fn stream_epoch(&self) -> watch::Receiver<u64> {
+        self.stream_epoch.subscribe()
+    }
+    /// Terminal views belong to their connected control socket. Keep their
+    /// output bounded and never queue it for a replacement socket.
+    pub fn terminal_event(&self, epoch: u64, envelope: Value) -> Result<bool> {
+        let encoded = checked("workerServerEnvelopeSchema", &envelope)?.stringify();
+        let mut queue = self.queue.lock().unwrap();
+        if queue.closed
+            || !queue.ready
+            || *self.stream_epoch.borrow() != epoch
+            || queue.bytes + queue.in_flight + encoded.len() > MAX_PENDING
+        {
+            return Ok(false);
+        }
+        queue.bytes += encoded.len();
+        queue.frames.push_back(Frame {
+            encoded,
+            terminal: true,
+        });
         drop(queue);
         self.wake.notify_one();
         Ok(true)
     }
     fn ready(&self, ready: bool) {
-        self.queue.lock().unwrap().ready = ready;
+        let mut queue = self.queue.lock().unwrap();
+        if queue.ready && !ready {
+            self.stream_epoch.send_modify(|epoch| *epoch += 1);
+            queue.frames.retain(|frame| !frame.terminal);
+            queue.bytes = queue.frames.iter().map(|frame| frame.encoded.len()).sum();
+        }
+        queue.ready = ready;
     }
-    fn take(&self) -> Option<String> {
+    fn take(&self) -> Option<Frame> {
         let mut queue = self.queue.lock().unwrap();
         let value = queue.frames.pop_front()?;
-        queue.bytes -= value.len();
-        queue.in_flight += value.len();
+        queue.bytes -= value.encoded.len();
+        queue.in_flight += value.encoded.len();
         Some(value)
     }
     fn sent(&self, length: usize) {
         let mut queue = self.queue.lock().unwrap();
         queue.in_flight = queue.in_flight.saturating_sub(length);
     }
-    fn restore(&self, value: String) {
+    fn restore(&self, value: Frame) {
         let mut queue = self.queue.lock().unwrap();
-        queue.in_flight = queue.in_flight.saturating_sub(value.len());
-        queue.bytes += value.len();
+        queue.in_flight = queue.in_flight.saturating_sub(value.encoded.len());
+        if value.terminal {
+            return;
+        }
+        queue.bytes += value.encoded.len();
         queue.frames.push_front(value);
         while queue.bytes > MAX_PENDING {
             let old = queue.frames.pop_front().unwrap();
-            queue.bytes -= old.len();
+            queue.bytes -= old.encoded.len();
         }
     }
     pub fn close(&self) {
@@ -289,21 +334,21 @@ impl Connection {
                             break;
                         }
                         if handshake.ready
-                            && let Some(encoded) = self.outgoing.take()
+                            && let Some(frame) = self.outgoing.take()
                         {
                             if !matches!(
                                 tokio::time::timeout(
                                     Duration::from_secs(10),
-                                    socket.send(Message::Text(encoded.clone().into()))
+                                    socket.send(Message::Text(frame.encoded.clone().into()))
                                 )
                                 .await,
                                 Ok(Ok(()))
                             ) {
                                 self.outgoing.ready(false);
-                                self.outgoing.restore(encoded);
+                                self.outgoing.restore(frame);
                                 break;
                             }
-                            self.outgoing.sent(encoded.len());
+                            self.outgoing.sent(frame.encoded.len());
                             continue;
                         }
                         let mut deadline = if handshake.ready {
@@ -345,7 +390,7 @@ impl Connection {
                                         },
                                         Negotiation::Other=>{},
                                     }
-                                    let Ok(request)=checked("workerRequestEnvelopeSchema",&value) else {self.invalid(&worker);continue;};
+                                    let Ok(mut request)=checked("workerRequestEnvelopeSchema",&value) else {self.invalid(&worker);continue;};
                                     if !handshake.ready {
                                         if !handshake.legacy_request() {continue;}
                                         if issuer.take().is_some(){sequence.clear();}
@@ -355,6 +400,7 @@ impl Connection {
                                         if next.len()<sequence.len() || (next.len()==sequence.len() && next<=sequence.as_str()) {continue;}
                                         sequence=next.into();
                                     }
+                                    request["socketEpoch"] = json!(*self.outgoing.stream_epoch.borrow());
                                     let _=self.requests.send(request);
                                 },
                                 Some(Ok(Message::Pong(value)))=>{if pong.as_ref().is_some_and(|(nonce,_)|nonce.as_slice()==value.as_ref()) {pong=None;}},
@@ -467,7 +513,7 @@ mod observation_tests {
         assert!(outgoing.take().is_none());
         outgoing.ready(true);
         assert!(outgoing.notification(notification()).unwrap());
-        let frame = parse_json_text(&outgoing.take().unwrap()).unwrap();
+        let frame = parse_json_text(&outgoing.take().unwrap().encoded).unwrap();
         assert!(frame["notification"].get("changes").is_none());
         outgoing.close();
         assert!(!outgoing.notification(notification()).unwrap());
@@ -483,7 +529,33 @@ mod observation_tests {
             !outgoing.notification(notification()).unwrap(),
             "in-flight bytes still exert backpressure"
         );
-        outgoing.sent(writing.len());
+        outgoing.sent(writing.encoded.len());
         assert!(outgoing.notification(notification()).unwrap());
+    }
+
+    #[test]
+    fn terminal_frames_expire_with_their_socket_but_command_responses_survive() {
+        let outgoing = Outbound::default();
+        let mut epoch = outgoing.stream_epoch();
+        let terminal =
+            json!({"kind":"event","requestId":"terminal","event":json!({"type":"terminal.ready"})});
+        let response =
+            json!({"kind":"response","requestId":"fixture-response","ok":true,"result":true});
+        let first = *epoch.borrow_and_update();
+        outgoing.ready(true);
+        assert!(outgoing.terminal_event(first, terminal.clone()).unwrap());
+        let in_flight = outgoing.take().unwrap();
+        assert!(outgoing.terminal_event(first, terminal.clone()).unwrap());
+        assert!(outgoing.send(response).unwrap());
+        outgoing.ready(false);
+        outgoing.restore(in_flight);
+        assert!(epoch.has_changed().unwrap());
+        outgoing.ready(true);
+        assert!(!outgoing.terminal_event(first, terminal.clone()).unwrap());
+        let frame = outgoing.take().unwrap();
+        assert!(frame.encoded.contains("fixture-response"));
+        assert!(outgoing.take().is_none());
+        let next = *epoch.borrow_and_update();
+        assert!(outgoing.terminal_event(next, terminal).unwrap());
     }
 }

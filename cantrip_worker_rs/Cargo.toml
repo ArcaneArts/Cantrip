@@ -41,6 +41,7 @@ icu_normalizer = "=2.1.1"
 codex-utils-pty = { version = "0.166.0", path = "../cantrip_codex/upstream/codex-rs/utils/pty" }
 tempfile = "3"
 notify = "=8.2.0"
+vt100 = "=0.16.2"
 http-body-util = "0.1"
 hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }

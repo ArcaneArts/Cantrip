@@ -5194,3 +5194,32 @@ reference matched the three adapters' request formats and normalized
 answers in the representative cases.
 
 Worker runtime parity and production cutover remain open.
+
+## 114. Open host shell terminals through the encrypted relay
+
+Reference commit `a3bb26a8919b09268045ea4b0a24b96345d8877a` (#3276).
+
+The Rust worker opens host shell terminals from their existing encrypted
+directory record and opaque worktree route. The public relay supports
+protected output and input, PTY resize, detach and reattach, exit and close.
+The worker keeps the same shell across view detach and discards queued
+terminal frames when their control socket disconnects. Terminal output
+remains bounded. Relay attachments receive replay before the ready marker.
+The shell actor owns and reaps the process and publishes its exit.
+
+Replay retains the complete output sequence while it fits at the original
+size. A native VT grid supplies a bounded redraw after resize or truncation.
+The worker also exposes an encrypted bounded text snapshot of host shell output.
+Service reconciliation coordinates ownership before replacing a host shell
+with a service.
+
+Local macOS ARM64 validation used both Rust services, PGlite and an owned
+workspace with a worker PATH containing no Node executable. The terminal-only
+smoke exercises encrypted I/O, resize, replay and same-process reattachment,
+natural exit, deletion, and existing service restart and recovery. The Node
+terminal manager matched the representative shell lifecycle.
+
+Full xterm reflow, saved alternate-buffer restoration after resize or
+truncation, and exact PTY signal metadata remain open. Service view
+attachment, managed Codex consoles, direct and WorkerLink adapters, delegated
+OS terminals, run configurations and production cutover remain open.
