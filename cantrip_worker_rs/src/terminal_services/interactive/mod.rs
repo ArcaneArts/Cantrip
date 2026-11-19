@@ -1,3 +1,4 @@
+mod guest;
 mod process;
 mod stream;
 
@@ -9,6 +10,7 @@ use super::{
     private_state,
 };
 use crate::{
+    cantrip_os::terminal,
     connection::Outbound,
     encryption::Service,
     filesystem::Scope,
@@ -37,12 +39,23 @@ struct Key {
 }
 
 struct Entry {
-    cwd: PathBuf,
+    location: Location,
     stop: watch::Sender<bool>,
     done: watch::Receiver<bool>,
     writer: mpsc::Sender<Vec<u8>>,
     resize: mpsc::Sender<Resize>,
     state: Arc<Mutex<Display>>,
+}
+
+#[derive(PartialEq, Eq)]
+enum Location {
+    Host(PathBuf),
+    Guest(String),
+}
+
+enum Launch {
+    Host(Configuration),
+    Guest(terminal::Target),
 }
 
 #[derive(Default)]
@@ -59,6 +72,7 @@ pub(crate) struct Shells {
     replay: Arc<Mutex<SurfaceStreamReplayGuard>>,
     transition: tokio::sync::Mutex<()>,
     generation: String,
+    guests: terminal::Store,
 }
 
 pub(crate) struct Ports<'a> {
@@ -74,7 +88,8 @@ impl Shells {
     pub(crate) fn supports(command: &str) -> bool {
         matches!(
             command,
-            "terminal.open"
+            "terminal.prepare-state"
+                | "terminal.open"
                 | "terminal.detach"
                 | "terminal.input"
                 | "terminal.resize"
@@ -89,6 +104,7 @@ impl Shells {
         services: Arc<Services>,
         replay: Arc<Mutex<SurfaceStreamReplayGuard>>,
         generation: String,
+        data: &std::path::Path,
     ) -> Self {
         Self {
             inner: Default::default(),
@@ -98,6 +114,7 @@ impl Shells {
             replay,
             transition: Default::default(),
             generation,
+            guests: terminal::Store::new(data),
         }
     }
 
@@ -126,6 +143,9 @@ impl Shells {
         );
         let key = Self::key(command, ports.encryption)?;
         match command["type"].as_str() {
+            Some("terminal.prepare-state") => {
+                private_state::prepare_console(command, ports.encryption)
+            }
             Some("terminal.open") => self
                 .open(command, key, &ports)
                 .await
@@ -156,6 +176,9 @@ impl Shells {
                         .context("Terminal retirement was not confirmed")?;
                     self.inner.lock().await.entries.remove(&key);
                 }
+                self.guests
+                    .close(&key.terminal, &key.authority, ports.encryption.worker_id())
+                    .await?;
                 self.services.disable(&key.terminal, &key.authority).await;
                 Ok(json!({"accepted":true}))
             }
@@ -168,7 +191,17 @@ impl Shells {
             bail!("The terminal requires a different runtime.");
         }
         let command = ports.routes.resolve(command).await?;
-        let configuration = private_state::open_host(&command, ports.encryption)?;
+        let launch = if command["worktreePath"].is_object() {
+            let state = private_state::open_state(&command, ports.encryption)?;
+            Launch::Guest(terminal::Target::new(
+                &command,
+                &state["directory"],
+                &key.authority.0,
+                ports.encryption.worker_id(),
+            )?)
+        } else {
+            Launch::Host(private_state::open_host(&command, ports.encryption)?)
+        };
         let view_id = command["attachmentId"].as_js_string().unwrap();
         let mut connection = ports.outbound.stream_epoch();
         if *connection.borrow_and_update() != ports.socket_epoch {
@@ -199,17 +232,20 @@ impl Shells {
                 authority(ports.encryption)? == key.authority,
                 "Terminal owner changed."
             );
-            let display =
-                if let Some(view) = self.services.view(&key.terminal, &key.authority).await? {
-                    anyhow::ensure!(
-                        view.cwd.as_ref() == Some(&configuration.cwd),
-                        "Terminal service belongs to a different source folder or is stopping."
-                    );
-                    view.state.lock().unwrap().display.clone()
-                } else {
-                    self.shell(&key, configuration, size(&command), ports)
-                        .await?
-                };
+            if matches!(launch, Launch::Host(_)) {
+                self.guests.assert_host(&key.terminal, &key.authority)?;
+            }
+            let display = if let Some(view) =
+                self.services.view(&key.terminal, &key.authority).await?
+            {
+                anyhow::ensure!(
+                    matches!(&launch, Launch::Host(configuration) if view.cwd.as_ref() == Some(&configuration.cwd)),
+                    "Terminal service belongs to a different source folder or is stopping."
+                );
+                view.state.lock().unwrap().display.clone()
+            } else {
+                self.shell(&key, launch, size(&command), ports).await?
+            };
             let finished = display.lock().unwrap().attach(view_id, view)?;
             if let Some(result) = finished {
                 return Ok(result);
@@ -232,7 +268,7 @@ impl Shells {
     async fn shell(
         &self,
         key: &Key,
-        configuration: Configuration,
+        launch: Launch,
         size: TerminalSize,
         ports: &Ports<'_>,
     ) -> Result<Arc<Mutex<Display>>> {
@@ -241,6 +277,10 @@ impl Shells {
         while let Some(result) = inner.jobs.try_join_next() {
             result?;
         }
+        let location = match &launch {
+            Launch::Host(configuration) => Location::Host(configuration.cwd.clone()),
+            Launch::Guest(target) => Location::Guest(target.identity.clone()),
+        };
         if inner
             .entries
             .get(key)
@@ -254,32 +294,56 @@ impl Shells {
                 let generation = self.generation.clone();
                 let encryption = ports.encryption.clone();
                 let outbound = ports.outbound.clone();
-                move |code| {
+                move |result: &Value| {
                     if encryption.bound_identity().is_ok_and(|(owner, server)| {
                         owner == key.authority.0 && server.as_js_string() == Some(&key.authority.1)
                     }) {
                         let _ = outbound.notification(json!({"type":"terminal.runtime.observed",
                             "workerProcessGeneration":generation,"terminalId":key.terminal,
-                            "status":"exited","exitCode":code,"signal":Value::Null,
+                            "status":"exited","exitCode":result["exitCode"],"signal":result["signal"],
                         }));
                     }
                 }
             };
-            let (entry, actor) = process::spawn(
-                configuration.cwd.clone(),
-                key.terminal.clone(),
-                size,
-                self.environment.clone(),
-                self.logs.clone(),
-                exited,
-            )
-            .await?;
-            inner.jobs.spawn(actor);
-            inner.entries.insert(key.clone(), entry);
+            match launch {
+                Launch::Host(configuration) => {
+                    let (entry, actor) = process::spawn(
+                        configuration.cwd,
+                        key.terminal.clone(),
+                        size,
+                        self.environment.clone(),
+                        self.logs.clone(),
+                        exited,
+                    )
+                    .await?;
+                    inner.jobs.spawn(actor);
+                    inner.entries.insert(key.clone(), entry);
+                }
+                Launch::Guest(target) => {
+                    match self
+                        .guests
+                        .open(&key.terminal, &key.authority, target, size, ports.scope)
+                        .await?
+                    {
+                        terminal::Opened::Live(pty) => {
+                            let (entry, actor) = guest::spawn(pty, location, size, exited);
+                            let display = entry.state.clone();
+                            inner.jobs.spawn(actor);
+                            inner.entries.insert(key.clone(), entry);
+                            return Ok(display);
+                        }
+                        terminal::Opened::Exited(result) => {
+                            let mut state = Display::new(size);
+                            state.finish(result);
+                            return Ok(Arc::new(Mutex::new(state)));
+                        }
+                    }
+                }
+            }
         }
         let entry = &inner.entries[key];
         anyhow::ensure!(
-            entry.cwd == configuration.cwd && !*entry.stop.borrow(),
+            entry.location == location && !*entry.stop.borrow(),
             "Terminal belongs to another source folder or is stopping.",
         );
         Ok(entry.state.clone())
@@ -423,10 +487,18 @@ impl Shells {
                     .exited
                     .as_ref()
                     .and_then(|result| result.get("exitCode"));
-                Some(json!({"type":"terminal.snapshot","terminalId":key.terminal,
+                let mut result = json!({"type":"terminal.snapshot","terminalId":key.terminal,
                     "status":if state.exited.is_some() {"exited"} else {"running"},
                     "data":data,"truncated":truncated,"exitCode":exit_code,
-                }))
+                });
+                if let Some(outcome) = state
+                    .exited
+                    .as_ref()
+                    .and_then(|result| result.get("executionOutcome"))
+                {
+                    result["executionOutcome"] = outcome.clone();
+                }
+                Some(result)
             })
         }
         .unwrap_or_else(|| {

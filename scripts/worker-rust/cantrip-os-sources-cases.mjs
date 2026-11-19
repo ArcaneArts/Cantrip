@@ -142,12 +142,20 @@ export async function verifySources({
   runPlan,
   runRuntime,
   productFiles,
+  guestTerminal,
+  origin,
   crashWorker,
   stopWorker,
   restartWorker,
 }) {
   assert.equal(os.ownerId, ownerId);
-  const keys = await grant(call, workerId, data, runRuntime, productFiles);
+  const keys = await grant(
+    call,
+    workerId,
+    data,
+    runRuntime,
+    productFiles || guestTerminal,
+  );
   const componentKey = keys.get("repository-content");
   const serverId = bootstrap.server.id;
   const workspaces = await call("GET", `/api/cantrip-os/${os.id}/workspaces`);
@@ -413,6 +421,23 @@ export async function verifySources({
       container,
       crashWorker,
       restartWorker,
+      surfaceKey: keys.get("surface-private-state"),
+      metadataKey: keys.get("private-surface-metadata"),
+    });
+  }
+  if (guestTerminal) {
+    const { verifyGuestTerminal } =
+      await import("./cantrip-os-terminal-cases.mjs");
+    await verifyGuestTerminal({
+      call,
+      origin,
+      guest,
+      target: folder,
+      os,
+      data,
+      serverId,
+      eventually,
+      crashWorker,
       surfaceKey: keys.get("surface-private-state"),
       metadataKey: keys.get("private-surface-metadata"),
     });

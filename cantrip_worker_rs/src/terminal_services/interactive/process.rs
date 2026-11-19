@@ -18,7 +18,7 @@ pub(super) async fn spawn(
     size: TerminalSize,
     mut environment: HashMap<String, String>,
     logs: Arc<Logs>,
-    exited: impl FnOnce(i32) + Send + 'static,
+    exited: impl FnOnce(&Value) + Send + 'static,
 ) -> Result<(Entry, impl Future<Output = ()> + Send + 'static)> {
     environment.insert("TERM".into(), "xterm-256color".into());
     environment.insert("COLORTERM".into(), "truecolor".into());
@@ -39,7 +39,7 @@ pub(super) async fn spawn(
     let (resize, mut sizes) = mpsc::channel::<Resize>(64);
     let state = Arc::new(Mutex::new(Display::new(size)));
     let entry = Entry {
-        cwd,
+        location: super::Location::Host(cwd),
         stop,
         done,
         writer: child.session.writer_sender(),
@@ -102,11 +102,9 @@ pub(super) async fn spawn(
         drop(child.stderr_rx);
         child.session.terminate_and_wait().await;
         let code = exit.or_else(|| child.session.exit_code()).unwrap_or(-1);
-        state
-            .lock()
-            .unwrap()
-            .finish(json!({"status":"exited","exitCode":code,"signal":Value::Null}));
-        exited(code);
+        let result = json!({"status":"exited","exitCode":code,"signal":Value::Null});
+        state.lock().unwrap().finish(result.clone());
+        exited(&result);
         finished.send_replace(true);
         logs.event("info","Terminal process exited",json!({"event":"terminal.process.exited",
             "subsystem":"terminal","launchType":"shell","terminalId":terminal,"exitCode":code,"status":"exited"}));

@@ -10,6 +10,7 @@ mod replacement;
 mod run_definitions;
 pub(crate) mod session;
 mod sources;
+pub(crate) mod terminal;
 
 use crate::{encryption::Service, filesystem::Scope, routing::Registry};
 use anyhow::{Context, Result, ensure};

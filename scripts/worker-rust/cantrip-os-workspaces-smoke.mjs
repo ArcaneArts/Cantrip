@@ -19,11 +19,13 @@ const { values } = parseArgs({
     "run-plan": { type: "boolean", default: false },
     "run-runtime": { type: "boolean", default: false },
     "product-files": { type: "boolean", default: false },
+    "guest-terminal": { type: "boolean", default: false },
     linked: { type: "boolean", default: false },
     image: { type: "string", default: "cantrip-os:dev" },
   },
 });
 assert.ok(values.worker && values.server);
+assert.ok(!values["guest-terminal"] || values.repository);
 assert.ok(
   !values.linked || values.repository,
   "--linked uses the source fixture",
@@ -369,6 +371,8 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       runPlan: values["run-plan"],
       runRuntime: values["run-runtime"],
       productFiles: values["product-files"],
+      guestTerminal: values["guest-terminal"],
+      origin: server.origin,
       stopWorker,
       crashWorker: async () => {
         const running = worker;
