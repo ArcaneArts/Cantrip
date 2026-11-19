@@ -39,4 +39,5 @@ pub mod runtime;
 mod task_content;
 pub mod terminal_services;
 pub mod version;
+mod worker_link;
 pub mod workspace;

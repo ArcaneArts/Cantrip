@@ -5585,3 +5585,28 @@ tests passed locally.
 
 Protected browser navigation, protected cwd-only inference, Cantrip OS
 execution, and production cutover remain open.
+
+## 127. Install and renew WorkerLink authority in the Rust worker
+
+Reference commit `c8b351a109fe150afbb7203a5f7b6d9aa963f974` (#3289).
+
+The native worker resolves its authenticated owner, logical server, and
+process identity over the existing command socket. It installs, renews,
+and revokes Core-issued WorkerLink sessions and grants and accepts
+successive route generations under the installed route policy. Grants are
+bounded by the exact session identity and lease. Replacement, expiration,
+and explicit revocation retain a bounded record of retired grant
+generations. Installed authority stays in memory for the worker's
+15-second reconnect grace. Authentication rejection, grace expiry,
+security identity changes, and shutdown retire the affected authority.
+
+On macOS ARM64, the public WorkerLink API drove the Rust server and Rust
+worker with PGlite and an empty worker PATH. The worker handled all eight
+coordinator commands. The fixture checked session and observation grant
+identity, independent renewals, the preferred-route generation change,
+revocation, and creation of a replacement session. Worker unit tests
+covered expired grants, stale generation replay, and reconnect-grace
+expiry.
+
+WorkerLink frame delivery, resource adapters, LOCAL capability serving,
+and LAN/WAN peer transport remain open.

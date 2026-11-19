@@ -4,6 +4,7 @@ use crate::{
     config::Config,
     http::checked,
     logging::{self, Logs},
+    worker_link::Coordinator,
 };
 use anyhow::{Result, anyhow};
 use cantrip_wire::{Value, parse_json_text, value::json};
@@ -260,6 +261,7 @@ pub struct Connection {
     pub stop: watch::Receiver<bool>,
     pub generation: String,
     pub on_ready: Arc<dyn Fn() + Send + Sync>,
+    pub(crate) worker_link: Arc<Coordinator>,
 }
 impl Connection {
     pub async fn run(mut self) -> Result<()> {
@@ -413,6 +415,7 @@ impl Connection {
                         }
                     }
                     self.outgoing.ready(false);
+                    self.worker_link.disconnected();
                     if rejected {
                         self.authentication_rejected(&worker, None);
                         self.outgoing.close();
@@ -466,6 +469,7 @@ impl Connection {
         Ok(())
     }
     fn connected(&self, worker: &cantrip_wire::JsString, attempt: u32, negotiation: &str) {
+        self.worker_link.connected();
         self.outgoing.ready(true);
         (self.on_ready)();
         self.logs.event("info","Worker command channel connected",json!({"event":"worker.connection.connected","subsystem":"worker-connection","operation":"connect","status":"completed","workerId":worker,"attempt":attempt,"negotiation":negotiation}));
@@ -474,6 +478,7 @@ impl Connection {
         self.logs.event("warn","Worker command envelope was rejected",json!({"event":"worker.command.rejected","workerId":worker,"reasonCode":"invalid-envelope"}));
     }
     fn authentication_rejected(&self, worker: &cantrip_wire::JsString, status: Option<u16>) {
+        self.worker_link.revoke_all();
         let mut context = json!({"event":"worker.connection.authentication-rejected","subsystem":"worker-connection","operation":"authenticate","workerId":worker,"reasonCode":"authentication-rejected","status":"rejected"});
         context[if status.is_some() {
             "httpStatus"

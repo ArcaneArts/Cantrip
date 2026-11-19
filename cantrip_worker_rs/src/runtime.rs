@@ -193,6 +193,16 @@ async fn cycle(
     ));
 
     let (stop, stop_rx) = watch::channel(false);
+    let worker_link = Arc::new(crate::worker_link::Coordinator::new(
+        worker.clone(),
+        generation.clone(),
+        encryption.clone(),
+    ));
+    let worker_link_task = {
+        let gateway = worker_link.clone();
+        let stop = stop_rx.clone();
+        tokio::spawn(async move { gateway.run(stop).await })
+    };
     let (command_shutdown, command_signal) = crate::metadata::Abort::new();
     let task_inputs = crate::codex::task_inputs::Client::new(
         configuration.clone(),
@@ -359,7 +369,7 @@ async fn cycle(
         logs.clone(),
         stop_rx.clone(),
         registered,
-        encryption.clone(),
+        (encryption.clone(), worker_link.clone()),
     ));
     let connection = Connection {
         configuration: configuration.clone(),
@@ -368,6 +378,7 @@ async fn cycle(
         requests,
         stop: stop_rx.clone(),
         generation,
+        worker_link: worker_link.clone(),
         on_ready: {
             let observations = auth_observations.clone();
             let project_goals = project_goals.clone();
@@ -429,6 +440,11 @@ async fn cycle(
                         }).await.unwrap_or_else(|error| Err(error.into()));
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
+                    continue;
+                }
+                if crate::worker_link::supports(kind) {
+                    let result = worker_link.execute(command);
+                    finish(&request, &worker, logs, &outgoing, began, &result);
                     continue;
                 }
                 if kind == crate::model_operations::CANCEL {
@@ -684,9 +700,11 @@ async fn cycle(
                     let requested=RequestedGrant{component:command["component"].as_str().unwrap().to_owned(),key_revision:command["keyRevision"].as_u64().unwrap()};
                     let credential=configuration.lock().unwrap().token.clone();
                     let refresh=encryption.refresh(credential,Some(requested));
-                    let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
+                    let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let worker_link=worker_link.clone();
                     commands.spawn(async move {
-                        let result=match refresh.await {
+                        let refreshed=refresh.await;
+                        worker_link.reconcile();
+                        let result=match refreshed {
                             Ok(status)=>http::checked("workerEncryptionRefreshResultSchema",&json!({"component":request["command"]["component"],"keyRevision":request["command"]["keyRevision"],"status":status})),
                             Err(error)=>Err(error.into()),
                         };
@@ -881,6 +899,7 @@ async fn cycle(
     let provider_access_closed = provider_access.close().await;
     let history_stopped = history.stop().await;
     let task_outcomes_closed = task_outcomes.await;
+    let worker_link_closed = worker_link_task.await;
     let goal_delivery_closed = goal_delivery.await;
     let settings_delivery_closed = settings_delivery.await;
     let shells_closed = shells.shutdown().await;
@@ -923,6 +942,7 @@ async fn cycle(
     cli_closed?;
     github_closed?;
     task_outcomes_closed?;
+    worker_link_closed?;
     goal_delivery_closed?;
     settings_delivery_closed?;
     encryption_closed?;
@@ -1034,7 +1054,7 @@ async fn publish(
     logs: Arc<Logs>,
     mut stop: watch::Receiver<bool>,
     registered: watch::Sender<bool>,
-    encryption: Arc<Service>,
+    (encryption, worker_link): (Arc<Service>, Arc<crate::worker_link::Coordinator>),
 ) {
     let mut connected = false;
     let mut next = tokio::time::Instant::now();
@@ -1050,6 +1070,7 @@ async fn publish(
         let token = config.lock().unwrap().token.clone();
         let refresh =
             tokio::select! {_=stop.changed()=>break,result=encryption.refresh(token,None)=>result};
+        worker_link.reconcile();
         if let Err(error) = refresh {
             let worker = config.lock().unwrap().worker_id.clone();
             logs.repeated(format!("worker-encryption-refresh-failed:{}",worker.lossy()),"warn","Worker protected server connection is not ready",json!({"event":"worker.encryption.refresh-failed","subsystem":"worker-encryption","operation":"refresh-grants","reasonCode":"request-failed","status":"retrying","workerId":worker,"error":logging::error(&anyhow!(error))}));
