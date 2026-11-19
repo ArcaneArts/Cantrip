@@ -1,6 +1,7 @@
 //! Provider diagnostics are used by definition inspection. Launch builds the
 //! real command and leaves tool availability to the owned process spawn.
 mod cargo;
+mod dart;
 mod node;
 
 use super::{
@@ -60,6 +61,7 @@ pub(super) fn materialize(
     match document["provider"].as_str() {
         Some("shell") => shell::materialize(document, root, baseline),
         Some("node") => node::materialize(document, root, baseline),
+        Some("dart") => dart::materialize(document, root, baseline),
         Some("rust") => cargo::materialize(document, root, baseline),
         _ => Err(Failure::new(
             "provider",
@@ -81,6 +83,7 @@ pub(crate) fn capabilities() -> Value {
     json!(vec![
         capability("shell", "Shell", "terminal", false),
         capability("node", "Node / package", "package", true),
+        capability("dart", "Dart", "file-code", true),
         capability("rust", "Rust / Cargo", "boxes", true),
     ])
 }
@@ -93,10 +96,12 @@ pub(crate) fn detect(
     match provider {
         None => {
             let mut candidates = node::discover(root, scope)?;
+            candidates.extend(dart::discover(root, scope)?);
             candidates.extend(cargo::discover(root, scope)?);
             Ok((candidates, vec![]))
         }
         Some("node") => Ok((node::discover(root, scope)?, vec![])),
+        Some("dart") => Ok((dart::discover(root, scope)?, vec![])),
         Some("rust") => Ok((cargo::discover(root, scope)?, vec![])),
         Some("shell") => Ok((vec![], vec![])),
         Some(provider) => Ok((
@@ -119,6 +124,7 @@ pub(crate) fn validation(
     let (effective, diagnostics) = match document["provider"].as_str() {
         Some("shell") => shell::validate(document, root, baseline),
         Some("node") => node::validate(document, root, baseline),
+        Some("dart") => dart::validate(document, root, baseline),
         Some("rust") => cargo::validate(document, root, baseline, scope)?,
         _ => bail!("This Run configuration provider is unavailable on the native worker."),
     };

@@ -5378,3 +5378,32 @@ definition file checks passed.
 Java, Dart, Flutter, Cantrip OS Run execution, and production cutover
 remain open. Real Cargo execution was verified on macOS, with Linux and
 Windows runtime validation pending.
+
+## 120. Discover, validate, and run Dart project configurations
+
+Reference commit `f9cca57830aa73f8bf2fd0e4d15053a2dbdc2e1a` (#3282).
+
+The Dart provider discovers bounded pubspec and source files without starting
+an SDK. It finds top-level Dart main functions, assigns sources to their
+nearest package, and omits Flutter packages, test entrypoints, generated
+directories, and symlinks. Definition diagnostics cover package and
+entrypoint selection, SDK paths, and command before-launch steps. Dart
+definitions can appear with Shell, Node, and Cargo definitions in the
+validated inventory.
+
+The native Host supervisor runs Dart from the project launch environment or
+an explicit SDK. It preserves platform overrides, VM and program arguments,
+shell command overrides, and protected output. A missing SDK executable
+reports the actual spawn failure.
+
+The local macOS ARM64 smoke compared discovery, diagnostics, and mixed
+inventory with the Node definition service. Both Rust services ran with
+PGlite and the worker's startup PATH excluded Node. With
+`CANTRIP_TEST_DART_SDK` set, Dart 3.11 executed via a selected SDK and via
+the Run PATH. The fixture verified before-launch ordering, VM assertions,
+Unicode and spaced arguments, encrypted output, a custom shell command,
+and the missing SDK spawn failure. The existing Node Dart provider tests
+and focused Rust Run tests also passed.
+
+Java, Flutter, Cantrip OS Run execution, and the production cutover remain
+open. Dart execution was exercised on macOS ARM64.
