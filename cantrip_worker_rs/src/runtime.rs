@@ -399,6 +399,18 @@ async fn cycle(
                     });
                     continue;
                 }
+                if kind == crate::codex::turn::task_route::COMMAND {
+                    let codex = codex.clone();
+                    let turns = turns.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = turns.revoke_task_input(&codex, &request["command"]).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if kind == crate::codex::revocation::COMMAND {
                     let result = turns.revoke_resource(command);
                     finish(&request, &worker, logs, &outgoing, began, &result);
@@ -521,8 +533,8 @@ async fn cycle(
                         if let Some(note) = note
                             && let Err(error) = outgoing.notification(note)
                         {
-                            logs.event("warn", "Task outcome notification was rejected",
-                                json!({"event":"task.outcome-publication-failed","workerId":worker,"error":logging::error(&error)}));
+                            logs.event("warn", "Task notification was rejected",
+                                json!({"event":"task.notification-publication-failed","workerId":worker,"error":logging::error(&error)}));
                         }
                     });
                     continue;

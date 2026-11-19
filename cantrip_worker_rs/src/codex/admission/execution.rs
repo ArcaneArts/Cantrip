@@ -9,6 +9,10 @@ pub struct Execution {
 }
 
 impl Execution {
+    pub(in crate::codex) fn revoke(&self, reason: &str) -> Result<()> {
+        self.adapter.revoke_operation(&self.operation, reason)
+    }
+
     pub fn settled(&self) -> Work<()> {
         self.operation.settlement.work()
     }

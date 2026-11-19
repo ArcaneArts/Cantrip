@@ -118,22 +118,28 @@ impl Adapter {
             if !matches(&operation.input) {
                 continue;
             }
-            {
-                let mut state = operation.state.lock().unwrap();
-                if state.settled {
-                    continue;
-                }
-                state.revoked = true;
-            }
-            let (_, outcome) = cancellation_state(&operation);
-            operation.ticket()?.cancel(Some(anyhow!(REMOVED)));
-            if let Some(outcome) = outcome {
-                self.settle(&operation, outcome)?;
-            } else {
-                self.notify_revocation(&operation)?;
-            }
+            self.revoke_operation(&operation, REMOVED)?;
         }
         Ok(())
+    }
+
+    pub(super) fn revoke_operation(&self, operation: &Arc<Operation>, reason: &str) -> Result<()> {
+        // Hold the ticket while the terminal observer may remove its active entry.
+        let ticket = {
+            let mut state = operation.state.lock().unwrap();
+            if state.settled {
+                return Ok(());
+            }
+            state.revoked = true;
+            operation.ticket()?
+        };
+        let (_, outcome) = cancellation_state(operation);
+        ticket.cancel(Some(anyhow!("{reason}")));
+        if let Some(outcome) = outcome {
+            self.settle(operation, outcome)
+        } else {
+            self.notify_revocation(operation)
+        }
     }
 
     pub fn observation_lost(&self) -> Result<()> {
