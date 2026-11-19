@@ -1,25 +1,25 @@
-//! Host Explorer filesystem implementation. Transport, protected state and
+//! Shared Explorer filesystem implementation. Transport, protected state and
 //! resource authorization belong to the command adapter, not this engine.
 mod directory;
 mod files;
 mod git;
+mod pages;
 mod paths;
 mod search;
+mod stamp;
 
 use super::Scope;
 use anyhow::{Result, anyhow, bail};
 use cantrip_crypto::checked;
 use cantrip_wire::{JsString, Value, value::json};
-use std::{fs::Metadata, path::Path, time::UNIX_EPOCH};
+use std::{fs::Metadata, path::Path};
 
 pub use directory::{create_directory, create_file, delete_entry, list_directory, rename_entry};
 pub use files::{TextPreviewRequiredError, read_file, write_file};
 pub use git::directory_commits;
 pub use search::search_files;
 
-/// Dispatch only host operations implemented in this module. This is not an
-/// advertised worker command handler: the encrypted adapter is still required.
-/// That adapter must validate the decrypted request with the protocol schema.
+/// Execute a protocol-validated Explorer request on the owning filesystem.
 pub async fn execute(root: &Path, request: &Value, scope: &Scope) -> Result<Value> {
     execute_decoded(root, request, request, scope).await
 }
@@ -57,6 +57,10 @@ pub async fn execute_decoded(
             directory_commits(root, path()?, scope).await?,
         ),
         "explorer.file.read" => ("explorer.file", read_file(root, path()?).await?),
+        "explorer.binary.read"
+        | "explorer.file.preview"
+        | "explorer.file.tail"
+        | "explorer.media.read" => return pages::execute(root, path()?, request).await,
         "explorer.file.write" => (
             "explorer.file",
             write_file(
@@ -107,10 +111,24 @@ pub(crate) fn failure(error: &anyhow::Error) -> Value {
         "ok":false,
         "error":JsString::new(message.units().iter().take(2000).copied().collect()),
     });
-    if error.is::<TextPreviewRequiredError>() {
-        result["code"] = json!("text-preview-required");
+    if let Some(code) = failure_code(error) {
+        result["code"] = json!(code);
     }
     result
+}
+
+pub fn failure_code(error: &anyhow::Error) -> Option<&'static str> {
+    if error.is::<TextPreviewRequiredError>() {
+        Some("text-preview-required")
+    } else if error.is::<pages::BinaryFileChanged>() {
+        Some("file-version-changed")
+    } else {
+        None
+    }
+}
+
+pub(crate) fn complete(result: &Value) -> bool {
+    result["type"] != "explorer.media" || result["value"]["eof"] == true
 }
 
 fn joined(parent: &JsString, name: &JsString) -> JsString {
@@ -133,15 +151,31 @@ fn markdown(path: &JsString) -> bool {
             .any(|v| extension.iter().copied().eq(v.encode_utf16()))
 }
 fn modified(metadata: &Metadata) -> Result<String> {
-    let nanos = match metadata.modified()?.duration_since(UNIX_EPOCH) {
-        Ok(duration) => duration.as_nanos() as i128,
-        Err(error) => -(error.duration().as_nanos() as i128),
+    date_iso(modified_milliseconds(metadata)?)
+}
+
+fn modified_milliseconds(metadata: &Metadata) -> Result<f64> {
+    #[cfg(unix)]
+    let nanos = stamp::epoch_nanos(metadata.modified()?);
+    #[cfg(windows)]
+    let nanos = {
+        use std::os::windows::fs::MetadataExt;
+        stamp::windows_nanos(metadata.last_write_time() as i64)
     };
-    // Node Stats constructs mtimeMs in floating point, then Date truncates it
-    // toward zero. Preserve both stages, including timestamps before the epoch.
-    let milliseconds = nanos.div_euclid(1_000_000_000) as f64 * 1000.
-        + nanos.rem_euclid(1_000_000_000) as f64 / 1_000_000.;
-    cantrip_protocol::date_iso_milliseconds(milliseconds.trunc() as i64)
+    // Node Stats retains the fractional milliseconds for change checks.
+    Ok(nanos.div_euclid(1_000_000_000) as f64 * 1000.
+        + nanos.rem_euclid(1_000_000_000) as f64 / 1_000_000.)
+}
+
+fn date_iso(milliseconds: f64) -> Result<String> {
+    // Stats rounds before constructing the Date, with ties toward +infinity.
+    let floor = milliseconds.floor();
+    let rounded = if milliseconds - floor >= 0.5 {
+        floor + 1.
+    } else {
+        floor
+    };
+    cantrip_protocol::date_iso_milliseconds(rounded as i64)
         .ok_or_else(|| anyhow!("Invalid time value"))
 }
 fn entry(

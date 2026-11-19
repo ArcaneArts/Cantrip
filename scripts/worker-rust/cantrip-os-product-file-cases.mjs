@@ -119,6 +119,7 @@ export async function verifyProductFiles({
     surfaceId,
     input,
     operationId = randomUUID(),
+    sequence = 0,
   ) {
     const request = p.explorerOperationRequestContentSchema.parse(input);
     const context = {
@@ -126,7 +127,7 @@ export async function verifyProductFiles({
       surfaceKind,
       surfaceId,
       operationId,
-      sequence: 0,
+      sequence,
     };
     const plaintext = new TextEncoder().encode(JSON.stringify(request));
     const req = { ...context, direction: "request" };
@@ -147,14 +148,21 @@ export async function verifyProductFiles({
     return {
       context,
       request,
-      send: async () => {
-        const response = await call("POST", route, {
-          operationId,
-          sequence: 0,
-          protectedRequest: opaque,
-          ...(surfaceKind === "explorer" ? { binding } : {}),
-        });
+      send: async (expected = 200) => {
+        const response = await call(
+          "POST",
+          route,
+          {
+            operationId,
+            sequence,
+            protectedRequest: opaque,
+            ...(surfaceKind === "explorer" ? { binding } : {}),
+          },
+          expected,
+        );
+        if (expected !== 200) return response;
         assert.equal(response.operationId, operationId);
+        assert.equal(response.sequence, sequence);
         assert.ok(!JSON.stringify(response).includes(file));
         const bytes = await c.decryptSurfaceStreamPayload({
           ownerId,
@@ -219,6 +227,72 @@ export async function verifyProductFiles({
       path: "../outside",
     });
     assert.equal(outside.error, "Explorer path traversal is not allowed.");
+    const preview = await edit({
+      type: "explorer.file.preview",
+      path: file,
+      offset: 0,
+    });
+    assert.equal(preview.result.value.content, content);
+    const binary = await edit({
+      type: "explorer.binary.read",
+      path: file,
+      offset: 0,
+      limit: 48110,
+    });
+    assert.deepEqual(
+      Buffer.from(binary.result.value.data, "base64"),
+      Buffer.from(content).subarray(0, 48110),
+    );
+    assert.equal(binary.result.value.eof, false);
+    const tail = await edit({ type: "explorer.file.tail", path: file });
+    assert.equal(tail.result.value.content, content);
+    const sameTail = await edit({
+      type: "explorer.file.tail",
+      path: file,
+      cursor: tail.result.value.cursor,
+    });
+    assert.equal(sameTail.result.value.reset, false);
+    assert.equal(sameTail.result.value.content, "");
+
+    const mediaFile = "media-fixture.PNG";
+    await put(guestPath + "/" + mediaFile, "abcdef");
+    const media = {
+      type: "explorer.media.read",
+      path: mediaFile,
+      offset: 0,
+      limit: 3,
+    };
+    const stream = randomUUID();
+    const first = await (
+      await operation("explorer", explorer, media, stream)
+    ).send();
+    assert.equal(first.result.value.eof, false);
+    assert.equal(first.result.value.mimeType, "image/png");
+    assert.equal(
+      Buffer.from(first.result.value.data, "base64").toString(),
+      "abc",
+    );
+    const next = await operation(
+      "explorer",
+      explorer,
+      { ...media, offset: 3 },
+      stream,
+      1,
+    );
+    const second = await next.send();
+    assert.equal(second.result.value.eof, true);
+    assert.equal(
+      Buffer.from(second.result.value.data, "base64").toString(),
+      "def",
+    );
+    const closed = await operation(
+      "explorer",
+      explorer,
+      { ...media, offset: 6 },
+      stream,
+      2,
+    );
+    assert.match((await closed.send(502)).error, /already completed/u);
   } finally {
     await root("mv", legacy + ".fixture", legacy);
   }
@@ -300,6 +374,13 @@ export async function verifyProductFiles({
     return response.result.outcome;
   };
   assert.deepEqual(await oracle(savedWrite, true), original);
+  for (const request of [
+    { type: "explorer.binary.read", path: file, offset: 0, limit: 32 },
+    { type: "explorer.file.tail", path: file },
+  ]) {
+    const check = await operation("file-document", document, request);
+    assert.deepEqual(await check.send(), await oracle(check));
+  }
 
   const fromNode = await operation("file-document", document, {
     type: "explorer.file.write",

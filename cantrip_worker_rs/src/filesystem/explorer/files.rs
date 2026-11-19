@@ -17,7 +17,7 @@ impl std::fmt::Display for TextPreviewRequiredError {
     }
 }
 impl std::error::Error for TextPreviewRequiredError {}
-fn decode(bytes: &[u8]) -> Result<&str> {
+pub(super) fn decode(bytes: &[u8]) -> Result<&str> {
     if bytes.contains(&0) {
         bail!("Binary files cannot be previewed.");
     }

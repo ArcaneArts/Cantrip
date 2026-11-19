@@ -143,7 +143,7 @@ loaded by a production service.
 | WorkerLink/direct/tunnels | Gateways, peer/WebRTC, direct broker, tunnel protection and routing | Native installed authority, live observations, encrypted Host terminals and TCP, WebDAV shares, direct tickets, and LAN and WAN peer carriage | Continue managed console and guest/surface adapters. Local peer fixtures cover authenticated negotiation, encrypted TCP, credit, renewal, and revocation. |
 | Browsers/surfaces/computer use | Browser discovery, browser/desktop adapters, remote surfaces, computer use, and managed web runtimes | Native browser discovery, Chromium and CDP, encrypted surfaces with recovery, and signed managed Chromium installation | Public browser transport and Chromium recovery fixtures pass locally. The native installer verifies signed releases and probes Chromium. Legacy browser WebRTC, desktop capture, computer use, managed web sessions and search remain open. |
 | MCP/CLI/CodeGraph                  | `mcp/*`, CLI broker, computer-use MCP, codegraph/runtime/supervisor                                                                       | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Native stdio/HTTP helpers, generated/persisted launch commands, binding/generation scopes, CLI and managed-runtime fixtures                                                                                                                                                                                                      |
-| Cantrip OS | `cantrip_os/host`, `os-executor/*`, native MCP/run execution | Native guest inspection, attachment, workspace listing and creation, operation inspection, Linux-owned source provisioning and verification, linked Host mounts, guest Run definitions and process supervision, and guest Explorer navigation and text documents | Continue guest file transfers and previews, chat files, lifecycle, PTYs, tunnels, packages, backups, system operations and checkpoints. |
+| Cantrip OS | `cantrip_os/host`, `os-executor/*`, native MCP/run execution | Native guest inspection, attachment, workspace listing and creation, operation inspection, Linux-owned source provisioning and verification, linked Host mounts, guest Run definitions and process supervision, and guest Explorer navigation, text documents, and paged reads | Continue guest file transfers, chat files, lifecycle, PTYs, tunnels, packages, backups, system operations and checkpoints. |
 | Upgrade and packaging              | profile converter/database-transfer, server profile preparation, desktop services/worker, distribution/runtime scripts, worker Dockerfile | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Node-free legacy conversion/export/restore, desktop/standalone artifacts, existing-profile reopen and actual child-process/runtime audit                                                                                                                                                                                         |
 
 The source index includes existing tests with their source hashes. Each port must
@@ -6646,3 +6646,30 @@ receipt without changing that file. The guest Run lifecycle smoke and the
 Explorer unit test also passed. SSH, Windows, and release image builds were
 outside this validation. Paged reads, binary writes, imports and chat file
 integration remain open.
+
+## 166. Read binary pages, text previews, logs and media in Rust
+
+Reference commit 963dcfb66a6bf47faf35cd19640dc6cf0220e3ec (#3329).
+
+Host and guest Explorer and file-document operations share the native read
+implementation. Each page opens its own file handle and bounds the read.
+Binary snapshots retain the existing signed metadata fields and version
+tokens. Text previews retain their line and byte limits, preserve the BOM,
+and keep complete UTF-8 characters together. Log cursors preserve the
+file identity and anchor used for append and rotation detection. Stat dates
+use the rounding applied by the Node file metadata API.
+[Node stat date conversion](https://github.com/nodejs/node/blob/v24.22.2/lib/internal/fs/utils.js#L406-L443)
+
+Executor 0.16.0 carries these operations into the guest. Media pages reuse
+the protected operation until the final chunk. Binary pages, text previews,
+and log polls use independent protected requests as before.
+
+The macOS Explorer fixture passed 78 comparisons against Node, including
+exact versions, stale-version errors, split UTF-8, log rotation, media types
+and timestamps. The Windows x64 GNU worker cross-check passed. Local
+Docker ARM64 testing used the production Rust server and worker with the
+locally assembled executor package. It exercised the protected reads,
+compared binary versions and log cursors with the Node guest helper on
+the same file, and checked media sequence completion. Windows runtime,
+SSH and release image builds were outside this cycle. Binary writes,
+imports and chat file integration remain open.
