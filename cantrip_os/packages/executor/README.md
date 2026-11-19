@@ -35,14 +35,14 @@ requested.
 Workspace support remains enabled by default. Including the executor requires
 the workspace package; apt enforces that dependency.
 
-Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.14.0_<arch>.deb`.
+Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.15.0_<arch>.deb`.
 It contains the source/patch fingerprint manifest, binary hashes, licenses, and
 sandbox helper. Docker and ISO recipes install the same package.
 
 Inside Linux, after copying the package there:
 
 ```sh
-sudo apt install ./cantrip-os-executor_0.14.0_arm64.deb  # amd64 for the VM edition
+sudo apt install ./cantrip-os-executor_0.15.0_arm64.deb  # amd64 for the VM edition
 sudo cantrip-executor enable
 sudo cantrip-executor status
 sudo cantrip-executor attach OWNER_ID WORKER_ID
@@ -257,3 +257,10 @@ selects it using the capability on the captured executor binding. The
 helper prepares the admitted Linux worktree, environment and launch commands.
 The worker still owns process start, output, stop and recovery. Older executor
 packages continue to use their shipped preparation helper during the transition.
+
+Version 0.15.0 adds the native Cantrip OS file helper for Explorer navigation,
+text documents and file and directory mutations from the Rust worker. It
+runs as the selected workspace account and reads the existing file operation
+receipts. After uncertain delivery, the worker asks the helper to observe the
+same admission. The package retains the JavaScript helper for Node worker
+compatibility during the migration.

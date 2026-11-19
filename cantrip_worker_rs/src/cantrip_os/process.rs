@@ -72,11 +72,20 @@ pub(super) async fn run(
     invocation: Invocation<'_>,
     limits: Limits,
 ) -> Result<Output> {
-    let cwd = file_uri(invocation.cwd)?;
     let id = Uuid::new_v4().to_string();
     if let Some(journal) = journal {
         journal.prepare_process(&id, invocation.argv)?;
     }
+    run_owned(session, &id, invocation, limits).await
+}
+
+pub(super) async fn run_owned(
+    session: &mut Session<'_>,
+    id: &str,
+    invocation: Invocation<'_>,
+    limits: Limits,
+) -> Result<Output> {
+    let cwd = file_uri(invocation.cwd)?;
     let deadline = Instant::now() + limits.deadline;
     let result = async {
         session
@@ -95,9 +104,9 @@ pub(super) async fn run(
                 ensure!(result["status"] == "accepted", "Linux process input was not acknowledged.");
             }
         }
-        read(session, &id, deadline, limits.output, false).await
+        read(session, id, deadline, limits.output, false).await
     }.await;
-    result.map_err(|error| uncertain(&id, error))
+    result.map_err(|error| uncertain(id, error))
 }
 
 pub(super) async fn observe(session: &mut Session<'_>, id: &str, limits: Limits) -> Result<Output> {

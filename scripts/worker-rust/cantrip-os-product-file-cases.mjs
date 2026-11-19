@@ -1,0 +1,345 @@
+// Real Rust server/worker and an upgraded disposable workspace. The legacy
+// helper is used explicitly as a differential oracle and receipt producer.
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import * as c from "../../packages/crypto/dist/index.js";
+import * as p from "../../packages/protocol/dist/index.js";
+
+const legacy = "/usr/lib/cantrip-os-executor/file-operations.mjs";
+const native = "/usr/lib/cantrip-os-executor/cantrip-os-files";
+
+export async function verifyProductFiles({
+  call,
+  target,
+  workspace,
+  os,
+  actual,
+  data,
+  serverId,
+  workerId,
+  hash,
+  docker,
+  transport,
+  container,
+  crashWorker,
+  restartWorker,
+  surfaceKey,
+  metadataKey,
+}) {
+  const ownerId = os.ownerId;
+  const { projectId, worktreeId, guestPath } = target;
+  const binding = { projectId, worktreeId, workerId };
+  const placement = {
+    worktreeId,
+    cantripOsBindingId: target.id,
+    cantripOsRuntimeGeneration: os.runtimeGeneration,
+  };
+  const guest = (...args) =>
+    docker(
+      "exec",
+      "--user",
+      String(actual.uid),
+      "-e",
+      "HOME=" + actual.home,
+      container,
+      ...args,
+    );
+  const root = (...args) => docker("exec", "--user", "0", container, ...args);
+  const put = (file, contents) =>
+    guest(
+      "/bin/sh",
+      "-ec",
+      'printf "%s" "$2" > "$1"',
+      "fixture",
+      file,
+      contents,
+    );
+  const encryptState = (resource, resourceId, recordKind, fields) =>
+    c.encryptSurfacePrivateState({
+      ownerId,
+      keyRevision: 1,
+      componentKey: surfaceKey,
+      context: {
+        resource,
+        resourceId,
+        serverId,
+        recordKind,
+        operationId: null,
+      },
+      content: { version: 1, classification: { recordKind }, ...fields },
+    });
+  const file = "les données.md";
+  const explorer = randomUUID();
+  const document = randomUUID();
+  await call(
+    "POST",
+    "/api/projects/" + projectId + "/explorers",
+    {
+      ...placement,
+      id: explorer,
+      attachToTabLayout: false,
+      titleProtection: await c.encryptPrivateDisplayLabel({
+        ownerId,
+        keyRevision: 1,
+        componentKey: metadataKey,
+        rowId: explorer,
+        recordKind: "explorer",
+        label: "Native guest files",
+      }),
+      stateProtection: await encryptState(
+        "explorer-row",
+        explorer,
+        "explorer-state",
+        { selectedPath: null },
+      ),
+    },
+    201,
+  );
+  const summary = await call(
+    "POST",
+    "/api/projects/" + projectId + "/file-documents",
+    {
+      ...placement,
+      id: document,
+      stateProtection: await encryptState(
+        "file-document-row",
+        document,
+        "file-document-state",
+        { ...binding, path: file },
+      ),
+    },
+  );
+  assert.equal(summary.cantripOsBindingId, target.id);
+  assert.ok(!JSON.stringify(summary).includes(file));
+
+  async function operation(
+    surfaceKind,
+    surfaceId,
+    input,
+    operationId = randomUUID(),
+  ) {
+    const request = p.explorerOperationRequestContentSchema.parse(input);
+    const context = {
+      serverId,
+      surfaceKind,
+      surfaceId,
+      operationId,
+      sequence: 0,
+    };
+    const plaintext = new TextEncoder().encode(JSON.stringify(request));
+    const req = { ...context, direction: "request" };
+    const opaque = await c.encryptSurfaceStreamPayload({
+      ownerId,
+      keyRevision: 1,
+      componentKey: surfaceKey,
+      context: req,
+      plaintext,
+    });
+    plaintext.fill(0);
+    const route =
+      (surfaceKind === "explorer"
+        ? "/api/explorers/"
+        : "/api/file-documents/") +
+      surfaceId +
+      "/operation";
+    return {
+      context,
+      request,
+      send: async () => {
+        const response = await call("POST", route, {
+          operationId,
+          sequence: 0,
+          protectedRequest: opaque,
+          ...(surfaceKind === "explorer" ? { binding } : {}),
+        });
+        assert.equal(response.operationId, operationId);
+        assert.ok(!JSON.stringify(response).includes(file));
+        const bytes = await c.decryptSurfaceStreamPayload({
+          ownerId,
+          keyRevision: 1,
+          componentKey: surfaceKey,
+          context: { ...context, direction: "response" },
+          opaque: response.protectedResponse,
+        });
+        return p.surfaceOperationOutcomeContentSchema.parse(
+          JSON.parse(new TextDecoder().decode(bytes)),
+        );
+      },
+    };
+  }
+  const explore = async (request) =>
+    (await operation("explorer", explorer, request)).send();
+  const edit = async (request) =>
+    (await operation("file-document", document, request)).send();
+
+  await root("test", "-x", native);
+  await root("mv", legacy, legacy + ".fixture");
+  let savedWrite, original;
+  try {
+    const created = await explore({
+      type: "explorer.file.create",
+      path: "",
+      name: file,
+    });
+    assert.equal(created.ok, true, JSON.stringify(created));
+    const listing = await explore({
+      type: "explorer.directory.list",
+      path: "",
+    });
+    assert.ok(listing.result.value.entries.some(({ name }) => name === file));
+    const initial = await edit({ type: "explorer.file.read", path: file });
+    assert.equal(initial.ok, true, JSON.stringify(initial));
+    assert.equal(initial.result.value.content, "");
+    const content = "\ufeff" + "résultat 日本語 🌿\n".repeat(2400);
+    savedWrite = await operation("file-document", document, {
+      type: "explorer.file.write",
+      path: file,
+      version: initial.result.value.version,
+      content,
+    });
+    original = await savedWrite.send();
+    assert.equal(original.ok, true, JSON.stringify(original).slice(0, 2000));
+    assert.equal(original.result.value.content, content);
+    assert.equal(
+      await guest("stat", "-c", "%u", guestPath + "/" + file),
+      String(actual.uid),
+    );
+    const wrong = await edit({
+      type: "explorer.file.read",
+      path: "untouched.txt",
+    });
+    assert.equal(
+      wrong.error,
+      "The operation does not target this file document.",
+    );
+    const outside = await explore({
+      type: "explorer.file.read",
+      path: "../outside",
+    });
+    assert.equal(outside.error, "Explorer path traversal is not allowed.");
+  } finally {
+    await root("mv", legacy + ".fixture", legacy);
+  }
+
+  const cache = actual.home + "/.local/state/cantrip-os-executor/files";
+  const directories = (
+    await guest("find", cache, "-mindepth", "1", "-maxdepth", "1", "-type", "d")
+  ).split("\n");
+  assert.equal(directories.length, 1);
+  const [directory] = directories;
+  const identity = path.posix.basename(directory);
+  const execution = p.cantripOsExecutionSchema.parse({
+    kind: "cantrip-os",
+    transport,
+    scope: {
+      ...binding,
+      ownerId,
+      instanceId: os.id,
+      guestInstanceId: os.guestInstanceId,
+      attachmentGeneration: os.attachmentGeneration,
+      runtimeGeneration: os.runtimeGeneration,
+      bindingId: target.id,
+      bindingGeneration: target.bindingGeneration,
+      projectSourceId: target.projectSourceId,
+      sourceKind: "git",
+      workspaceId: workspace.id,
+      guestWorkspaceId: actual.id,
+      uid: actual.uid,
+      gid: actual.gid,
+      homeGuestPath: actual.home,
+      guestPath,
+      mode: "linux-owned",
+      linkedWorkerPath: null,
+      dependencyOverlays: [],
+    },
+  });
+  assert.equal(identity, hash({ execution, serverId }));
+  const receipt = ({ context }) => directory + "/" + hash(context) + ".json";
+  const saved = JSON.parse(await guest("cat", receipt(savedWrite)));
+  const fingerprint = ({ context, request }) =>
+    hash({ id: context.operationId, request, context });
+  assert.equal(saved.digest, fingerprint(savedWrite));
+  const admission = (context) =>
+    path.join(
+      data,
+      "os-file-admissions",
+      hash({ identity, context }) + ".json",
+    );
+  assert.deepEqual(
+    JSON.parse(await readFile(admission(savedWrite.context), "utf8")),
+    { digest: saved.digest },
+  );
+  assert.deepEqual(saved.result, { complete: true, outcome: original });
+  const oracle = async ({ context, request }, observed = false) => {
+    const id = context.operationId;
+    const frame = observed
+      ? {
+          action: "observe",
+          id,
+          context,
+          digest: hash({ id, request, context }),
+        }
+      : { action: "execute", id, request, context };
+    const stdout = await guest(
+      "/bin/sh",
+      "-ec",
+      'printf "%s\\n" "$1" | /usr/bin/node "$2" "$3" "$4"',
+      "fixture",
+      JSON.stringify(frame),
+      legacy,
+      guestPath,
+      identity,
+    );
+    const [ready, response] = stdout
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.equal(ready.identity, identity);
+    assert.equal(response.id, id);
+    return response.result.outcome;
+  };
+  assert.deepEqual(await oracle(savedWrite, true), original);
+
+  const fromNode = await operation("file-document", document, {
+    type: "explorer.file.write",
+    path: file,
+    version: original.result.value.version,
+    content: "legacy completion\n",
+  });
+  const nodeReceipt = await oracle(fromNode);
+  assert.equal(nodeReceipt.ok, true, JSON.stringify(nodeReceipt));
+  // Use the receipt just emitted by the packaged Node peer and the local
+  // admission record its worker would have persisted before dispatch.
+  await writeFile(
+    admission(fromNode.context),
+    JSON.stringify({ digest: fingerprint(fromNode) }),
+    { flag: "wx", mode: 0o600 },
+  );
+
+  await put(guestPath + "/" + file, "edited independently\n");
+  assert.deepEqual(await fromNode.send(), nodeReceipt);
+  assert.equal(
+    await guest("cat", guestPath + "/" + file),
+    "edited independently",
+  );
+
+  await crashWorker();
+  assert.deepEqual(await savedWrite.send(), original);
+  assert.equal(
+    await guest("cat", guestPath + "/" + file),
+    "edited independently",
+  );
+  await put(receipt(savedWrite), JSON.stringify({ digest: saved.digest }));
+  await restartWorker();
+  const unknown = await savedWrite.send();
+  assert.equal(unknown.ok, false);
+  assert.match(unknown.error, /unknown outcome/u);
+  assert.equal(
+    await guest("cat", guestPath + "/" + file),
+    "edited independently",
+  );
+  console.log(
+    "Native guest files passed: protected Explorer and document edits, legacy receipts in both directions, and observation-only crash recovery.",
+  );
+}

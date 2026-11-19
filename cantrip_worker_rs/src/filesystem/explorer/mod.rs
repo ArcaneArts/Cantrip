@@ -101,6 +101,18 @@ pub async fn execute_decoded(
     Ok(json!({"type":kind,"value":value}))
 }
 
+pub(crate) fn failure(error: &anyhow::Error) -> Value {
+    let message: JsString = error.to_string().into();
+    let mut result = json!({
+        "ok":false,
+        "error":JsString::new(message.units().iter().take(2000).copied().collect()),
+    });
+    if error.is::<TextPreviewRequiredError>() {
+        result["code"] = json!("text-preview-required");
+    }
+    result
+}
+
 fn joined(parent: &JsString, name: &JsString) -> JsString {
     if parent.is_empty() {
         return name.clone();

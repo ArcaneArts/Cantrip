@@ -19,6 +19,8 @@ pub mod filesystem;
 pub mod git;
 pub mod github;
 mod grok;
+#[cfg(all(feature = "guest-files", target_os = "linux"))]
+pub mod guest_files;
 #[cfg(all(feature = "guest-run-definitions", target_os = "linux"))]
 pub mod guest_run_definitions;
 pub mod history;
