@@ -21,7 +21,8 @@
     "remoteBrowserServerMessageSchema": 257,
     "remoteBrowserCursorMessageSchema": 306,
     "remoteBrowserClipboardMessageSchema": 309,
-    "browserPrivateStateProtectedContentSchema": 313
+    "browserPrivateStateProtectedContentSchema": 313,
+    "remoteDesktopServerMessageSchema": 321
   },
   "nodes": [
     {
@@ -1940,6 +1941,298 @@
         }
       ]
     },
-    { "type": "never", "checks": [] }
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "remoteDesktopServerMessageSchema",
+      "options": [322, 329, 334, 340, 346, 361, 367, 375],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 323,
+        "mode": 324,
+        "isController": 325,
+        "leaseId": 326
+      },
+      "catchall": 328,
+      "checks": []
+    },
+    { "type": "literal", "values": ["desktop-control"], "checks": [] },
+    { "type": "enum", "values": ["agent", "switching", "human"], "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 327, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 330, "participants": 331 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["desktop-cursor-assets"], "checks": [] },
+    {
+      "type": "array",
+      "element": 332,
+      "checks": [{ "check": "max_length", "maximum": 16, "when": "length" }]
+    },
+    { "type": "object", "shape": { "id": 333, "sprite": 269 }, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "type": 335, "id": 336, "x": 337, "y": 338, "click": 339 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["desktop-cursor"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 341, "epoch": 342, "message": 344 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["desktop-input"], "checks": [] },
+    { "type": "nullable", "innerType": 343, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 345, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 2048, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 347,
+        "width": 348,
+        "height": 349,
+        "status": 350,
+        "message": 351,
+        "stream": 353
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["desktop-state"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": ["ready", "launching", "suspended", "error"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 352, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 2048, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 354,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 355, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "backend": 356,
+        "targetFps": 357,
+        "observedFps": 358,
+        "quality": 359,
+        "encodedWidth": 360
+      },
+      "checks": []
+    },
+    { "type": "enum", "values": ["native", "compatibility"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 60, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 240, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 100, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 362,
+        "operationId": 363,
+        "stateProtection": 149,
+        "monitorCount": 364,
+        "windowCount": 365
+      },
+      "catchall": 366,
+      "checks": []
+    },
+    { "type": "literal", "values": ["desktop-targets"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 64, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 2000, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "object", "shape": { "type": 368, "icons": 369 }, "checks": [] },
+    { "type": "literal", "values": ["desktop-target-icons"], "checks": [] },
+    {
+      "type": "array",
+      "element": 370,
+      "checks": [{ "check": "max_length", "maximum": 64, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "remoteDesktopApplicationIconSchema",
+      "shape": { "key": 371, "mimeType": 372, "data": 373 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "name": "remoteDesktopApplicationIconKeySchema",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 128, "when": "length" },
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-zA-Z0-9:_-]+$",
+          "flags": "u",
+          "displayPattern": "/^[a-zA-Z0-9:_-]+$/u"
+        }
+      ]
+    },
+    { "type": "literal", "values": ["image/png"], "checks": [] },
+    { "type": "nullable", "innerType": 374, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 180000, "when": "length" }]
+    },
+    { "type": "object", "shape": { "type": 376, "text": 377 }, "checks": [] },
+    { "type": "literal", "values": ["desktop-clipboard"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    }
   ]
 }

@@ -6262,3 +6262,32 @@ replay across reconnect, and helper cleanup at reconnect and shutdown. The
 focused Node reference tests exercised the existing desktop adapter and
 capture leases using owned targets. Native screen permissions and live
 capture were outside this cycle.
+
+
+## 152. Stream protected Host desktop captures
+
+Reference commit `bfc461b6e05f9b8371059fc089aa0f61df707dc2` (#3314).
+
+Host desktop attachments use the existing authenticated surface command and
+WebSocket routes. The worker opens the protected target and revision, asks
+the existing native helper for the exact target ID and generation, and owns
+the returned lease. Frame responses must match the lease, target identity,
+generation and declared PNG dimensions. The worker converts bounded PNGs to
+JPEG, adjusts output for viewport and transport pressure, and sends encrypted
+frames and desktop state with per-attachment channel sequences.
+
+Suspend, retarget, and close retire the old work and capture lease. Detaching
+the final viewer releases capture. The worker fences stale helper handles
+and closes the shared helper on connection replacement. A failed exact selection reports a capture error.
+The worker still reports managed desktop unavailable while viewer input,
+WorkerLink desktop transport, guest desktops, and other compatibility paths
+are incomplete.
+
+On macOS ARM64, the production Rust worker used the actual helper with its
+deterministic backend over a fixture Core socket. The TypeScript client
+decrypted and decoded window and display JPEGs, and verified suspend,
+resume, target changes, stale revisions, missing exact targets, detach,
+close, and helper cleanup. The Browser WorkerLink relay smoke also passed
+with the Rust server and headless Chromium. The focused Node desktop and
+capture tests passed for the exercised cases. Actual desktop pixels and
+system capture permissions remain unverified.

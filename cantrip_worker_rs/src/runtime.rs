@@ -204,18 +204,6 @@ async fn cycle(
 
     let (stop, stop_rx) = watch::channel(false);
     let outgoing = Arc::new(Outbound::default());
-    let browser_surfaces = Arc::new(crate::browser_surface::Manager::new(
-        &data_directory,
-        environment,
-        encryption.clone(),
-        outgoing.clone(),
-        logs.clone(),
-    ));
-    let shares = Arc::new(crate::project_shares::Manager::new(
-        encryption.clone(),
-        chat_scratch.clone(),
-        logs.clone(),
-    ));
     let desktop_inventory = crate::desktop_inventory::DesktopInventory::start(
         worker_root,
         environment,
@@ -223,6 +211,21 @@ async fn cycle(
         outgoing.clone(),
         stop_rx.clone(),
     );
+    let browser_surfaces = Arc::new(
+        crate::browser_surface::Manager::new(
+            &data_directory,
+            environment,
+            encryption.clone(),
+            outgoing.clone(),
+            logs.clone(),
+        )
+        .with_capture(desktop_inventory.captures()),
+    );
+    let shares = Arc::new(crate::project_shares::Manager::new(
+        encryption.clone(),
+        chat_scratch.clone(),
+        logs.clone(),
+    ));
     let worker_link = Arc::new(crate::worker_link::Coordinator::new(
         worker.clone(),
         generation.clone(),
