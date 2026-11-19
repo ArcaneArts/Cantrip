@@ -954,7 +954,8 @@
     "embeddingOutcomeSchema": 14103,
     "decisionInputSchema": 14162,
     "decisionOutcomeSchema": 14193,
-    "decisionResultSchema": 14196
+    "decisionResultSchema": 14196,
+    "runConfigurationPathSuggestionSchema": 8045
   },
   "nodes": [
     {

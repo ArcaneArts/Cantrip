@@ -43,20 +43,25 @@ pub fn text(path: &Path) -> JsString {
     }
 }
 pub async fn canonical(path: &Path) -> std::io::Result<PathBuf> {
-    let result = tokio::fs::canonicalize(path).await?;
+    Ok(strip_namespace(tokio::fs::canonicalize(path).await?))
+}
+pub(crate) fn canonical_sync(path: &Path) -> std::io::Result<PathBuf> {
+    Ok(strip_namespace(std::fs::canonicalize(path)?))
+}
+fn strip_namespace(result: PathBuf) -> PathBuf {
     #[cfg(windows)]
     {
         let text = text(&result);
         let unc: Vec<_> = "\\\\?\\UNC\\".encode_utf16().collect();
         let prefix: Vec<_> = "\\\\?\\".encode_utf16().collect();
         if let Some(rest) = text.units().strip_prefix(unc.as_slice()) {
-            return Ok(native(&JsString::new([&[92, 92][..], rest].concat())));
+            return native(&JsString::new([&[92, 92][..], rest].concat()));
         }
         if let Some(rest) = text.units().strip_prefix(prefix.as_slice()) {
-            return Ok(native(&JsString::new(rest.to_vec())));
+            return native(&JsString::new(rest.to_vec()));
         }
     }
-    Ok(result)
+    result
 }
 fn comparable(path: &Path) -> JsString {
     let normalized = cantrip_config::resolve(Path::new(""), path);

@@ -5248,3 +5248,36 @@ comparison exercised the same process boundaries.
 Managed Codex consoles, direct and WorkerLink transport, delegated OS
 terminals, full xterm replay and signal parity, and production cutover
 remain open.
+
+## 116. Store and discover project Run configuration definitions
+
+Reference commit `9491b80dee962bed54cab939309bf0e497409f5b` (#3278).
+
+The native worker resolves the registered Primary source and supports
+`project.run-configuration-definitions.get`, `.write`, `.delete`, and `.paths`.
+It reads the existing `.cantrip/run-configurations` documents and hashes their
+actual bytes for revisions. Writes use the existing normalized document
+format, exclusive creation, atomic replacement, and revision and name
+conflict outcomes. Path suggestions retain purpose filtering, ranking,
+generated-directory exclusions, and scan bounds. The worker inspects Codex
+environment metadata without running setup scripts.
+
+The definition observer tracks external edits on the registered source. It
+uses native filesystem events and a bounded scan fallback. Notifications
+carry the route and changed definition identity and revision. The observer
+keeps compact change metadata, with no retained definition bodies.
+
+The local macOS ARM64 smoke enrolled the Rust worker into the Rust server
+with PGlite, imported a checkout, and compared public responses and exact
+file bytes with the Node definition service. It covered path searches,
+creation and retries, conflicts, environment status, an existing unsupported
+provider, a symlink rejection, reads across a worker restart, and deletion.
+The worker's PATH contained no Node executable. Unsafe definition paths
+retain the `file-invalid` diagnostic, with native error wording. The
+focused Rust test checks that external file changes produce the existing
+notification shape without document contents.
+
+Provider discovery and validation, the full definitions list, Flutter
+device inspection, run execution and encrypted output, Cantrip OS run
+integration, direct and WorkerLink delivery, and the production cutover
+remain open.

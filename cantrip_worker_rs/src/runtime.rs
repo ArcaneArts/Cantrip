@@ -209,6 +209,7 @@ async fn cycle(
     )?);
     codex.configure_project_goals(project_goals.clone())?;
     let outgoing = Arc::new(Outbound::default());
+    let run_definitions = Arc::new(crate::run_definitions::Definitions::default());
     codex.configure_inference_status({
         let outgoing = outgoing.clone();
         Arc::new(move |status| {
@@ -714,6 +715,22 @@ async fn cycle(
                     });
                     continue;
                 }
+                if crate::run_definitions::Definitions::supports(kind) {
+                    let definitions = run_definitions.clone();
+                    let encryption = encryption.clone();
+                    let routing = routing.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    let scope = crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let result = definitions
+                            .execute(&request["command"], &routing, scope, outgoing.clone(), encryption)
+                            .await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if crate::terminal_services::interactive::Shells::supports(kind) {
                     let shells=shells.clone();let encryption=encryption.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
                     commands.spawn(async move {
@@ -812,6 +829,7 @@ async fn cycle(
             command_failure.get_or_insert(error);
         }
     }
+    run_definitions.close().await;
     if let Err(error) = project_goals.flush().await {
         project_goals.report(&error);
     }

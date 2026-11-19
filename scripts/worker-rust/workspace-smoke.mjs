@@ -29,6 +29,7 @@ import {
   assertSurfaceGrantRefresh,
   verifyExplorer,
 } from "./explorer-smoke-cases.mjs";
+import { verifyRunDefinitions } from "./run-definitions-smoke.mjs";
 import { verifyTerminalServices } from "./terminal-services-smoke.mjs";
 import { verifyHostTerminal } from "./host-terminal-relay-smoke.mjs";
 import { verifyGit } from "./git-smoke-cases.mjs";
@@ -68,6 +69,7 @@ const { values } = parseArgs({
     "replica-provision-only": { type: "boolean", default: false },
     "replica-lifecycle-only": { type: "boolean", default: false },
     "terminal-relay-only": { type: "boolean", default: false },
+    "run-definitions-only": { type: "boolean", default: false },
   },
 });
 assert.ok(
@@ -103,6 +105,7 @@ if (
   !values["pull-request-lifecycle-only"] &&
   !values["github-operations-only"] &&
   !values["terminal-relay-only"] &&
+  !values["run-definitions-only"] &&
   !(values["replica-provision-only"] || values["replica-lifecycle-only"])
 )
   await symlink(
@@ -658,6 +661,10 @@ try {
       "actual native checkout validation and durable import",
     );
     assert.equal(await readFile(sentinel, "utf8"), "private dirty content\n");
+    if (values["run-definitions-only"]) {
+      await verifyRunDefinitions({ call, projectId, checkout, restartWorker });
+      break exercise;
+    }
     if (values["terminal-relay-only"]) {
       const metadataKey = cryptoClient.deriveComponentKey({
         accountMasterKey: master,
@@ -877,7 +884,16 @@ try {
   await stopWorker();
   await server.close();
   server = undefined;
-  if (values["terminal-relay-only"])
+  if (values["run-definitions-only"])
+    console.log(
+      JSON.stringify({
+        suite: "actual-native-run-definitions-worker-server",
+        passed: true,
+        nodeDifferential: true,
+        nodeAbsentFromWorkerPath: true,
+      }),
+    );
+  else if (values["terminal-relay-only"])
     console.log(
       JSON.stringify({
         suite: "actual-native-host-terminal-worker-server",

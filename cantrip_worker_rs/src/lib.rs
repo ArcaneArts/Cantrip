@@ -32,6 +32,7 @@ mod provider_credentials;
 pub mod replicas;
 pub mod repository_operations;
 pub mod routing;
+mod run_definitions;
 pub mod runtime;
 mod task_content;
 pub mod terminal_services;
