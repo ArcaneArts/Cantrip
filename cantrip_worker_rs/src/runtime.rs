@@ -216,6 +216,13 @@ async fn cycle(
         chat_scratch.clone(),
         logs.clone(),
     ));
+    let desktop_inventory = crate::desktop_inventory::DesktopInventory::start(
+        worker_root,
+        environment,
+        encryption.clone(),
+        outgoing.clone(),
+        stop_rx.clone(),
+    );
     let worker_link = Arc::new(crate::worker_link::Coordinator::new(
         worker.clone(),
         generation.clone(),
@@ -816,6 +823,22 @@ async fn cycle(
                     });
                     continue;
                 }
+                if kind == "surface.desktop.targets" {
+                    let pending = request["socketEpoch"].as_u64()
+                        .ok_or_else(|| anyhow!("Remote Desktop inventory has no connected socket."))
+                        .and_then(|epoch| desktop_inventory.submit(command.clone(), epoch));
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = match pending {
+                            Ok(receipt) => receipt.await.unwrap_or_else(|_| Err(anyhow!("Remote Desktop inventory stopped."))),
+                            Err(error) => Err(error),
+                        };
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if crate::browser_surface::supports(kind) {
                     let pending = crate::browser_surface::epoch(&request)
                         .and_then(|epoch| browser_surfaces.submit(command, epoch));
@@ -999,6 +1022,7 @@ async fn cycle(
     managed_web.stop();
     command_shutdown.abort(anyhow::anyhow!("Worker shutting down."));
     browser_surfaces.close().await;
+    desktop_inventory.close().await;
     worktree_observations.close().await;
     timers.abort_all();
     while timers.join_next().await.is_some() {}
@@ -1124,7 +1148,16 @@ fn finish(
         }
     };
     let outcome = crate::outcomes::chat(&request["command"], &response);
-    if let Err(error) = outgoing.send(response) {
+    let sent = if kind == "surface.desktop.targets" {
+        if let Some(epoch) = request["socketEpoch"].as_u64() {
+            outgoing.send_for_epoch(epoch, response)
+        } else {
+            Ok(false)
+        }
+    } else {
+        outgoing.send(response)
+    };
+    if let Err(error) = sent {
         logs.event("error","Worker command response was rejected",json!({"event":"worker.command.invalid-response","workerId":worker,"error":logging::error(&error)}));
     }
     if let Err(error) = outcome.and_then(|note| {

@@ -6232,3 +6232,33 @@ socket when the session ended. The same fixture passed form submission, storage
 isolation, robots denial, rendered reads, and session cleanup. The native
 socket test verified CONNECT destination rejection, bidirectional forwarding
 and cleanup of both endpoints. The focused Node reference tests passed.
+
+
+## 151. Discover Host desktop targets through the native capture helper
+
+Reference commit `c8bf46b25dcba8e5db228c01f655e13a43d713d6` (#3313).
+
+The production Rust worker handles `surface.desktop.targets` on the
+authenticated Core command socket. It checks the worker identity, verified
+server binding, component grant, and operation replay before requesting
+inventory. The worker launches the existing `cantrip-cua` executable lazily
+and reads the bounded private protocol over its owned pipes. It checks each
+page's identities and cursor, preserves display ordering and window geometry,
+and returns the existing limits and counts.
+
+Worker and client share the existing surface private-state encryption
+format. Names, titles, target IDs and geometry are inside the protected
+envelope. Only counts and truncation accompany the operation in the clear.
+Connection replacement discards the helper for that connection and fences its
+replies. Worker shutdown closes and reaps the owned helper. The managed
+desktop capability still depends on completing the session and input paths.
+
+On macOS ARM64, the built Rust worker with an empty PATH received the command
+over an authenticated fixture socket and invoked the installed native helper
+with its explicit deterministic backend. The TypeScript client crypto
+opened the result and rejected a different operation ID. The fixture checked
+the monitor and window shapes, limit, wrong server and worker, missing grant,
+replay across reconnect, and helper cleanup at reconnect and shutdown. The
+focused Node reference tests exercised the existing desktop adapter and
+capture leases using owned targets. Native screen permissions and live
+capture were outside this cycle.

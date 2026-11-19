@@ -232,9 +232,8 @@ impl Outbound {
         let queue = self.queue.lock().unwrap();
         queue.ready && !queue.closed && *self.stream_epoch.borrow() == epoch
     }
-    /// Terminal views belong to their connected control socket. Keep their
-    /// output bounded and never queue it for a replacement socket.
-    pub fn terminal_event(&self, epoch: u64, envelope: Value) -> Result<bool> {
+    /// Bound output to its originating control socket and retire it on disconnect.
+    pub fn send_for_epoch(&self, epoch: u64, envelope: Value) -> Result<bool> {
         let encoded = checked("workerServerEnvelopeSchema", &envelope)?.stringify();
         let mut queue = self.queue.lock().unwrap();
         if queue.closed
@@ -611,15 +610,15 @@ mod observation_tests {
             json!({"kind":"response","requestId":"fixture-response","ok":true,"result":true});
         let first = *epoch.borrow_and_update();
         outgoing.ready(true);
-        assert!(outgoing.terminal_event(first, terminal.clone()).unwrap());
+        assert!(outgoing.send_for_epoch(first, terminal.clone()).unwrap());
         let in_flight = outgoing.take().unwrap();
-        assert!(outgoing.terminal_event(first, terminal.clone()).unwrap());
+        assert!(outgoing.send_for_epoch(first, terminal.clone()).unwrap());
         assert!(outgoing.send(response).unwrap());
         outgoing.ready(false);
         outgoing.restore(in_flight);
         assert!(epoch.has_changed().unwrap());
         outgoing.ready(true);
-        assert!(!outgoing.terminal_event(first, terminal.clone()).unwrap());
+        assert!(!outgoing.send_for_epoch(first, terminal.clone()).unwrap());
         let frame = outgoing.take().unwrap();
         assert!(
             frame
@@ -630,6 +629,6 @@ mod observation_tests {
         );
         assert!(outgoing.take().is_none());
         let next = *epoch.borrow_and_update();
-        assert!(outgoing.terminal_event(next, terminal).unwrap());
+        assert!(outgoing.send_for_epoch(next, terminal).unwrap());
     }
 }

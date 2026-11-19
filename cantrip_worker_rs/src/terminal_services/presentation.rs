@@ -45,7 +45,7 @@ impl Attachment {
                 epoch,
             } => {
                 anyhow::ensure!(
-                    outbound.terminal_event(
+                    outbound.send_for_epoch(
                         *epoch,
                         json!({"kind":"event","requestId":request_id,"event":event}),
                     )?,
