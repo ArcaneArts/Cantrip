@@ -14,7 +14,9 @@ use std::{
     path::{Path, PathBuf},
     process::Stdio,
 };
-use tokio::{io::AsyncWriteExt, process::Command};
+#[cfg(not(windows))]
+use tokio::io::AsyncWriteExt;
+use tokio::process::Command;
 use uuid::Uuid;
 
 fn binary(directory: &Path, name: &str) -> PathBuf {
@@ -50,30 +52,29 @@ async fn authenticate_copy(root: &Path, data: &Path, binaries: &Path) -> Result<
         b"host postgres postgres 127.0.0.1/32 scram-sha-256\n",
     )?;
     let password = temporary_credentials(root)?;
-    let mut command = Command::new(binary(binaries, "postgres"));
-    #[cfg(windows)]
-    command.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    let mut child = command
-        .args(["--single", "-D"])
-        .arg(data)
-        .arg("postgres")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .context("open private legacy PGlite copy")?;
-    let mut input = child.stdin.take().context("legacy PostgreSQL stdin")?;
     // Only the generated hexadecimal secret enters SQL. The isolated loopback
     // connection below verifies the change by authenticating with this secret.
-    input
-        .write_all(format!("ALTER ROLE postgres PASSWORD '{password}';\n").as_bytes())
-        .await?;
-    drop(input);
-    ensure!(
-        child.wait().await?.success(),
-        "Legacy PGlite copy could not be opened."
-    );
+    let sql = format!("ALTER ROLE postgres PASSWORD '{password}';\n");
+    #[cfg(windows)]
+    let status = crate::managed_postgres::execute_single_user(binaries, data, &sql).await?;
+    #[cfg(not(windows))]
+    let status = {
+        let mut child = Command::new(binary(binaries, "postgres"))
+            .args(["--single", "-D"])
+            .arg(data)
+            .arg("postgres")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .context("open private legacy PGlite copy")?;
+        let mut input = child.stdin.take().context("legacy PostgreSQL stdin")?;
+        input.write_all(sql.as_bytes()).await?;
+        drop(input);
+        child.wait().await?
+    };
+    ensure!(status.success(), "Legacy PGlite copy could not be opened.");
     Ok(())
 }
 
@@ -197,6 +198,10 @@ pub async fn restore_legacy_profile(
         let stopped = runtime.close().await;
         restored?;
         stopped?;
+        #[cfg(windows)]
+        // Windows initdb selects native Windows shared memory. Let WASM
+        // PGlite use its defaults when reopening the restored profile.
+        replace(&data.join("postgresql.conf"), b"")?;
         fs::rename(data, stage.data_directory().join("server-db"))?;
         stage.publish_legacy()
     }.await;

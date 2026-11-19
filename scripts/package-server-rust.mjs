@@ -18,6 +18,7 @@ import { buildRustServer, repositoryRoot } from "./server-rust/build.mjs";
 import { rustEnvironment } from "./server-rust/cargo.mjs";
 import {
   bundlePostgres,
+  buildLegacyPostgres,
   artifactManifest,
   copyDistributionNotices,
 } from "./server-rust/postgres-assets.mjs";
@@ -74,6 +75,12 @@ export async function packageNativeServer(options) {
       platform: target.platform,
       serverBinary: path.resolve(binary),
     });
+    // The Windows release already builds the server in MinGW. Carry its
+    // compatibility tools into the desktop artifact without a second build.
+    const legacyPostgresBin =
+      target.id === "win32-x64"
+        ? buildLegacyPostgres(stage, target.id)
+        : undefined;
     if (target.platform === "win32") {
       // PostgreSQL's narrow Windows APIs otherwise use the system ANSI code
       // page, losing profile paths outside that code page. Include the native
@@ -168,6 +175,7 @@ exec "$SCRIPT_DIR/bin/cantrip-server" --env-file-if-exists=.env --bundled-pglite
       target: target.id,
       version,
       postgres,
+      legacyPostgresBin,
       migrations: "embedded",
       pgliteRuntime: "bundled-and-embedded",
       serverRequiresNode: false,

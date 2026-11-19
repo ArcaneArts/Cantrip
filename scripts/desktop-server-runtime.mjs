@@ -1,7 +1,6 @@
-import { spawnSync } from "node:child_process";
 import { chmod, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { buildLegacyPostgres } from "./server-rust/postgres-assets.mjs";
 
 // Tauri copies resources over its previous build staging tree. Homebrew ships
 // some PostgreSQL assets as 0444; copying those modes makes the next real
@@ -31,21 +30,10 @@ export async function configureDesktopServer(
     await readFile(path.join(directory, "native-server.json"), "utf8"),
   );
   configuration.postgresBin = manifest.postgres.bin;
-  if (nativeLegacyUpgrade) {
-    const build = fileURLToPath(
-      new URL("./database-transfer/build-legacy-postgres.mjs", import.meta.url),
-    );
-    const result = spawnSync(
-      process.execPath,
-      [build, path.join(directory, "legacy-postgres")],
-      { stdio: "inherit" },
-    );
-    if (result.error) throw result.error;
-    if (result.status !== 0)
-      throw new Error(
-        `Legacy PostgreSQL build failed (${result.signal ?? result.status}).`,
-      );
-    configuration.legacyPostgresBin = "legacy-postgres/bin";
+  if (manifest.legacyPostgresBin) {
+    configuration.legacyPostgresBin = manifest.legacyPostgresBin;
+  } else if (nativeLegacyUpgrade) {
+    configuration.legacyPostgresBin = buildLegacyPostgres(directory);
   } else {
     configuration.profileConverter = "../profile-converter/dist/index.mjs";
   }
@@ -54,4 +42,5 @@ export async function configureDesktopServer(
     path.join(directory, "desktop-server.json"),
     JSON.stringify(configuration, null, 2) + "\n",
   );
+  return configuration;
 }

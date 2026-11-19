@@ -57,7 +57,7 @@ jobs:
         with:
           msystem: MINGW64
           path-type: inherit
-          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-pkgconf
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-pkgconf mingw-w64-x86_64-zlib make bison flex perl curl tar
       - name: Package native macOS server
         if: runner.os == 'macOS'
         run: pnpm package:server --target ${{ matrix.target }}

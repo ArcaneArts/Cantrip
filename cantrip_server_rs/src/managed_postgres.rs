@@ -24,6 +24,8 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
 const WINDOWS_RECOVERY_TIMEOUT: Duration = Duration::from_secs(120);
 #[cfg(windows)]
 use windows::PostgresProcess as Child;
+#[cfg(windows)]
+pub(crate) use windows::execute_single_user;
 
 #[derive(Serialize, Deserialize)]
 struct Credentials {
