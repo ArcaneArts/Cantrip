@@ -16,7 +16,10 @@ use crate::{
         revocation::{Resource, Target as RevocationTarget},
         suspension_store::{self, Opened, Store},
         task_pause::{Latch, Root},
-        turn::autonomous::{Autonomous, Runner},
+        turn::{
+            autonomous::{Autonomous, Runner},
+            console::import,
+        },
     },
     config::Config,
     encryption::{Service, ServiceError},
@@ -48,6 +51,7 @@ pub(crate) struct Prepared {
     pub(in crate::codex) environment: Option<Arc<Environment>>,
     admission: Option<Value>,
     pub(in crate::codex) bound: (JsString, Value),
+    pub(in crate::codex) queue: Option<Arc<import::Import>>,
 }
 
 enum TaskAttachment {
@@ -64,6 +68,7 @@ struct ThreadOwner {
     bound: (JsString, Value),
     session: Option<Value>,
     task: Option<Root>,
+    queue: Option<Arc<import::Binding>>,
 }
 
 #[derive(Clone)]
@@ -91,6 +96,7 @@ struct Inner {
     cli_contexts: crate::cli::Contexts,
     permission_profiles: bool,
     autonomous: OnceLock<Autonomous>,
+    queue_imports: OnceLock<import::Factory>,
 }
 
 impl Ensurer {
@@ -131,6 +137,7 @@ impl Ensurer {
             browser_surfaces,
             cli_contexts,
             autonomous: OnceLock::new(),
+            queue_imports: OnceLock::new(),
             permission_profiles,
         }))
     }
@@ -166,6 +173,13 @@ impl Ensurer {
             .autonomous
             .set(autonomous)
             .map_err(|_| anyhow::anyhow!("Native Goal producer is already configured."))
+    }
+
+    pub(in crate::codex) fn configure_queue_imports(&self, imports: import::Factory) -> Result<()> {
+        self.0
+            .queue_imports
+            .set(imports)
+            .map_err(|_| anyhow!("Native queue imports are already configured."))
     }
 
     pub(crate) async fn prepare(&self, incoming: &Value, intent: Intent) -> Result<Prepared> {
@@ -532,6 +546,10 @@ impl Ensurer {
                     loaded.assert_current(&runtime)?;
                     this.assert_bound(&bound)?;
                     let thread_id = loaded.id().clone();
+                    let mut result = Prepared {
+                        runtime: runtime.clone(), thread: loaded.clone(), codex_home, runner_generation: runner.clone(),
+                        saved: held, environment, admission: admission.clone(), bound: bound.clone(), queue: None,
+                    };
                     {
                         let mut owners = this.0.live_threads.lock().unwrap();
                         resource.signal.check()?;
@@ -541,7 +559,7 @@ impl Ensurer {
                         let native_session = (!task && !guest).then(|| native_session(&command, &runtime, loaded.id()));
                         if let (Some(autonomous), Some(session)) = (this.0.autonomous.get(), native_session.as_ref())
                             && context_kind == "project"
-                            && held.is_none()
+                            && result.saved.is_none()
                         {
                             let broker = Arc::downgrade(&this.0);
                             let authority = bound.clone();
@@ -561,18 +579,27 @@ impl Ensurer {
                         } else {
                             runtime.inference_router().remove_goal_producer(&thread_id);
                         }
+                        let queue = if !task && !stopping && result.saved.is_none() && !task_restoration
+                            && let Some(factory) = this.0.queue_imports.get()
+                        {
+                            let previous = owners.get(&chat).and_then(|owner| owner.queue.as_ref());
+                            Some(factory.bind(&result, &command, previous)?)
+                        } else {
+                            None
+                        };
+                        result.queue = queue.as_ref().map(|binding| binding.import.clone());
                         let task = latch.as_ref().map(|latch| task_root(&thread_id, latch));
                         router.set_task_root(&thread_id, task.clone());
                         let owner = ThreadOwner {
                             runtime: runtime.downgrade(), thread: loaded.clone(), bound: bound.clone(),
-                            session: native_session, task,
+                            session: native_session, task, queue,
                         };
                         owners.insert(chat.clone(), owner);
                     }
                     if let Some(latch) = latch && !task_restoration {
                         this.sync_task_pause(&bound, &chat, &latch).await?;
                     }
-                    *prepared.lock().unwrap() = Some(Prepared { runtime, thread: loaded, codex_home, runner_generation: runner, saved: held, environment, admission, bound });
+                    *prepared.lock().unwrap() = Some(result);
                     Ok(thread_id)
                 })
             }),
@@ -584,6 +611,13 @@ impl Ensurer {
             .unwrap()
             .take()
             .context("Managed thread ownership was lost.")?;
+        // An already bound thread may have persisted queue entries without
+        // emitting a new event on this transport (for example after restart).
+        if incoming["threadId"].as_js_string() == Some(result.thread.id())
+            && let Some(import) = &result.queue
+        {
+            import.reconcile_on_prepare();
+        }
         Ok(result)
     }
 

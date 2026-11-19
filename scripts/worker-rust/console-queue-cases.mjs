@@ -80,7 +80,7 @@ export function queuePeer({ identity, service, root, stamp, legacy }) {
   };
   const actions = [];
   const firstRead = Promise.withResolvers();
-  const firstImportAck = Promise.withResolvers();
+  const imported = Promise.withResolvers();
   let retained,
     ackAttempts = 0,
     stagedSources = 0;
@@ -254,7 +254,6 @@ export function queuePeer({ identity, service, root, stamp, legacy }) {
       }
       ackAttempts++;
       if (ackAttempts === 1) {
-        firstImportAck.resolve();
         drop();
         return;
       }
@@ -263,6 +262,7 @@ export function queuePeer({ identity, service, root, stamp, legacy }) {
       items.push({ ...retained.item, state: "pending" });
       revision++;
       send(snapshot());
+      imported.resolve();
       return;
     }
     if (action === "read") {
@@ -450,7 +450,7 @@ export function queuePeer({ identity, service, root, stamp, legacy }) {
     turn,
     actions,
     firstRead: firstRead.promise,
-    firstImportAck: legacy ? firstImportAck.promise : null,
+    imported: legacy ? imported.promise : null,
     proveImport() {
       assert.equal(stagedSources, 1);
       assert.equal(ackAttempts, 2);
@@ -475,7 +475,7 @@ export async function verifyConsoleQueue({
   available,
   expectSuccess,
 }) {
-  await available(peer.firstImportAck ?? peer.firstRead);
+  await available(peer.imported ?? peer.firstRead);
   const socket = new WebSocket((await readFile(socketFile, "utf8")).trim());
   const pending = new Map(),
     notices = [];
@@ -519,7 +519,7 @@ export async function verifyConsoleQueue({
     });
     socket.send(JSON.stringify({ method: "initialized" }));
     assert.ok((await queue("list", { threadId: "unrelated-thread" })).error);
-    if (peer.firstImportAck) {
+    if (peer.imported) {
       const list = await result("list");
       assert.deepEqual(list.managedQueue.pendingImports, []);
       assert.equal(list.data.length, 1);
@@ -538,7 +538,7 @@ export async function verifyConsoleQueue({
         queuedSubmissionId: item.id,
       });
       console.log(
-        "Legacy Codex queue import retained one item after a lost acknowledgment.",
+        "The console listed the same canonical prompt imported before it opened.",
       );
     }
     const add = {
@@ -605,7 +605,7 @@ export async function verifyConsoleQueue({
       }),
       { turn: peer.turn },
     );
-    assert.deepEqual(peer.actions.slice(peer.firstImportAck ? 1 : 0), [
+    assert.deepEqual(peer.actions.slice(peer.imported ? 1 : 0), [
       "add",
       "add",
       "update",

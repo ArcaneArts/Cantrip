@@ -204,7 +204,7 @@ async fn relay<'a>(
     let mut starting: Option<(String, Work<Value>)> = None;
     let mut queue_requests = FuturesUnordered::new();
     let mut queue_ids = HashSet::new();
-    let mut queue_revision = view.queue_state.revision.subscribe();
+    let mut queue_revision = view.queue.state.revision.subscribe();
     let thread = &session["threadId"];
     loop {
         tokio::select! {
@@ -282,9 +282,6 @@ async fn relay<'a>(
                         continue;
                     }
                     if method == "thread/queue/changed" {
-                        if initialized && frame["params"]["threadId"] == *thread {
-                            queue::native_changed(view.clone());
-                        }
                         continue;
                     }
                     if !scope_matches(&frame, thread) || (method.starts_with("thread/") && frame["params"]["threadId"].is_null()) {

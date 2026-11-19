@@ -35,6 +35,8 @@ pub use worker::{Binding, Worker};
 const RPC_TIMEOUT: Duration = Duration::from_secs(120);
 pub type PrepareHome = Arc<dyn Fn(PathBuf) -> Work<()> + Send + Sync>;
 pub type Observe = Arc<dyn Fn(Event) -> Result<()> + Send + Sync>;
+pub(in crate::codex) type QueueObserver = Arc<dyn Fn() + Send + Sync>;
+type QueueObservers = Arc<Mutex<HashMap<JsString, Weak<dyn Fn() + Send + Sync>>>>;
 
 pub trait ExternalAuth: Send + Sync {
     fn login(&self) -> Work<Option<Value>>;
@@ -61,6 +63,7 @@ struct Inner {
     adapter: Adapter,
     router: Router,
     resources: Arc<resources::Resources>,
+    queue_observers: QueueObservers,
     retirement: Promise<()>,
     external_auth: Option<Arc<dyn ExternalAuth>>,
     closing: Mutex<Option<Promise<()>>>,
@@ -205,6 +208,7 @@ impl Runtime {
             protection,
             adapter.generation().clone(),
         ));
+        let queue_observers = QueueObservers::default();
         let retirement = Promise::spawn(pump(
             router.clone(),
             events,
@@ -215,6 +219,7 @@ impl Runtime {
                 session: session.clone(),
                 external_auth: external_auth.clone(),
                 resources: resources.clone(),
+                queue_observers: queue_observers.clone(),
             },
         ));
         let runtime = Self(Arc::new_cyclic(|inner| Inner {
@@ -229,6 +234,7 @@ impl Runtime {
             adapter,
             router,
             resources,
+            queue_observers,
             retirement,
             external_auth,
             closing: Mutex::new(None),
@@ -241,6 +247,12 @@ impl Runtime {
             return failed_start(error, runtime.close().await);
         }
         Ok(runtime)
+    }
+
+    pub(in crate::codex) fn observe_queue(&self, thread: JsString, observer: &QueueObserver) {
+        let mut observers = self.0.queue_observers.lock().unwrap();
+        observers.retain(|_, observer| observer.strong_count() > 0);
+        observers.insert(thread, Arc::downgrade(observer));
     }
 
     pub fn id(&self) -> &JsString {
@@ -368,6 +380,7 @@ struct NativeCallbacks {
     session: Session,
     external_auth: Option<Arc<dyn ExternalAuth>>,
     resources: Arc<resources::Resources>,
+    queue_observers: QueueObservers,
 }
 
 async fn pump(
@@ -382,6 +395,7 @@ async fn pump(
         session,
         external_auth,
         resources,
+        queue_observers,
     } = native;
     let mut callbacks = JoinSet::new();
     let started = Instant::now();
@@ -414,6 +428,16 @@ async fn pump(
                         }
                     });
                     continue;
+                }
+                if let EventKind::Message(message) = &event_data.kind
+                    && message["method"] == "thread/queue/changed"
+                    && message.get("id").is_none()
+                    && let Some(thread) = message["params"]["threadId"].as_js_string()
+                {
+                    let observer = queue_observers.lock().unwrap().get(thread).and_then(Weak::upgrade);
+                    if let Some(observer) = observer {
+                        observer();
+                    }
                 }
                 let exited = matches!(event_data.kind, EventKind::ProcessExited(_));
                 if matches!(event_data.kind, EventKind::TransportLost(_)) {

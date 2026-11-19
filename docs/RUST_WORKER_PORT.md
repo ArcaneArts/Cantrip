@@ -7044,3 +7044,31 @@ worker compiled.
 
 Headless queue import observation, console settings, approval replies and
 runtime handoff remain open.
+
+## 181. Reconcile native queues without an open console
+
+Reference commit 3bc6e385a101791e0f9868be1602f4e58e7bb7a2 (#3344).
+
+The selected managed thread observes native queue changes through the
+worker's own app-server connection. Reopening a bound thread after a worker
+restart reconciles its persisted queue even when the native runtime emits
+no initial change. Imports and console operations share the same
+per-Chat serialization and revision state. Closing a console leaves the
+worker's observer attached. Replacing the owner, revoking its Chat, or
+closing the native thread retires its authority. Repeated queue changes
+during an import are coalesced, and a native deletion notification can
+retry a lost Core acknowledgment without continuously replaying a
+failed acknowledgment.
+
+A local macOS ARM64 smoke ran the production worker and bundled Codex with
+a disposable Linux guest and a controlled Core peer. After restart it
+dropped the first import acknowledgment, verified the durable exact-deletion
+receipt, and waited for the native change observer to recover one canonical
+prompt before opening any console. The Node codec verified the original
+input and message identity, and the unrelated thread's source remained
+intact. The console later listed the recovered prompt and passed the queue
+controls and protected image fixture. The Windows x64 GNU worker passed a
+cross-compilation check.
+
+Managed console settings, the permission-settlement queue resume path,
+approval replies, and runtime handoff remain open.

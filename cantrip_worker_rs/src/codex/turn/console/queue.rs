@@ -1,5 +1,5 @@
 //! The terminal observes and edits Core's queue through versioned receipts.
-mod import;
+pub(in crate::codex) mod import;
 mod prompt;
 
 use super::{View, gateway::fault};
@@ -19,7 +19,7 @@ use cantrip_wire::{JsString, Value, parse_json_text, value::json};
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, Weak, atomic::AtomicBool},
+    sync::{Arc, Mutex, Weak},
 };
 use tokio::sync::{Mutex as AsyncMutex, watch};
 
@@ -40,7 +40,6 @@ pub(super) fn manages(method: &Value) -> bool {
 pub(super) struct State {
     pub revision: watch::Sender<Option<u64>>,
     sync_import: AsyncMutex<()>,
-    import_scheduled: AtomicBool,
 }
 
 #[derive(Clone, Default)]
@@ -56,7 +55,6 @@ impl Views {
         let state = Arc::new(State {
             revision: watch::channel(None).0,
             sync_import: AsyncMutex::new(()),
-            import_scheduled: AtomicBool::new(false),
         });
         views.insert(key, Arc::downgrade(&state));
         state
@@ -105,10 +103,6 @@ pub(super) fn request(
     })
 }
 
-pub(super) fn native_changed(view: Arc<View>) {
-    import::schedule(view);
-}
-
 async fn execute(view: &View, session: &Value, frame: &Value, signal: &Signal) -> Result<Value> {
     signal.check()?;
     view.assert_current()?;
@@ -124,7 +118,7 @@ async fn execute(view: &View, session: &Value, frame: &Value, signal: &Signal) -
         params["threadId"] == session["threadId"],
         "Managed queue requests require their exact bound thread ID."
     );
-    import::synchronize(view, &scope).await?;
+    view.queue.synchronize(&scope).await?;
     signal.check()?;
     let client = &view.turns.receipts;
     let admission = if method == "thread/queue/list" {
@@ -173,7 +167,7 @@ async fn execute(view: &View, session: &Value, frame: &Value, signal: &Signal) -
         )
         .await?;
     view.assert_current()?;
-    observe(view, &snapshot);
+    observe(&view.queue.state, &snapshot);
     let Some(admission) = admission else {
         let list = list(view, &scope, params, &snapshot).await?;
         signal.check()?;
@@ -238,9 +232,9 @@ fn validate_mutation(params: &Value) -> Result<()> {
     Ok(())
 }
 
-fn observe(view: &View, snapshot: &Value) {
+fn observe(state: &State, snapshot: &Value) {
     publish(
-        &view.queue_state.revision,
+        &state.revision,
         snapshot["revision"]
             .as_u64()
             .expect("validated queue revision"),
@@ -347,7 +341,8 @@ async fn mutation(
                 &operation
             )));
             let mut prepared = prompt::prepare(
-                view,
+                &view.queue.input(),
+                &view.turns.attachments,
                 scope,
                 params,
                 &operation,
@@ -370,12 +365,13 @@ async fn mutation(
                 );
             }
             let mut prepared = prompt::prepare(
-                view,
+                &view.queue.input(),
+                &view.turns.attachments,
                 scope,
                 params,
                 &operation,
                 &id,
-                prompt::Preparation::Edit(existing),
+                prompt::Preparation::Edit(view, existing),
             )
             .await?;
             prepared["kind"] = json!("update");
@@ -431,7 +427,7 @@ async fn complete(
     {
         return Err(Unacknowledged("queue operation identity".into()).into());
     }
-    observe(view, result);
+    observe(&view.queue.state, result);
     if receipt["status"] == "rejected" && result["claim"].is_null() {
         bail!("Canonical queue operation is rejected; reconcile this operation before retrying.");
     }

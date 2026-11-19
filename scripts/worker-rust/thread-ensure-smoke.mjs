@@ -2587,7 +2587,6 @@ async function verifyGuestConsole({
   provider,
   state,
   history,
-  legacy,
 }) {
   const terminalId = state.id;
   const operationId = randomUUID();
@@ -2616,20 +2615,6 @@ async function verifyGuestConsole({
   let retainedMedia;
   let finalMessage;
   const guestPath = session.osExecution.scope.guestPath;
-  consoleQueue = queuePeer({
-    identity: {
-      serverId,
-      ownerId,
-      workerId,
-      chatId: session.chatId,
-      threadId,
-      worktreeId: session.worktreeId,
-    },
-    service: oracle,
-    root,
-    stamp,
-    legacy,
-  });
   const codec = createManagedQueueInputCodec({
     encryption: oracle,
     chatId: session.chatId,
@@ -3260,15 +3245,19 @@ async function verifyGuestThread() {
       osExecution,
     );
     const oracleHome = path.join(root, "legacy-environment");
-    const oracle = new OsNativeEnvironment({ ...scope, serverId }, transport, {
-      captureExecutionBinding: async () =>
-        JSON.parse(await guest("cantrip-executor", "open", guestWorkspaceId)),
-    });
-    await oracle.prepare(oracleHome);
+    const placementOracle = new OsNativeEnvironment(
+      { ...scope, serverId },
+      transport,
+      {
+        captureExecutionBinding: async () =>
+          JSON.parse(await guest("cantrip-executor", "open", guestWorkspaceId)),
+      },
+    );
+    await placementOracle.prepare(oracleHome);
     const homeId = createHash("sha256")
       .update(
         JSON.stringify([
-          oracle.id,
+          placementOracle.id,
           path.join(directory, "codex-home"),
           "fixture",
           null,
@@ -3397,6 +3386,20 @@ async function verifyGuestThread() {
     }
     const callsBeforeImport = providerCalls;
     const legacy = seedNativeQueue(path.dirname(file), threadId);
+    consoleQueue = queuePeer({
+      identity: {
+        serverId,
+        ownerId,
+        workerId,
+        chatId: session.chatId,
+        threadId,
+        worktreeId: session.worktreeId,
+      },
+      service: oracle,
+      root,
+      stamp,
+      legacy,
+    });
     await start();
     const recovered = await expectThread(
       {
@@ -3409,6 +3412,29 @@ async function verifyGuestThread() {
       threadId,
     );
     assert.equal(recovered.recovery.status, "completed");
+    const queueFailure = new AbortController();
+    try {
+      await available(
+        Promise.race([
+          consoleQueue.imported,
+          once(upstream, "failure", { signal: queueFailure.signal }).then(
+            ([error]) => {
+              throw error;
+            },
+          ),
+        ]),
+        20_000,
+      );
+      assert.equal(
+        consoleQueue.proveImport().clientUserMessageId,
+        legacy.source.clientUserMessageId,
+      );
+      console.log(
+        "Native queue observation recovered the lost acknowledgment before opening a console.",
+      );
+    } finally {
+      queueFailure.abort();
+    }
     assert.equal(providerCalls, callsBeforeImport);
     const consoleTurn = await verifyGuestConsole({
       session,
@@ -3416,7 +3442,6 @@ async function verifyGuestThread() {
       provider,
       state: consoleState,
       history: guestTurn.history,
-      legacy,
     });
     await stop();
     await start();

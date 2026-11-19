@@ -383,6 +383,7 @@ async fn cycle(
         guest_files,
     )?;
     thread_preparation.configure_autonomous(turns.autonomous(routing.clone()))?;
+    turns.configure_queue_imports()?;
     let model_catalog = crate::codex::catalog::Catalog::new(
         codex.clone(),
         provider_access.clone(),
