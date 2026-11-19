@@ -952,6 +952,7 @@ try {
       JSON.stringify({
         suite: "actual-native-host-run-worker-server",
         passed: true,
+        typedNodeProvider: true,
         encryptedOutput: true,
         nodeDifferential: true,
         nodeAbsentFromWorkerPath: true,

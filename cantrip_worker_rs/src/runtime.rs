@@ -209,13 +209,18 @@ async fn cycle(
     )?);
     codex.configure_project_goals(project_goals.clone())?;
     let outgoing = Arc::new(Outbound::default());
-    let run_definitions = Arc::new(crate::run_definitions::Definitions::default());
-    let runs = Arc::new(crate::run_runtime::Manager::new(
-        worker.clone(),
+    let run_environment: Arc<crate::run_runtime::Environment> = Arc::new(
         environment
             .iter()
             .map(|(name, value)| (name.clone(), value.clone()))
             .collect(),
+    );
+    let run_definitions = Arc::new(crate::run_definitions::Definitions::new(
+        run_environment.clone(),
+    ));
+    let runs = Arc::new(crate::run_runtime::Manager::new(
+        worker.clone(),
+        run_environment,
         encryption.clone(),
         outgoing.clone(),
         worktrees.clone(),

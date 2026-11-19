@@ -3,6 +3,7 @@
 mod layers;
 mod output;
 mod process;
+mod providers;
 mod shell;
 
 use crate::{
@@ -33,14 +34,15 @@ use tokio::{
     task::JoinHandle,
 };
 
-type Environment = HashMap<String, String>;
+pub(crate) type Environment = HashMap<String, String>;
+pub(crate) use providers::{capabilities, detect, validation};
 const PREFIX: &str = "project.run-configuration-runtime.";
 const RETAINED: usize = 256;
 
 pub(crate) struct Manager {
     entries: Mutex<IndexMap<JsString, Arc<Slot>>>,
     worker: JsString,
-    environment: Environment,
+    environment: Arc<Environment>,
     encryption: Arc<Service>,
     outbound: Arc<Outbound>,
     worktrees: Arc<worktrees::Manager>,
@@ -150,7 +152,7 @@ impl Failure {
 impl Manager {
     pub(crate) fn new(
         worker: JsString,
-        environment: Environment,
+        environment: Arc<Environment>,
         encryption: Arc<Service>,
         outbound: Arc<Outbound>,
         worktrees: Arc<worktrees::Manager>,
@@ -736,7 +738,7 @@ impl Manager {
             ));
         }
         let document = &definition["document"];
-        let launch = shell::materialize(document, &roots.target, &self.environment)?;
+        let launch = providers::materialize(document, &roots.target, &self.environment)?;
         let grace = Duration::from_millis(document["stop"]["gracePeriodMs"].as_u64().unwrap());
         {
             let mut state = job.session.lock().unwrap();
