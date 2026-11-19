@@ -210,6 +210,7 @@ async fn cycle(
         terminals.clone(),
         surface_replay,
         generation.clone(),
+        &data_directory,
     ));
 
     let (stop, stop_rx) = watch::channel(false);

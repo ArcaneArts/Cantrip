@@ -35,6 +35,8 @@ import {
   decryptChatMessageProtectedContent,
   decryptChatPlanProtectedContent,
   decryptQueuedPromptProtectedContent,
+  decryptPrivateDisplayLabel,
+  decryptSurfacePrivateState,
   wrapComponentKeyForWorker,
 } from "../../packages/crypto/dist/index.js";
 import {
@@ -150,6 +152,8 @@ const privateQuestion = "Private retained plan question.";
 const chatKey = new Uint8Array(32).fill(41);
 const taskKey = new Uint8Array(32).fill(37);
 const attachmentKey = new Uint8Array(32).fill(43);
+const surfaceStateKey = new Uint8Array(32).fill(47);
+const surfaceMetadataKey = new Uint8Array(32).fill(49);
 const oracle = {
   ownerId: () => ownerId,
   serverIdentity: () => serverId,
@@ -412,6 +416,20 @@ const server = createServer(async (request, response) => {
                 },
               ]
             : []),
+          ...(values["guest-image"]
+            ? [
+                {
+                  component: "surface-private-state",
+                  keyRevision: 1,
+                  componentKey: surfaceStateKey,
+                },
+                {
+                  component: "private-surface-metadata",
+                  keyRevision: 1,
+                  componentKey: surfaceMetadataKey,
+                },
+              ]
+            : []),
           ...(values.taskPreparation || directTask || structuredTasks
             ? [
                 {
@@ -613,6 +631,7 @@ async function ensure(
         fields.type === "chat.queue.changed" ||
         fields.type?.startsWith("chat.native-logical.") ||
         fields.type?.startsWith("cantrip-os.") ||
+        fields.type === "terminal.prepare-state" ||
         fields.type?.startsWith("task.")
           ? fields
           : {
@@ -2276,6 +2295,49 @@ async function verifyGuestTurn({
   }
 }
 
+async function verifyConsoleState() {
+  const terminalId = randomUUID();
+  const command = { type: "terminal.prepare-state", terminalId, serverId };
+  const result = await expectSuccess(command);
+  assert.equal(result.id, terminalId);
+  assert.equal(
+    await decryptPrivateDisplayLabel({
+      ownerId,
+      recordKind: "terminal",
+      rowId: terminalId,
+      keyRevision: 1,
+      componentKey: surfaceMetadataKey,
+      opaque: result.titleProtection,
+    }),
+    "Console",
+  );
+  assert.deepEqual(
+    await decryptSurfacePrivateState({
+      ownerId,
+      keyRevision: 1,
+      componentKey: surfaceStateKey,
+      context: {
+        serverId,
+        resource: "terminal-row",
+        resourceId: terminalId,
+        operationId: null,
+        recordKind: "terminal-state",
+      },
+      opaque: result.stateProtection,
+    }),
+    {
+      version: 1,
+      classification: { recordKind: "terminal-state" },
+      directory: { kind: "project-root" },
+      serviceCommand: "",
+    },
+  );
+  assert.equal(
+    (await ensure({ ...command, serverId: randomUUID() })).ok,
+    false,
+  );
+}
+
 async function verifyGuestThread() {
   const execute = promisify(execFile);
   const dockerPath = (await execute("which", ["docker"])).stdout.trim();
@@ -2317,6 +2379,7 @@ async function verifyGuestThread() {
       await delay(100);
     }
     await start();
+    await verifyConsoleState();
     const observed = await expectSuccess({
       type: "cantrip-os.inspect",
       ownerId,

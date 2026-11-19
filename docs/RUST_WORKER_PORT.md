@@ -6854,3 +6854,33 @@ execution were outside this validation.
 
 Guest console startup, first-party MCP and suspended-turn recovery remain
 open, along with the remaining worker replacement and cutover work.
+
+## 174. Run native guest terminals and prepare encrypted console state
+
+Reference commit b9bf3d1567956f8700ec0d7e84695a192ced0702 (#3337).
+
+The authenticated terminal command service opens Cantrip OS shells in
+the captured Linux workspace. The executor owns the PTY. Rust sends
+input and resize requests over the existing carrier and sends protected
+output through the same terminal presentation used by Host shells.
+
+The worker retains the Node index, descriptor and process admission
+formats. It records the session and process before starting the PTY.
+After a restart it observes the retained process and replays available
+output. Close can retire the saved session without opening a new shell.
+
+The worker implements the existing `terminal.prepare-state` command for
+linked consoles. The protected title and empty state use the same metadata
+and private-state grants as the Node worker. The Codex TUI gateway and
+managed console process launch remain open.
+
+Local macOS ARM64 testing used the production Rust server and worker
+with an ARM64 Docker guest. It checked protected input and output,
+workspace cwd, actual PTY sizing, reattachment, worker crash recovery,
+and cold close of the same saved process. The Node crypto reader opened
+the prepared console title and state in a separate worker command
+fixture. The Windows x64 GNU worker compiled. SSH, Windows runtime,
+and the managed Codex TUI were outside this validation.
+
+The Host shell, WorkerLink and terminal service relay fixture passed on
+a serial rerun after a transient input error during the concurrent run.
