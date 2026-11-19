@@ -33,6 +33,32 @@ The activation receipt reports `activationId`, `dataDirectory` and
 the previous profile are retained by renaming its whole directory. No database
 version or capability metadata determines whether a backend may open.
 
+### Use the native legacy reader
+
+The native profile upgrade accepts an explicit PostgreSQL 18 compatibility
+runtime. Its build matches the legacy PGlite 18 datum and stored-expression
+representations. Build it on macOS or Linux with the PostgreSQL source build
+tools and zlib development headers available. Node runs the build script.
+
+```sh
+node scripts/database-transfer/build-legacy-postgres.mjs /build/legacy-postgres
+
+/absolute/path/to/cantrip-server --data-dir /installation/server \
+  --migrate-only --upgrade-profile \
+  --legacy-postgres-bin-dir /build/legacy-postgres/bin
+```
+
+The upgrade tries the native serving engine on a private copy first. If the
+database cannot open, the compatibility runtime opens a fresh private copy,
+dumps its database, then shuts down. The server restores the logical profile
+into native PGlite and publishes it using the normal activation journal. The
+native fallback takes precedence when the compatibility binary directory is
+supplied alongside legacy converter options. Its runtime needs no Node.
+
+Local validation used macOS ARM64 and a stopped profile created by the pinned
+legacy JavaScript engine. Desktop packages still select the original converter
+and reverse conversion uses the existing rollback procedure below.
+
 ## Roll back after Rust has accepted writes
 
 Start reverse conversion with a fresh export of the current Rust profile, so
