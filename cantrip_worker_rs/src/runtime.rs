@@ -178,6 +178,7 @@ async fn cycle(
     let data_directory = config.data_directory.clone();
     let configuration = Arc::new(Mutex::new(config));
     let (stop, stop_rx) = watch::channel(false);
+    let (label_shutdown, label_signal) = crate::metadata::Abort::new();
     let task_inputs = crate::codex::task_inputs::Client::new(
         configuration.clone(),
         encryption.clone(),
@@ -274,7 +275,7 @@ async fn cycle(
         configuration.clone(),
         generation.clone(),
         history.clone(),
-        task_inputs,
+        task_inputs.clone(),
         task_delivery.clone(),
     )?;
     thread_preparation.configure_autonomous(turns.autonomous(routing.clone()))?;
@@ -383,6 +384,22 @@ async fn cycle(
                         let result = tokio::task::spawn_blocking(move || {
                             crate::chat_content::execute(encryption, &command)
                         }).await.unwrap_or_else(|error| Err(error.into()));
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
+                if kind == crate::codex::turn::label::COMMAND {
+                    let preparation = thread_preparation.clone();
+                    let encryption = encryption.clone();
+                    let task_inputs = task_inputs.clone();
+                    let signal = label_signal.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = crate::codex::turn::label::execute(
+                            &request["command"], preparation, encryption, task_inputs, signal,
+                        ).await;
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
                     continue;
@@ -674,6 +691,7 @@ async fn cycle(
     };
     let began = std::time::Instant::now();
     stop.send_replace(true);
+    label_shutdown.abort(anyhow::anyhow!("Worker shutting down."));
     worktree_observations.close().await;
     timers.abort_all();
     while timers.join_next().await.is_some() {}

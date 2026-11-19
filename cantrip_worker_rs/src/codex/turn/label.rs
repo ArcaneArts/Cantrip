@@ -6,11 +6,13 @@ use crate::{
         admission::{Acquire, Execution},
         managed::Runtime,
         preparation::command::Ensurer,
+        task_inputs,
     },
     encryption::Service,
     http::checked,
     inference::admission::Source,
     metadata::Signal,
+    task_content,
 };
 use anyhow::{Context, Result, bail};
 use cantrip_crypto::content::encrypt_private_label;
@@ -21,6 +23,52 @@ use std::{
     sync::{Arc, OnceLock},
     time::Duration,
 };
+
+pub(crate) const COMMAND: &str = "label.generate";
+
+#[derive(Clone)]
+struct Resource {
+    client: task_inputs::Client,
+    target: Value,
+    signal: Signal,
+}
+
+impl Resource {
+    async fn authorize(&self, scope: &(JsString, Value)) -> Result<()> {
+        self.client
+            .authorize_resource(scope, &self.target, self.signal.clone())
+            .await
+    }
+}
+
+pub(crate) async fn execute(
+    command: &Value,
+    preparation: Ensurer,
+    encryption: Arc<Service>,
+    client: task_inputs::Client,
+    signal: Signal,
+) -> Result<Value> {
+    let scope = encryption.bound_identity()?;
+    let resource = Resource {
+        client,
+        target: json!({"kind":"chat","chatId":command["chatId"]}),
+        signal: signal.clone(),
+    };
+    // Authorize the issued command before opening protected input.
+    resource.authorize(&scope).await?;
+    let title = Title {
+        job: command.clone(),
+        scope,
+    };
+    let result = title
+        .run_separate(preparation, encryption, signal, Some(resource.clone()))
+        .await
+        .map_err(|_| anyhow::anyhow!("Private label generation failed on the worker."))?;
+    // A stateless RPC can finish after deletion. Its result has no authority
+    // and the reservation still settles only through the native response.
+    resource.authorize(&title.scope).await?;
+    Ok(result)
+}
 
 #[derive(Clone)]
 pub(super) struct Title {
@@ -52,28 +100,43 @@ impl Title {
         encryption: Arc<Service>,
         signal: Signal,
     ) -> Result<Value> {
-        let params = self.params(&encryption)?;
+        self.run_separate(preparation, encryption, signal, None)
+            .await
+    }
+
+    async fn run_separate(
+        &self,
+        preparation: Ensurer,
+        encryption: Arc<Service>,
+        signal: Signal,
+        resource: Option<Resource>,
+    ) -> Result<Value> {
+        let Some(params) = self.params(&encryption)? else {
+            return empty_title();
+        };
         signal.check()?;
         let runtime = preparation.label_runtime(&self.job, &self.scope).await?;
         self.assert_bound(&encryption)?;
-        let operation = format!(
-            "label:{}",
-            self.job["operationId"]
-                .as_str()
-                .context("Title claim identity")?
-        );
-        let source = Source::claimed(operation.clone().into(), Some(signal));
+        let claim = self.job["operationId"]
+            .as_str()
+            .map(|id| format!("label:{id}"));
+        let operation = claim
+            .clone()
+            .unwrap_or_else(|| format!("label:{}", uuid::Uuid::new_v4()));
+        let source = Source::claimed(operation.into(), Some(signal));
         let result = async {
             let mut request = Acquire::new(
                 runtime.admission().lifetime_for_source(&source)?,
                 self.job["provider"].clone(),
             );
             request.purpose = Some("label".into());
-            request.recovery_key = Some(json!(operation));
+            request.recovery_key = claim.map(|key| json!(key));
             request.chat_id = Some(self.job["chatId"].clone());
             request.signal = Some(source.signal());
             let execution = runtime.admission().acquire(request).await?;
-            let result = self.infer(runtime, &execution, params, encryption).await;
+            let result = self
+                .infer(runtime, &execution, params, encryption, resource)
+                .await;
             execution.not_dispatched()?;
             execution.settled().await?;
             result
@@ -89,13 +152,11 @@ impl Title {
         execution: &Execution,
         encryption: Arc<Service>,
     ) -> Result<Value> {
-        self.infer(
-            runtime.clone(),
-            execution,
-            self.params(&encryption)?,
-            encryption,
-        )
-        .await
+        let Some(params) = self.params(&encryption)? else {
+            return empty_title();
+        };
+        self.infer(runtime.clone(), execution, params, encryption, None)
+            .await
     }
 
     fn assert_bound(&self, encryption: &Service) -> Result<()> {
@@ -105,26 +166,46 @@ impl Title {
         Ok(())
     }
 
-    fn params(&self, encryption: &Service) -> Result<Value> {
+    fn params(&self, encryption: &Service) -> Result<Option<Value>> {
         self.assert_bound(encryption)?;
-        let message = &self.job["input"]["message"];
-        if self.job["input"]["kind"] != "message" || message["classification"]["role"] != "user" {
-            bail!("An initial label requires a protected user message.");
+        let input = &self.job["input"];
+        let prompt = if input["kind"] == "task" {
+            let task = &input["task"];
+            if task["chatId"] != self.job["chatId"] {
+                bail!("Label input belongs to another Task.");
+            }
+            let grant = encryption.bound_component("task-content", None)?;
+            if grant.owner_id != self.scope.0 || grant.server_id != self.scope.1 {
+                bail!("The worker binding changed during private labeling.");
+            }
+            let context = json!({"ownerId":grant.owner_id,"chatId":task["chatId"],"keyRevision":grant.component.key_revision});
+            task_content::open_task(&grant, &context, task)?["briefMarkdown"]
+                .as_js_string()
+                .context("Invalid protected Task brief")?
+                .trim()
+        } else {
+            let message = &input["message"];
+            if message["classification"]["role"] != "user" {
+                bail!("A label requires a protected user message.");
+            }
+            let grant = encryption.bound_component("chat-content", None)?;
+            if grant.owner_id != self.scope.0 || grant.server_id != self.scope.1 {
+                bail!("The worker binding changed during private labeling.");
+            }
+            let contents = open_message(&grant.component.key, &json!(grant.owner_id), message)?;
+            user_prompt_text(&contents)?
+        };
+        if prompt.is_empty() {
+            return Ok(None);
         }
-        let grant = encryption.bound_component("chat-content", None)?;
-        if grant.owner_id != self.scope.0 || grant.server_id != self.scope.1 {
-            bail!("The worker binding changed during private labeling.");
-        }
-        let contents = open_message(&grant.component.key, &json!(grant.owner_id), message)?;
-        let prompt = user_prompt_text(&contents)?;
         // JS Array.from takes Unicode code points, including isolated surrogates.
         let input = json!({"initialRequest":bounded(&prompt, 4_000)}).stringify();
-        Ok(json!({
+        Ok(Some(json!({
             "model":self.job["model"]["name"],
             "reasoningEffort": self.job["model"]["reasoningEffort"],
             "instructions": instructions(self.job["labelKind"] == "task"),
             "input":input,
-        }))
+        })))
     }
 
     async fn infer(
@@ -133,6 +214,7 @@ impl Title {
         execution: &Execution,
         params: Value,
         encryption: Arc<Service>,
+        resource: Option<Resource>,
     ) -> Result<Value> {
         let provider_id = self.job["provider"]["id"]
             .as_js_string()
@@ -143,6 +225,9 @@ impl Title {
         let reply = execution
             .prepare(provider_id, move |scope| {
                 Box::pin(async move {
+                    if let Some(resource) = resource {
+                        resource.authorize(&identity).await?;
+                    }
                     if service.bound_identity()? != identity {
                         bail!("The worker binding changed before private inference.");
                     }
@@ -191,6 +276,13 @@ impl Title {
             "type":"agent.automatic-label","chatId":self.job["chatId"],"claimId":self.job["operationId"],"result":result.ok(),
         }))
     }
+}
+
+fn empty_title() -> Result<Value> {
+    checked(
+        "generateLabelResultSchema",
+        &json!({"titleProtection":Value::Null,"emptyInput":true}),
+    )
 }
 
 fn bounded(value: &JsString, max: usize) -> JsString {

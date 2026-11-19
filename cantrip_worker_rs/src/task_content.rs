@@ -67,15 +67,14 @@ fn protect_message(
     checked("taskMessageOpaqueContentSchema", &protected)
 }
 
-fn prepare(task: &BoundComponentKey, context: &Value, command: &Value) -> Result<Value> {
-    let summary = &command["task"];
+pub(crate) fn open_task(
+    task: &BoundComponentKey,
+    context: &Value,
+    summary: &Value,
+) -> Result<Value> {
     if summary["protectedContent"]["keyRevision"] != context["keyRevision"] {
         bail!("The Task encryption key revision is unavailable.");
     }
-    let mut context = context.clone();
-    context["chatId"] = summary["chatId"].clone();
-    context["roundId"] = command["operationId"].clone();
-    let key = &task.component.key;
     let classification = Value::object(
         [
             "state",
@@ -91,13 +90,22 @@ fn prepare(task: &BoundComponentKey, context: &Value, command: &Value) -> Result
         ]
         .map(|field| (field, summary[field].clone())),
     );
-    let current = decrypt_communication(
+    decrypt_communication(
         Communication::Task,
-        key,
-        &context,
+        &task.component.key,
+        context,
         &summary["protectedContent"],
         Some(&classification),
-    )?;
+    )
+}
+
+fn prepare(task: &BoundComponentKey, context: &Value, command: &Value) -> Result<Value> {
+    let summary = &command["task"];
+    let mut context = context.clone();
+    context["chatId"] = summary["chatId"].clone();
+    context["roundId"] = command["operationId"].clone();
+    let key = &task.component.key;
+    let current = open_task(task, &context, summary)?;
     let kind = &command["operationKind"];
     let (stable, state, mode) = match kind.as_str() {
         Some("direct") => ("draft", "implementing", "default"),
