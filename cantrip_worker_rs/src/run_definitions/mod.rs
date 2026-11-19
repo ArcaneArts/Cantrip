@@ -9,6 +9,7 @@ use crate::{
     encryption::Service,
     filesystem::{Scope, paths},
     routing::Registry,
+    run_runtime::{self, Environment},
 };
 use anyhow::{Context, Result, anyhow, bail};
 use cantrip_crypto::checked;
@@ -29,14 +30,16 @@ const MAX_OBSERVED_PROJECTS: usize = 256;
 const PREFIX: &str = "project.run-configuration-definitions.";
 
 pub(crate) struct Definitions {
+    environment: Arc<Environment>,
     observed: Mutex<IndexMap<JsString, Observation>>,
     mutations: Mutex<HashMap<PathBuf, Weak<Mutex<()>>>>,
     scans: Arc<Semaphore>,
 }
 
-impl Default for Definitions {
-    fn default() -> Self {
+impl Definitions {
+    pub(crate) fn new(environment: Arc<Environment>) -> Self {
         Self {
+            environment,
             observed: Mutex::default(),
             mutations: Mutex::default(),
             scans: Arc::new(Semaphore::new(4)),
@@ -61,7 +64,16 @@ impl Definitions {
     pub(crate) fn supports(command: &str) -> bool {
         matches!(
             command.strip_prefix(PREFIX),
-            Some("get" | "write" | "delete" | "paths")
+            Some(
+                "get"
+                    | "write"
+                    | "delete"
+                    | "paths"
+                    | "capabilities"
+                    | "detect"
+                    | "validate"
+                    | "list"
+            )
         )
     }
 
@@ -119,10 +131,11 @@ impl Definitions {
         };
         // Once a filesystem mutation has started, finish publication even if
         // the command socket disconnects or a response is no longer needed.
+        let environment = self.environment.clone();
         tokio::task::spawn_blocking(move || {
             let _guard = guard;
             scope.check()?;
-            execute(command, root, &scope)
+            execute(command, root, &scope, &environment)
         })
         .await?
     }
@@ -191,7 +204,12 @@ impl Definitions {
     }
 }
 
-fn execute(command: Value, root: PathBuf, scope: &Scope) -> Result<Value> {
+fn execute(
+    command: Value,
+    root: PathBuf,
+    scope: &Scope,
+    environment: &Environment,
+) -> Result<Value> {
     let operation = command["type"]
         .as_str()
         .unwrap()
@@ -199,6 +217,39 @@ fn execute(command: Value, root: PathBuf, scope: &Scope) -> Result<Value> {
         .unwrap();
     let mut response = json!({"operation":operation,"operationId":command["operationId"],"projectId":command["projectId"]});
     let schema = match operation {
+        "capabilities" => {
+            response["capabilities"] = run_runtime::capabilities();
+            "runConfigurationCapabilitiesResponseSchema"
+        }
+        "detect" => {
+            let (candidates, diagnostics) =
+                run_runtime::detect(&root, command["providerKind"].as_str(), scope)?;
+            response["candidates"] = json!(candidates);
+            response["diagnostics"] = json!(diagnostics);
+            "runConfigurationDetectResponseSchema"
+        }
+        "validate" => {
+            response["validation"] =
+                run_runtime::validation(&command["document"], &root, environment)?;
+            "runConfigurationValidateResponseSchema"
+        }
+        "list" => {
+            let inventory = repository::Repository::new(root.clone()).scan()?;
+            let mut validations = Vec::new();
+            for entry in inventory["entries"].as_array().unwrap() {
+                scope.check()?;
+                if entry["status"] == "ready" {
+                    validations.push(run_runtime::validation(
+                        &entry["document"],
+                        &root,
+                        environment,
+                    )?);
+                }
+            }
+            response["inventory"] = inventory;
+            response["validations"] = json!(validations);
+            "runConfigurationListResponseSchema"
+        }
         "paths" => {
             let purpose = command["purpose"].as_str().unwrap();
             let paths = discovery::paths(
@@ -243,7 +294,7 @@ fn execute(command: Value, root: PathBuf, scope: &Scope) -> Result<Value> {
     checked(schema, &response)
 }
 
-fn collator() -> Result<CollatorBorrowed<'static>> {
+pub(crate) fn collator() -> Result<CollatorBorrowed<'static>> {
     let locale: icu_locale_core::Locale = cantrip_wire::environment::locale()
         .unwrap_or("en-US")
         .parse()

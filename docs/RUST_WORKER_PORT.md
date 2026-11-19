@@ -5315,3 +5315,35 @@ environment, Cantrip OS execution, direct and WorkerLink delivery, and
 production cutover remain open. Windows currently uses the available
 ConPTY job retirement path. Its graceful-stop parity and Windows and Linux
 runtime validation remain open.
+
+## 118. Discover, validate, and run typed Node project configurations
+
+Reference commit `daddc69291cb0294d08c0e59253d3d7647524274` (#3280).
+
+The Rust worker discovers package scripts and entrypoints from bounded local
+`package.json` files. It preserves discovery ordering, package-manager
+selection, dependency-directory exclusions, and symlink restrictions.
+Definition capabilities, validation, and inventory are wired for the shell
+and Node providers. Inventory validation still requires a native validator
+for every ready definition in a project.
+
+The Host supervisor launches package scripts, direct entrypoints, custom
+commands, provider tasks, and shell before-launch steps. It applies the
+effective platform arguments and existing protected environment and output
+paths. The Rust worker starts without Node. User-selected Node, Bun, and
+package managers are external project tools invoked only for the matching
+Run definition.
+
+In local macOS ARM64 validation, the public API ran the Rust server with
+PGlite and the Rust worker with Node absent from its startup PATH. Node
+reference comparisons covered capabilities for the two supported providers,
+package discovery, tool and target diagnostics, and the validated
+inventory. The worker ran real npm scripts and a direct Node entrypoint
+using an explicit project environment, then returned their encrypted output.
+The fixture also covered a custom command and the owned spawn failure when
+the requested Node executable was unavailable.
+
+Java, Dart, Flutter and Rust Run providers, mixed-provider inventory
+validation, Cantrip OS execution, and production cutover remain open.
+Windows and Linux launch paths and the Bun, pnpm, and Yarn executions were
+outside this local runtime check.

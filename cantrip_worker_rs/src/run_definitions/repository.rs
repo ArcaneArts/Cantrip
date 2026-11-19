@@ -53,7 +53,7 @@ impl Repository {
         Ok(Some(parent))
     }
 
-    pub(super) fn scan(&self) -> Result<Value> {
+    pub(crate) fn scan(&self) -> Result<Value> {
         let failure = |code, error: &dyn std::fmt::Display| {
             inventory(
                 vec![],
@@ -277,7 +277,7 @@ fn inventory(entries: Vec<Value>, diagnostics: Vec<Value>) -> Value {
     json!({"directory":DIRECTORY,"entries":entries,"diagnostics":diagnostics})
 }
 
-fn document(value: &Value) -> std::result::Result<Value, ValidationError> {
+pub(crate) fn document(value: &Value) -> std::result::Result<Value, ValidationError> {
     parse_property("runConfigurationApiWriteRequestSchema", "document", value)
 }
 
