@@ -27,6 +27,7 @@ fn js_whitespace_pattern(pattern: &str) -> Regex {
 pub(super) struct Pubspec {
     pub name: Option<String>,
     pub flutter: bool,
+    pub default_flavor: Option<String>,
 }
 
 pub(super) fn read_pubspec(path: &Path) -> Option<Pubspec> {
@@ -37,15 +38,52 @@ pub(super) fn read_pubspec(path: &Path) -> Option<Pubspec> {
     });
     static FLUTTER: LazyLock<Regex> =
         LazyLock::new(|| js_whitespace_pattern(r"(?m)^[ \t]+sdk\s*:\s*flutter\s*(?:#.*)?$"));
-    let pubspec = read_text(path)?.replace(['\r', '\u{2028}', '\u{2029}'], "\n");
+    let text = read_text(path)?;
+    let pubspec = text.replace(['\r', '\u{2028}', '\u{2029}'], "\n");
     let name = NAME
         .captures(&pubspec)
         .and_then(|found| (1..=3).find_map(|index| found.get(index)))
         .map(|matched| matched.as_str().to_owned());
+    let flutter = FLUTTER.is_match(&pubspec);
     Some(Pubspec {
         name,
-        flutter: FLUTTER.is_match(&pubspec),
+        flutter,
+        default_flavor: flutter.then(|| default_flavor(&text)).flatten(),
     })
+}
+
+fn default_flavor(text: &str) -> Option<String> {
+    static SECTION: LazyLock<Regex> =
+        LazyLock::new(|| js_whitespace_pattern(r"^flutter\s*:\s*(?:#.*)?$"));
+    static FLAVOR: LazyLock<Regex> = LazyLock::new(|| {
+        js_whitespace_pattern(
+            r#"^\s+default-flavor\s*:\s*(?:"([A-Za-z0-9_.-]+)"|'([A-Za-z0-9_.-]+)'|([A-Za-z0-9_.-]+))\s*(?:#.*)?$"#,
+        )
+    });
+    let mut in_flutter = false;
+    for line in text.lines() {
+        if SECTION.is_match(line) {
+            in_flutter = true;
+            continue;
+        }
+        if !in_flutter {
+            continue;
+        }
+        let trimmed = cantrip_wire::text::trim(line);
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if !line.starts_with(cantrip_wire::text::whitespace) {
+            break;
+        }
+        if let Some(matched) = FLAVOR
+            .captures(line)
+            .and_then(|found| (1..=3).find_map(|index| found.get(index)))
+        {
+            return Some(matched.as_str().to_owned());
+        }
+    }
+    None
 }
 
 fn read_text(path: &Path) -> Option<String> {
@@ -100,6 +138,8 @@ pub(super) struct Package {
     pub directory: String,
     pub name: String,
     pub entrypoints: Vec<String>,
+    pub flutter: bool,
+    pub default_flavor: Option<String>,
 }
 
 pub(super) fn scan(root: &Path, scope: &Scope) -> Result<Vec<Package>> {
@@ -165,9 +205,6 @@ pub(super) fn scan(root: &Path, scope: &Scope) -> Result<Vec<Package>> {
     let mut packages = Vec::new();
     for (directory, pubspec) in &pubspecs {
         scope.check()?;
-        if pubspec.flutter {
-            continue;
-        }
         let Some(name) = &pubspec.name else {
             continue;
         };
@@ -180,8 +217,7 @@ pub(super) fn scan(root: &Path, scope: &Scope) -> Result<Vec<Package>> {
             .iter()
             .filter_map(|source| {
                 let relative = beneath(source, directory)?;
-                let first = relative.split('/').next()?;
-                (!matches!(first, "test" | "integration_test")
+                (is_entrypoint(relative, pubspec.flutter)
                     && !nested.iter().any(|child| beneath(source, child).is_some()))
                 .then(|| relative.to_owned())
             })
@@ -191,9 +227,24 @@ pub(super) fn scan(root: &Path, scope: &Scope) -> Result<Vec<Package>> {
             directory: directory.clone(),
             name: name.clone(),
             entrypoints,
+            flutter: pubspec.flutter,
+            default_flavor: pubspec.default_flavor.clone(),
         });
     }
     Ok(packages)
+}
+
+fn is_entrypoint(relative: &str, flutter: bool) -> bool {
+    if flutter {
+        static FLUTTER_ENTRY: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"^lib/main(?:[_.-][A-Za-z0-9_.-]+)?\.dart$").unwrap());
+        FLUTTER_ENTRY.is_match(relative)
+    } else {
+        !matches!(
+            relative.split('/').next(),
+            Some("test" | "integration_test")
+        )
+    }
 }
 
 fn ignored(name: &str) -> bool {

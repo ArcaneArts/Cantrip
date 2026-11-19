@@ -5407,3 +5407,37 @@ and focused Rust Run tests also passed.
 
 Java, Flutter, Cantrip OS Run execution, and the production cutover remain
 open. Dart execution was exercised on macOS ARM64.
+
+## 121. Discover and run Flutter configurations and inspect devices
+
+Reference commit `9af2e810f2d2e0d8b3f3b3b67e6de10cee010d52` (#3283).
+
+The Dart and Flutter providers share one bounded package and Dart source
+scan. Flutter discovery recognizes conventional and variant entrypoints
+and carries the pubspec default flavor into each suggestion. Flutter
+validation reports package, SDK, entrypoint, define-file, and before-launch
+diagnostics in mixed-provider inventories.
+
+Host execution preserves platform overrides, SDK and device selection,
+mode and flavor, Dart defines, pub behavior, and application arguments
+through the owned PTY. Flutter clean, localization generation, and pub
+get run as ordered provider steps. Device selection goes directly to
+`flutter run` so Flutter reports launch failures for the selected device.
+
+The authorized device endpoint invokes `flutter devices --machine` in the
+registered project. It preserves the device record shape and ordering,
+caps the combined output and runtime, and retires the owned process on
+limit or cancellation. Discovery, validation, and inventory inspect files
+without launching the SDK.
+
+The local macOS ARM64 smoke compared discovery, validation, inventory, and
+device output with the Node worker. It ran both Rust services with PGlite
+and Node absent from the worker startup PATH. An SDK fixture exercised
+device inspection, oversized output cleanup, launch arguments, command
+overrides, before-launch order, and encrypted output. With
+`CANTRIP_TEST_FLUTTER_SDK` set, the installed Flutter SDK generated real
+localization files through the Rust supervisor. Flutter application launch
+used the SDK fixture, with no physical devices or simulators involved.
+
+Java, Cantrip OS Run execution, and production cutover remain open.
+Flutter runtime validation in this cycle covers macOS ARM64.

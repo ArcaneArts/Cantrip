@@ -2,7 +2,10 @@
 //! real command and leaves tool availability to the owned process spawn.
 mod cargo;
 mod dart;
+mod dart_source;
+mod flutter;
 mod node;
+mod sdk;
 
 use super::{
     Environment, Failure, layers,
@@ -15,6 +18,8 @@ use crate::{
 use anyhow::{Result, bail};
 use cantrip_wire::{Value, value::json};
 use std::path::{Path, PathBuf};
+
+pub(crate) use flutter::inspect_devices;
 
 pub(super) struct Resolved<'a> {
     document: &'a Value,
@@ -62,6 +67,7 @@ pub(super) fn materialize(
         Some("shell") => shell::materialize(document, root, baseline),
         Some("node") => node::materialize(document, root, baseline),
         Some("dart") => dart::materialize(document, root, baseline),
+        Some("flutter") => flutter::materialize(document, root, baseline),
         Some("rust") => cargo::materialize(document, root, baseline),
         _ => Err(Failure::new(
             "provider",
@@ -84,6 +90,7 @@ pub(crate) fn capabilities() -> Value {
         capability("shell", "Shell", "terminal", false),
         capability("node", "Node / package", "package", true),
         capability("dart", "Dart", "file-code", true),
+        capability("flutter", "Flutter", "smartphone", true),
         capability("rust", "Rust / Cargo", "boxes", true),
     ])
 }
@@ -96,12 +103,22 @@ pub(crate) fn detect(
     match provider {
         None => {
             let mut candidates = node::discover(root, scope)?;
-            candidates.extend(dart::discover(root, scope)?);
+            let packages = dart_source::scan(root, scope)?;
+            candidates.extend(dart::discover(&packages, scope)?);
+            candidates.extend(flutter::discover(&packages, scope)?);
             candidates.extend(cargo::discover(root, scope)?);
             Ok((candidates, vec![]))
         }
         Some("node") => Ok((node::discover(root, scope)?, vec![])),
-        Some("dart") => Ok((dart::discover(root, scope)?, vec![])),
+        Some("dart" | "flutter") => {
+            let packages = dart_source::scan(root, scope)?;
+            let candidates = if provider == Some("dart") {
+                dart::discover(&packages, scope)?
+            } else {
+                flutter::discover(&packages, scope)?
+            };
+            Ok((candidates, vec![]))
+        }
         Some("rust") => Ok((cargo::discover(root, scope)?, vec![])),
         Some("shell") => Ok((vec![], vec![])),
         Some(provider) => Ok((
@@ -125,6 +142,7 @@ pub(crate) fn validation(
         Some("shell") => shell::validate(document, root, baseline),
         Some("node") => node::validate(document, root, baseline),
         Some("dart") => dart::validate(document, root, baseline),
+        Some("flutter") => flutter::validate(document, root, baseline),
         Some("rust") => cargo::validate(document, root, baseline, scope)?,
         _ => bail!("This Run configuration provider is unavailable on the native worker."),
     };
@@ -145,26 +163,29 @@ pub(super) fn executable_diagnostic(
     root: &Path,
     baseline: &Environment,
 ) -> Option<Value> {
-    if executable_on_path(program, root, baseline) {
-        return None;
-    }
-    Some(issue(
+    find_executable(program, root, baseline)
+        .is_none()
+        .then(|| missing_executable(program, field))
+}
+
+fn missing_executable(program: &str, field: &str) -> Value {
+    issue(
         "executable-unavailable",
         &format!(
             "The required executable {} is not available in the target worker launch environment. Install it, add it to PATH, or select a configured SDK/toolchain path.",
             json!(program).stringify()
         ),
         field,
-    ))
+    )
 }
 
-fn executable_on_path(program: &str, root: &Path, baseline: &Environment) -> bool {
+fn find_executable(program: &str, root: &Path, baseline: &Environment) -> Option<PathBuf> {
     if program.contains(['/', '\\']) {
-        return executable_file(&cantrip_config::resolve(root, Path::new(program)));
+        let candidate =
+            paths::canonical_sync(&cantrip_config::resolve(root, Path::new(program))).ok()?;
+        return executable_file(&candidate).then_some(candidate);
     }
-    let Some(path) = layers::env_value(baseline, "PATH") else {
-        return false;
-    };
+    let path = layers::env_value(baseline, "PATH")?;
     let mut names = vec![program.to_owned()];
     if cfg!(windows) && Path::new(program).extension().is_none() {
         for suffix in layers::env_value(baseline, "PATHEXT")
@@ -178,29 +199,28 @@ fn executable_on_path(program: &str, root: &Path, baseline: &Environment) -> boo
         }
     }
     let separator = if cfg!(windows) { ';' } else { ':' };
-    path.split(separator).any(|directory| {
+    path.split(separator).find_map(|directory| {
         let directory = directory.trim();
         let directory = directory.strip_prefix('"').unwrap_or(directory);
         let directory = directory.strip_suffix('"').unwrap_or(directory);
         let directory = cantrip_config::resolve(root, &PathBuf::from(directory));
         names
             .iter()
-            .any(|name| executable_file(&directory.join(name)))
+            .filter_map(|name| paths::canonical_sync(&directory.join(name)).ok())
+            .find(|candidate| executable_file(candidate))
     })
 }
 
 fn executable_file(path: &Path) -> bool {
-    paths::canonical_sync(path)
-        .and_then(std::fs::metadata)
-        .is_ok_and(|metadata| {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
-            }
-            #[cfg(not(unix))]
-            metadata.is_file()
-        })
+    std::fs::metadata(path).is_ok_and(|metadata| {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
+        }
+        #[cfg(not(unix))]
+        metadata.is_file()
+    })
 }
 
 fn diagnose_shell(
@@ -234,21 +254,21 @@ fn render(program: &str, arguments: &[String]) -> String {
     let mut command = program.to_owned();
     for value in arguments {
         command.push(' ');
-        if !value.is_empty()
-            && value
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || b"_./:@%+=,-".contains(&byte))
-        {
-            command.push_str(value);
-        } else if cfg!(windows) {
-            command.push('"');
-            command.push_str(&value.replace('"', "\"\""));
-            command.push('"');
-        } else {
-            command.push('\'');
-            command.push_str(&value.replace('\'', "'\\''"));
-            command.push('\'');
-        }
+        command.push_str(&quote_argument(value));
     }
     command
+}
+
+fn quote_argument(value: &str) -> String {
+    if !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_./:@%+=,-".contains(&byte))
+    {
+        value.to_owned()
+    } else if cfg!(windows) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        format!("'{}'", value.replace('\'', "'\\''"))
+    }
 }
