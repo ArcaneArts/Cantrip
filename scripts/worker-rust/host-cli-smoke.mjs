@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { runConfigurationFileSchema } from "../../packages/protocol/dist/run-configuration-definitions.js";
+import { verifyHostCliExplorer } from "./host-cli-explorer-smoke.mjs";
 import { verifyHostCliPolicies } from "./host-cli-policy-smoke.mjs";
 
 export async function cliConnection(workerDirectory) {
@@ -43,6 +44,7 @@ export async function verifyHostCli({
   projectId,
   ownerId,
   policyKey,
+  explorerKeys,
   checkout,
   call,
   save,
@@ -211,6 +213,21 @@ export async function verifyHostCli({
     componentKey: policyKey,
     run: (command) =>
       run(fixture("Run invoking protected CLI policy commands", command)),
+  });
+
+  await verifyHostCliExplorer({
+    call,
+    core,
+    cli,
+    connection,
+    terminalId,
+    projectId,
+    ownerId,
+    checkout,
+    workerDirectory,
+    ...explorerKeys,
+    run: (command) =>
+      run(fixture("Run invoking protected CLI Explorer commands", command)),
   });
 
   const consumed = await run(

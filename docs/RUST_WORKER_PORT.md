@@ -5535,3 +5535,27 @@ The Node policy and broker tests also passed locally.
 Managed Agent policy context and protected CLI Explorer, terminal
 read/input, and browser navigation remain open. Production still
 selects the Node worker.
+
+## 125. Relay protected Explorer and terminal CLI operations
+
+Reference commit `a024e60aea7b0f1fc6a232d057787ded690f4959` (#3287).
+
+The native CLI broker supports `explorer list`, `explorer read`,
+`explorer write`, `terminal read`, and `terminal send`. Core resolves the
+authorized surface for the current context. The broker binds each encrypted
+request and response to that surface, operation, direction, and sequence.
+Explorer writes read the current version from the selected surface and
+include it in the encrypted replacement so the worker can reject a
+concurrent change. Terminal input uses the existing encrypted input path
+and returns the relay mutation receipt.
+
+On macOS ARM64, the shipped CLI listed, read, and replaced a file from a
+Rust-managed Host Run and read a running terminal snapshot and sent input
+that produced a new PTY marker. Both services ran in Rust with PGlite,
+and Node was absent from the worker startup PATH. Explorer listing and
+read results matched the Node broker for string cursors, pagination, and
+UTF-16 truncation. The fixture also checked that the Core relay carried
+ciphertext and that a successful write changed the file version.
+
+Browser navigation, managed Codex CLI bindings, direct and WorkerLink
+delivery, and production cutover remain open.

@@ -2,6 +2,7 @@
 mod policy;
 mod run;
 mod server;
+mod surface;
 
 use crate::{config::Config, encryption::Service, http::checked};
 use anyhow::{Context, Result, anyhow};
@@ -301,7 +302,10 @@ impl Handler {
                 policy::execute(&self.server, &self.encryption, &request, id).await
             }
             "explorer.list" | "explorer.read" | "explorer.write" | "terminal.read"
-            | "terminal.send" | "browser.open" => {
+            | "terminal.send" => {
+                surface::execute(&self.server, &self.encryption, &request, id).await
+            }
+            "browser.open" => {
                 anyhow::bail!("This protected CLI command is unavailable on the native worker.")
             }
             _ => self.server.execute(request, id).await,

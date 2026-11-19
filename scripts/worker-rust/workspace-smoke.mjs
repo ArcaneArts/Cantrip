@@ -690,6 +690,14 @@ try {
             keyRevision: 1,
           })
         : null;
+      const metadataKey = values.cli
+        ? cryptoClient.deriveComponentKey({
+            accountMasterKey: master,
+            ownerId,
+            component: "private-surface-metadata",
+            keyRevision: 1,
+          })
+        : null;
       try {
         const identity = JSON.parse(
           await readFile(
@@ -741,10 +749,16 @@ try {
           cli: values.cli && path.resolve(values.cli),
           workerDirectory,
           policyKey,
+          explorerKeys: {
+            serverId: repository.serverId,
+            surfaceKey,
+            metadataKey,
+          },
         });
       } finally {
         runKey.fill(0);
         policyKey?.fill(0);
+        metadataKey?.fill(0);
       }
       break exercise;
     }
@@ -770,7 +784,8 @@ try {
           metadataKey,
           projectId,
           checkout,
-          cli: Boolean(values.cli),
+          cli: values.cli && path.resolve(values.cli),
+          connectionPath: path.join(workerDirectory, "cli-connection.json"),
         });
         const reopen = await verifyTerminalServices({
           call,
@@ -984,6 +999,7 @@ try {
         typedJavaProvider: true,
         nativeCliBroker: Boolean(values.cli),
         protectedCliPolicies: Boolean(values.cli),
+        protectedCliExplorer: Boolean(values.cli),
         realGradleSdk: Boolean(
           process.env.CANTRIP_TEST_GRADLE && process.env.CANTRIP_TEST_JDK_HOME,
         ),
@@ -1009,6 +1025,7 @@ try {
         suite: "actual-native-host-terminal-worker-server",
         passed: true,
         encryptedHostTerminalRelay: true,
+        protectedCliTerminal: Boolean(values.cli),
         nativeCliBroker: Boolean(values.cli),
         encryptedServiceRelayAcrossRestarts: true,
         realTerminalServiceEnableRestartAndRecovery: true,
