@@ -4682,3 +4682,29 @@ ordering, and cancellation.
 Direct Task boundary controls and durable suspension checkpoint capture
 and restore remain open, along with native queue and gateway cutover.
 Production still selects Node.
+
+## 95. Protect native checkpoint resources on the owning Codex connection
+
+Reference commit `c30c814261f6d1bbc81b62c423d9cb113a4e4cc1` (#3257).
+
+The Rust worker answers Codex's private native resource requests on the
+connection that owns the runner. Managed thread preparation registers the
+runner and thread version before reattaching a known thread. The worker
+chooses the Chat or Task component from the actual gate. It seals with the
+current grant and opens with the envelope's exact key revision. Replaced
+runners and worker bindings cannot receive the result. Invalid resources
+from the current runner receive the native denial response.
+
+The shared crypto crate implements the existing Chat and Task envelope
+formats and binds them to the authenticated server, owner, worker principal,
+thread, turn, and checkpoint. The resource domain stays distinct from the
+worker's suspension source record. Private request values and resolution
+payloads stay out of ordinary History and RPC diagnostics.
+
+A local Rust test exchanged seal and open requests over the owned native
+WebSocket and checked denial, runner fencing, and diagnostic redaction.
+Node and Rust opened each other's resource envelopes and rejected mismatched
+context and suspension-source ciphertext in the protected content fixture.
+
+Direct Task boundary controls, committing the worker suspension source record,
+and live and cold restoration remain open. Production still selects Node.

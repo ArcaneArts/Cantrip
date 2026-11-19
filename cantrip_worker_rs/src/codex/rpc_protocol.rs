@@ -4,6 +4,9 @@ use cantrip_wire::{JsString, Value, parse_json_text};
 use regress::Regex;
 use std::sync::LazyLock;
 
+pub(super) const RESOURCE_REQUESTED: &str = "thread/nativeResources/requested";
+pub(super) const RESOURCE_RESOLVE: &str = "thread/nativeResources/resolve";
+
 pub(super) fn is_private_inference(message: &Value) -> bool {
     message["method"] == "thread/managedExecution/requested"
         && message["params"]["trigger"] == "inference"

@@ -32,6 +32,30 @@ fn operate(
                 json!({"cwd":cantrip_worker::filesystem::paths::text(&config.cwd),"serviceCommand":config.command}),
             )
         }
+        "native-resources-seal" | "native-resources-open" => {
+            let component = match input["component"].as_str() {
+                Some("chat-content") => NativeResourceComponent::Chat,
+                Some("task-content") => NativeResourceComponent::Task,
+                _ => anyhow::bail!("Unknown resource test component."),
+            };
+            if input["op"] == "native-resources-seal" {
+                seal_native_resources(
+                    &key()?,
+                    context,
+                    component,
+                    &input["binding"],
+                    &input["content"],
+                )
+            } else {
+                open_native_resources(
+                    &key()?,
+                    context,
+                    component,
+                    &input["binding"],
+                    &input["encrypted"],
+                )
+            }
+        }
         "private-state-aad" => surface_private_state_associated_data(context),
         "private-state-encrypt" => {
             encrypt_surface_private_state(&key()?, context, &input["content"])

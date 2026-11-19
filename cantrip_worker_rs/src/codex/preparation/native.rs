@@ -67,6 +67,14 @@ pub async fn load(
     if let Some(overlay) = overlay {
         params["managedConfig"] = overlay;
     }
+    let gate = &params["managedConfig"]["executionGate"];
+    let binding = gate["runnerGeneration"].as_js_string().cloned();
+    let task = gate["inferenceOnly"] == true;
+    let bind_resources = |thread: &JsString| {
+        if let Some(runner) = &binding {
+            runtime.bind_native_resources(thread, runner, task);
+        }
+    };
     let thread = match &selection.thread_id {
         Some(expected) => {
             let Value::Object(fields) = &mut params else {
@@ -90,6 +98,7 @@ pub async fn load(
                 version: runtime.thread_version(expected),
             };
             identify(expected.clone()).await?;
+            bind_resources(expected);
             let loaded = resumed(runtime, params, &thread).await?;
             if thread_id(&loaded)? != expected {
                 bail!("Codex resumed a different thread than requested.");
@@ -99,6 +108,7 @@ pub async fn load(
         None => {
             let started = request(runtime, "thread/start", params).await?;
             let thread = thread_id(&started)?.clone();
+            bind_resources(&thread);
             identify(thread.clone()).await?;
             LoadedThread {
                 id: thread,

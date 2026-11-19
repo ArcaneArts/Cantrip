@@ -10,6 +10,10 @@ import { CantripDecryptionError as WorkerDecryptionError } from "../../packages/
 import * as p from "../../packages/protocol/src/index.ts";
 import { WorkerEncryptionService } from "../../cantrip_worker/src/worker-encryption.ts";
 import * as worker from "../../cantrip_worker/src/protected-secrets.ts";
+import {
+  createNativeResourceProtection,
+  createNativeSuspensionSourceProtection,
+} from "../../cantrip_worker/src/native-resource-protection.ts";
 
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary, "Pass built --binary content-fixture");
@@ -102,6 +106,122 @@ const secret = {
 const inputFor = (context) => ({ ...context, componentKey: key });
 let service;
 try {
+  const binding = {
+    threadId: "thread",
+    turnId: "turn",
+    checkpointId: "checkpoint",
+  };
+  const resource = {
+    commands: [{ output: "Synthetic checkpoint \ud800", lines: [1, 2] }],
+    empty: null,
+  };
+  const resourceContext = {
+    ownerId: "resource-owner",
+    serverId: "logical-resource-server",
+    principalId: "worker-principal",
+    keyRevision: 3,
+  };
+  const serviceFor = (context) => ({
+    ownerId: () => context.ownerId,
+    serverIdentity: () => context.serverId,
+    registration: () => ({ principalId: context.principalId }),
+    componentKey: (_, revision) => ({
+      key: key.slice(),
+      keyRevision: revision ?? context.keyRevision,
+    }),
+  });
+  const nodeResource = createNativeResourceProtection(
+    serviceFor(resourceContext),
+  );
+  const nodeSource = createNativeSuspensionSourceProtection(
+    serviceFor(resourceContext),
+  );
+  for (const component of ["chat-content", "task-content"]) {
+    const material = {
+      key: encoded,
+      context: resourceContext,
+      binding,
+      component,
+    };
+    const nodeSealed = await nodeResource.seal(binding, resource, component);
+    const rustSealed = await native({
+      ...material,
+      op: "native-resources-seal",
+      content: resource,
+    });
+    same(
+      await nodeResource.open(binding, rustSealed, component),
+      resource,
+      "Node opens Rust native checkpoint resources",
+    );
+    same(
+      await native({
+        ...material,
+        op: "native-resources-open",
+        encrypted: nodeSealed,
+      }),
+      resource,
+      "Rust opens Node native checkpoint resources",
+    );
+    for (const field of ["threadId", "turnId", "checkpointId"]) {
+      const mismatched = { ...binding, [field]: "another-" + field };
+      await compare(
+        {
+          ...material,
+          op: "native-resources-open",
+          encrypted: nodeSealed,
+          binding: mismatched,
+        },
+        () => nodeResource.open(mismatched, nodeSealed, component),
+        "Checkpoint resource binding keeps " + field,
+      );
+    }
+    for (const field of ["ownerId", "serverId", "principalId"]) {
+      const context = { ...resourceContext, [field]: "another-" + field };
+      await compare(
+        {
+          ...material,
+          op: "native-resources-open",
+          encrypted: nodeSealed,
+          context,
+        },
+        () =>
+          createNativeResourceProtection(serviceFor(context)).open(
+            binding,
+            nodeSealed,
+            component,
+          ),
+        "Checkpoint resource namespace keeps " + field,
+      );
+    }
+    await assert.rejects(
+      () => nodeSource.open(binding, rustSealed, component),
+      WorkerDecryptionError,
+    );
+    await compare(
+      {
+        ...material,
+        op: "native-resources-open",
+        encrypted: await nodeSource.seal(binding, resource, component),
+      },
+      async () =>
+        nodeResource.open(
+          binding,
+          await nodeSource.seal(binding, resource, component),
+          component,
+        ),
+      "Checkpoint resources and the worker's source record have separate domains",
+    );
+    const otherComponent =
+      component === "task-content" ? "chat-content" : "task-content";
+    const wrong = await rust({
+      ...material,
+      op: "native-resources-open",
+      encrypted: nodeSealed,
+      component: otherComponent,
+    });
+    assert.equal(wrong.ok, false);
+  }
   const schema = "providerApiKeyProtectedContentSchema",
     content = { version: 1, apiKey: "  synthetic\ud800  " };
   const fromNode = await c.encryptProtectedSecret({
