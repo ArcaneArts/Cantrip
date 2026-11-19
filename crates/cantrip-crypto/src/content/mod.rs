@@ -28,7 +28,10 @@ pub use native_resources::{
     NativeResourceComponent, open_native_resources, open_native_suspension_source,
     seal_native_resources, seal_native_suspension_source,
 };
-pub use native_settings::{open_native_settings_patch, protect_native_settings_snapshot};
+pub use native_settings::{
+    open_native_account_defaults_write, open_native_settings_patch,
+    protect_native_account_defaults_result, protect_native_settings_snapshot,
+};
 pub use private_state::*;
 pub use repository::*;
 pub use secrets::*;

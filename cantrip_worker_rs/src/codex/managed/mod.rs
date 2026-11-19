@@ -56,6 +56,7 @@ pub struct Launch {
 struct Inner {
     id: JsString,
     codex_home: PathBuf,
+    configuration_home: Option<PathBuf>,
     version_raw: Value,
     generation: String,
     session: Session,
@@ -163,6 +164,10 @@ impl Runtime {
             bail!("Managed Grok account launch requires the worker runtime registry.");
         }
         let home = cantrip_config::resolve(&host.cwd, &profile.codex_home);
+        let configuration_home = profile
+            .configuration_home
+            .as_ref()
+            .map(|home| cantrip_config::resolve(&host.cwd, home));
         cantrip_host::files::private_directory(&home)?;
         if let Some(prepare) = prepare_home {
             prepare(home.clone()).await?;
@@ -225,6 +230,7 @@ impl Runtime {
         let runtime = Self(Arc::new_cyclic(|inner| Inner {
             id: profile.id.clone(),
             codex_home: home,
+            configuration_home,
             version_raw: host.compatibility["version"]["raw"]
                 .as_js_string()
                 .map_or_else(|| json!("unknown"), |version| json!(version)),
@@ -265,6 +271,14 @@ impl Runtime {
 
     pub(in crate::codex) fn codex_home(&self) -> &Path {
         &self.0.codex_home
+    }
+
+    pub(in crate::codex) fn user_config_path(&self) -> PathBuf {
+        self.0
+            .configuration_home
+            .as_deref()
+            .unwrap_or(self.codex_home())
+            .join("config.toml")
     }
 
     pub(in crate::codex) fn endpoint(&self) -> Result<&str> {

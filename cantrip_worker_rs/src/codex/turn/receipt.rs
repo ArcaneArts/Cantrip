@@ -1029,6 +1029,21 @@ impl Client {
         if let Some(status) = params.get("status") {
             intent["goalStatus"] = status.clone();
         }
+        if let Some(binding) = command.get("settingsBindingId") {
+            intent["settingsBindingId"] = binding.clone();
+        }
+        if method == super::settings::WRITE_DEFAULTS {
+            intent["scope"] = json!("account-defaults");
+            intent["configTarget"] = json!("account-defaults");
+            intent["settingKeys"] = json!(
+                params["edits"]
+                    .as_array()
+                    .context("Missing native account default edits.")?
+                    .iter()
+                    .map(|edit| &edit["keyPath"])
+                    .collect::<Vec<_>>()
+            );
+        }
         if method == super::settings::UPDATE {
             intent["settingKeys"] = json!(
                 params
@@ -1043,9 +1058,6 @@ impl Client {
                     .collect::<Vec<_>>()
             );
             intent["nativeSettingsOperationId"] = params["operationId"].clone();
-            if let Some(binding) = command.get("settingsBindingId") {
-                intent["settingsBindingId"] = binding.clone();
-            }
             if let Some(turn) = ["expectedTurnId", "turnId"]
                 .iter()
                 .find_map(|key| params[*key].as_js_string())

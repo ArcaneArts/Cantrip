@@ -93,6 +93,16 @@ impl Source {
             })
     }
 
+    pub(super) fn command_session(&self) -> Value {
+        let mut session = self.scope.clone();
+        if let Value::Object(fields) = &mut session {
+            fields.shift_remove(&JsString::from("workerId"));
+        }
+        session["runtimeGeneration"] = json!(self.generation);
+        session["connectionId"] = json!(format!("gui-control:{}", self.generation));
+        session
+    }
+
     pub fn matches_read(&self, requested: &Value) -> bool {
         self.scope.as_object().unwrap().iter().all(|(key, value)| {
             key.as_str() == Some("modelRouteId")
@@ -134,6 +144,12 @@ impl Source {
             "The managed settings source's account changed."
         );
         Ok(scope)
+    }
+
+    pub(super) fn assert_current(&self) -> Result<()> {
+        self.runtime()?;
+        self.encryption_scope()?;
+        Ok(())
     }
 
     fn seal(&self, scope: &Scope, settings: &Value) -> Result<Value> {

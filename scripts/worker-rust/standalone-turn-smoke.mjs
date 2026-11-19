@@ -1022,6 +1022,111 @@ async function verifySettingsSnapshot() {
   console.log(
     "Production Rust Core and worker encrypted, applied and reopened client settings with stable operation receipts.",
   );
+  await verifyAccountDefaults({ chatId, chatUrl, bindingId, serverId, state });
+}
+
+async function verifyAccountDefaults({
+  chatId,
+  chatUrl,
+  bindingId,
+  serverId,
+  state,
+}) {
+  const url = `${chatUrl}/native-account-defaults`;
+  const material = { ownerId, serverId, keyRevision, componentKey: chatKey };
+  const context = (operationId, direction) => ({
+    chatId,
+    bindingId,
+    operationId,
+    direction,
+  });
+  async function open(request) {
+    const result = await call("POST", url, 200, request);
+    assert.equal(result.operationId, request.operationId);
+    assert.equal(result.bindingId, request.bindingId);
+    assert.deepEqual(Object.keys(result).sort(), [
+      "bindingId",
+      "operationId",
+      "protectedResult",
+    ]);
+    return crypto.decryptNativeAccountDefaults({
+      ...material,
+      context: context(request.operationId, "response"),
+      envelope: result.protectedResult,
+    });
+  }
+  const read = () =>
+    open({ action: "read", bindingId, operationId: randomUUID() });
+  async function write(expectedVersion, defaults, identity = {}) {
+    const operationId = randomUUID();
+    return {
+      action: "write",
+      bindingId,
+      operationId,
+      protectedWrite: await crypto.encryptNativeAccountDefaults({
+        ...material,
+        context: { ...context(operationId, "request"), ...identity },
+        value: { expectedVersion, values: defaults },
+      }),
+    };
+  }
+  const before = await read();
+  assert.equal(before.verification, "read");
+  assert.equal(before.write, null);
+  const initial = before.snapshot;
+  const effort =
+    initial.stored.model_reasoning_effort === "high" ? "low" : "high";
+  await call(
+    "POST",
+    url,
+    500,
+    await write(
+      initial.version,
+      {
+        model_reasoning_effort: effort,
+      },
+      { bindingId: randomUUID() },
+    ),
+  );
+  assert.deepEqual((await read()).snapshot, initial);
+
+  const request = await write(initial.version, {
+    model_reasoning_effort: effort,
+  });
+  const written = await open(request);
+  assert.equal(written.verification, "confirmed");
+  assert.equal(written.write.version, written.snapshot.version);
+  assert.notEqual(written.snapshot.version, initial.version);
+  assert.deepEqual(written.snapshot.stored, {
+    ...initial.stored,
+    model_reasoning_effort: effort,
+  });
+  assert.deepEqual(
+    await open(await write(initial.version, { personality: "friendly" })),
+    {
+      snapshot: null,
+      write: null,
+      verification: "rejected",
+    },
+  );
+  await call("POST", url, 500, request);
+  assert.deepEqual((await read()).snapshot, written.snapshot);
+
+  const cleared = await open(
+    await write(written.snapshot.version, { model_reasoning_effort: null }),
+  );
+  assert.equal(cleared.verification, "confirmed");
+  assert.equal(cleared.snapshot.stored.model_reasoning_effort, undefined);
+  assert.deepEqual((await read()).snapshot, cleared.snapshot);
+  const settings = await call("GET", `${chatUrl}/native-settings`, 200);
+  assert.equal(settings.revision, state.revision);
+  assert.deepEqual(
+    settings.effective.context.settingsVersion,
+    state.effective.context.settingsVersion,
+  );
+  console.log(
+    "Production Rust Core and worker reopened protected account defaults, confirmed writes and clears, and rejected stale versions and replays.",
+  );
 }
 
 async function verifyStandaloneBehavior() {

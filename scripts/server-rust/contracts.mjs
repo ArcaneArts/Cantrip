@@ -995,6 +995,11 @@ export const contractRoots = [
   "nativeSettingsUpdateCommandSchema",
   "nativeSettingsUpdateContextSchema",
   "nativeSettingsPatchSchema",
+  "nativeAccountDefaultsCommandSchema",
+  "nativeAccountDefaultsContextSchema",
+  "nativeAccountDefaultsWriteSchema",
+  "nativeAccountDefaultsSnapshotSchema",
+  "nativeAccountDefaultsResultSchema",
 ];
 
 export const projectExportContractRoots = [
@@ -1622,6 +1627,12 @@ registerChecks(protocol.providerAuthLiveStatusSchema, [
 const recursiveJson = registerWorkerContracts(registerChecks);
 registerChecks(protocol.nativeSettingsPatchSchema, [
   "native-settings-unset-tier",
+]);
+registerChecks(protocol.nativeAccountDefaultsWriteSchema.shape.values, [
+  "native-account-defaults-fields",
+]);
+registerChecks(protocol.nativeAccountDefaultsResultSchema, [
+  "native-account-defaults-verification",
 ]);
 const patch = protocol.nativeSettingsPatchSchema.shape;
 const nativeSettings = protocol.nativeThreadSettingsSchema;

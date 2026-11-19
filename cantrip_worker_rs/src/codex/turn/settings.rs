@@ -1,7 +1,10 @@
 //! Native settings application is a separate fact from the RPC acknowledgment.
 //! Use the existing worker outbox so captured facts survive a worker upgrade.
+mod account_defaults;
 pub(in crate::codex) mod snapshot;
 mod update;
+pub(crate) use account_defaults::COMMAND as ACCOUNT_DEFAULTS;
+pub(super) use account_defaults::WRITE as WRITE_DEFAULTS;
 pub(crate) use update::COMMAND;
 
 use super::{
@@ -56,6 +59,17 @@ pub(super) fn assert_ordinary_settings(params: &Value) -> Result<()> {
 }
 
 impl Turns {
+    fn settings_activation(&self, scope: &Scope, chat: JsString) -> Value {
+        let key = (scope.owner.clone(), scope.server.clone(), chat);
+        self.active
+            .lock()
+            .unwrap()
+            .active
+            .get(&key)
+            .and_then(|active| active.root.as_ref())
+            .map_or(Value::Null, |root| root.activation.clone())
+    }
+
     pub(super) async fn dispatch_settings(
         &self,
         runtime: &Runtime,

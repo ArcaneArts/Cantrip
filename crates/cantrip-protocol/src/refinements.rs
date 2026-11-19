@@ -310,6 +310,35 @@ pub(super) fn apply(
         }
         return Ok(());
     }
+    if tag == "native-account-defaults-fields" {
+        if value.as_object().is_some_and(|fields| fields.is_empty()) {
+            custom(&[], "Select at least one account default.");
+        }
+        return Ok(());
+    }
+    if tag == "native-account-defaults-verification" {
+        let snapshot = &value["snapshot"];
+        let write = &value["write"];
+        let valid = match value["verification"].as_str() {
+            Some("read") => !snapshot.is_null() && write.is_null(),
+            Some("rejected") => snapshot.is_null() && write.is_null(),
+            Some("unavailable") => snapshot.is_null() && !write.is_null(),
+            Some("confirmed" | "changed") => {
+                !snapshot.is_null()
+                    && !write.is_null()
+                    && ((snapshot["version"] == write["version"])
+                        == (value["verification"] == "confirmed"))
+            }
+            _ => false,
+        };
+        if !valid {
+            custom(
+                &[],
+                "Defaults verification must match native write and readback evidence.",
+            );
+        }
+        return Ok(());
+    }
     if tag == "native-settings-unset-tier" {
         if value["unsetServiceTier"] == Value::Bool(true) && value.get("serviceTier").is_some() {
             custom(

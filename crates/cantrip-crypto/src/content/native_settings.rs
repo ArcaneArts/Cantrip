@@ -1,4 +1,4 @@
-use super::{aad, decode_json, open_field, revision};
+use super::{aad, decode_json, open_field, revision, seal_field};
 use crate::{checked, derive_field_key, encrypt_payload, hmac_sha256};
 use anyhow::{Result, ensure};
 use cantrip_wire::{Value, payload_digest, value::json};
@@ -80,4 +80,51 @@ pub fn open_native_settings_patch(
     revision(envelope, grant)?;
     let plaintext = open_field(component_key, &associated, envelope)?;
     decode_json("nativeSettingsPatchSchema", &plaintext, plaintext.len())
+}
+
+fn account_defaults_aad(grant: &Value, context: &Value, direction: &str) -> Result<Value> {
+    let mut context = context.clone();
+    context["direction"] = json!(direction);
+    let context = checked("nativeAccountDefaultsContextSchema", &context)?;
+    let identity = json!([
+        &grant["serverId"],
+        &context["chatId"],
+        &context["bindingId"],
+        &context["operationId"],
+    ]);
+    aad(
+        grant,
+        &json!("chat-content"),
+        &json!("native-account-defaults"),
+        &json!(payload_digest(&identity)),
+        &context["direction"],
+    )
+}
+
+pub fn open_native_account_defaults_write(
+    component_key: &[u8],
+    grant: &Value,
+    context: &Value,
+    envelope: &Value,
+) -> Result<Value> {
+    revision(envelope, grant)?;
+    let associated = account_defaults_aad(grant, context, "request")?;
+    let plaintext = open_field(component_key, &associated, envelope)?;
+    decode_json(
+        "nativeAccountDefaultsWriteSchema",
+        &plaintext,
+        plaintext.len(),
+    )
+}
+
+pub fn protect_native_account_defaults_result(
+    component_key: &[u8],
+    grant: &Value,
+    context: &Value,
+    result: &Value,
+) -> Result<Value> {
+    let associated = account_defaults_aad(grant, context, "response")?;
+    let result = checked("nativeAccountDefaultsResultSchema", result)?;
+    let plaintext = Zeroizing::new(result.stringify());
+    seal_field(component_key, &associated, plaintext.as_bytes())
 }
