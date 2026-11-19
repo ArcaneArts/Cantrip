@@ -1,4 +1,4 @@
-//! The WorkerLink binding and bounded output for one browser attachment.
+//! The WorkerLink binding and bounded output for one Remote Surface attachment.
 use super::{Endpoint, FrameSource};
 use cantrip_framing::{
     remote_surface::{self, Frame},

@@ -6291,3 +6291,31 @@ close, and helper cleanup. The Browser WorkerLink relay smoke also passed
 with the Rust server and headless Chromium. The focused Node desktop and
 capture tests passed for the exercised cases. Actual desktop pixels and
 system capture permissions remain unverified.
+
+
+## 153. Carry Host desktop captures through WorkerLink
+
+Reference commit `25ffc7dbb54fb7565d58f9c32bb126b3a2632bf2` (#3315).
+
+The native worker binds `remote-desktop` grants to the exact desktop surface
+and attachment. Desktop state and controls use WorkerLink's interactive lane.
+Protected JPEGs use the realtime lane, with bounded assembly and carrier
+credit. Lease renewal and revocation are shared with Browser attachments.
+A revoked desktop attachment stops contributing to capture and cannot fall
+back to the legacy socket. Other active viewers retain their own grants.
+
+Authenticated desktop stream feedback uses the existing protocol option and
+adjusts the image quality and width. Closed local direct channels discard
+in-flight credit in sequence for their own carrier and routing identity. This
+lets the writer deliver channel closure even if credit returns after
+revocation. Retired channels retain no delivery or input authority.
+
+Local macOS ARM64 checks used the Rust server with PGlite, the Rust worker,
+and the actual native helper with its deterministic targets. Core relay,
+local direct, and LAN WebRTC carried encrypted desktop frames. The fixture
+exercised credit-limited assembly, invalid and valid feedback, separate
+viewers, grant renewal and revocation, and retargeting through Core. Local
+direct also returned deferred credit after revocation and verified that the
+socket remained responsive. The Browser relay and legacy desktop fixtures
+passed. Viewer input, real desktop capture permissions, and WAN desktop
+runtime validation remain open.

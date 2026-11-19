@@ -45,7 +45,7 @@ struct Registry {
 }
 
 struct Endpoint {
-    kind: &'static str,
+    resource_kind: &'static str,
     sender: mpsc::Sender<Work>,
     buffered: Buffered,
     attachments: Mutex<HashMap<JsString, Weak<Route>>>,
@@ -178,8 +178,8 @@ impl Manager {
             let stopped = self.stop.subscribe();
             let surface = surface.clone();
             let endpoint = Arc::new(Endpoint {
-                kind: if value["configuration"]["kind"] == "desktop" {
-                    "desktop"
+                resource_kind: if value["configuration"]["kind"] == "desktop" {
+                    "remote-desktop"
                 } else {
                     "browser"
                 },
@@ -229,7 +229,7 @@ impl Manager {
         let surface = id(resource, "resourceId");
         let attachment = resource["attachmentId"]
             .as_js_string()
-            .context("Browser grant has no attachment.")?;
+            .context("Remote Surface grant has no attachment.")?;
         let endpoint = self
             .state
             .lock()
@@ -237,9 +237,9 @@ impl Manager {
             .running
             .get(surface)
             .cloned()
-            .context("Browser session is not open.")?;
+            .context("Remote Surface session is not open.")?;
         ensure!(
-            resource["kind"] == endpoint.kind,
+            resource["kind"] == endpoint.resource_kind,
             "Remote Surface grant targets another surface kind."
         );
         let route = endpoint
@@ -248,7 +248,7 @@ impl Manager {
             .unwrap()
             .get(attachment)
             .and_then(Weak::upgrade)
-            .context("Browser attachment is not running.")?;
+            .context("Remote Surface attachment is not running.")?;
         let mut carrier = route.link.lock().unwrap();
         let identity = &binding["identity"];
         ensure!(
@@ -256,7 +256,7 @@ impl Manager {
                 && self.shared.outgoing.stream_current(route.epoch)
                 && identity["ownerId"].as_js_string() == Some(&route.owner)
                 && identity["serverId"] == route.server,
-            "Browser attachment cannot bind to this grant."
+            "Remote Surface attachment cannot bind to this grant."
         );
         let link = Arc::new(Link::new(
             surface.clone(),
@@ -272,7 +272,7 @@ impl Manager {
             .is_err()
         {
             carrier.take();
-            bail!("Browser attachment command queue is unavailable.");
+            bail!("Remote Surface attachment command queue is unavailable.");
         }
         Ok(link)
     }

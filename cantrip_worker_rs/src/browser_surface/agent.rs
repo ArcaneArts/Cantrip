@@ -290,7 +290,7 @@ pub(crate) async fn with_owned_fixture<T>(
     let lease = Lease::new();
     let (sender, mut work) = tokio::sync::mpsc::channel(32);
     let endpoint = Arc::new(Endpoint {
-        kind: "browser",
+        resource_kind: "browser",
         sender,
         buffered: Default::default(),
         attachments: Default::default(),

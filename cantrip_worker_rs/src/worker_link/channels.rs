@@ -33,10 +33,12 @@ const MAX_OPERATIONS: usize = 4096;
 const MAX_SEQUENCE: u64 = 9_007_199_254_740_991;
 const IDLE: Duration = Duration::from_secs(5 * 60);
 const LIFETIME: Duration = Duration::from_secs(12 * 60 * 60);
+const CLOSED_CREDIT_GRACE: Duration = Duration::from_secs(15);
 
 #[derive(Default)]
 pub(super) struct Channels {
     active: HashMap<JsString, Channel>,
+    retired: IndexMap<JsString, RetiredChannel>,
     nonces: HashMap<JsString, i64>,
     invalid: HashMap<Option<JsString>, u32>,
     operation_sequences: IndexMap<JsString, u64>,
@@ -62,6 +64,39 @@ struct Channel {
     pending_bytes: usize,
 }
 
+struct RetiredChannel {
+    carrier: Carrier,
+    routing: Value,
+    receive: u64,
+    deadline: Instant,
+}
+
+impl RetiredChannel {
+    fn consume_credit(&mut self, carrier: &Carrier, header: &Value) -> bool {
+        if header["kind"] != "credit"
+            || header["direction"] != "worker-to-client"
+            || self.deadline <= Instant::now()
+            || self.carrier.key() != carrier.key()
+            || [
+                "sessionId",
+                "routeGeneration",
+                "effectiveRoute",
+                "channel",
+                "lane",
+            ]
+            .iter()
+            .any(|key| header[*key] != self.routing[*key])
+            || header["sequence"].as_u64() != self.receive.checked_add(1)
+        {
+            return false;
+        }
+        // A viewer may return credit for data already on the socket while
+        // the grant is being revoked. The channel remains retired.
+        self.receive += 1;
+        true
+    }
+}
+
 enum Resource {
     Observation {
         installation: Value,
@@ -69,7 +104,7 @@ enum Resource {
     },
     Terminal(Terminal),
     Tunnel(Box<Tunnel>),
-    Browser {
+    Surface {
         lane: Box<browser_surface::Lane>,
         payload_limit: usize,
     },
@@ -79,7 +114,7 @@ impl Resource {
     fn payload_format(&self) -> &'static str {
         match self {
             Self::Tunnel(_) => "tunnel-data-plane-v1",
-            Self::Observation { .. } | Self::Terminal(_) | Self::Browser { .. } => "raw",
+            Self::Observation { .. } | Self::Terminal(_) | Self::Surface { .. } => "raw",
         }
     }
 }
@@ -126,7 +161,7 @@ impl Channel {
             self.credit_pending = 0;
             self.activity = Instant::now();
         }
-        if let Resource::Browser {
+        if let Resource::Surface {
             lane,
             payload_limit,
         } = &self.resource
@@ -379,7 +414,7 @@ impl Channels {
                 }
                 (Resource::Tunnel(tunnel), true)
             }
-            Some("browser") if header["channelKind"] == "reliable-stream" => {
+            Some("browser" | "remote-desktop") if header["channelKind"] == "reliable-stream" => {
                 let operations = installed["operations"].as_array().unwrap();
                 if !operations.contains(&json!("stream:read")) {
                     return Err("resource-unavailable");
@@ -392,15 +427,15 @@ impl Channels {
                     Some("realtime") => browser_surface::LinkLane::Realtime,
                     _ => return Err("resource-unavailable"),
                 };
-                let browser = grant.browser.as_ref().ok_or("resource-unavailable")?;
+                let surface = grant.surface.as_ref().ok_or("resource-unavailable")?;
                 let payload_limit =
                     payload_limit(carrier, header, "raw").unwrap_or(wire::MAX_PAYLOAD_BYTES);
                 if payload_limit <= wire::REMOTE_CHUNK_HEADER_BYTES {
                     return Err("resource-unavailable");
                 }
-                let lane = Box::new(browser.open(kind)?);
+                let lane = Box::new(surface.open(kind)?);
                 (
-                    Resource::Browser {
+                    Resource::Surface {
                         lane,
                         payload_limit,
                     },
@@ -442,7 +477,10 @@ impl Channels {
         let header = frame.header();
         let key = id(&header["channel"], "channelId");
         let Some(channel) = self.active.get_mut(key) else {
-            return false;
+            return self
+                .retired
+                .get_mut(key)
+                .is_some_and(|retired| retired.consume_credit(carrier, header));
         };
         if channel.carrier.key() != carrier.key()
             || ["sessionId", "effectiveRoute", "channel", "lane"]
@@ -481,7 +519,7 @@ impl Channels {
                         .map(|()| Inbound::Retained)
                         .map_err(|_| "congested"),
                     Resource::Tunnel(tunnel) => tunnel.receive(bytes),
-                    Resource::Browser { lane, .. } => {
+                    Resource::Surface { lane, .. } => {
                         lane.receive(bytes).map(|()| Inbound::Consumed)
                     }
                     Resource::Observation { .. } => Err("protocol-error"),
@@ -637,7 +675,7 @@ impl Channels {
         let mut blocked = self.flush_controls(output);
         let mut finished = Vec::new();
         for (id, channel) in &mut self.active {
-            if let Resource::Browser { lane, .. } = &channel.resource
+            if let Resource::Surface { lane, .. } = &channel.resource
                 && let Some(code) = lane.failure()
             {
                 finished.push((id.clone(), code));
@@ -693,13 +731,15 @@ impl Channels {
         self.active
             .retain(|_, channel| channel.carrier.key() != key);
         self.controls.retain(|(carrier, _)| carrier.key() != key);
+        self.retired
+            .retain(|_, retired| retired.carrier.key() != key);
     }
 
-    pub fn disconnect_browser_relay(&mut self) {
+    pub fn disconnect_surface_relay(&mut self) {
         let mut removed = HashSet::new();
         self.active.retain(|id, channel| {
             let drop = matches!(channel.carrier, Carrier::Relay)
-                && matches!(channel.resource, Resource::Browser { .. });
+                && matches!(channel.resource, Resource::Surface { .. });
             if drop {
                 removed.insert(id.clone());
             }
@@ -743,6 +783,7 @@ impl Channels {
     pub fn sweep(&mut self, now: i64) {
         self.nonces.retain(|_, expiry| *expiry > now);
         let time = Instant::now();
+        self.retired.retain(|_, retired| retired.deadline > time);
         let expired: Vec<_> = self
             .active
             .iter()
@@ -763,6 +804,7 @@ impl Channels {
 
     pub fn clear(&mut self) {
         self.active.clear();
+        self.retired.clear();
         self.controls.clear();
         self.nonces.clear();
         self.invalid.clear();
@@ -775,7 +817,7 @@ impl Channels {
         if channel.send > 0
             && code == "congested"
             && channel.routing["lane"] == "interactive"
-            && matches!(&channel.resource, Resource::Browser { lane, .. } if lane.failure() == Some("congested"))
+            && matches!(&channel.resource, Resource::Surface { lane, .. } if lane.failure() == Some("congested"))
         {
             let error = channel.frame(
                 "error",
@@ -802,6 +844,20 @@ impl Channels {
             )
         };
         let frame = channel.frame(kind, channel.send, &[("code", json!(code))], &[]);
+        if channel.send > 0 && matches!(channel.carrier, Carrier::Local(_)) {
+            if self.retired.len() >= MAX_CHANNELS {
+                self.retired.shift_remove_index(0);
+            }
+            self.retired.insert(
+                id.clone(),
+                RetiredChannel {
+                    carrier: channel.carrier.clone(),
+                    routing: channel.routing,
+                    receive: channel.receive,
+                    deadline: Instant::now() + CLOSED_CREDIT_GRACE,
+                },
+            );
+        }
         self.push_control(channel.carrier, frame);
     }
 
@@ -861,4 +917,42 @@ fn frame(
         value[*name] = field.clone();
     }
     wire::create(value, payload).expect("validated WorkerLink frame")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::carrier::{Local, SocketOutput};
+    use super::*;
+
+    #[test]
+    fn retired_direct_channel_consumes_only_its_in_flight_credit() {
+        let (output, _written) = SocketOutput::channel();
+        let socket = Local::new("session".into(), output);
+        let carrier = Carrier::Local(Arc::downgrade(&socket));
+        let header = json!({
+            "kind":"credit","direction":"worker-to-client","bytes":2048,
+            "sessionId":"session","routeGeneration":1,"effectiveRoute":"local",
+            "lane":"realtime","channel":json!({"channelId":"channel","connectionId":"connection"}),
+            "sequence":3
+        });
+        let mut retired = RetiredChannel {
+            carrier: carrier.clone(),
+            routing: routing(&header),
+            receive: 2,
+            deadline: Instant::now() + CLOSED_CREDIT_GRACE,
+        };
+        assert!(!retired.consume_credit(&Carrier::Relay, &header));
+        let mut wrong = header.clone();
+        wrong["channel"]["connectionId"] = json!("other");
+        assert!(!retired.consume_credit(&carrier, &wrong));
+        let mut payload = header.clone();
+        payload["kind"] = json!("data");
+        assert!(!retired.consume_credit(&carrier, &payload));
+        assert!(retired.consume_credit(&carrier, &header));
+        assert!(!retired.consume_credit(&carrier, &header));
+        let mut late = header;
+        late["sequence"] = json!(4);
+        retired.deadline = Instant::now();
+        assert!(!retired.consume_credit(&carrier, &late));
+    }
 }
