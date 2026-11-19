@@ -1,9 +1,10 @@
 //! Managed controls acquire a separate Core receipt for the exact active turn.
 mod pause;
+mod restore;
 use super::{Active, Phase, RPC_TIMEOUT, Runtime, Turns, output};
 use crate::{chat_content::Scope, codex::rpc_requests::Failure, http::checked};
 use anyhow::{Context, Result, bail};
-use cantrip_wire::{JsString, Value, value::json};
+use cantrip_wire::{JsString, Value, payload_digest, value::json};
 use std::sync::{OnceLock, atomic::Ordering};
 use tokio::sync::{Mutex, watch};
 
@@ -37,22 +38,23 @@ pub(super) struct Binding {
     published: watch::Sender<Option<bool>>,
     checkpoint: OnceLock<Capture>,
     pause_control: Mutex<()>,
+    thread_version: u64,
 }
 
 struct Capture {
     events: output::Capture,
     seed: Value,
-    thread_version: u64,
 }
 
 impl Binding {
-    pub(super) fn new(session: Value, permission: Value) -> Self {
+    pub(super) fn new(session: Value, permission: Value, thread_version: u64) -> Self {
         Self {
             session,
             permission,
             published: watch::channel(None).0,
             checkpoint: OnceLock::new(),
             pause_control: Mutex::default(),
+            thread_version,
         }
     }
 
@@ -111,11 +113,7 @@ impl Active {
                                 runtime: runtime.clone(),
                                 thread: thread.clone(),
                                 turn: turn.clone(),
-                                thread_version: binding
-                                    .checkpoint
-                                    .get()
-                                    .context("The native turn observer was not attached.")?
-                                    .thread_version,
+                                thread_version: binding.thread_version,
                             }));
                         }
                         Some(false) => {
@@ -147,8 +145,31 @@ impl Turns {
         self.control_active(command, action).await
     }
 
-    pub(crate) async fn resume_suspension(&self, command: &Value) -> Result<Value> {
+    pub(crate) async fn resume_suspension(
+        &self,
+        command: &Value,
+        acknowledge: impl FnOnce(Result<Value>) + Send,
+    ) -> Result<Value> {
         let command = self.preparation.resolve_routing(command).await?;
+        let key = self.key(&command)?;
+        let signature = payload_digest(&command);
+        let (active, pending) = {
+            let sessions = self.active.lock().unwrap();
+            let pending = sessions
+                .restoring
+                .get(&key)
+                .filter(|attempt| attempt.signature == signature)
+                .map(|attempt| attempt.response.clone());
+            (sessions.active.get(&key).cloned(), pending)
+        };
+        if let Some(pending) = pending {
+            return pending.work().await;
+        }
+        if active.is_none_or(|active| matches!(*active.phase.lock().unwrap(), Phase::Finished)) {
+            return self
+                .restore_suspension(&command, key, signature, acknowledge)
+                .await;
+        }
         let binding = json!({
             "chatId":command["chatId"],"threadId":command["threadId"],
             "nativeActivationGeneration":command["nativeActivationGeneration"],
@@ -181,6 +202,9 @@ impl Turns {
             .get()
             .filter(|binding| binding.matches(command))
             .context(mismatch)?;
+        if action.paused() == Some(true) && binding.checkpoint.get().is_none() {
+            bail!("The native turn observer was not attached for durable Pause.");
+        }
         let _pause = if action.paused().is_some() {
             Some(binding.pause_control.lock().await)
         } else {

@@ -58,7 +58,13 @@ type Sessions = Arc<Mutex<SessionsState>>;
 struct SessionsState {
     active: HashMap<Key, Arc<Active>>,
     cancelled: HashSet<(Key, JsString, JsString)>,
+    restoring: HashMap<Key, Restoring>,
 }
+struct Restoring {
+    signature: String,
+    response: Promise<Value>,
+}
+
 pub(crate) type Emit = Arc<dyn Fn(Value) -> Result<()> + Send + Sync>;
 
 #[derive(Clone)]
@@ -493,7 +499,7 @@ impl Turns {
         });
         {
             let mut entries = self.active.lock().unwrap();
-            if entries.active.contains_key(&key) {
+            if entries.active.contains_key(&key) || entries.restoring.contains_key(&key) {
                 bail!("This chat already has an active native turn.");
             }
             if root.as_ref().is_some_and(|root| {
@@ -577,6 +583,7 @@ impl Turns {
             let _ = active.control.set(control::Binding::new(
                 receipt.session().clone(),
                 command["permissionProfileId"].clone(),
+                prepared.thread.version(),
             ));
         }
         signal.check()?;
@@ -720,7 +727,7 @@ impl Turns {
                         return Err(error);
                     }
                     if let Some(binding) = active.control.get() {
-                        binding.capture(&command, capture, prepared.thread.version());
+                        binding.capture(&command, capture);
                     }
                     let reply = runtime
                         .request("turn/start".into(), Some(params), Some(RPC_TIMEOUT), None)

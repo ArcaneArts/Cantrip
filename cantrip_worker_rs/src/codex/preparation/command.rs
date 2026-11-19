@@ -42,6 +42,7 @@ pub(crate) struct Prepared {
     pub thread: native::LoadedThread,
     pub codex_home: PathBuf,
     pub runner_generation: JsString,
+    pub(in crate::codex) saved: Option<Opened>,
     admission: Option<Value>,
     bound: (JsString, Value),
 }
@@ -373,7 +374,7 @@ impl Ensurer {
                     if let Some(latch) = latch {
                         this.sync_task_pause(&bound, &chat, &latch).await?;
                     }
-                    *prepared.lock().unwrap() = Some(Prepared { runtime, thread: loaded, codex_home, runner_generation: runner, admission, bound });
+                    *prepared.lock().unwrap() = Some(Prepared { runtime, thread: loaded, codex_home, runner_generation: runner, saved: held, admission, bound });
                     Ok(thread_id)
                 })
             }),

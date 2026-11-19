@@ -36,11 +36,18 @@ pub(super) struct Operation {
     payload: Value,
     pub(super) lane: Value,
     method: &'static str,
+    restored: Option<Lineage>,
+}
+
+#[derive(Clone)]
+struct Lineage {
+    previous: Value,
+    logical: Value,
 }
 
 impl Operation {
     fn starts_execution(&self) -> bool {
-        matches!(self.method, "turn/start" | super::shell::METHOD)
+        self.restored.is_some() || matches!(self.method, "turn/start" | super::shell::METHOD)
     }
 
     pub fn read(command: &Value) -> Result<Option<Self>> {
@@ -78,12 +85,21 @@ impl Operation {
             payload: receipt["payloadDigest"].clone(),
             lane: receipt["executionLaneId"].clone(),
             method: "turn/start",
+            restored: None,
         }))
     }
 
     pub fn matches(&self, command: &Value) -> bool {
-        command["rootOperationId"].as_js_string() == Some(&self.operation)
-            && command["rootOperationGeneration"].as_js_string() == Some(&self.generation)
+        self.restored.as_ref().map_or_else(
+            || {
+                command["rootOperationId"].as_js_string() == Some(&self.operation)
+                    && command["rootOperationGeneration"].as_js_string() == Some(&self.generation)
+            },
+            |lineage| {
+                command["rootOperationId"] == lineage.logical["operationId"]
+                    && command["rootOperationGeneration"] == lineage.logical["operationGeneration"]
+            },
+        )
     }
 }
 
@@ -285,6 +301,19 @@ impl<'a> Receipt<'a> {
 
     fn verify(&self, response: &Value, status: &str) -> Result<()> {
         let receipt = &response["receipt"];
+        let lineage_matches = self.operation.restored.as_ref().map_or_else(
+            || {
+                receipt["previousOperationId"].is_null()
+                    && (receipt["logicalOperationId"].is_null()
+                        || (self.operation.starts_execution()
+                            && receipt["logicalOperationId"].as_js_string()
+                                == Some(&self.operation.operation)))
+            },
+            |lineage| {
+                receipt["previousOperationId"] == lineage.previous
+                    && receipt["logicalOperationId"] == lineage.logical["operationId"]
+            },
+        );
         if receipt["operationId"].as_js_string() != Some(&self.operation.operation)
             || receipt["operationGeneration"].as_js_string() != Some(&self.operation.generation)
             || receipt["activationGeneration"] != self.operation.activation
@@ -292,11 +321,7 @@ impl<'a> Receipt<'a> {
             || receipt["executionLaneId"] != self.operation.lane
             || receipt["chatId"] != self.session["chatId"]
             || receipt["threadId"] != self.session["threadId"]
-            || (!receipt["logicalOperationId"].is_null()
-                && (!self.operation.starts_execution()
-                    || receipt["logicalOperationId"].as_js_string()
-                        != Some(&self.operation.operation)))
-            || !receipt["previousOperationId"].is_null()
+            || !lineage_matches
             || receipt["method"] != self.operation.method
             || receipt["status"] != status
             || receipt["startsExecution"] != self.operation.starts_execution()
@@ -658,6 +683,7 @@ impl Client {
                 payload: json!(digest),
                 lane: Value::String(id(&row["executionLaneId"], "autonomous execution lane")?),
                 method: "turn/start",
+                restored: None,
             },
             session,
             scope,
@@ -744,12 +770,135 @@ impl Client {
                 payload: json!(digest),
                 lane: row["executionLaneId"].clone(),
                 method,
+                restored: None,
             },
             session,
             scope,
         };
         control.verify(&response, "accepted")?;
         Ok((control, claim.is_some() && resume, response))
+    }
+
+    pub async fn admit_suspension(
+        &self,
+        scope: Scope,
+        command: &Value,
+        session: Value,
+    ) -> Result<(Receipt<'_>, Value)> {
+        let operation = JsString::from(uuid::Uuid::new_v4().to_string());
+        let grant = scope.material(None)?;
+        let checkpoint = &command["checkpoint"];
+        let (protected, digest) = protect_native_command_request(
+            &grant.key,
+            &crypto_context(&grant, &session["chatId"], &operation),
+            &json!({
+                "method":"thread/resume",
+                "params":json!({"threadId":session["threadId"],"expectedSuspension":checkpoint["suspension"]}),
+            }),
+        )?;
+        let body = checked(
+            "nativeSuspensionExecutionAdmissionSchema",
+            &json!({
+                "workerId":self.configuration.lock().unwrap().worker_id,
+                "workerGeneration":self.generation, "controlId":command["controlId"],
+                "operationId":operation, "session":session, "checkpoint":checkpoint,
+                "protectedPayload":protected, "payloadDigest":digest,
+            }),
+        )?;
+        let guard = Guard::metadata(None, None);
+        let request = || {
+            self.exchange(
+                "suspension-execution",
+                "/api/internal/native-commands/suspension-execution",
+                &body,
+                &guard,
+            )
+        };
+        let response = match request().await {
+            Err(error) if error.is::<Unacknowledged>() => {
+                // The original transaction may have committed. Retry the exact
+                // sealed request to recover its receipt without replacing it.
+                scope.identity()?;
+                request().await?
+            }
+            result => result?,
+        };
+        scope.identity()?;
+        let response = checked("nativeSuspensionExecutionAdmissionResultSchema", &response)?;
+        let state = &response["suspension"];
+        let target = &state["target"];
+        let actor = &state["executionOwner"];
+        let row = &response["receipt"];
+        let execution = &response["execution"];
+        let placement = if session["contextKind"] == "project" {
+            "worktreeId"
+        } else {
+            "scratchRootId"
+        };
+        if state["controlId"] != command["controlId"]
+            || state["action"] != "resume"
+            || state["phase"] != "resuming"
+            || &state["checkpoint"] != checkpoint
+            || target["workerId"] != body["workerId"]
+            || [
+                "contextKind",
+                "projectId",
+                "placementId",
+                "threadId",
+                "modelRouteId",
+                "providerAccountId",
+            ]
+            .iter()
+            .any(|key| target[*key] != session[*key])
+            || target["originalOperationId"] != response["source"]["operationId"]
+            || state["active"]["threadId"] != session["threadId"]
+            || state["active"]["turnId"] != checkpoint["suspension"]["turnId"]
+            || actor["workerGeneration"] != self.generation
+            || actor["runtimeGeneration"] != session["runtimeGeneration"]
+            || actor["operationId"] != row["operationId"]
+            || actor["operationGeneration"] != row["operationGeneration"]
+            || !response["computerUseAuthority"].is_null()
+            || execution["workerId"] != body["workerId"]
+            || execution["contextKind"] != session["contextKind"]
+            || execution["projectId"] != session["projectId"]
+            || execution[placement] != session["placementId"]
+            || execution["chatId"] != session["chatId"]
+            || execution["threadId"] != session["threadId"]
+            || execution["modelRouteId"] != session["modelRouteId"]
+            || execution["providerAccountId"] != session["providerAccountId"]
+            || execution["executionLaneId"] != row["executionLaneId"]
+            || target["executionLaneId"] != row["executionLaneId"]
+        {
+            bail!("Core returned an unrelated suspended execution owner.");
+        }
+        let receipt = Receipt {
+            client: self,
+            operation: Operation {
+                operation,
+                generation: id(
+                    &row["operationGeneration"],
+                    "suspension observer generation",
+                )?,
+                activation: json!(id(
+                    &row["activationGeneration"],
+                    "suspension activation generation"
+                )?),
+                payload: json!(digest),
+                lane: json!(id(&row["executionLaneId"], "suspension execution lane")?),
+                method: "thread/resume",
+                restored: Some(Lineage {
+                    previous: json!(id(
+                        &row["previousOperationId"],
+                        "previous suspension owner"
+                    )?),
+                    logical: response["logicalRoot"].clone(),
+                }),
+            },
+            session,
+            scope,
+        };
+        receipt.verify(&response, "accepted")?;
+        Ok((receipt, response))
     }
 
     pub async fn admit_control(
@@ -816,6 +965,7 @@ impl Client {
                 payload: json!(digest),
                 lane: root.lane.clone(),
                 method: name,
+                restored: None,
             },
             session,
             scope,

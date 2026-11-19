@@ -114,8 +114,9 @@ impl Autonomous {
             });
             let accepted = {
                 let mut state = self.active.lock().unwrap();
-                if let std::collections::hash_map::Entry::Vacant(entry) =
-                    state.active.entry(key.clone())
+                if !state.restoring.contains_key(&key)
+                    && let std::collections::hash_map::Entry::Vacant(entry) =
+                        state.active.entry(key.clone())
                 {
                     entry.insert(active.clone());
                     true
@@ -220,7 +221,7 @@ impl Autonomous {
                     Err(error) => Err(error),
                 };
                 let _ = owner.active.control.set(control::Binding::new(
-                    receipt.session().clone(), runner.permission.clone(),
+                    receipt.session().clone(), runner.permission.clone(), runner.thread.version(),
                 ));
                 owner.active.set(Phase::Running { runtime: runtime.clone(), thread: thread.clone(), turn: turn.clone() });
                 let acceptance = async {

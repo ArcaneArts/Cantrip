@@ -144,6 +144,18 @@ impl Protected {
         F: Fn(Value) -> P + Send + Sync + 'static,
         P: Future<Output = Result<()>> + Send,
     {
+        self.publish_with(Some(identity), downstream)
+    }
+
+    pub(super) fn publish_with<F, P>(
+        self: &Arc<Self>,
+        identity: Option<identity::Managed>,
+        downstream: F,
+    ) -> (Emit, Work<()>)
+    where
+        F: Fn(Value) -> P + Send + Sync + 'static,
+        P: Future<Output = Result<()>> + Send,
+    {
         let (send, mut receive) = tokio::sync::mpsc::unbounded_channel::<Value>();
         let emit: Emit = Arc::new(move |event| {
             send.send(event)
@@ -154,7 +166,9 @@ impl Protected {
             let mut error = None;
             while let Some(event) = receive.recv().await {
                 let result = async {
-                    let resolved = if event["type"] == "agent.message" {
+                    let resolved = if event["type"] == "agent.message"
+                        && let Some(identity) = &identity
+                    {
                         identity
                             .resolve(json!({"kind": "message", "message": event["message"]}))
                             .await?

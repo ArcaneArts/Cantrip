@@ -190,10 +190,13 @@ export class GuiReceiptPeer {
         body.expectedActivationGeneration,
         this.receipt.activationGeneration,
       );
-      assert.deepEqual(body.session, {
-        ...this.session,
-        connectionId: "gui-control:" + this.session.runtimeGeneration,
-      });
+      assert.deepEqual(
+        body.session,
+        this.controlSession ?? {
+          ...this.session,
+          connectionId: "gui-control:" + this.session.runtimeGeneration,
+        },
+      );
       assert.deepEqual(body.intent, {
         scope: "thread",
         settingKeys: [],
@@ -244,6 +247,7 @@ export class GuiReceiptPeer {
         operationId: body.operationId,
         operationGeneration: randomUUID(),
         logicalOperationId: null,
+        previousOperationId: null,
         payloadDigest: body.payloadDigest,
         startsExecution: false,
         method: body.method,

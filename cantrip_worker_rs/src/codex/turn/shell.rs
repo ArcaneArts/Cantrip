@@ -85,7 +85,7 @@ impl Turns {
             let active = Arc::new(Active {
                 root: Some(root.clone()),
                 control: OnceLock::from(control::Binding::new(
-                    session.clone(), command["permissionProfileId"].clone()
+                    session.clone(), command["permissionProfileId"].clone(), prepared.thread.version()
                 )),
                 // Like the managed Node shell observer, release the local
                 // owner after physical settlement. Core owns logical closure.
@@ -97,7 +97,7 @@ impl Turns {
             let (subscription, mut events, _) = output::subscribe(&runtime.history(), &thread)?;
             let reserved = {
                 let mut sessions = self.active.lock().unwrap();
-                if sessions.active.contains_key(&key) || sessions.cancelled.contains(&(
+                if sessions.active.contains_key(&key) || sessions.restoring.contains_key(&key) || sessions.cancelled.contains(&(
                     key.clone(), root.operation.clone(), root.generation.clone()
                 )) {
                     false

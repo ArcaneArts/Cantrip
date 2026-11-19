@@ -433,7 +433,29 @@ async fn cycle(
                     finish(&request, &worker, logs, &outgoing, began, &result);
                     continue;
                 }
-                if matches!(kind, crate::codex::turn::RUN | crate::codex::turn::INTERRUPT | crate::codex::turn::CONTROL | crate::codex::turn::RESUME) {
+                if kind == crate::codex::turn::RESUME {
+                    let turns = turns.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let mut acknowledged = false;
+                        let result = turns.resume_suspension(&request["command"], |reply| {
+                            acknowledged = true;
+                            finish(&request, &worker, &logs, &outgoing, began, &reply);
+                        }).await;
+                        if !acknowledged {
+                            finish(&request, &worker, &logs, &outgoing, began, &result);
+                        } else if let Err(error) = result {
+                            logs.event("warn", "Restored native turn settlement is unconfirmed", json!({
+                                "event":"codex.suspension.settlement-failed", "workerId":worker,
+                                "requestId":request["requestId"], "error":logging::error(&error),
+                            }));
+                        }
+                    });
+                    continue;
+                }
+                if matches!(kind, crate::codex::turn::RUN | crate::codex::turn::INTERRUPT | crate::codex::turn::CONTROL) {
                     let turns = turns.clone();
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();
@@ -443,7 +465,6 @@ async fn cycle(
                         let (result, note) = match command["type"].as_str() {
                             Some(crate::codex::turn::INTERRUPT) => (turns.interrupt(command).await, None),
                             Some(crate::codex::turn::CONTROL) => (turns.control(command).await, None),
-                            Some(crate::codex::turn::RESUME) => (turns.resume_suspension(command).await, None),
                             _ => {
                                 let request_id = request["requestId"].clone();
                                 let stream = outgoing.clone();
