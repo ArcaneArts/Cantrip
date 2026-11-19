@@ -171,6 +171,7 @@ pub(super) async fn run(
             },
             _ = check.tick() => {
                 active.authorize()?;
+                active.attachments.retain(|_, member| member.route.alive(&active.shared.outgoing));
                 if !active.visible() {
                     drop(work.take());
                     if let Some(capture) = capture.take() {
@@ -252,7 +253,10 @@ impl<'a> Session<'a> {
     fn stream_epoch(&self) -> Option<u64> {
         self.attachments
             .values()
-            .find(|member| self.shared.outgoing.stream_current(member.route.epoch))
+            .find(|member| {
+                member.route.alive(&self.shared.outgoing)
+                    && self.shared.outgoing.stream_current(member.route.epoch)
+            })
             .map(|member| member.route.epoch)
     }
 
@@ -433,19 +437,22 @@ impl<'a> Session<'a> {
         )?;
         let message = parse_json_text(std::str::from_utf8(&clear)?)
             .map_err(|_| anyhow!("Invalid desktop control JSON."))?;
-        // This adapter currently admits viewport changes. Input and the
-        // control lease still belong to the unfinished native input port.
-        ensure!(
-            message["type"] == "viewport",
-            "Desktop control is unavailable."
-        );
-        let viewport = checked("remoteSurfaceViewportSchema", &message["viewport"])?;
+        let kind = message["type"].as_str();
+        let data = match kind {
+            Some("viewport") => checked("remoteSurfaceViewportSchema", &message["viewport"])?,
+            Some("stream-feedback") => checked("remoteDesktopStreamFeedbackSchema", &message)?,
+            _ => bail!("Desktop control is unavailable."),
+        };
         ensure!(
             member.route.receives(source, &self.shared.outgoing),
             "Desktop control authority expired."
         );
         member.incoming = Some(sequence);
-        member.viewport = viewport;
+        if kind == Some("viewport") {
+            member.viewport = data;
+        } else {
+            self.tuner.feedback(&data, self.fps);
+        }
         Ok(())
     }
 
@@ -596,13 +603,42 @@ impl Tuner {
         } else if self.average_bps > self.target_bps * 1.12 {
             self.decrease(3, 0.05);
         } else if self.average_bps < self.target_bps * 0.68 {
-            if self.scale < 1.0 {
-                self.scale = (self.scale + 0.03).min(1.0);
-            } else {
-                self.quality = (self.quality + 2).min(self.highest);
-            }
+            self.increase(2, 0.03);
         }
     }
+
+    fn feedback(&mut self, feedback: &Value, fps: u32) {
+        let value = |key| feedback[key].as_f64().expect("validated stream feedback");
+        let expected = (value("intervalMs") / 1000.0 * f64::from(fps)).max(1.0);
+        let received = value("receivedFrames");
+        let rendered = value("renderedFrames");
+        let delivery = received / expected;
+        let render = if received > 0.0 {
+            rendered / received
+        } else {
+            0.0
+        };
+        let decode = value("averageDecodeMs");
+        let budget = 1000.0 / f64::from(fps);
+        if delivery < 0.65
+            || render < 0.75
+            || value("droppedFrames") > rendered * 0.25
+            || decode > budget
+        {
+            self.decrease(6, 0.1);
+        } else if delivery > 0.85 && render > 0.95 && decode < budget * 0.65 {
+            self.increase(1, 0.02);
+        }
+    }
+
+    fn increase(&mut self, quality: u8, scale: f64) {
+        if self.scale < 1.0 {
+            self.scale = (self.scale + scale).min(1.0);
+        } else {
+            self.quality = (self.quality + quality).min(self.highest);
+        }
+    }
+
     fn decrease(&mut self, quality: u8, scale: f64) {
         if self.quality > self.lowest {
             self.quality = self.quality.saturating_sub(quality).max(self.lowest);

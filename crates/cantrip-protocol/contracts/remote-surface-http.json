@@ -22,7 +22,8 @@
     "remoteBrowserCursorMessageSchema": 306,
     "remoteBrowserClipboardMessageSchema": 309,
     "browserPrivateStateProtectedContentSchema": 313,
-    "remoteDesktopServerMessageSchema": 321
+    "remoteDesktopServerMessageSchema": 321,
+    "remoteDesktopStreamFeedbackSchema": 378
   },
   "nodes": [
     {
@@ -2232,6 +2233,58 @@
       "type": "string",
       "checks": [
         { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 379,
+        "intervalMs": 380,
+        "receivedFrames": 381,
+        "renderedFrames": 382,
+        "droppedFrames": 383,
+        "averageDecodeMs": 384
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["stream-feedback"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 250, "inclusive": true },
+        { "check": "less_than", "value": 10000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 10000, "inclusive": true }
       ]
     }
   ]

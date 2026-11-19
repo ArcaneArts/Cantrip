@@ -235,7 +235,7 @@ async fn cycle(
         shares.clone(),
         direct.clone(),
     ));
-    worker_link.configure_browsers(browser_surfaces.clone());
+    worker_link.configure_surfaces(browser_surfaces.clone());
     outgoing.observe_with(&worker_link);
     let direct_task = tokio::spawn(direct.clone().run(
         direct_listener,

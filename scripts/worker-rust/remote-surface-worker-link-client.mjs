@@ -13,7 +13,7 @@ import { openLocalWorkerLink, openWorkerLinkSocket } from "./direct-client.mjs";
 
 const LANES = ["interactive", "realtime"];
 
-export class BrowserWorkerLink {
+export class RemoteSurfaceWorkerLink {
   static async connect({
     origin,
     call,
@@ -22,6 +22,8 @@ export class BrowserWorkerLink {
     viewport,
     route,
     onFrame,
+    resourceKind = "browser",
+    initialCredit,
   }) {
     let session = await call(
       "POST",
@@ -46,7 +48,7 @@ export class BrowserWorkerLink {
         { viewport },
       );
       assert.equal(grant.binding.resource.resourceId, surfaceId);
-      assert.equal(grant.binding.resource.kind, "browser");
+      assert.equal(grant.binding.resource.kind, resourceKind);
       if (route === "lan") {
         const { connectPeerWorkerLink } =
           await import("./worker-link-peer-client.mjs");
@@ -68,13 +70,14 @@ export class BrowserWorkerLink {
           await once(socket, "open", { signal: AbortSignal.timeout(8000) });
         }
       }
-      const link = new BrowserWorkerLink(
+      const link = new RemoteSurfaceWorkerLink(
         carrier,
         session,
         grant,
         call,
         route,
         onFrame,
+        initialCredit,
       );
       await link.open();
       return link;
@@ -85,14 +88,14 @@ export class BrowserWorkerLink {
     }
   }
 
-  constructor(carrier, session, grant, call, route, onFrame) {
+  constructor(carrier, session, grant, call, route, onFrame, initialCredit) {
     this.carrier = carrier;
     this.session = session;
     this.grant = grant;
     this.call = call;
     this.route = route;
     // LAN has enough credit to exceed its 64 KiB SCTP message limit.
-    this.initialCredit = (route === "lan" ? 96 : 40) * 1024;
+    this.initialCredit = initialCredit ?? (route === "lan" ? 96 : 40) * 1024;
     this.attachment = grant.binding.resource.attachmentId;
     this.lanes = new Map();
     this.frameId = 0;
@@ -116,11 +119,15 @@ export class BrowserWorkerLink {
           assert.ok(payload.byteLength <= this.initialCredit);
           if (header.lane === "realtime") this.screenshotChunks++;
           const assembled = lane.assembler.push(payload);
-          this.wire(lane, {
-            kind: "credit",
-            direction: "worker-to-client",
-            bytes: payload.byteLength,
-          });
+          if (header.lane === "realtime" && this.deferredCredit !== undefined) {
+            this.deferredCredit += payload.byteLength;
+          } else {
+            this.wire(lane, {
+              kind: "credit",
+              direction: "worker-to-client",
+              bytes: payload.byteLength,
+            });
+          }
           if (!assembled) return;
           const frame = decodeRemoteSurfaceFrame(assembled);
           assert.equal(frame.header.attachmentId, this.attachment);
@@ -172,7 +179,10 @@ export class BrowserWorkerLink {
     const deadline = Date.now() + 8000;
     while (!predicate()) {
       if (this.failure) throw this.failure;
-      assert.ok(Date.now() < deadline, "Browser WorkerLink message timed out");
+      assert.ok(
+        Date.now() < deadline,
+        "Remote Surface WorkerLink message timed out",
+      );
       await delay(20);
     }
   }
@@ -229,7 +239,12 @@ export class BrowserWorkerLink {
     return this.carrier.close();
   }
 
-  async close() {
+  async close({ verifyLateCredit = false } = {}) {
+    if (verifyLateCredit) {
+      assert.equal(this.route, "local");
+      this.deferredCredit = 0;
+      await this.wait(() => this.deferredCredit > 0);
+    }
     const base = "/api/worker-links/" + this.session.sessionId;
     const grant = base + "/grants/" + this.grant.binding.grantId;
     const renewed = await this.call("POST", grant + "/renew", 200);
@@ -243,6 +258,17 @@ export class BrowserWorkerLink {
       const close = lane.messages.shift();
       assert.equal(close.kind, "close", JSON.stringify(close));
       assert.equal(close.code, "revoked");
+    }
+    if (verifyLateCredit) {
+      this.wire(this.lanes.get("realtime"), {
+        kind: "credit",
+        direction: "worker-to-client",
+        bytes: this.deferredCredit,
+      });
+      const socket = this.carrier.socket;
+      const reply = once(socket, "pong", { signal: AbortSignal.timeout(5000) });
+      socket.ping("late-credit");
+      assert.equal((await reply)[0].toString(), "late-credit");
     }
     await this.terminate();
     await this.call("DELETE", base, 204);

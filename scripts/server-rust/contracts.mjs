@@ -1087,6 +1087,7 @@ export const remoteSurfaceHttpContractRoots = [
   "remoteBrowserClipboardMessageSchema",
   "browserPrivateStateProtectedContentSchema",
   "remoteDesktopServerMessageSchema",
+  "remoteDesktopStreamFeedbackSchema",
 ];
 
 export const computerUseHttpContractRoots = [
@@ -1136,6 +1137,11 @@ export const cliContractRoots = [
 // Compatibility oracles use this registry, never the generated native manifest.
 export function sourceContractSchema(name) {
   return (
+    (name === "remoteDesktopStreamFeedbackSchema"
+      ? protocol.remoteDesktopClientMessageSchema.options.find(
+          (message) => message.shape.type.value === "stream-feedback",
+        )
+      : undefined) ??
     (name === "remoteDesktopPreparedGenerationSchema"
       ? protocol.remoteDesktopOsSourceSchema
           .pick({ desktopGeneration: true })

@@ -49,7 +49,7 @@ pub(crate) struct Coordinator {
     direct: Arc<DirectBroker>,
     state: Mutex<State>,
     wake: Arc<Notify>,
-    browsers: OnceLock<Arc<browser_surface::Manager>>,
+    surfaces: OnceLock<Arc<browser_surface::Manager>>,
     terminals: OnceLock<Arc<terminal::Adapter>>,
     tunnel_streams: Arc<Semaphore>,
 }
@@ -73,13 +73,13 @@ struct Session {
 
 struct Grant {
     value: Value,
-    browser: Option<Arc<browser_surface::Link>>,
+    surface: Option<Arc<browser_surface::Link>>,
 }
 
 impl Drop for Grant {
     fn drop(&mut self) {
-        if let Some(browser) = &self.browser {
-            browser.revoke();
+        if let Some(surface) = &self.surface {
+            surface.revoke();
         }
     }
 }
@@ -133,7 +133,7 @@ impl Coordinator {
             direct,
             state: Mutex::default(),
             wake: Arc::new(Notify::new()),
-            browsers: OnceLock::new(),
+            surfaces: OnceLock::new(),
             terminals: OnceLock::new(),
             tunnel_streams: Arc::new(Semaphore::new(tunnel::MAX_STREAMS)),
         }
@@ -271,9 +271,9 @@ impl Coordinator {
                     session,
                     &command["grant"],
                     now,
-                    self.browsers
+                    self.surfaces
                         .get()
-                        .map(|browsers| (browsers.as_ref(), &self.wake)),
+                        .map(|surfaces| (surfaces.as_ref(), &self.wake)),
                 )?;
                 None
             }
@@ -297,8 +297,8 @@ impl Coordinator {
                     "WorkerLink grant renewal exceeds its session lease."
                 );
                 grant.value["binding"]["lease"] = next.clone();
-                if let Some(browser) = &grant.browser {
-                    browser.renew(expiry);
+                if let Some(surface) = &grant.surface {
+                    surface.renew(expiry);
                 }
                 None
             }
@@ -320,8 +320,8 @@ impl Coordinator {
         ))
     }
 
-    pub(crate) fn configure_browsers(&self, browsers: Arc<browser_surface::Manager>) {
-        assert!(self.browsers.set(browsers).is_ok());
+    pub(crate) fn configure_surfaces(&self, surfaces: Arc<browser_surface::Manager>) {
+        assert!(self.surfaces.set(surfaces).is_ok());
     }
 
     pub(crate) fn configure_terminals(
@@ -501,7 +501,7 @@ impl Coordinator {
             state.transport_ready = false;
             state.disconnect = Some(Instant::now() + GRACE);
             state.legacy_tunnels.disconnected();
-            state.channels.disconnect_browser_relay();
+            state.channels.disconnect_surface_relay();
             self.wake.notify_one();
         }
     }
@@ -597,7 +597,7 @@ impl State {
         session: &JsString,
         grant: &Value,
         now: i64,
-        browsers: Option<(&browser_surface::Manager, &Arc<Notify>)>,
+        surfaces: Option<(&browser_surface::Manager, &Arc<Notify>)>,
     ) -> Result<()> {
         let binding = &grant["binding"];
         let grant_id = id(binding, "grantId");
@@ -648,9 +648,12 @@ impl State {
                 < MAX_GRANTS,
             "WorkerLink grant capacity is exhausted."
         );
-        let browser = if binding["resource"]["kind"] == "browser" {
-            let (browsers, wake) = browsers.context("Browser surfaces are unavailable.")?;
-            Some(browsers.bind(binding, wake.clone(), expiry)?)
+        let surface = if matches!(
+            binding["resource"]["kind"].as_str(),
+            Some("browser" | "remote-desktop")
+        ) {
+            let (surfaces, wake) = surfaces.context("Remote Surfaces are unavailable.")?;
+            Some(surfaces.bind(binding, wake.clone(), expiry)?)
         } else {
             None
         };
@@ -658,7 +661,7 @@ impl State {
             grant_id.clone(),
             Grant {
                 value: grant.clone(),
-                browser,
+                surface,
             },
         );
         Ok(())
