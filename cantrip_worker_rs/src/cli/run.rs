@@ -1,5 +1,5 @@
 //! The CLI can see its authorized Run inputs and output. Core receives envelopes.
-use super::server::Server;
+use super::server::Relay;
 use crate::{
     encryption::Service, http::checked, protected_content::open_endpoint_content,
     run_runtime::protection,
@@ -9,7 +9,7 @@ use cantrip_crypto::content::encrypt_secret;
 use cantrip_wire::{Value, value::json};
 
 pub(super) async fn logs(
-    server: &Server,
+    server: &Relay<'_>,
     encryption: &Service,
     request: Value,
     id: &str,
@@ -34,7 +34,7 @@ pub(super) async fn logs(
 }
 
 pub(super) async fn set_secret(
-    server: &Server,
+    server: &Relay<'_>,
     encryption: &Service,
     request: Value,
     id: &str,

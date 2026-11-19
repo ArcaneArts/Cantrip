@@ -84,6 +84,7 @@ struct Inner {
     worker: JsString,
     preparation: Coordinator,
     broker: OnceCell<Broker>,
+    cli_contexts: crate::cli::Contexts,
     permission_profiles: bool,
     autonomous: OnceLock<Autonomous>,
 }
@@ -96,13 +97,14 @@ impl Ensurer {
         encryption: Arc<Service>,
         routing: Arc<Registry>,
         skills: Option<PathBuf>,
-        codex_compatibility: &Value,
+        cli_contexts: crate::cli::Contexts,
     ) -> Self {
         let (data, worker) = {
             let config = settings.lock().unwrap();
             (config.data_directory.clone(), config.worker_id.clone())
         };
         let preparation = Coordinator::new(&data);
+        let codex_compatibility = codex.compatibility();
         let permission_profiles = codex_compatibility["initialize"]["experimentalApi"] == true
             && codex_compatibility["methods"]["permissionProfile/list"] == "available";
         Self(Arc::new(Inner {
@@ -119,6 +121,7 @@ impl Ensurer {
             worker,
             preparation,
             broker: OnceCell::new(),
+            cli_contexts,
             autonomous: OnceLock::new(),
             permission_profiles,
         }))
@@ -498,9 +501,10 @@ impl Ensurer {
                             let broker = Arc::downgrade(&this.0);
                             let authority = bound.clone();
                             let admission = admission.clone();
+                            let thread = thread_id.clone();
                             let activate = Arc::new(move |lane: &Value| {
                                 broker.upgrade().context("The managed MCP broker has closed.")?
-                                    .activate(&authority, admission.as_ref(), lane)
+                                    .activate(&authority, &thread, admission.as_ref(), lane)
                             });
                             runtime.inference_router().register_goal_producer(
                                 thread_id.clone(), runner.clone(), Arc::new(autonomous.producer(Runner {
@@ -610,20 +614,25 @@ impl Ensurer {
     pub(crate) fn activate(&self, prepared: &Prepared, lane: &Value) -> Result<Option<Activation>> {
         self.assert_bound(&prepared.bound)?;
         prepared.thread.assert_current(&prepared.runtime)?;
-        self.0
-            .activate(&prepared.bound, prepared.admission.as_ref(), lane)
+        self.0.activate(
+            &prepared.bound,
+            prepared.thread.id(),
+            prepared.admission.as_ref(),
+            lane,
+        )
     }
 
     pub(in crate::codex) fn cycle_activation(&self, prepared: &Prepared, lane: &Value) -> Activate {
         let ensurer = Arc::downgrade(&self.0);
         let identity = prepared.bound.clone();
+        let thread = prepared.thread.id().clone();
         let admission = prepared.admission.clone();
         let lane = lane.clone();
         Arc::new(move || {
             ensurer
                 .upgrade()
                 .context("The managed MCP broker has closed.")?
-                .activate(&identity, admission.as_ref(), &lane)
+                .activate(&identity, &thread, admission.as_ref(), &lane)
         })
     }
 
@@ -810,6 +819,7 @@ impl Inner {
     fn activate(
         &self,
         identity: &(JsString, Value),
+        thread: &JsString,
         admission: Option<&Value>,
         lane: &Value,
     ) -> Result<Option<Activation>> {
@@ -820,12 +830,15 @@ impl Inner {
             return Ok(None);
         };
         admission["executionLaneId"] = lane.clone();
-        self.broker
+        let activation = self
+            .broker
             .get()
             .context("Cantrip MCP attachment was not prepared.")?
             .activate(&admission)?
-            .context("Cantrip MCP attachment no longer matches the admitted turn.")
-            .map(Some)
+            .context("Cantrip MCP attachment no longer matches the admitted turn.")?;
+        self.cli_contexts
+            .bind(thread, identity, &admission["chatId"], lane);
+        Ok(Some(activation))
     }
 }
 

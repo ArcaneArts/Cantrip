@@ -17,7 +17,10 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { nativeTurnRecoveryObservationSchema } from "../../packages/protocol/dist/index.js";
+import {
+  nativeTurnRecoveryObservationSchema,
+  workerCliCommandCallSchema,
+} from "../../packages/protocol/dist/index.js";
 import { NativeSuspensionStore } from "../../cantrip_worker/src/native-suspension-store.ts";
 import { CodexRpcClient } from "../../cantrip_worker/src/codex/rpc-client.ts";
 import {
@@ -430,6 +433,9 @@ const server = createServer(async (request, response) => {
         })),
       ),
     });
+  } else if (url.pathname === "/api/internal/cli") {
+    const call = workerCliCommandCallSchema.parse(await requestBody(request));
+    send({ summary: "Captured CLI lane", data: call.chatContext });
   } else if (url.pathname === "/api/internal/workers/heartbeat") send({});
   else if (
     url.pathname === "/api/internal/agent-operations/capabilities" &&
@@ -860,6 +866,28 @@ async function verifyTurns() {
   const { threadId } = await expectThread({ session, provider });
   const [document] = await bindings();
   await assertIdle(document.file);
+  const cli = JSON.parse(
+    await readFile(path.join(directory, "cli-connection.json"), "utf8"),
+  );
+  const cliContext = async () => {
+    const reply = await fetch(cli.endpoint + "/v1/execute", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer " + cli.sessionToken,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        command: "status",
+        context: { codexThreadId: threadId, selection: "lane" },
+        arguments: {},
+      }),
+      signal: AbortSignal.timeout(4000),
+    });
+    const result = await reply.json();
+    assert.equal(reply.status, 200, JSON.stringify(result));
+    return result.data ?? null;
+  };
+  assert.equal(await cliContext(), null);
   const events = [];
   const issuedTurn = (executionLaneId, extra = {}, requestId) =>
     ensure(
@@ -910,6 +938,10 @@ async function verifyTurns() {
   });
   assert.equal(response.status, 200, await response.text());
   assert.deepEqual(contextCalls, ["admitted-lane"]);
+  assert.deepEqual(await cliContext(), {
+    chatId: session.chatId,
+    executionLaneId: "admitted-lane",
+  });
   const interrupt = (selectedThread, chatId = session.chatId) =>
     ensure({
       type: "chat.interrupt",
@@ -976,6 +1008,10 @@ async function verifyTurns() {
     }),
   ]);
   assert.equal(providerSecond.number, 2);
+  assert.deepEqual(await cliContext(), {
+    chatId: session.chatId,
+    executionLaneId: "stop-lane",
+  });
   assert.deepEqual((await interrupt(threadId, randomUUID())).result, {
     interrupted: false,
   });

@@ -1,5 +1,5 @@
 //! Route through Core's effective policies and open policy fields locally.
-use super::server::{Rejected, Server};
+use super::server::{Rejected, Relay};
 use crate::{
     encryption::Service,
     http::checked,
@@ -10,7 +10,7 @@ use cantrip_wire::{Value, value::json};
 use hyper::StatusCode;
 
 pub(super) async fn execute(
-    server: &Server,
+    server: &Relay<'_>,
     encryption: &Service,
     request: &Value,
     id: &str,

@@ -21,13 +21,17 @@ import { verifyDecisions } from "./model-decision-smoke-cases.mjs";
 import { verifyEmbeddings } from "./model-embedding-smoke-cases.mjs";
 import { verifyProviderCatalog } from "./provider-catalog-smoke-cases.mjs";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
-import { taskModelProvider } from "../server-rust/task-model-provider.mjs";
+import {
+  modelFunctions,
+  taskModelProvider,
+} from "../server-rust/task-model-provider.mjs";
 
 const { values } = parseArgs({
   options: {
     server: { type: "string" },
     worker: { type: "string" },
     codex: { type: "string" },
+    cli: { type: "string" },
   },
 });
 assert.ok(
@@ -352,6 +356,94 @@ async function verifyTurn(
   assert.equal(replay.message.id, turn.message.id);
   for (const provider of new Set([response, naming]))
     assert.deepEqual(provider.model.failures, []);
+}
+
+async function verifyManagedCli(response, workerDirectory) {
+  const { chatId, chatUrl } = await createChat("Managed CLI context", false);
+  const tool = response.model.reply({ hold: true });
+  const answer = response.model.reply({ text: "The CLI checked its scope." });
+  const turn = await encryptedTurn(
+    "Check the managed CLI scope.",
+    response.profile.id,
+  );
+  await call("POST", chatUrl + "/turns", 202, turn);
+  await eventually(
+    () => tool.entered,
+    (value) => assert.equal(value, true),
+  );
+  const command = modelFunctions(tool.request.input.tools).find(
+    ({ name }) => name === "exec_command" || name.endsWith("__exec_command"),
+  );
+  assert.ok(command, "The bundled runtime advertises its shell tool");
+  tool.calls = [
+    {
+      ...command,
+      arguments: {
+        cmd: [
+          'printf "fixture-thread:%s\\n" "$CODEX_THREAD_ID"',
+          "cantrip --context lane --json status",
+        ].join("; "),
+        yield_time_ms: 1000,
+      },
+    },
+  ];
+  tool.release();
+  await eventually(
+    () => answer.request,
+    (value) => assert.equal(value?.completed, true),
+  );
+  const output = answer.request.input.input.find(
+    (item) =>
+      item.type === "function_call_output" &&
+      String(item.output).includes("fixture-thread:"),
+  )?.output;
+  assert.ok(output, JSON.stringify(answer.request.input.input));
+  assert.match(
+    String(output),
+    /Standalone Chats do not support IDE execution operations/u,
+  );
+  const threadId = String(output).match(/fixture-thread:([0-9a-f-]{36})/u)?.[1];
+  assert.ok(threadId, "Codex provided its own native thread identity");
+
+  const connection = JSON.parse(
+    await readFile(path.join(workerDirectory, "cli-connection.json"), "utf8"),
+  );
+  const status = async (codexThreadId) => {
+    const result = await fetch(connection.endpoint + "/v1/execute", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer " + connection.sessionToken,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        command: "status",
+        context: { codexThreadId, selection: "lane" },
+        arguments: {},
+      }),
+      signal: AbortSignal.timeout(3000),
+    });
+    return { status: result.status, body: await result.json() };
+  };
+  await eventually(
+    () => status(threadId),
+    (value) => {
+      assert.equal(value.status, 409);
+      assert.equal(value.body.code, "conflict");
+      assert.match(
+        value.body.error,
+        /did not originate from the active chat lane/u,
+      );
+    },
+  );
+  const unknown = await status(randomUUID());
+  assert.equal(unknown.status, 400);
+  assert.equal(unknown.body.code, "context-not-found");
+  assert.deepEqual(response.model.failures, []);
+  assert.ok(
+    (await call("GET", "/api/chats?context=standalone", 200)).some(
+      (chat) => chat.id === chatId,
+    ),
+  );
 }
 
 async function verifyTaskLabels(labeling, source) {
@@ -814,51 +906,7 @@ async function verifyProviderCapacity() {
   }
 }
 
-try {
-  const data = path.join(root, "worker");
-  const home = path.join(root, "home");
-  await mkdir(home);
-  const environment = fixtureEnvironment(path.join(root, "server"));
-  environment.HOME = home;
-  environment.CANTRIP_BOOTSTRAP_MODE = "standalone";
-  delete environment.CANTRIP_WORKER_TOKEN;
-  server = await startServer(
-    path.resolve(values.server),
-    ["--database", "pglite", "--port", "0", "--shutdown-on-stdin-close"],
-    { cwd: root, env: environment },
-  );
-  const enrollment = await call("POST", "/api/workers/enrollment-codes", 201, {
-    label: "Rust standalone turn",
-  });
-  child = spawn(path.resolve(values.worker), ["--shutdown-on-stdin-close"], {
-    cwd: root,
-    env: {
-      ...environment,
-      PATH: "",
-      NO_COLOR: "1",
-      CANTRIP_LOG_LEVEL: "debug",
-      CANTRIP_SERVER_URL: server.origin,
-      CANTRIP_WORKER_DATA_DIR: data,
-      CANTRIP_WORKER_ID: workerId,
-      CANTRIP_WORKER_ENROLLMENT_CODE: enrollment.code,
-      CANTRIP_CODEX_BIN: path.resolve(values.codex),
-    },
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-  workerExit = new Promise((resolve) => {
-    child.once("error", (error) => resolve(error));
-    child.once("close", (code, signal) => resolve({ code, signal }));
-  });
-  const capture = (chunk) => {
-    diagnostics = (diagnostics + chunk).slice(-24_000);
-  };
-  child.stdout.on("data", capture);
-  child.stderr.on("data", capture);
-  await eventually(
-    () => diagnostics,
-    (value) => assert.match(value, /event=worker\.connection\.connected/),
-  );
-  await setupEncryption();
+async function verifyStandaloneBehavior() {
   await verifyProviderCatalog({
     call,
     ownerId,
@@ -933,6 +981,71 @@ try {
       ollamaCatalogPagingAndMetadata: true,
     }),
   );
+}
+
+try {
+  const data = path.join(root, "worker");
+  const home = path.join(root, "home");
+  await mkdir(home);
+  const environment = fixtureEnvironment(path.join(root, "server"));
+  environment.HOME = home;
+  environment.CANTRIP_BOOTSTRAP_MODE = "standalone";
+  delete environment.CANTRIP_WORKER_TOKEN;
+  server = await startServer(
+    path.resolve(values.server),
+    ["--database", "pglite", "--port", "0", "--shutdown-on-stdin-close"],
+    { cwd: root, env: environment },
+  );
+  const enrollment = await call("POST", "/api/workers/enrollment-codes", 201, {
+    label: "Rust standalone turn",
+  });
+  child = spawn(path.resolve(values.worker), ["--shutdown-on-stdin-close"], {
+    cwd: root,
+    env: {
+      ...environment,
+      PATH: "",
+      NO_COLOR: "1",
+      CANTRIP_LOG_LEVEL: "debug",
+      CANTRIP_SERVER_URL: server.origin,
+      CANTRIP_WORKER_DATA_DIR: data,
+      CANTRIP_WORKER_ID: workerId,
+      CANTRIP_WORKER_ENROLLMENT_CODE: enrollment.code,
+      CANTRIP_CODEX_BIN: path.resolve(values.codex),
+      ...(values.cli ? { CANTRIP_CLI_BIN: path.resolve(values.cli) } : {}),
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  workerExit = new Promise((resolve) => {
+    child.once("error", (error) => resolve(error));
+    child.once("close", (code, signal) => resolve({ code, signal }));
+  });
+  const capture = (chunk) => {
+    diagnostics = (diagnostics + chunk).slice(-24_000);
+  };
+  child.stdout.on("data", capture);
+  child.stderr.on("data", capture);
+  await eventually(
+    () => diagnostics,
+    (value) => assert.match(value, /event=worker\.connection\.connected/),
+  );
+  await setupEncryption();
+  if (values.cli) {
+    // This disposable profile permits a shell connection to the local broker.
+    await call("PATCH", "/api/settings", 200, {
+      defaultChatPermissionProfileId: ":yolo",
+    });
+    await verifyManagedCli(await createModel("CLI scope model"), data);
+    console.log(
+      JSON.stringify({
+        suite: "native-managed-codex-cli",
+        passed: true,
+        cliAvailableInCodexShell: true,
+        staleLaneRejectedByCore: true,
+      }),
+    );
+  } else {
+    await verifyStandaloneBehavior();
+  }
 } catch (error) {
   console.error(diagnostics.slice(-14_000));
   console.error(server?.diagnostics().slice(-14_000));

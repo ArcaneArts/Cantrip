@@ -17,6 +17,11 @@ pub(super) struct Server {
     configuration: Arc<Mutex<Config>>,
 }
 
+pub(super) struct Relay<'a> {
+    server: &'a Server,
+    chat_context: Value,
+}
+
 #[derive(Debug)]
 pub(super) struct Rejected {
     pub status: StatusCode,
@@ -48,10 +53,19 @@ impl Server {
         })
     }
 
+    pub(super) fn relay(&self, chat_context: Value) -> Relay<'_> {
+        Relay {
+            server: self,
+            chat_context,
+        }
+    }
+}
+
+impl Relay<'_> {
     pub(super) async fn execute(&self, mut request: Value, id: &str) -> Result<Value> {
-        request["chatContext"] = Value::Null;
+        request["chatContext"] = self.chat_context.clone();
         request["requestId"] = json!(id);
-        request["workerId"] = json!(self.worker);
+        request["workerId"] = json!(self.server.worker);
         let mut call = checked("workerCliCommandCallSchema", &request)?;
         if call["context"]["selection"] == "auto" {
             let context = &call["context"];
@@ -59,10 +73,11 @@ impl Server {
                 "codexThreadId":context["codexThreadId"],"terminalId":context["terminalId"],"cwd":context["cwd"],
             });
         }
-        let token = self.configuration.lock().unwrap().token.clone();
+        let token = self.server.configuration.lock().unwrap().token.clone();
         let mut response = self
+            .server
             .client
-            .post(self.endpoint.clone())
+            .post(self.server.endpoint.clone())
             .bearer_auth(token)
             .header(header::CONTENT_TYPE, "application/json")
             .body(call.stringify())

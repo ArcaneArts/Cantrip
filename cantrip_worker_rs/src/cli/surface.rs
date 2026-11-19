@@ -1,5 +1,5 @@
 //! Resolve surfaces through Core and protect the associated operation locally.
-use super::server::Server;
+use super::server::Relay;
 use crate::{
     encryption::Service,
     http::checked,
@@ -9,7 +9,7 @@ use anyhow::{Context, Result, bail, ensure};
 use cantrip_wire::{JsString, Value, coercion, value::json};
 
 pub(super) async fn execute(
-    server: &Server,
+    server: &Relay<'_>,
     encryption: &Service,
     request: &Value,
     request_id: &str,
@@ -104,7 +104,7 @@ pub(super) async fn execute(
 }
 
 struct Surface<'a> {
-    server: &'a Server,
+    server: &'a Relay<'a>,
     encryption: &'a Service,
     context: &'a Value,
     target: Value,
@@ -113,7 +113,7 @@ struct Surface<'a> {
 
 impl<'a> Surface<'a> {
     async fn resolve(
-        server: &'a Server,
+        server: &'a Relay<'a>,
         encryption: &'a Service,
         kind: &str,
         request: &'a Value,
