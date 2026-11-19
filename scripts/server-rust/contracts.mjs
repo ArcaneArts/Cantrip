@@ -978,6 +978,7 @@ export const contractRoots = [
   "decisionInputSchema",
   "decisionOutcomeSchema",
   "decisionResultSchema",
+  "runConfigurationPathSuggestionSchema",
 ];
 
 export const projectExportContractRoots = [
