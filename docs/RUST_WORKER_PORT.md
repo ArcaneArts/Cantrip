@@ -6150,3 +6150,31 @@ reference and recovered after the search child exited. The signed Chromium
 fixture still passed against the shared installer. A production Rust server
 and worker exercised the search heartbeat and maintenance action. Windows and
 Linux runtime validation and interactive research sessions remain open.
+
+
+## 148. Run private interactive web sessions in Rust
+
+Reference commit `26f40fa8d0c43a58007dba5ee8fa8781b0f9fe23` (#3310).
+
+The native MCP broker opens, navigates, snapshots, clicks, types into and
+closes private Chromium sessions for admitted project chats. A private
+session keeps its page and storage across calls. Its ID is scoped to the
+owner and chat. The worker exposes Chromium accessibility roles, names and
+interactive elements through the existing snapshot schema. Opaque element
+references identify particular nodes in the snapshot document. Navigation
+and mutations invalidate those references.
+
+The worker routes browser traffic through the existing public-address and
+robots policy. Interactive sessions can submit bounded HTTP request bodies.
+Queued commands verify their admitted lane, and revocation interrupts active
+commands and retires the affected session. Sessions also close after 15
+minutes idle. An open session retains its managed runtime digest and private
+profile until Chromium exits, including across runtime updates.
+
+The local macOS ARM64 signed-runtime test used headless Chromium to check
+dialog dismissal, snapshots, a clicked button, form POST, same-session
+storage, storage isolation, stale references, cross-chat and read-only
+denial, explicit close and revocation cleanup. The focused Node reference
+tests passed. Exact visible Browser targets, pointer gestures and streaming
+web connections remain open. The accessibility text uses Chromium's tree
+and the existing result schema.

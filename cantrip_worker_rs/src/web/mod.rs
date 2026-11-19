@@ -2,6 +2,7 @@ mod network;
 mod render;
 mod robots;
 mod search;
+pub(crate) mod session;
 
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -99,6 +100,7 @@ struct Document {
 
 pub(crate) struct Service {
     state: Mutex<State>,
+    sessions: session::Sessions,
     network: Network,
     robots: Robots,
     extraction: Arc<Semaphore>,
@@ -113,6 +115,7 @@ impl Default for Service {
     fn default() -> Self {
         Self {
             state: Mutex::new(State::default()),
+            sessions: session::Sessions::default(),
             network: Network::default(),
             robots: Robots::default(),
             extraction: Arc::new(Semaphore::new(2)),

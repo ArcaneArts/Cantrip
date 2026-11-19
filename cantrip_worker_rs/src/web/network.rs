@@ -172,6 +172,7 @@ impl Network {
         url: Url,
         method: Method,
         headers: HeaderMap,
+        body: Option<Vec<u8>>,
     ) -> Result<(reqwest::Response, [OwnedSemaphorePermit; 2])> {
         let host = url.host().context("Web reads require a host.")?;
         let key = url.host_str().unwrap().trim_end_matches('.');
@@ -215,13 +216,11 @@ impl Network {
             let chosen = resolve(name, port).await?;
             client = client.resolve(name, chosen);
         }
-        let response = client
-            .build()?
-            .request(method, url)
-            .headers(headers)
-            .send()
-            .await
-            .map_err(reqwest::Error::without_url)?;
+        let mut request = client.build()?.request(method, url).headers(headers);
+        if let Some(body) = body {
+            request = request.body(body);
+        }
+        let response = request.send().await.map_err(reqwest::Error::without_url)?;
         Ok((response, [host_permit, global_permit]))
     }
 
@@ -230,7 +229,7 @@ impl Network {
         headers.insert(header::ACCEPT, ACCEPT.parse()?);
         headers.insert(header::ACCEPT_ENCODING, "gzip, deflate, br".parse()?);
         headers.insert(header::USER_AGENT, USER_AGENT.parse()?);
-        let (mut response, permits) = self.send(url.clone(), Method::GET, headers).await?;
+        let (mut response, permits) = self.send(url.clone(), Method::GET, headers, None).await?;
         let status = response.status().as_u16();
         let location = if (300..400).contains(&status) {
             response
@@ -297,10 +296,11 @@ impl Network {
         url: Url,
         method: Method,
         headers: HeaderMap,
+        body: Option<Vec<u8>>,
     ) -> Result<Resource> {
         const LIMIT: usize = 20_000_000;
         let is_head = method == Method::HEAD;
-        let (mut response, permits) = self.send(url.clone(), method, headers).await?;
+        let (mut response, permits) = self.send(url.clone(), method, headers, body).await?;
         let status = response.status();
         ensure!(
             status.as_u16() >= 200,

@@ -204,6 +204,20 @@ impl Inner {
                     .read(&authorization.active.binding, call.get("arguments"))
                     .await
             }
+            operation
+                if crate::web::session::TOOLS
+                    .iter()
+                    .any(|(name, _)| *name == operation) =>
+            {
+                self.web
+                    .session(
+                        operation,
+                        &authorization.active.binding,
+                        call.get("arguments"),
+                        authorization.active.stopped.subscribe(),
+                    )
+                    .await
+            }
             "context.get" => {
                 mcp_host::parse("cantripMcpContextGetInputSchema", call.get("arguments")).map_err(
                     |_| anyhow!("Cantrip MCP operation validation failed on the worker."),
@@ -254,6 +268,7 @@ impl Inner {
                         .collect(),
                 );
                 *active.stale.lock().unwrap() = Some(message.clone());
+                active.stopped.send_replace(true);
                 message
             }
             _ => error.message.clone(),

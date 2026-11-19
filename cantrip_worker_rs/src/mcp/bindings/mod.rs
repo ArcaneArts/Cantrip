@@ -65,6 +65,7 @@ impl Attachment {
 struct Active {
     binding: Value,
     stale: Mutex<Option<JsString>>,
+    stopped: watch::Sender<bool>,
 }
 
 struct Entry {
@@ -131,7 +132,9 @@ impl Activation {
         {
             return false;
         }
-        entry.active = None;
+        if let Some(active) = entry.active.take() {
+            active.stopped.send_replace(true);
+        }
         true
     }
 }
@@ -209,6 +212,9 @@ impl Broker {
         let requested = claims["allowedOperations"]
             .as_array()
             .ok_or_else(|| anyhow!("Cantrip MCP binding requires a list of allowed operations."))?;
+        let sessions = self.inner.web.has_sessions()
+            && !standalone
+            && claims["permissionProfileId"] != ":read-only";
         let (operations, tools): (Vec<_>, Vec<JsString>) = [
             (
                 "context.get",
@@ -220,6 +226,11 @@ impl Broker {
             ("web.search", "web_search", self.inner.web.has_search()),
         ]
         .into_iter()
+        .chain(
+            crate::web::session::TOOLS
+                .into_iter()
+                .map(|(operation, tool)| (operation, tool, sessions)),
+        )
         .filter(|(operation, _, supported)| {
             *supported && requested.iter().any(|op| op == *operation)
         })
@@ -322,8 +333,11 @@ impl Broker {
         let active = Arc::new(Active {
             binding,
             stale: Mutex::new(None),
+            stopped: watch::channel(false).0,
         });
-        entry.active = Some(active.clone());
+        if let Some(previous) = entry.active.replace(active.clone()) {
+            previous.stopped.send_replace(true);
+        }
         Ok(Some(Activation {
             inner: self.inner.clone(),
             binding_id: binding_id.clone(),
@@ -402,6 +416,9 @@ impl Inner {
         let Some(entry) = entries.by_id.remove(key) else {
             return Ok(false);
         };
+        if let Some(active) = &entry.active {
+            active.stopped.send_replace(true);
+        }
         store::remove(&entry)?;
         Ok(true)
     }
@@ -425,6 +442,9 @@ impl Inner {
         entries.closed = true;
         let mut outcome = Ok(());
         for entry in entries.by_id.drain().map(|(_, entry)| entry) {
+            if let Some(active) = &entry.active {
+                active.stopped.send_replace(true);
+            }
             if let Err(error) = store::remove(&entry) {
                 outcome = Err(error);
             }

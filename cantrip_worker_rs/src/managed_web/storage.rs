@@ -243,7 +243,12 @@ impl Storage {
         Ok(())
     }
 
-    pub fn cleanup(&self, pointer: &Pointer) -> Result<()> {
+    pub fn cleanup(
+        &self,
+        pointer: &Pointer,
+        leased: impl Fn(&str) -> bool,
+        sessions_live: bool,
+    ) -> Result<()> {
         for entry in fs::read_dir(self.root.join("versions"))? {
             let entry = entry?;
             let name = entry.file_name();
@@ -251,6 +256,7 @@ impl Storage {
                 continue;
             };
             if is_digest(name)
+                && !leased(name)
                 && name != pointer.current.archive
                 && pointer
                     .previous
@@ -264,6 +270,12 @@ impl Storage {
         for name in ["staging", "downloads"] {
             for entry in fs::read_dir(self.root.join(name))? {
                 let entry = entry?;
+                if sessions_live
+                    && name == "staging"
+                    && entry.file_name().to_string_lossy().starts_with("session-")
+                {
+                    continue;
+                }
                 let metadata = fs::symlink_metadata(entry.path())?;
                 if metadata
                     .modified()
