@@ -6,6 +6,7 @@ mod lock;
 mod operations;
 mod process;
 mod replacement;
+mod run_definitions;
 mod session;
 mod sources;
 
@@ -125,7 +126,14 @@ impl Controller {
     pub fn supports(kind: &str) -> bool {
         matches!(
             kind,
-            INSPECT | ATTACH | LIST | CREATE | OPERATION | SOURCE_INSPECT | SOURCE_PROVISION
+            INSPECT
+                | ATTACH
+                | LIST
+                | CREATE
+                | OPERATION
+                | SOURCE_INSPECT
+                | SOURCE_PROVISION
+                | run_definitions::COMMAND
         )
     }
 
@@ -156,6 +164,9 @@ impl Controller {
         encryption: &Service,
         lifetime: &Scope,
     ) -> Result<Value> {
+        if kind == run_definitions::COMMAND {
+            return run_definitions::execute(self, command, encryption, lifetime).await;
+        }
         let dispatch = &command["scope"];
         let worker = if kind == INSPECT {
             &command["workerId"]

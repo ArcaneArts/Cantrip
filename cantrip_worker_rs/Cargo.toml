@@ -4,6 +4,15 @@ version = "0.0.0"
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+default-run = "cantrip-worker"
+
+[features]
+guest-run-definitions = []
+
+[[bin]]
+name = "cantrip-os-run-definitions"
+path = "src/bin/os-run-definitions.rs"
+required-features = ["guest-run-definitions"]
 
 [dependencies]
 anyhow = "1"

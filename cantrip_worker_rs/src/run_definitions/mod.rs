@@ -87,20 +87,15 @@ impl Definitions {
         encryption: Arc<Service>,
     ) -> Result<Value> {
         let source = routing.resolve(&command["sourcePath"]).await?;
-        let root = paths::canonical(&paths::native(
-            source
-                .as_js_string()
-                .context("Run configuration source path")?,
-        ))
+        let root = root(
+            command,
+            &paths::native(
+                source
+                    .as_js_string()
+                    .context("Run configuration source path")?,
+            ),
+        )
         .await?;
-        if !tokio::fs::symlink_metadata(&root).await?.is_dir() {
-            let message = if command["type"] == "project.run-configuration-definitions.paths" {
-                "The Run configuration source root is not a directory."
-            } else {
-                "The project root must be a real directory."
-            };
-            bail!(message);
-        }
         let project = command["projectId"]
             .as_js_string()
             .context("Run configuration project")?;
@@ -116,6 +111,15 @@ impl Definitions {
             )
             .await;
         }
+        self.execute_at_root(command, root, scope).await
+    }
+
+    pub(crate) async fn execute_at_root(
+        &self,
+        command: &Value,
+        root: PathBuf,
+        scope: Scope,
+    ) -> Result<Value> {
         let operation = command["type"]
             .as_str()
             .and_then(|kind| kind.strip_prefix(PREFIX))
@@ -216,6 +220,19 @@ impl Definitions {
             let _ = (&mut entry.job).await;
         }
     }
+}
+
+pub(crate) async fn root(command: &Value, path: &Path) -> Result<PathBuf> {
+    let root = paths::canonical(path).await?;
+    if !tokio::fs::symlink_metadata(&root).await?.is_dir() {
+        let message = if command["type"] == "project.run-configuration-definitions.paths" {
+            "The Run configuration source root is not a directory."
+        } else {
+            "The project root must be a real directory."
+        };
+        bail!(message);
+    }
+    Ok(root)
 }
 
 fn execute(

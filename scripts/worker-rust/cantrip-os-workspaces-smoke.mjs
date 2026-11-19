@@ -15,6 +15,7 @@ const { values } = parseArgs({
     worker: { type: "string" },
     server: { type: "string" },
     repository: { type: "string" },
+    "executor-package": { type: "string" },
     linked: { type: "boolean", default: false },
     image: { type: "string", default: "cantrip-os:dev" },
   },
@@ -23,6 +24,10 @@ assert.ok(values.worker && values.server);
 assert.ok(
   !values.linked || values.repository,
   "--linked uses the source fixture",
+);
+assert.ok(
+  !values["executor-package"] || values.repository,
+  "--executor-package uses the source fixture",
 );
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-rust-os-workspaces-"));
 const name = `cantrip-rust-os-${randomUUID()}`;
@@ -97,12 +102,29 @@ try {
   assert.match(container, /^[a-f0-9]{64}$/u);
   const guest = async (...args) =>
     JSON.parse(await docker("exec", "--user", "0", container, ...args));
-  const original = await eventually(async () => {
+  let original = await eventually(async () => {
     const status = await guest("cantrip-executor", "status");
     assert.equal(status.service, "running");
     assert.equal(status.attachment, null);
     return status;
   });
+  if (values["executor-package"]) {
+    const guestPackage = "/tmp/cantrip-os-executor-test.deb";
+    await docker(
+      "cp",
+      path.resolve(values["executor-package"]),
+      `${container}:${guestPackage}`,
+    );
+    await docker("exec", "--user", "0", container, "dpkg", "-i", guestPackage);
+    await docker("exec", "--user", "0", container, "unlink", guestPackage);
+    const upgraded = await eventually(async () => {
+      const status = await guest("cantrip-executor", "status");
+      assert.equal(status.service, "running");
+      return status;
+    });
+    assert.equal(upgraded.instance_id, original.instance_id);
+    original = upgraded;
+  }
 
   const environment = fixtureEnvironment(path.join(root, "server"));
   delete environment.CANTRIP_WORKER_TOKEN;
@@ -334,6 +356,8 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       docker,
       eventually,
       linked,
+      runDefinitions: !!values["executor-package"],
+      stopWorker,
       restartWorker: async () => {
         await stopWorker();
         await startWorker();
@@ -355,6 +379,19 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
 } catch (error) {
   if (worker) console.error(worker.diagnostics());
   if (server) console.error(server.diagnostics());
+  if (values["executor-package"] && container) {
+    const log = await docker(
+      "exec",
+      "--user",
+      "0",
+      container,
+      "tail",
+      "-n",
+      "20",
+      "/var/lib/cantrip-os-executor/rust-owned.log",
+    ).catch(() => "");
+    if (log) console.error(log);
+  }
   throw error;
 } finally {
   try {

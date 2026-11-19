@@ -959,7 +959,9 @@
     "runConfigurationRuntimeWorkerLookupSchema": 8136,
     "runConfigurationRuntimeOutputContentSchema": 14247,
     "runConfigurationSecretValueContentSchema": 14251,
-    "workerObservationEnvelopeSchema": 14255
+    "workerObservationEnvelopeSchema": 14255,
+    "cantripOsRunDefinitionWorkerCommandSchema": 6591,
+    "runConfigurationOperationResponseSchema": 12168
   },
   "nodes": [
     {

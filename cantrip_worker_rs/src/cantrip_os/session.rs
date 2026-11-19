@@ -61,6 +61,16 @@ impl<'a> Session<'a> {
         lifetime: &'a Scope,
     ) -> Result<(Self, String)> {
         let binding = Self::capture_binding(transport, scope, lifetime).await?;
+        Self::connect(transport, binding, client, None, lifetime).await
+    }
+
+    pub async fn connect(
+        transport: &Transport,
+        binding: Value,
+        client: &str,
+        resume_session_id: Option<&str>,
+        lifetime: &'a Scope,
+    ) -> Result<(Self, String)> {
         let workspace = text(&binding, "workspace_id")?;
         let (program, args) = transport.spec(
             Program::Executor,
@@ -91,7 +101,7 @@ impl<'a> Session<'a> {
             let receipt = session
                 .request(
                     "initialize",
-                    json!({"clientName":client,"resumeSessionId":Value::Null}),
+                    json!({"clientName":client,"resumeSessionId":resume_session_id}),
                 )
                 .await?;
             let id = text(&receipt, "sessionId")?.to_owned();

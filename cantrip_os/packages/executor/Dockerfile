@@ -20,13 +20,28 @@ RUN CANTRIP_OS_ESBUILD_MODULE=/build/node_modules/esbuild/lib/main.js \
     && cp /build/node_modules/dotenv/LICENSE /out/run-helper-dotenv-LICENSE \
     && cp /build/node_modules/smol-toml/LICENSE /out/run-helper-smol-toml-LICENSE
 
-# Build only the pinned executor and its sandbox helper, using the same source
-# verification and reviewed patch preparation as the worker runtime.
-FROM rust:1.95.0-trixie@sha256:f49565f188ee00bc2a18dd418183f2c5f23ef7d6e691890517ed341a598f67c3 AS compiler
+FROM rust:1.95.0-trixie@sha256:f49565f188ee00bc2a18dd418183f2c5f23ef7d6e691890517ed341a598f67c3 AS toolchain
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nodejs git clang cmake pkg-config libssl-dev libcap-dev libseccomp-dev \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /source
+
+# This binary runs once as the existing guest workspace account. Reuse the
+# worker's definitions code while packaging only the finite guest entry point.
+FROM toolchain AS run-definition-helper
+ARG CARGO_BUILD_JOBS=6
+RUN --mount=type=bind,source=.,target=/source,readonly \
+    --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/target,sharing=locked \
+    CANTRIP_VERSION_PATCH=0 CARGO_TARGET_DIR=/target CARGO_INCREMENTAL=0 \
+    CARGO_BUILD_JOBS=$CARGO_BUILD_JOBS \
+    cargo build --locked --release -p cantrip-worker \
+      --features guest-run-definitions --bin cantrip-os-run-definitions \
+    && install -D /target/release/cantrip-os-run-definitions /out/cantrip-os-run-definitions
+
+# Build the pinned executor and its sandbox helper with reviewed patches.
+FROM toolchain AS compiler
 COPY scripts/cantrip-codex/ scripts/cantrip-codex/
 COPY scripts/cantrip-skills.mjs scripts/cantrip-skills.mjs
 COPY skill_templates/ skill_templates/
@@ -50,6 +65,7 @@ COPY --from=executor-runtime /executor/ /runtime/
 COPY cantrip_os/packages/executor/ /package/
 COPY --from=file-helper /out/file-operations.mjs /out/run-definitions.mjs /out/run-plan.mjs /package/root/usr/lib/cantrip-os-executor/
 COPY --from=file-helper /out/process-owner /package/root/usr/lib/cantrip-os-executor/process-owner
+COPY --from=run-definition-helper /out/cantrip-os-run-definitions /package/root/usr/lib/cantrip-os-executor/cantrip-os-run-definitions
 COPY --from=file-helper /out/file-helper-zod-LICENSE /package/root/usr/share/doc/cantrip-os-executor/file-helper-zod-LICENSE
 COPY --from=file-helper /out/run-helper-dotenv-LICENSE /out/run-helper-smol-toml-LICENSE /package/root/usr/share/doc/cantrip-os-executor/
 RUN /package/build.sh /runtime /out

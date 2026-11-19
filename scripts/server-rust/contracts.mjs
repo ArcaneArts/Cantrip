@@ -983,6 +983,8 @@ export const contractRoots = [
   "runConfigurationRuntimeOutputContentSchema",
   "runConfigurationSecretValueContentSchema",
   "workerObservationEnvelopeSchema",
+  "cantripOsRunDefinitionWorkerCommandSchema",
+  "runConfigurationOperationResponseSchema",
 ];
 
 export const projectExportContractRoots = [
