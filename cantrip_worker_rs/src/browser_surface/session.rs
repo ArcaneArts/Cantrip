@@ -7,11 +7,13 @@ use crate::{
 };
 use anyhow::{Context, Result, bail, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
-use cantrip_browser::{Event, Page};
+use cantrip_browser::{Event, Page, Subscription};
 use cantrip_framing::remote_surface::{self, Frame};
 use cantrip_wire::{JsString, Value, parse_json_text, value::json};
 use std::{
     collections::{HashMap, VecDeque},
+    future::Future,
+    pin::Pin,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -19,14 +21,16 @@ use std::{
 pub(super) struct Session {
     shared: Arc<Shared>,
     endpoint: Arc<Endpoint>,
-    lease: profile::Lease,
+    lease: Option<profile::Lease>,
+    profile_id: JsString,
     surface: JsString,
     owner: JsString,
     server: Value,
     project: Value,
     stored: Location,
+    current_url: JsString,
     attachments: HashMap<JsString, Attachment>,
-    viewport: Option<Value>,
+    viewport: Value,
     loading: bool,
     suspended: bool,
     operations: VecDeque<JsString>,
@@ -48,8 +52,10 @@ struct Attachment {
     outgoing: HashMap<&'static str, u64>,
 }
 
+pub(super) type Opening = Pin<Box<dyn Future<Output = Result<profile::Lease>> + Send>>;
+
 impl Session {
-    pub async fn open(
+    pub fn new(
         shared: Arc<Shared>,
         endpoint: Arc<Endpoint>,
         surface: JsString,
@@ -66,31 +72,21 @@ impl Session {
             "Browser command socket expired."
         );
         let stored = location(&shared, &owner, &surface, command)?;
-        let profile = command["configuration"]["profileId"]
-            .as_js_string()
-            .unwrap_or(&surface);
-        let viewport = &command["viewport"];
-        let lease = shared
-            .profiles
-            .open(
-                profile,
-                (
-                    viewport["width"].as_u64().unwrap() as u32,
-                    viewport["height"].as_u64().unwrap() as u32,
-                ),
-            )
-            .await?;
+        let profile_id = profile_id(command, &surface);
+        let current_url = stored.url.clone();
         Ok(Self {
             shared,
             endpoint,
-            lease,
+            lease: None,
+            profile_id,
             surface,
             owner,
             server,
             stored,
+            current_url,
             project: command["projectId"].clone(),
             attachments: HashMap::new(),
-            viewport: None,
+            viewport: command["viewport"].clone(),
             loading: true,
             suspended: false,
             operations: VecDeque::new(),
@@ -100,20 +96,85 @@ impl Session {
         })
     }
 
-    pub async fn initialize(&mut self, viewport: &Value, epoch: u64) -> Result<()> {
-        self.authorize(epoch)?;
+    pub fn open_after(&self, delay: Duration, retired: Option<profile::Lease>) -> Opening {
+        let shared = self.shared.clone();
+        let identity = self.profile_id.clone();
+        let viewport = (
+            self.viewport["width"].as_u64().unwrap() as u32,
+            self.viewport["height"].as_u64().unwrap() as u32,
+        );
+        Box::pin(async move {
+            if let Some(old) = retired {
+                old.close().await;
+            }
+            if !delay.is_zero() {
+                tokio::time::sleep(delay).await;
+            }
+            shared.profiles.open(&identity, viewport).await
+        })
+    }
+
+    pub async fn activate(
+        &mut self,
+        lease: profile::Lease,
+        initial_epoch: Option<u64>,
+    ) -> Result<Subscription> {
+        let events = lease.page.subscribe();
+        self.lease = Some(lease);
+        ensure!(
+            self.lease.as_ref().unwrap().identity == self.profile_id,
+            "Browser profile changed while Chromium was starting."
+        );
+        if let Some(epoch) = initial_epoch {
+            self.authorize(epoch)?;
+        } else {
+            self.authorize_endpoint()?;
+        }
         self.request("Page.enable", json!({})).await?;
         self.request("Runtime.enable", json!({})).await?;
-        self.configure_viewport(viewport, false).await?;
-        self.navigate(self.stored.url.clone()).await
+        self.request("Inspector.enable", json!({})).await?;
+        self.configure_viewport(&self.viewport.clone(), true)
+            .await?;
+        // A page can be restored even if the last site is temporarily unavailable.
+        let navigation = self.navigate(self.current_url.clone()).await;
+        if initial_epoch.is_some() || !self.page()?.is_connected() {
+            navigation?;
+        }
+        self.cursor = "default".into();
+        self.cursor_epoch = uuid::Uuid::new_v4();
+        self.last_cursor = None;
+        self.send_cursor_state(None);
+        self.runtime_status(None);
+        Ok(events)
     }
 
-    pub fn page(&self) -> &Page {
-        &self.lease.page
+    pub fn retire(&mut self) -> Option<profile::Lease> {
+        let lease = self.lease.take();
+        self.loading = true;
+        lease
     }
 
-    pub async fn close(self) {
-        self.lease.close().await;
+    pub fn recovering(&mut self) {
+        self.runtime_status(None);
+    }
+
+    pub async fn resync(&mut self) {
+        let _ = self.publish_state(None).await;
+        let _ = self.screenshot(None).await;
+    }
+
+    fn page(&self) -> Result<&Page> {
+        self.lease
+            .as_ref()
+            .map(|lease| &lease.page)
+            .context("Browser runtime is reconnecting.")
+    }
+
+    pub async fn close(mut self) {
+        self.attachments.clear();
+        if let Some(lease) = self.lease.take() {
+            lease.close().await;
+        }
     }
 
     fn authorize_endpoint(&self) -> Result<()> {
@@ -137,7 +198,7 @@ impl Session {
         Ok(())
     }
 
-    pub async fn reconcile(&mut self) -> Result<()> {
+    pub fn reconcile(&mut self) -> Result<()> {
         self.authorize_endpoint()?;
         self.attachments
             .retain(|_, attachment| attachment.route.alive(&self.shared.outgoing));
@@ -180,16 +241,36 @@ impl Session {
     }
 
     pub async fn refresh(&mut self, attachment: &JsString) {
+        self.runtime_status(Some(attachment));
+        self.send_cursor_state(Some(attachment));
+        if self.lease.is_some() {
+            let _ = self.publish_state(Some(attachment)).await;
+            let _ = self.screenshot(Some(attachment)).await;
+        }
+    }
+
+    fn runtime_status(&mut self, only: Option<&JsString>) {
+        let (status, message) = if self.lease.is_some() {
+            ("ready", Value::Null)
+        } else {
+            ("recovering", json!("Browser runtime is reconnecting."))
+        };
         self.send_json(
-            Some(attachment),
+            only,
+            "control",
+            &json!({"type":"browser-runtime","status":status,"message":message}),
+        );
+    }
+
+    fn send_cursor_state(&mut self, only: Option<&JsString>) {
+        self.send_json(
+            only,
             "control",
             &json!({
                 "type":"browser-agent-cursor","epoch":self.cursor_epoch.to_string(),
                 "sequence":0,"position":Value::Null,"click":false,"dragging":false,
             }),
         );
-        let _ = self.publish_state(Some(attachment)).await;
-        let _ = self.screenshot(Some(attachment)).await;
     }
 
     pub async fn command(&mut self, value: &Value, epoch: u64) -> Result<Value> {
@@ -216,9 +297,12 @@ impl Session {
             "surface.configure" => self.configure_location(value).await?,
             "surface.suspend" => {
                 self.suspended = true;
-                self.request("Page.stopScreencast", json!({})).await?;
+                if self.lease.is_some() {
+                    self.request("Page.stopScreencast", json!({})).await?;
+                }
             }
             "surface.resume" => {
+                self.suspended = false;
                 if let Some(viewport) = self
                     .attachments
                     .values()
@@ -245,15 +329,21 @@ impl Session {
                 next.revision >= self.stored.revision,
                 "Browser configuration revision is stale."
             );
-            let history = self.history().await?;
-            if active_entry(&history)
-                .is_none_or(|entry| entry["url"].as_js_string() != Some(&next.url))
-            {
-                self.navigate(next.url.clone()).await?;
+            if self.lease.is_some() {
+                let history = self.history().await?;
+                if active_entry(&history)
+                    .is_none_or(|entry| entry["url"].as_js_string() != Some(&next.url))
+                {
+                    self.navigate(next.url.clone()).await?;
+                }
             }
+            self.current_url = next.url.clone();
             self.stored = next;
-            let _ = self.publish_state(None).await;
+            if self.lease.is_some() {
+                let _ = self.publish_state(None).await;
+            }
         }
+        self.profile_id = profile_id(command, &self.surface);
         Ok(())
     }
 
@@ -301,8 +391,10 @@ impl Session {
                 self.attachments.get_mut(attachment).unwrap().viewport =
                     message["viewport"].clone();
                 self.configure_viewport(&message["viewport"], false).await?;
-                self.publish_state(Some(attachment)).await?;
-                self.screenshot(Some(attachment)).await?;
+                if self.lease.is_some() {
+                    self.publish_state(Some(attachment)).await?;
+                    self.screenshot(Some(attachment)).await?;
+                }
             }
             "navigate" => {
                 let operation = id(message, "operationId");
@@ -330,7 +422,12 @@ impl Session {
                 if self.operations.len() > 1_000 {
                     self.operations.pop_front();
                 }
-                self.navigate(id(&content, "url").clone()).await?;
+                let url = id(&content, "url").clone();
+                if self.lease.is_some() {
+                    self.navigate(url).await?;
+                } else {
+                    self.current_url = url;
+                }
             }
             "history" => {
                 let history = self.history().await?;
@@ -385,7 +482,7 @@ impl Session {
             }
             "clipboard" => {
                 let text = self
-                    .page()
+                    .page()?
                     .evaluate("String(globalThis.getSelection?.() ?? '')")
                     .await?;
                 let result = checked(
@@ -427,7 +524,7 @@ impl Session {
                 message["x"].stringify(),
                 message["y"].stringify()
             );
-            let result = self.page().evaluate(&expression).await?;
+            let result = self.page()?.evaluate(&expression).await?;
             let parsed = checked(
                 "remoteBrowserCursorMessageSchema",
                 &json!({"type":"browser-cursor","cursor":result}),
@@ -483,7 +580,7 @@ impl Session {
     }
 
     async fn input_focus(&mut self, attachment: &JsString) -> Result<()> {
-        let editable = self.page().evaluate(
+        let editable = self.page()?.evaluate(
             "(() => {const e=document.activeElement;if(!(e instanceof HTMLElement))return false;if(e instanceof HTMLTextAreaElement)return !e.disabled&&!e.readOnly;if(e instanceof HTMLInputElement)return !e.disabled&&!e.readOnly&&!['button','checkbox','color','file','hidden','image','radio','range','reset','submit'].includes(e.type);return e.isContentEditable})()"
         ).await.ok().and_then(|value| value.as_bool()).unwrap_or(false);
         self.send_json(
@@ -507,7 +604,11 @@ impl Session {
     }
 
     async fn configure_viewport(&mut self, viewport: &Value, restart: bool) -> Result<()> {
-        if !restart && !self.suspended && self.viewport.as_ref() == Some(viewport) {
+        if !restart && self.viewport == *viewport {
+            return Ok(());
+        }
+        self.viewport = viewport.clone();
+        if self.lease.is_none() {
             return Ok(());
         }
         self.request(
@@ -524,11 +625,11 @@ impl Session {
         )
         .await?;
         let _ = self.request("Page.stopScreencast", json!({})).await;
-        self.request("Page.startScreencast", json!({
-            "format":"jpeg","quality":78,"maxWidth":viewport["width"],"maxHeight":viewport["height"],"everyNthFrame":1
-        })).await?;
-        self.viewport = Some(viewport.clone());
-        self.suspended = false;
+        if !self.suspended {
+            self.request("Page.startScreencast", json!({
+                "format":"jpeg","quality":78,"maxWidth":viewport["width"],"maxHeight":viewport["height"],"everyNthFrame":1
+            })).await?;
+        }
         Ok(())
     }
 
@@ -559,10 +660,8 @@ impl Session {
                 let _ = self.screenshot(None).await;
             }
             "Page.frameNavigated" if event.params()["frame"]["parentId"].is_null() => {
-                if !self.suspended
-                    && let Some(viewport) = self.viewport.clone()
-                {
-                    let _ = self.configure_viewport(&viewport, true).await;
+                if !self.suspended {
+                    let _ = self.configure_viewport(&self.viewport.clone(), true).await;
                 }
                 let _ = self.publish_state(None).await;
             }
@@ -578,20 +677,27 @@ impl Session {
     }
 
     async fn publish_state(&mut self, only: Option<&JsString>) -> Result<()> {
-        if self.attachments.is_empty() {
-            return Ok(());
-        }
         let history = self.history().await?;
         let Some(entry) = active_entry(&history) else {
             return Ok(());
         };
+        // Restore only a location Chromium actually committed, using the same
+        // validation as the encrypted browser state sent to clients.
+        let content = checked(
+            "browserPrivateStateProtectedContentSchema",
+            &json!({"version":1,"classification":json!({"recordKind":"browser-state"}),
+                "revision":self.stored.revision,"url":entry["url"]}),
+        )?;
+        self.current_url = id(&content, "url").clone();
+        if self.attachments.is_empty() {
+            return Ok(());
+        }
         let operation = json!(uuid::Uuid::new_v4().to_string());
         let protected = protect_private_state(
             &self.shared.encryption,
             &self.owner,
             &private(&self.server, &self.surface, &operation, "browser-operation"),
-            &json!({"version":1,"classification":json!({"recordKind":"browser-state"}),
-                "revision":self.stored.revision,"url":entry["url"]}),
+            &content,
         )?;
         let title = entry["title"]
             .as_js_string()
@@ -676,8 +782,15 @@ impl Session {
     }
 
     async fn request(&self, method: &str, value: Value) -> Result<Value> {
-        self.page().request(method, value).await
+        self.page()?.request(method, value).await
     }
+}
+
+fn profile_id(command: &Value, surface: &JsString) -> JsString {
+    command["configuration"]["profileId"]
+        .as_js_string()
+        .unwrap_or(surface)
+        .clone()
 }
 
 fn location(

@@ -1,9 +1,9 @@
 // Real Core and native worker with a disposable encrypted browser surface.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -38,12 +38,15 @@ import { repositoryFixture } from "../server-rust/repository-fixture.mjs";
 import { BrowserWorkerLink } from "./browser-worker-link-client.mjs";
 
 const { values } = parseArgs({
-  options: Object.fromEntries(
-    ["server", "worker", "repository", "chromium", "route"].map((name) => [
-      name,
-      { type: "string" },
-    ]),
-  ),
+  options: {
+    ...Object.fromEntries(
+      ["server", "worker", "repository", "chromium", "route"].map((name) => [
+        name,
+        { type: "string" },
+      ]),
+    ),
+    recover: { type: "boolean" },
+  },
 });
 assert.ok(
   values.server && values.worker && values.repository && values.chromium,
@@ -58,6 +61,10 @@ const root = await mkdtemp(
 );
 const workerDirectory = path.join(root, "worker");
 const dataDirectory = path.join(root, "core");
+const blockedLaunch = path.join(root, "reject-chromium-launch");
+const chromium = values.recover
+  ? path.join(root, "chromium-fixture")
+  : path.resolve(values.chromium);
 const environment = {
   ...fixtureEnvironment(dataDirectory),
   CANTRIP_BOOTSTRAP_MODE: "standalone",
@@ -68,6 +75,8 @@ const ownerId = localOwner;
 const workerId = "native-browser-surface-worker";
 const projectId = "browser-surface-fixture-project";
 const surfaceId = "native-browser-surface-fixture";
+const siblingId = "native-browser-recovery-sibling";
+const sharedProfile = "fixture shared browser profile";
 const component = "surface-private-state";
 const keyRevision = 1;
 const viewport = { width: 640, height: 480, devicePixelRatio: 1 };
@@ -88,13 +97,22 @@ let core;
 const target = createServer((request, response) => {
   visits.push(request.url);
   const title =
-    request.url === "/second" ? "Native second page" : "Native first page";
+    {
+      "/second": "Native second page",
+      "/sibling": "Shared profile sibling",
+    }[request.url] ?? "Native first page";
   response.writeHead(200, { "content-type": "text/html" });
   response.end(
     "<!doctype html><title>" +
       title +
       '</title><canvas width="640" height="480" style="position:absolute;inset:0"></canvas><input autofocus style="position:absolute;left:8px;top:8px" oninput="document.title=this.value">' +
       `<script>
+        if (${Boolean(values.recover)} && location.pathname === '/second') {
+          const input = document.querySelector('input');
+          const retained = localStorage.getItem('fixture-input');
+          if (retained) input.value = document.title = retained;
+          input.addEventListener('input', () => localStorage.setItem('fixture-input', input.value));
+        }
         const ctx = document.querySelector('canvas').getContext('2d');
         const image = ctx.createImageData(640, 480);
         let state = 12345;
@@ -159,7 +177,9 @@ async function launchWorker(enrollmentCode) {
         CANTRIP_SERVER_URL: core.origin,
         CANTRIP_WORKER_DATA_DIR: workerDirectory,
         CANTRIP_WORKER_ID: workerId,
-        CANTRIP_CHROMIUM_EXECUTABLE: path.resolve(values.chromium),
+        CANTRIP_CHROMIUM_EXECUTABLE: chromium,
+        CANTRIP_FIXTURE_CHROMIUM: path.resolve(values.chromium),
+        CANTRIP_FIXTURE_BLOCK_LAUNCH: blockedLaunch,
         ...(enrollmentCode
           ? { CANTRIP_WORKER_ENROLLMENT_CODE: enrollmentCode }
           : {}),
@@ -194,22 +214,22 @@ async function stopWorker() {
   }
 }
 
-function privateContext(resource, operationId = null) {
+function privateContext(resource, operationId = null, id = surfaceId) {
   return {
     serverId: browserIdentity,
     resource,
-    resourceId: surfaceId,
+    resourceId: id,
     operationId,
     recordKind: "browser-state",
   };
 }
 
-function location(resource, url, operationId = null) {
+function location(resource, url, operationId = null, id = surfaceId) {
   return encryptSurfacePrivateState({
     ownerId,
     keyRevision,
     componentKey,
-    context: privateContext(resource, operationId),
+    context: privateContext(resource, operationId, id),
     content: {
       version: 1,
       classification: { recordKind: "browser-state" },
@@ -222,6 +242,11 @@ function location(resource, url, operationId = null) {
 class BrowserSocket {
   inbox = [];
   counter = 0;
+  received = new Map();
+
+  constructor(id = surfaceId) {
+    this.id = id;
+  }
 
   async connect() {
     clients.push(this);
@@ -230,7 +255,7 @@ class BrowserSocket {
         origin: core.origin,
         call,
         workerId,
-        surfaceId,
+        surfaceId: this.id,
         viewport,
         route,
         onFrame: (frame) => this.push(frame),
@@ -241,7 +266,7 @@ class BrowserSocket {
     this.socket = new WebSocket(
       core.origin.replace(/^http/u, "ws") +
         "/api/remote-surfaces/" +
-        surfaceId +
+        this.id +
         "/connect?width=640&height=480",
       { origin: "http://127.0.0.1:5173" },
     );
@@ -278,7 +303,7 @@ class BrowserSocket {
     return {
       serverId: browserIdentity,
       surfaceKind: "browser",
-      surfaceId,
+      surfaceId: this.id,
       attachmentId,
       direction,
       channel,
@@ -307,7 +332,7 @@ class BrowserSocket {
     if (!this.link) {
       const value = await this.next((value) => value.type === "ready");
       assert.equal(value.transport, "websocket");
-      assert.equal(value.surfaceId, surfaceId);
+      assert.equal(value.surfaceId, this.id);
       this.attachment = value.attachmentId;
     }
     await this.send({ type: "viewport", viewport });
@@ -316,7 +341,7 @@ class BrowserSocket {
   async send(message, { invalid = false } = {}) {
     const header = {
       protocolVersion: 1,
-      surfaceId,
+      surfaceId: this.id,
       attachmentId: this.attachment,
       channel: "control",
       sequence: this.counter++,
@@ -335,14 +360,30 @@ class BrowserSocket {
   }
 
   async clear(value) {
-    assert.equal(value.header.surfaceId, surfaceId);
+    assert.equal(value.header.surfaceId, this.id);
     assert.equal(value.header.attachmentId, this.attachment);
+    const { sequence, channel } = value.header;
+    assert.ok(
+      sequence > (this.received.get(channel) ?? -1),
+      "Surface counters survive browser recovery",
+    );
+    this.received.set(channel, sequence);
     return decryptRemoteSurfaceStreamPayload({
       ownerId,
       componentKey,
       keyRevision,
       protectedPayload: value.payload,
       context: this.context(value.header, "worker-to-client"),
+    });
+  }
+
+  async runtime(status) {
+    await this.next(async (value) => {
+      if (value.header?.channel !== "control") return false;
+      const message = JSON.parse(
+        Buffer.from(await this.clear(value)).toString(),
+      );
+      return message.type === "browser-runtime" && message.status === status;
     });
   }
 
@@ -364,7 +405,11 @@ class BrowserSocket {
         ownerId,
         keyRevision,
         componentKey,
-        context: privateContext("browser-operation", message.operationId),
+        context: privateContext(
+          "browser-operation",
+          message.operationId,
+          this.id,
+        ),
         opaque: message.stateProtection,
       });
       return true;
@@ -373,7 +418,139 @@ class BrowserSocket {
   }
 }
 
+async function chromiumEndpoint() {
+  const digest = createHash("sha256").update(sharedProfile).digest("hex");
+  const [port, endpoint] = (
+    await readFile(
+      path.join(
+        workerDirectory,
+        "browser",
+        "profiles",
+        digest,
+        "DevToolsActivePort",
+      ),
+      "utf8",
+    )
+  )
+    .trim()
+    .split("\n");
+  assert.match(port, /^\d+$/u);
+  assert.match(endpoint, /^\/devtools\/browser\/[0-9a-f-]+$/u);
+  const base = "127.0.0.1:" + port;
+  const list = await fetch("http://" + base + "/json/list", {
+    signal: AbortSignal.timeout(2000),
+  });
+  return { endpoint: "ws://" + base + endpoint, pages: await list.json() };
+}
+
+async function stopFixtureChromium(endpoint) {
+  const socket = new WebSocket(endpoint);
+  try {
+    await once(socket, "open", { signal: AbortSignal.timeout(3000) });
+    const closed = once(socket, "close", { signal: AbortSignal.timeout(6000) });
+    socket.send(JSON.stringify({ id: 1, method: "Browser.close", params: {} }));
+    await closed;
+  } finally {
+    socket.terminate();
+  }
+}
+
+async function verifyRecovery(view) {
+  const sibling = new BrowserSocket(siblingId);
+  await sibling.ready();
+  assert.equal(
+    await sibling.title("Shared profile sibling"),
+    origin + "/sibling",
+  );
+  const original = await chromiumEndpoint();
+  for (const address of ["/second", "/sibling"]) {
+    assert.ok(original.pages.some(({ url }) => url === origin + address));
+  }
+  await writeFile(blockedLaunch, "");
+  await stopFixtureChromium(original.endpoint);
+  await Promise.all([
+    view.runtime("recovering"),
+    sibling.runtime("recovering"),
+  ]);
+  await eventually(
+    () => logs.includes("browser.runtime.start-failed"),
+    (value) => assert.ok(value),
+    8000,
+  );
+  await rm(blockedLaunch);
+  await Promise.all([view.runtime("ready"), sibling.runtime("ready")]);
+  assert.equal(await view.title("A & private"), origin + "/second");
+  assert.equal(
+    await sibling.title("Shared profile sibling"),
+    origin + "/sibling",
+  );
+  const reopened = await chromiumEndpoint();
+  assert.notEqual(reopened.endpoint, original.endpoint);
+  for (const address of ["/second", "/sibling"]) {
+    assert.ok(reopened.pages.some(({ url }) => url === origin + address));
+  }
+  const targets = reopened.pages.filter(
+    ({ url }) => url === origin + "/second",
+  );
+  assert.equal(
+    targets.length,
+    1,
+    "A single live target was restored for the first surface",
+  );
+  const pageEndpoint = new URL(targets[0].webSocketDebuggerUrl);
+  assert.equal(pageEndpoint.origin, new URL(reopened.endpoint).origin);
+  assert.match(pageEndpoint.pathname, /^\/devtools\/page\//u);
+  const crashed = new WebSocket(pageEndpoint);
+  try {
+    await once(crashed, "open", { signal: AbortSignal.timeout(3000) });
+    const notice = once(crashed, "message", {
+      signal: AbortSignal.timeout(4000),
+    });
+    crashed.send(JSON.stringify({ id: 1, method: "Page.crash", params: {} }));
+    const [reply] = await notice;
+    const { method, error } = JSON.parse(reply.toString());
+    assert.equal(method, "Inspector.targetCrashed", JSON.stringify(error));
+    await view.runtime("recovering");
+    await view.runtime("ready");
+    assert.equal(await view.title("A & private"), origin + "/second");
+  } finally {
+    crashed.terminate();
+  }
+  const restored = await chromiumEndpoint();
+  assert.equal(
+    restored.endpoint,
+    reopened.endpoint,
+    "A renderer crash keeps the shared Chromium process",
+  );
+  assert.equal(
+    restored.pages.filter(({ url }) => url === origin + "/second").length,
+    1,
+  );
+  await sibling.send({ type: "viewport", viewport });
+  assert.equal(
+    await sibling.title("Shared profile sibling"),
+    origin + "/sibling",
+  );
+  await view.send({ type: "clipboard", operation: "paste-text", text: "!" });
+  await view.send({ type: "viewport", viewport });
+  assert.equal(await view.title("A & private!"), origin + "/second");
+  await sibling.close();
+  await call("DELETE", "/api/browsers/" + siblingId, 204);
+  await view.send({ type: "viewport", viewport });
+  assert.equal(await view.title("A & private!"), origin + "/second");
+}
+
 try {
+  if (values.recover) {
+    await writeFile(
+      chromium,
+      `#!/bin/sh
+[ ! -f "$CANTRIP_FIXTURE_BLOCK_LAUNCH" ] || exit 29
+exec "$CANTRIP_FIXTURE_CHROMIUM" "$@"
+`,
+      { mode: 0o700 },
+    );
+  }
   await mkdir(path.join(root, "home"));
   await mkdir(path.join(root, "scratch"));
   await launchCore();
@@ -454,10 +631,8 @@ try {
   });
   try {
     const project = literal(projectId);
-    const id = literal(surfaceId);
     const worker = literal(workerId);
     const title = json(label("browser"));
-    const initial = json(await location("browser-row", origin + "/first"));
     await repository.seed(
       "INSERT INTO projects(id,owner_id,protected_label,origin_kind,folder_management,git_capability,github_capability,worktree_policy,preferred_worker_id) VALUES(" +
         [
@@ -473,25 +648,38 @@ try {
         ].join(",") +
         ")",
     );
-    await repository.seed(
-      "INSERT INTO browsers(id,project_id,protected_label,protected_state) VALUES(" +
-        [id, project, title, initial].join(",") +
-        ")",
-    );
-    await repository.seed(
-      "INSERT INTO remote_surfaces(id,project_id,worker_id,kind,configuration,protected_label,protected_state,state_revision) VALUES(" +
-        [
-          id,
-          project,
-          worker,
-          "'browser'",
-          json(remoteSurfaceConfigurationSchema.parse({ kind: "browser" })),
-          title,
-          initial,
-          1,
-        ].join(",") +
-        ")",
-    );
+    const surfaces = [[surfaceId, "/first"]];
+    if (values.recover) surfaces.push([siblingId, "/sibling"]);
+    for (const [surface, address] of surfaces) {
+      const id = literal(surface);
+      const initial = json(
+        await location("browser-row", origin + address, null, surface),
+      );
+      await repository.seed(
+        "INSERT INTO browsers(id,project_id,protected_label,protected_state) VALUES(" +
+          [id, project, title, initial].join(",") +
+          ")",
+      );
+      await repository.seed(
+        "INSERT INTO remote_surfaces(id,project_id,worker_id,kind,configuration,protected_label,protected_state,state_revision) VALUES(" +
+          [
+            id,
+            project,
+            worker,
+            "'browser'",
+            json(
+              remoteSurfaceConfigurationSchema.parse({
+                kind: "browser",
+                ...(values.recover ? { profileId: sharedProfile } : {}),
+              }),
+            ),
+            title,
+            initial,
+            1,
+          ].join(",") +
+          ")",
+      );
+    }
   } finally {
     await repository.close();
   }
@@ -577,10 +765,16 @@ try {
   await call("POST", "/api/remote-surfaces/" + surfaceId + "/resume", 200, {});
   await second.send({ type: "viewport", viewport });
   assert.equal(await second.title("A & private"), origin + "/second");
+  if (values.recover) await verifyRecovery(second);
   await second.close();
   await call("DELETE", "/api/browsers/" + surfaceId, 204);
   console.log(
-    JSON.stringify({ suite: "native-browser-surface", route, passed: true }),
+    JSON.stringify({
+      suite: "native-browser-surface",
+      route,
+      recovery: Boolean(values.recover),
+      passed: true,
+    }),
   );
 } catch (error) {
   console.error(logs, core?.diagnostics());
