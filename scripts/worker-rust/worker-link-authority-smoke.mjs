@@ -20,7 +20,11 @@ import {
 import { fixtureEnvironment, startServer } from "../server-rust/process.mjs";
 
 const { values } = parseArgs({
-  options: { server: { type: "string" }, worker: { type: "string" } },
+  options: {
+    server: { type: "string" },
+    worker: { type: "string" },
+    tunnel: { type: "boolean" },
+  },
 });
 assert.ok(values.server && values.worker, "Pass --server and --worker.");
 
@@ -36,6 +40,7 @@ let server;
 let child;
 let completion;
 let diagnostics = "";
+const master = generateAccountMasterKey();
 
 async function call(method, route, expected, body) {
   const response = await fetch(server.origin + route, {
@@ -66,8 +71,7 @@ try {
     { cwd: root, env: environment },
   );
   const ownerId = "00000000-0000-0000-0000-000000000001";
-  const master = generateAccountMasterKey();
-  try {
+  {
     const id = randomUUID();
     const publicKey = await publicKeyForPair(await generateHpkeKeyPair());
     await call("POST", "/api/encryption/profile/initialize", 201, {
@@ -91,8 +95,6 @@ try {
         }),
       },
     });
-  } finally {
-    master.fill(0);
   }
   const enrollment = await call("POST", "/api/workers/enrollment-codes", 201, {
     label: "WorkerLink authority fixture",
@@ -195,6 +197,27 @@ try {
       "Native worker completed " + command,
     );
   }
+  if (values.tunnel) {
+    const { verifyWorkerLinkTunnel } =
+      await import("./worker-link-tunnel-cases.mjs");
+    const relay = await call(
+      "POST",
+      "/api/worker-links/" + next.sessionId + "/route",
+      200,
+      { preferredRoute: "relay" },
+    );
+    await verifyWorkerLinkTunnel({
+      origin: server.origin,
+      call,
+      relay,
+      ownerId,
+      workerId,
+      workerDirectory: path.join(root, "worker"),
+      master,
+    });
+    assert.match(diagnostics, /event=tunnel\.destination\.connected/);
+    assert.match(diagnostics, /event=tunnel\.protected-target\.rejected/);
+  }
   console.log(
     JSON.stringify({ suite: "native-workerlink-authority", passed: true }),
   );
@@ -202,6 +225,7 @@ try {
   console.error(diagnostics, server?.diagnostics());
   throw error;
 } finally {
+  master.fill(0);
   try {
     if (child) {
       child.stdin.end();

@@ -199,6 +199,7 @@ async fn cycle(
         generation.clone(),
         encryption.clone(),
         outgoing.clone(),
+        logs.clone(),
     ));
     outgoing.observe_with(&worker_link);
     let worker_link_task = {
