@@ -36,6 +36,10 @@ impl Client {
         })
     }
 
+    pub(in crate::codex) fn generation(&self) -> &str {
+        &self.worker_generation
+    }
+
     pub(crate) async fn authorize(
         &self,
         owner: &JsString,

@@ -18,6 +18,39 @@ pub(super) enum Event {
 }
 type Events = mpsc::UnboundedReceiver<Event>;
 pub(super) type Capture = mpsc::UnboundedSender<Event>;
+pub(super) struct Continuation {
+    pub channel: Capture,
+    pub seed: Value,
+}
+
+impl Continuation {
+    pub(super) async fn snapshot(&self) -> Result<Value> {
+        let (answer, receive) = oneshot::channel();
+        self.channel
+            .send(Event::Checkpoint(self.seed.clone(), answer))
+            .map_err(|_| anyhow::anyhow!("The native turn observer ended before capture."))?;
+        receive
+            .await
+            .context("The native turn observer ended before capture.")
+    }
+}
+
+pub(super) fn continuation_seed(command: &Value, model: Value, schema: Option<&Value>) -> Value {
+    let empty = Value::Array(Vec::new());
+    json!({
+        "version":1, "chatId":command["chatId"], "cwd":command["cwd"],
+        "startedAtMs":chrono::Utc::now().timestamp_millis(), "executionKind":"chat",
+        "providerId":command["provider"]["id"], "providerKind":command["provider"]["kind"],
+        "model":model, "baseline":empty, "initialSettings":Value::Null,
+        "nativeModelAttribution":Value::Null,"inheritThreadSettings":true,
+        "collaborationMode":Value::Null,"contextUsage":Value::Null,"contextUsageUpdatedAtMs":Value::Null,
+        "durationMs":Value::Null,"diffChanges":empty,"commandTelemetry":empty,"completedCommandIds":empty,
+        "fileStartedAtMs":empty,"itemStartedAtMs":empty,"liveAgentMessageFingerprints":empty,
+        "observedActivityFingerprints":empty,"pendingActivities":empty,"pendingAgentMessage":Value::Null,
+        "streamingAgentMessage":Value::Null,"reasoningSummaries":empty,"structuredChat":schema.is_some(),
+        "structuredOutputSchema":schema,"goalCompletion":Value::Null,
+    })
+}
 const STREAM_INTERVAL: Duration = Duration::from_millis(80);
 
 pub(super) fn subscribe(

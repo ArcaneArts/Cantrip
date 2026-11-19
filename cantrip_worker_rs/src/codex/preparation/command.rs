@@ -1,7 +1,7 @@
 //! Worker command preparation joins authenticated scope, the durable association,
 //! and the native thread. It also installs the idle MCP attachment.
 mod profile;
-mod task_pause;
+pub(in crate::codex) mod task_pause;
 pub(in crate::codex) use profile::collaboration_mode;
 
 use super::{
