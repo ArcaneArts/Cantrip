@@ -1,6 +1,7 @@
 //! Native worker implementation. Modules are integrated progressively while the
 //! existing production worker remains the default until the complete cutover.
 pub mod attachments;
+mod browser_services;
 pub(crate) mod chat_content;
 mod cli;
 pub mod codex;

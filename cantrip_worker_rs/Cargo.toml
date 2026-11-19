@@ -9,6 +9,7 @@ publish.workspace = true
 anyhow = "1"
 base64 = "0.22"
 bytes = "1"
+encoding_rs = { version = "=0.8.35", default-features = false }
 cantrip-crypto = { path = "../crates/cantrip-crypto" }
 cantrip-framing = { path = "../crates/cantrip-framing" }
 cantrip-transport = { path = "../crates/cantrip-transport" }

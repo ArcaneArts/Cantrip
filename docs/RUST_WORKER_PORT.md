@@ -141,7 +141,7 @@ loaded by a production service.
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
 | Terminals/run supervision          | Terminal manager/canonical/private state, run-configuration providers and supervisors                                                     | Native host service reconciliation/restart and owned PTY supervision                                                                                                                                                                                                                                                                                                                                    | Actual encrypted server/worker service enable, idempotence, restart, recovery and disable pass. Interactive commands, canonical terminal/replay, attachment/input/resize, CLI broker environments, run providers and delegated OS services remain pending.                                                                       |
 | WorkerLink/direct/tunnels | Gateways, peer/WebRTC, direct broker, tunnel protection and routing | Native installed authority, live observations, encrypted Host terminals and TCP, WebDAV shares, direct tickets, and LAN and WAN peer carriage | Continue managed console and guest/surface adapters. Local peer fixtures cover authenticated negotiation, encrypted TCP, credit, renewal, and revocation. |
-| Browsers/surfaces/computer use     | browser/desktop adapters, remote surfaces, computer-use services, web service and managed Playwright/SearXNG                              | Native stream protection; execution/resources pending                                                                                                                                                                                                                                                                                                                                                   | Native replacements for Node driver/helpers; selectors/snapshots/input/capture/network restrictions; permission/approval revocation; no dropped features                                                                                                                                                                         |
+| Browsers/surfaces/computer use | Browser discovery, browser/desktop adapters, remote surfaces, computer use, and managed web runtimes | Native browser-service discovery and protected stream formats | Per-browser discovery exercised with both Rust services. Browser and desktop sessions, capture/input, managed runtimes, and computer-use integrations remain open. |
 | MCP/CLI/CodeGraph                  | `mcp/*`, CLI broker, computer-use MCP, codegraph/runtime/supervisor                                                                       | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Native stdio/HTTP helpers, generated/persisted launch commands, binding/generation scopes, CLI and managed-runtime fixtures                                                                                                                                                                                                      |
 | Cantrip OS                         | `cantrip_os/host`, `os-executor/*`, native MCP/run execution                                                                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Port Node host orchestration, Docker/guest/lifecycle/files/PTY/tunnels/packages/backups/system/checkpoints; retain independent non-Node guest helpers                                                                                                                                                                            |
 | Upgrade and packaging              | profile converter/database-transfer, server profile preparation, desktop services/worker, distribution/runtime scripts, worker Dockerfile | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Node-free legacy conversion/export/restore, desktop/standalone artifacts, existing-profile reopen and actual child-process/runtime audit                                                                                                                                                                                         |
@@ -5902,3 +5902,30 @@ and route replacement. The LAN, LOCAL, relay, and legacy and direct TCP
 fixtures and the focused WorkerLink unit tests passed. The WAN fixture
 used local interfaces. Off-host NAT and named VPN runtime interoperability
 remain unverified.
+
+
+## 139. Discover local browser services from the Rust worker
+
+Reference commit `bc1f72d1bd4a2e2d8ddca5c4da2d980a1966a7be` (#3301).
+
+The native worker handles `browser.services.discover` on the authenticated
+command connection. It reads operating system listener inventory with the
+existing macOS, Linux, and Windows command conventions, deduplicates addresses,
+and enriches process labels on Unix. It probes up to 128 listeners, with
+bounded concurrency and a deadline for each HTTP or HTTPS attempt. Requests
+use the local listener address, carry no credentials, and follow no redirects
+or proxies. Self-signed certificates are accepted for local discovery.
+
+The result uses the shared browser service schema. The worker derives the
+same display labels and extracts titles from bounded, streamed UTF-8 decoded
+with the existing UTF-16 length limits. It publishes neither process arguments
+nor response bodies.
+
+On macOS ARM64, the public per-browser discovery endpoint in the Rust server
+returned matching results from the Node reference and the Rust worker with
+PGlite. A fixture-limited system listener scan exercised a redirect,
+self-signed HTTPS, non-HTTP rejection, a title split across chunks, and a
+Node-free worker PATH. Focused tests covered Linux and Windows listener
+formats. Linux and Windows runtime checks were outside this cycle.
+Project-wide discovery continues to depend on a worker's browser surface
+capability, which the native worker can advertise when that service lands.
