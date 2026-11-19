@@ -5223,3 +5223,28 @@ Full xterm reflow, saved alternate-buffer restoration after resize or
 truncation, and exact PTY signal metadata remain open. Service view
 attachment, managed Codex consoles, direct and WorkerLink adapters, delegated
 OS terminals, run configurations and production cutover remain open.
+
+## 115. Attach encrypted terminal views to host services
+
+Reference commit `161c32429b6fa783f5f16c97732e61cd2abf7831` (#3277).
+
+The Rust worker attaches the existing encrypted terminal relay to the
+supervised service PTY for the authenticated owner, server and source folder.
+Shells and services share protected presentation and replay. Active views
+keep their output sequence across child-process replacement, and new views
+replay the current attempt. The worker forwards protected input to the
+current child, applies PTY resize, and keeps the selected dimensions across
+retries. Service snapshots include the bounded output tail and restart
+status. Disable settles attached views and retires the owned process.
+
+In local macOS ARM64 validation, the public API and relay ran through both
+Rust services, using PGlite and an owned workspace with no Node executable
+on the worker PATH. The fixture exercised protected input and output, an
+explicit restart, a natural exit and automatic restart, attachment and
+resize during the retry delay, worker restart recovery and disable. The
+native service lifecycle tests and a representative Node terminal manager
+comparison exercised the same process boundaries.
+
+Managed Codex consoles, direct and WorkerLink transport, delegated OS
+terminals, full xterm replay and signal parity, and production cutover
+remain open.

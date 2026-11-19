@@ -12,6 +12,10 @@ pub(super) struct Replay {
 }
 
 impl Replay {
+    pub fn raw(&self) -> (JsString, bool) {
+        (JsString::new(self.raw.clone()), self.truncated)
+    }
+
     pub fn new(size: TerminalSize) -> Self {
         Self {
             raw: Vec::new(),

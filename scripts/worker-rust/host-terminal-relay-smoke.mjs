@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import * as crypto from "../../packages/crypto/dist/index.js";
-import { TerminalRelayProbe } from "../server-rust/terminal-relay-probe.mjs";
+import { attachTerminal } from "./terminal-relay-client.mjs";
 
 export async function verifyHostTerminal({
   call,
@@ -50,73 +50,19 @@ export async function verifyHostTerminal({
     stateProtection,
   });
   assert.equal(added.status, 201, JSON.stringify(added));
-  const fixture = {
-    server: { origin },
-    client: () => ({ cookies: new Map() }),
-  };
   const views = [];
   const marker = `shell-proof-${randomUUID()}`;
   const terminalPath = `/api/terminals/${id}`;
   async function attach() {
-    const operationId = randomUUID();
-    const relay = new TerminalRelayProbe(
-      fixture,
-      terminalPath + "/connect?operationId=" + operationId,
-    );
-    views.push(relay);
-    await relay.open();
-    const binding = (direction, sequence) => ({
+    const view = await attachTerminal({
+      origin,
+      ownerId,
       serverId,
-      surfaceKind: "terminal",
-      surfaceId: id,
-      operationId,
-      direction,
-      sequence,
+      surfaceKey,
+      id,
     });
-    const secret = { ownerId, keyRevision: 1, componentKey: surfaceKey };
-    let sequence = 0,
-      outputSequence = 0,
-      data = "";
-    async function output(frame) {
-      assert.equal(frame.type, "output", JSON.stringify(frame));
-      assert.equal(frame.operationId, operationId);
-      assert.equal(frame.sequence, outputSequence);
-      const bytes = await crypto.decryptSurfaceStreamPayload({
-        ...secret,
-        context: binding("output", outputSequence++),
-        opaque: frame.protectedData,
-      });
-      const content = JSON.parse(Buffer.from(bytes).toString());
-      assert.equal(content.type, "terminal.output");
-      data += content.data;
-    }
-    for (;;) {
-      const frame = await relay.next();
-      if (frame.type === "ready") break;
-      await output(frame);
-    }
-    return {
-      relay,
-      replay: data,
-      async input(text) {
-        const protectedData = await crypto.encryptSurfaceStreamPayload({
-          ...secret,
-          context: binding("input", sequence),
-          plaintext: Buffer.from(
-            JSON.stringify({ type: "terminal.input", data: text }),
-          ),
-        });
-        relay.send({
-          type: "input",
-          operationId,
-          sequence: sequence++,
-          protectedData,
-        });
-      },
-      async read(match) {
-        while (!match.test(data)) await output(await relay.next());
-      },
-    };
+    views.push(view.relay);
+    return view;
   }
   let deleted = false;
   try {

@@ -1,7 +1,10 @@
 mod process;
-mod replay;
 
-use super::{Configuration, Manager as Services, private_state};
+use super::{
+    Authority, Configuration, Manager as Services, Resize, authority,
+    presentation::{Attachment, Display, detached},
+    private_state,
+};
 use crate::{
     connection::Outbound,
     encryption::Service,
@@ -26,104 +29,8 @@ use tokio::{
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct Key {
-    owner: JsString,
-    server: JsString,
+    authority: Authority,
     terminal: JsString,
-}
-
-struct Attachment {
-    complete: oneshot::Sender<Result<Value>>,
-    outbound: Arc<Outbound>,
-    request_id: JsString,
-    epoch: u64,
-    binding: Value,
-    encryption: Arc<Service>,
-    owner: JsString,
-    discard: bool,
-    sequence: u64,
-}
-
-fn detached() -> Value {
-    json!({"status":"detached"})
-}
-
-impl Attachment {
-    fn emit(&self, event: Value) -> Result<()> {
-        let (owner, server) = self.encryption.bound_identity()?;
-        anyhow::ensure!(
-            owner == self.owner && server == self.binding["serverId"],
-            "Terminal owner changed."
-        );
-        anyhow::ensure!(
-            self.outbound.terminal_event(
-                self.epoch,
-                json!({"kind":"event","requestId":self.request_id,"event":event}),
-            )?,
-            "Terminal output attachment closed."
-        );
-        Ok(())
-    }
-
-    fn output(&mut self, data: &JsString) -> Result<()> {
-        if self.discard {
-            return Ok(());
-        }
-        let mut offset = 0;
-        loop {
-            let units = data.units();
-            let mut end = (offset + 32 * 1024).min(units.len());
-            if end < units.len()
-                && (0xd800..=0xdbff).contains(&units[end - 1])
-                && (0xdc00..=0xdfff).contains(&units[end])
-            {
-                end -= 1;
-            }
-            self.binding["sequence"] = json!(self.sequence);
-            let protected = protect_surface_content(
-                &self.encryption,
-                &self.binding,
-                &json!({"type":"terminal.output","data":JsString::new(units[offset..end].to_vec())}),
-                "terminalOutputContentSchema",
-            )?;
-            self.emit(json!({
-                "type":"terminal.output","operationId":self.binding["operationId"],
-                "sequence":self.sequence,"protectedData":protected,
-            }))?;
-            self.sequence += 1;
-            offset = end;
-            if offset == units.len() {
-                return Ok(());
-            }
-        }
-    }
-}
-
-struct State {
-    replay: replay::Replay,
-    views: HashMap<JsString, Attachment>,
-    exited: Option<Value>,
-}
-
-impl State {
-    fn write(&mut self, text: &str) {
-        if text.is_empty() {
-            return;
-        }
-        self.replay.write(text);
-        let text = JsString::from(text);
-        for (_, view) in self.views.extract_if(|_, view| view.output(&text).is_err()) {
-            let _ = view
-                .complete
-                .send(Err(anyhow!("Terminal output attachment closed.")));
-        }
-    }
-
-    fn finish(&mut self, result: Value) {
-        for (_, view) in self.views.drain() {
-            let _ = view.complete.send(Ok(result.clone()));
-        }
-        self.exited = Some(result);
-    }
 }
 
 struct Entry {
@@ -131,8 +38,8 @@ struct Entry {
     stop: watch::Sender<bool>,
     done: watch::Receiver<bool>,
     writer: mpsc::Sender<Vec<u8>>,
-    resize: mpsc::Sender<process::Resize>,
-    state: Arc<Mutex<State>>,
+    resize: mpsc::Sender<Resize>,
+    state: Arc<Mutex<Display>>,
 }
 
 #[derive(Default)]
@@ -192,19 +99,15 @@ impl Shells {
     }
 
     fn key(command: &Value, encryption: &Service) -> Result<Key> {
-        let (owner, server) = encryption.bound_identity()?;
+        let authority = authority(encryption)?;
         if command
             .get("serverId")
-            .is_some_and(|declared| declared != &server)
+            .is_some_and(|declared| declared.as_js_string() != Some(&authority.1))
         {
             bail!("Terminal belongs to another server.");
         }
         Ok(Key {
-            owner,
-            server: server
-                .as_js_string()
-                .context("Terminal server identity")?
-                .clone(),
+            authority,
             terminal: command["terminalId"]
                 .as_js_string()
                 .context("Terminal identity")?
@@ -232,20 +135,7 @@ impl Shells {
             Some("terminal.input") => self.input(command, &key, ports.encryption).await,
             Some("terminal.snapshot") => self.snapshot(command, &key, ports.encryption).await,
             Some("terminal.resize") => {
-                let resize = {
-                    let inner = self.inner.lock().await;
-                    inner.entries.get(&key).map(|entry| entry.resize.clone())
-                }
-                .ok_or_else(|| not_running(&key))?;
-                let (complete, done) = oneshot::channel();
-                resize
-                    .send(process::Resize {
-                        size: size(command),
-                        complete,
-                    })
-                    .await
-                    .map_err(|_| not_running(&key))?;
-                done.await.map_err(|_| not_running(&key))??;
+                self.resize(&key, size(command)).await?;
                 Ok(json!({"accepted":true}))
             }
             Some("terminal.close") => {
@@ -263,7 +153,7 @@ impl Shells {
                         .context("Terminal retirement was not confirmed")?;
                     self.inner.lock().await.entries.remove(&key);
                 }
-                self.services.disable(&key.terminal).await;
+                self.services.disable(&key.terminal, &key.authority).await;
                 Ok(json!({"accepted":true}))
             }
             _ => bail!("Unsupported host terminal operation."),
@@ -282,7 +172,7 @@ impl Shells {
             return Ok(detached());
         }
         let (complete, done) = oneshot::channel();
-        let mut view = Attachment {
+        let view = Attachment {
             complete,
             outbound: ports.outbound.clone(),
             request_id: ports
@@ -293,82 +183,40 @@ impl Shells {
             epoch: ports.socket_epoch,
             binding: binding(&command, "output"),
             encryption: ports.encryption.clone(),
-            owner: key.owner.clone(),
+            owner: key.authority.0.clone(),
             discard: command["outputMode"] == "discard",
             sequence: 0,
         };
-        {
+        let display = {
             let _transition = self.transition().await;
-            if self.services.enabled(&key.terminal).await {
-                bail!("The terminal requires a different runtime.");
-            }
-            let mut inner = self.inner.lock().await;
             ports.scope.check()?;
-            while let Some(result) = inner.jobs.try_join_next() {
-                result?;
-            }
-            if inner
-                .entries
-                .get(&key)
-                .is_some_and(|entry| entry.state.lock().unwrap().exited.is_some())
-            {
-                inner.entries.remove(&key);
-            }
-            if !inner.entries.contains_key(&key) {
-                let exited = {
-                    let key = key.clone();
-                    let generation = self.generation.clone();
-                    let encryption = ports.encryption.clone();
-                    let outbound = ports.outbound.clone();
-                    move |code| {
-                        if encryption.bound_identity().is_ok_and(|(owner, server)| {
-                            owner == key.owner && server.as_js_string() == Some(&key.server)
-                        }) {
-                            let _ =
-                                outbound.notification(json!({"type":"terminal.runtime.observed",
-                                    "workerProcessGeneration":generation,"terminalId":key.terminal,
-                                    "status":"exited","exitCode":code,"signal":Value::Null,
-                                }));
-                        }
-                    }
+            anyhow::ensure!(
+                authority(ports.encryption)? == key.authority,
+                "Terminal owner changed."
+            );
+            let display =
+                if let Some(view) = self.services.view(&key.terminal, &key.authority).await? {
+                    anyhow::ensure!(
+                        view.cwd.as_ref() == Some(&configuration.cwd),
+                        "Terminal service belongs to a different source folder or is stopping."
+                    );
+                    view.state.lock().unwrap().display.clone()
+                } else {
+                    self.shell(&key, configuration, size(&command), ports)
+                        .await?
                 };
-                let (entry, actor) = process::spawn(
-                    configuration.cwd.clone(),
-                    key.terminal.clone(),
-                    size(&command),
-                    self.environment.clone(),
-                    self.logs.clone(),
-                    exited,
-                )
-                .await?;
-                inner.jobs.spawn(actor);
-                inner.entries.insert(key.clone(), entry);
+            let finished = display.lock().unwrap().attach(view_id, view)?;
+            if let Some(result) = finished {
+                return Ok(result);
             }
-            let entry = &inner.entries[&key];
-            anyhow::ensure!(
-                entry.cwd == configuration.cwd && !*entry.stop.borrow(),
-                "Terminal belongs to another source folder or is stopping.",
-            );
-            let mut state = entry.state.lock().unwrap();
-            if let Some(exited) = &state.exited {
-                return Ok(exited.clone());
-            }
-            anyhow::ensure!(
-                !state.views.contains_key(view_id),
-                "Terminal attachment already exists."
-            );
-            if !view.discard {
-                view.output(&state.replay.attachment())?;
-            }
-            view.emit(json!({"type":"terminal.ready"}))?;
-            state.views.insert(view_id.clone(), view);
-        }
+            display
+        };
         let result = tokio::select! {
             result = done => result.unwrap_or_else(|_| Ok(detached())),
             _ = connection.changed() => Ok(detached()),
             _ = ports.scope.stopped() => Ok(detached()),
         };
-        self.detach(&key, view_id).await;
+        self.detach_view(&display, view_id);
         self.replay
             .lock()
             .unwrap()
@@ -376,18 +224,111 @@ impl Shells {
         checked("terminalOpenResultSchema", &result?)
     }
 
-    async fn detach(&self, key: &Key, view: &JsString) {
-        if let Some(entry) = self.inner.lock().await.entries.get(key)
-            && let Some(view) = entry.state.lock().unwrap().views.remove(view)
+    async fn shell(
+        &self,
+        key: &Key,
+        configuration: Configuration,
+        size: TerminalSize,
+        ports: &Ports<'_>,
+    ) -> Result<Arc<Mutex<Display>>> {
+        let mut inner = self.inner.lock().await;
+        ports.scope.check()?;
+        while let Some(result) = inner.jobs.try_join_next() {
+            result?;
+        }
+        if inner
+            .entries
+            .get(key)
+            .is_some_and(|entry| entry.state.lock().unwrap().exited.is_some())
         {
-            let mut binding = view.binding;
-            binding["direction"] = json!("input");
-            self.replay.lock().unwrap().release(&binding);
-            let _ = view.complete.send(Ok(detached()));
+            inner.entries.remove(key);
+        }
+        if !inner.entries.contains_key(key) {
+            let exited = {
+                let key = key.clone();
+                let generation = self.generation.clone();
+                let encryption = ports.encryption.clone();
+                let outbound = ports.outbound.clone();
+                move |code| {
+                    if encryption.bound_identity().is_ok_and(|(owner, server)| {
+                        owner == key.authority.0 && server.as_js_string() == Some(&key.authority.1)
+                    }) {
+                        let _ = outbound.notification(json!({"type":"terminal.runtime.observed",
+                            "workerProcessGeneration":generation,"terminalId":key.terminal,
+                            "status":"exited","exitCode":code,"signal":Value::Null,
+                        }));
+                    }
+                }
+            };
+            let (entry, actor) = process::spawn(
+                configuration.cwd.clone(),
+                key.terminal.clone(),
+                size,
+                self.environment.clone(),
+                self.logs.clone(),
+                exited,
+            )
+            .await?;
+            inner.jobs.spawn(actor);
+            inner.entries.insert(key.clone(), entry);
+        }
+        let entry = &inner.entries[key];
+        anyhow::ensure!(
+            entry.cwd == configuration.cwd && !*entry.stop.borrow(),
+            "Terminal belongs to another source folder or is stopping.",
+        );
+        Ok(entry.state.clone())
+    }
+
+    async fn detach(&self, key: &Key, view: &JsString) {
+        let shell = self
+            .inner
+            .lock()
+            .await
+            .entries
+            .get(key)
+            .map(|entry| entry.state.clone());
+        if let Some(shell) = shell {
+            self.detach_view(&shell, view);
+        }
+        if let Ok(Some(service)) = self.services.view(&key.terminal, &key.authority).await {
+            let display = service.state.lock().unwrap().display.clone();
+            self.detach_view(&display, view);
         }
     }
 
+    fn detach_view(&self, display: &Mutex<Display>, view: &JsString) {
+        let binding = display.lock().unwrap().detach(view);
+        if let Some(binding) = binding {
+            self.replay.lock().unwrap().release(&binding);
+        }
+    }
+
+    async fn resize(&self, key: &Key, size: TerminalSize) -> Result<()> {
+        let completion = {
+            let _transition = self.transition().await;
+            if let Some(service) = self.services.view(&key.terminal, &key.authority).await? {
+                anyhow::ensure!(service.cwd.is_some(), "Terminal service is stopping.");
+                service.state.lock().unwrap().request_resize(size)?
+            } else {
+                let inner = self.inner.lock().await;
+                let entry = inner
+                    .entries
+                    .get(key)
+                    .filter(|entry| !*entry.stop.borrow())
+                    .ok_or_else(|| not_running(key))?;
+                Some(Resize::request(&entry.resize, size)?)
+            }
+        };
+        if let Some(done) = completion {
+            done.await.map_err(|_| not_running(key))??;
+        }
+        Ok(())
+    }
+
     async fn input(&self, command: &Value, key: &Key, encryption: &Service) -> Result<Value> {
+        let _transition = self.transition().await;
+        let service = self.services.view(&key.terminal, &key.authority).await?;
         let inner = self.inner.lock().await;
         let context = binding(command, "input");
         let mut replay = self.replay.lock().unwrap();
@@ -398,21 +339,26 @@ impl Shells {
             &command["protectedData"],
             "terminalInputContentSchema",
         )?;
-        let entry = inner
-            .entries
-            .get(key)
-            .filter(|entry| !*entry.stop.borrow())
-            .ok_or_else(|| not_running(key))?;
         let data = input["data"]
             .as_js_string()
             .unwrap()
             .lossy()
             .as_bytes()
             .to_vec();
-        entry
-            .writer
-            .try_send(data)
-            .map_err(|_| anyhow!("Terminal input could not be written."))?;
+        if let Some(service) = service {
+            anyhow::ensure!(service.cwd.is_some(), "Terminal service is stopping.");
+            service.state.lock().unwrap().write_input(data)?;
+        } else {
+            let entry = inner
+                .entries
+                .get(key)
+                .filter(|entry| !*entry.stop.borrow())
+                .ok_or_else(|| not_running(key))?;
+            entry
+                .writer
+                .try_send(data)
+                .map_err(|_| anyhow!("Terminal input could not be written."))?;
+        }
         let response = seal(
             encryption,
             context,
@@ -432,7 +378,21 @@ impl Shells {
             "terminalSnapshotRequestContentSchema",
         )?;
         let max = input["maxChars"].as_u64().unwrap() as usize;
-        let value = {
+        let value = if let Some(service) = self.services.view(&key.terminal, &key.authority).await?
+        {
+            let state = service.state.lock().unwrap();
+            let (data, truncated) = state.display.lock().unwrap().replay.tail(max);
+            let status = if state.phase == "starting" {
+                "restarting"
+            } else {
+                state.phase
+            };
+            Some(
+                json!({"type":"terminal.snapshot","terminalId":key.terminal,"status":status,
+                    "data":data,"truncated":truncated,"exitCode":state.exit,
+                }),
+            )
+        } else {
             let inner = self.inner.lock().await;
             inner.entries.get(key).and_then(|entry| {
                 let state = entry.state.lock().unwrap();
@@ -470,18 +430,15 @@ impl Shells {
 
     pub(super) async fn retire_for_services(
         &self,
-        encryption: &Service,
+        authority: &Authority,
         configurations: &[Configuration],
     ) -> Result<()> {
-        let (owner, server) = encryption.bound_identity()?;
-        let server = server.as_js_string().context("Terminal server identity")?;
         let mut retiring = Vec::new();
         {
             let inner = self.inner.lock().await;
             for configuration in configurations {
                 let key = Key {
-                    owner: owner.clone(),
-                    server: server.clone(),
+                    authority: authority.clone(),
                     terminal: configuration.terminal_id.clone(),
                 };
                 if let Some(entry) = inner.entries.get(&key) {
