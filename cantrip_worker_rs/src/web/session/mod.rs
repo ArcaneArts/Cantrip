@@ -248,7 +248,7 @@ impl Service {
             _ = opened.as_mut().unwrap().closed() => return Ok(()),
             slot = self.render_slots.acquire() => slot?,
         };
-        let (_deny_proxy, address) = render::DenyProxy::start().await?;
+        let (browser_proxy, address) = super::proxy::Proxy::start(self.clone()).await?;
         let mut close = None;
         let result = manager.with_browser(address, true, async |browser| {
             let (page, policy, mut events) = render::prepare(browser, self.clone(), true).await?;
@@ -278,6 +278,7 @@ impl Service {
             };
             Ok(())
         }).await;
+        drop(browser_proxy);
         if let Some(reply) = close {
             let _ = reply.send(result.map(|()| json!({"sessionId":id,"closed":true})));
             return Ok(());

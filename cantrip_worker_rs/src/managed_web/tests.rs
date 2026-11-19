@@ -109,8 +109,14 @@ async fn signed_release_install_update_and_failure() -> Result<()> {
 
 async fn rendered_read(manager: Arc<Manager>, data: &Path) -> Result<()> {
     use bytes::Bytes;
-    use http_body_util::{BodyExt, Full};
-    use hyper::{Request, Response, body::Incoming, server::conn::http1, service::service_fn};
+    use futures::{SinkExt, StreamExt};
+    use http_body_util::{BodyExt, Full, StreamBody, combinators::UnsyncBoxBody};
+    use hyper::{
+        Request, Response,
+        body::{Frame, Incoming},
+        server::conn::http1,
+        service::service_fn,
+    };
     use hyper_util::rt::TokioIo;
     use std::{convert::Infallible, net::Ipv4Addr};
     use tokio::net::TcpListener;
@@ -121,9 +127,15 @@ async fn rendered_read(manager: Arc<Manager>, data: &Path) -> Result<()> {
     let address = listener.local_addr()?;
     let service = crate::web::Service::with_fixture(Some(manager.clone()), None, address);
     let stalled = Arc::new(tokio::sync::Notify::new());
+    let release_second_event = Arc::new(tokio::sync::Notify::new());
+    let received = Arc::new(tokio::sync::Notify::new());
+    let websocket_closed = Arc::new(tokio::sync::Notify::new());
     let fixture = tokio::spawn({
         let log = log.clone();
         let stalled = stalled.clone();
+        let release_second_event = release_second_event.clone();
+        let received = received.clone();
+        let websocket_closed = websocket_closed.clone();
         async move {
             let mut clients = tokio::task::JoinSet::new();
             loop {
@@ -133,11 +145,17 @@ async fn rendered_read(manager: Arc<Manager>, data: &Path) -> Result<()> {
                         let Ok((socket, _)) = next else { break; };
                         let log = log.clone();
                         let stalled = stalled.clone();
+                        let release_second_event = release_second_event.clone();
+                        let received = received.clone();
+                        let websocket_closed = websocket_closed.clone();
                         clients.spawn(async move {
                             let _ = http1::Builder::new().serve_connection(TokioIo::new(socket),
-                                service_fn(move |request: Request<Incoming>| {
+                                service_fn(move |mut request: Request<Incoming>| {
                                     let log = log.clone();
                                     let stalled = stalled.clone();
+                                    let release_second_event = release_second_event.clone();
+                                    let received = received.clone();
+                                    let websocket_closed = websocket_closed.clone();
                                     async move {
                                         let path = request.uri().path();
                                         let host = request.headers()[hyper::header::HOST].to_str().unwrap();
@@ -146,16 +164,57 @@ async fn rendered_read(manager: Arc<Manager>, data: &Path) -> Result<()> {
                                         log.lock().unwrap().push((host.into(), path.into(), request.method().to_string(), cookie));
                                         if path == "/stalled" {
                                             stalled.notify_one();
-                                            return std::future::pending::<Result<Response<Full<Bytes>>, Infallible>>().await;
+                                            return std::future::pending::<Result<Response<UnsyncBoxBody<Bytes, Infallible>>, Infallible>>().await;
                                         }
                                         let mut reply = Response::builder();
+                                        if path == "/events" {
+                                            let frames = futures::stream::once(async {
+                                                Ok(Frame::data(Bytes::from_static(b"data: first-event\n\n")))
+                                            }).chain(futures::stream::once(async move {
+                                                release_second_event.notified().await;
+                                                Ok(Frame::data(Bytes::from_static(b"data: second-event\n\n")))
+                                            })).chain(futures::stream::pending());
+                                            return Ok(reply.header(hyper::header::CONTENT_TYPE, "text/event-stream")
+                                                .body(StreamBody::new(frames).boxed_unsync()).unwrap());
+                                        }
+                                        if path == "/socket" {
+                                            use tokio_tungstenite::{WebSocketStream, tungstenite::{handshake::derive_accept_key, protocol::{Message, Role}}};
+                                            let key = derive_accept_key(request.headers()["sec-websocket-key"].as_bytes());
+                                            let upgrade = hyper::upgrade::on(&mut request);
+                                            tokio::spawn(async move {
+                                                let run = async {
+                                                    let mut peer = WebSocketStream::from_raw_socket(TokioIo::new(upgrade.await.unwrap()), Role::Server, None).await;
+                                                    assert_eq!(peer.next().await.unwrap().unwrap(), Message::Text("fixture-request".into()));
+                                                    peer.send(Message::Text("socket-reply".into())).await.unwrap();
+                                                    while let Some(Ok(message)) = peer.next().await {
+                                                        if message.is_close() {
+                                                            let _ = peer.flush().await;
+                                                            break;
+                                                        }
+                                                    }
+                                                    websocket_closed.notify_one();
+                                                };
+                                                let _ = timeout(Duration::from_secs(15), run).await;
+                                            });
+                                            return Ok(reply.status(101)
+                                                .header(hyper::header::CONNECTION, "Upgrade")
+                                                .header(hyper::header::UPGRADE, "websocket")
+                                                .header("sec-websocket-accept", key)
+                                                .body(Full::new(Bytes::new()).boxed_unsync()).unwrap());
+                                        }
+                                        if path == "/received-first" {
+                                            release_second_event.notify_one();
+                                        }
+                                        if path == "/received-all" {
+                                            received.notify_one();
+                                        }
                                         if path == "/submitted" {
                                             let method = request.method().clone();
                                             let bytes = request.into_body().collect().await.unwrap().to_bytes();
                                             assert_eq!(method, hyper::Method::POST);
                                             assert_eq!(bytes.as_ref(), b"value=Rust+browser");
                                             return Ok::<_, Infallible>(reply.header(hyper::header::CONTENT_TYPE, "text/html")
-                                                .body(Full::new(Bytes::from_static(b"<title>Submitted</title><h1>Form received</h1>"))).unwrap());
+                                                .body(Full::new(Bytes::from_static(b"<title>Submitted</title><h1>Form received</h1>")).boxed_unsync()).unwrap());
                                         }
                                         let (content_type, body) = match path {
                                             "/robots.txt" => ("text/plain", "User-agent: CantripResearchBot\nDisallow: /denied"),
@@ -194,14 +253,33 @@ async fn rendered_read(manager: Arc<Manager>, data: &Path) -> Result<()> {
                                             "/session-next" => ("text/html", r#"<title>Second page</title><h1 id="status">Fresh</h1>
                                               <script>if(sessionStorage.getItem('changed')) document.querySelector('h1').textContent = 'Resumed'</script>
                                             "#),
+                                            "/streams" => ("text/html", r#"<title>Private streams</title>
+                                              <h1>Waiting for streams</h1><script>
+                                              const seen = new Set();
+                                              function accept(data) {
+                                                seen.add(data);
+                                                if (seen.size === 3) {
+                                                  document.querySelector('h1').textContent = [...seen].join(' ');
+                                                  fetch('/received-all');
+                                                }
+                                              }
+                                              const events = new EventSource('/events');
+                                              events.onmessage = ({data}) => {
+                                                accept(data);
+                                                if (data === 'first-event') fetch('/received-first');
+                                              };
+                                              const socket = new WebSocket('ws://socket.example/socket');
+                                              socket.onopen = () => socket.send('fixture-request');
+                                              socket.onmessage = ({data}) => accept(data);
+                                              </script>"#),
                                             "/persistent" => ("text/event-stream", "data: fixture\n\n"),
                                             _ => ("text/plain", "unexpected"),
                                         };
                                         Ok::<_, Infallible>(reply.header(hyper::header::CONTENT_TYPE, content_type)
-                                            .body(Full::new(Bytes::from(body.replace("FIXTURE_ADDRESS", &address.to_string())))).unwrap())
+                                            .body(Full::new(Bytes::from(body.replace("FIXTURE_ADDRESS", &address.to_string()))).boxed_unsync()).unwrap())
                                     }
                                 })
-                            ).await;
+                            ).with_upgrades().await;
                         });
                     }
                 }
@@ -257,6 +335,31 @@ async fn rendered_read(manager: Arc<Manager>, data: &Path) -> Result<()> {
             );
         }
         interactive_session(&service, &manager, &stalled, data).await?;
+        let (lane, live) = tokio::sync::watch::channel(false);
+        let binding = json!({"ownerId":"owner","chatId":"streams","contextKind":"project","permissionProfileId":":workspace"});
+        let call = |operation, args| {
+            let live = live.clone();
+            let binding = &binding;
+            let service = &service;
+            async move { service.session(operation, binding, Some(&args), live).await }
+        };
+        let denied = call("web.session.open", json!({"url":"http://page.example/blocked"}))
+            .await
+            .unwrap_err();
+        assert!(denied.to_string().contains("robots policy"), "{denied:?}");
+        let opened = call("web.session.open", json!({"url":"http://page.example/streams"})).await?;
+        let id = opened["data"]["sessionId"].as_str().unwrap();
+        timeout(Duration::from_secs(8), received.notified()).await
+            .context("Chromium did not receive both SSE messages and the WebSocket reply.")?;
+        let snapshot = call("web.session.snapshot", json!({"sessionId":id})).await?;
+        let heading = snapshot["data"]["snapshot"].as_str().unwrap();
+        for entry in ["first-event", "second-event", "socket-reply"] {
+            assert!(heading.contains(entry), "{heading}");
+        }
+        assert!(call("web.session.close", json!({"sessionId":id})).await?["data"]["closed"] == true);
+        timeout(Duration::from_secs(5), websocket_closed.notified()).await
+            .context("Closing Chromium did not tear down the WebSocket.")?;
+        drop(lane);
         let waiting = tokio::spawn(async move {
             service
                 .read(

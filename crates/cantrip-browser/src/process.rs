@@ -28,7 +28,7 @@ pub enum Exit {
 impl Process {
     pub fn launch(
         options: Launch<'_>,
-        deny_proxy: Option<SocketAddrV4>,
+        proxy: Option<SocketAddrV4>,
     ) -> Result<(Self, oneshot::Receiver<Result<Url>>)> {
         let mut user_data = OsString::from("--user-data-dir=");
         user_data.push(options.profile);
@@ -53,7 +53,7 @@ impl Process {
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
-        if let Some(proxy) = deny_proxy {
+        if let Some(proxy) = proxy {
             command.arg(format!("--proxy-server=http://{proxy}")).args([
                 "--proxy-bypass-list=<-loopback>",
                 "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1",

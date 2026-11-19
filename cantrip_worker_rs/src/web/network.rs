@@ -43,20 +43,23 @@ pub(super) enum Response {
     Page(Page),
 }
 
+#[derive(Default)]
 pub(super) struct Network {
-    global: Arc<Semaphore>,
-    hosts: Mutex<HashMap<String, Weak<Semaphore>>>,
+    connections: Connections,
     #[cfg(test)]
     pub fixture: Option<SocketAddr>,
 }
 
-impl Default for Network {
+pub(super) struct Connections {
+    global: Arc<Semaphore>,
+    hosts: Mutex<HashMap<String, Weak<Semaphore>>>,
+}
+
+impl Default for Connections {
     fn default() -> Self {
         Self {
             global: Arc::new(Semaphore::new(8)),
             hosts: Mutex::new(HashMap::new()),
-            #[cfg(test)]
-            fixture: None,
         }
     }
 }
@@ -166,31 +169,53 @@ where
     bail!("Web response exceeded the redirect limit.")
 }
 
+impl Connections {
+    fn host(&self, url: &Url) -> Arc<Semaphore> {
+        let key = url.host_str().expect("validated URL").trim_end_matches('.');
+        let mut hosts = self.hosts.lock().unwrap();
+        hosts.retain(|_, limit| limit.strong_count() > 0);
+        if let Some(limit) = hosts.get(key).and_then(Weak::upgrade) {
+            return limit;
+        }
+        let limit = Arc::new(Semaphore::new(2));
+        hosts.insert(key.to_owned(), Arc::downgrade(&limit));
+        limit
+    }
+
+    pub(super) fn try_acquire(&self, url: &Url) -> Result<[OwnedSemaphorePermit; 2]> {
+        Ok([
+            self.global.clone().try_acquire_owned()?,
+            self.host(url).try_acquire_owned()?,
+        ])
+    }
+}
+
 impl Network {
+    pub(super) async fn destination(&self, url: &Url) -> Result<SocketAddr> {
+        let port = url.port_or_known_default().context("Missing web port.")?;
+        match url.host().context("Web reads require a host.")? {
+            Host::Domain(name) => {
+                #[cfg(test)]
+                if name.ends_with(".example")
+                    && let Some(socket) = self.fixture
+                {
+                    return Ok(socket);
+                }
+                resolve(name, port).await
+            }
+            Host::Ipv4(ip) => approved_address([(ip, port).into()].into_iter()),
+            Host::Ipv6(ip) => approved_address([(ip, port).into()].into_iter()),
+        }
+    }
+
     async fn send(
         &self,
         url: Url,
         method: Method,
         headers: HeaderMap,
-        body: Option<Vec<u8>>,
     ) -> Result<(reqwest::Response, [OwnedSemaphorePermit; 2])> {
-        let host = url.host().context("Web reads require a host.")?;
-        let key = url.host_str().unwrap().trim_end_matches('.');
-        let host_limit = {
-            let mut hosts = self.hosts.lock().unwrap();
-            hosts.retain(|_, limit| limit.strong_count() > 0);
-            match hosts.get(key).and_then(Weak::upgrade) {
-                Some(limit) => limit,
-                None => {
-                    let limit = Arc::new(Semaphore::new(2));
-                    hosts.insert(key.to_string(), Arc::downgrade(&limit));
-                    limit
-                }
-            }
-        };
-        let host_permit = host_limit.acquire_owned().await?;
-        let global_permit = self.global.clone().acquire_owned().await?;
-
+        let host_permit = self.connections.host(&url).acquire_owned().await?;
+        let global_permit = self.connections.global.clone().acquire_owned().await?;
         let mut client = Client::builder()
             .no_proxy()
             .no_gzip()
@@ -200,27 +225,16 @@ impl Network {
             .http1_only()
             .connect_timeout(Duration::from_secs(5))
             .read_timeout(READ_TIMEOUT);
-        if let Host::Domain(name) = host {
-            let port = url.port_or_known_default().unwrap();
-            #[cfg(test)]
-            let chosen = if name.ends_with(".example") {
-                if let Some(socket) = self.fixture {
-                    socket
-                } else {
-                    resolve(name, port).await?
-                }
-            } else {
-                resolve(name, port).await?
-            };
-            #[cfg(not(test))]
-            let chosen = resolve(name, port).await?;
-            client = client.resolve(name, chosen);
+        if let Some(Host::Domain(name)) = url.host() {
+            client = client.resolve(name, self.destination(&url).await?);
         }
-        let mut request = client.build()?.request(method, url).headers(headers);
-        if let Some(body) = body {
-            request = request.body(body);
-        }
-        let response = request.send().await.map_err(reqwest::Error::without_url)?;
+        let response = client
+            .build()?
+            .request(method, url)
+            .headers(headers)
+            .send()
+            .await
+            .map_err(reqwest::Error::without_url)?;
         Ok((response, [host_permit, global_permit]))
     }
 
@@ -229,7 +243,7 @@ impl Network {
         headers.insert(header::ACCEPT, ACCEPT.parse()?);
         headers.insert(header::ACCEPT_ENCODING, "gzip, deflate, br".parse()?);
         headers.insert(header::USER_AGENT, USER_AGENT.parse()?);
-        let (mut response, permits) = self.send(url.clone(), Method::GET, headers, None).await?;
+        let (mut response, permits) = self.send(url.clone(), Method::GET, headers).await?;
         let status = response.status().as_u16();
         let location = if (300..400).contains(&status) {
             response
@@ -296,11 +310,10 @@ impl Network {
         url: Url,
         method: Method,
         headers: HeaderMap,
-        body: Option<Vec<u8>>,
     ) -> Result<Resource> {
         const LIMIT: usize = 20_000_000;
         let is_head = method == Method::HEAD;
-        let (mut response, permits) = self.send(url.clone(), method, headers, body).await?;
+        let (mut response, permits) = self.send(url.clone(), method, headers).await?;
         let status = response.status();
         ensure!(
             status.as_u16() >= 200,

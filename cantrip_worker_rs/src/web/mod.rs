@@ -1,4 +1,5 @@
 mod network;
+mod proxy;
 mod render;
 mod robots;
 mod search;
