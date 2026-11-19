@@ -19,7 +19,7 @@ pub use communication::*;
 pub use endpoint::*;
 pub use labels::*;
 pub use native_command::{
-    protect_native_command_request, protect_native_command_result,
+    open_native_command_result, protect_native_command_request, protect_native_command_result,
     protect_native_command_terminal_result, protect_native_settings_evidence,
 };
 pub use native_resources::{

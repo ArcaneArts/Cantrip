@@ -1,5 +1,5 @@
 //! Authenticated retained native inputs shared by queue preparation and execution.
-mod media;
+pub(crate) mod media;
 
 use super::Scope;
 use crate::{
@@ -122,53 +122,20 @@ pub(crate) async fn retain_console(
         !client_id.is_empty() && client_id.len() <= 255,
         "Invalid native user message identity."
     );
-    let mut request = checked(
-        NATIVE_INPUT,
-        &json!({
-            "version":1, "input":params["input"], "displayText":"",
-            "action":"literal", "executionMethod":"turn/start",
-        }),
-    )?;
-    let Value::Array(input) = &mut request["input"] else {
-        unreachable!("validated native input vector");
-    };
+    let input = validated_input(&params["input"])?;
+    let captured = media::capture(input, console_directory).await?;
     let projected = media::project(
         scope,
         store,
         chat,
-        &prompt,
-        operation,
-        std::mem::take(input),
-        console_directory,
+        &prompt.clone().into(),
+        &operation.into(),
+        captured,
+        media::Projection::default(),
     )
     .await?;
     let input = &projected.input;
-    let display = native_text(input)?.trim();
-    let display = if display.is_empty() {
-        join(
-            input.iter().filter_map(|item| {
-                let kind = item["type"].as_str()?;
-                match kind {
-                    "image" => Some("[Queued image]".into()),
-                    "audio" => Some("[Queued audio]".into()),
-                    "skill" => Some(crate::native_items::concat(&[
-                        "[Skill: ".into(),
-                        item["name"].as_js_string()?.clone(),
-                        "]".into(),
-                    ])),
-                    "mention" => Some(crate::native_items::concat(&[
-                        "[Mention: ".into(),
-                        item["name"].as_js_string()?.clone(),
-                        "]".into(),
-                    ])),
-                    _ => None,
-                }
-            }),
-            "\n",
-        )
-    } else {
-        display
-    };
+    let display = display_text(input, &projected.map)?;
     let native = json!({
         "version":1, "input":input, "displayText":display, "action":"literal",
         "executionMethod":"turn/start", "attachmentMap":projected.map, "retainedTurnStart":true,
@@ -198,7 +165,64 @@ pub(crate) async fn retain_console(
     }))
 }
 
-fn stable_id(parts: &Value) -> String {
+pub(crate) fn validated_input(input: &Value) -> Result<Vec<Value>> {
+    let mut request = checked(
+        NATIVE_INPUT,
+        &json!({
+            "version":1, "input":input, "displayText":"",
+            "action":"literal", "executionMethod":"turn/start",
+        }),
+    )?;
+    let Value::Array(input) = &mut request["input"] else {
+        unreachable!("validated native input vector")
+    };
+    Ok(std::mem::take(input))
+}
+
+pub(crate) fn display_text(input: &[Value], map: &[Value]) -> Result<JsString> {
+    let display = join(
+        input
+            .iter()
+            .enumerate()
+            .filter(|(index, item)| {
+                item["type"] == "text"
+                    && !map
+                        .iter()
+                        .any(|value| value["index"].as_u64() == Some(*index as u64))
+            })
+            .map(|(_, item)| text(&item["text"]).cloned())
+            .collect::<Result<Vec<_>>>()?,
+        "\n",
+    )
+    .trim();
+    Ok(if display.is_empty() {
+        join(
+            input.iter().filter_map(|item| {
+                let kind = item["type"].as_str()?;
+                match kind {
+                    "image" => Some("[Queued image]".into()),
+                    "audio" => Some("[Queued audio]".into()),
+                    "skill" => Some(crate::native_items::concat(&[
+                        "[Skill: ".into(),
+                        item["name"].as_js_string()?.clone(),
+                        "]".into(),
+                    ])),
+                    "mention" => Some(crate::native_items::concat(&[
+                        "[Mention: ".into(),
+                        item["name"].as_js_string()?.clone(),
+                        "]".into(),
+                    ])),
+                    _ => None,
+                }
+            }),
+            "\n",
+        )
+    } else {
+        display
+    })
+}
+
+pub(crate) fn stable_id(parts: &Value) -> String {
     let digest = Sha256::digest(parts.stringify().as_bytes());
     let mut bytes: [u8; 16] = digest[..16].try_into().unwrap();
     bytes[6] = (bytes[6] & 15) | 80;
@@ -206,7 +230,12 @@ fn stable_id(parts: &Value) -> String {
     uuid::Uuid::from_bytes(bytes).to_string()
 }
 
-fn seal_native(scope: &Scope, chat: &Value, prompt: &Value, input: &Value) -> Result<Value> {
+pub(crate) fn seal_native(
+    scope: &Scope,
+    chat: &Value,
+    prompt: &Value,
+    input: &Value,
+) -> Result<Value> {
     let input = checked(NATIVE_INPUT, input)?;
     let grant = scope.material(None)?;
     let aad = native_aad(&grant, chat, prompt);
@@ -261,7 +290,7 @@ pub(crate) fn slash_prefix_len(text: &JsString, command: &str) -> Option<usize> 
     Some(prefix.len() + suffix.iter().take_while(|&&unit| space(unit)).count())
 }
 
-fn classify(
+pub(crate) fn classify(
     native: &Value,
     mode: &str,
 ) -> Result<(&'static str, &'static str, Option<&'static str>)> {
@@ -322,14 +351,7 @@ pub(super) fn prepare(scope: &Scope, command: &Value) -> Result<Value> {
         return checked("queuedPromptOpaqueContentSchema", &prompt);
     }
 
-    let grant = scope.material(Some(revision(&prompt["protectedContent"])?))?;
-    let display = decrypt_communication(
-        Communication::QueuedPrompt,
-        &grant.key,
-        &json!({"ownerId":grant.owner_id,"promptId":prompt["id"],"keyRevision":grant.key_revision}),
-        &prompt["protectedContent"],
-        prompt.get("classification"),
-    )?;
+    let display = open_display(scope, &prompt)?;
     let mut native = open_native(
         scope,
         &command["chatId"],
@@ -356,6 +378,17 @@ pub(super) fn prepare(scope: &Scope, command: &Value) -> Result<Value> {
     prompt["protectedNativeInput"] =
         seal_native(scope, &command["chatId"], &prompt["id"], &native)?;
     checked("queuedPromptOpaqueContentSchema", &prompt)
+}
+
+pub(crate) fn open_display(scope: &Scope, prompt: &Value) -> Result<Value> {
+    let grant = scope.material(Some(revision(&prompt["protectedContent"])?))?;
+    decrypt_communication(
+        Communication::QueuedPrompt,
+        &grant.key,
+        &json!({"ownerId":grant.owner_id,"promptId":prompt["id"],"keyRevision":grant.key_revision}),
+        &prompt["protectedContent"],
+        prompt.get("classification"),
+    )
 }
 
 fn reseal_mode(scope: &Scope, prompt: &mut Value, mut display: Value, mode: &str) -> Result<()> {

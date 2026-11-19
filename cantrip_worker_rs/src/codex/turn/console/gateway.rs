@@ -1,6 +1,6 @@
 //! A loopback capability connects a terminal view to its native app-server
 //! subscription. Attaching and detaching get Core receipts before dispatch.
-use super::{Scope, View, prompt};
+use super::{Scope, View, prompt, queue};
 use crate::{
     codex::turn::receipt::Receipt,
     metadata::{Abort, Signal},
@@ -9,8 +9,12 @@ use anyhow::{Result, bail, ensure};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use cantrip_history::projection::Work;
 use cantrip_wire::{Value, parse_json_text, value::json};
-use futures::{SinkExt, StreamExt};
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use futures::{SinkExt, StreamExt, stream::FuturesUnordered};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::Duration,
+};
 use subtle::ConstantTimeEq;
 use tokio::{
     net::{TcpListener, TcpStream},
@@ -198,6 +202,9 @@ async fn relay<'a>(
 ) -> Result<()> {
     let mut initialized = false;
     let mut starting: Option<(String, Work<Value>)> = None;
+    let mut queue_requests = FuturesUnordered::new();
+    let mut queue_ids = HashSet::new();
+    let mut queue_revision = view.queue_revision.subscribe();
     let thread = &session["threadId"];
     loop {
         tokio::select! {
@@ -207,13 +214,40 @@ async fn relay<'a>(
                 starting = None;
                 send(client, response?).await?;
             }
+            response = queue_requests.next(), if !queue_requests.is_empty() => {
+                let (id, response) = response.expect("pending console queue request")?;
+                queue_ids.remove(&id);
+                send(client, response).await?;
+            }
+            changed = queue_revision.changed(), if initialized => {
+                changed?;
+                let revision = *queue_revision.borrow_and_update();
+                if let Some(revision) = revision {
+                    view.assert_current()?;
+                    send(client, json!({"method":"thread/queue/changed","params":json!({
+                        "threadId":thread,"managedQueue":json!({"revision":revision.to_string()}),
+                    })})).await?;
+                }
+            }
             input = client.next() => {
                 let Some(frame) = frame(input)? else { return Ok(()); };
                 let Some(mut frame) = frame else { continue; };
                 let id = &frame["id"];
                 let key = id.stringify();
-                if starting.as_ref().is_some_and(|(existing, _)| *existing == key) {
+                if queue_ids.contains(&key) || starting.as_ref().is_some_and(|(existing, _)| *existing == key) {
                     send(client, fault(id, -32001, "Duplicate in-flight native request ID.")).await?;
+                    continue;
+                }
+                if queue::manages(&frame["method"]) {
+                    if initialized && valid_id(id) && !pending.contains_key(&key)
+                        && queue_ids.len() < 16 && scope_matches(&frame, thread)
+                        && frame["params"]["threadId"] == *thread
+                    {
+                        queue_ids.insert(key);
+                        queue_requests.push(queue::request(view.clone(), session.clone(), frame, open.clone()));
+                    } else {
+                        send(client, fault(id, -32001, "The native console cannot submit this queue request.")).await?;
+                    }
                     continue;
                 }
                 if frame["method"] == "turn/start" {
@@ -247,7 +281,7 @@ async fn relay<'a>(
                         // the runtime or another subscriber.
                         continue;
                     }
-                    if !scope_matches(&frame, thread) || (method.starts_with("thread/") && frame["params"]["threadId"].is_null()) {
+                    if method == "thread/queue/changed" || !scope_matches(&frame, thread) || (method.starts_with("thread/") && frame["params"]["threadId"].is_null()) {
                         continue;
                     }
                 } else {
@@ -268,6 +302,10 @@ async fn relay<'a>(
                     if frame.get("result").is_some() {
                         if request.method == "initialize" {
                             initialized = true;
+                            frame["result"]["cantripManagedGateway"] = json!({
+                                "version":1,"threadId":thread,"replyMethod":"cantrip/managed/reply",
+                                "queue":json!({"version":1}),
+                            });
                         } else if discovery(request.method) {
                             restrict_thread_list(&mut frame, request.method, thread);
                         }

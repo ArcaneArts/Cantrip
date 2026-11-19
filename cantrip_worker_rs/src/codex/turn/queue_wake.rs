@@ -15,6 +15,12 @@ impl Turns {
         if let Some(intent) = command.get("taskPause") {
             self.preparation.task_pause(&bound, &chat, intent).await?;
         }
+        if let Some(revision) = command["revision"].as_u64() {
+            self.console_queues.publish(
+                &(scope.owner.clone(), scope.server.clone(), chat.clone()),
+                revision,
+            );
+        }
         worker.wake_recovery(&scope.owner, &scope.server, &chat);
 
         if let Some((thread, owner)) = self.preparation.selected_live_thread(&chat, &bound)

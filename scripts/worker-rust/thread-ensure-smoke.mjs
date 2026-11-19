@@ -73,6 +73,7 @@ import { verifyTaskGoalActivation } from "./task-goal-activation-cases.mjs";
 import { verifyQueuedTurns } from "./queued-turn-cases.mjs";
 import { verifyQueuedSettings } from "./queued-settings-cases.mjs";
 import { verifyQueuedShell } from "./queued-shell-cases.mjs";
+import { queuePeer, verifyConsoleQueue } from "./console-queue-cases.mjs";
 
 const { values } = parseArgs({
   options: {
@@ -126,7 +127,7 @@ const structuredTasks = values.structuredTasks || taskGoals;
 const requireWorker = createRequire(
   new URL("../../cantrip_worker/package.json", import.meta.url),
 );
-const { WebSocketServer } = requireWorker("ws");
+const { WebSocket, WebSocketServer } = requireWorker("ws");
 const { Client } = await import(
   requireWorker.resolve("@modelcontextprotocol/sdk/client/index.js")
 );
@@ -144,6 +145,22 @@ const root = await mkdtemp(
 );
 const directory = path.join(root, "profile");
 const data = path.join(directory, "agent-mcp-bindings");
+const consoleSocket = path.join(root, "managed-console-socket");
+let codexExecutable = path.resolve(values.codex);
+if (values["guest-image"]) {
+  codexExecutable = path.join(root, "codex-console-probe");
+  await writeFile(
+    codexExecutable,
+    `#!/bin/sh
+if [ "$1" = --remote ]; then
+  umask 077
+  printf '%s\\n' "$2" > "$CANTRIP_FIXTURE_CONSOLE_URL"
+fi
+exec "$CANTRIP_FIXTURE_CODEX_REAL" "$@"
+`,
+    { mode: 0o700 },
+  );
+}
 const serverId = randomUUID(),
   ownerId = "fixture-owner",
   workerId = "thread-ensure-worker";
@@ -163,7 +180,8 @@ let guiPeer,
   projectGoal,
   taskResponse,
   holdHandshake,
-  consolePeer;
+  consolePeer,
+  consoleQueue;
 const outcomeFrames = new EventEmitter();
 const outputText = "Native host turn fixture.";
 const privatePrompt = "Protected input fixture, only for the worker.";
@@ -278,6 +296,20 @@ const server = createServer(async (request, response) => {
     try {
       const observation = await requestBody(request);
       send(projectGoal ? await projectGoal(observation) : { accepted: true });
+    } catch (error) {
+      upstream.emit("failure", error);
+      response.writeHead(400).end("{}");
+    }
+    return;
+  }
+  if (url.pathname.startsWith("/api/internal/native-queue/") && consoleQueue) {
+    try {
+      await consoleQueue.apply(
+        url.pathname.split("/").at(-1),
+        await requestBody(request),
+        send,
+        () => response.destroy(),
+      );
     } catch (error) {
       upstream.emit("failure", error);
       response.writeHead(400).end("{}");
@@ -620,7 +652,9 @@ async function start() {
       CANTRIP_WORKER_ID: workerId,
       CANTRIP_WORKER_CREDENTIAL: credential,
       CANTRIP_SERVER_URL: `http://127.0.0.1:${server.address().port}`,
-      CANTRIP_CODEX_BIN: path.resolve(values.codex),
+      CANTRIP_CODEX_BIN: codexExecutable,
+      CANTRIP_FIXTURE_CODEX_REAL: path.resolve(values.codex),
+      CANTRIP_FIXTURE_CONSOLE_URL: consoleSocket,
     },
   });
   for (const stream of [child.stdout, child.stderr])
@@ -2577,6 +2611,19 @@ async function verifyGuestConsole({
   let retainedMedia;
   let finalMessage;
   const guestPath = session.osExecution.scope.guestPath;
+  consoleQueue = queuePeer({
+    identity: {
+      serverId,
+      ownerId,
+      workerId,
+      chatId: session.chatId,
+      threadId,
+      worktreeId: session.worktreeId,
+    },
+    service: oracle,
+    root,
+    stamp,
+  });
   const codec = createManagedQueueInputCodec({
     encryption: oracle,
     chatId: session.chatId,
@@ -2941,6 +2988,19 @@ async function verifyGuestConsole({
     assert.ok(ready);
     assert.deepEqual(steps, ["admit", "dispatch", "receipt"]);
     assert.equal(providerCalls, calls);
+    await Promise.race([
+      verifyConsoleQueue({
+        WebSocket,
+        socketFile: consoleSocket,
+        threadId,
+        chatId: session.chatId,
+        peer: consoleQueue,
+        available,
+        expectSuccess,
+      }),
+      premature,
+      failure,
+    ]);
     let inputSequence = 0;
     const write = async (text) => {
       const sequence = inputSequence++;
@@ -3062,6 +3122,7 @@ async function verifyGuestConsole({
   } finally {
     watchFailure.abort();
     consolePeer = undefined;
+    consoleQueue = undefined;
     taskResponse = undefined;
     guiHistory = undefined;
   }

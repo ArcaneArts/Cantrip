@@ -163,7 +163,11 @@ fn turn(scope: &Scope, command: &Value) -> Result<Value> {
     turn_with_attachments(scope, command, &[])
 }
 
-fn turn_with_attachments(scope: &Scope, command: &Value, attachments: &[Value]) -> Result<Value> {
+pub(crate) fn turn_with_attachments(
+    scope: &Scope,
+    command: &Value,
+    attachments: &[Value],
+) -> Result<Value> {
     let mut content = vec![json!({"type": "text", "text": command["text"]})];
     content.extend(attachments.iter().map(|attachment| {
         json!({
