@@ -466,6 +466,17 @@ async fn cycle(
                     finish(&request, &worker, logs, &outgoing, began, &result);
                     continue;
                 }
+                if crate::worker_link::supports_peer(kind) {
+                    let worker_link = worker_link.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = worker_link.execute_peer(&request["command"]).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if crate::worker_link::DirectBroker::supports(kind) {
                     let identity = encryption.bound_identity();
                     direct.reconcile(identity.as_ref().ok());

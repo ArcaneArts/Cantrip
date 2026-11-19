@@ -110,6 +110,10 @@ pub(super) fn load() -> Contracts {
         serde_json::from_str(include_str!("../contracts/worker-direct-broker.json"))
             .expect("embedded worker direct broker contracts"),
     );
+    contracts.append(
+        serde_json::from_str(include_str!("../contracts/worker-link-peer.json"))
+            .expect("embedded WorkerLink peer handshake contract"),
+    );
     contracts.compile_patterns();
     contracts
 }
