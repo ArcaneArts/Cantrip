@@ -141,7 +141,7 @@ loaded by a production service.
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
 | Terminals/run supervision          | Terminal manager/canonical/private state, run-configuration providers and supervisors                                                     | Native host service reconciliation/restart and owned PTY supervision                                                                                                                                                                                                                                                                                                                                    | Actual encrypted server/worker service enable, idempotence, restart, recovery and disable pass. Interactive commands, canonical terminal/replay, attachment/input/resize, CLI broker environments, run providers and delegated OS services remain pending.                                                                       |
 | WorkerLink/direct/tunnels | Gateways, peer/WebRTC, direct broker, tunnel protection and routing | Native installed authority, live observations, encrypted Host terminals and TCP, WebDAV shares, direct tickets, and LAN and WAN peer carriage | Continue managed console and guest/surface adapters. Local peer fixtures cover authenticated negotiation, encrypted TCP, credit, renewal, and revocation. |
-| Browsers/surfaces/computer use | Browser discovery, browser/desktop adapters, remote surfaces, computer use, and managed web runtimes | Native browser-service discovery, Chromium process and CDP driver, and encrypted browser surfaces over the legacy Core WebSocket | Both Rust services exercised protected navigation, JPEG frames, pointer/key and clipboard input, shared attachments and suspend/resume. WorkerLink browser surfaces, legacy browser WebRTC, desktop/capture, computer-use integration and managed web runtimes remain open. |
+| Browsers/surfaces/computer use | Browser discovery, browser/desktop adapters, remote surfaces, computer use, and managed web runtimes | Native browser-service discovery, Chromium process and CDP driver, and encrypted browser surfaces over WorkerLink and the legacy Core WebSocket | Both Rust services exercised browser navigation, large JPEG frames, input, and shared attachments over local direct, Core relay, LAN WebRTC, and the legacy WebSocket. Legacy browser WebRTC, desktop capture, computer use and managed web runtimes remain open. |
 | MCP/CLI/CodeGraph                  | `mcp/*`, CLI broker, computer-use MCP, codegraph/runtime/supervisor                                                                       | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Native stdio/HTTP helpers, generated/persisted launch commands, binding/generation scopes, CLI and managed-runtime fixtures                                                                                                                                                                                                      |
 | Cantrip OS                         | `cantrip_os/host`, `os-executor/*`, native MCP/run execution                                                                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Port Node host orchestration, Docker/guest/lifecycle/files/PTY/tunnels/packages/backups/system/checkpoints; retain independent non-Node guest helpers                                                                                                                                                                            |
 | Upgrade and packaging              | profile converter/database-transfer, server profile preparation, desktop services/worker, distribution/runtime scripts, worker Dockerfile | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Node-free legacy conversion/export/restore, desktop/standalone artifacts, existing-profile reopen and actual child-process/runtime audit                                                                                                                                                                                         |
@@ -5983,8 +5983,33 @@ navigation replay rejection, two attachments sharing one page, pointer,
 keyboard and clipboard input, suspend/resume, and browser deletion. The
 worker's PATH excluded Node.
 
-The default app path still needs the WorkerLink surface adapter, including
-frame chunks, grants and attachment generations. Browser WebRTC on the
-legacy feature socket, browser restart recovery, managed web sessions,
-desktop surfaces, and computer-use integration remain open. The worker
-continues to advertise browser surfaces as unavailable for automatic routing.
+The worker advertised browser surfaces as unavailable until the app's
+WorkerLink adapter landed in the following cycle.
+
+
+## 142. Serve browser attachments over WorkerLink
+
+Reference commit `23a2482dd058d8ed0209f4a5fdb4b919e15d8bed` (#3304).
+
+The worker binds the Core-issued browser grant to its existing Chromium
+attachment and opens one channel on each of the interactive and realtime
+lanes. Protected control and clipboard messages stay ordered. Realtime
+keeps an in-progress frame and the newest successor. Both streams use the
+existing WorkerLink chunks, respect live credit, and fit the negotiated
+peer message size. Inbound chunks assemble into a control frame with the
+same surface and attachment IDs. Queued input is tied to its lane instance.
+Revoking a grant releases its channels and attachment. The worker advertises
+browser support when it discovers Chromium.
+
+The native worker and the Rust server with PGlite passed the public browser
+fixture over Core relay, local direct, LAN WebRTC and the legacy WebSocket
+on macOS ARM64. The fixture covered a JPEG larger than both the initial
+credit and the negotiated peer message size, encrypted navigation and
+control input, protection and replay rejection, independent attachments,
+suspend/resume, grant renewal and revocation, and deletion. WorkerLink
+control tests and the Host TCP transport fixtures passed locally. The
+worker's PATH excluded Node.
+
+Browser WAN interoperability was outside this cycle. Legacy browser
+WebRTC, browser restart recovery, desktop surfaces, computer use and
+managed web sessions remain open.

@@ -52,7 +52,9 @@ fn session_replacement_fences_prior_grant_generation() {
     let mut state = State::default();
     state.install_session(&session, now).unwrap();
     state.install_session(&session, now).unwrap();
-    state.install_grant(&SESSION.into(), &grant, now).unwrap();
+    state
+        .install_grant(&SESSION.into(), &grant, now, None)
+        .unwrap();
 
     let mut next = session.clone();
     let next_id = "449a3f3b-31b7-44b1-a52c-6a90c496fb10";
@@ -63,13 +65,15 @@ fn session_replacement_fences_prior_grant_generation() {
     replay["binding"]["sessionId"] = json!(next_id);
     assert_eq!(
         state
-            .install_grant(&next_id.into(), &replay, now)
+            .install_grant(&next_id.into(), &replay, now, None)
             .unwrap_err()
             .to_string(),
         "WorkerLink grant generation was already revoked."
     );
     replay["binding"]["grantGeneration"] = json!(2);
-    state.install_grant(&next_id.into(), &replay, now).unwrap();
+    state
+        .install_grant(&next_id.into(), &replay, now, None)
+        .unwrap();
     assert!(!state.revoke_grant(&next_id.into(), &GRANT.into(), 1, "revoked"));
     assert!(state.revoke_grant(&next_id.into(), &GRANT.into(), 2, "revoked"));
 }
@@ -84,10 +88,12 @@ fn grant_deadlines_and_disconnect_grace_retire_authority() {
     overlong["binding"]["lease"]["expiresAt"] = json!("2026-01-01T00:02:00.000Z");
     assert!(
         state
-            .install_grant(&SESSION.into(), &overlong, now)
+            .install_grant(&SESSION.into(), &overlong, now, None)
             .is_err()
     );
-    state.install_grant(&SESSION.into(), &grant, now).unwrap();
+    state
+        .install_grant(&SESSION.into(), &grant, now, None)
+        .unwrap();
 
     state.disconnect = Some(Instant::now() + GRACE);
     let identity = ("owner".into(), json!("server"));

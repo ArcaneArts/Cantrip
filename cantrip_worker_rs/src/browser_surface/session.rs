@@ -1,4 +1,4 @@
-use super::{Shared, accepted, id, profile};
+use super::{Endpoint, FrameSource, Route, Shared, accepted, id, profile};
 use crate::{
     http::checked,
     protected_content::{
@@ -18,6 +18,7 @@ use std::{
 
 pub(super) struct Session {
     shared: Arc<Shared>,
+    endpoint: Arc<Endpoint>,
     lease: profile::Lease,
     surface: JsString,
     owner: JsString,
@@ -42,7 +43,7 @@ struct Location {
 
 struct Attachment {
     viewport: Value,
-    epoch: u64,
+    route: Arc<Route>,
     incoming: Option<u64>,
     outgoing: HashMap<&'static str, u64>,
 }
@@ -50,6 +51,7 @@ struct Attachment {
 impl Session {
     pub async fn open(
         shared: Arc<Shared>,
+        endpoint: Arc<Endpoint>,
         surface: JsString,
         command: &Value,
         epoch: u64,
@@ -80,6 +82,7 @@ impl Session {
             .await?;
         Ok(Self {
             shared,
+            endpoint,
             lease,
             surface,
             owner,
@@ -113,7 +116,7 @@ impl Session {
         self.lease.close().await;
     }
 
-    fn authorize(&self, epoch: u64) -> Result<()> {
+    fn authorize_endpoint(&self) -> Result<()> {
         let identity = self
             .shared
             .encryption
@@ -122,6 +125,11 @@ impl Session {
             self.owner == identity.owner_id && self.server == identity.server_id,
             "Browser session authority changed."
         );
+        Ok(())
+    }
+
+    fn authorize(&self, epoch: u64) -> Result<()> {
+        self.authorize_endpoint()?;
         ensure!(
             self.shared.outgoing.stream_current(epoch),
             "Browser attachment socket expired."
@@ -130,17 +138,9 @@ impl Session {
     }
 
     pub async fn reconcile(&mut self) -> Result<()> {
-        let identity = self
-            .shared
-            .encryption
-            .bound_component("surface-private-state", None)?;
-        ensure!(
-            identity.owner_id == self.owner && identity.server_id == self.server,
-            "Browser session authority changed."
-        );
-        let epoch = *self.shared.outgoing.stream_epoch().borrow();
+        self.authorize_endpoint()?;
         self.attachments
-            .retain(|_, attachment| attachment.epoch == epoch);
+            .retain(|_, attachment| attachment.route.alive(&self.shared.outgoing));
         Ok(())
     }
 
@@ -152,7 +152,7 @@ impl Session {
         );
         self.configure_location(command).await?;
         self.attachments
-            .retain(|_, attachment| attachment.epoch == epoch);
+            .retain(|_, attachment| attachment.route.alive(&self.shared.outgoing));
         let attachment = id(command, "attachmentId").clone();
         ensure!(
             self.attachments.contains_key(&attachment) || self.attachments.len() < 4,
@@ -164,23 +164,32 @@ impl Session {
         self.attachments
             .entry(attachment.clone())
             .and_modify(|current| current.viewport = viewport.clone())
-            .or_insert(Attachment {
+            .or_insert_with(|| Attachment {
                 viewport: viewport.clone(),
-                epoch,
+                route: self.endpoint.register(
+                    attachment.clone(),
+                    epoch,
+                    self.owner.clone(),
+                    self.server.clone(),
+                ),
                 incoming: None,
                 outgoing: HashMap::new(),
             });
+        self.refresh(&attachment).await;
+        Ok(json!({"accepted":true,"transport":"websocket"}))
+    }
+
+    pub async fn refresh(&mut self, attachment: &JsString) {
         self.send_json(
-            Some(&attachment),
+            Some(attachment),
             "control",
             &json!({
                 "type":"browser-agent-cursor","epoch":self.cursor_epoch.to_string(),
                 "sequence":0,"position":Value::Null,"click":false,"dragging":false,
             }),
         );
-        let _ = self.publish_state(Some(&attachment)).await;
-        let _ = self.screenshot(Some(&attachment)).await;
-        Ok(json!({"accepted":true,"transport":"websocket"}))
+        let _ = self.publish_state(Some(attachment)).await;
+        let _ = self.screenshot(Some(attachment)).await;
     }
 
     pub async fn command(&mut self, value: &Value, epoch: u64) -> Result<Value> {
@@ -199,7 +208,7 @@ impl Session {
                 if self
                     .attachments
                     .get(attachment)
-                    .is_some_and(|member| member.epoch == epoch)
+                    .is_some_and(|member| member.route.closes_on(epoch))
                 {
                     self.attachments.remove(attachment);
                 }
@@ -248,8 +257,8 @@ impl Session {
         Ok(())
     }
 
-    pub async fn frame(&mut self, frame: &Frame, epoch: u64) -> Result<()> {
-        self.authorize(epoch)?;
+    pub async fn frame(&mut self, frame: &Frame, source: &FrameSource) -> Result<()> {
+        self.authorize_endpoint()?;
         let header = frame.header();
         let id = id(header, "attachmentId");
         let sequence = header["sequence"].as_u64().unwrap();
@@ -258,8 +267,9 @@ impl Session {
             .get_mut(id)
             .context("Browser attachment is not active.")?;
         ensure!(
-            attachment.epoch == epoch && attachment.incoming.is_none_or(|last| sequence > last),
-            "Browser input sequence is stale."
+            attachment.route.receives(source, &self.shared.outgoing)
+                && attachment.incoming.is_none_or(|last| sequence > last),
+            "Browser input binding or sequence is stale."
         );
         let clear = open_remote_surface(
             &self.shared.encryption,
@@ -273,11 +283,15 @@ impl Session {
             ),
             frame.payload(),
         )?;
-        attachment.incoming = Some(sequence);
         let value = parse_json_text(&String::from_utf8_lossy(&clear))
             .map_err(|_| anyhow::anyhow!("Invalid browser control message JSON."))?;
         let command = checked("remoteBrowserClientMessageSchema", &value)?;
-        self.authorize(epoch)?;
+        ensure!(
+            attachment.route.receives(source, &self.shared.outgoing),
+            "Browser input binding expired."
+        );
+        attachment.incoming = Some(sequence);
+        self.authorize_endpoint()?;
         self.input(id, &command).await
     }
 
@@ -635,7 +649,7 @@ impl Session {
             return;
         }
         for (id, member) in &mut self.attachments {
-            if only.is_some_and(|chosen| chosen != id) || !outgoing.stream_current(member.epoch) {
+            if only.is_some_and(|chosen| chosen != id) || !member.route.alive(outgoing) {
                 continue;
             }
             let position = member.outgoing.entry(channel).or_default();
@@ -654,7 +668,7 @@ impl Session {
             });
             if let Ok(frame) = result
                 && matches_owner()
-                && outgoing.binary_for_epoch(frame.bytes(), Some(member.epoch))
+                && member.route.emit(frame, outgoing)
             {
                 *position += 1;
             }

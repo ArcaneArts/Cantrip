@@ -7,7 +7,7 @@ use super::{
     terminal::Terminal,
     tunnel::{Inbound, Tunnel},
 };
-use crate::connection::Outbound;
+use crate::{browser_surface, connection::Outbound};
 use cantrip_framing::worker_link::{self as wire, Frame};
 use cantrip_wire::{JsString, Value, value::json};
 use indexmap::IndexMap;
@@ -69,13 +69,17 @@ enum Resource {
     },
     Terminal(Terminal),
     Tunnel(Box<Tunnel>),
+    Browser {
+        lane: Box<browser_surface::Lane>,
+        payload_limit: usize,
+    },
 }
 
 impl Resource {
     fn payload_format(&self) -> &'static str {
         match self {
             Self::Tunnel(_) => "tunnel-data-plane-v1",
-            Self::Observation { .. } | Self::Terminal(_) => "raw",
+            Self::Observation { .. } | Self::Terminal(_) | Self::Browser { .. } => "raw",
         }
     }
 }
@@ -121,6 +125,28 @@ impl Channel {
             self.inbound_credit += self.credit_pending;
             self.credit_pending = 0;
             self.activity = Instant::now();
+        }
+        if let Resource::Browser {
+            lane,
+            payload_limit,
+        } = &self.resource
+        {
+            loop {
+                let mut offered = Output::Queued;
+                let mut sent = 0;
+                let advanced = lane.offer_chunk(self.credit.min(*payload_limit), |bytes| {
+                    let frame = self.frame("data", self.send, &data_fields("raw"), &bytes);
+                    offered = self.carrier.offer(output, &frame);
+                    sent = bytes.len();
+                    matches!(offered, Output::Queued)
+                });
+                if !advanced {
+                    return offered;
+                }
+                self.credit -= sent;
+                self.send += 1;
+                self.activity = Instant::now();
+            }
         }
         while let Some(bytes) = self.pending.front() {
             if bytes.len() > self.credit {
@@ -251,7 +277,7 @@ impl Channels {
                 "unauthorized"
             }
         })?;
-        let installed = &grant["binding"];
+        let installed = &grant.value["binding"];
         if installed != binding {
             let got = &binding["identity"];
             let wanted = &installed["identity"];
@@ -268,7 +294,7 @@ impl Channels {
         let token = header["grant"]["token"]
             .as_str()
             .expect("validated WorkerLink token");
-        let expected = grant["tokenHash"]
+        let expected = grant.value["tokenHash"]
             .as_str()
             .expect("validated WorkerLink token hash");
         if !bool::from(
@@ -311,7 +337,7 @@ impl Channels {
             return Err("limit-exceeded");
         }
 
-        let installation = &grant["observation"];
+        let installation = &grant.value["observation"];
         let (resource, ready) = match installed["resource"]["kind"].as_str() {
             Some("observations")
                 if !installation.is_null()
@@ -344,18 +370,7 @@ impl Channels {
             Some("tunnel")
                 if header["lane"] == "stream" && header["channelKind"] == "reliable-stream" =>
             {
-                let frame_limit = carrier.message_limit("stream").map(|limit| {
-                    // Reserve space for the widest possible sequence once.
-                    // The remaining bytes carry one complete CTTN frame.
-                    let envelope = frame(
-                        header,
-                        "data",
-                        MAX_SEQUENCE,
-                        &data_fields("tunnel-data-plane-v1"),
-                        &[0],
-                    );
-                    limit.saturating_sub(envelope.bytes().len() - 1)
-                });
+                let frame_limit = payload_limit(carrier, header, "tunnel-data-plane-v1");
                 let tunnel = Tunnel::open(gateway, header, installed, frame_limit)?;
                 if self.active.values().any(|channel| {
                     matches!(&channel.resource, Resource::Tunnel(active) if active.attachment == tunnel.attachment)
@@ -363,6 +378,34 @@ impl Channels {
                     return Err("resource-unavailable");
                 }
                 (Resource::Tunnel(tunnel), true)
+            }
+            Some("browser") if header["channelKind"] == "reliable-stream" => {
+                let operations = installed["operations"].as_array().unwrap();
+                if !operations.contains(&json!("stream:read")) {
+                    return Err("resource-unavailable");
+                }
+                let kind = match header["lane"].as_str() {
+                    Some("interactive") if operations.contains(&json!("stream:write")) => {
+                        browser_surface::LinkLane::Interactive
+                    }
+                    Some("interactive") => return Err("unauthorized"),
+                    Some("realtime") => browser_surface::LinkLane::Realtime,
+                    _ => return Err("resource-unavailable"),
+                };
+                let browser = grant.browser.as_ref().ok_or("resource-unavailable")?;
+                let payload_limit =
+                    payload_limit(carrier, header, "raw").unwrap_or(wire::MAX_PAYLOAD_BYTES);
+                if payload_limit <= wire::REMOTE_CHUNK_HEADER_BYTES {
+                    return Err("resource-unavailable");
+                }
+                let lane = Box::new(browser.open(kind)?);
+                (
+                    Resource::Browser {
+                        lane,
+                        payload_limit,
+                    },
+                    true,
+                )
             }
             _ => return Err("resource-unavailable"),
         };
@@ -438,6 +481,9 @@ impl Channels {
                         .map(|()| Inbound::Retained)
                         .map_err(|_| "congested"),
                     Resource::Tunnel(tunnel) => tunnel.receive(bytes),
+                    Resource::Browser { lane, .. } => {
+                        lane.receive(bytes).map(|()| Inbound::Consumed)
+                    }
                     Resource::Observation { .. } => Err("protocol-error"),
                 };
                 channel.inbound_credit -= bytes.len();
@@ -591,6 +637,12 @@ impl Channels {
         let mut blocked = self.flush_controls(output);
         let mut finished = Vec::new();
         for (id, channel) in &mut self.active {
+            if let Resource::Browser { lane, .. } = &channel.resource
+                && let Some(code) = lane.failure()
+            {
+                finished.push((id.clone(), code));
+                continue;
+            }
             let carrier = channel
                 .carrier
                 .output_key(channel.routing["lane"].as_str().unwrap());
@@ -641,6 +693,22 @@ impl Channels {
         self.active
             .retain(|_, channel| channel.carrier.key() != key);
         self.controls.retain(|(carrier, _)| carrier.key() != key);
+    }
+
+    pub fn disconnect_browser_relay(&mut self) {
+        let mut removed = HashSet::new();
+        self.active.retain(|id, channel| {
+            let drop = matches!(channel.carrier, Carrier::Relay)
+                && matches!(channel.resource, Resource::Browser { .. });
+            if drop {
+                removed.insert(id.clone());
+            }
+            !drop
+        });
+        self.controls.retain(|(carrier, frame)| {
+            !matches!(carrier, Carrier::Relay)
+                || !removed.contains(id(&frame.header()["channel"], "channelId"))
+        });
     }
 
     pub fn close_session(&mut self, session: &JsString, code: &str) {
@@ -701,9 +769,23 @@ impl Channels {
     }
 
     fn close(&mut self, id: &JsString, code: &str) {
-        let Some(channel) = self.active.remove(id) else {
+        let Some(mut channel) = self.active.remove(id) else {
             return;
         };
+        if channel.send > 0
+            && code == "congested"
+            && channel.routing["lane"] == "interactive"
+            && matches!(&channel.resource, Resource::Browser { lane, .. } if lane.failure() == Some("congested"))
+        {
+            let error = channel.frame(
+                "error",
+                channel.send,
+                &[("code", json!("credit-exceeded"))],
+                &[],
+            );
+            self.push_control(channel.carrier.clone(), error);
+            channel.send += 1;
+        }
         let (kind, code) = if channel.send > 0 {
             ("close", code)
         } else {
@@ -728,6 +810,19 @@ impl Channels {
             self.controls.push_back((carrier, frame));
         }
     }
+}
+
+fn payload_limit(carrier: &Carrier, header: &Value, format: &str) -> Option<usize> {
+    carrier
+        .message_limit(header["lane"].as_str().unwrap())
+        .map(|limit| {
+            // Reserve space for the widest possible sequence.
+            let overhead = frame(header, "data", MAX_SEQUENCE, &data_fields(format), &[0])
+                .bytes()
+                .len()
+                - 1;
+            limit.saturating_sub(overhead)
+        })
 }
 
 fn data_fields(format: &str) -> [(&'static str, Value); 2] {

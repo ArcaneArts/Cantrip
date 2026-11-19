@@ -7,6 +7,7 @@ import { chromium } from "playwright-core";
 import {
   WORKER_LINK_PEER_CONTROL_CHANNEL,
   classifyWorkerLinkPeerAddress,
+  decodeWorkerLinkFrame,
   filterWorkerLinkPeerSdp,
   parseWorkerLinkPeerCandidate,
   workerLinkPeerCandidateAllowed,
@@ -23,6 +24,7 @@ export async function connectPeerWorkerLink(
   session,
   peerRoute,
   stunMapping,
+  readLanes = ["stream"],
 ) {
   const base = "/api/worker-links/" + session.sessionId + "/peers";
   const { peerSession } = workerLinkPeerSessionDescriptorSchema.parse(
@@ -65,7 +67,7 @@ export async function connectPeerWorkerLink(
       socket.emit("message", Buffer.from(bytes), true);
     });
     const { sdp, candidates } = await page.evaluate(
-      async ({ label, lanes, hello }) => {
+      async ({ label, lanes, hello, readLanes }) => {
         const pc = new RTCPeerConnection({ iceServers: [] });
         const control = pc.createDataChannel(label, { ordered: true });
         const data = Object.fromEntries(
@@ -79,10 +81,12 @@ export async function connectPeerWorkerLink(
             ),
           ]),
         );
-        data.stream.binaryType = "arraybuffer";
-        data.stream.onmessage = (event) => {
-          void window.peerFrame([...new Uint8Array(event.data)]);
-        };
+        for (const lane of readLanes) {
+          data[lane].binaryType = "arraybuffer";
+          data[lane].onmessage = (event) => {
+            void window.peerFrame([...new Uint8Array(event.data)]);
+          };
+        }
         const state = { pc, control, data, handshake: null };
         window.workerLinkPeer = state;
         control.onopen = () => control.send(JSON.stringify(hello));
@@ -116,6 +120,7 @@ export async function connectPeerWorkerLink(
           workerLinkPeerLaneChannelLabel(lane),
         ]),
         hello,
+        readLanes,
       },
     );
     function candidateAllowed(candidate) {
@@ -254,9 +259,12 @@ export async function connectPeerWorkerLink(
       sending = sending
         .then(() =>
           page.evaluate(
-            (values) =>
-              window.workerLinkPeer.data.stream.send(Uint8Array.from(values)),
-            [...bytes],
+            ({ lane, values }) =>
+              window.workerLinkPeer.data[lane].send(Uint8Array.from(values)),
+            {
+              lane: decodeWorkerLinkFrame(bytes).header.lane,
+              values: [...bytes],
+            },
           ),
         )
         .catch((error) => socket.emit("error", error));
