@@ -972,6 +972,7 @@ export const contractRoots = [
   "nativeCommandSettlementResultSchema",
   "standaloneChatScratchResolveResultSchema",
   "endpointModelInventoryItemSchema",
+  "ollamaModelInventoryItemSchema",
 ];
 
 export const projectExportContractRoots = [

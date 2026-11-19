@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createServer } from "node:http";
+import { setTimeout as delay } from "node:timers/promises";
 import { encryptProtectedSecret } from "../../packages/crypto/dist/index.js";
 import { providerApiKeyProtectedContentSchema } from "../../packages/protocol/dist/index.js";
 
-export async function verifyEndpointCatalog({
+export async function verifyProviderCatalog({
   call,
   ownerId,
   workerId,
@@ -16,7 +17,11 @@ export async function verifyEndpointCatalog({
   const apiKey = "disposable-endpoint-fixture-key";
   const observed = [];
   let studio = "rich";
-  const upstream = createServer((request, response) => {
+  let ollamaFails = false;
+  let activeShows = 0;
+  let maxActiveShows = 0;
+  const showRequests = new Set();
+  const upstream = createServer(async (request, response) => {
     observed.push({
       path: request.url,
       authorization: request.headers.authorization,
@@ -93,6 +98,55 @@ export async function verifyEndpointCatalog({
           ],
         });
         return;
+      case "/ollama-relay/api/tags":
+        assert.equal(request.method, "GET");
+        json({
+          models: [
+            {},
+            ...Array.from({ length: ollamaFails ? 2 : 203 }, (_, index) => ({
+              [index === 0 ? "name" : "model"]: `gemma-${index}:12b`,
+              modified_at: "2026-08-14T12:00:00.123456789Z",
+              size: 7_000_000_000.5,
+              digest: `sha256:gemma-${index}`,
+              details: { family: "tag-family", quantization_level: "Q4" },
+            })),
+          ],
+        });
+        return;
+      case "/ollama-relay/api/show": {
+        assert.equal(request.method, "POST");
+        assert.equal(request.headers["content-type"], "application/json");
+        const chunks = [];
+        for await (const chunk of request) chunks.push(chunk);
+        const { model, verbose } = JSON.parse(Buffer.concat(chunks));
+        assert.equal(verbose, false);
+        assert.match(model, /^gemma-\d+:12b$/);
+        showRequests.add(model);
+        activeShows++;
+        maxActiveShows = Math.max(maxActiveShows, activeShows);
+        await delay(model === "gemma-0:12b" ? 20 : 5);
+        activeShows--;
+        if (ollamaFails && model === "gemma-1:12b") {
+          response.writeHead(503).end();
+          return;
+        }
+        json({
+          ...(model === "gemma-0:12b" && {
+            details: {
+              family: "show-family",
+              families: ["gemma", " gemma ", "multimodal"],
+              parameter_size: "12B",
+              quantization_level: "Q4_K_M",
+            },
+          }),
+          capabilities: ["Completion", "Tools", "Thinking", "Vision"],
+          model_info: {
+            "general.architecture": "gemma",
+            "gemma.context_length": 131072,
+          },
+        });
+        return;
+      }
       default:
         response.writeHead(404).end();
     }
@@ -192,6 +246,33 @@ export async function verifyEndpointCatalog({
     ]) {
       assert.ok(!JSON.stringify(gateway).includes(secret));
     }
+    const refreshOllama = await create("ollama", "/ollama-relay/v1");
+    const ollama = await refreshOllama();
+    assert.equal(ollama.servedStale, false);
+    assert.equal(ollama.models.length, 203);
+    assert.equal(showRequests.size, 203);
+    assert.equal(maxActiveShows, 4);
+    const gemma = record(ollama, "gemma-0:12b");
+    assert.equal(gemma.metadataSource, "ollama");
+    assert.equal(gemma.contextWindow, 131072);
+    assert.equal(gemma.supportsTools, true);
+    assert.equal(gemma.supportsReasoning, true);
+    assert.equal(gemma.supportsVision, true);
+    assert.equal(gemma.family, "show-family");
+    assert.equal(gemma.quantization, "Q4_K_M");
+    assert.equal(gemma.digest, "sha256:gemma-0");
+    assert.equal(gemma.operationCapabilities.language.status, "supported");
+    assert.equal(record(ollama, "gemma-202:12b").family, "tag-family");
+
+    ollamaFails = true;
+    const retained = await refreshOllama();
+    assert.equal(retained.servedStale, true);
+    assert.equal(retained.models.length, 203);
+    assert.equal(
+      record(retained, "gemma-202:12b").id,
+      record(ollama, "gemma-202:12b").id,
+    );
+    assert.equal(retained.syncStates[0].error, "ollama-catalog-refresh-failed");
     assert.ok(
       observed.every((request) => request.authorization === `Bearer ${apiKey}`),
     );

@@ -294,8 +294,9 @@ async fn cycle(
         skill_root,
         catalog_version,
     );
-    let endpoint_catalog = Arc::new(crate::codex::catalog::endpoint::Catalog::new(
+    let provider_catalog = Arc::new(crate::codex::catalog::provider::Catalog::new(
         encryption.clone(),
+        logs.clone(),
     )?);
     let worktree_observations = Arc::new(crate::git::worktrees::observations::Observations::new(
         worktrees.clone(),
@@ -549,8 +550,8 @@ async fn cycle(
                     });
                     continue;
                 }
-                if kind == crate::codex::catalog::endpoint::COMMAND {
-                    let catalog = endpoint_catalog.clone();
+                if crate::codex::catalog::provider::handles(kind) {
+                    let catalog = provider_catalog.clone();
                     let signal = command_signal.clone();
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();

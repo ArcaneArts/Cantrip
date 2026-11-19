@@ -118,8 +118,7 @@ impl Store {
         let result = guard
             .run(async {
                 let _permit = self.loads.acquire().await?;
-                let mut value = discover(signal).await?;
-                value["kind"] = json!("endpoint");
+                let value = discover(signal).await?;
                 let bytes = value.stringify().len();
                 if bytes > MAX_SNAPSHOT_BYTES {
                     bail!("Model catalog snapshot exceeded 32 MiB.");
@@ -239,7 +238,12 @@ impl Snapshot {
             if self.bytes > LEGACY_BYTES {
                 bail!("Model catalog requires a server supporting paged discovery.");
             }
-            return checked("endpointModelInventorySchema", &self.value);
+            let schema = if self.value["kind"] == "ollama" {
+                "ollamaModelInventorySchema"
+            } else {
+                "endpointModelInventorySchema"
+            };
+            return checked(schema, &self.value);
         }
         let entries = self.value["models"]
             .as_array()
@@ -264,7 +268,7 @@ impl Snapshot {
         }
         let next = offset + models.len();
         let mut page = json!({
-            "kind":"endpoint","transferId":transfer,"snapshotId":id,
+            "kind":self.value["kind"],"transferId":transfer,"snapshotId":id,
             "observedAt":self.value["observedAt"],"models":models,
             "offset":offset,"nextOffset":(next < entries.len()).then_some(next),"total":entries.len(),
         });
@@ -305,7 +309,7 @@ mod tests {
                         .unwrap()
                     })
                     .collect::<Vec<_>>();
-                Ok(json!({"observedAt":observed,"models":items}))
+                Ok(json!({"kind":"endpoint","observedAt":observed,"models":items}))
             }
         };
         let (a, b) = tokio::join!(
