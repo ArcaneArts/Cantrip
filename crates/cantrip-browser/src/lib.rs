@@ -149,6 +149,7 @@ impl Browser {
     }
 }
 
+#[derive(Clone)]
 pub struct Page {
     client: Client,
     target: JsString,

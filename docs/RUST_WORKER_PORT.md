@@ -6178,3 +6178,32 @@ denial, explicit close and revocation cleanup. The focused Node reference
 tests passed. Exact visible Browser targets, pointer gestures and streaming
 web connections remain open. The accessibility text uses Chromium's tree
 and the existing result schema.
+
+
+## 149. Control an open Cantrip Browser through native MCP
+
+Reference commit `febf33249497d45bb381ca6cc33fbc14998b7618` (#3311).
+
+An admitted project chat can open an MCP session on an exact Browser target.
+The broker asks Core to resolve the target with the active worker binding.
+The worker then borrows the matching open surface's Chromium page generation
+and checks the owner, project and server. Surface replacement invalidates
+the borrow. Closing the MCP session releases its references and presentation
+cursor while the Browser remains open.
+
+The session supports navigation, viewport text and element snapshots, clicking,
+typing, and move, click and drag gestures. Node-free cursor rasterization uses
+the existing shared interaction crate. Browser attachments receive normalized
+cursor positions and sprite updates through the encrypted control stream.
+Turn revocation stops the gesture and releases an attempted press on the
+original page when that page is still owned. User input continues through the
+surface's regular input queue.
+
+Local macOS ARM64 tests exercised Core resolution with an authenticated
+fixture, and real headless Chromium for the visible-session action and
+presentation fixture. They verified stale references, cross-owner denial,
+cursor sprite data and a single mouse release after drag cancellation.
+A separate production Rust worker and Rust server smoke passed the existing
+encrypted Browser workflow over WorkerLink Core relay. The focused Node
+reference tests also passed. Streaming network connections in private web
+sessions remain open.

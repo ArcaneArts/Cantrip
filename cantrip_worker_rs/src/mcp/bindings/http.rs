@@ -204,6 +204,25 @@ impl Inner {
                     .read(&authorization.active.binding, call.get("arguments"))
                     .await
             }
+            "web.session.open" if call["arguments"].get("browserTarget").is_some() => {
+                let args = mcp_host::parse("mcpStdioInput/web_session_open", call.get("arguments"))
+                    .map_err(super::response_error)?;
+                let mut lane = authorization.active.stopped.subscribe();
+                let target = tokio::select! {
+                    biased;
+                    _ = lane.wait_for(|stopped| *stopped) => {
+                        return Err(anyhow!("Browser operation stopped with its agent turn."));
+                    }
+                    target = self.server.inspect_browser(
+                        authorization.active.binding.clone(), authorization.version,
+                        authorization.legacy_root.as_ref(), args["browserTarget"].clone(),
+                        &authorization.identity.1,
+                    ) => target?,
+                };
+                self.web
+                    .open_visible(&authorization.active.binding, target, &args, lane)
+                    .await
+            }
             operation
                 if crate::web::session::TOOLS
                     .iter()

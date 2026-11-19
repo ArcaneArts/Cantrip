@@ -1,4 +1,4 @@
-use super::{Endpoint, FrameSource, Route, Shared, accepted, id, profile};
+use super::{Endpoint, FrameSource, Route, Shared, accepted, agent, id, profile};
 use crate::{
     http::checked,
     protected_content::{
@@ -35,7 +35,8 @@ pub(super) struct Session {
     suspended: bool,
     operations: VecDeque<JsString>,
     cursor: JsString,
-    cursor_epoch: uuid::Uuid,
+    agent_cursor: agent::Cursor,
+    agent_lease: agent::Lease,
     last_cursor: Option<Instant>,
 }
 
@@ -91,7 +92,8 @@ impl Session {
             suspended: false,
             operations: VecDeque::new(),
             cursor: "default".into(),
-            cursor_epoch: uuid::Uuid::new_v4(),
+            agent_cursor: agent::Cursor::default(),
+            agent_lease: agent::Lease::new(),
             last_cursor: None,
         })
     }
@@ -141,7 +143,9 @@ impl Session {
             navigation?;
         }
         self.cursor = "default".into();
-        self.cursor_epoch = uuid::Uuid::new_v4();
+        self.agent_lease.close();
+        self.agent_lease = agent::Lease::new();
+        self.agent_cursor = agent::Cursor::default();
         self.last_cursor = None;
         self.send_cursor_state(None);
         self.runtime_status(None);
@@ -149,6 +153,9 @@ impl Session {
     }
 
     pub fn retire(&mut self) -> Option<profile::Lease> {
+        self.agent_lease.close();
+        self.agent_cursor = agent::Cursor::default();
+        self.send_cursor_state(None);
         let lease = self.lease.take();
         self.loading = true;
         lease
@@ -171,6 +178,7 @@ impl Session {
     }
 
     pub async fn close(mut self) {
+        self.agent_lease.close();
         self.attachments.clear();
         if let Some(lease) = self.lease.take() {
             lease.close().await;
@@ -263,14 +271,42 @@ impl Session {
     }
 
     fn send_cursor_state(&mut self, only: Option<&JsString>) {
-        self.send_json(
-            only,
-            "control",
-            &json!({
-                "type":"browser-agent-cursor","epoch":self.cursor_epoch.to_string(),
-                "sequence":0,"position":Value::Null,"click":false,"dragging":false,
-            }),
+        let state = self.agent_cursor.state(false, true);
+        self.send_json(only, "control", &state);
+    }
+
+    pub(super) fn agent_page(&self, target: agent::Target) -> Result<agent::AgentPage> {
+        self.authorize_endpoint()?;
+        ensure!(
+            target.owner == self.owner
+                && target.project == self.project
+                && target.server == self.server
+                && target.surface == self.surface,
+            "The Browser target is outside this execution scope."
         );
+        let page = self.page()?.clone();
+        ensure!(page.is_connected(), "The selected Browser is reconnecting.");
+        Ok(self
+            .agent_lease
+            .borrow(page, &self.endpoint, self.shared.clone(), target))
+    }
+
+    pub(super) fn present_agent(&mut self, presentation: agent::Presentation) {
+        if self.agent_lease.id != presentation.lease || self.authorize_endpoint().is_err() {
+            return;
+        }
+        let point = presentation.event.position().map(|(x, y)| {
+            (
+                x / self.viewport["width"].as_f64().unwrap_or(1.0),
+                y / self.viewport["height"].as_f64().unwrap_or(1.0),
+            )
+        });
+        let emitted = self
+            .agent_cursor
+            .update(presentation, point, &self.endpoint);
+        if let Some(state) = emitted {
+            self.send_json(None, "control", &state);
+        }
     }
 
     pub async fn command(&mut self, value: &Value, epoch: u64) -> Result<Value> {

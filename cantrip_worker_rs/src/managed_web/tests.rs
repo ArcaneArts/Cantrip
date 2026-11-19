@@ -101,6 +101,7 @@ async fn signed_release_install_update_and_failure() -> Result<()> {
     assert!(fs::read_dir(profiles)?.next().is_none());
     let cleared = manager.action(&action("clear-cache"), &logs).await?;
     assert_eq!(cleared["status"]["installedVersion"], "fixture-2");
+    crate::web::session::test_visible(&manager).await?;
     rendered_read(Arc::new(manager), data.path()).await?;
     logs.close().await;
     Ok(())

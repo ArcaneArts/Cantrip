@@ -12,6 +12,7 @@ bytes = "1"
 brotli = "=9.1.1"
 dom_smoothie = { version = "=0.18.2", default-features = false }
 cantrip-browser = { path = "../crates/cantrip-browser" }
+cantrip-interaction = { path = "../cantrip_interaction", features = ["sprites"] }
 encoding_rs = { version = "=0.8.35", default-features = false, features = ["alloc"] }
 cantrip-crypto = { path = "../crates/cantrip-crypto" }
 cantrip-framing = { path = "../crates/cantrip-framing" }

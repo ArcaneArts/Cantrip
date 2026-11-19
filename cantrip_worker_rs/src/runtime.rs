@@ -336,6 +336,7 @@ async fn cycle(
         skill_root.clone(),
         cli.contexts(),
         managed_web.clone(),
+        browser_surfaces.clone(),
     );
     let history = crate::history::managed::runtime::open(
         configuration.clone(),
