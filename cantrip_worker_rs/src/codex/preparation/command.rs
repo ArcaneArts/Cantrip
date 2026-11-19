@@ -409,7 +409,10 @@ impl Ensurer {
                             "worktreeId": session["worktreeId"], "rootKind": session["rootKind"],
                             "scratchRootId": session["scratchRootId"],
                             "permissionProfileId": command["permissionProfileId"],
-                            "allowedOperations": vec!["context.get", "tool.help", "web.read", "web.search"],
+                            "allowedOperations": ["context.get", "tool.help", "web.read", "web.search"]
+                                .into_iter()
+                                .chain(crate::web::session::TOOLS.into_iter().map(|(operation, _)| operation))
+                                .collect::<Vec<_>>(),
                         });
                         let attachment = broker.prepare(admission.clone(), legacy_root).await?;
                         if let Err(error) = resource.signal.check() {

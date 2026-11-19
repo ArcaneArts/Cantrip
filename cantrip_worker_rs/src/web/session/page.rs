@@ -1,0 +1,457 @@
+use super::{Request, opaque, render};
+use anyhow::{Context, Result, bail, ensure};
+use cantrip_browser::{Page, Subscription};
+use cantrip_wire::{JsString, Value, value::json};
+use std::{collections::HashMap, time::Duration};
+use tokio::time::{Instant, timeout_at};
+use url::Url;
+
+const SELECTOR: &str = "a,button,input,textarea,select,[role=button],[tabindex]";
+const MAX_ELEMENTS: usize = 100;
+const MAX_SNAPSHOT: usize = 50_000;
+
+pub(super) struct State {
+    generation: u64,
+    snapshot: Option<Snapshot>,
+}
+
+struct Snapshot {
+    text: JsString,
+    elements: Vec<Value>,
+    nodes: HashMap<String, u64>,
+    loader: JsString,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            generation: 1,
+            snapshot: None,
+        }
+    }
+}
+
+impl State {
+    pub(super) async fn execute(
+        &mut self,
+        page: &Page,
+        policy: &render::Policy,
+        id: &str,
+        request: Request,
+    ) -> Result<Value> {
+        match request {
+            Request::Navigate(target) => {
+                self.invalidate();
+                render::navigate(page, policy, &target).await?;
+            }
+            Request::Snapshot(maximum) => return self.snapshot(page, id, maximum).await,
+            Request::Click(reference) => {
+                let node = self.element(page, &reference).await?;
+                self.invalidate();
+                let before = frame_loader(page).await?;
+                let mut events = page.subscribe();
+                let _ = policy.take_failure();
+                click(page, node).await?;
+                settle_navigation(page, policy, &mut events, &before).await?;
+            }
+            Request::Type(reference, text, submit) => {
+                let node = self.element(page, &reference).await?;
+                self.invalidate();
+                let before = frame_loader(page).await?;
+                let mut events = page.subscribe();
+                let _ = policy.take_failure();
+                fill(page, node, text, submit).await?;
+                if submit {
+                    settle_navigation(page, policy, &mut events, &before).await?;
+                }
+            }
+            Request::Close => unreachable!("close is owned by the browser session"),
+        }
+        state(page, id, self.generation).await
+    }
+
+    fn invalidate(&mut self) {
+        self.generation += 1;
+        self.snapshot = None;
+    }
+
+    async fn snapshot(&mut self, page: &Page, id: &str, maximum: usize) -> Result<Value> {
+        let loader = frame_loader(page).await?;
+        if self
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.loader != loader)
+        {
+            self.invalidate();
+        }
+        let snapshot = match &self.snapshot {
+            Some(snapshot) => snapshot,
+            None => self.snapshot.insert(capture(page, loader).await?),
+        };
+        let chars = snapshot.text.units();
+        let mut result = state(page, id, self.generation).await?;
+        result["snapshot"] = json!(JsString::new(chars[..maximum.min(chars.len())].to_vec()));
+        result["elements"] = json!(snapshot.elements);
+        result["truncated"] = json!(chars.len() > maximum);
+        Ok(result)
+    }
+
+    async fn element(&mut self, page: &Page, reference: &str) -> Result<u64> {
+        let loader = frame_loader(page).await?;
+        if self
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.loader != loader)
+        {
+            self.invalidate();
+        }
+        self.snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.nodes.get(reference))
+            .copied()
+            .context("The web element reference is stale; take a fresh session snapshot.")
+    }
+}
+
+pub(super) async fn state(page: &Page, id: &str, generation: u64) -> Result<Value> {
+    let context = render::isolated_world(page).await?;
+    let result = page
+        .evaluate_in(
+            "({url:document.URL,title:document.title.slice(0,1000)})",
+            Some(context),
+        )
+        .await?;
+    let url = super::normalize(Url::parse(
+        result["url"]
+            .as_str()
+            .context("The browser has no active document.")?,
+    )?)?;
+    Ok(
+        json!({"sessionId":id,"generation":generation,"url":url.as_str(),"title":result["title"],"persistent":false}),
+    )
+}
+
+async fn frame_loader(page: &Page) -> Result<JsString> {
+    let tree = page.request("Page.getFrameTree", json!({})).await?;
+    tree["frameTree"]["frame"]["loaderId"]
+        .as_js_string()
+        .cloned()
+        .context("Chromium did not report a document loader.")
+}
+
+async fn capture(page: &Page, loader: JsString) -> Result<Snapshot> {
+    let data = page
+        .request("Accessibility.getFullAXTree", json!({}))
+        .await?;
+    let entries = data["nodes"]
+        .as_array()
+        .context("Chromium returned no accessibility snapshot.")?;
+    let labels: HashMap<u64, &Value> = entries
+        .iter()
+        .filter_map(|node| {
+            (node["ignored"] != true).then_some(())?;
+            Some((node["backendDOMNodeId"].as_u64()?, node))
+        })
+        .collect();
+    let doc = page.request("DOM.getDocument", json!({"depth":0})).await?;
+    let nodes = page
+        .request(
+            "DOM.querySelectorAll",
+            json!({"nodeId":doc["root"]["nodeId"],"selector":SELECTOR}),
+        )
+        .await?;
+    let mut snapshot = Snapshot {
+        text: describe_tree(entries),
+        elements: Vec::new(),
+        nodes: HashMap::new(),
+        loader,
+    };
+    for node in nodes["nodeIds"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .take(MAX_ELEMENTS)
+    {
+        let element = page
+            .request("DOM.describeNode", json!({"nodeId":node}))
+            .await?;
+        let backend = element["node"]["backendNodeId"]
+            .as_u64()
+            .context("Chromium could not identify the interactive element.")?;
+        let description = labels.get(&backend).map_or_else(
+            || JsString::from("interactive element"),
+            |node| super::super::compact(&description(node), 500),
+        );
+        let reference = opaque("wer")?;
+        snapshot.nodes.insert(reference.clone(), backend);
+        snapshot
+            .elements
+            .push(json!({"ref":reference,"description":description}));
+    }
+    ensure!(
+        frame_loader(page).await? == snapshot.loader,
+        "The page changed during its snapshot; take a fresh session snapshot."
+    );
+    Ok(snapshot)
+}
+
+fn description(node: &Value) -> String {
+    let role = match node["role"]["value"].as_str() {
+        Some("StaticText") => "text",
+        Some("RootWebArea") => "document",
+        Some(role) if !role.is_empty() => role,
+        _ => "generic",
+    };
+    let name = node["name"]["value"]
+        .as_js_string()
+        .filter(|name| !name.is_empty());
+    let mut text = role.to_owned();
+    if let Some(name) = name {
+        text.push(' ');
+        let name = JsString::new(
+            name.units()
+                .iter()
+                .copied()
+                .take(MAX_SNAPSHOT + 1)
+                .collect(),
+        );
+        text.push_str(&json!(name).stringify());
+    }
+    if let Some(properties) = node["properties"].as_array() {
+        for property in properties {
+            let attribute = property["name"].as_str().unwrap_or("");
+            let value = &property["value"]["value"];
+            if attribute == "level"
+                && let Some(level) = value.as_u64()
+            {
+                text.push_str(&format!(" [level={level}]"));
+            } else if matches!(
+                attribute,
+                "checked" | "disabled" | "expanded" | "selected" | "pressed"
+            ) {
+                if *value == true || *value == "true" {
+                    text.push_str(&format!(" [{attribute}]"));
+                } else if *value == "mixed" {
+                    text.push_str(&format!(" [{attribute}=mixed]"));
+                }
+            }
+        }
+    }
+    if let Some(value) = node["value"]["value"]
+        .as_js_string()
+        .filter(|value| !value.is_empty())
+    {
+        text.push_str(": ");
+        let value = JsString::new(
+            value
+                .units()
+                .iter()
+                .copied()
+                .take(MAX_SNAPSHOT + 1)
+                .collect(),
+        );
+        text.push_str(&json!(value).stringify());
+    }
+    text
+}
+
+fn describe_tree(nodes: &[Value]) -> JsString {
+    let by_id: HashMap<&JsString, &Value> = nodes
+        .iter()
+        .filter_map(|node| Some((node["nodeId"].as_js_string()?, node)))
+        .collect();
+    let mut pending: Vec<_> = nodes
+        .iter()
+        .filter(|node| !node["parentId"].is_string())
+        .rev()
+        .map(|node| (node, 0_usize))
+        .collect();
+    let mut seen = std::collections::HashSet::new();
+    let mut result = Vec::new();
+    while let Some((node, depth)) = pending.pop() {
+        if !seen.insert(node["nodeId"].as_js_string()) {
+            continue;
+        }
+        let role = node["role"]["value"].as_str().unwrap_or("");
+        let render = node["ignored"] != true
+            && !matches!(role, "InlineTextBox" | "none" | "RootWebArea")
+            && !(role == "generic"
+                && node["name"]["value"]
+                    .as_js_string()
+                    .is_none_or(JsString::is_empty));
+        if render {
+            if !result.is_empty() {
+                result.push(u16::from(b'\n'));
+            }
+            result.extend(std::iter::repeat_n(u16::from(b' '), depth.min(30) * 2));
+            result.extend("- ".encode_utf16());
+            result.extend(
+                description(node)
+                    .encode_utf16()
+                    .take(MAX_SNAPSHOT + 1 - result.len().min(MAX_SNAPSHOT + 1)),
+            );
+            if result.len() > MAX_SNAPSHOT {
+                result.truncate(MAX_SNAPSHOT + 1);
+                break;
+            }
+        }
+        if let Some(children) = node["childIds"].as_array() {
+            pending.extend(children.iter().rev().filter_map(|child| {
+                by_id
+                    .get(child.as_js_string()?)
+                    .map(|node| (*node, depth + usize::from(render)))
+            }));
+        }
+    }
+    JsString::new(result)
+}
+
+async fn call_dom(page: &Page, node: u64, function: &str) -> Result<Value> {
+    let world = render::isolated_world(page).await?;
+    let resolved = page
+        .request(
+            "DOM.resolveNode",
+            json!({"backendNodeId":node,"executionContextId":world}),
+        )
+        .await
+        .context("The web element reference is stale; take a fresh session snapshot.")?;
+    let object = resolved["object"]["objectId"]
+        .as_js_string()
+        .context("Chromium could not resolve the interactive element.")?;
+    let result = page
+        .request(
+            "Runtime.callFunctionOn",
+            json!({
+                "objectId":object,"functionDeclaration":function,"returnByValue":true,
+            }),
+        )
+        .await;
+    let _ = page
+        .request("Runtime.releaseObject", json!({"objectId":object}))
+        .await;
+    let result = result?;
+    ensure!(
+        result.get("exceptionDetails").is_none(),
+        "The web element could not be used."
+    );
+    Ok(result["result"]["value"].clone())
+}
+
+async fn click(page: &Page, node: u64) -> Result<()> {
+    let point = call_dom(
+        page,
+        node,
+        r#"function () {
+        if (!this.isConnected || this.matches(':disabled,[aria-disabled="true"]')) return null;
+        this.scrollIntoView({block:'center',inline:'center',behavior:'instant'});
+        const rect = this.getBoundingClientRect();
+        const left = Math.max(0, rect.left), right = Math.min(innerWidth, rect.right);
+        const top = Math.max(0, rect.top), bottom = Math.min(innerHeight, rect.bottom);
+        if (left >= right || top >= bottom) return null;
+        const x = (left + right) / 2, y = (top + bottom) / 2;
+        const hit = document.elementFromPoint(x,y);
+        return hit && this.contains(hit) ? {x,y} : null;
+    }"#,
+    )
+    .await?;
+    ensure!(
+        point["x"].as_f64().is_some() && point["y"].as_f64().is_some(),
+        "The web element is no longer visible or enabled."
+    );
+    for kind in ["mouseMoved", "mousePressed", "mouseReleased"] {
+        page.request(
+            "Input.dispatchMouseEvent",
+            json!({
+                "type":kind,"x":point["x"],"y":point["y"],
+                "button":if kind == "mouseMoved" { "none" } else { "left" },
+                "clickCount":if kind == "mouseMoved" { 0 } else { 1 },
+            }),
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+async fn fill(page: &Page, node: u64, text: Value, submit: bool) -> Result<()> {
+    let prepared = call_dom(page, node, r#"function () {
+        if (!this.isConnected || this.matches(':disabled,[aria-disabled="true"]') || this.readOnly) return false;
+        const input = this instanceof HTMLInputElement && ['text','search','url','tel','email','password','number'].includes(this.type);
+        if (!(input || this instanceof HTMLTextAreaElement || this.isContentEditable) || !this.getClientRects().length) return false;
+        this.focus();
+        if (document.activeElement !== this && !this.contains(document.activeElement)) return false;
+        if (input || this instanceof HTMLTextAreaElement) this.select();
+        else {
+            const range = document.createRange();
+            range.selectNodeContents(this);
+            const selection = getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+        return true;
+    }"#).await?;
+    ensure!(prepared == true, "The web element is no longer editable.");
+    if text.as_js_string().is_some_and(JsString::is_empty) {
+        key(page, "Backspace", 8).await?;
+    } else {
+        page.request("Input.insertText", json!({"text":text}))
+            .await?;
+    }
+    if submit {
+        key(page, "Enter", 13).await?;
+    }
+    Ok(())
+}
+
+async fn key(page: &Page, key: &str, code: u64) -> Result<()> {
+    for kind in ["keyDown", "keyUp"] {
+        page.request(
+            "Input.dispatchKeyEvent",
+            json!({
+                "type":kind,"key":key,"code":key,"windowsVirtualKeyCode":code,
+                "text":if kind == "keyDown" && key == "Enter" { "\r" } else { "" },
+            }),
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+async fn settle_navigation(
+    page: &Page,
+    policy: &render::Policy,
+    events: &mut Subscription,
+    before: &JsString,
+) -> Result<()> {
+    let mut deadline = Instant::now() + Duration::from_millis(200);
+    let mut navigating = false;
+    while let Ok(event) = timeout_at(deadline, events.next()).await {
+        let event = event?;
+        let params = event.params();
+        if event.method() == "Page.lifecycleEvent"
+            && params["frameId"].as_js_string() == Some(policy.frame())
+            && params["name"] == "DOMContentLoaded"
+            && params["loaderId"].as_js_string() != Some(before)
+        {
+            return Ok(());
+        }
+        let began = match event.method() {
+            "Page.frameStartedLoading" => params["frameId"].as_js_string() == Some(policy.frame()),
+            "Page.frameNavigated" => params["frame"]["id"].as_js_string() == Some(policy.frame()),
+            _ => false,
+        };
+        if began && !navigating {
+            navigating = true;
+            deadline = Instant::now() + Duration::from_secs(5);
+        }
+        if let Some(failure) = policy.take_failure() {
+            bail!(failure);
+        }
+    }
+    if let Some(failure) = policy.take_failure() {
+        bail!(failure);
+    }
+    if navigating && frame_loader(page).await? == *before {
+        bail!("Chromium did not finish the web session navigation.");
+    }
+    Ok(())
+}

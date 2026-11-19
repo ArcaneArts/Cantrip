@@ -2,6 +2,7 @@ use super::*;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::VerifyingKey;
 use std::{fs, path::PathBuf, sync::Arc};
+use tokio::time::timeout;
 
 #[test]
 fn archive_entries_must_remain_inside_staging() {
@@ -107,7 +108,7 @@ async fn signed_release_install_update_and_failure() -> Result<()> {
 
 async fn rendered_read(manager: Arc<Manager>, data: &Path) -> Result<()> {
     use bytes::Bytes;
-    use http_body_util::Full;
+    use http_body_util::{BodyExt, Full};
     use hyper::{Request, Response, body::Incoming, server::conn::http1, service::service_fn};
     use hyper_util::rt::TokioIo;
     use std::{convert::Infallible, net::Ipv4Addr};
@@ -147,6 +148,14 @@ async fn rendered_read(manager: Arc<Manager>, data: &Path) -> Result<()> {
                                             return std::future::pending::<Result<Response<Full<Bytes>>, Infallible>>().await;
                                         }
                                         let mut reply = Response::builder();
+                                        if path == "/submitted" {
+                                            let method = request.method().clone();
+                                            let bytes = request.into_body().collect().await.unwrap().to_bytes();
+                                            assert_eq!(method, hyper::Method::POST);
+                                            assert_eq!(bytes.as_ref(), b"value=Rust+browser");
+                                            return Ok::<_, Infallible>(reply.header(hyper::header::CONTENT_TYPE, "text/html")
+                                                .body(Full::new(Bytes::from_static(b"<title>Submitted</title><h1>Form received</h1>"))).unwrap());
+                                        }
                                         let (content_type, body) = match path {
                                             "/robots.txt" => ("text/plain", "User-agent: CantripResearchBot\nDisallow: /denied"),
                                             "/start" => {
@@ -175,6 +184,14 @@ async fn rendered_read(manager: Arc<Manager>, data: &Path) -> Result<()> {
                                                 }
                                                 document.getElementById('body').textContent =
                                                   'Chromium executed the page script before taking the rendered snapshot. '.repeat(5);
+                                            "#),
+                                            "/session" => ("text/html", r#"<title>Session test</title>
+                                              <h1>Private research</h1>
+                                              <button onclick="alert('fixture dialog');sessionStorage.setItem('changed','yes');this.textContent='Clicked'">Change text</button>
+                                              <form method="post" action="/submitted"><label>Search value <input name="value"></label></form>
+                                            "#),
+                                            "/session-next" => ("text/html", r#"<title>Second page</title><h1 id="status">Fresh</h1>
+                                              <script>if(sessionStorage.getItem('changed')) document.querySelector('h1').textContent = 'Resumed'</script>
                                             "#),
                                             "/persistent" => ("text/event-stream", "data: fixture\n\n"),
                                             _ => ("text/plain", "unexpected"),
@@ -238,6 +255,7 @@ async fn rendered_read(manager: Arc<Manager>, data: &Path) -> Result<()> {
                 "Browser subresource requests did not retain the document cookie: {log:?}"
             );
         }
+        interactive_session(&service, &manager, &stalled, data).await?;
         let waiting = tokio::spawn(async move {
             service
                 .read(
@@ -290,5 +308,168 @@ async fn published_searxng_release_runs_its_offline_probe() -> Result<()> {
     search.stop();
     search.run(&logs).await?;
     logs.close().await;
+    Ok(())
+}
+
+async fn interactive_session(
+    service: &Arc<crate::web::Service>,
+    manager: &Arc<Manager>,
+    stalled: &Arc<tokio::sync::Notify>,
+    data: &Path,
+) -> Result<()> {
+    let (lane, live) = tokio::sync::watch::channel(false);
+    let binding = json!({
+        "ownerId":"owner", "chatId":"research", "contextKind":"project", "permissionProfileId":":workspace",
+    });
+    let call = |operation: &'static str, args: Value| {
+        let binding = binding.clone();
+        let live = live.clone();
+        async move {
+            service
+                .session(operation, &binding, Some(&args), live)
+                .await
+        }
+    };
+    let open = call(
+        "web.session.open",
+        json!({"url":"http://page.example/session"}),
+    )
+    .await?;
+    let id = open["data"]["sessionId"].as_str().unwrap();
+    assert_eq!(open["data"]["generation"], 1);
+    assert_eq!(open["data"]["title"], "Session test");
+    assert_eq!(open["data"]["persistent"], false);
+
+    for change in [("chatId", "other"), ("permissionProfileId", ":read-only")] {
+        let mut denied = binding.clone();
+        denied[change.0] = json!(change.1);
+        assert!(
+            service
+                .session(
+                    "web.session.snapshot",
+                    &denied,
+                    Some(&json!({"sessionId":id})),
+                    live.clone()
+                )
+                .await
+                .is_err()
+        );
+    }
+    let snapshot = call("web.session.snapshot", json!({"sessionId":id})).await?;
+    let elements = snapshot["data"]["elements"].as_array().unwrap();
+    assert!(
+        snapshot["data"]["snapshot"]
+            .as_str()
+            .unwrap()
+            .contains("heading \"Private research\"")
+    );
+    let button = elements
+        .iter()
+        .find(|item| {
+            item["description"]
+                .as_str()
+                .unwrap()
+                .contains("Change text")
+        })
+        .context("No accessible button in the session snapshot.")?;
+    let click = json!({"sessionId":id,"elementRef":button["ref"]});
+    let clicked = call("web.session.click", click.clone()).await?;
+    assert_eq!(clicked["data"]["generation"], 2);
+    assert!(
+        call("web.session.click", click)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("stale")
+    );
+    let resumed = call(
+        "web.session.open",
+        json!({"sessionId":id,"url":"http://page.example/session-next"}),
+    )
+    .await?;
+    assert_eq!(resumed["data"]["generation"], 3);
+    let previous = call("web.session.snapshot", json!({"sessionId":id})).await?;
+    assert!(
+        previous["data"]["snapshot"]
+            .as_str()
+            .unwrap()
+            .contains("Resumed")
+    );
+
+    let second = call(
+        "web.session.open",
+        json!({"url":"http://page.example/session-next"}),
+    )
+    .await?;
+    let second_id = second["data"]["sessionId"].as_str().unwrap();
+    let fresh = call("web.session.snapshot", json!({"sessionId":second_id})).await?;
+    assert!(
+        fresh["data"]["snapshot"]
+            .as_str()
+            .unwrap()
+            .contains("Fresh")
+    );
+    assert!(
+        call("web.session.close", json!({"sessionId":second_id})).await?["data"]["closed"] == true
+    );
+
+    call(
+        "web.session.open",
+        json!({"sessionId":id,"url":"http://page.example/session"}),
+    )
+    .await?;
+    let form = call("web.session.snapshot", json!({"sessionId":id})).await?;
+    let input = form["data"]["elements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| {
+            item["description"]
+                .as_str()
+                .unwrap()
+                .contains("Search value")
+        })
+        .context("No accessible input in the session snapshot.")?;
+    let typed = call(
+        "web.session.type",
+        json!({
+            "sessionId":id,"elementRef":input["ref"],"text":"Rust browser","submit":true,
+        }),
+    )
+    .await?;
+    assert_eq!(typed["data"]["url"], "http://page.example/submitted");
+    let result = call("web.session.snapshot", json!({"sessionId":id})).await?;
+    assert!(
+        result["data"]["snapshot"]
+            .as_str()
+            .unwrap()
+            .contains("Form received")
+    );
+
+    let waiting = call(
+        "web.session.open",
+        json!({"sessionId":id,"url":"http://page.example/stalled"}),
+    );
+    let revoke = async {
+        timeout(Duration::from_secs(5), stalled.notified()).await?;
+        lane.send_replace(true);
+        Ok::<_, anyhow::Error>(())
+    };
+    let (cancelled, revoke) = tokio::join!(waiting, revoke);
+    revoke?;
+    assert!(
+        cancelled
+            .unwrap_err()
+            .to_string()
+            .contains("stopped with its agent turn")
+    );
+    let _drained = timeout(Duration::from_secs(8), manager.sessions.write()).await?;
+    assert!(
+        fs::read_dir(data.join("managed-runtimes/playwright/staging"))?.all(|entry| !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with("session-"))
+    );
     Ok(())
 }

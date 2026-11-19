@@ -12,9 +12,10 @@ use cantrip_wire::{Value, parse_json_text, value::json};
 pub(crate) use searxng::Search;
 use source::Source;
 use std::{
+    collections::HashMap,
     net::SocketAddrV4,
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
     time::Duration,
 };
 use storage::{Entry, Pointer, Storage};
@@ -98,6 +99,8 @@ pub(crate) struct Manager {
     source: Source,
     operation: AsyncMutex<()>,
     active_version: RwLock<()>,
+    sessions: RwLock<()>,
+    leased_versions: Mutex<HashMap<String, Weak<()>>>,
     status: Mutex<Value>,
     stop: watch::Sender<bool>,
 }
@@ -121,6 +124,8 @@ impl Manager {
             source,
             operation: AsyncMutex::new(()),
             active_version: RwLock::new(()),
+            sessions: RwLock::new(()),
+            leased_versions: Mutex::default(),
             status: Mutex::new(status(component.key(), supported)),
             stop: watch::channel(false).0,
         }
@@ -133,9 +138,15 @@ impl Manager {
     pub(crate) async fn with_browser<T>(
         &self,
         deny_proxy: SocketAddrV4,
+        session: bool,
         read: impl AsyncFnOnce(&cantrip_browser::Browser) -> Result<T>,
     ) -> Result<T> {
-        let _version = self.active_version.read().await;
+        let _session = if session {
+            Some(self.sessions.read().await)
+        } else {
+            None
+        };
+        let mut version = Some(self.active_version.read().await);
         ensure!(!*self.stop.borrow(), "Managed Chromium is shutting down.");
         let pointer = self.storage.current()?.with_context(|| {
             format!(
@@ -143,12 +154,21 @@ impl Manager {
                 self.snapshot()["state"].as_str().unwrap_or("missing")
             )
         })?;
+        let _lease = session.then(|| {
+            let mut leases = self.leased_versions.lock().unwrap();
+            let slot = leases.entry(pointer.current.archive.clone()).or_default();
+            slot.upgrade().unwrap_or_else(|| {
+                let lease = Arc::new(());
+                *slot = Arc::downgrade(&lease);
+                lease
+            })
+        });
         let runtime = self.storage.version(&pointer.current);
         let binary = launch::inventory(&runtime, &pointer.current.version, None)?;
         let staging = self.storage.root.join("staging");
         storage::private(&staging)?;
         let scratch = tempfile::Builder::new()
-            .prefix("render-")
+            .prefix(if session { "session-" } else { "render-" })
             .tempdir_in(staging)?;
         let environment = launch::environment(&runtime, scratch.path())?;
         let profile = scratch.path().join("profile");
@@ -162,6 +182,10 @@ impl Manager {
             deny_proxy,
         )
         .await?;
+        if session {
+            // The digest lease protects the executable while new versions can be published.
+            drop(version.take());
+        }
         let result = read(&browser).await;
         let exit = browser.close().await;
         let value = result?;
@@ -186,6 +210,7 @@ impl Manager {
                 _ = next.tick() => self.perform("check-update", logs).await,
             }
         }
+        let _sessions = self.sessions.write().await;
         let _drained = self.active_version.write().await;
     }
 
@@ -198,6 +223,15 @@ impl Manager {
         let action = command["action"]
             .as_str()
             .context("Missing managed Chromium action.")?;
+        let _maintenance = if matches!(action, "retry" | "reinstall" | "clear-cache") {
+            Some(
+                self.sessions
+                    .try_write()
+                    .context("The browser runtime is busy; retry after active contexts finish.")?,
+            )
+        } else {
+            None
+        };
         self.perform(action, logs).await;
         checked(
             "managedWebRuntimeActionResultSchema",
@@ -357,7 +391,7 @@ impl Manager {
                 .await?;
             self.apply_pointer(pointer, "ready");
             let _version = self.active_version.write().await;
-            let _ = self.storage.cleanup(pointer);
+            let _ = self.cleanup(pointer);
             return Ok(());
         }
         self.install(artifact, selected, current).await
@@ -458,15 +492,25 @@ impl Manager {
             verified_at: now(),
         };
         let _version = self.active_version.write().await;
-        self.storage
-            .promote(&unpacked, &pointer)
-            .map_err(Failure::new(
-                "disk",
-                "Managed runtime installation could not be activated.",
-                true,
-            ))?;
+        let leased = self
+            .leased_versions
+            .lock()
+            .unwrap()
+            .get(&pointer.current.archive)
+            .is_some_and(|lease| lease.strong_count() > 0);
+        let published = if leased {
+            // An already verified process may still be loading resources from this digest.
+            self.storage.write(&pointer)
+        } else {
+            self.storage.promote(&unpacked, &pointer)
+        };
+        published.map_err(Failure::new(
+            "disk",
+            "Managed runtime installation could not be activated.",
+            true,
+        ))?;
         self.apply_pointer(&pointer, "ready");
-        let _ = self.storage.cleanup(&pointer);
+        let _ = self.cleanup(&pointer);
         Ok(())
     }
 
@@ -507,6 +551,16 @@ impl Manager {
             "The managed runtime failed its local health check.",
             true,
         ))
+    }
+
+    fn cleanup(&self, pointer: &Pointer) -> Result<()> {
+        let mut leases = self.leased_versions.lock().unwrap();
+        leases.retain(|_, lease| lease.strong_count() > 0);
+        self.storage.cleanup(
+            pointer,
+            |digest| leases.contains_key(digest),
+            !leases.is_empty(),
+        )
     }
 
     fn snapshot(&self) -> Value {
