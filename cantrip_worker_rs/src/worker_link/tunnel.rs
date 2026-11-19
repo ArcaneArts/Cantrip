@@ -1,10 +1,12 @@
-//! One WorkerLink attachment owns and fences its underlying TCP streams.
+//! Host tunnel destinations and the carriers that own their logical streams.
+mod legacy;
 mod tcp;
 
 use super::{Coordinator, id};
 use crate::{encryption::Service, logging::Logs, protected_content::open_endpoint_content};
 use cantrip_framing::tunnel::{self as wire, Frame};
 use cantrip_wire::{JsString, Value, value::json};
+pub(super) use legacy::Legacy;
 use std::{
     collections::HashMap,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
@@ -12,7 +14,7 @@ use std::{
 };
 use tokio::{
     sync::{Semaphore, mpsc, watch},
-    task::JoinSet,
+    task::{AbortHandle, JoinSet},
 };
 use uuid::Uuid;
 
@@ -39,18 +41,43 @@ pub(super) struct Tunnel {
     source: Value,
     destination: Value,
     link: Link,
-    capacity: watch::Sender<()>,
     limit: Arc<Semaphore>,
-    streams: HashMap<JsString, mpsc::Sender<Frame>>,
+    streams: Streams,
+}
+
+struct Streams {
+    capacity: watch::Sender<()>,
+    active: HashMap<[JsString; 3], StreamSlot>,
     tasks: JoinSet<()>,
+}
+
+struct StreamSlot {
+    source: Value,
+    destination: Value,
+    input: mpsc::Sender<Frame>,
+    stop: watch::Sender<Option<Stop>>,
+    task: AbortHandle,
+    next: u64,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Stop {
+    RemoteClosed,
+    Protocol,
+    Congested,
+}
+
+#[derive(Clone)]
+enum Carrier {
+    WorkerLink { channel: JsString, token: Uuid },
+    Legacy { token: Uuid },
 }
 
 #[derive(Clone)]
 struct Link {
     gateway: Weak<Coordinator>,
     logs: Arc<Logs>,
-    channel: JsString,
-    token: Uuid,
+    carrier: Carrier,
 }
 
 impl Tunnel {
@@ -79,93 +106,170 @@ impl Tunnel {
             link: Link {
                 gateway: Arc::downgrade(gateway),
                 logs: gateway.logs.clone(),
-                channel: id(&header["channel"], "channelId").clone(),
-                token: Uuid::new_v4(),
+                carrier: Carrier::WorkerLink {
+                    channel: id(&header["channel"], "channelId").clone(),
+                    token: Uuid::new_v4(),
+                },
             },
-            capacity: watch::channel(()).0,
             limit: gateway.tunnel_streams.clone(),
-            streams: HashMap::new(),
-            tasks: JoinSet::new(),
+            streams: Streams::default(),
         }))
     }
 
     pub fn token(&self) -> Uuid {
-        self.link.token
+        let Carrier::WorkerLink { token, .. } = &self.link.carrier else {
+            unreachable!("WorkerLink attachment carrier");
+        };
+        *token
     }
 
     pub fn writable(&self) {
-        self.capacity.send_replace(());
+        self.streams.capacity.send_replace(());
     }
 
     pub fn receive(&mut self, bytes: &[u8]) -> Result<Inbound, &'static str> {
         let frame = wire::decode(bytes.into()).map_err(|_| "protocol-error")?;
         let header = frame.header();
-        let allowed = match header["kind"].as_str() {
-            Some("connect") => {
-                header["target"]["kind"] == "protected-tunnel"
-                    && header["target"]["recordId"].as_js_string() == Some(&self.resource)
-            }
-            Some("data" | "half-close") => header["direction"] == FROM_SOURCE,
-            Some("credit") => header["direction"] == FROM_DESTINATION,
-            Some("close" | "error") => true,
-            _ => false,
-        };
-        if !allowed
+        let protected = &header["target"];
+        if !is_source_frame(header)
             || header["tunnelId"].as_js_string() != Some(&self.resource)
             || header["attachmentId"].as_js_string() != Some(&self.attachment)
             || header["sourceEndpointId"] != self.source
             || header["destinationEndpointId"] != self.destination
+            || (header["kind"] == "connect"
+                && (protected["kind"] != "protected-tunnel"
+                    || protected["recordId"].as_js_string() != Some(&self.resource)))
         {
             return Err("protocol-error");
         }
-        let id = id(header, "connectionId");
+        self.streams.receive(frame, &self.link, &self.limit)
+    }
+}
+
+fn is_source_frame(header: &Value) -> bool {
+    match header["kind"].as_str() {
+        Some("connect" | "close" | "error") => true,
+        Some("data" | "half-close") => header["direction"] == FROM_SOURCE,
+        Some("credit") => header["direction"] == FROM_DESTINATION,
+        _ => false,
+    }
+}
+
+impl Default for Streams {
+    fn default() -> Self {
+        Self {
+            capacity: watch::channel(()).0,
+            active: HashMap::new(),
+            tasks: JoinSet::new(),
+        }
+    }
+}
+
+impl Streams {
+    fn receive(
+        &mut self,
+        frame: Frame,
+        link: &Link,
+        limit: &Arc<Semaphore>,
+    ) -> Result<Inbound, &'static str> {
+        let header = frame.header();
+        let key = ["tunnelId", "attachmentId", "connectionId"].map(|name| id(header, name).clone());
         if header["kind"] == "connect" {
             while self.tasks.try_join_next().is_some() {}
-            self.streams.retain(|_, sender| !sender.is_closed());
-            if self.streams.contains_key(id) {
+            self.active.retain(|_, slot| !slot.task.is_finished());
+            if self.active.contains_key(&key) {
                 return Ok(Inbound::Reply(
                     Reply::new(header).rejected("protocol-error"),
                 ));
             }
-            let Ok(permit) = self.limit.clone().try_acquire_owned() else {
+            let Ok(permit) = limit.clone().try_acquire_owned() else {
                 return Ok(Inbound::Reply(
                     Reply::new(header).rejected("limit-exceeded"),
                 ));
             };
             let (sender, receiver) = mpsc::channel(INBOUND_FRAMES);
-            self.streams.insert(id.clone(), sender);
-            let link = self.link.clone();
+            let (stop, stopped) = watch::channel(None);
+            let source = header["sourceEndpointId"].clone();
+            let destination = header["destinationEndpointId"].clone();
+            let link = link.clone();
             let capacity = self.capacity.subscribe();
-            self.tasks.spawn(async move {
+            let task = self.tasks.spawn(async move {
                 let _permit = permit;
-                tcp::serve(link, capacity, frame, receiver).await;
+                tcp::serve(link, capacity, frame, receiver, stopped).await;
             });
+            self.active.insert(
+                key,
+                StreamSlot {
+                    source,
+                    destination,
+                    input: sender,
+                    stop,
+                    task,
+                    next: 1,
+                },
+            );
             return Ok(Inbound::Consumed);
         }
-        let Some(sender) = self.streams.get(id) else {
+        let Some(slot) = self.active.get_mut(&key) else {
             return Ok(Inbound::Consumed);
         };
-        match sender.try_send(frame) {
+        if slot.source != header["sourceEndpointId"]
+            || slot.destination != header["destinationEndpointId"]
+        {
+            return Err("protocol-error");
+        }
+        if slot.stop.borrow().is_some() {
+            return Ok(Inbound::Consumed);
+        }
+        if header["sequence"].as_u64() != Some(slot.next) {
+            slot.stop.send_replace(Some(Stop::Protocol));
+            return Ok(Inbound::Consumed);
+        }
+        slot.next += 1;
+        if matches!(header["kind"].as_str(), Some("close" | "error")) {
+            // The next frame can reuse this exact connection ID. Retire the
+            // old slot in ingress order and fence its output before returning.
+            slot.stop.send_replace(Some(Stop::RemoteClosed));
+            self.active.remove(&key);
+            return Ok(Inbound::Consumed);
+        }
+        match slot.input.try_send(frame) {
             Ok(()) => Ok(Inbound::Retained),
             Err(mpsc::error::TrySendError::Closed(_)) => Ok(Inbound::Consumed),
-            Err(mpsc::error::TrySendError::Full(_)) => Err("congested"),
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                slot.stop.send_replace(Some(Stop::Congested));
+                Err("congested")
+            }
         }
     }
 }
 
 impl Link {
     fn active(&self) -> bool {
-        self.gateway.upgrade().is_some_and(|gateway| {
-            gateway.update_channels(|channels| channels.tunnel_active(&self.channel, self.token))
-        })
+        self.gateway
+            .upgrade()
+            .is_some_and(|gateway| match &self.carrier {
+                Carrier::WorkerLink { channel, token } => {
+                    gateway.update_channels(|channels| channels.tunnel_active(channel, *token))
+                }
+                Carrier::Legacy { token } => legacy::active(&gateway, *token),
+            })
     }
 
-    fn send(&self, frame: &Frame) -> Output {
-        self.gateway.upgrade().map_or(Output::Closed, |gateway| {
-            gateway.update_channels(|channels| {
-                channels.tunnel_output(&self.channel, self.token, frame.bytes())
+    fn send(&self, frame: &Frame, stopped: &watch::Receiver<Option<Stop>>) -> Output {
+        let remote_closed = || *stopped.borrow() == Some(Stop::RemoteClosed);
+        self.gateway
+            .upgrade()
+            .map_or(Output::Closed, |gateway| match &self.carrier {
+                Carrier::WorkerLink { channel, token } => gateway.update_channels(|channels| {
+                    if remote_closed() {
+                        Output::Closed
+                    } else {
+                        channels.tunnel_output(channel, *token, frame.bytes())
+                    }
+                }),
+                Carrier::Legacy { token } => legacy::send(&gateway, *token, frame, remote_closed),
             })
-        })
     }
 
     fn credit(&self, frame: &Frame) {
@@ -174,10 +278,11 @@ impl Link {
 
     fn credit_bytes(&self, bytes: usize) {
         if bytes > 0
+            && let Carrier::WorkerLink { channel, token } = &self.carrier
             && let Some(gateway) = self.gateway.upgrade()
         {
             gateway.update_channels(|channels| {
-                channels.tunnel_credit(&self.channel, self.token, bytes);
+                channels.tunnel_credit(channel, *token, bytes);
             });
         }
     }
@@ -190,6 +295,7 @@ struct Destination {
 }
 
 enum TargetError {
+    BindingMismatch,
     RecordUnavailable,
     WorkerMismatch,
     KindMismatch,
@@ -199,12 +305,15 @@ impl TargetError {
     fn code(&self) -> &'static str {
         match self {
             Self::RecordUnavailable => "protected-record-unavailable",
-            Self::WorkerMismatch | Self::KindMismatch => "protected-target-invalid",
+            Self::BindingMismatch | Self::WorkerMismatch | Self::KindMismatch => {
+                "protected-target-invalid"
+            }
         }
     }
 
     fn reason(&self) -> &'static str {
         match self {
+            Self::BindingMismatch => "invalid-target-binding",
             Self::RecordUnavailable => "protected-record-open-failed",
             Self::WorkerMismatch => "worker-id-mismatch",
             Self::KindMismatch => "target-kind-mismatch",
@@ -215,6 +324,9 @@ impl TargetError {
 impl Destination {
     fn open(service: &Service, worker: &JsString, header: &Value) -> Result<Self, TargetError> {
         let target = &header["target"];
+        if target["kind"] != "protected-tunnel" || target["recordId"] != header["tunnelId"] {
+            return Err(TargetError::BindingMismatch);
+        }
         let record = &target["protectedRecord"];
         let server = service
             .server_identity()

@@ -47,6 +47,7 @@ struct State {
     sessions: HashMap<JsString, Session>,
     tombstones: IndexMap<JsString, u64>,
     channels: Channels,
+    legacy_tunnels: tunnel::Legacy,
     transport_ready: bool,
     disconnect: Option<Instant>,
 }
@@ -288,6 +289,15 @@ impl Coordinator {
         state.channels.flush(&self.outgoing);
     }
 
+    pub(crate) fn handle_tunnel_frame(self: &Arc<Self>, frame: cantrip_framing::tunnel::Frame) {
+        let mut state = self.state.lock().unwrap();
+        let identity = self.encryption.bound_identity();
+        state.sweep(Utc::now().timestamp_millis(), identity.as_ref().ok());
+        if state.transport_ready {
+            state.legacy_tunnels.receive(self, frame);
+        }
+    }
+
     fn update_channels<T>(&self, update: impl FnOnce(&mut Channels) -> T) -> T {
         let mut state = self.state.lock().unwrap();
         let identity = self.encryption.bound_identity();
@@ -338,6 +348,7 @@ impl Coordinator {
         let identity = self.encryption.bound_identity();
         state.sweep(Utc::now().timestamp_millis(), identity.as_ref().ok());
         state.channels.flush(&self.outgoing);
+        state.legacy_tunnels.flush(&self.outgoing);
     }
 
     pub(crate) fn connected(&self) {
@@ -346,6 +357,8 @@ impl Coordinator {
         state.disconnect = None;
         state.transport_ready = true;
         state.channels.flush(&self.outgoing);
+        state.legacy_tunnels.flush(&self.outgoing);
+        state.legacy_tunnels.writable();
     }
 
     pub(crate) fn disconnected(&self) {
@@ -353,6 +366,7 @@ impl Coordinator {
         if state.transport_ready {
             state.transport_ready = false;
             state.disconnect = Some(Instant::now() + GRACE);
+            state.legacy_tunnels.disconnected();
             self.wake.notify_one();
         }
     }
@@ -370,8 +384,11 @@ impl Coordinator {
                 _ = stop.changed() => break,
                 _ = tick.tick() => self.reconcile(),
                 _ = self.wake.notified() => {},
-                _ = self.outgoing.worker_link_writable() => {
-                    self.state.lock().unwrap().channels.flush(&self.outgoing);
+                _ = self.outgoing.binary_writable() => {
+                    let mut state = self.state.lock().unwrap();
+                    state.channels.flush(&self.outgoing);
+                    state.legacy_tunnels.flush(&self.outgoing);
+                    state.legacy_tunnels.writable();
                 },
                 _ = async {
                     if let Some(deadline) = deadline {
@@ -545,6 +562,7 @@ impl State {
         self.transport_ready = false;
         self.disconnect = None;
         self.channels.clear();
+        self.legacy_tunnels = tunnel::Legacy::default();
         for id in self.sessions.keys().cloned().collect::<Vec<_>>() {
             self.revoke_session(&id, "endpoint-disconnected");
         }
@@ -561,6 +579,7 @@ impl State {
 
     fn sweep(&mut self, now: i64, identity: Option<&(JsString, Value)>) {
         self.expire_disconnect();
+        self.legacy_tunnels.rebind(identity);
         let expired = |lease: &Value| expiration(lease).is_ok_and(|expiry| expiry <= now);
         let mut removed_sessions = Vec::new();
         let mut removed_grants = Vec::new();

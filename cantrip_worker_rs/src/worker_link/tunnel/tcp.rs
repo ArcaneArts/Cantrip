@@ -1,6 +1,6 @@
 //! A logical TCP stream with independent nested credit and TCP half-closes.
 use super::{
-    Destination, FROM_DESTINATION, FROM_SOURCE, Frame, Link, Output, Reply, TargetError, wire,
+    Destination, FROM_DESTINATION, FROM_SOURCE, Frame, Link, Output, Reply, Stop, TargetError, wire,
 };
 use cantrip_crypto::content::{open_tunnel_data_frame, seal_tunnel_data_frame};
 use cantrip_wire::{Value, value::json};
@@ -22,10 +22,12 @@ pub(super) async fn serve(
     capacity: watch::Receiver<()>,
     request: Frame,
     mut input: mpsc::Receiver<Frame>,
+    mut stopped: watch::Receiver<Option<Stop>>,
 ) {
     let mut output = OutputStream {
         link,
         capacity,
+        stopped: stopped.clone(),
         reply: Reply::new(request.header()),
     };
     let destination =
@@ -39,7 +41,6 @@ pub(super) async fn serve(
         return;
     }
     let log = StreamLog::new(&output.link, request.header());
-    let mut deferred = VecDeque::new();
     let end = match destination {
         Ok(destination) => {
             log.event(
@@ -49,29 +50,18 @@ pub(super) async fn serve(
                 "started",
                 "Tunnel destination logical stream opening",
             );
-            let end = match connect(&destination, &mut input, &mut deferred).await {
-                Ok(socket) => {
-                    log.event(
-                        "info",
-                        "tunnel.destination.connected",
-                        "connect",
-                        "completed",
-                        "Tunnel destination logical stream connected",
-                    );
-                    let accepted = output
-                        .reply
-                        .control("accepted", &[("initialCreditBytes", json!(INITIAL_CREDIT))]);
-                    if output.send(accepted).await {
-                        let initial =
-                            request.header()["initialCreditBytes"].as_u64().unwrap() as usize;
-                        Stream::new(initial, destination.protection)
-                            .run(socket, &mut input, &mut deferred, &mut output)
-                            .await
-                    } else {
-                        End::Remote
+            let initial = request.header()["initialCreditBytes"].as_u64().unwrap() as usize;
+            let end = tokio::select! {
+                biased;
+                _ = stopped.changed() => {
+                    match *stopped.borrow() {
+                        Some(Stop::RemoteClosed) => End::RemoteClosed,
+                        Some(Stop::Protocol) => End::Close("protocol-error"),
+                        Some(Stop::Congested) => End::Close("congested"),
+                        None => End::Remote,
                     }
-                }
-                Err(end) => end,
+                },
+                end = serve_socket(destination, initial, &mut input, &mut output, &log) => end,
             };
             log.finished(&end);
             end
@@ -84,7 +74,7 @@ pub(super) async fn serve(
     // After logical retirement the attachment still owns the outer credit.
     // Closing the receiver first prevents producers from adding to this drain.
     input.close();
-    let mut returned = deferred.iter().map(|frame| frame.bytes().len()).sum();
+    let mut returned = 0;
     while let Ok(frame) = input.try_recv() {
         returned += frame.bytes().len();
     }
@@ -94,33 +84,42 @@ pub(super) async fn serve(
     }
 }
 
-async fn connect(
-    destination: &Destination,
+async fn serve_socket(
+    destination: Destination,
+    initial: usize,
     input: &mut mpsc::Receiver<Frame>,
-    deferred: &mut VecDeque<Frame>,
-) -> Result<TcpStream, End> {
+    output: &mut OutputStream,
+    log: &StreamLog,
+) -> End {
+    let socket = match connect(&destination).await {
+        Ok(socket) => socket,
+        Err(end) => return end,
+    };
+    log.event(
+        "info",
+        "tunnel.destination.connected",
+        "connect",
+        "completed",
+        "Tunnel destination logical stream connected",
+    );
+    let accepted = output
+        .reply
+        .control("accepted", &[("initialCreditBytes", json!(INITIAL_CREDIT))]);
+    if output.send(accepted).await {
+        Stream::new(initial, destination.protection)
+            .run(socket, input, output)
+            .await
+    } else {
+        End::Remote
+    }
+}
+
+async fn connect(destination: &Destination) -> Result<TcpStream, End> {
     let addresses = destination.addresses();
-    let connected = timeout(CONNECT_TIMEOUT, TcpStream::connect(addresses.as_slice()));
-    tokio::pin!(connected);
-    let socket = loop {
-        tokio::select! {
-            result = &mut connected => break match result {
-                Ok(Ok(socket)) => socket,
-                Ok(Err(_)) => return Err(End::Error),
-                Err(_) => return Err(End::Rejected("target-unavailable")),
-            },
-            message = input.recv(), if deferred.len() < super::INBOUND_FRAMES => {
-                let frame = message.ok_or(End::Remote)?;
-                let header = frame.header();
-                let close = deferred.is_empty()
-                    && header["sequence"] == 1
-                    && matches!(header["kind"].as_str(), Some("close" | "error"));
-                deferred.push_back(frame);
-                if close {
-                    return Err(End::Remote);
-                }
-            }
-        }
+    let socket = match timeout(CONNECT_TIMEOUT, TcpStream::connect(addresses.as_slice())).await {
+        Ok(Ok(socket)) => socket,
+        Ok(Err(_)) => return Err(End::Error),
+        Err(_) => return Err(End::Rejected("target-unavailable")),
     };
     socket.set_nodelay(true).map_err(|_| End::Error)?;
     Ok(socket)
@@ -267,12 +266,13 @@ impl StreamLog {
 struct OutputStream {
     link: Link,
     capacity: watch::Receiver<()>,
+    stopped: watch::Receiver<Option<Stop>>,
     reply: Reply,
 }
 
 impl OutputStream {
     fn try_send(&mut self, frame: &Frame) -> Output {
-        let result = self.link.send(frame);
+        let result = self.link.send(frame, &self.stopped);
         if matches!(result, Output::Queued) {
             self.reply.sequence += 1;
         }
@@ -296,7 +296,6 @@ impl OutputStream {
 
 struct Stream {
     protection: Value,
-    input_sequence: u64,
     destination_credit: usize,
     source_credit: usize,
     write_buffer: VecDeque<Zeroizing<Vec<u8>>>,
@@ -312,7 +311,6 @@ impl Stream {
     fn new(destination_credit: usize, protection: Value) -> Self {
         Self {
             protection,
-            input_sequence: 1,
             destination_credit,
             source_credit: 0,
             write_buffer: VecDeque::new(),
@@ -329,7 +327,6 @@ impl Stream {
         mut self,
         socket: TcpStream,
         input: &mut mpsc::Receiver<Frame>,
-        deferred: &mut VecDeque<Frame>,
         output: &mut OutputStream,
     ) -> End {
         let (mut reader, mut writer) = socket.into_split();
@@ -364,12 +361,7 @@ impl Stream {
                 return End::Close("normal");
             }
             tokio::select! {
-                message = async {
-                    match deferred.pop_front() {
-                        Some(frame) => Some(frame),
-                        None => input.recv().await,
-                    }
-                } => {
+                message = input.recv() => {
                     let Some(frame) = message else { return End::Remote };
                     let result = self.receive(&frame);
                     output.link.credit(&frame);
@@ -400,10 +392,6 @@ impl Stream {
 
     fn receive(&mut self, frame: &Frame) -> Result<(), End> {
         let header = frame.header();
-        if header["sequence"].as_u64() != Some(self.input_sequence) {
-            return Err(End::Close("protocol-error"));
-        }
-        self.input_sequence += 1;
         match header["kind"].as_str() {
             Some("data") => {
                 let data = open_tunnel_data_frame(&self.protection, header, frame.payload())
@@ -420,7 +408,6 @@ impl Stream {
                     .min(wire::MAX_CREDIT_BYTES);
             }
             Some("half-close") => self.source_closed = true,
-            Some("close" | "error") => return Err(End::RemoteClosed),
             _ => unreachable!("tunnel attachment validates source frame kinds"),
         }
         Ok(())
