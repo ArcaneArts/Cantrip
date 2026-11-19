@@ -949,7 +949,9 @@
     "nativeCommandSettlementResultSchema": 14054,
     "standaloneChatScratchResolveResultSchema": 14056,
     "endpointModelInventoryItemSchema": 7140,
-    "ollamaModelInventoryItemSchema": 7116
+    "ollamaModelInventoryItemSchema": 7116,
+    "embeddingInputSchema": 14060,
+    "embeddingOutcomeSchema": 14103
   },
   "nodes": [
     {
@@ -84879,6 +84881,506 @@
         { "check": "max_length", "maximum": 32768, "when": "length" }
       ]
     },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "embeddingInputSchema",
+      "shape": { "items": 14061, "options": 14080, "expectedSpace": 14081 },
+      "catchall": 14102,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "embedding-unique-items",
+          "messageAfterPath": true,
+          "message": "Embedding item IDs must be unique."
+        },
+        {
+          "check": "refinement",
+          "tag": "model-operation-content-bytes",
+          "messageAfterPath": true,
+          "message": "Embedding input exceeds 4 MiB. Submit smaller jobs."
+        }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 14062,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 4096, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "id": 31, "content": 14063 },
+      "catchall": 14079,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 14064,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 128, "when": "length" }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "modelInputPartSchema",
+      "options": [14065, 14069, 14073, 14076],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "type": 14066, "text": 14067 },
+      "catchall": 14068,
+      "checks": []
+    },
+    { "type": "literal", "values": ["text"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 4194304, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 14070, "url": 14071 },
+      "catchall": 14072,
+      "checks": []
+    },
+    { "type": "literal", "values": ["image"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 4194304, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "model-operation-media-url",
+          "messageAfterPath": true,
+          "message": "Use an HTTP(S) URL or inline data URL."
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 14074, "url": 14071 },
+      "catchall": 14075,
+      "checks": []
+    },
+    { "type": "literal", "values": ["audio"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 14077, "url": 14071 },
+      "catchall": 14078,
+      "checks": []
+    },
+    { "type": "literal", "values": ["video"], "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 34,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14082,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "embeddingSpaceIdentitySchema",
+      "shape": {
+        "version": 14083,
+        "fingerprint": 14084,
+        "modelId": 31,
+        "routeId": 31,
+        "providerId": 31,
+        "requestedModel": 31,
+        "actualModel": 14085,
+        "modelRevision": 14086,
+        "revisionVerified": 14088,
+        "revisionSource": 14089,
+        "dimensions": 14090,
+        "representation": 14092,
+        "inputFormat": 14094,
+        "normalization": 14096,
+        "inputType": 14097,
+        "configuredSpace": 14099
+      },
+      "catchall": 14101,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-f0-9]{64}$",
+          "flags": "",
+          "displayPattern": "/^[a-f0-9]{64}$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 31, "checks": [] },
+    { "type": "nullable", "innerType": 14087, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "enum",
+      "values": ["provider-catalog", "configured", "unknown"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14091, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14093,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["dense", "sparse", "multi-vector", "hybrid"],
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14095,
+      "checks": []
+    },
+    { "type": "enum", "values": ["text", "chat"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 80, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 14098, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 160, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 14100, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "embeddingOutcomeSchema",
+      "options": [14104, 14152],
+      "discriminator": "status",
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "model-operation-content-bytes",
+          "messageAfterPath": true,
+          "message": "Embedding output exceeds 4 MiB. Submit smaller jobs."
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "status": 14105, "value": 14106 },
+      "catchall": 14151,
+      "checks": []
+    },
+    { "type": "literal", "values": ["succeeded"], "checks": [] },
+    {
+      "type": "object",
+      "name": "embeddingResultSchema",
+      "shape": {
+        "space": 14082,
+        "items": 14107,
+        "usage": 14143,
+        "batches": 14149
+      },
+      "catchall": 14150,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 14108,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 4096, "when": "length" }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "embeddingItemSchema",
+      "options": [14109, 14120, 14125, 14137],
+      "discriminator": "representation",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 31,
+        "index": 14110,
+        "metadata": 14111,
+        "representation": 14115,
+        "values": 14116,
+        "sourceEncoding": 14118
+      },
+      "catchall": 14119,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14112,
+      "checks": []
+    },
+    { "type": "pipe", "in": 14113, "out": 14114, "checks": [] },
+    { "type": "unknown", "checks": [] },
+    {
+      "type": "transform",
+      "optionalIn": true,
+      "transformTag": "bounded-json-value",
+      "checks": []
+    },
+    { "type": "literal", "values": ["dense"], "checks": [] },
+    {
+      "type": "array",
+      "element": 14117,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 65536, "when": "length" }
+      ]
+    },
+    { "type": "number", "checks": [] },
+    { "type": "enum", "values": ["float", "base64"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 31,
+        "index": 14110,
+        "metadata": 14111,
+        "representation": 14121,
+        "values": 14122,
+        "sourceEncoding": 14123
+      },
+      "catchall": 14124,
+      "checks": []
+    },
+    { "type": "literal", "values": ["multi-vector"], "checks": [] },
+    {
+      "type": "array",
+      "element": 14116,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 65536, "when": "length" }
+      ]
+    },
+    { "type": "literal", "values": ["float"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 31,
+        "index": 14110,
+        "metadata": 14111,
+        "representation": 14126,
+        "indices": 14127,
+        "values": 14129,
+        "tokens": 14131,
+        "sourceEncoding": 14135
+      },
+      "catchall": 14136,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "embedding-sparse-coordinates",
+          "messageAfterPath": true,
+          "message": "Invalid sparse embedding coordinates."
+        }
+      ]
+    },
+    { "type": "literal", "values": ["sparse"], "checks": [] },
+    {
+      "type": "array",
+      "element": 14128,
+      "checks": [{ "check": "max_length", "maximum": 65536, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 14130,
+      "checks": [{ "check": "max_length", "maximum": 65536, "when": "length" }]
+    },
+    { "type": "number", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14132,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 14133,
+      "checks": [{ "check": "max_length", "maximum": 65536, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 14134, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "literal", "values": ["float"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 31,
+        "index": 14110,
+        "metadata": 14111,
+        "representation": 14138,
+        "values": 14116,
+        "sparse": 14139,
+        "sourceEncoding": 14141
+      },
+      "catchall": 14142,
+      "checks": []
+    },
+    { "type": "literal", "values": ["hybrid"], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "indices": 14127, "values": 14129, "tokens": 14131 },
+      "catchall": 14140,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "embedding-sparse-coordinates",
+          "messageAfterPath": true,
+          "message": "Invalid sparse embedding coordinates."
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "literal", "values": ["float"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "inputTokens": 14144, "totalTokens": 14146 },
+      "catchall": 14148,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14145, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 14147, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "status": 14153, "error": 14154 },
+      "catchall": 14161,
+      "checks": []
+    },
+    { "type": "literal", "values": ["failed"], "checks": [] },
+    {
+      "type": "object",
+      "name": "modelOperationFailureSchema",
+      "shape": { "code": 14155, "message": 14156, "httpStatus": 14157 },
+      "catchall": 14160,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": [
+        "configuration-required",
+        "invalid-request",
+        "unsupported-input",
+        "provider-error",
+        "invalid-response",
+        "embedding-space-mismatch",
+        "cancelled"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14158,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14159, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 100, "inclusive": true },
+        { "check": "less_than", "value": 599, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
     { "type": "never", "checks": [] }
   ]
 }

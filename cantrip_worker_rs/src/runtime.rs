@@ -294,6 +294,10 @@ async fn cycle(
         skill_root,
         catalog_version,
     );
+    let model_operations = Arc::new(crate::model_operations::Commands::new(
+        encryption.clone(),
+        codex.clone(),
+    )?);
     let provider_catalog = Arc::new(crate::codex::catalog::provider::Catalog::new(
         encryption.clone(),
         logs.clone(),
@@ -395,6 +399,35 @@ async fn cycle(
                         let result = tokio::task::spawn_blocking(move || {
                             crate::chat_content::execute(encryption, &command)
                         }).await.unwrap_or_else(|error| Err(error.into()));
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
+                if kind == crate::model_operations::CANCEL {
+                    let result = model_operations.cancel(command);
+                    finish(&request, &worker, logs, &outgoing, began, &result);
+                    continue;
+                }
+                if kind == crate::model_operations::EMBEDDING {
+                    let operations = model_operations.clone();
+                    let signal = command_signal.clone();
+                    let outgoing = outgoing.clone();
+                    let logs = logs.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let request_id = request["requestId"].as_js_string().expect("Validated request ID").clone();
+                        let emit = Arc::new({
+                            let outgoing = outgoing.clone();
+                            let request_id = request_id.clone();
+                            move |event| {
+                                outgoing.send(json!({"kind":"event","requestId":request_id,"event":event}))?;
+                                Ok(())
+                            }
+                        });
+                        let result = operations.execute(
+                            request["command"].clone(), request_id, request["modelOperationUsage"] == true,
+                            request["inferenceAdmissionAck"] == true, signal, emit,
+                        ).await;
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
                     continue;

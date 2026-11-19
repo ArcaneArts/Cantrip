@@ -352,6 +352,49 @@ pub(super) fn apply(
     }
     let wrapper = &value["passwordWrappedMasterKey"];
     match tag {
+        "model-operation-media-url" => {
+            let valid = value
+                .as_str()
+                .and_then(|value| url::Url::parse(value).ok())
+                .is_some_and(|url| matches!(url.scheme(), "http" | "https" | "data"));
+            if !valid {
+                custom(&[], message.ok_or(ValidationError::Operation)?);
+            }
+        }
+        "model-operation-content-bytes" => {
+            if value.stringify().len() > 4 * 1024 * 1024 {
+                custom(&[], message.ok_or(ValidationError::Operation)?);
+            }
+        }
+        "embedding-unique-items" => {
+            let items = value["items"]
+                .as_array()
+                .ok_or(ValidationError::Operation)?;
+            let mut seen = std::collections::HashSet::with_capacity(items.len());
+            if items
+                .iter()
+                .any(|item| !seen.insert(item["id"].as_js_string()))
+            {
+                custom(&[], message.ok_or(ValidationError::Operation)?);
+            }
+        }
+        "embedding-sparse-coordinates" => {
+            let indices = value["indices"]
+                .as_array()
+                .ok_or(ValidationError::Operation)?;
+            let values = value["values"]
+                .as_array()
+                .ok_or(ValidationError::Operation)?;
+            let mut seen = std::collections::HashSet::with_capacity(indices.len());
+            if indices.len() != values.len()
+                || value["tokens"]
+                    .as_array()
+                    .is_some_and(|tokens| tokens.len() != indices.len())
+                || indices.iter().any(|index| !seen.insert(index.as_u64()))
+            {
+                custom(&[], message.ok_or(ValidationError::Operation)?);
+            }
+        }
         "task-message-relay-result" => {
             if value["message"]["classification"]["role"] != "assistant" {
                 let mut at = path.to_vec();

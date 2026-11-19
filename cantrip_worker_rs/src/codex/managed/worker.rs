@@ -179,6 +179,14 @@ impl Worker {
         Ok(())
     }
 
+    pub(crate) fn inference_manager(&self, owner: &JsString, server: &JsString) -> Result<Manager> {
+        let scope = self.scope()?;
+        if &scope.owner != owner || &scope.server != server {
+            bail!("The worker binding changed during inference admission.");
+        }
+        self.scoped_manager(&scope)
+    }
+
     pub(crate) fn inference_command(&self, command: &Value) -> Result<Value> {
         let scope = self.scope()?;
         let manager = self.scoped_manager(&scope)?;

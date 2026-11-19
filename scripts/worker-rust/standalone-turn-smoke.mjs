@@ -17,6 +17,7 @@ import { fixtureEnvironment, startServer } from "../server-rust/process.mjs";
 import { discoveryWireFixtures } from "../server-rust/discovery-wire-fixtures.mjs";
 import { projectLabel } from "../server-rust/security-fixtures.mjs";
 import { taskContent } from "../server-rust/task-wire-fixtures.mjs";
+import { verifyEmbeddings } from "./model-embedding-smoke-cases.mjs";
 import { verifyProviderCatalog } from "./provider-catalog-smoke-cases.mjs";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
 import { taskModelProvider } from "../server-rust/task-model-provider.mjs";
@@ -50,6 +51,7 @@ const chatKey = key("chat-content");
 const labelKey = key("private-surface-metadata");
 const taskKey = key("task-content");
 const providerKey = key("provider-credential");
+const operationsKey = key("model-operation-content");
 let server;
 let child;
 let workerExit;
@@ -144,6 +146,7 @@ async function setupEncryption() {
     ["private-surface-metadata", labelKey],
     ["task-content", taskKey],
     ["provider-credential", providerKey],
+    ["model-operation-content", operationsKey],
   ]) {
     await call("POST", `/api/encryption/principals/${worker.id}/grants`, 201, {
       component,
@@ -862,6 +865,15 @@ try {
     keyRevision,
     componentKey: providerKey,
   });
+  await verifyEmbeddings({
+    call,
+    eventually,
+    ownerId,
+    workerId,
+    keyRevision,
+    providerKey,
+    operationsKey,
+  });
   await verifyProviderCapacity();
 
   const primary = await createModel("Response model");
@@ -911,6 +923,7 @@ try {
       revokedTaskCannotPublishTitle: true,
       resourceRevocationInterruptsRunningTask: true,
       queuedTaskTransferredProvider: true,
+      protectedEmbeddingRequestsAndCancellation: true,
       liveProviderQueueAndLimit: true,
       endpointCatalogPagingAndMetadata: true,
       ollamaCatalogPagingAndMetadata: true,

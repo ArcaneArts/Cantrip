@@ -1,6 +1,7 @@
 //! Read the native thread under the existing worker's storage and provider route.
 pub(super) mod home;
 pub(super) mod provider;
+pub(crate) use provider::normalize_base_url;
 
 use super::managed::{Runtime, Worker};
 use crate::{

@@ -131,7 +131,7 @@ fn configure(profile: &mut Profile, provider: &Value) -> Result<Option<Account>>
     Ok(None)
 }
 
-pub(in crate::codex) fn normalize_base_url(value: &str) -> Result<Url> {
+pub(crate) fn normalize_base_url(value: &str) -> Result<Url> {
     let mut url = Url::parse(value).map_err(|_| anyhow!("Invalid provider base URL."))?;
     url.set_query(None);
     url.set_fragment(None);
