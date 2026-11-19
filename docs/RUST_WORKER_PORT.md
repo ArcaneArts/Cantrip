@@ -143,7 +143,7 @@ loaded by a production service.
 | WorkerLink/direct/tunnels | Gateways, peer/WebRTC, direct broker, tunnel protection and routing | Native installed authority, live observations, encrypted Host terminals and TCP, WebDAV shares, direct tickets, and LAN and WAN peer carriage | Continue managed console and guest/surface adapters. Local peer fixtures cover authenticated negotiation, encrypted TCP, credit, renewal, and revocation. |
 | Browsers/surfaces/computer use | Browser discovery, browser/desktop adapters, remote surfaces, computer use, and managed web runtimes | Native browser discovery, Chromium and CDP, encrypted surfaces with recovery, and signed managed Chromium installation | Public browser transport and Chromium recovery fixtures pass locally. The native installer verifies signed releases and probes Chromium. Legacy browser WebRTC, desktop capture, computer use, managed web sessions and search remain open. |
 | MCP/CLI/CodeGraph                  | `mcp/*`, CLI broker, computer-use MCP, codegraph/runtime/supervisor                                                                       | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Native stdio/HTTP helpers, generated/persisted launch commands, binding/generation scopes, CLI and managed-runtime fixtures                                                                                                                                                                                                      |
-| Cantrip OS                         | `cantrip_os/host`, `os-executor/*`, native MCP/run execution                                                                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Port Node host orchestration, Docker/guest/lifecycle/files/PTY/tunnels/packages/backups/system/checkpoints; retain independent non-Node guest helpers                                                                                                                                                                            |
+| Cantrip OS | `cantrip_os/host`, `os-executor/*`, native MCP/run execution | Native guest inspection, attachment, workspace listing and creation, and operation inspection | Continue source provisioning, guest execution, lifecycle, files, PTYs, tunnels, packages, backups, system operations and checkpoints. |
 | Upgrade and packaging              | profile converter/database-transfer, server profile preparation, desktop services/worker, distribution/runtime scripts, worker Dockerfile | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Node-free legacy conversion/export/restore, desktop/standalone artifacts, existing-profile reopen and actual child-process/runtime audit                                                                                                                                                                                         |
 
 The source index includes existing tests with their source hashes. Each port must
@@ -6446,3 +6446,28 @@ desktop probe used the server artifact layout with no Node executable, retained
 the source database control file and opaque profile file, and reopened the
 same server identity after restart. A native Windows installer run remains
 open. Older artifacts without the bundled tools retain their converter.
+
+## 159. Attach Cantrip OS guests and manage guest workspaces in Rust
+
+Reference commit `1f2c128289b9bfedac30f3c037e3bcfd47f5916c` (#3322).
+
+The Rust worker uses the existing Docker and SSH guest programs to inspect
+and attach Cantrip OS, list and create workspaces, and observe saved workspace
+operations. Local Docker observation checks the container ID and start time
+around the guest reads. Workspace commands check the guest instance, runtime
+generation and worker attachment before using the guest helper.
+
+Workspace creation publishes the private version-one journal before
+dispatch. Duplicate admissions reuse the saved operation, including when the
+worker restarts with an unsettled receipt. Public results continue using the
+existing protocol schema and private carrier diagnostics stay on the worker.
+
+Local macOS ARM64 validation ran the Rust server with PGlite and the Rust
+worker against an existing Cantrip OS Docker image. It used the actual guest
+executables, verified Docker identity, attached the guest, created a workspace
+and rejected a stale generation. It then dropped a second creation response
+after the guest applied it. The restarted worker returned the recorded
+uncertainty without replaying the mutation. The fixture compared the journal
+path and admission fingerprint with the Node controller's JSON and SHA-256
+encoding. SSH and Windows runtime validation, source provisioning, and the
+remaining Cantrip OS services are still open.
