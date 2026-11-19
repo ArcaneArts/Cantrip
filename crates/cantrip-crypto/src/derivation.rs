@@ -70,8 +70,15 @@ pub fn derive_lookup_key(source: &[u8], context: &Value) -> Result<Zeroizing<Vec
 }
 pub fn blind_lookup_tag(key: &[u8], canonical: &JsString) -> Result<String> {
     require_length(key, 32, "Lookup key")?;
+    Ok(encode(&hmac_sha256(key, &[canonical.lossy().as_bytes()])?))
+}
+
+pub fn hmac_sha256(key: &[u8], parts: &[&[u8]]) -> Result<[u8; 32]> {
+    require_length(key, 32, "HMAC key")?;
     let mut mac =
         <Hmac<Sha256> as KeyInit>::new_from_slice(key).expect("HMAC accepts 32-byte keys");
-    mac.update(canonical.lossy().as_bytes());
-    Ok(encode(&mac.finalize().into_bytes()))
+    for part in parts {
+        mac.update(part);
+    }
+    Ok(mac.finalize().into_bytes().into())
 }

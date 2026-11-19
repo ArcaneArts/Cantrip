@@ -6968,3 +6968,27 @@ terminal input recovery on PGlite for all three authentication modes.
 Local and inline console media still need durable attachment
 materialization. Canonical console queue operations, settings, approval
 replies and managed runtime handoff remain open.
+
+## 178. Retain media submitted from the managed Codex console
+
+Reference commit d541dcb54c75813054dcca9a5bd0bedd067f3f40 (#3341).
+
+The worker snapshots local image and audio inputs and imports supplied
+data URLs through the ordinary worker attachment store before Core
+admission. Native inputs reference the captured bytes, and pending
+Chat messages carry the matching encrypted attachment summaries. The
+retained input includes the existing attachment index map and keyed
+identities. External media URLs stay in the native input.
+
+The local macOS ARM64 fixture pasted an image into bundled Codex over a
+protected PTY. The Node reference decoded the prompt and matched the
+attachment identity, metadata and stored bytes. The provider fixture
+received the image during a Linux guest turn, and the original protected
+turn and its attachment survived closing the console and restarting the
+worker. The same fixture passed Host streaming and Stop. The history
+adapter fixture passed 107 comparisons and the crypto envelope tests
+passed. The Windows x64 GNU worker compiled. Live audio and Windows
+runtime were outside this validation.
+
+Canonical console queue operations, settings, approval replies and
+runtime handoff remain open.

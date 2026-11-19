@@ -31,7 +31,10 @@ import {
 import { NativeSuspensionStore } from "../../cantrip_worker/src/native-suspension-store.ts";
 import { CodexRpcClient } from "../../cantrip_worker/src/codex/rpc-client.ts";
 import { AttachmentStore } from "../../cantrip_worker/src/attachment-store.ts";
-import { protectWorkerAttachmentMetadata } from "../../cantrip_worker/src/attachment-encryption.ts";
+import {
+  openWorkerAttachment,
+  protectWorkerAttachmentMetadata,
+} from "../../cantrip_worker/src/attachment-encryption.ts";
 import { OsAgentPlacements } from "../../cantrip_worker/src/os-executor/agent-placements.ts";
 import { OsFileOperations } from "../../cantrip_worker/src/os-executor/files.ts";
 import { OsNativeEnvironment } from "../../cantrip_worker/src/os-executor/native-environment.ts";
@@ -442,7 +445,7 @@ const server = createServer(async (request, response) => {
                 },
               ]
             : []),
-          ...(values.queuedTurn || values["guest-file-helper"]
+          ...(values.queuedTurn || values["guest-image"]
             ? [
                 {
                   component: "attachment-content",
@@ -2559,11 +2562,25 @@ async function verifyGuestConsole({
   const finished = Promise.withResolvers();
   const consoleMessage = "Private console fixture " + randomUUID();
   const consoleAnswer = "Console fixture completed in Linux.";
+  const imagePath = path.join(root, "console-example.png");
+  await writeFile(
+    imagePath,
+    Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAD0lEQVR4nGNgaPgPQhAKACX2Bf2gcp/LAAAAAElFTkSuQmCC",
+      "base64",
+    ),
+  );
+  const referenceAttachments = new AttachmentStore(
+    path.join(root, "console-reference"),
+  );
+  const workerAttachments = new AttachmentStore(directory);
+  let retainedMedia;
   let finalMessage;
   const guestPath = session.osExecution.scope.guestPath;
   const codec = createManagedQueueInputCodec({
     encryption: oracle,
     chatId: session.chatId,
+    attachmentStore: referenceAttachments,
     defaults: () => ({
       mode: "default",
       modelId: "gpt-5",
@@ -2611,7 +2628,7 @@ async function verifyGuestConsole({
           call.intent.nativeClientUserMessageId,
           payload.params.clientUserMessageId,
         );
-        assert.deepEqual(call.retainedInput.attachments, []);
+        assert.equal(call.retainedInput.attachments.length, 1);
         assert.ok(!JSON.stringify(call).includes(consoleMessage));
         const prompt = call.retainedInput.prompt;
         const reference = await codec.retainTerminalPrompt({
@@ -2636,7 +2653,48 @@ async function verifyGuestConsole({
           await open(prompt),
           await open(reference.retainedPrompt),
         );
-        assert.equal((await open(prompt)).displayText, consoleMessage);
+        const decoded = await open(prompt);
+        assert.ok(decoded.displayText.includes(consoleMessage));
+        const [entry] = decoded.attachmentMap;
+        const submitted = payload.params.input[entry.index];
+        assert.equal(submitted.type, "image");
+        assert.match(submitted.url, /^data:image\/png;base64,/u);
+        assert.ok(!JSON.stringify(call).includes(submitted.url));
+        const [opaque] = call.retainedInput.attachments;
+        const [expected] = reference.attachments;
+        const native = await openWorkerAttachment(opaque, oracle);
+        const node = await openWorkerAttachment(expected, oracle);
+        assert.deepEqual({ ...native, createdAt: node.createdAt }, node);
+        assert.equal(native.id, entry.id);
+        assert.deepEqual(prompt.classification.attachmentIds, [native.id]);
+        const pending = await actualMessage(prompt.pendingMessage);
+        const [part] = pending.content.filter(
+          ({ type }) => type === "attachment",
+        );
+        const { sha256: _digest, ...summary } = native;
+        assert.deepEqual(part.attachment, summary);
+        const bytes = Buffer.from(submitted.url.split(",")[1], "base64");
+        assert.equal(
+          native.sha256,
+          createHash("sha256").update(bytes).digest("hex"),
+        );
+        const stored = workerAttachments.resolve(
+          session.chatId,
+          native.id,
+          native.fileName,
+        );
+        assert.deepEqual(await readFile(stored), bytes);
+        assert.deepEqual(
+          await readFile(
+            referenceAttachments.resolve(
+              session.chatId,
+              node.id,
+              node.fileName,
+            ),
+          ),
+          bytes,
+        );
+        retainedMedia = { stored, bytes };
         assert.equal(
           prompt.nativeClientUserMessageId,
           payload.params.clientUserMessageId,
@@ -2787,6 +2845,7 @@ async function verifyGuestConsole({
   let output = Promise.resolve();
   const drawn = Promise.withResolvers();
   const echoed = Promise.withResolvers();
+  const imageDrawn = Promise.withResolvers();
   const terminal = ensure(
     {
       type: "terminal.open",
@@ -2844,6 +2903,7 @@ async function verifyGuestConsole({
         if (rendered.includes(outputText.replace(/\s/gu, ""))) drawn.resolve();
         if (rendered.includes(consoleMessage.replace(/\s/gu, "")))
           echoed.resolve();
+        if (rendered.includes("[Image#1]")) imageDrawn.resolve();
       });
       output.catch(drawn.reject);
     },
@@ -2919,6 +2979,12 @@ async function verifyGuestConsole({
       )
         return consoleAnswer;
       assert.ok(JSON.stringify(body.input).includes(consoleMessage));
+      const images = body.input.flatMap(({ content }) =>
+        Array.isArray(content)
+          ? content.filter(({ type }) => type === "input_image")
+          : [],
+      );
+      assert.equal(images.length, 1);
       const name = body.tools.find((tool) =>
         ["exec_command", "shell_command"].includes(tool.name),
       )?.name;
@@ -2933,6 +2999,8 @@ async function verifyGuestConsole({
       };
     };
     const incoming = untilProvider();
+    await write(`\x1b[200~${imagePath}\x1b[201~`);
+    await Promise.race([available(imageDrawn.promise), premature, failure]);
     await write(`\x1b[200~${consoleMessage}\x1b[201~`);
     await Promise.race([available(echoed.promise), premature, failure]);
     await write("\r");
@@ -2969,6 +3037,7 @@ async function verifyGuestConsole({
     assert.ok(JSON.stringify(tool).includes("Linux"));
     second.finish();
     const turnId = await Promise.race([available(finished.promise), failure]);
+    assert.ok(retainedMedia);
     assert.ok(finalMessage);
     const [content] = (await actualMessage(finalMessage)).content;
     assert.equal(content.type, "text");
@@ -2982,9 +3051,9 @@ async function verifyGuestConsole({
     );
     assert.equal(providerCalls, calls + 2);
     console.log(
-      "Protected console input ran in Linux and committed after the console closed.",
+      "Protected console text and image ran in Linux and committed after the console closed.",
     );
-    return turnId;
+    return { turnId, ...retainedMedia };
   } catch (error) {
     throw new Error(
       `Console prompt phases ${promptSteps.join(", ")}.\n${captured()}`,
@@ -3281,10 +3350,17 @@ async function verifyGuestThread() {
     await stop();
     await start();
     const recoveredConsole = await expectThread(
-      { cwd, session: reopen, threadId, provider, recoveryTurnId: consoleTurn },
+      {
+        cwd,
+        session: reopen,
+        threadId,
+        provider,
+        recoveryTurnId: consoleTurn.turnId,
+      },
       threadId,
     );
     assert.equal(recoveredConsole.recovery.status, "completed");
+    assert.deepEqual(await readFile(consoleTurn.stored), consoleTurn.bytes);
     await stop();
     console.log(
       "Native guest shell, authenticated MCP and lane retirement, protected Chat and History, Node placement compatibility, and restart passed.",

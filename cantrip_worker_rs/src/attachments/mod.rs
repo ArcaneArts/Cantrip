@@ -70,6 +70,50 @@ impl Store {
             .directory(chat, id)?
             .join(host::native(&safe_filename(filename))))
     }
+    pub(crate) async fn store_bytes(
+        &self,
+        chat: &JsString,
+        id: &JsString,
+        filename: JsString,
+        bytes: &[u8],
+        digest: String,
+    ) -> Result<()> {
+        let operation: JsString = uuid::Uuid::new_v4().to_string().into();
+        self.begin(
+            chat.clone(),
+            id.clone(),
+            filename,
+            bytes.len() as f64,
+            operation.clone(),
+            digest,
+        )
+        .await?;
+        let uploaded = async {
+            let count = bytes.len().div_ceil(MAX_CHUNK_BYTES).max(1);
+            for index in 0..count {
+                let start = index * MAX_CHUNK_BYTES;
+                let end = (start + MAX_CHUNK_BYTES).min(bytes.len());
+                self.append(
+                    chat.clone(),
+                    id.clone(),
+                    index as f64,
+                    Zeroizing::new(bytes[start..end].to_vec()),
+                    operation.clone(),
+                    index == count - 1,
+                )
+                .await?;
+            }
+            self.complete(chat.clone(), id.clone(), operation.clone())
+                .await?;
+            Ok(())
+        }
+        .await;
+        if let Err(error) = uploaded {
+            self.abort(chat.clone(), id.clone(), operation).await?;
+            return Err(error);
+        }
+        Ok(())
+    }
     fn pending(&self, key: &str, operation: &JsString) -> Result<Arc<Mutex<Pending>>> {
         let upload = self
             .0

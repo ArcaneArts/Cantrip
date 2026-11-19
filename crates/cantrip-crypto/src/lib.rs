@@ -5,7 +5,9 @@ mod derivation;
 mod hpke;
 mod payload;
 
-pub use derivation::{blind_lookup_tag, derive_component_key, derive_field_key, derive_lookup_key};
+pub use derivation::{
+    blind_lookup_tag, derive_component_key, derive_field_key, derive_lookup_key, hmac_sha256,
+};
 pub use hpke::{
     HpkeKeyPair, unwrap_component_key, unwrap_key, worker_grant_aad, wrap_component_key, wrap_key,
 };
