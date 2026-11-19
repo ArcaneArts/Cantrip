@@ -1,0 +1,202 @@
+//! Administrative commands admitted by Core and executed by the owning worker.
+mod carrier;
+mod docker;
+mod operations;
+
+use crate::{filesystem::Scope, routing::Registry};
+use anyhow::{Context, Result, ensure};
+use cantrip_wire::{JsString, Value, value::json};
+use carrier::{Program, Transport, workspace};
+use docker::{Identity, LocalDocker};
+use operations::Operations;
+use std::path::Path;
+
+const INSPECT: &str = "cantrip-os.inspect";
+const ATTACH: &str = "cantrip-os.attach";
+const LIST: &str = "cantrip-os.workspaces.list";
+const CREATE: &str = "cantrip-os.workspaces.create";
+const OPERATION: &str = "cantrip-os.operation.inspect";
+
+pub(crate) struct Controller {
+    worker: JsString,
+    operations: Operations,
+}
+
+fn checked(schema: &str, value: Value) -> Result<Value> {
+    crate::http::checked(schema, &value)
+}
+
+async fn status(transport: &Transport, lifetime: &Scope) -> Result<Value> {
+    let status = transport
+        .control(Program::Executor, &["status"], lifetime)
+        .await?;
+    ensure!(
+        status["service"] == "running",
+        "The optional CantripOS executor is disabled or unavailable."
+    );
+    Ok(status)
+}
+
+async fn assert_scope(
+    transport: &Transport,
+    scope: &Value,
+    attached: bool,
+    lifetime: &Scope,
+) -> Result<()> {
+    let status = status(transport, lifetime).await?;
+    let owner = &status["attachment"];
+    ensure!(
+        status["instance_id"] == scope["guestInstanceId"]
+            && status["generation"] == scope["runtimeGeneration"]
+            && (!attached
+                || (owner["owner_id"] == scope["ownerId"]
+                    && owner["worker_id"] == scope["workerId"])),
+        "The OS attachment/runtime changed; refresh its intended placement."
+    );
+    Ok(())
+}
+
+async fn workspaces(transport: &Transport, lifetime: &Scope) -> Result<Vec<Value>> {
+    let result = transport
+        .control(Program::Workspaces, &["list"], lifetime)
+        .await?;
+    result
+        .as_array()
+        .context("Invalid OS workspace inventory.")?
+        .iter()
+        .map(workspace)
+        .collect()
+}
+
+async fn local_carrier(name: &str, lifetime: &Scope) -> Result<(LocalDocker, Identity)> {
+    let daemon = LocalDocker::current(lifetime).await?;
+    let identity = daemon.inspect(name, lifetime).await?;
+    Ok((daemon, identity))
+}
+
+async fn observed(transport: &Transport, lifetime: &Scope) -> Result<Value> {
+    // A CLI connection to a remote daemon can still observe the executor. Only
+    // repeatable inspection through a local Engine socket grants a power target.
+    let carrier = match transport {
+        Transport::Docker(name) => local_carrier(name, lifetime).await.ok(),
+        Transport::Ssh { .. } => None,
+    };
+    let exact = carrier
+        .as_ref()
+        .map(|(_, identity)| Transport::Docker(identity.id.clone()));
+    let selected = exact.as_ref().unwrap_or(transport);
+    let actual = status(selected, lifetime).await?;
+    let attachment = if actual["attachment"].is_null() {
+        Value::Null
+    } else {
+        json!({"ownerId":actual["attachment"]["owner_id"],"workerId":actual["attachment"]["worker_id"]})
+    };
+    let mut result = json!({"guestInstanceId":actual["instance_id"],"runtimeGeneration":actual["generation"],
+        "attachment":attachment,"workspaces":workspaces(selected, lifetime).await?});
+    if let (Some((daemon, first)), Transport::Docker(name)) = (carrier, transport) {
+        let second = daemon.inspect(name, lifetime).await?;
+        ensure!(
+            first == second,
+            "The Docker carrier changed during guest observation."
+        );
+        result["powerTarget"] = json!({"kind":"docker","containerId":first.id});
+    }
+    checked("cantripOsObservedInstanceSchema", result)
+}
+
+impl Controller {
+    pub fn new(data: &Path, worker: JsString) -> Self {
+        Self {
+            worker,
+            operations: Operations::new(data),
+        }
+    }
+
+    pub fn supports(kind: &str) -> bool {
+        matches!(kind, INSPECT | ATTACH | LIST | CREATE | OPERATION)
+    }
+
+    pub async fn execute(
+        &self,
+        command: &Value,
+        routing: &Registry,
+        lifetime: &Scope,
+    ) -> Result<Value> {
+        let kind = command["type"].as_str().context("OS command type")?;
+        let result = async {
+            let resolved = routing.resolve(command).await?;
+            let result = self.handle(kind, &resolved, lifetime).await?;
+            routing.protect_result(kind, &result).await
+        }
+        .await;
+        result.map_err(|error| crate::routing::protect_error(kind, error))
+    }
+
+    async fn handle(&self, kind: &str, command: &Value, lifetime: &Scope) -> Result<Value> {
+        let dispatch = &command["scope"];
+        let worker = if kind == INSPECT {
+            &command["workerId"]
+        } else {
+            &dispatch["workerId"]
+        };
+        ensure!(
+            worker.as_js_string() == Some(&self.worker),
+            "The OS command belongs to a different worker."
+        );
+        if kind == OPERATION {
+            return self
+                .operations
+                .inspect(dispatch, text(command, "operationId")?);
+        }
+        let transport_value = checked("cantripOsTransportSchema", command["transport"].clone())?;
+        let transport = Transport::from_value(&transport_value)?;
+        if kind == INSPECT {
+            return observed(&transport, lifetime).await;
+        }
+        let dispatch = checked("cantripOsDispatchScopeSchema", dispatch.clone())?;
+        assert_scope(&transport, &dispatch, kind != ATTACH, lifetime).await?;
+        match kind {
+            ATTACH => {
+                transport
+                    .control(
+                        Program::Executor,
+                        &[
+                            "attach",
+                            text(&dispatch, "ownerId")?,
+                            text(&dispatch, "workerId")?,
+                        ],
+                        lifetime,
+                    )
+                    .await?;
+                assert_scope(&transport, &dispatch, true, lifetime).await?;
+                observed(&transport, lifetime).await
+            }
+            LIST => Ok(Value::Array(workspaces(&transport, lifetime).await?)),
+            CREATE => {
+                let guest = text(command, "guestWorkspaceId")?;
+                let admission = json!({"guestWorkspaceId":guest,"transport":transport_value});
+                self.operations
+                    .execute(
+                        &dispatch,
+                        text(command, "operationId")?,
+                        kind,
+                        admission,
+                        async {
+                            let actual = transport
+                                .control(Program::Workspaces, &["create", guest], lifetime)
+                                .await?;
+                            Ok(json!({"kind":"workspace","workspace":workspace(&actual)?}))
+                        },
+                    )
+                    .await
+            }
+            _ => anyhow::bail!("Unsupported OS command."),
+        }
+    }
+}
+
+fn text<'a>(value: &'a Value, field: &str) -> Result<&'a str> {
+    value[field]
+        .as_str()
+        .with_context(|| format!("Invalid OS command field {field}."))
+}

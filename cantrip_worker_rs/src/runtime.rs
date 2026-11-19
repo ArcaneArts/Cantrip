@@ -120,6 +120,10 @@ async fn cycle(
     let started = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let encryption = Service::new(encryption_identity, &config.server_url, client.clone())?;
     let routing = Arc::new(crate::routing::Registry::new(&config.data_directory));
+    let cantrip_os = Arc::new(crate::cantrip_os::Controller::new(
+        &config.data_directory,
+        worker.clone(),
+    ));
     let chat_scratch = Arc::new(crate::filesystem::chat_scratch::Manager::new(
         &config.data_directory,
     ));
@@ -896,6 +900,19 @@ async fn cycle(
                     commands.spawn(async move {
                         let result=github.execute(&request["command"],&scope).await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
+                if crate::cantrip_os::Controller::supports(kind) {
+                    let controller = cantrip_os.clone();
+                    let routing = routing.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    let lifetime = crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let result = controller.execute(&request["command"], &routing, &lifetime).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
                     continue;
                 }
