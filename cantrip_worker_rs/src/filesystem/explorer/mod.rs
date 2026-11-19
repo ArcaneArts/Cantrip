@@ -1,5 +1,6 @@
 //! Shared Explorer filesystem implementation. Transport, protected state and
 //! resource authorization belong to the command adapter, not this engine.
+pub(crate) mod binary_write;
 mod directory;
 mod files;
 mod git;
@@ -120,7 +121,7 @@ pub(crate) fn failure(error: &anyhow::Error) -> Value {
 pub fn failure_code(error: &anyhow::Error) -> Option<&'static str> {
     if error.is::<TextPreviewRequiredError>() {
         Some("text-preview-required")
-    } else if error.is::<pages::BinaryFileChanged>() {
+    } else if error.is::<pages::BinaryFileChanged>() || error.is::<binary_write::Conflict>() {
         Some("file-version-changed")
     } else {
         None

@@ -75,6 +75,7 @@ const { values } = parseArgs({
     "worker-link-local": { type: "boolean", default: false },
     "shares-only": { type: "boolean", default: false },
     "run-definitions-only": { type: "boolean", default: false },
+    "binary-writes-only": { type: "boolean", default: false },
     "run-runtime-only": { type: "boolean", default: false },
   },
 });
@@ -112,6 +113,7 @@ if (
   !values["github-operations-only"] &&
   !values["terminal-relay-only"] &&
   !values["run-definitions-only"] &&
+  !values["binary-writes-only"] &&
   !values["run-runtime-only"] &&
   !(values["replica-provision-only"] || values["replica-lifecycle-only"])
 )
@@ -772,6 +774,38 @@ try {
       await verifyRunDefinitions({ call, projectId, checkout, restartWorker });
       break exercise;
     }
+    if (values["binary-writes-only"]) {
+      const metadataKey = cryptoClient.deriveComponentKey({
+        accountMasterKey: master,
+        ownerId: repository.ownerId,
+        component: "private-surface-metadata",
+        keyRevision: 1,
+      });
+      try {
+        await verifyExplorer({
+          call,
+          serverId: repository.serverId,
+          ownerId: repository.ownerId,
+          surfaceKey,
+          metadataKey,
+          projectId,
+          workerId,
+          checkout,
+          binary: {
+            workerDirectory,
+            stopWorker,
+            restartWorker,
+            startWorker: async () => {
+              startWorker();
+              await ready();
+            },
+          },
+        });
+      } finally {
+        metadataKey.fill(0);
+      }
+      break exercise;
+    }
     if (values["shares-only"]) {
       const { verifyNetworkShares } = await import("./project-share-cases.mjs");
       await verifyNetworkShares({
@@ -1046,6 +1080,10 @@ try {
         nodeDifferential: true,
         nodeAbsentFromWorkerPath: true,
       }),
+    );
+  else if (values["binary-writes-only"])
+    console.log(
+      JSON.stringify({ suite: "native-Host-binary-saves", passed: true }),
     );
   else if (values["shares-only"])
     console.log(

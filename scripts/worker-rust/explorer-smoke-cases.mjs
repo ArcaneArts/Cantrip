@@ -1,7 +1,7 @@
 // Real server routing -> production Rust worker -> private outcomes and files.
 // Receives only the disposable workspace-smoke profile and synthetic account.
 import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
+import { chmod, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import * as c from "../../packages/crypto/dist/index.js";
 import * as p from "../../packages/protocol/dist/index.js";
@@ -19,6 +19,7 @@ export async function verifyExplorer({
   projectId,
   workerId,
   checkout,
+  binary,
 }) {
   const explorerId = crypto.randomUUID(),
     documentId = crypto.randomUUID();
@@ -235,6 +236,97 @@ export async function verifyExplorer({
     await readFile(path.join(checkout, "untouched.txt"), "utf8"),
     "private dirty content\n",
   );
+  if (binary) {
+    const {
+      binaryDigest,
+      binaryReceipt,
+      binaryRequest,
+      finalChunk,
+      saveChecksum,
+      verifyBinarySave,
+    } = await import("./binary-save-cases.mjs");
+    const send = async (request) =>
+      (await operation("file-document", documentId, request)).outcome;
+    const target = path.join(checkout, docPath);
+    if (process.platform !== "win32") await chmod(target, 0o640);
+    await verifyBinarySave({
+      path: docPath,
+      send,
+      restartWorker: binary.restartWorker,
+      digestTarget: async () => binaryDigest(await readFile(target)),
+      replaceTarget: (bytes) => writeFile(target, bytes),
+    });
+
+    if (process.platform !== "win32")
+      assert.equal((await stat(target)).mode & 0o777, 0o640);
+    for (const conflict of [false, true]) {
+      const name = conflict ? "raced.nbt" : "empty-copy.nbt";
+      const id = crypto.randomUUID();
+      const empty = Buffer.alloc(0);
+      const request = (action, fields) =>
+        binaryRequest(name, id, action, fields);
+      const copy = (action, fields) => explore(request(action, fields));
+      binaryReceipt(await copy("begin", { version: null }));
+      binaryReceipt(await copy("chunk", finalChunk(empty)));
+      const copyPath = path.join(checkout, name);
+      if (conflict) await writeFile(copyPath, "appeared");
+      const result = binaryReceipt(await copy("commit", saveChecksum(empty)));
+      assert.equal(result.state, conflict ? "conflict" : "committed");
+      assert.equal(
+        await readFile(copyPath, "utf8"),
+        conflict ? "appeared" : "",
+      );
+    }
+
+    // A real legacy writer publishes the target and stops at its prepared
+    // record. The Rust worker then observes that exact upload after startup.
+    const baseline = (
+      await send({
+        type: "explorer.binary.read",
+        path: docPath,
+        offset: 0,
+        limit: 1,
+      })
+    ).result.value.version;
+    await binary.stopWorker();
+    const { BinaryFileWrites } =
+      await import("../../cantrip_worker/src/binary-file-writes.ts");
+    const legacy = new BinaryFileWrites(binary.workerDirectory, {
+      ownerId: () => ownerId,
+      componentKey: () => ({ key: surfaceKey.slice(), keyRevision: 1 }),
+    });
+    const context = {
+      serverId,
+      surfaceKind: "file-document",
+      surfaceId: documentId,
+      root: checkout,
+    };
+    const id = crypto.randomUUID();
+    const request = (action, fields) =>
+      binaryRequest(docPath, id, action, fields);
+    const bytes = Buffer.from([0, 0xe2, 0xb2, 0]);
+    try {
+      await legacy.execute(context, request("begin", { version: baseline }));
+      await legacy.execute(context, request("chunk", finalChunk(bytes)));
+      const save = legacy.storage.write.bind(legacy.storage);
+      legacy.storage.write = async (key, record) => {
+        if (record.state === "committed")
+          throw new Error("fixture lost committed receipt");
+        return save(key, record);
+      };
+      await assert.rejects(
+        legacy.execute(context, request("commit", saveChecksum(bytes))),
+        /fixture lost committed receipt/u,
+      );
+      assert.deepEqual(await readFile(target), bytes);
+    } finally {
+      await legacy.dispose();
+    }
+    await binary.startWorker();
+    const recovered = binaryReceipt(await send(request("status")));
+    assert.equal(recovered.state, "committed");
+    assert.equal(recovered.sha256, binaryDigest(bytes));
+  }
   return async () => {
     const refreshed = await call(
       "POST",

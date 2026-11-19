@@ -3,7 +3,11 @@
 use crate::{
     cantrip_os::product_files::ProductFiles,
     encryption::Service,
-    filesystem::{Scope, explorer, paths},
+    filesystem::{
+        Scope,
+        explorer::{self, binary_write},
+        paths,
+    },
     protected_content::{
         SurfaceStreamReplayGuard, open_private_state, open_surface_content_with_input,
         protect_surface_content,
@@ -22,6 +26,7 @@ use std::{
 pub struct ExplorerOperations {
     replay: Arc<Mutex<SurfaceStreamReplayGuard>>,
     guests: Option<ProductFiles>,
+    binary_writes: Option<binary_write::Writer>,
 }
 impl ExplorerOperations {
     /// All surface consumers in one runtime share admission/replay capacity.
@@ -33,6 +38,10 @@ impl ExplorerOperations {
         Self {
             replay,
             guests: Some(ProductFiles::new(directory)),
+            binary_writes: Some(binary_write::Writer::new(
+                directory,
+                &directory.join("binary-write-locks"),
+            )),
         }
     }
     pub async fn execute(
@@ -70,7 +79,16 @@ impl ExplorerOperations {
                 if !allowed || request["path"] != state["path"] {bail!("The operation does not target this file document.");}
             }
             if let Some(root) = command["root"].as_js_string() {
-                let result = explorer::execute_decoded(&paths::native(root), &request, &input, scope).await?;
+                let result = if binary_write::action(&request).is_some() {
+                    let writer = self.binary_writes.as_ref().context("This worker does not support streamed binary saves.")?;
+                    let material = service.bound_component("surface-private-state", None)?;
+                    if material.server_id != context["serverId"] {
+                        bail!("Binary write belongs to another server.");
+                    }
+                    writer.execute(root, &context, &request, json!(material.owner_id), material.component).await?
+                } else {
+                    explorer::execute_decoded(&paths::native(root), &request, &input, scope).await?
+                };
                 return Ok((json!({"ok":true,"result":result}), explorer::complete(&result)));
             }
             self.guests.as_ref().context("This worker does not support CantripOS file operations.")?

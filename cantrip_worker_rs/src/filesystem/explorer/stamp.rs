@@ -21,6 +21,10 @@ impl Stamp {
         platform_stamp(file, metadata)
     }
 
+    pub fn same_file(self, other: Self) -> bool {
+        self.device == other.device && self.inode == other.inode
+    }
+
     pub fn binary_version(self) -> String {
         let snapshot = format!(
             "{}:{}:{}:{}:{}:{}",
