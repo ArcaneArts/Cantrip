@@ -21,6 +21,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseArgs, promisify } from "node:util";
 import {
+  mcpServerConfigurationSchema,
   nativeTurnRecoveryObservationSchema,
   workerCliCommandCallSchema,
 } from "../../packages/protocol/dist/index.js";
@@ -31,12 +32,15 @@ import { protectWorkerAttachmentMetadata } from "../../cantrip_worker/src/attach
 import { OsAgentPlacements } from "../../cantrip_worker/src/os-executor/agent-placements.ts";
 import { OsFileOperations } from "../../cantrip_worker/src/os-executor/files.ts";
 import { OsNativeEnvironment } from "../../cantrip_worker/src/os-executor/native-environment.ts";
+import { osNativeMcpServers } from "../../cantrip_worker/src/os-executor/native-mcp.ts";
+import { createCantripMcpServer } from "../../cantrip_worker/src/mcp/server.ts";
 import {
   decryptChatMessageProtectedContent,
   decryptChatPlanProtectedContent,
   decryptQueuedPromptProtectedContent,
   decryptPrivateDisplayLabel,
   decryptSurfacePrivateState,
+  encryptProtectedSecret,
   wrapComponentKeyForWorker,
 } from "../../packages/crypto/dist/index.js";
 import {
@@ -119,6 +123,12 @@ const { Client } = await import(
 const { StdioClientTransport } = await import(
   requireWorker.resolve("@modelcontextprotocol/sdk/client/stdio.js")
 );
+const { StreamableHTTPClientTransport } = await import(
+  requireWorker.resolve("@modelcontextprotocol/sdk/client/streamableHttp.js")
+);
+const { InMemoryTransport } = await import(
+  requireWorker.resolve("@modelcontextprotocol/sdk/inMemory.js")
+);
 const root = await mkdtemp(
   path.join(tmpdir(), "cantrip-native-thread-ensure-"),
 );
@@ -152,6 +162,7 @@ const privateQuestion = "Private retained plan question.";
 const chatKey = new Uint8Array(32).fill(41);
 const taskKey = new Uint8Array(32).fill(37);
 const attachmentKey = new Uint8Array(32).fill(43);
+const mcpKey = new Uint8Array(32).fill(44);
 const surfaceStateKey = new Uint8Array(32).fill(47);
 const surfaceMetadataKey = new Uint8Array(32).fill(49);
 const oracle = {
@@ -428,6 +439,11 @@ const server = createServer(async (request, response) => {
                   keyRevision: 1,
                   componentKey: surfaceMetadataKey,
                 },
+                {
+                  component: "mcp-secret",
+                  keyRevision: 1,
+                  componentKey: mcpKey,
+                },
               ]
             : []),
           ...(values.taskPreparation || directTask || structuredTasks
@@ -472,7 +488,7 @@ const server = createServer(async (request, response) => {
   )
     send({
       bindingProtocolVersions: [1, 2],
-      operations: ["tool.help", "context.get"],
+      operations: ["tool.help", "context.get", "web.search", "web.read"],
     });
   else if (url.pathname === "/api/internal/agent-operations") {
     const { binding, request: call } = await requestBody(request);
@@ -2096,6 +2112,130 @@ async function guestUpload(session, fileName, bytes, mimeType = "text/plain") {
   };
 }
 
+async function guestMcpClient(document) {
+  const endpoint = new URL(`/v1/mcp/${document.bindingId}`, document.endpoint);
+  const headers = { authorization: `Bearer ${document.credential}` };
+  const incorrect = await fetch(endpoint, {
+    method: "POST",
+    headers: { authorization: "Bearer invalid" },
+  });
+  assert.equal(incorrect.status, 401);
+  assert.deepEqual(await incorrect.json(), { error: "Unauthorized" });
+  const get = await fetch(endpoint, { headers });
+  assert.equal(get.status, 405);
+  assert.equal(get.headers.get("allow"), "POST");
+
+  const fixture = { name: "guest-mcp-fixture", version: "1" };
+  const client = new Client(fixture);
+  const [referenceTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  const reference = new Client(fixture);
+  const legacy = createCantripMcpServer(
+    () => assert.fail("Comparing catalogs must not invoke a broker operation."),
+    "ide",
+    ["context_get", "tool_help", "web_search", "web_read"],
+  );
+  try {
+    await legacy.connect(serverTransport);
+    await reference.connect(referenceTransport);
+    await client.connect(
+      new StreamableHTTPClientTransport(endpoint, {
+        requestInit: { headers },
+      }),
+    );
+    assert.deepEqual(
+      await client.listTools(),
+      JSON.parse(JSON.stringify(await reference.listTools())),
+    );
+    assert.deepEqual(
+      client.getServerCapabilities(),
+      reference.getServerCapabilities(),
+    );
+    assert.equal(client.getInstructions(), reference.getInstructions());
+    const params = { name: "tool_help", arguments: { tool: "context_get" } };
+    assert.deepEqual(
+      await client.callTool(params),
+      await reference.callTool(params),
+    );
+    const hidden = await client.callTool({
+      name: "tool_help",
+      arguments: { tool: "worktree_create" },
+    });
+    assert.equal(hidden.isError, true);
+    return client;
+  } catch (error) {
+    await client.close();
+    throw error;
+  } finally {
+    await reference.close();
+    await legacy.close();
+  }
+}
+
+async function assertGuestMcpIdle(client) {
+  const attempts = contextCalls.length;
+  const idle = await client.callTool({ name: "context_get", arguments: {} });
+  assert.equal(idle.isError, true);
+  assert.match(idle.content[0].text, /no active execution binding/u);
+  assert.equal(contextCalls.length, attempts);
+}
+
+async function rejectGuestStdio({ cwd, session, provider, threadId }) {
+  const configuration = mcpServerConfigurationSchema.parse({
+    name: "local-fixture",
+    enabled: true,
+    transport: "stdio",
+    command: "/usr/bin/false",
+    args: [],
+    environment: {},
+  });
+  let legacyError;
+  assert.throws(
+    () => osNativeMcpServers([configuration]),
+    (error) => {
+      legacyError = error.message;
+      return true;
+    },
+  );
+  const id = randomUUID();
+  const protectedConfiguration = await encryptProtectedSecret({
+    ownerId,
+    component: "mcp-secret",
+    table: "mcp_servers",
+    rowId: id,
+    field: "protected_configuration",
+    keyRevision: 1,
+    componentKey: mcpKey,
+    content: configuration,
+    contentSchema: mcpServerConfigurationSchema,
+  });
+  const server = {
+    id,
+    enabled: true,
+    nameBlindIndex: "A".repeat(43),
+    protectedConfiguration,
+  };
+  const reply = await ensure({
+    cwd,
+    session,
+    provider,
+    threadId,
+    mcpServers: [server],
+  });
+  assert.equal(reply.ok, false, JSON.stringify(reply));
+  assert.equal(reply.error.message, legacyError);
+  await expectThread(
+    {
+      cwd,
+      session,
+      provider,
+      threadId,
+      mcpServers: [{ ...server, enabled: false }],
+    },
+    threadId,
+  );
+}
+
 async function verifyGuestTurn({
   session,
   cwd,
@@ -2103,6 +2243,7 @@ async function verifyGuestTurn({
   threadId,
   marker,
   uploads,
+  mcp,
 }) {
   const inputId = randomUUID();
   const prompt = await protectChatMessage({
@@ -2192,10 +2333,26 @@ async function verifyGuestTurn({
   });
   guiHistory = new GuiHistoryPeer({ fields, receipt, workerId, stamp, oracle });
   const callId = "fixture-guest-command";
+  const mcpCall = "fixture-guest-mcp";
+  const mcpTool = "mcp__cantrip__context_get";
   const events = [];
   taskResponse = (body) => {
-    if (body.input.some((item) => item.type === "function_call_output")) {
+    if (
+      body.input.some(
+        (item) =>
+          item.call_id === mcpCall && item.type === "function_call_output",
+      )
+    ) {
       return outputText;
+    }
+    if (
+      body.input.some(
+        (item) =>
+          item.call_id === callId && item.type === "function_call_output",
+      )
+    ) {
+      assert.ok(body.tools.some((tool) => tool.name === mcpTool));
+      return { name: mcpTool, call_id: mcpCall, arguments: "{}" };
     }
     const name = body.tools.find((tool) =>
       ["exec_command", "shell_command"].includes(tool.name),
@@ -2259,7 +2416,24 @@ async function verifyGuestTurn({
     );
     for (const upload of uploads)
       assert.ok(toolText.includes(upload.sha256), toolText);
+    const afterMcp = untilProvider();
+    const priorContextCalls = contextCalls.length;
     second.finish();
+    const third = await Promise.race([afterMcp, premature]);
+    const context = third.body.input.find(
+      (item) =>
+        item.type === "function_call_output" && item.call_id === mcpCall,
+    );
+    assert.ok(context, JSON.stringify(third.body.input));
+    assert.match(
+      JSON.stringify(context.output),
+      /Authorized native fixture context/u,
+    );
+    assert.deepEqual(contextCalls.slice(priorContextCalls), [
+      fields.executionLaneId,
+    ]);
+    assert.ok(!JSON.stringify(third.body).includes(mcp.credential));
+    third.finish();
     const completed = await pending;
     assert.equal(
       completed.ok,
@@ -2285,7 +2459,10 @@ async function verifyGuestTurn({
       ),
       outputText,
     );
-    assert.ok(!JSON.stringify({ completed, events }).includes(marker));
+    const published = JSON.stringify({ completed, events });
+    assert.ok(!published.includes(marker));
+    assert.ok(!published.includes(mcp.credential));
+    assert.ok(!diagnostics.includes(mcp.credential));
     assert.equal(guiPeer.terminal.terminalStatus, "completed");
     return turn.turnId;
   } finally {
@@ -2558,14 +2735,25 @@ async function verifyGuestThread() {
       );
       await guest("mv", legacyHelper, legacyHelper + ".reference");
     }
-    const recoveryTurnId = await verifyGuestTurn({
-      session,
-      cwd,
-      provider,
-      threadId,
-      marker,
-      uploads,
-    });
+    await rejectGuestStdio({ cwd, session, provider, threadId });
+    const [mcp] = await bindings();
+    const client = await guestMcpClient(mcp);
+    let recoveryTurnId;
+    try {
+      await assertGuestMcpIdle(client);
+      recoveryTurnId = await verifyGuestTurn({
+        session,
+        cwd,
+        provider,
+        threadId,
+        marker,
+        uploads,
+        mcp,
+      });
+      await assertGuestMcpIdle(client);
+    } finally {
+      await client.close();
+    }
     await stop();
     if (uploads.length) {
       const admissions = await readdir(
@@ -2596,7 +2784,7 @@ async function verifyGuestThread() {
     assert.equal(recovered.recovery.status, "completed");
     await stop();
     console.log(
-      "Native guest shell, protected Chat and History, Node placement compatibility, and restart passed.",
+      "Native guest shell, authenticated MCP and lane retirement, protected Chat and History, Node placement compatibility, and restart passed.",
     );
   } finally {
     if (container) await docker("stop", "--time", "1", container);

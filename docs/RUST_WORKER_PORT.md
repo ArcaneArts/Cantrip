@@ -6884,3 +6884,30 @@ and the managed Codex TUI were outside this validation.
 
 The Host shell, WorkerLink and terminal service relay fixture passed on
 a serial rerun after a transient input error during the concurrent run.
+
+## 175. Serve first-party Cantrip MCP for admitted Cantrip OS Chats
+
+Reference commit a940226756c462cb48ade3118f44bcf8cbab9f57 (#3338).
+
+Guest preparation advertises the supported first-party Cantrip tools through
+the worker's authenticated Streamable HTTP endpoint. The existing app-server
+client and credential stay on the owning worker. The same broker authorizes
+Host stdio and guest HTTP operations against the active Chat execution lane.
+Tool discovery and help remain available while idle. The broker retires lane
+authority at turn completion and rejects revoked credentials. Enabled
+worker-local user stdio configurations give the same error as the Node worker.
+Disabled entries remain ignored and user network configurations retain their
+existing transport.
+
+The macOS ARM64 smoke used the production Rust worker, bundled Codex, a
+network-isolated ARM64 Docker guest and a fixture Core command peer. It
+compared tool schemas and help with the Node implementation and exercised an
+actual context call during a protected guest turn. It checked wrong
+credentials, idle calls before and after execution, protected history and
+restart. A separate Rust-server PGlite fixture matched active HTTP and stdio
+results and confirmed denial after lane release and credential revocation.
+The Host MCP differential smoke passed 31 comparisons and the Windows x64
+GNU worker compiled. SSH and Windows runtime were outside this validation.
+
+The guest catalog exposes the Rust broker's implemented tools. Guest CUA MCP,
+managed Codex TUI launch, and suspended guest turns remain open.

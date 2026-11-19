@@ -12,6 +12,10 @@ use std::{
 const MAXIMUM_RESPONSE: usize = 512 * 1024;
 const DEADLINE: Duration = Duration::from_secs(55);
 
+pub(super) fn operation_timeout(operation: &str) -> Option<Duration> {
+    (!matches!(operation, "web.session.pointer" | "task.wait")).then_some(DEADLINE)
+}
+
 #[derive(Clone)]
 pub(super) struct Broker {
     http: Client,
@@ -89,10 +93,13 @@ impl Broker {
         });
         let request = mcp_host::parse("cantripMcpBrokerOperationRequestSchema", Some(&request))
             .map_err(|_| anyhow!("Cantrip MCP result validation failed."))?;
-        let timeout =
-            (!matches!(operation, "web.session.pointer" | "task.wait")).then_some(DEADLINE);
         let value = self
-            .request(Method::POST, "/v1/execute", Some(request), timeout)
+            .request(
+                Method::POST,
+                "/v1/execute",
+                Some(request),
+                operation_timeout(operation),
+            )
             .await?;
         mcp_host::parse("cantripAgentOperationResultSchema", Some(&value))
             .map_err(|_| anyhow!("Cantrip MCP result validation failed."))

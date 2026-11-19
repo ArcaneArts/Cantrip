@@ -319,6 +319,10 @@ impl Runtime {
         }
     }
 
+    pub(in crate::codex) fn remember_secret(&self, secret: JsString) {
+        self.0.session.remember_secret(secret);
+    }
+
     pub fn send(&self, message: Value) -> Result<()> {
         self.assert_live()?;
         self.0.session.send(message)
