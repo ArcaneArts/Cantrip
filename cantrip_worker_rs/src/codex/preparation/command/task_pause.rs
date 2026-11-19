@@ -7,6 +7,45 @@ use anyhow::{Context, Result, bail};
 use cantrip_wire::{Value, value::json};
 use std::{sync::Arc, time::Duration};
 
+pub(in crate::codex) struct PauseTarget {
+    pub runtime: Runtime,
+    pub thread: LoadedThread,
+    root: Root,
+}
+
+impl PauseTarget {
+    pub(in crate::codex) async fn apply(&self, intent: &Value, wait: bool) -> Result<()> {
+        let timeout = if wait || intent["paused"] == false {
+            Duration::from_secs(24 * 60 * 60)
+        } else {
+            Duration::from_secs(120)
+        };
+        let reply = self
+            .runtime
+            .request(
+                "thread/managedExecution/taskPause".into(),
+                Some(json!({
+                    "threadId":self.thread.id(), "runnerGeneration":self.root.runner,
+                    "revision":intent["scope"]["revision"], "paused":intent["paused"], "waitBoundary":wait,
+                })),
+                Some(timeout),
+                None,
+            )
+            .await?
+            .context("Codex did not acknowledge the Task pause.")?;
+        if reply["revision"] != intent["scope"]["revision"] || reply["paused"] != intent["paused"] {
+            bail!("Codex acknowledged a different Task pause intent.");
+        }
+        Ok(())
+    }
+
+    fn same(&self, other: &Self) -> bool {
+        self.thread == other.thread
+            && self.root.runner == other.root.runner
+            && self.root.binding == other.root.binding
+    }
+}
+
 pub(in crate::codex) type Key = (JsString, JsString, JsString);
 
 impl Ensurer {
@@ -34,7 +73,7 @@ impl Ensurer {
         bound: &(JsString, Value),
         chat: &JsString,
         raw: &Value,
-    ) -> Result<()> {
+    ) -> Result<Value> {
         let intent = checked("taskPauseIntentSchema", raw)?;
         self.assert_bound(bound)?;
         if intent["scope"]["workerId"].as_js_string() != Some(&self.0.worker) {
@@ -42,7 +81,29 @@ impl Ensurer {
         }
         let latch = self.task_latch(bound, chat)?;
         latch.record(intent)?;
-        self.sync_task_pause(bound, chat, &latch).await
+        self.sync_task_pause(bound, chat, &latch).await?;
+        latch
+            .current()
+            .intent
+            .context("The Task pause was not retained.")
+    }
+
+    pub(in crate::codex) fn assert_task_pause_target(
+        &self,
+        bound: &(JsString, Value),
+        chat: &JsString,
+        intent: &Value,
+        target: &PauseTarget,
+    ) -> Result<()> {
+        self.assert_bound(bound)?;
+        if self.task_latch(bound, chat)?.current().intent.as_ref() != Some(intent)
+            || !self
+                .task_pause_target(bound, chat, &intent["scope"])
+                .is_some_and(|current| current.same(target))
+        {
+            bail!("The private Task root or pause intent changed during delivery.");
+        }
+        Ok(())
     }
 
     pub(super) async fn sync_task_pause(
@@ -58,7 +119,7 @@ impl Ensurer {
                 return Ok(());
             };
             let target = self.task_pause_target(bound, chat, &intent["scope"]);
-            let Some((runtime, thread, root)) = target else {
+            let Some(target) = target else {
                 *applied = None;
                 // A task can pause before its private gate attaches.
                 if latch.applied(&intent) {
@@ -66,9 +127,14 @@ impl Ensurer {
                 }
                 continue;
             };
+            let PauseTarget {
+                runtime,
+                thread,
+                root,
+            } = &target;
             if applied.as_ref().is_some_and(|last| {
                 last.intent == intent
-                    && last.thread == thread
+                    && last.thread == *thread
                     && last.runner == root.runner
                     && last.binding == root.binding
             }) {
@@ -78,43 +144,19 @@ impl Ensurer {
                 continue;
             }
 
-            let current_root = || -> Result<()> {
-                self.assert_bound(bound)?;
-                let current = self.task_pause_target(bound, chat, &intent["scope"]);
-                if !current.is_some_and(|(_, selected, current)| {
-                    selected == thread
-                        && current.runner == root.runner
-                        && current.binding == root.binding
-                }) {
-                    bail!("The private Task root changed during pause delivery.");
-                }
-                Ok(())
-            };
+            let current_root = || self.assert_task_pause_target(bound, chat, &intent, &target);
             let paused = intent["paused"] == true;
             let adapter = runtime.admission();
             if paused {
                 adapter.set_chat_paused(chat, true)?;
             }
-            let reply = runtime.request(
-                "thread/managedExecution/taskPause".into(),
-                Some(json!({
-                    "threadId":thread.id(), "runnerGeneration":root.runner,
-                    "revision":intent["scope"]["revision"], "paused":paused, "waitBoundary":false,
-                })),
-                Some(Duration::from_secs(120)),
-                None,
-            ).await;
+            let reply = target.apply(&intent, false).await;
             self.assert_bound(bound)?;
             if latch.current().intent.as_ref() != Some(&intent) {
                 continue;
             }
             current_root()?;
-            let reply = reply?.context("Codex did not acknowledge the Task pause.")?;
-            if reply["revision"] != intent["scope"]["revision"]
-                || reply["paused"] != intent["paused"]
-            {
-                bail!("Codex acknowledged a different Task pause intent.");
-            }
+            reply?;
             if paused {
                 // A still-waiting native begin can be parked immediately
                 // without waiting for the model or a checkpoint boundary.
@@ -128,9 +170,9 @@ impl Ensurer {
             current_root()?;
             *applied = Some(Applied {
                 intent: intent.clone(),
-                thread,
-                runner: root.runner,
-                binding: root.binding,
+                thread: thread.clone(),
+                runner: root.runner.clone(),
+                binding: root.binding.clone(),
             });
             if latch.applied(&intent) {
                 return Ok(());
@@ -138,12 +180,12 @@ impl Ensurer {
         }
     }
 
-    fn task_pause_target(
+    pub(in crate::codex) fn task_pause_target(
         &self,
         bound: &(JsString, Value),
         chat: &JsString,
         scope: &Value,
-    ) -> Option<(Runtime, LoadedThread, Root)> {
+    ) -> Option<PauseTarget> {
         let owners = self.0.live_threads.lock().unwrap();
         let owner = owners.get(chat)?;
         let root = owner.task.as_ref()?;
@@ -152,6 +194,10 @@ impl Ensurer {
         }
         let runtime = owner.runtime.upgrade()?;
         owner.thread.assert_current(&runtime).ok()?;
-        Some((runtime, owner.thread.clone(), root.clone()))
+        Some(PauseTarget {
+            runtime,
+            thread: owner.thread.clone(),
+            root: root.clone(),
+        })
     }
 }

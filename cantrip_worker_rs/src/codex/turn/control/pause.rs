@@ -1,60 +1,24 @@
-use super::{Active, Binding, Capture, Ordering, Selection, Turns, output};
+use super::{Active, Binding, Ordering, Selection, Turns, output};
 use crate::{
     codex::{suspension_store::Commit, turn::receipt::Receipt},
     http::checked,
 };
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
 use cantrip_history::content::Encryption;
 use cantrip_wire::{Value, value::json};
 use std::time::Duration;
-use tokio::sync::oneshot;
 
 pub(super) const BOUNDARY_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
 
 impl Binding {
     pub(in crate::codex::turn) fn capture(&self, command: &Value, channel: output::Capture) {
-        // All fields tracked by the Rust observer come from the ordered
-        // stream. The other fields use the Node continuation's empty values.
-        let empty = Value::Array(Vec::new());
         let mut model = command["model"].clone();
-        // Keep the original worker model identity even on an inherited route.
         model["routeId"] = self.session["modelRouteId"].clone();
-        let seed = json!({
-            "version":1, "chatId":self.session["chatId"], "cwd":command["cwd"],
-            "startedAtMs":chrono::Utc::now().timestamp_millis(), "executionKind":"chat",
-            "providerId":command["provider"]["id"], "providerKind":command["provider"]["kind"],
-            "model":model, "baseline":empty, "initialSettings":Value::Null,
-            "nativeModelAttribution":Value::Null,"inheritThreadSettings":true,
-            "collaborationMode":Value::Null,"contextUsage":Value::Null,"contextUsageUpdatedAtMs":Value::Null,
-            "durationMs":Value::Null,"diffChanges":empty,"commandTelemetry":empty,"completedCommandIds":empty,
-            "fileStartedAtMs":empty,"itemStartedAtMs":empty,"liveAgentMessageFingerprints":empty,
-            "observedActivityFingerprints":empty,"pendingActivities":empty,"pendingAgentMessage":Value::Null,
-            "streamingAgentMessage":Value::Null,"reasoningSummaries":empty,"structuredChat":false,
-            "structuredOutputSchema":Value::Null,"goalCompletion":Value::Null,
-        });
-        self.restore_capture(channel, seed);
+        self.restore_capture(channel, output::continuation_seed(command, model, None));
     }
 
     pub(super) fn restore_capture(&self, channel: output::Capture, seed: Value) {
-        let _ = self.checkpoint.set(Capture {
-            events: channel,
-            seed,
-        });
-    }
-
-    async fn continuation(&self) -> Result<Value> {
-        let capture = self
-            .checkpoint
-            .get()
-            .context("The native turn observer was not attached.")?;
-        let (answer, receive) = oneshot::channel();
-        capture
-            .events
-            .send(output::Event::Checkpoint(capture.seed.clone(), answer))
-            .map_err(|_| anyhow!("The native turn observer ended before capture."))?;
-        receive
-            .await
-            .context("The native turn observer ended before capture.")
+        let _ = self.checkpoint.set(output::Continuation { channel, seed });
     }
 
     pub(super) fn matches_checkpoint<'a>(
@@ -228,7 +192,12 @@ impl Turns {
         {
             bail!("Codex suspended a different native turn.");
         }
-        let continuation = binding.continuation().await?;
+        let continuation = binding
+            .checkpoint
+            .get()
+            .context("The native turn observer was not attached.")?
+            .snapshot()
+            .await?;
         let scope = receipt.scope();
         let evidence = self
             .suspensions

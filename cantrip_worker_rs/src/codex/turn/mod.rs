@@ -46,6 +46,7 @@ use tokio::sync::{Mutex as AsyncMutex, watch};
 pub(crate) const RUN: &str = "chat.turn";
 pub(crate) const INTERRUPT: &str = "chat.interrupt";
 pub(crate) const CONTROL: &str = "chat.native-control";
+pub(crate) use control::task_pause::COMMAND as TASK_PAUSE;
 pub(crate) const RESUME: &str = "chat.suspension.resume";
 pub(crate) const STOP_SUSPENSION: &str = "chat.suspension.stop";
 pub(crate) const COMPLETE: &str = "chat.native-logical.complete";
@@ -93,6 +94,7 @@ struct TaskTurn {
 struct Active {
     root: Option<receipt::Operation>,
     control: OnceLock<control::Binding>,
+    task: OnceLock<task::checkpoint::Checkpoint>,
     logical_finished: AtomicBool,
     preparation: Abort,
     phase: Mutex<Phase>,
@@ -493,6 +495,7 @@ impl Turns {
             logical_finished: AtomicBool::new(root.is_none()),
             root: root.clone(),
             control: OnceLock::new(),
+            task: OnceLock::new(),
             preparation: abort,
             phase: Mutex::new(Phase::Preparing(
                 incoming["threadId"].as_js_string().cloned(),
@@ -732,7 +735,11 @@ impl Turns {
                         return Err(error);
                     }
                     if let Some(binding) = active.control.get() {
-                        binding.capture(&command, capture);
+                        binding.capture(&command, capture.clone());
+                    }
+                    if let Some(task) = &task {
+                        let checkpoint = task.turn.checkpoint(&command, capture);
+                        let _ = active.task.set(checkpoint);
                     }
                     let reply = runtime
                         .request("turn/start".into(), Some(params), Some(RPC_TIMEOUT), None)

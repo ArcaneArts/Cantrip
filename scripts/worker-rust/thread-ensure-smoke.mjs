@@ -62,6 +62,7 @@ const { values } = parseArgs({
     outcomes: { type: "boolean" },
     taskPreparation: { type: "boolean" },
     directTask: { type: "boolean" },
+    taskCheckpoint: { type: "boolean" },
     structuredTasks: { type: "boolean" },
     taskGoal: { type: "boolean" },
     taskPause: { type: "boolean" },
@@ -75,6 +76,7 @@ const { values } = parseArgs({
   },
 });
 assert.ok(values.worker && values.codex);
+const directTask = values.directTask || values.taskCheckpoint;
 const taskGoals = values.taskGoal || values.taskPause;
 const structuredTasks = values.structuredTasks || taskGoals;
 const requireWorker = createRequire(
@@ -362,7 +364,7 @@ const server = createServer(async (request, response) => {
           values.queuedSettings ||
           values.queuedShell ||
           values.taskPreparation ||
-          values.directTask ||
+          directTask ||
           structuredTasks
             ? [
                 {
@@ -381,7 +383,7 @@ const server = createServer(async (request, response) => {
                 },
               ]
             : []),
-          ...(values.taskPreparation || values.directTask || structuredTasks
+          ...(values.taskPreparation || directTask || structuredTasks
             ? [
                 {
                   component: "task-content",
@@ -571,6 +573,7 @@ async function ensure(
         fields.type === "chat.native-control" ||
         fields.type === "chat.suspension.resume" ||
         fields.type === "chat.suspension.stop" ||
+        fields.type === "chat.pause.set" ||
         fields.type === "chat.queue.prepare" ||
         fields.type === "chat.queue.changed" ||
         fields.type?.startsWith("chat.native-logical.") ||
@@ -1972,7 +1975,7 @@ try {
   };
   await start();
   let taskInputs;
-  if (values.taskPreparation || values.directTask || structuredTasks) {
+  if (values.taskPreparation || directTask || structuredTasks) {
     taskInputs = await verifyTaskPreparation({
       dispatch: ensure,
       ownerId,
@@ -2060,7 +2063,7 @@ try {
     );
   }
   if (values.protected || values.receipts) await verifyProtectedTurns();
-  if (values.directTask) {
+  if (directTask) {
     await verifyDirectTask({
       source: taskInputs.direct,
       outputText,
@@ -2077,6 +2080,15 @@ try {
       untilProvider,
       available,
       generation: () => workerGeneration,
+      checkpoint: values.taskCheckpoint
+        ? {
+            oracle,
+            calls: () => providerCalls,
+            respond: (answer) => {
+              taskResponse = answer;
+            },
+          }
+        : undefined,
       attach: (dispatch, outcome) => {
         taskDispatch = dispatch;
         taskOutcome = outcome;

@@ -107,6 +107,7 @@ impl Autonomous {
             let active = Arc::new(Active {
                 root: Some(root),
                 control: OnceLock::new(),
+                task: OnceLock::new(),
                 logical_finished: AtomicBool::new(true),
                 preparation: abort,
                 phase: Mutex::new(Phase::Preparing(Some(thread.clone()))),

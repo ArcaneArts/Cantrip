@@ -2,6 +2,7 @@
 mod pause;
 mod restore;
 mod stop;
+pub(crate) mod task_pause;
 use super::{Active, Phase, RPC_TIMEOUT, Runtime, Turns, output};
 use crate::{chat_content::Scope, codex::rpc_requests::Failure, http::checked};
 use anyhow::{Context, Result, bail};
@@ -44,14 +45,9 @@ pub(super) struct Binding {
     session: Value,
     permission: Value,
     published: watch::Sender<Option<bool>>,
-    checkpoint: OnceLock<Capture>,
+    checkpoint: OnceLock<output::Continuation>,
     pause_control: Mutex<()>,
     thread_version: u64,
-}
-
-struct Capture {
-    events: output::Capture,
-    seed: Value,
 }
 
 impl Binding {

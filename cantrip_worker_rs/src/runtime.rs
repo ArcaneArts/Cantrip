@@ -455,7 +455,7 @@ async fn cycle(
                     });
                     continue;
                 }
-                if matches!(kind, crate::codex::turn::RUN | crate::codex::turn::INTERRUPT | crate::codex::turn::CONTROL | crate::codex::turn::STOP_SUSPENSION) {
+                if matches!(kind, crate::codex::turn::RUN | crate::codex::turn::INTERRUPT | crate::codex::turn::CONTROL | crate::codex::turn::STOP_SUSPENSION | crate::codex::turn::TASK_PAUSE) {
                     let turns = turns.clone();
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();
@@ -466,6 +466,7 @@ async fn cycle(
                             Some(crate::codex::turn::INTERRUPT) => (turns.interrupt(command).await, None),
                             Some(crate::codex::turn::CONTROL) => (turns.control(command).await, None),
                             Some(crate::codex::turn::STOP_SUSPENSION) => (turns.stop_suspension(command).await, None),
+                            Some(crate::codex::turn::TASK_PAUSE) => (turns.task_pause(command).await, None),
                             _ => {
                                 let request_id = request["requestId"].clone();
                                 let stream = outgoing.clone();

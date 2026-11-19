@@ -4827,3 +4827,33 @@ passed in the same run.
 
 Task checkpoint capture and restoration, remaining worker parity, and
 production cutover remain open.
+
+## 100. Capture checkpoints for explicit Task inputs
+
+Reference commit `2c2baad7c0c5fc5891b48875309b992fa1d6acf8` (#3262).
+
+The Rust worker now handles the Task form of `chat.pause.set` on the
+private Codex gate. Nonwaiting commands acknowledge the admission latch.
+Boundary commands match the selected thread, revision and explicit Task
+input. The response identifies the same worker and inference-admission
+generation that Core recorded at native binding. Live Resume applies
+the newer revision to the current gate.
+
+A durable Pause waits for the selected native turn's checkpoint and saves
+its worker continuation in the existing Task-content protected format.
+It keeps the original opaque round request or first Goal publication,
+its output mode and the protected message identities already observed.
+Retries of the same pause revision confirm and return the same native
+checkpoint and storage ID.
+
+The macOS ARM64 smoke ran the real Rust worker and bundled Codex with
+local Core and provider peers. It stopped a direct Task at a tool
+boundary, checked that the provider request count held, and opened the
+saved source with Node's suspension store. It checked the bound actor,
+repeated Pause, a protected message identity, and continuation of the
+same native turn through live Resume. Chat Pause and Resume, Task Goal
+pause notices and execution, structured Task results, and 22 focused
+Node reference tests passed.
+
+Autonomous Goal checkpoint capture, post-restart Task restoration,
+durable Task Stop, and production cutover remain open.

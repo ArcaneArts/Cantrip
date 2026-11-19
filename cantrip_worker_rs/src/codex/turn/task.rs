@@ -1,4 +1,5 @@
 //! Protected Task rounds use the same physical turn runner as host Chat.
+pub(super) mod checkpoint;
 pub(in crate::codex) mod cycle;
 pub(super) mod first_input;
 mod structured;

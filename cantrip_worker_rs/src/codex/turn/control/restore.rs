@@ -119,6 +119,7 @@ impl Turns {
         let active = Arc::new(Active {
             root: Some(root.clone()),
             control: OnceLock::from(binding),
+            task: OnceLock::new(),
             logical_finished: AtomicBool::new(false),
             preparation: abort,
             phase: Mutex::new(Phase::Preparing(Some(thread.clone()))),
