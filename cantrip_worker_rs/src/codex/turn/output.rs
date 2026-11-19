@@ -10,29 +10,35 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::sync::mpsc::{self, UnboundedReceiver};
+use tokio::sync::{mpsc, oneshot};
 
-type Events = UnboundedReceiver<Value>;
+pub(super) enum Event {
+    Frame(Value),
+    Checkpoint(Value, oneshot::Sender<Value>),
+}
+type Events = mpsc::UnboundedReceiver<Event>;
+pub(super) type Capture = mpsc::UnboundedSender<Event>;
 const STREAM_INTERVAL: Duration = Duration::from_millis(80);
 
 pub(super) fn subscribe(
     observation: &RuntimeHub,
     thread: &JsString,
-) -> Result<(Subscription, Events)> {
+) -> Result<(Subscription, Events, Capture)> {
     let (observed, events) = mpsc::unbounded_channel();
+    let capture = observed.clone();
     let subscription = observation.observe(
         thread.clone(),
         Observer {
             capture: Arc::new(move |frame| {
                 if observes(&frame["method"]) {
-                    let _ = observed.send(frame);
+                    let _ = observed.send(Event::Frame(frame));
                 }
                 Ok(None)
             }),
             on_error: Arc::new(|_, _| Ok(())),
         },
     )?;
-    Ok((subscription, events))
+    Ok((subscription, events, capture))
 }
 
 fn observes(method: &Value) -> bool {
@@ -49,7 +55,7 @@ fn observes(method: &Value) -> bool {
     )
 }
 
-async fn next(events: &mut Events, signal: &Signal) -> Result<Value> {
+async fn next(events: &mut Events, signal: &Signal) -> Result<Event> {
     tokio::select! {
         result = events.recv() => result.context("Native turn observation ended."),
         error = signal.cancelled() => Err(error.into()),
@@ -58,8 +64,9 @@ async fn next(events: &mut Events, signal: &Signal) -> Result<Value> {
 
 pub(super) async fn started(events: &mut Events, signal: &Signal) -> Result<JsString> {
     loop {
-        let frame = next(events, signal).await?;
-        if frame["method"] == "turn/started" {
+        if let Event::Frame(frame) = next(events, signal).await?
+            && frame["method"] == "turn/started"
+        {
             return id(&frame["params"]["turn"]["id"], "native turn identity");
         }
     }
@@ -69,6 +76,7 @@ struct Pending {
     id: JsString,
     text: JsString,
     updated: Option<Instant>,
+    last_published: JsString,
     changed: bool,
 }
 
@@ -96,7 +104,33 @@ pub(super) async fn collect(
         error: None,
     };
     loop {
-        let frame = next(events, signal).await?;
+        let frame = match next(events, signal).await? {
+            Event::Frame(frame) => frame,
+            Event::Checkpoint(mut snapshot, answer) => {
+                snapshot["threadId"] = json!(thread);
+                snapshot["turnId"] = json!(turn);
+                snapshot["capturedAtMs"] = json!(
+                    chrono::Utc::now()
+                        .timestamp_millis()
+                        .max(snapshot["startedAtMs"].as_i64().unwrap_or_default())
+                );
+                snapshot["delta"] = json!(delta);
+                snapshot["finalText"] = json!(final_text);
+                snapshot["latestUsage"] = usage.clone();
+                if let Some((id, text, phase)) = &staged {
+                    snapshot["pendingAgentMessage"] =
+                        publisher.agent_message(id, text, phase, false, "item/completed");
+                }
+                if let Some(pending) = &message {
+                    snapshot["streamingAgentMessage"] = json!({
+                        "id":pending.id, "text":pending.text, "lastEmittedText":pending.last_published,
+                        "phase":"commentary","correlation":publisher.correlation(&pending.id,"item/agentMessage/delta"),
+                    });
+                }
+                let _ = answer.send(snapshot);
+                continue;
+            }
+        };
         let params = &frame["params"];
         let method = frame["method"].as_str().unwrap_or_default();
         let native_turn = if matches!(method, "turn/started" | "turn/completed") {
@@ -133,6 +167,7 @@ pub(super) async fn collect(
                     id: id.clone(),
                     text: "".into(),
                     updated: None,
+                    last_published: "".into(),
                     changed: false,
                 });
                 pending.text = concat(&[pending.text, part.clone()]);
@@ -142,6 +177,7 @@ pub(super) async fn collect(
                     .is_none_or(|updated| updated.elapsed() >= STREAM_INTERVAL)
                 {
                     publisher.message(id, &pending.text.trim(), &json!("commentary"), true, method);
+                    pending.last_published = pending.text.trim();
                     pending.updated = Some(Instant::now());
                     pending.changed = false;
                 }
@@ -259,14 +295,28 @@ impl Publisher<'_> {
         }
         self.send(json!({
             "type": "agent.message",
-            "message": json!({
-                "id": id, "text": text, "phase": phase,
-                "streaming": streaming,
-                "correlation": json!({
-                    "sourceMethod": method, "diagnosticId": Value::Null,
-                    "threadId": self.thread, "turnId": self.turn, "itemId": id,
-                }),
-            }),
+            "message": self.agent_message(id, text, phase, streaming, method),
         }));
+    }
+
+    fn agent_message(
+        &self,
+        id: &JsString,
+        text: &JsString,
+        phase: &Value,
+        streaming: bool,
+        method: &str,
+    ) -> Value {
+        json!({
+            "id":id,"text":text,"phase":phase,"streaming":streaming,
+            "correlation":self.correlation(id, method),
+        })
+    }
+
+    fn correlation(&self, id: &JsString, method: &str) -> Value {
+        json!({
+            "sourceMethod":method,"diagnosticId":Value::Null,
+            "threadId":self.thread,"turnId":self.turn,"itemId":id,
+        })
     }
 }

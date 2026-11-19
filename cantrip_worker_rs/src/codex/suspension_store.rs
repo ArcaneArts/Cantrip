@@ -10,7 +10,7 @@ use cantrip_history::{
     files::{ensure_directory, flush_directory, queue, read_json, write_immutable},
     source_digest,
 };
-use cantrip_wire::{Value, value::json};
+use cantrip_wire::{JsString, Value, value::json};
 use sha2::{Digest, Sha256};
 use std::{
     io,
@@ -38,6 +38,7 @@ pub struct Commit<'a> {
     pub runtime_fingerprint: &'a Value,
     pub continuation: Option<&'a Value>,
     pub task_continuation: Option<&'a Value>,
+    pub binding: Option<(&'a JsString, &'a JsString)>,
 }
 
 pub struct Opened {
@@ -158,6 +159,12 @@ impl Store {
     pub async fn commit(&self, input: Commit<'_>) -> Result<Value> {
         let source = validate(SOURCE, input.source)?;
         let scope = self.scope()?;
+        if input.binding.is_some_and(|(owner, server)| {
+            scope["ownerId"].as_js_string() != Some(owner)
+                || scope["serverId"].as_js_string() != Some(server)
+        }) {
+            bail!("Native suspension ownership changed during persistence.");
+        }
         let suspension = validate("nativeTurnSuspensionSchema", input.suspension)?;
         if source["threadId"] != suspension["threadId"] {
             bail!("Native suspension belongs to a different native thread.");

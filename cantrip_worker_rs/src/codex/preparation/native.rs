@@ -28,6 +28,10 @@ impl LoadedThread {
         &self.id
     }
 
+    pub(in crate::codex) fn version(&self) -> u64 {
+        self.version
+    }
+
     pub fn assert_current(&self, runtime: &Runtime) -> Result<()> {
         if !runtime.is_live() || runtime.generation() != self.generation {
             bail!("The native runtime changed during thread preparation.");

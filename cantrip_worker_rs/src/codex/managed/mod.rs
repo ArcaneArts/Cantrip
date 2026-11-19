@@ -53,6 +53,7 @@ pub struct Launch {
 struct Inner {
     id: JsString,
     codex_home: PathBuf,
+    version_raw: Value,
     generation: String,
     session: Session,
     history: Arc<RuntimeHub>,
@@ -213,6 +214,9 @@ impl Runtime {
         let runtime = Self(Arc::new_cyclic(|inner| Inner {
             id: profile.id.clone(),
             codex_home: home,
+            version_raw: host.compatibility["version"]["raw"]
+                .as_js_string()
+                .map_or_else(|| json!("unknown"), |version| json!(version)),
             generation,
             history: history::source(session.history(), inner.clone()),
             session,
@@ -235,6 +239,10 @@ impl Runtime {
 
     pub fn id(&self) -> &JsString {
         &self.0.id
+    }
+
+    pub(in crate::codex) fn version_raw(&self) -> &Value {
+        &self.0.version_raw
     }
 
     pub(in crate::codex) fn codex_home(&self) -> &Path {

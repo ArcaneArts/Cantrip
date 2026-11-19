@@ -70,7 +70,7 @@ impl GoalCycle {
             output: Mutex::default(),
         });
         let activation = (self.activate)()?;
-        let (observation, mut events) = output::subscribe(&self.observation, &thread)?;
+        let (observation, mut events, _) = output::subscribe(&self.observation, &thread)?;
         let source = match self
             .client
             .authorize_goal_cycle(owner, server, &self.parent, input, signal)
