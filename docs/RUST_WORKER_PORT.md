@@ -141,7 +141,7 @@ loaded by a production service.
 | Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
 | Terminals/run supervision          | Terminal manager/canonical/private state, run-configuration providers and supervisors                                                     | Native host service reconciliation/restart and owned PTY supervision                                                                                                                                                                                                                                                                                                                                    | Actual encrypted server/worker service enable, idempotence, restart, recovery and disable pass. Interactive commands, canonical terminal/replay, attachment/input/resize, CLI broker environments, run providers and delegated OS services remain pending.                                                                       |
 | WorkerLink/direct/tunnels | Gateways, peer/WebRTC, direct broker, tunnel protection and routing | Native installed authority, live observations, encrypted Host terminals and TCP, WebDAV shares, direct tickets, and LAN and WAN peer carriage | Continue managed console and guest/surface adapters. Local peer fixtures cover authenticated negotiation, encrypted TCP, credit, renewal, and revocation. |
-| Browsers/surfaces/computer use | Browser discovery, browser/desktop adapters, remote surfaces, computer use, and managed web runtimes | Native browser-service discovery and protected stream formats | Per-browser discovery exercised with both Rust services. Browser and desktop sessions, capture/input, managed runtimes, and computer-use integrations remain open. |
+| Browsers/surfaces/computer use | Browser discovery, browser/desktop adapters, remote surfaces, computer use, and managed web runtimes | Native browser-service discovery, protected stream formats, and the shared Chromium process and CDP driver | Per-browser discovery exercised with both Rust services. Native Chromium health check exercised real page loading, accessibility and context isolation. Connect the driver to surface and managed-runtime owners, then port capture, input and computer-use integrations. |
 | MCP/CLI/CodeGraph                  | `mcp/*`, CLI broker, computer-use MCP, codegraph/runtime/supervisor                                                                       | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Native stdio/HTTP helpers, generated/persisted launch commands, binding/generation scopes, CLI and managed-runtime fixtures                                                                                                                                                                                                      |
 | Cantrip OS                         | `cantrip_os/host`, `os-executor/*`, native MCP/run execution                                                                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Port Node host orchestration, Docker/guest/lifecycle/files/PTY/tunnels/packages/backups/system/checkpoints; retain independent non-Node guest helpers                                                                                                                                                                            |
 | Upgrade and packaging              | profile converter/database-transfer, server profile preparation, desktop services/worker, distribution/runtime scripts, worker Dockerfile | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Node-free legacy conversion/export/restore, desktop/standalone artifacts, existing-profile reopen and actual child-process/runtime audit                                                                                                                                                                                         |
@@ -5929,3 +5929,36 @@ Node-free worker PATH. Focused tests covered Linux and Windows listener
 formats. Linux and Windows runtime checks were outside this cycle.
 Project-wide discovery continues to depend on a worker's browser surface
 capability, which the native worker can advertise when that service lands.
+
+
+## 140. Launch and control Chromium without the Node driver
+
+Reference commit `812304f5c52c241dbbc951ca07d9c5482a5a7c6c` (#3302).
+
+The `cantrip-browser` crate launches Chromium in an explicit profile and
+connects directly to the browser's loopback DevTools endpoint. The driver
+correlates requests and filters flattened target events. It limits the
+message size, pending requests, queued writes and buffered events. Close
+asks the browser to exit and reaps it. If the child stays alive, the owner
+uses bounded termination and reports the outcome. Cancellation and failed
+startup use the same process ownership, with a process group on Unix and
+the existing Windows Job Object adapter.
+
+The native `chromium-probe` entry point creates a temporary profile, runs
+two isolated contexts, and resolves navigation events for the actual page
+loader. It verifies an accessibility heading and button and checks that
+page storage stays within its context. It also checks that Chromium can
+evaluate script and that the worker can close the targets and process.
+
+On macOS ARM64, Chrome for Testing and Chromium's headless shell 153
+both passed the page and isolation checks with Node absent from PATH.
+The headless shell exited through DevTools and matched the Node
+Playwright reference. Chrome for Testing acknowledged the protocol close
+in the direct comparison and stayed alive. The native probe reported
+forced termination after reaping it. Both probe profiles were removed.
+A process that exited before publishing DevTools returned the startup
+failure and released the temporary profile.
+Focused unit tests covered launch output and request/event correlation.
+The crate passed compile checks for Linux x64 and Windows x64.
+Production browser surfaces and managed runtime installation still need
+integration with the new driver.

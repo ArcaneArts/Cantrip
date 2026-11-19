@@ -7,6 +7,9 @@ fn main() -> Result<()> {
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("mcp")) {
         return cantrip_worker::mcp::run(std::env::args_os().skip(2));
     }
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("chromium-probe")) {
+        return cantrip_worker::browser_probe::run(std::env::args_os().skip(2));
+    }
     #[cfg(target_os = "linux")]
     codex_utils_pty::init_spawn_helper(std::env::args_os());
     let mut stdin = false;
@@ -20,7 +23,7 @@ fn main() -> Result<()> {
             "--shutdown-on-stdin-close" => stdin = true,
             "--help" => {
                 println!(
-                    "cantrip-worker [--shutdown-on-stdin-close] [--env-file-if-exists=<path>] [--version]\ncantrip-worker mcp --connection <path>\nNative worker conversion in progress; see docs/RUST_WORKER_PORT.md for implemented capabilities."
+                    "cantrip-worker [--shutdown-on-stdin-close] [--env-file-if-exists=<path>] [--version]\ncantrip-worker mcp --connection <path>\ncantrip-worker chromium-probe <executable>\nNative worker conversion in progress; see docs/RUST_WORKER_PORT.md for implemented capabilities."
                 );
                 return Ok(());
             }

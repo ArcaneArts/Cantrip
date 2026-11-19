@@ -530,6 +530,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
+name = "cantrip-browser"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "cantrip-host",
+ "cantrip-transport",
+ "cantrip-wire",
+ "codex-utils-pty",
+ "futures",
+ "libc",
+ "tokio",
+ "tokio-tungstenite 0.29.0",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "cantrip-config"
 version = "0.0.0"
 dependencies = [
@@ -750,6 +767,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "bytes",
+ "cantrip-browser",
  "cantrip-config",
  "cantrip-crypto",
  "cantrip-framing",
