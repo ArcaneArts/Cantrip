@@ -34,6 +34,7 @@ struct View {
     session: Value,
     chat: JsString,
     cwd: JsString,
+    local_directory: PathBuf,
     permission: Value,
     command: Value,
 }
@@ -113,6 +114,7 @@ impl Turns {
             session,
             chat,
             cwd: placement,
+            local_directory: cwd.clone(),
             permission: command["permissionProfileId"].clone(),
             command,
         });

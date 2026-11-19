@@ -1,6 +1,9 @@
 //! Authenticated retained native inputs shared by queue preparation and execution.
+mod media;
+
 use super::Scope;
 use crate::{
+    attachments::Store,
     http::checked,
     native_items::{array, join, text},
 };
@@ -15,7 +18,7 @@ use cantrip_wire::{
     JsString, Value, parse_json_text, payload_digest, text::whitespace, value::json,
 };
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
 const NATIVE_INPUT: &str = "managedQueueNativeInputSchema";
 
@@ -89,13 +92,15 @@ pub(crate) fn open_native(
 
 /// Keep the native vector (including text spans and reference items) beside
 /// the ordinary protected queue display and pending user message.
-pub(crate) fn retain_console(
+pub(crate) async fn retain_console(
     scope: &Scope,
+    store: &Store,
     chat: &JsString,
     operation: &str,
-    params: &Value,
+    params: &mut Value,
     configuration: &Value,
     mode: &str,
+    console_directory: &Path,
 ) -> Result<Value> {
     let prompt = stable_id(&json!([
         json!("cantrip:deferred-terminal"),
@@ -109,7 +114,35 @@ pub(crate) fn retain_console(
         json!(chat),
         json!(prompt)
     ]));
-    let input = array(&params["input"])?;
+    let client_id = params["clientUserMessageId"]
+        .as_js_string()
+        .cloned()
+        .unwrap_or_else(|| format!("cantrip:{message}").into());
+    anyhow::ensure!(
+        !client_id.is_empty() && client_id.len() <= 255,
+        "Invalid native user message identity."
+    );
+    let mut request = checked(
+        NATIVE_INPUT,
+        &json!({
+            "version":1, "input":params["input"], "displayText":"",
+            "action":"literal", "executionMethod":"turn/start",
+        }),
+    )?;
+    let Value::Array(input) = &mut request["input"] else {
+        unreachable!("validated native input vector");
+    };
+    let projected = media::project(
+        scope,
+        store,
+        chat,
+        &prompt,
+        operation,
+        std::mem::take(input),
+        console_directory,
+    )
+    .await?;
+    let input = &projected.input;
     let display = native_text(input)?.trim();
     let display = if display.is_empty() {
         join(
@@ -137,10 +170,10 @@ pub(crate) fn retain_console(
         display
     };
     let native = json!({
-        "version":1, "input":params["input"], "displayText":display, "action":"literal",
-        "executionMethod":"turn/start", "attachmentMap":Vec::<Value>::new(), "retainedTurnStart":true,
+        "version":1, "input":input, "displayText":display, "action":"literal",
+        "executionMethod":"turn/start", "attachmentMap":projected.map, "retainedTurnStart":true,
     });
-    let raw = super::turn(
+    let raw = super::turn_with_attachments(
         scope,
         &json!({
             "promptId":prompt, "messageId":message, "text":display, "mode":mode,
@@ -150,24 +183,18 @@ pub(crate) fn retain_console(
             "subagentModelId":configuration["subagentDefaults"]["model"]["id"],
             "subagentReasoningEffort":configuration["subagentDefaults"]["model"]["reasoningEffort"],
         }),
+        &projected.summaries,
     )?;
-    let client_id = params["clientUserMessageId"]
-        .as_js_string()
-        .cloned()
-        .unwrap_or_else(|| format!("cantrip:{message}").into());
-    anyhow::ensure!(
-        !client_id.is_empty() && client_id.len() <= 255,
-        "Invalid native user message identity."
-    );
     let mut queued = raw["queuedPrompt"].clone();
     queued["protectedNativeInput"] = seal_native(scope, &json!(chat), &json!(prompt), &native)?;
     queued["nativeAction"] = json!("literal");
     queued["executionMethod"] = json!("turn/start");
     queued["nativeClientUserMessageId"] = json!(client_id);
     queued["worktreeId"] = configuration["session"]["worktreeId"].clone();
+    params["input"] = Value::Array(projected.input);
     Ok(json!({
         "prompt":checked("queuedPromptOpaqueContentSchema", &queued)?,
-        "attachments":Vec::<Value>::new(),
+        "attachments":projected.attachments,
     }))
 }
 

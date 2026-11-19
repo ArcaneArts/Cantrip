@@ -66,9 +66,18 @@ async fn run(
         "The managed console owner changed."
     );
     let operation = uuid::Uuid::new_v4().to_string();
-    let (params, mode) = normalize(view, &frame["params"]).await?;
-    let retained =
-        queue::retain_console(&scope, &view.chat, &operation, &params, &view.command, mode)?;
+    let (mut params, mode) = normalize(view, &frame["params"]).await?;
+    let retained = queue::retain_console(
+        &scope,
+        &view.turns.attachments,
+        &view.chat,
+        &operation,
+        &mut params,
+        &view.command,
+        mode,
+        &view.local_directory,
+    )
+    .await?;
     frame["params"] = params;
     frame["params"]["clientUserMessageId"] =
         retained["prompt"]["nativeClientUserMessageId"].clone();
@@ -186,18 +195,6 @@ async fn normalize(view: &View, requested: &Value) -> Result<(Value, &'static st
         );
     }
 
-    let items = requested["input"]
-        .as_array()
-        .context("The console prompt requires native input.")?;
-    ensure!(
-        items.iter().all(|item| {
-            !matches!(item["type"].as_str(), Some("localImage" | "localAudio"))
-                && !item["url"]
-                    .as_str()
-                    .is_some_and(|url| url.starts_with("data:"))
-        }),
-        "This console requires a managed upload for local or inline media."
-    );
     let mut params = json!({
         "threadId":thread, "input":requested["input"],
         "cwd":view.cwd, "runtimeWorkspaceRoots":vec![view.cwd.clone()],

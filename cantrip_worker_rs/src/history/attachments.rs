@@ -4,7 +4,7 @@ use crate::{
     attachments::{
         Store as Files,
         content::{self, Keys},
-        paths::{MAX_BYTES, MAX_CHUNK_BYTES, safe_filename},
+        paths::{MAX_BYTES, safe_filename},
     },
     filesystem::paths,
     native_items::{checked, obj, s, text},
@@ -140,19 +140,7 @@ impl Store {
                 };
                 if !verified {
                     ensure(file.parent().unwrap().to_path_buf()).await?;
-                    let operation: cantrip_wire::JsString = Uuid::new_v4().to_string().into();
-                    this.0.files.begin(chat.clone(), id.clone(), filename, input.bytes.len() as f64, operation.clone(), expected.digest.clone()).await?;
-                    let upload: Result<()> = async {
-                        let count = input.bytes.len().div_ceil(MAX_CHUNK_BYTES).max(1);
-                        for index in 0..count {
-                            let start = index * MAX_CHUNK_BYTES;
-                            let end = ((index + 1) * MAX_CHUNK_BYTES).min(input.bytes.len());
-                            this.0.files.append(chat.clone(), id.clone(), index as f64, Zeroizing::new(input.bytes[start..end].to_vec()), operation.clone(), index == count - 1).await?;
-                        }
-                        this.0.files.complete(chat.clone(), id.clone(), operation.clone()).await?;
-                        Ok(())
-                    }.await;
-                    if let Err(error) = upload { this.0.files.abort(chat, id, operation).await?; return Err(error); }
+                    this.0.files.store_bytes(&chat, &id, filename, &input.bytes, expected.digest.clone()).await?;
                 }
                 let handle = fs::File::open(&file).await?;
                 handle.sync_all().await?;

@@ -3,7 +3,7 @@
 pub(crate) mod queue;
 
 use crate::{
-    attachments::content::{self as attachment, ServiceKeys},
+    attachments::content::{self as attachment, Keys, ServiceKeys},
     encryption::Service,
     history::EncryptionService,
     http::checked,
@@ -58,6 +58,20 @@ impl Encryption for Scope {
 
     fn material(&self, revision: Option<u64>) -> Result<Material> {
         let grant = self.service.material(revision)?;
+        if grant.owner_id != self.owner || grant.server_id != self.server {
+            bail!("The worker binding changed during protected chat processing.");
+        }
+        Ok(grant)
+    }
+}
+
+impl Keys for Scope {
+    fn attachment_identity(&self) -> Result<(JsString, JsString)> {
+        self.identity()
+    }
+
+    fn attachment_material(&self) -> Result<Material> {
+        let grant = ServiceKeys(self.service.0.clone()).attachment_material()?;
         if grant.owner_id != self.owner || grant.server_id != self.server {
             bail!("The worker binding changed during protected chat processing.");
         }
@@ -146,13 +160,23 @@ pub(crate) fn execute(service: Arc<Service>, command: &Value) -> Result<Value> {
 }
 
 fn turn(scope: &Scope, command: &Value) -> Result<Value> {
+    turn_with_attachments(scope, command, &[])
+}
+
+fn turn_with_attachments(scope: &Scope, command: &Value, attachments: &[Value]) -> Result<Value> {
+    let mut content = vec![json!({"type": "text", "text": command["text"]})];
+    content.extend(attachments.iter().map(|attachment| {
+        json!({
+            "type":"attachment", "attachment":attachment,
+        })
+    }));
     let message = scope.protect(&json!({
         "id": command["messageId"], "idempotencyKey": command["idempotencyKey"],
         "role":"user", "mode": command["mode"], "reasoningEffort": command["reasoningEffort"],
-        "content": vec![json!({"type": "text", "text": command["text"]})],
+        "content": content,
     }))?;
     let grant = scope.material(None)?;
-    let classification = json!({"mode": command["mode"], "attachmentIds": Vec::<Value>::new()});
+    let classification = json!({"mode": command["mode"], "attachmentIds": message["classification"]["attachmentIds"]});
     let prompt = checked(
         "queuedPromptOpaqueContentSchema",
         &json!({
