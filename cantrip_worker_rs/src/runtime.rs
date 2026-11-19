@@ -384,6 +384,7 @@ async fn cycle(
     )?;
     thread_preparation.configure_autonomous(turns.autonomous(routing.clone()))?;
     turns.configure_queue_imports()?;
+    turns.configure_settings_publisher(logs.clone())?;
     let model_catalog = crate::codex::catalog::Catalog::new(
         codex.clone(),
         provider_access.clone(),
@@ -449,11 +450,13 @@ async fn cycle(
             let observations = auth_observations.clone();
             let project_goals = project_goals.clone();
             let settings = settings.clone();
+            let settings_reconnect = thread_preparation.settings_reconnect();
             Arc::new(move || {
                 observations.reemit();
                 task_delivery.wake();
                 project_goals.wake();
                 settings.wake();
+                settings_reconnect();
             })
         },
     };
@@ -722,6 +725,18 @@ async fn cycle(
                     let worker = worker.clone();
                     commands.spawn(async move {
                         let result = turns.queue_changed(&request["command"], &codex).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
+                if kind == crate::codex::turn::SETTINGS_READ {
+                    let preparation = thread_preparation.clone();
+                    let signal = command_signal.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = preparation.read_settings(&request["command"]["scope"], signal).await;
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
                     continue;

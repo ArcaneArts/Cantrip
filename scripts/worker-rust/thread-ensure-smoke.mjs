@@ -73,6 +73,7 @@ import { verifyTaskGoalActivation } from "./task-goal-activation-cases.mjs";
 import { verifyQueuedTurns } from "./queued-turn-cases.mjs";
 import { verifyQueuedSettings } from "./queued-settings-cases.mjs";
 import { consoleSettings } from "./console-settings-cases.mjs";
+import { settingsSnapshotPeer } from "./thread-settings-snapshot-cases.mjs";
 import { verifyQueuedShell } from "./queued-shell-cases.mjs";
 import {
   queuePeer,
@@ -186,7 +187,8 @@ let guiPeer,
   taskResponse,
   holdHandshake,
   consolePeer,
-  consoleQueue;
+  consoleQueue,
+  snapshotPeer;
 const outcomeFrames = new EventEmitter();
 const outputText = "Native host turn fixture.";
 const privatePrompt = "Protected input fixture, only for the worker.";
@@ -301,6 +303,31 @@ const server = createServer(async (request, response) => {
     try {
       const observation = await requestBody(request);
       send(projectGoal ? await projectGoal(observation) : { accepted: true });
+    } catch (error) {
+      upstream.emit("failure", error);
+      response.writeHead(400).end("{}");
+    }
+    return;
+  }
+  if (
+    [
+      "/api/internal/native-commands/settings-refresh",
+      "/api/internal/native-commands/settings-observation",
+    ].includes(url.pathname)
+  ) {
+    if (!snapshotPeer) {
+      response
+        .writeHead(409)
+        .end(JSON.stringify({ code: "settings-runtime-unbound" }));
+      return;
+    }
+    try {
+      await snapshotPeer.apply(
+        url.pathname.split("/").at(-1),
+        await requestBody(request),
+        send,
+        () => response.destroy(),
+      );
     } catch (error) {
       upstream.emit("failure", error);
       response.writeHead(400).end("{}");
@@ -711,6 +738,7 @@ async function ensure(
         fields.type === "chat.pause.set" ||
         fields.type === "chat.queue.prepare" ||
         fields.type === "chat.queue.changed" ||
+        fields.type === "chat.settings.read" ||
         fields.type?.startsWith("chat.native-logical.") ||
         fields.type?.startsWith("cantrip-os.") ||
         fields.type?.startsWith("terminal.") ||
@@ -3009,6 +3037,7 @@ async function verifyGuestConsole({
       premature,
       failure,
     ]);
+    await Promise.race([snapshotPeer.verifyUpdates(), premature, failure]);
     let inputSequence = 0;
     const write = async (text) => {
       const sequence = inputSequence++;
@@ -3401,6 +3430,21 @@ async function verifyGuestThread() {
         "Guest attachment bytes, permissions, and Node receipt compatibility passed.",
       );
     }
+    snapshotPeer = settingsSnapshotPeer({
+      ensure,
+      available,
+      oracle,
+      scope: {
+        chatId: session.chatId,
+        workerId,
+        threadId,
+        contextKind: "project",
+        projectId: session.projectId,
+        placementId: session.worktreeId,
+        modelRouteId: "fixture-route",
+        providerAccountId: null,
+      },
+    });
     const callsBeforeImport = providerCalls;
     const legacy = seedNativeQueue(path.dirname(file), threadId);
     consoleQueue = queuePeer({
@@ -3429,6 +3473,7 @@ async function verifyGuestThread() {
       threadId,
     );
     assert.equal(recovered.recovery.status, "completed");
+    await snapshotPeer.verifyReadScope();
     const queueFailure = new AbortController();
     try {
       await available(
@@ -3461,6 +3506,7 @@ async function verifyGuestThread() {
       history: guestTurn.history,
     });
     await stop();
+    snapshotPeer = undefined;
     await start();
     const recoveredConsole = await expectThread(
       {

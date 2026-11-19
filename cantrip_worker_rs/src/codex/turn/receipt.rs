@@ -37,17 +37,17 @@ impl std::fmt::Display for Unacknowledged {
 impl std::error::Error for Unacknowledged {}
 
 #[derive(Debug)]
-pub(super) struct QueueHttpError {
+pub(super) struct MetadataHttpError {
     pub status: u16,
     pub code: Value,
     message: String,
 }
-impl std::fmt::Display for QueueHttpError {
+impl std::fmt::Display for MetadataHttpError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.message)
     }
 }
-impl std::error::Error for QueueHttpError {}
+impl std::error::Error for MetadataHttpError {}
 
 #[derive(Clone)]
 pub(super) struct Operation {
@@ -179,7 +179,8 @@ impl Client {
             )
         };
         let unacknowledged = || Unacknowledged(action.to_owned());
-        let queue = path.starts_with("/api/internal/native-queue/");
+        let metadata = path.starts_with("/api/internal/native-queue/")
+            || matches!(action, "settings-refresh" | "settings-observation");
         let mut request = self
             .http
             .post(url)
@@ -194,7 +195,7 @@ impl Client {
             .await?;
         let status = response.status().as_u16();
         if !response.status().is_success() {
-            if queue && status < 500 {
+            if metadata && status < 500 {
                 let body = guard
                     .run(async {
                         Ok(response
@@ -207,7 +208,7 @@ impl Client {
                             .unwrap_or(Value::Null))
                     })
                     .await?;
-                return Err(QueueHttpError {
+                return Err(MetadataHttpError {
                     status,
                     code: body["code"].clone(),
                     message: body["error"]
@@ -375,6 +376,47 @@ impl Client {
                 json!({"managedAction":json!({"operationId":claim["requestOperationId"],"executionOperationId":operation,"method":receipt["method"],"status":"applied"})}),
             )
         }
+    }
+
+    pub(super) async fn refresh_settings(&self, chat: &JsString, guard: &Guard) -> Result<Value> {
+        let body = checked(
+            "nativeSettingsRefreshRequestSchema",
+            &json!({"workerId":self.configuration.lock().unwrap().worker_id,"chatId":chat}),
+        )?;
+        let reply = self
+            .exchange(
+                "settings-refresh",
+                "/api/internal/native-commands/settings-refresh",
+                &body,
+                guard,
+            )
+            .await?;
+        checked("nativeSettingsStateSchema", &reply)
+    }
+
+    pub(super) async fn observe_settings(
+        &self,
+        binding: &Value,
+        snapshot: &Value,
+        guard: &Guard,
+    ) -> Result<Value> {
+        let body = checked(
+            "nativeSettingsObservationRequestSchema",
+            &json!({"workerId":self.configuration.lock().unwrap().worker_id,"bindingId":binding,"snapshot":snapshot}),
+        )?;
+        let reply = self
+            .exchange(
+                "settings-observation",
+                "/api/internal/native-commands/settings-observation",
+                &body,
+                guard,
+            )
+            .await?;
+        let reply = checked("nativeSettingsObservationReceiptSchema", &reply)?;
+        if &reply["bindingId"] != binding {
+            bail!("Core returned another native settings binding.");
+        }
+        Ok(reply)
     }
 
     pub(super) async fn publish_settings(&self, event: &Value) -> Result<()> {

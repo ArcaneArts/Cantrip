@@ -19,6 +19,7 @@ use crate::{
         turn::{
             autonomous::{Autonomous, Runner},
             console::import,
+            settings::snapshot,
         },
     },
     config::Config,
@@ -69,6 +70,7 @@ struct ThreadOwner {
     session: Option<Value>,
     task: Option<Root>,
     queue: Option<Arc<import::Binding>>,
+    settings: Option<Arc<snapshot::Publisher>>,
 }
 
 #[derive(Clone)]
@@ -97,6 +99,7 @@ struct Inner {
     permission_profiles: bool,
     autonomous: OnceLock<Autonomous>,
     queue_imports: OnceLock<import::Factory>,
+    settings_publisher: OnceLock<snapshot::Factory>,
 }
 
 impl Ensurer {
@@ -138,6 +141,7 @@ impl Ensurer {
             cli_contexts,
             autonomous: OnceLock::new(),
             queue_imports: OnceLock::new(),
+            settings_publisher: OnceLock::new(),
             permission_profiles,
         }))
     }
@@ -180,6 +184,51 @@ impl Ensurer {
             .queue_imports
             .set(imports)
             .map_err(|_| anyhow!("Native queue imports are already configured."))
+    }
+
+    pub(in crate::codex) fn configure_settings_publisher(
+        &self,
+        settings: snapshot::Factory,
+    ) -> Result<()> {
+        self.0
+            .settings_publisher
+            .set(settings)
+            .map_err(|_| anyhow!("Native settings publication is already configured."))
+    }
+
+    pub(crate) fn settings_reconnect(&self) -> impl Fn() + use<> {
+        let this = Arc::downgrade(&self.0);
+        move || {
+            if let Some(this) = this.upgrade() {
+                for owner in this.live_threads.lock().unwrap().values() {
+                    if let Some(settings) = &owner.settings {
+                        settings.wake();
+                    }
+                }
+            }
+        }
+    }
+
+    pub(crate) async fn read_settings(
+        &self,
+        scope: &Value,
+        signal: crate::metadata::Signal,
+    ) -> Result<Value> {
+        let scope = checked("nativeSettingsReadScopeSchema", scope)?;
+        let chat = field(&scope, "chatId")?;
+        let identity = self.identity()?;
+        let source = self
+            .0
+            .live_threads
+            .lock()
+            .unwrap()
+            .get(&chat)
+            .filter(|owner| owner.bound == identity)
+            .and_then(|owner| owner.settings.as_ref())
+            .filter(|settings| settings.source.matches_read(&scope))
+            .map(|settings| settings.source.clone())
+            .context("The settings read no longer refers to the current managed runtime.")?;
+        source.read(signal).await
     }
 
     pub(crate) async fn prepare(&self, incoming: &Value, intent: Intent) -> Result<Prepared> {
@@ -556,8 +605,9 @@ impl Ensurer {
                         if let Some(delivery) = delivery {
                             delivery.select(&bound, &thread_id, runtime.generation(), &chat, task);
                         }
-                        let native_session = (!task && !guest).then(|| native_session(&command, &runtime, loaded.id()));
-                        if let (Some(autonomous), Some(session)) = (this.0.autonomous.get(), native_session.as_ref())
+                        let native_session = native_session(&command, &runtime, loaded.id());
+                        let goal_session = (!task && !guest).then(|| native_session.clone());
+                        if let (Some(autonomous), Some(session)) = (this.0.autonomous.get(), goal_session.as_ref())
                             && context_kind == "project"
                             && result.saved.is_none()
                         {
@@ -588,11 +638,19 @@ impl Ensurer {
                             None
                         };
                         result.queue = queue.as_ref().map(|binding| binding.import.clone());
+                        let settings = if !task && !stopping && result.saved.is_none() && !task_restoration
+                            && let Some(factory) = this.0.settings_publisher.get()
+                        {
+                            let previous = owners.get(&chat).and_then(|owner| owner.settings.as_ref());
+                            Some(factory.bind(&this.0.worker, &result, &native_session, &command, previous)?)
+                        } else {
+                            None
+                        };
                         let task = latch.as_ref().map(|latch| task_root(&thread_id, latch));
                         router.set_task_root(&thread_id, task.clone());
                         let owner = ThreadOwner {
                             runtime: runtime.downgrade(), thread: loaded.clone(), bound: bound.clone(),
-                            session: native_session, task, queue,
+                            session: goal_session, task, queue, settings,
                         };
                         owners.insert(chat.clone(), owner);
                     }

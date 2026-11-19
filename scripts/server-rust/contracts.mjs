@@ -989,6 +989,9 @@ export const contractRoots = [
   "osRunPlanResponseSchema",
   "chatFileReferencesRequestContentSchema",
   "chatFileReferencesResultContentSchema",
+  "nativeSettingsSnapshotContextSchema",
+  "nativeThreadSettingsSchema",
+  "nativeModelAttributionSchema",
 ];
 
 export const projectExportContractRoots = [
@@ -1614,6 +1617,18 @@ registerChecks(protocol.providerAuthLiveStatusSchema, [
   "provider-auth-live-kind",
 ]);
 const recursiveJson = registerWorkerContracts(registerChecks);
+const nativeSettings = protocol.nativeThreadSettingsSchema;
+const collaboration = nativeSettings.shape.collaborationMode;
+for (const schema of [
+  nativeSettings._zod.def.catchall,
+  nativeSettings.shape.activePermissionProfile,
+  nativeSettings.shape.sandboxPolicy._zod.def.valueType,
+  nativeSettings.shape.approvalPolicy.options[1]._zod.def.valueType,
+  collaboration._zod.def.catchall,
+  collaboration.shape.settings._zod.def.valueType,
+])
+  recursiveJson.add(schema);
+
 registerChecks(protocol.agentInteractionRequestCreateSchema, [
   "interaction-payload-owner",
   "worker-wire-interaction-storage",

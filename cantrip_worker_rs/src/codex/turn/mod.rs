@@ -12,6 +12,7 @@ mod queued;
 pub(super) use protected::runtime_text;
 mod receipt;
 pub(in crate::codex) mod settings;
+pub(crate) use settings::snapshot::READ as SETTINGS_READ;
 pub(in crate::codex) mod shell;
 pub(in crate::codex) mod task;
 pub(crate) mod task_route;
