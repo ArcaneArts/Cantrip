@@ -43,6 +43,20 @@ pub fn open_native_command_result(
         .map_err(|_| anyhow::anyhow!("Invalid protected native command result."))
 }
 
+pub fn open_native_command_request(
+    component_key: &[u8],
+    context: &Value,
+    envelope: &Value,
+) -> Result<(Value, String)> {
+    let associated = associated(context, "request")?;
+    let key = derive_field_key(component_key, &associated)?;
+    let bytes = decrypt_payload(&key, envelope, &associated)?;
+    let digest = content_digest(&key, &associated, &bytes)?;
+    let content = parse_json_text(&String::from_utf8_lossy(&bytes))
+        .map_err(|_| anyhow::anyhow!("Invalid protected native command request."))?;
+    Ok((content, digest))
+}
+
 pub fn protect_native_settings_evidence(
     component_key: &[u8],
     context: &Value,
@@ -63,9 +77,13 @@ fn protect(
     let associated = associated(context, field)?;
     let key = derive_field_key(component_key, &associated)?;
     let bytes = Zeroizing::new(content.stringify().into_bytes());
-    let digest = hmac_sha256(&key, &[associated.stringify().as_bytes(), &bytes])?;
-    let digest = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    let digest = content_digest(&key, &associated, &bytes)?;
     Ok((encrypt_payload(&key, &bytes, &associated)?, digest))
+}
+
+fn content_digest(key: &[u8], associated: &Value, bytes: &[u8]) -> Result<String> {
+    let digest = hmac_sha256(key, &[associated.stringify().as_bytes(), bytes])?;
+    Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 fn associated(context: &Value, field: &str) -> Result<Value> {

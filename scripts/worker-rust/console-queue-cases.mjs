@@ -3,7 +3,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import {
+  managedQueueImportAckSchema,
+  managedQueueImportSchema,
   managedQueueLookupSchema,
   managedQueueMutateSchema,
   managedQueueReadSchema,
@@ -16,7 +19,41 @@ import {
   protectNativeCommandContent,
 } from "../../cantrip_worker/src/native-command-content.ts";
 
-export function queuePeer({ identity, service, root, stamp }) {
+export function seedNativeQueue(home, threadId) {
+  const database = path.join(home, "queue_1.sqlite");
+  const source = {
+    id: randomUUID(),
+    input: [
+      {
+        type: "text",
+        text: "/goal clear — retain this literally 🌳",
+        text_elements: [],
+      },
+    ],
+    clientUserMessageId: randomUUID(),
+  };
+  const foreign = { threadId: randomUUID(), id: randomUUID() };
+  const db = new DatabaseSync(database, { timeout: 3000 });
+  try {
+    const insert = db.prepare(
+      "INSERT INTO queued_items (id,thread_id,payload_json,queue_order,created_at_ms,updated_at_ms) VALUES (?,?,?,0,?,?)",
+    );
+    const payload = JSON.stringify({
+      UserInput: {
+        content: source.input,
+        client_id: source.clientUserMessageId,
+      },
+    });
+    const timestamp = Date.now();
+    insert.run(source.id, threadId, payload, timestamp, timestamp);
+    insert.run(foreign.id, foreign.threadId, payload, timestamp, timestamp);
+  } finally {
+    db.close();
+  }
+  return { source, database, foreign };
+}
+
+export function queuePeer({ identity, service, root, stamp, legacy }) {
   const { serverId, ownerId, workerId, chatId, threadId, worktreeId } =
     identity;
   const codec = createManagedQueueInputCodec({
@@ -43,6 +80,10 @@ export function queuePeer({ identity, service, root, stamp }) {
   };
   const actions = [];
   const firstRead = Promise.withResolvers();
+  const firstImportAck = Promise.withResolvers();
+  let retained,
+    ackAttempts = 0,
+    stagedSources = 0;
   function check(session, worker) {
     assert.equal(worker, workerId);
     assert.equal(session.chatId, chatId);
@@ -50,7 +91,23 @@ export function queuePeer({ identity, service, root, stamp }) {
     assert.equal(session.placementId, worktreeId);
   }
   function snapshot() {
-    return { revision, paused: false, items, claims: claim ? [claim] : [] };
+    return {
+      revision,
+      paused: false,
+      items,
+      claims: claim ? [claim] : [],
+      pendingImports:
+        retained?.record.status === "pending"
+          ? [
+              {
+                importId: retained.record.importId,
+                nativeItemId: retained.record.nativeItemId,
+                status: "pending",
+                prompt: retained.item,
+              },
+            ]
+          : [],
+    };
   }
   const receipt = (admission, options = {}) => ({
     operationId: admission.operationId,
@@ -69,6 +126,145 @@ export function queuePeer({ identity, service, root, stamp }) {
     ...options,
   });
   async function apply(action, raw, send, drop) {
+    if (action === "import") {
+      const input = managedQueueImportSchema.parse(raw);
+      const { session, items: sources, runnerGeneration } = input;
+      check(session, input.workerId);
+      assert.equal(
+        session.connectionId,
+        `queue-owner:${session.runtimeGeneration}`,
+      );
+      for (const candidate of sources) {
+        assert.ok(legacy, "Expected the fixture's native source only.");
+        stagedSources++;
+        const source = legacy.source;
+        assert.equal(candidate.nativeItemId, source.id);
+        const idBytes = createHash("sha256")
+          .update(
+            JSON.stringify([serverId, ownerId, chatId, threadId, source.id]),
+          )
+          .digest()
+          .subarray(0, 16);
+        idBytes[6] = (idBytes[6] & 15) | 64;
+        idBytes[8] = (idBytes[8] & 63) | 128;
+        const prompt = candidate.prompt;
+        assert.equal(prompt.id.replaceAll("-", ""), idBytes.toString("hex"));
+        const operationId = `queue-import:${prompt.id}`;
+        const context = { chatId, operationId, direction: "request" };
+        assert.deepEqual(
+          await openNativeCommandContent({
+            service,
+            context,
+            envelope: candidate.protectedSource,
+          }),
+          source,
+        );
+        const reference = await protectNativeCommandContent({
+          service,
+          context,
+          content: source,
+        });
+        assert.equal(reference.digest, candidate.sourceDigest);
+        const prepared = await codec.preparePrompt({
+          id: prompt.id,
+          request: {
+            params: {
+              input: source.input,
+              clientUserMessageId: source.clientUserMessageId,
+              managed: { operationId, action: "literal" },
+            },
+          },
+        });
+        const open = (value) =>
+          codec.openNativeInput({
+            promptId: value.id,
+            payload: value.protectedNativeInput,
+          });
+        assert.deepEqual(await open(prompt), await open(prepared.prompt));
+        assert.equal(prompt.executionMethod, "turn/start");
+        assert.ok(!JSON.stringify(raw).includes(source.input[0].text));
+        const importId = createHash("sha256")
+          .update(candidate.sourceDigest)
+          .digest("hex");
+        retained = {
+          record: {
+            importId,
+            nativeItemId: source.id,
+            sourceDigest: candidate.sourceDigest,
+            protectedSource: candidate.protectedSource,
+            nativeDeleteOperationId: `queue-delete:${importId}`,
+            promptId: prompt.id,
+            status: "pending",
+          },
+          item: {
+            ...prompt,
+            chatId,
+            attachments: candidate.attachments,
+            state: "importing",
+            revision: 0,
+            position: 0,
+            createdAt: stamp,
+            updatedAt: stamp,
+          },
+        };
+        revision++;
+      }
+      if (retained?.record.status === "pending")
+        retained.runner = runnerGeneration;
+      send({
+        ...snapshot(),
+        imports: retained?.record.status === "pending" ? [retained.record] : [],
+      });
+      return;
+    }
+    if (action === "import-ack") {
+      const input = managedQueueImportAckSchema.parse(raw);
+      check(input.session, input.workerId);
+      assert.equal(input.runnerGeneration, retained.runner);
+      assert.equal(input.importId, retained.record.importId);
+      assert.equal(input.sourceDigest, retained.record.sourceDigest);
+      assert.deepEqual(input.receipt, { deleted: true, conflict: false });
+      const db = new DatabaseSync(legacy.database, {
+        readOnly: true,
+        timeout: 3000,
+      });
+      try {
+        assert.equal(
+          db
+            .prepare("SELECT id FROM queued_items WHERE id=?")
+            .get(legacy.source.id),
+          undefined,
+        );
+        assert.equal(
+          db
+            .prepare("SELECT id FROM queued_items WHERE id=?")
+            .get(legacy.foreign.id).id,
+          legacy.foreign.id,
+        );
+        assert.equal(
+          db
+            .prepare(
+              "SELECT outcome FROM managed_queue_delete_receipts WHERE operation_id=?",
+            )
+            .get(retained.record.nativeDeleteOperationId).outcome,
+          "deleted",
+        );
+      } finally {
+        db.close();
+      }
+      ackAttempts++;
+      if (ackAttempts === 1) {
+        firstImportAck.resolve();
+        drop();
+        return;
+      }
+      assert.equal(retained.record.status, "pending");
+      retained.record.status = "imported";
+      items.push({ ...retained.item, state: "pending" });
+      revision++;
+      send(snapshot());
+      return;
+    }
     if (action === "read") {
       const input = managedQueueReadSchema.parse(raw);
       check(input.session, input.workerId);
@@ -244,7 +440,7 @@ export function queuePeer({ identity, service, root, stamp }) {
     }
     revision++;
     saved.set(operationId, confirmation);
-    if (awaitingLostReply) {
+    if (awaitingLostReply && mutation.kind === "add") {
       awaitingLostReply = false;
       drop();
     } else send({ ...snapshot(), ...confirmation });
@@ -254,6 +450,16 @@ export function queuePeer({ identity, service, root, stamp }) {
     turn,
     actions,
     firstRead: firstRead.promise,
+    firstImportAck: legacy ? firstImportAck.promise : null,
+    proveImport() {
+      assert.equal(stagedSources, 1);
+      assert.equal(ackAttempts, 2);
+      return {
+        id: retained.record.promptId,
+        input: legacy.source.input,
+        clientUserMessageId: legacy.source.clientUserMessageId,
+      };
+    },
     externalRevision() {
       return ++revision;
     },
@@ -269,7 +475,7 @@ export async function verifyConsoleQueue({
   available,
   expectSuccess,
 }) {
-  await available(peer.firstRead);
+  await available(peer.firstImportAck ?? peer.firstRead);
   const socket = new WebSocket((await readFile(socketFile, "utf8")).trim());
   const pending = new Map(),
     notices = [];
@@ -313,6 +519,28 @@ export async function verifyConsoleQueue({
     });
     socket.send(JSON.stringify({ method: "initialized" }));
     assert.ok((await queue("list", { threadId: "unrelated-thread" })).error);
+    if (peer.firstImportAck) {
+      const list = await result("list");
+      assert.deepEqual(list.managedQueue.pendingImports, []);
+      assert.equal(list.data.length, 1);
+      const [item] = list.data;
+      assert.deepEqual(
+        {
+          id: item.id,
+          input: item.input,
+          clientUserMessageId: item.clientUserMessageId,
+        },
+        peer.proveImport(),
+      );
+      assert.equal(item.managed.action, "literal");
+      await result("delete", {
+        managed: managed(),
+        queuedSubmissionId: item.id,
+      });
+      console.log(
+        "Legacy Codex queue import retained one item after a lost acknowledgment.",
+      );
+    }
     const add = {
       managed: managed("literal"),
       clientUserMessageId: randomUUID(),
@@ -377,7 +605,7 @@ export async function verifyConsoleQueue({
       }),
       { turn: peer.turn },
     );
-    assert.deepEqual(peer.actions, [
+    assert.deepEqual(peer.actions.slice(peer.firstImportAck ? 1 : 0), [
       "add",
       "add",
       "update",

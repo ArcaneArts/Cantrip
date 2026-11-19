@@ -40,7 +40,7 @@ struct View {
     permission: Value,
     command: Value,
     queue_key: Key,
-    queue_revision: Arc<tokio::sync::watch::Sender<Option<u64>>>,
+    queue_state: Arc<queue::State>,
 }
 
 impl View {
@@ -117,7 +117,7 @@ impl Turns {
             id(&prepared.bound.1, "managed console logical server")?,
             chat.clone(),
         );
-        let queue_revision = self.console_queues.watch(queue_key.clone());
+        let queue_state = self.console_queues.watch(queue_key.clone());
         let view = Arc::new(View {
             turns: self.clone(),
             prepared,
@@ -128,7 +128,7 @@ impl Turns {
             permission: command["permissionProfileId"].clone(),
             command,
             queue_key,
-            queue_revision,
+            queue_state,
         });
         let gateway = Gateway::start(view).await?;
         let mut args = vec!["--remote".into(), gateway.url.clone()];

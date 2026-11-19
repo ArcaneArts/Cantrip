@@ -73,7 +73,11 @@ import { verifyTaskGoalActivation } from "./task-goal-activation-cases.mjs";
 import { verifyQueuedTurns } from "./queued-turn-cases.mjs";
 import { verifyQueuedSettings } from "./queued-settings-cases.mjs";
 import { verifyQueuedShell } from "./queued-shell-cases.mjs";
-import { queuePeer, verifyConsoleQueue } from "./console-queue-cases.mjs";
+import {
+  queuePeer,
+  seedNativeQueue,
+  verifyConsoleQueue,
+} from "./console-queue-cases.mjs";
 
 const { values } = parseArgs({
   options: {
@@ -2583,6 +2587,7 @@ async function verifyGuestConsole({
   provider,
   state,
   history,
+  legacy,
 }) {
   const terminalId = state.id;
   const operationId = randomUUID();
@@ -2623,6 +2628,7 @@ async function verifyGuestConsole({
     service: oracle,
     root,
     stamp,
+    legacy,
   });
   const codec = createManagedQueueInputCodec({
     encryption: oracle,
@@ -3389,6 +3395,8 @@ async function verifyGuestThread() {
         "Guest attachment bytes, permissions, and Node receipt compatibility passed.",
       );
     }
+    const callsBeforeImport = providerCalls;
+    const legacy = seedNativeQueue(path.dirname(file), threadId);
     await start();
     const recovered = await expectThread(
       {
@@ -3401,12 +3409,14 @@ async function verifyGuestThread() {
       threadId,
     );
     assert.equal(recovered.recovery.status, "completed");
+    assert.equal(providerCalls, callsBeforeImport);
     const consoleTurn = await verifyGuestConsole({
       session,
       threadId,
       provider,
       state: consoleState,
       history: guestTurn.history,
+      legacy,
     });
     await stop();
     await start();
