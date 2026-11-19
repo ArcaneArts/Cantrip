@@ -680,6 +680,7 @@ try {
         const reopen = await verifyTerminalServices({
           call,
           eventually,
+          origin: server.origin,
           ownerId: repository.ownerId,
           serverId: repository.serverId,
           surfaceKey,
@@ -882,6 +883,7 @@ try {
         suite: "actual-native-host-terminal-worker-server",
         passed: true,
         encryptedHostTerminalRelay: true,
+        encryptedServiceRelayAcrossRestarts: true,
         realTerminalServiceEnableRestartAndRecovery: true,
         nodeAbsentFromWorkerPath: true,
       }),

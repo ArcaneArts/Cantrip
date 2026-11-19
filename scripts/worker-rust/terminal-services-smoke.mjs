@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import * as c from "../../packages/crypto/dist/index.js";
+import { attachTerminal } from "./terminal-relay-client.mjs";
 export async function verifyTerminalServices({
   call,
   eventually,
@@ -13,12 +14,17 @@ export async function verifyTerminalServices({
   metadataKey,
   projectId,
   checkout,
+  origin,
 }) {
   const id = crypto.randomUUID();
   const marker = path.join(checkout, "native-terminal-starts"),
     hungUp = path.join(checkout, "native-terminal-hup");
-  const command =
-    "printf 'started\\n' >> native-terminal-starts; trap 'printf h >> native-terminal-hup; exit 0' HUP; while :; do /bin/sleep 0.05; done";
+  const setup =
+    "printf 'started\\n' >> native-terminal-starts; trap 'printf h >> native-terminal-hup; exit 0' HUP;";
+  const command = origin
+    ? setup +
+      ' printf \'%s\' "$$" > native-service-pid; printf \'private-service-%s\\n\' "$$"; while IFS= read -r line; do case "$line" in probe) /bin/stty size > native-service-size; printf \'private-service-input-%s\\n\' "$$";; finish) exit 7;; esac; done'
+    : setup + " while :; do /bin/sleep 0.05; done";
   const stateProtection = await c.encryptSurfacePrivateState({
     ownerId,
     context: {
@@ -84,20 +90,92 @@ export async function verifyTerminalServices({
   assert.equal(restored.status, 200, JSON.stringify(restored));
   assert.equal(restored.body.status, "running");
   assert.equal(await count(), 1);
-  const restarted = await call(
-    "POST",
-    `/api/terminals/${id}/service/restart`,
-    {},
-  );
-  assert.equal(restarted.status, 202, JSON.stringify(restarted));
-  await waitCount(2);
-  await eventually(
-    () => readFile(hungUp, "utf8"),
-    (value) => assert.equal(value, "h"),
-    "owned terminal SIGHUP cleanup",
-  );
+  let startsBeforeWorkerRestart = 2;
+  const pidFile = path.join(checkout, "native-service-pid");
+  const sizeFile = path.join(checkout, "native-service-size");
+  const processId = async (previous) =>
+    eventually(
+      () => readFile(pidFile, "utf8").catch(() => ""),
+      (pid) => {
+        assert.match(pid, /^\d+$/);
+        assert.notEqual(pid, previous);
+      },
+      "native service process attempt",
+    );
+  const views = [];
+  const attach = async () => {
+    const view = await attachTerminal({
+      origin,
+      ownerId,
+      serverId,
+      surfaceKey,
+      id,
+    });
+    views.push(view);
+    return view;
+  };
+  try {
+    const first = origin ? await attach() : null;
+    const firstPid = first ? await processId() : null;
+    if (first) {
+      await first.read(new RegExp(`private-service-${firstPid}`));
+      first.relay.send({ type: "resize", cols: 110, rows: 41 });
+      await eventually(
+        async () => {
+          await first.input("probe\r");
+          return readFile(sizeFile, "utf8").catch(() => "");
+        },
+        (value) => assert.equal(value.trim(), "41 110"),
+        "size of attached service PTY",
+      );
+      await first.read(new RegExp(`private-service-input-${firstPid}`));
+      assert.ok(
+        !first.relay.history.some(({ raw }) =>
+          raw.includes("private-service-"),
+        ),
+      );
+    }
+    const restarted = await call(
+      "POST",
+      `/api/terminals/${id}/service/restart`,
+      {},
+    );
+    assert.equal(restarted.status, 202, JSON.stringify(restarted));
+    await waitCount(2);
+    await eventually(
+      () => readFile(hungUp, "utf8"),
+      (value) => assert.equal(value, "h"),
+      "owned terminal SIGHUP cleanup",
+    );
+    if (first) {
+      const secondPid = await processId(firstPid);
+      await first.read(new RegExp(`private-service-${secondPid}`));
+      const second = await attach();
+      assert.ok(second.replay.includes(`private-service-${secondPid}`));
+      assert.ok(!second.replay.includes(`private-service-${firstPid}`));
+      await first.relay.close();
+      await second.input("finish\r");
+      await second.read(/Service exited 7; restarting in 5 seconds/);
+      const waiting = await attach();
+      assert.ok(waiting.replay.includes("Service exited 7"));
+      waiting.relay.send({ type: "resize", cols: 107, rows: 37 });
+      await waitCount(3);
+      startsBeforeWorkerRestart = 3;
+      const thirdPid = await processId(secondPid);
+      await waiting.read(new RegExp(`private-service-${thirdPid}`));
+      await waiting.input("probe\r");
+      await waiting.read(new RegExp(`private-service-input-${thirdPid}`));
+      assert.equal((await readFile(sizeFile, "utf8")).trim(), "37 107");
+    }
+  } finally {
+    for (const view of views) await view.relay.close();
+  }
   return async () => {
-    await waitCount(3);
+    const expected = startsBeforeWorkerRestart + 1;
+    await waitCount(expected);
+    const view = origin ? await attach() : null;
+    if (view)
+      await view.read(new RegExp(`private-service-${await processId()}`));
     const disabled = await call("PUT", `/api/terminals/${id}/service`, {
       enabled: false,
       stateProtection,
@@ -109,6 +187,16 @@ export async function verifyTerminalServices({
       (value) => assert.equal(value, "hhh"),
       "service disabled after worker restart",
     );
-    assert.equal(await count(), 3);
+    if (view) {
+      try {
+        const exited = await view.relay.next((frame) =>
+          ["exit", "error"].includes(frame.type),
+        );
+        assert.equal(exited.type, "exit", JSON.stringify(exited));
+      } finally {
+        await view.relay.close();
+      }
+    }
+    assert.equal(await count(), expected);
   };
 }

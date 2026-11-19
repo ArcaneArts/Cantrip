@@ -1,13 +1,13 @@
-use super::{Desired, State, output::Utf8};
+use super::{Desired, Resize, ServiceIo, State, output::Utf8};
 use crate::logging::Logs;
 use cantrip_wire::{JsString, value::json};
-use codex_utils_pty::{ChildFds, TerminalSize, spawn_pty_process_strict};
+use codex_utils_pty::{ChildFds, spawn_pty_process_strict};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 
 pub(super) async fn run(
     id: JsString,
@@ -22,21 +22,23 @@ pub(super) async fn run(
     loop {
         let desired = control.borrow_and_update().clone();
         if desired.closing {
+            state.lock().unwrap().finish(None);
             return;
         }
         let Some(configuration) = desired.configuration else {
+            state.lock().unwrap().finish(None);
             if control.changed().await.is_err() {
                 return;
             }
             continue;
         };
-        let (attempt, generation) = {
+        let (attempt, generation, size) = {
             let mut state = state.lock().unwrap();
             state.reset();
             state.phase = "starting";
             state.append("\r\n\x1b[90m[Starting terminal service]\x1b[0m\r\n");
             state.generation += 1;
-            (state.restarts + 1, state.generation)
+            (state.restarts + 1, state.generation, state.size)
         };
         let mut environment = environment.clone();
         environment.insert("TERM".into(), "xterm-256color".into());
@@ -51,7 +53,7 @@ pub(super) async fn run(
             &configuration.cwd,
             &environment,
             &None,
-            TerminalSize::default(),
+            size,
             ChildFds::Attached(&[]),
         )
         .await;
@@ -68,7 +70,18 @@ pub(super) async fn run(
                 None
             }
             Ok(mut process) => {
-                state.lock().unwrap().phase = "running";
+                let (resize, mut sizes) = mpsc::channel::<Resize>(64);
+                {
+                    let mut state = state.lock().unwrap();
+                    if state.size != size {
+                        let _ = process.session.resize(state.size);
+                    }
+                    state.phase = "running";
+                    state.io = Some(ServiceIo {
+                        writer: process.session.writer_sender(),
+                        resize,
+                    });
+                }
                 logs.event("info","Terminal process started",json!({"event":"terminal.process.started","subsystem":"terminal","operation":"spawn","status":"running","terminalId":id,"launchType":"command","service":true,"durationMs":started.elapsed().as_millis() as u64,"processGeneration":generation}));
                 let mut utf8 = Utf8::default();
                 let mut exit = None;
@@ -81,14 +94,24 @@ pub(super) async fn run(
                     tokio::select! {
                         biased;
                         _=control.changed(),if stopping.is_none()=>{
+                            state.lock().unwrap().io = None;
                             if process.session.hangup().is_err(){process.session.request_terminate();}
                             stopping=Some(tokio::time::Instant::now()+Duration::from_secs(1));
                         },
                         _=async{match stopping{Some(deadline)=>tokio::time::sleep_until(deadline).await,None=>std::future::pending::<()>().await}}=>break,
+                        result=&mut process.exit_rx,if exit.is_none()=>{
+                            state.lock().unwrap().io = None;
+                            exit=Some(result.unwrap_or(-1));
+                        },
+                        Some(request)=sizes.recv(),if stopping.is_none() && exit.is_none()=>{
+                            let result=process.session.resize(request.size);
+                            if result.is_ok(){ state.lock().unwrap().resize(request.size); }
+                            let _=request.complete.send(result);
+                        },
                         bytes=process.stdout_rx.recv(),if out_open=>match bytes {Some(bytes)=>append(&state,&utf8.push(&bytes)),None=>out_open=false},
-                        result=&mut process.exit_rx,if exit.is_none()=>{exit=Some(result.unwrap_or(-1));},
                     }
                 }
+                state.lock().unwrap().io = None;
                 // Drain already accepted output before retirement, then drop
                 // receivers so bounded native helper sends cannot block joining.
                 while let Ok(bytes) = process.stdout_rx.try_recv() {
@@ -107,10 +130,11 @@ pub(super) async fn run(
         };
         let next = control.borrow().clone();
         if next.closing {
+            state.lock().unwrap().finish(exited);
             return;
         }
         if next.configuration.is_none() {
-            state.lock().unwrap().phase = "exited";
+            state.lock().unwrap().finish(exited);
             continue;
         }
         let immediate =

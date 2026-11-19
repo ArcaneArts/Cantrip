@@ -1,4 +1,4 @@
-use super::{Entry, State, replay::Replay};
+use super::{Display, Entry, Resize};
 use crate::logging::Logs;
 use anyhow::Result;
 use cantrip_wire::{JsString, Value, value::json};
@@ -10,12 +10,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::sync::{mpsc, oneshot, watch};
-
-pub(super) struct Resize {
-    pub size: TerminalSize,
-    pub complete: oneshot::Sender<Result<()>>,
-}
+use tokio::sync::{mpsc, watch};
 
 pub(super) async fn spawn(
     cwd: PathBuf,
@@ -42,11 +37,7 @@ pub(super) async fn spawn(
     let (stop, mut stopping) = watch::channel(false);
     let (finished, done) = watch::channel(false);
     let (resize, mut sizes) = mpsc::channel::<Resize>(64);
-    let state = Arc::new(Mutex::new(State {
-        replay: Replay::new(size),
-        views: Default::default(),
-        exited: None,
-    }));
+    let state = Arc::new(Mutex::new(Display::new(size)));
     let entry = Entry {
         cwd,
         stop,

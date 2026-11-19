@@ -1,20 +1,39 @@
-//! Real host PTY service supervision. Terminal attachment/canonical rendering
-//! are separate consumers of these process/output lifetimes and remain pending.
+//! Host PTY service supervision and shared terminal presentation.
 pub(crate) mod interactive;
 mod output;
+mod presentation;
 mod private_state;
+mod replay;
 mod service;
 use crate::{encryption::Service, filesystem::Scope, logging::Logs, routing::Registry};
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use cantrip_wire::{JsString, Value, value::json};
+use codex_utils_pty::TerminalSize;
 use indexmap::IndexMap;
+use presentation::Display;
 use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::{sync::watch, task::JoinSet};
+use tokio::{
+    sync::{mpsc, oneshot, watch},
+    task::JoinSet,
+};
+
+type Authority = (JsString, JsString);
+
+fn authority(encryption: &Service) -> Result<Authority> {
+    let (owner, server) = encryption.bound_identity()?;
+    Ok((
+        owner,
+        server
+            .as_js_string()
+            .context("Terminal server identity")?
+            .clone(),
+    ))
+}
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct Configuration {
@@ -33,38 +52,109 @@ struct Desired {
     restart: u64,
     closing: bool,
 }
-#[derive(Default)]
 struct State {
-    buffer: Vec<u16>,
-    truncated: bool,
+    display: Arc<Mutex<Display>>,
+    size: TerminalSize,
+    io: Option<ServiceIo>,
     boundary: u64,
     generation: u64,
     restarts: u64,
     phase: &'static str,
     exit: Option<i32>,
 }
+
+struct ServiceIo {
+    writer: mpsc::Sender<Vec<u8>>,
+    resize: mpsc::Sender<Resize>,
+}
+
+struct Resize {
+    size: TerminalSize,
+    complete: oneshot::Sender<Result<()>>,
+}
+impl Resize {
+    fn request(
+        sender: &mpsc::Sender<Self>,
+        size: TerminalSize,
+    ) -> Result<oneshot::Receiver<Result<()>>> {
+        let (complete, done) = oneshot::channel();
+        sender
+            .try_send(Self { size, complete })
+            .map_err(|_| anyhow!("Terminal resize could not be queued."))?;
+        Ok(done)
+    }
+}
+
+impl Default for State {
+    fn default() -> Self {
+        let size = TerminalSize::default();
+        Self {
+            display: Arc::new(Mutex::new(Display::new(size))),
+            size,
+            io: None,
+            boundary: 0,
+            generation: 0,
+            restarts: 0,
+            phase: "starting",
+            exit: None,
+        }
+    }
+}
+
 impl State {
     fn append(&mut self, text: &str) {
         self.boundary += 1;
-        self.buffer.extend(text.encode_utf16());
-        if self.buffer.len() > 2_000_000 {
-            self.truncated = true;
-            self.buffer.drain(..self.buffer.len() - 2_000_000);
-        }
+        self.display.lock().unwrap().write(text);
     }
     fn reset(&mut self) {
-        self.buffer.clear();
-        self.truncated = false;
+        self.display.lock().unwrap().reset(self.size);
         self.boundary = 0;
         self.exit = None;
     }
     fn value(&self) -> Value {
-        json!({"buffer":JsString::new(self.buffer.clone()),"truncated":self.truncated,"outputBoundary":self.boundary,"processGeneration":self.generation,"restartCount":self.restarts,"phase":self.phase,"exitCode":self.exit})
+        let (buffer, truncated) = self.display.lock().unwrap().replay.raw();
+        json!({"buffer":buffer,"truncated":truncated,"outputBoundary":self.boundary,"processGeneration":self.generation,"restartCount":self.restarts,"phase":self.phase,"exitCode":self.exit})
+    }
+    fn resize(&mut self, size: TerminalSize) {
+        self.size = size;
+        self.display.lock().unwrap().replay.resize(size);
+    }
+    fn request_resize(
+        &mut self,
+        size: TerminalSize,
+    ) -> Result<Option<oneshot::Receiver<Result<()>>>> {
+        if let Some(io) = &self.io {
+            Ok(Some(Resize::request(&io.resize, size)?))
+        } else {
+            self.resize(size);
+            Ok(None)
+        }
+    }
+    fn write_input(&self, data: Vec<u8>) -> Result<()> {
+        self.io
+            .as_ref()
+            .context("Terminal service is not running.")?
+            .writer
+            .try_send(data)
+            .map_err(|_| anyhow!("Terminal input could not be written."))
+    }
+    fn finish(&mut self, exit: Option<i32>) {
+        self.phase = "exited";
+        self.exit = exit.or(self.exit);
+        self.io = None;
+        self.display.lock().unwrap().finish(json!({
+            "status":"exited","exitCode":self.exit.unwrap_or(0),"signal":Value::Null,
+        }));
     }
 }
 struct Entry {
     control: watch::Sender<Desired>,
     state: Arc<Mutex<State>>,
+}
+
+struct ServiceView {
+    state: Arc<Mutex<State>>,
+    cwd: Option<PathBuf>,
 }
 #[derive(Default)]
 struct Inner {
@@ -72,6 +162,7 @@ struct Inner {
     entries: IndexMap<JsString, Entry>,
     jobs: JoinSet<()>,
     fingerprint: String,
+    authority: Option<Authority>,
 }
 pub struct Manager {
     inner: tokio::sync::Mutex<Inner>,
@@ -110,6 +201,7 @@ impl Manager {
         match command["type"].as_str() {
             Some("terminal.services.reconcile") => {
                 let result = async {
+                    let binding = authority(encryption)?;
                     let configurations = command["services"]
                         .as_array()
                         .unwrap()
@@ -118,23 +210,41 @@ impl Manager {
                         .collect::<Result<Vec<_>>>()?;
                     scope.check()?;
                     let _transition = shells.transition().await;
+                    anyhow::ensure!(
+                        authority(encryption)? == binding,
+                        "Terminal service owner changed."
+                    );
                     shells
-                        .retire_for_services(encryption, &configurations)
+                        .retire_for_services(&binding, &configurations)
                         .await?;
-                    self.reconcile(configurations).await
+                    anyhow::ensure!(
+                        authority(encryption)? == binding,
+                        "Terminal service owner changed."
+                    );
+                    self.reconcile_scoped(configurations, Some(binding)).await
                 }
                 .await;
                 result.map_err(|_| anyhow!("Terminal services could not be reconciled."))?;
             }
             Some("terminal.service.restart") => {
-                self.restart(command["terminalId"].as_js_string().unwrap())
-                    .await?
+                self.restart_scoped(
+                    command["terminalId"].as_js_string().unwrap(),
+                    Some(&authority(encryption)?),
+                )
+                .await?
             }
             _ => bail!("Unsupported terminal service operation."),
         }
         Ok(json!({"accepted":true}))
     }
     pub async fn reconcile(&self, configurations: Vec<Configuration>) -> Result<()> {
+        self.reconcile_scoped(configurations, None).await
+    }
+    async fn reconcile_scoped(
+        &self,
+        configurations: Vec<Configuration>,
+        authority: Option<Authority>,
+    ) -> Result<()> {
         let mut desired = IndexMap::new();
         for configuration in configurations.iter().cloned() {
             desired.insert(configuration.terminal_id.clone(), configuration);
@@ -142,6 +252,11 @@ impl Manager {
         let mut inner = self.inner.lock().await;
         if inner.closing {
             bail!("Terminal manager is stopping.");
+        }
+        if inner.authority != authority {
+            Self::retire(&mut inner).await?;
+            inner.authority = authority;
+            inner.fingerprint.clear();
         }
         while let Some(result) = inner.jobs.try_join_next() {
             result?;
@@ -216,6 +331,9 @@ impl Manager {
         Ok(())
     }
     pub async fn restart(&self, id: &JsString) -> Result<()> {
+        self.restart_scoped(id, None).await
+    }
+    async fn restart_scoped(&self, id: &JsString, authority: Option<&Authority>) -> Result<()> {
         let inner = self.inner.lock().await;
         let entry = inner
             .entries
@@ -224,6 +342,10 @@ impl Manager {
         let Some(entry) = entry else {
             bail!("Terminal service {} is disabled.", id.lossy());
         };
+        anyhow::ensure!(
+            inner.authority.as_ref() == authority,
+            "Terminal service owner changed."
+        );
         self.logs.event("info","Terminal service restart requested",json!({"event":"terminal.service.restart-requested","subsystem":"terminal","operation":"restart-service","status":"started","terminalId":id}));
         entry
             .state
@@ -233,27 +355,41 @@ impl Manager {
         entry.control.send_modify(|control| control.restart += 1);
         Ok(())
     }
-    pub(crate) async fn enabled(&self, id: &JsString) -> bool {
-        self.inner
-            .lock()
-            .await
-            .entries
-            .get(id)
-            .is_some_and(|entry| {
-                entry.control.borrow().configuration.is_some()
-                    || matches!(entry.state.lock().unwrap().phase, "starting" | "running")
-            })
+    async fn view(&self, id: &JsString, authority: &Authority) -> Result<Option<ServiceView>> {
+        let inner = self.inner.lock().await;
+        let Some(entry) = inner.entries.get(id) else {
+            return Ok(None);
+        };
+        let cwd = entry
+            .control
+            .borrow()
+            .configuration
+            .as_ref()
+            .map(|config| config.cwd.clone());
+        if cwd.is_none() && !matches!(entry.state.lock().unwrap().phase, "starting" | "running") {
+            return Ok(None);
+        }
+        anyhow::ensure!(
+            inner.authority.as_ref() == Some(authority),
+            "Terminal service owner changed."
+        );
+        Ok(Some(ServiceView {
+            state: entry.state.clone(),
+            cwd,
+        }))
     }
-    pub(super) async fn disable(&self, id: &JsString) {
-        if let Some(entry) = self.inner.lock().await.entries.get(id) {
+    async fn disable(&self, id: &JsString, authority: &Authority) {
+        let inner = self.inner.lock().await;
+        if inner.authority.as_ref() == Some(authority)
+            && let Some(entry) = inner.entries.get(id)
+        {
             entry.control.send_modify(|control| {
                 control.configuration = None;
                 control.restart += 1;
             });
         }
     }
-    /// Internal output retained for the future terminal attachment adapter; it
-    /// is not a plaintext transport endpoint or a canonical terminal snapshot.
+    /// Inspect local service state in the native lifecycle fixtures.
     pub async fn output(&self, id: &JsString) -> Option<Value> {
         self.inner
             .lock()
@@ -265,6 +401,10 @@ impl Manager {
     pub async fn close(&self) -> Result<()> {
         let mut inner = self.inner.lock().await;
         inner.closing = true;
+        Self::retire(&mut inner).await
+    }
+
+    async fn retire(inner: &mut Inner) -> Result<()> {
         for entry in inner.entries.values() {
             entry.control.send_modify(|control| {
                 control.configuration = None;
