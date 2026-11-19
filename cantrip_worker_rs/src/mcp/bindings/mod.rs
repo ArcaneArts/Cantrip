@@ -97,7 +97,7 @@ struct Inner {
     worker: JsString,
     identity: Identity,
     server: Server,
-    web: crate::web::Service,
+    web: Arc<crate::web::Service>,
     entries: Mutex<Entries>,
     negotiated: AsyncMutex<Option<Negotiated>>,
 }
@@ -149,6 +149,16 @@ impl Broker {
         identity: Identity,
         server: Server,
     ) -> Result<Self> {
+        Self::start_with_web(data, worker, identity, server, None).await
+    }
+
+    pub(crate) async fn start_with_web(
+        data: &Path,
+        worker: JsString,
+        identity: Identity,
+        server: Server,
+        renderer: Option<Arc<crate::managed_chromium::Manager>>,
+    ) -> Result<Self> {
         let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
         let endpoint = format!("http://{}", listener.local_addr()?);
         let inner = Arc::new(Inner {
@@ -157,7 +167,7 @@ impl Broker {
             worker,
             identity,
             server,
-            web: crate::web::Service::default(),
+            web: Arc::new(crate::web::Service::new(renderer)),
             entries: Mutex::new(Entries::default()),
             negotiated: AsyncMutex::new(None),
         });

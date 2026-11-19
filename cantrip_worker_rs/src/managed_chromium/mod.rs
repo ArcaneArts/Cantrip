@@ -9,9 +9,9 @@ use anyhow::{Context, Result, anyhow, ensure};
 use cantrip_config::Environment;
 use cantrip_wire::{Value, parse_json_text, value::json};
 use source::Source;
-use std::{path::Path, sync::Mutex, time::Duration};
+use std::{net::SocketAddrV4, path::Path, sync::Mutex, time::Duration};
 use storage::{Entry, Pointer, Storage};
-use tokio::sync::{Mutex as AsyncMutex, watch};
+use tokio::sync::{Mutex as AsyncMutex, RwLock, watch};
 
 const REFRESH: Duration = Duration::from_secs(6 * 60 * 60);
 
@@ -19,6 +19,7 @@ pub(crate) struct Manager {
     storage: Storage,
     source: Source,
     operation: AsyncMutex<()>,
+    active_version: RwLock<()>,
     status: Mutex<Value>,
     stop: watch::Sender<bool>,
 }
@@ -49,6 +50,7 @@ impl Manager {
             storage: Storage::new(data),
             source,
             operation: AsyncMutex::new(()),
+            active_version: RwLock::new(()),
             status: Mutex::new(status("playwright", supported)),
             stop: watch::channel(false).0,
         }
@@ -56,6 +58,49 @@ impl Manager {
 
     pub(crate) fn capabilities(&self) -> Value {
         json!({"schemaVersion":1,"search":status("searxng", false),"browser":self.snapshot(),"staticReading":true})
+    }
+
+    pub(crate) fn stopped(&self) -> watch::Receiver<bool> {
+        self.stop.subscribe()
+    }
+
+    pub(crate) async fn with_browser<T>(
+        &self,
+        deny_proxy: SocketAddrV4,
+        read: impl AsyncFnOnce(&cantrip_browser::Browser) -> Result<T>,
+    ) -> Result<T> {
+        let _version = self.active_version.read().await;
+        ensure!(!*self.stop.borrow(), "Managed Chromium is shutting down.");
+        let pointer = self.storage.current()?.with_context(|| {
+            format!(
+                "Browser runtime is {}.",
+                self.snapshot()["state"].as_str().unwrap_or("missing")
+            )
+        })?;
+        let runtime = self.storage.version(&pointer.current);
+        let binary = launch::inventory(&runtime, &pointer.current.version, None)?;
+        let staging = self.storage.root.join("staging");
+        storage::private(&staging)?;
+        let scratch = tempfile::Builder::new()
+            .prefix("render-")
+            .tempdir_in(staging)?;
+        let environment = launch::environment(&runtime, scratch.path())?;
+        let profile = scratch.path().join("profile");
+        let browser = cantrip_browser::Browser::launch_intercepted(
+            cantrip_browser::Launch {
+                executable: &binary,
+                profile: &profile,
+                viewport: (1280, 720),
+                environment: Some(&environment),
+            },
+            deny_proxy,
+        )
+        .await?;
+        let result = read(&browser).await;
+        let exit = browser.close().await;
+        let value = result?;
+        exit?;
+        Ok(value)
     }
 
     pub(crate) fn stop(&self) {
@@ -75,6 +120,7 @@ impl Manager {
                 _ = next.tick() => self.perform("check-update", logs).await,
             }
         }
+        let _drained = self.active_version.write().await;
     }
 
     pub(crate) async fn action(&self, command: &Value, logs: &Logs) -> Result<Value> {
@@ -133,16 +179,18 @@ impl Manager {
                     .purge(&["state/profiles"])
                     .map_err(storage_error);
             }
-            "clear-cache" => self
-                .storage
-                .purge(&[
-                    "downloads",
-                    "staging",
-                    "state/cache",
-                    "state/downloads",
-                    "state/traces",
-                ])
-                .map_err(storage_error)?,
+            "clear-cache" => {
+                let _version = self.active_version.write().await;
+                self.storage
+                    .purge(&[
+                        "downloads",
+                        "staging",
+                        "state/cache",
+                        "state/downloads",
+                        "state/traces",
+                    ])
+                    .map_err(storage_error)?;
+            }
             _ => {}
         }
         let current = self.storage.current().map_err(Failure::new(
@@ -230,6 +278,7 @@ impl Manager {
             self.check_installation(&self.storage.version(&selected), artifact, &selected)
                 .await?;
             self.apply_pointer(pointer, "ready");
+            let _version = self.active_version.write().await;
             let _ = self.storage.cleanup(pointer);
             return Ok(());
         }
@@ -330,6 +379,7 @@ impl Manager {
             previous,
             verified_at: now(),
         };
+        let _version = self.active_version.write().await;
         self.storage
             .promote(&unpacked, &pointer)
             .map_err(Failure::new(

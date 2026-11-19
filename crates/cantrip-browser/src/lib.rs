@@ -7,7 +7,7 @@ pub use process::Exit;
 
 use anyhow::{Context, Result, bail, ensure};
 use cantrip_wire::{JsString, Value, value::json};
-use std::{ffi::OsString, path::Path, sync::Arc, time::Duration};
+use std::{ffi::OsString, net::SocketAddrV4, path::Path, sync::Arc, time::Duration};
 
 pub struct Launch<'a> {
     pub executable: &'a Path,
@@ -24,18 +24,30 @@ pub struct Browser {
 
 impl Browser {
     pub async fn launch(options: Launch<'_>) -> Result<Self> {
+        Self::launch_inner(options, None).await
+    }
+
+    pub async fn launch_intercepted(options: Launch<'_>, deny_proxy: SocketAddrV4) -> Result<Self> {
+        ensure!(
+            deny_proxy.ip().is_loopback(),
+            "Chromium deny proxy must be loopback."
+        );
+        Self::launch_inner(options, Some(deny_proxy)).await
+    }
+
+    async fn launch_inner(options: Launch<'_>, deny_proxy: Option<SocketAddrV4>) -> Result<Self> {
         ensure!(
             options.profile.is_absolute(),
             "Chromium needs an absolute profile path."
         );
         cantrip_host::files::private_directory(options.profile)?;
-        let (process, endpoint) = process::Process::launch(options)?;
+        let (process, endpoint) = process::Process::launch(options, deny_proxy)?;
         let handshake = async {
             let url = tokio::time::timeout(Duration::from_secs(20), endpoint)
                 .await
                 .context("Timed out waiting for Chromium remote debugging.")?
                 .context("Chromium exited before remote debugging was ready.")??;
-            let client = Client::connect(url).await?;
+            let client = Client::connect(url, deny_proxy.is_some()).await?;
             client
                 .request("Browser.getVersion", json!({}), None)
                 .await?;
@@ -157,21 +169,24 @@ impl Page {
         }
     }
 
+    pub fn session(&self) -> &JsString {
+        &self.session
+    }
+
     pub fn subscribe(&self) -> Subscription {
         self.client.subscribe_page(&self.watcher)
     }
 
     pub async fn evaluate(&self, expression: &str) -> Result<Value> {
-        let result = self
-            .request(
-                "Runtime.evaluate",
-                json!({
-                    "expression":expression,
-                    "returnByValue":true,
-                    "awaitPromise":true
-                }),
-            )
-            .await?;
+        self.evaluate_in(expression, None).await
+    }
+
+    pub async fn evaluate_in(&self, expression: &str, context: Option<u64>) -> Result<Value> {
+        let mut params = json!({"expression":expression,"returnByValue":true,"awaitPromise":true});
+        if let Some(context) = context {
+            params["contextId"] = json!(context);
+        }
+        let result = self.request("Runtime.evaluate", params).await?;
         if result.get("exceptionDetails").is_some() {
             // The page can include private source, page content or URLs in
             // exception details. Leave those in the browser.

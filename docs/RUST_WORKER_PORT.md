@@ -6094,3 +6094,31 @@ The full MCP schema exporter still reports an unregistered refinement in
 
 Chromium rendering, web research sessions, search and search-result
 references still need native implementations.
+
+
+## 146. Read rendered web pages with managed Chromium
+
+Reference commit `4672167bf374ebd379b28687021a4070381de5a6` (#3308).
+
+The production worker connects the installed managed Chromium release to the
+existing `web_read` operation. Explicit rendering and the fallback for sparse
+static pages use a fresh private Chromium profile and context. The worker
+extracts the DOM after the navigation's DOMContentLoaded event and returns
+the existing rendered result and UTF-16 cursor format.
+
+Chromium pauses document and subresource requests over DevTools. The worker
+services GET and HEAD through the same public DNS validation, address
+pinning and redirect rules used by static reading. Document requests are
+checked against robots rules. The browser's fallback proxy refuses network
+connections, downloads are denied, and resource size, concurrency and
+snapshot size are bounded. The worker holds the runtime version until the
+browser closes, then releases the temporary profile. Cancelling a read
+interrupts outstanding browser requests and closes the owned browser.
+
+The local macOS ARM64 signed-runtime fixture used Chromium headless shell
+153 to check explicit and automatic rendering, script execution, public
+redirects, cookie continuity, robots denial, rejection of POST and loopback
+requests, and cleanup after cancellation. The fixture matched the Node
+reference result for the same rendered markup. Linux and Windows browser
+runtime validation, interactive research sessions and managed search
+remain open.

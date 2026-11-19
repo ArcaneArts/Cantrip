@@ -1,6 +1,6 @@
 use super::Launch;
 use anyhow::{Context, Result, anyhow, ensure};
-use std::{ffi::OsString, io, process::Stdio, time::Duration};
+use std::{ffi::OsString, io, net::SocketAddrV4, process::Stdio, time::Duration};
 use tokio::{
     io::{AsyncRead, AsyncReadExt},
     process::{Child, Command},
@@ -26,7 +26,10 @@ pub enum Exit {
 }
 
 impl Process {
-    pub fn launch(options: Launch<'_>) -> Result<(Self, oneshot::Receiver<Result<Url>>)> {
+    pub fn launch(
+        options: Launch<'_>,
+        deny_proxy: Option<SocketAddrV4>,
+    ) -> Result<(Self, oneshot::Receiver<Result<Url>>)> {
         let mut user_data = OsString::from("--user-data-dir=");
         user_data.push(options.profile);
         let mut command = Command::new(options.executable);
@@ -40,18 +43,29 @@ impl Process {
                 "--disable-background-networking",
                 "--disable-component-update",
                 "--disable-sync",
-                "--disable-features=Translate",
             ])
             .arg(user_data)
             .arg(format!(
                 "--window-size={},{}",
                 options.viewport.0, options.viewport.1
             ))
-            .arg("about:blank")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        if let Some(proxy) = deny_proxy {
+            command.arg(format!("--proxy-server=http://{proxy}")).args([
+                "--proxy-bypass-list=<-loopback>",
+                "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1",
+                "--disable-quic",
+                "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+                "--disable-extensions",
+                "--disable-features=Translate,MediaRouter,DirectSockets,Prerender2",
+            ]);
+        } else {
+            command.arg("--disable-features=Translate");
+        }
+        command.arg("about:blank");
         if let Some(environment) = options.environment {
             command
                 .env_clear()
