@@ -70,8 +70,8 @@ fn session_replacement_fences_prior_grant_generation() {
     );
     replay["binding"]["grantGeneration"] = json!(2);
     state.install_grant(&next_id.into(), &replay, now).unwrap();
-    assert!(!state.revoke_grant(&next_id.into(), &GRANT.into(), 1));
-    assert!(state.revoke_grant(&next_id.into(), &GRANT.into(), 2));
+    assert!(!state.revoke_grant(&next_id.into(), &GRANT.into(), 1, "revoked"));
+    assert!(state.revoke_grant(&next_id.into(), &GRANT.into(), 2, "revoked"));
 }
 
 #[test]
@@ -111,4 +111,24 @@ fn grant_deadlines_and_disconnect_grace_retire_authority() {
     state.sweep(now, Some(&identity));
     assert!(state.sessions.is_empty());
     assert!(state.disconnect.is_none());
+}
+
+#[test]
+fn filesystem_relay_carries_invalidation_without_private_filenames() {
+    let source = "ctrr_route";
+    let observation = Observation::from_notification(&json!({
+        "type":"worktree.filesystem.changed",
+        "projectId":"772890cf-0396-4da0-8d4d-8f11269f8a50",
+        "worktreeId":"worktree","sourcePath":source,"worktreePath":source,
+        "changes":[json!({"kind":"modified","path":"private-file.txt"})],
+    }))
+    .unwrap();
+    let subscription = json!("3a706a56-4f23-4f66-a870-ad3faa7d22b8");
+    let bytes = observation.envelope(&subscription, 4, 9).unwrap();
+    let value = cantrip_wire::parse_json_text(std::str::from_utf8(&bytes).unwrap()).unwrap();
+    assert_eq!(value["payload"]["topic"], "filesystem");
+    assert_eq!(value["payload"]["notification"]["worktreePath"], source);
+    assert!(value["payload"]["notification"].get("changes").is_none());
+    assert_eq!(value["continuitySequence"], 4);
+    assert_eq!(value["identity"]["sequence"], 9);
 }

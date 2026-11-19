@@ -11,7 +11,7 @@ use cantrip_wire::{Value, parse_json_text, value::json};
 use futures::{SinkExt, StreamExt};
 use std::{
     collections::VecDeque,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock, Weak},
     time::Duration,
 };
 use tokio::{
@@ -103,7 +103,7 @@ pub fn reconnect_delay(base_ms: u64, failed_attempts: u32, random: f64) -> Durat
     )
 }
 struct Frame {
-    encoded: String,
+    encoded: Message,
     terminal: bool,
 }
 struct Queue {
@@ -116,6 +116,8 @@ struct Queue {
 pub struct Outbound {
     queue: Mutex<Queue>,
     wake: Notify,
+    worker_link_capacity: Notify,
+    observations: OnceLock<Weak<Coordinator>>,
     stream_epoch: watch::Sender<u64>,
 }
 impl Default for Outbound {
@@ -129,6 +131,8 @@ impl Default for Outbound {
                 closed: false,
             }),
             wake: Notify::new(),
+            worker_link_capacity: Notify::new(),
+            observations: OnceLock::new(),
             stream_epoch: watch::channel(0).0,
         }
     }
@@ -137,6 +141,9 @@ impl Outbound {
     /// Observations are retried by their producer while disconnected or
     /// congested. They must not be treated as accepted offline responses.
     pub fn notification(&self, notification: Value) -> Result<bool> {
+        if let Some(gateway) = self.observations.get().and_then(Weak::upgrade) {
+            gateway.publish_notification(&notification);
+        }
         let notification =
             crate::git::worktrees::observations::notification::for_server(&notification);
         let encoded = checked(
@@ -153,7 +160,7 @@ impl Outbound {
         }
         queue.bytes += encoded.len();
         queue.frames.push_back(Frame {
-            encoded,
+            encoded: Message::Text(encoded.into()),
             terminal: false,
         });
         drop(queue);
@@ -179,13 +186,38 @@ impl Outbound {
         }
         queue.bytes += encoded.len();
         queue.frames.push_back(Frame {
-            encoded,
+            encoded: Message::Text(encoded.into()),
             terminal: false,
         });
         drop(queue);
         self.wake.notify_one();
         Ok(true)
     }
+    pub(crate) fn observe_with(&self, gateway: &Arc<Coordinator>) {
+        assert!(self.observations.set(Arc::downgrade(gateway)).is_ok());
+    }
+
+    pub(crate) async fn worker_link_writable(&self) {
+        self.worker_link_capacity.notified().await;
+    }
+
+    pub(crate) fn worker_link(&self, frame: cantrip_framing::worker_link::Frame) -> bool {
+        let mut queue = self.queue.lock().unwrap();
+        let bytes = frame.bytes();
+        if queue.closed || !queue.ready || queue.bytes + queue.in_flight + bytes.len() > MAX_PENDING
+        {
+            return false;
+        }
+        queue.bytes += bytes.len();
+        queue.frames.push_back(Frame {
+            encoded: Message::Binary(bytes.to_vec().into()),
+            terminal: true,
+        });
+        drop(queue);
+        self.wake.notify_one();
+        true
+    }
+
     pub fn stream_epoch(&self) -> watch::Receiver<u64> {
         self.stream_epoch.subscribe()
     }
@@ -203,7 +235,7 @@ impl Outbound {
         }
         queue.bytes += encoded.len();
         queue.frames.push_back(Frame {
-            encoded,
+            encoded: Message::Text(encoded.into()),
             terminal: true,
         });
         drop(queue);
@@ -229,6 +261,7 @@ impl Outbound {
     fn sent(&self, length: usize) {
         let mut queue = self.queue.lock().unwrap();
         queue.in_flight = queue.in_flight.saturating_sub(length);
+        self.worker_link_capacity.notify_one();
     }
     fn restore(&self, value: Frame) {
         let mut queue = self.queue.lock().unwrap();
@@ -341,7 +374,7 @@ impl Connection {
                             if !matches!(
                                 tokio::time::timeout(
                                     Duration::from_secs(10),
-                                    socket.send(Message::Text(frame.encoded.clone().into()))
+                                    socket.send(frame.encoded.clone())
                                 )
                                 .await,
                                 Ok(Ok(()))
@@ -408,6 +441,12 @@ impl Connection {
                                 Some(Ok(Message::Pong(value)))=>{if pong.as_ref().is_some_and(|(nonce,_)|nonce.as_slice()==value.as_ref()) {pong=None;}},
                                 Some(Ok(Message::Ping(_)))=>{if !matches!(tokio::time::timeout(Duration::from_secs(10),socket.flush()).await,Ok(Ok(()))){break;}},
                                 Some(Ok(Message::Close(frame)))=>{rejected=frame.is_some_and(|frame|frame.code==CloseCode::Policy);break;},
+                                Some(Ok(Message::Binary(bytes))) if handshake.ready && cantrip_framing::worker_link::is_frame(&bytes)=>{
+                                    match cantrip_framing::worker_link::decode(Arc::from(bytes.as_ref())) {
+                                        Ok(frame) => self.worker_link.handle_frame(&frame),
+                                        Err(_) => self.invalid(&worker),
+                                    }
+                                },
                                 Some(Ok(Message::Binary(_)))=>{self.logs.event("warn","Worker data-plane adapter is not yet available",json!({"event":"worker.transport.frame-unavailable","workerId":worker}));},
                                 Some(Err(_))|None=>break,
                                 _=>{},
@@ -469,8 +508,8 @@ impl Connection {
         Ok(())
     }
     fn connected(&self, worker: &cantrip_wire::JsString, attempt: u32, negotiation: &str) {
-        self.worker_link.connected();
         self.outgoing.ready(true);
+        self.worker_link.connected();
         (self.on_ready)();
         self.logs.event("info","Worker command channel connected",json!({"event":"worker.connection.connected","subsystem":"worker-connection","operation":"connect","status":"completed","workerId":worker,"attempt":attempt,"negotiation":negotiation}));
     }
@@ -518,7 +557,7 @@ mod observation_tests {
         assert!(outgoing.take().is_none());
         outgoing.ready(true);
         assert!(outgoing.notification(notification()).unwrap());
-        let frame = parse_json_text(&outgoing.take().unwrap().encoded).unwrap();
+        let frame = parse_json_text(outgoing.take().unwrap().encoded.to_text().unwrap()).unwrap();
         assert!(frame["notification"].get("changes").is_none());
         outgoing.close();
         assert!(!outgoing.notification(notification()).unwrap());
@@ -558,7 +597,13 @@ mod observation_tests {
         outgoing.ready(true);
         assert!(!outgoing.terminal_event(first, terminal.clone()).unwrap());
         let frame = outgoing.take().unwrap();
-        assert!(frame.encoded.contains("fixture-response"));
+        assert!(
+            frame
+                .encoded
+                .to_text()
+                .unwrap()
+                .contains("fixture-response")
+        );
         assert!(outgoing.take().is_none());
         let next = *epoch.borrow_and_update();
         assert!(outgoing.terminal_event(next, terminal).unwrap());

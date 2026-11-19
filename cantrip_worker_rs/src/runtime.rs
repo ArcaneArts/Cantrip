@@ -193,11 +193,14 @@ async fn cycle(
     ));
 
     let (stop, stop_rx) = watch::channel(false);
+    let outgoing = Arc::new(Outbound::default());
     let worker_link = Arc::new(crate::worker_link::Coordinator::new(
         worker.clone(),
         generation.clone(),
         encryption.clone(),
+        outgoing.clone(),
     ));
+    outgoing.observe_with(&worker_link);
     let worker_link_task = {
         let gateway = worker_link.clone();
         let stop = stop_rx.clone();
@@ -223,7 +226,6 @@ async fn cycle(
         logs.clone(),
     )?);
     codex.configure_project_goals(project_goals.clone())?;
-    let outgoing = Arc::new(Outbound::default());
     let run_environment = Arc::new(host_environment);
     let run_definitions = Arc::new(crate::run_definitions::Definitions::new(
         run_environment.clone(),
@@ -586,6 +588,7 @@ async fn cycle(
                     continue;
                 }
                 if matches!(kind, crate::codex::turn::RUN | crate::codex::turn::INTERRUPT | crate::codex::turn::CONTROL | crate::codex::turn::STOP_SUSPENSION | crate::codex::turn::TASK_PAUSE) {
+                    let observations = worker_link.clone();
                     let turns = turns.clone();
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();
@@ -600,7 +603,9 @@ async fn cycle(
                             _ => {
                                 let request_id = request["requestId"].clone();
                                 let stream = outgoing.clone();
+                                let observation = crate::worker_link::observation_scope(command);
                                 turns.run(command, Arc::new(move |event| {
+                                    observations.publish_event(&observation, &event);
                                     stream.send(json!({"kind":"event","requestId":request_id,"event":event}))?;
                                     Ok(())
                                 })).await

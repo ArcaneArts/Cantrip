@@ -5610,3 +5610,31 @@ expiry.
 
 WorkerLink frame delivery, resource adapters, LOCAL capability serving,
 and LAN/WAN peer transport remain open.
+
+## 128. Serve WorkerLink observation subscriptions over the relay
+
+Reference commit `6010c73bb77515b039ff476305aaa824cb4f96a6` (#3290).
+
+The Rust worker reads and writes WorkerLink binary frames on the
+authenticated control socket using the shared framing crate. It opens
+observation channels against the installed session, route and grant,
+checks bearer proof and replay nonces, and keeps control, data sequence
+and byte credit ordered. Expired, replaced and revoked authority closes
+its channels. Pending observations are bounded and drain when the
+client supplies credit or the socket can accept more bytes.
+
+The worker projects existing provisional chat, worktree, filesystem and
+runtime notifications into the protocol's observation envelope. The
+generated contract enforces topic and provisional event restrictions.
+Relayed filesystem observations carry the protected routing handles and
+directory invalidation. Detailed filenames belong on the encrypted
+filesystem delivery path.
+
+On macOS ARM64, the production Rust worker and Rust server with PGlite
+relayed real Host Run status changes. The client decoded the frames with
+the TypeScript contract and verified acceptance, held output under
+insufficient credit, continuity after credit, the exact Run identity,
+and revocation. The Node observation adapter tests passed locally.
+
+Encrypted detailed filesystem delivery, terminal and tunnel channels,
+remote surfaces, LOCAL capability serving, and peer transport remain open.

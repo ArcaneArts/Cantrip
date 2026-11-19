@@ -11,6 +11,7 @@ import { verifyFlutterRunProvider } from "./flutter-run-provider-smoke.mjs";
 import { cliConnection, verifyHostCli } from "./host-cli-smoke.mjs";
 import { verifyJavaRunProvider } from "./java-run-provider-smoke.mjs";
 import { verifyNodeRunProvider } from "./node-run-provider-smoke.mjs";
+import { verifyLiveRunObservations } from "./worker-link-observation-smoke.mjs";
 
 const operations = "/api/run-configuration-runtimes/operations";
 const status = "/api/run-configuration-runtimes/status";
@@ -18,6 +19,7 @@ const output = "/api/run-configuration-runtimes/output";
 
 export async function verifyHostRuns({
   call,
+  origin,
   eventually,
   projectId,
   checkout,
@@ -199,8 +201,16 @@ exec /bin/sleep 120`;
     Number([...text.matchAll(/process=(\d+)/gu)].at(-1)[1]);
 
   const start = intent("start", configurationId);
-  const started = await operate(start, 202);
-  const running = await awaitState(configurationId, "running", 1);
+  const { started, running } = await verifyLiveRunObservations({
+    origin,
+    workerId,
+    call,
+    privateValue: secret,
+    start: async () => ({
+      started: await operate(start, 202),
+      running: await awaitState(configurationId, "running", 1),
+    }),
+  });
   assert.equal(running.id, started.runtime.id);
   assert.equal((await operate(start, 200)).replayed, true);
   const first = await readyOutput(running);
