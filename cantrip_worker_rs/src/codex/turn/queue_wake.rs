@@ -9,12 +9,12 @@ pub(crate) const CHANGED: &str = "chat.queue.changed";
 
 impl Turns {
     pub(crate) async fn queue_changed(&self, command: &Value, worker: &Worker) -> Result<Value> {
-        if command["taskPause"].is_object() {
-            bail!("Managed Task queue pause delivery requires the Task runtime control path.");
-        }
         let chat = id(&command["chatId"], "queue notification chat")?;
         let scope = Scope::new(self.encryption.clone())?;
         let bound = (scope.owner.clone(), json!(scope.server));
+        if let Some(intent) = command.get("taskPause") {
+            self.preparation.task_pause(&bound, &chat, intent).await?;
+        }
         worker.wake_recovery(&scope.owner, &scope.server, &chat);
 
         if let Some((thread, owner)) = self.preparation.selected_live_thread(&chat, &bound)

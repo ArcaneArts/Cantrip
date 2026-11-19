@@ -10,7 +10,13 @@ import {
   taskMessageRelayResultSchema,
 } from "../../packages/protocol/dist/index.js";
 
-export function goalCycles({ receipt, threadId, serverId, generation }) {
+export function goalCycles({
+  receipt,
+  threadId,
+  serverId,
+  generation,
+  orderEpoch = receipt.queueOrderEpoch ?? 0,
+}) {
   const cycles = [];
   const observed = Array.from({ length: 2 }, () => ({
     dispatch: Promise.withResolvers(),
@@ -48,7 +54,7 @@ export function goalCycles({ receipt, threadId, serverId, generation }) {
       assert.equal(dispatch.threadId, threadId);
       assert.equal(dispatch.cycle.cycleId, receipt.dispatch.cycleId);
       assert.equal(dispatch.cycle.modelRouteId, receipt.modelRouteId);
-      assert.equal(dispatch.cycle.orderEpoch, receipt.queueOrderEpoch ?? 0);
+      assert.equal(dispatch.cycle.orderEpoch, orderEpoch);
       assert.equal(dispatch.cycle.providerAccountId, receipt.providerAccountId);
       assert.equal(
         dispatch.freshRuntimeGeneration,

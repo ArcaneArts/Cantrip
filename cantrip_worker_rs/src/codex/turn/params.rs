@@ -55,6 +55,7 @@ pub(super) fn preparation(command: &Value) -> Value {
         "threadId": command["threadId"],
         "planMode": command["planMode"],
         "taskOwned": super::task::is_round(command) || super::task::is_goal(command),
+        "taskCycleId": command["taskInferenceInput"]["dispatch"]["cycleId"],
         "taskGoalFirstInput": if super::task::is_goal(command) { command["clientMessageId"].clone() } else { Value::Null },
         "structuredTask": super::task::is_structured(command),
         "model": command["model"],

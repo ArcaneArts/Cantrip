@@ -10,6 +10,7 @@ use super::{
     admission::{Adapter, NativeRequest, TaskDispatch, TaskQueued},
     rpc_protocol::is_private_inference,
     session::{Event, EventKind, Session},
+    task_pause::Root as TaskRoot,
     turn::task::cycle::GoalCycle,
 };
 use crate::{
@@ -80,6 +81,7 @@ struct Inner {
     timeout: Duration,
     pending: Mutex<PendingState>,
     task_goals: Mutex<HashMap<JsString, TaskGoalRoot>>,
+    task_roots: Mutex<HashMap<JsString, TaskRoot>>,
     producers: Mutex<producer::Producers>,
     version: watch::Sender<u64>,
 }
@@ -108,6 +110,7 @@ impl Router {
             timeout: Duration::from_secs(120),
             pending: Mutex::new(PendingState::default()),
             task_goals: Mutex::new(HashMap::new()),
+            task_roots: Mutex::new(HashMap::new()),
             producers: Mutex::default(),
             version: watch::channel(0).0,
         })))
@@ -193,6 +196,28 @@ impl Router {
             .values()
             .cloned()
             .collect()
+    }
+
+    pub(super) fn set_task_root(&self, thread: &JsString, root: Option<TaskRoot>) {
+        let mut roots = self.0.task_roots.lock().unwrap();
+        if let Some(root) = root {
+            roots.insert(thread.clone(), root);
+        } else {
+            roots.remove(thread);
+        }
+    }
+
+    fn task_root(&self, gate: &Gate) -> Option<TaskRoot> {
+        self.0
+            .task_roots
+            .lock()
+            .unwrap()
+            .get(gate.root_thread())
+            .filter(|root| {
+                gate.root_thread() != &gate.key.thread_id
+                    || root.runner == gate.key.runner_generation
+            })
+            .cloned()
     }
 
     pub(crate) fn reserve_task_first_input(
@@ -532,10 +557,14 @@ impl Router {
             }
             return Err(FirstInputDispatch.into());
         }
-        if gate.phase != Phase::Suspend
-            && let Some(before) = &self.0.hooks.before_inference
-        {
-            before(gate.clone(), signal.clone()).await?;
+        let task = self.task_root(gate);
+        if gate.phase != Phase::Suspend {
+            if let Some(task) = &task {
+                task.latch.wait(signal).await?;
+            }
+            if let Some(before) = &self.0.hooks.before_inference {
+                before(gate.clone(), signal.clone()).await?;
+            }
         }
         signal.check()?;
         match gate.phase {
@@ -552,6 +581,20 @@ impl Router {
                         provider["id"].clone(),
                     )
                 });
+                let placement = cycle.as_ref().map(|cycle| {
+                    let mut placement = cycle.placement();
+                    if let Some(task) = &task {
+                        let epoch = task.latch.order_epoch(&task.binding, &placement["cycleId"]);
+                        if epoch > placement["orderEpoch"].as_u64().unwrap_or(0) {
+                            placement["orderEpoch"] = cantrip_wire::value::json!(epoch);
+                        }
+                    }
+                    placement
+                });
+                let paused = task.as_ref().map(|root| {
+                    let latch = root.latch.clone();
+                    Arc::new(move || latch.current().blocked) as Arc<dyn Fn() -> bool + Send + Sync>
+                });
                 let this = self.clone();
                 let pending = pending.clone();
                 self.0
@@ -561,13 +604,11 @@ impl Router {
                         confirm_ownership: Arc::new(move || this.claim(&pending)),
                         goal_epoch: gate.goal_epoch.clone(),
                         runner_generation: Some(gate.key.runner_generation.clone()),
-                        task_goal_cycle: cycle.as_ref().map(|cycle| cycle.placement()).or_else(
-                            || {
-                                (gate.root_thread_id.as_ref() == Some(&gate.key.thread_id))
-                                    .then_some(context.task_goal_cycle)
-                                    .flatten()
-                            },
-                        ),
+                        task_goal_cycle: placement.or_else(|| {
+                            (gate.root_thread_id.as_ref() == Some(&gate.key.thread_id))
+                                .then_some(context.task_goal_cycle)
+                                .flatten()
+                        }),
                         on_task_goal_queued: context.on_task_goal_queued,
                         on_task_goal_dispatch: dispatch.or(context.on_task_goal_dispatch),
                         thread_id: gate.key.thread_id.clone(),
@@ -575,15 +616,17 @@ impl Router {
                         scope_id: gate.scope_id.clone(),
                         provider,
                         signal: signal.clone(),
-                        is_paused: context.is_paused,
+                        is_paused: paused.or(context.is_paused),
                         root_thread_id: gate.root_thread_id.clone(),
                         chat_id: cycle
                             .as_ref()
                             .map(|cycle| cycle.parent["chatId"].clone())
+                            .or_else(|| task.as_ref().map(|root| root.binding["chatId"].clone()))
                             .or(context.chat_id),
                         project_id: cycle
                             .as_ref()
                             .map(|cycle| cycle.project.clone())
+                            .or_else(|| task.as_ref().map(|root| root.binding["projectId"].clone()))
                             .or(context.project_id),
                         independent: gate.phase == Phase::BeginIndependent,
                     })

@@ -4654,3 +4654,31 @@ focused Node contract tests passed locally.
 The native queue and gateway cutover, live terminal-style command telemetry,
 cold recovery of unsettled shell executions, Task pause notifications, and
 saved permission and Goal recovery remain open. Production still selects Node.
+
+## 94. Apply Task pause notifications to the current native owner
+
+Reference commit `61e6d26329ae13e23d731709d614303e4c06d56c` (#3256).
+
+The Rust worker applies the Task pause intent carried by Core's
+`chat.queue.changed` command. It retains the newest intent for the worker's
+authenticated chat, ignores stale deliveries, and rejects conflicting
+decisions at the same revision. For an attached Task it matches the
+placement, native thread, and runner before applying the revision and checks
+the native acknowledgment before acknowledging Core. A Task prepared later
+inherits the admission hold.
+
+Pause parks eligible pending inference. Fresh private inference waits for
+Resume without acquiring capacity. Resume releases the worker hold after
+the current native gate acknowledges it. Fresh autonomous Goal admissions
+also adopt the new FIFO order epoch for the same canonical cycle.
+
+The macOS ARM64 smoke held a real Codex Goal request during Pause and
+released it after Resume. It tested duplicate and stale notifications, a
+conflicting revision, and a mismatched worker. Two subsequent autonomous
+Goal turns used the updated queue order and completed against local Core
+and provider peers. A Rust test covered the admission hold, revision
+ordering, and cancellation.
+
+Direct Task boundary controls and durable suspension checkpoint capture
+and restore remain open, along with native queue and gateway cutover.
+Production still selects Node.
