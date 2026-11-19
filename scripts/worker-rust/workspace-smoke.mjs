@@ -954,6 +954,8 @@ try {
         passed: true,
         typedNodeProvider: true,
         typedCargoProvider: true,
+        typedDartProvider: true,
+        realDartSdk: Boolean(process.env.CANTRIP_TEST_DART_SDK),
         encryptedOutput: true,
         nodeDifferential: true,
         nodeAbsentFromWorkerPath: true,

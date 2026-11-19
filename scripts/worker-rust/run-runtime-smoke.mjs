@@ -6,6 +6,7 @@ import * as crypto from "../../packages/crypto/dist/index.js";
 import * as definitions from "../../packages/protocol/dist/run-configuration-definitions.js";
 import * as secrets from "../../packages/protocol/dist/run-configuration-secrets.js";
 import { verifyCargoRunProvider } from "./cargo-run-provider-smoke.mjs";
+import { verifyDartRunProvider } from "./dart-run-provider-smoke.mjs";
 import { verifyNodeRunProvider } from "./node-run-provider-smoke.mjs";
 
 const operations = "/api/run-configuration-runtimes/operations";
@@ -304,4 +305,5 @@ exec /bin/sleep 120`;
   };
   await verifyNodeRunProvider(providerFixture);
   await verifyCargoRunProvider(providerFixture);
+  await verifyDartRunProvider(providerFixture);
 }
