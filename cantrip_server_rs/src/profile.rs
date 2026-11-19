@@ -13,6 +13,7 @@ pub use activation::{
 };
 use anyhow::{Result, anyhow};
 pub use bundle::{Bundle, ProfileReceipt, RestoreStage, export_profile, pack_profile};
+pub use legacy_postgres::{export_legacy_profile, restore_legacy_profile};
 pub fn publish_directory(source: &Path, destination: &Path) -> Result<()> {
     let source = std::path::absolute(source)?;
     let destination = std::path::absolute(destination)?;

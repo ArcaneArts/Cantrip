@@ -6375,3 +6375,28 @@ upgrade that skips conversion after successful activation.
 
 Desktop runtime assembly and Windows validation remain open. The existing
 Node-based rollback path stays available while native rollback is pending.
+
+
+## 156. Export and restore legacy PGlite profiles without Node
+
+Reference commit `f3816c7fd8813925b70b0cd163196454000993d4` (#3318).
+
+The offline CLI now accepts `--export-legacy-profile` and
+`--restore-legacy-profile` with the existing compatibility PostgreSQL tools.
+Export converts a private copy of the stopped source and publishes the
+existing logical bundle format. The scratch database stays outside the
+bundle, even when the destination is inside the source profile.
+
+Rollback verifies the archive and creates a private legacy-format database.
+It restores its SQL in one transaction, verifies the physical datum format
+and stored constant representation, and clears the temporary database
+credential. PostgreSQL stops before the prepared profile is published. The
+existing explicit activation command retains the current Rust profile.
+
+On macOS ARM64, the real production CLI exported a stopped legacy database,
+upgraded it, exported new Rust writes, and activated a native rollback.
+The pinned JavaScript PGlite engine reopened all 137 tables and their sequence
+state, read the new Rust writes, and persisted a new write across restart.
+The test checked archive integrity, wrong-engine failure, and both retained
+active profiles. All transfer subprocesses ran with an empty executable
+search path. Desktop packaging and other platform runtime checks remain open.

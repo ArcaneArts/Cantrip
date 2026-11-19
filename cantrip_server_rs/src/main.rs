@@ -56,7 +56,7 @@ struct Arguments {
     #[arg(long)]
     migrate_only: bool,
     /// Prepare an existing stopped profile for the native runtime, retaining its original.
-    #[arg(long, requires="migrate_only", conflicts_with_all=["restore_profile","export_profile","restore_sql","export_sql","pack_profile","remember_database","activate_profile","recover_profile_activation","materialize_profile","publish_profile"])]
+    #[arg(long, requires="migrate_only", group="legacy_profile_operation", conflicts_with_all=["restore_profile","export_profile","restore_sql","export_sql","pack_profile","remember_database","activate_profile","recover_profile_activation","materialize_profile","publish_profile"])]
     upgrade_profile: bool,
     /// Node executable for the bounded legacy PGlite conversion tool only.
     #[arg(long, requires = "upgrade_profile")]
@@ -64,8 +64,14 @@ struct Arguments {
     #[arg(long, requires = "upgrade_profile")]
     legacy_profile_converter: Option<PathBuf>,
     /// PostgreSQL 18 tools built for the legacy PGlite storage ABI.
-    #[arg(long, requires = "upgrade_profile")]
+    #[arg(long, requires = "legacy_profile_operation")]
     legacy_postgres_bin_dir: Option<PathBuf>,
+    /// Export an existing stopped legacy PGlite profile to a new logical bundle.
+    #[arg(long, requires_all=["migrate_only","data_dir","legacy_postgres_bin_dir"], group="legacy_profile_operation", conflicts_with_all=["restore_profile","export_profile","restore_sql","export_sql","pack_profile","remember_database","activate_profile","recover_profile_activation","materialize_profile","publish_profile","upgrade_source_probe"])]
+    export_legacy_profile: Option<PathBuf>,
+    /// Restore a logical bundle to a new legacy PGlite profile for rollback.
+    #[arg(long, requires_all=["migrate_only","data_dir","legacy_postgres_bin_dir"], group="legacy_profile_operation", conflicts_with_all=["restore_profile","export_profile","restore_sql","export_sql","pack_profile","remember_database","activate_profile","recover_profile_activation","materialize_profile","publish_profile","upgrade_source_probe"])]
+    restore_legacy_profile: Option<PathBuf>,
     #[arg(
         long,
         hide = true,
@@ -108,6 +114,12 @@ struct Arguments {
     pg_dump_path: Option<PathBuf>,
     #[arg(long)]
     shutdown_on_stdin_close: bool,
+}
+
+impl Arguments {
+    fn legacy_profile_transfer(&self) -> bool {
+        self.export_legacy_profile.is_some() || self.restore_legacy_profile.is_some()
+    }
 }
 
 async fn shutdown() -> &'static str {
@@ -177,7 +189,10 @@ fn main() -> Result<()> {
     }
     // Finish all startup environment mutation before creating owner or runtime
     // threads. The owner duplicates stdin before any native database opens.
-    if arguments.migrate_only && arguments.shutdown_on_stdin_close {
+    if arguments.migrate_only
+        && arguments.shutdown_on_stdin_close
+        && !arguments.legacy_profile_transfer()
+    {
         cantrip_server::profile::upgrade::watch_operation_owner()?;
     }
     let probe = arguments.upgrade_source_probe;
@@ -201,10 +216,71 @@ fn main() -> Result<()> {
     result
 }
 
+async fn transfer_legacy_profile(arguments: &Arguments) -> Result<()> {
+    let profile = std::path::absolute(
+        arguments
+            .data_dir
+            .as_ref()
+            .context("legacy profile directory")?,
+    )?;
+    let binaries = std::path::absolute(
+        arguments
+            .legacy_postgres_bin_dir
+            .as_ref()
+            .context("legacy PostgreSQL binary directory")?,
+    )?;
+    let owner = if arguments.shutdown_on_stdin_close {
+        Some(cantrip_host::process::pipe_closed(
+            os_pipe::dup_stdin()?,
+            "legacy-profile-owner",
+        )?)
+    } else {
+        None
+    };
+    let transfer = async {
+        let (event, receipt) = if let Some(output) = &arguments.export_legacy_profile {
+            let _lease = cantrip_server::profile::lease(&profile)?;
+            (
+                "profile.export.completed",
+                cantrip_server::profile::export_legacy_profile(&profile, output, &binaries).await?,
+            )
+        } else {
+            let _lease = cantrip_server::profile::exclusive_lease(&profile)?;
+            let bundle = arguments
+                .restore_legacy_profile
+                .as_ref()
+                .context("legacy profile bundle")?;
+            (
+                "profile.restore.completed",
+                cantrip_server::profile::restore_legacy_profile(bundle, &profile, &binaries)
+                    .await?,
+            )
+        };
+        println!("{}", json!({"event":event,"receipt":receipt}));
+        Ok(())
+    };
+    let parent_closed = async {
+        if let Some(owner) = owner {
+            let _ = owner.await;
+        } else {
+            std::future::pending::<()>().await;
+        }
+    };
+    tokio::select! {
+        biased;
+        _ = shutdown() => Ok(()),
+        _ = parent_closed => Ok(()),
+        result = transfer => result,
+    }
+}
+
 async fn run(
     arguments: Arguments,
     profile_lease: &mut Option<cantrip_server::profile::ProfileLease>,
 ) -> Result<()> {
+    if arguments.legacy_profile_transfer() {
+        return transfer_legacy_profile(&arguments).await;
+    }
     if let Some(prepared) = &arguments.activate_profile {
         let receipt = cantrip_server::profile::activate_profile_with_progress(
             prepared,

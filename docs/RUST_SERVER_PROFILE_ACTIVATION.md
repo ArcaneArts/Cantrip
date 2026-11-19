@@ -9,36 +9,12 @@ exporting, converting or activating a profile. Use copies for qualification.
 The native server's ordinary serving and background work do not run the bounded
 JavaScript converter.
 
-## Upgrade a stopped Node PGlite profile
+## Upgrade a stopped legacy PGlite profile
 
-```sh
-node scripts/database-transfer/legacy-profile.mjs \
-  /installation/server /backup/legacy-logical /absolute/path/to/cantrip-server
-
-/absolute/path/to/cantrip-server --database pglite \
-  --data-dir /installation/server-prepared --migrate-only \
-  --restore-profile /backup/legacy-logical
-
-/absolute/path/to/cantrip-server --data-dir /installation/server \
-  --migrate-only --activate-profile /installation/server-prepared
-```
-
-Restore can instead explicitly select bundled PostgreSQL or external PostgreSQL
-using the existing configuration options. The published profile retains that
-backend selection. Distribution asset paths can be supplied with
-`--bundled-pglite-runtime-dir` and `--bundled-postgres-bin-dir`.
-
-The activation receipt reports `activationId`, `dataDirectory` and
-`backupDirectory`. Existing physical database files, keys and opaque files in
-the previous profile are retained by renaming its whole directory. No database
-version or capability metadata determines whether a backend may open.
-
-### Use the native legacy reader
-
-The native profile upgrade accepts an explicit PostgreSQL 18 compatibility
-runtime. Its build matches the legacy PGlite 18 datum and stored-expression
-representations. Build it on macOS or Linux with the PostgreSQL source build
-tools and zlib development headers available. Node runs the build script.
+The offline CLI accepts an explicit PostgreSQL 18 compatibility runtime.
+Its build matches the datum and stored-expression formats of legacy PGlite 18.
+Build it on macOS or Linux with the PostgreSQL source build tools and zlib
+development headers. Node is used by the build script.
 
 ```sh
 node scripts/database-transfer/build-legacy-postgres.mjs /build/legacy-postgres
@@ -48,39 +24,61 @@ node scripts/database-transfer/build-legacy-postgres.mjs /build/legacy-postgres
   --legacy-postgres-bin-dir /build/legacy-postgres/bin
 ```
 
-The upgrade tries the native serving engine on a private copy first. If the
-database cannot open, the compatibility runtime opens a fresh private copy,
-dumps its database, then shuts down. The server restores the logical profile
-into native PGlite and publishes it using the normal activation journal. The
-native fallback takes precedence when the compatibility binary directory is
-supplied alongside legacy converter options. Its runtime needs no Node.
+The upgrade tries the native serving engine on a private copy. If it cannot
+open the database, the compatibility runtime opens a fresh copy and dumps it.
+The server restores the logical profile into native PGlite and publishes it
+through the activation journal. Desktop packages still supply the existing
+converter. The native runtime takes precedence when both are supplied.
 
-Local validation used macOS ARM64 and a stopped profile created by the pinned
-legacy JavaScript engine. Desktop packages still select the original converter
-and reverse conversion uses the existing rollback procedure below.
+Use explicit export and restore if you need to keep an archive, prepare at a
+separate path, or select another database backend.
+
+```sh
+/absolute/path/to/cantrip-server --data-dir /installation/server \
+  --migrate-only --export-legacy-profile /backup/legacy-logical \
+  --legacy-postgres-bin-dir /build/legacy-postgres/bin
+
+/absolute/path/to/cantrip-server --database pglite \
+  --data-dir /installation/server-prepared --migrate-only \
+  --restore-profile /backup/legacy-logical
+
+/absolute/path/to/cantrip-server --data-dir /installation/server \
+  --migrate-only --activate-profile /installation/server-prepared
+```
+
+Restore can explicitly select bundled PostgreSQL or external PostgreSQL
+through the existing configuration options. The published profile retains
+that backend selection. Supply distribution asset paths with
+`--bundled-pglite-runtime-dir` and `--bundled-postgres-bin-dir`.
+
+The activation receipt reports `activationId`, `dataDirectory`, and
+`backupDirectory`. Renaming the original directory retains its physical
+database, keys, and opaque files.
 
 ## Roll back after Rust has accepted writes
 
-Start reverse conversion with a fresh export of the current Rust profile, so
-the resulting Node profile includes the writes accepted since the upgrade:
+Export the current Rust profile so the restored legacy database includes
+writes accepted since the upgrade.
 
 ```sh
 /absolute/path/to/cantrip-server --data-dir /installation/server \
   --migrate-only --export-profile /backup/current-rust \
-  --pg-dump-path /absolute/path/to/pg_dump
+  --pg-dump-path /build/legacy-postgres/bin/pg_dump
 
-node scripts/database-transfer/legacy-profile.mjs --restore \
-  /backup/current-rust /installation/server-node /absolute/path/to/cantrip-server
+/absolute/path/to/cantrip-server --data-dir /installation/server-legacy \
+  --migrate-only --restore-legacy-profile /backup/current-rust \
+  --legacy-postgres-bin-dir /build/legacy-postgres/bin
 
 /absolute/path/to/cantrip-server --data-dir /installation/server \
-  --migrate-only --activate-profile /installation/server-node
+  --migrate-only --activate-profile /installation/server-legacy
 ```
 
-The Node launcher can then use its original data pathname. This switch retains
-the most recent Rust directory as another backup. Keep both receipts and backups
-until the replacement has been validated. The original pre-upgrade backup is
-historical recovery data; the fresh reverse-converted profile carries subsequent
-writes.
+The restored legacy profile uses the pinned JavaScript engine's physical
+format. The CLI verifies the bundle, loads it in one transaction, checks the
+resulting cluster and expression format, and stops PostgreSQL before
+publishing the candidate. The later activate command retains the latest
+Rust directory as a backup. The Node launcher can then use the original
+profile path. The export, restore and activation CLI commands run without Node.
 
 ## Interrupted activation
 
