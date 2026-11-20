@@ -1031,7 +1031,8 @@
     "projectAutomationContentOpaqueSchema": 3424,
     "projectAutomationProtectedNameSchema": 14709,
     "projectAutomationProtectedPromptSchema": 14713,
-    "projectAutomationProtectedConditionSchema": 14717
+    "projectAutomationProtectedConditionSchema": 14717,
+    "standaloneChatFileOperationRequestContentSchema": 14729
   },
   "nodes": [
     {
@@ -88069,6 +88070,202 @@
         { "check": "number_format", "format": "safeint", "abort": false },
         { "check": "greater_than", "value": 1, "inclusive": true },
         { "check": "less_than", "value": 1000000, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "standaloneChatFileOperationRequestContentSchema",
+      "options": [
+        14730, 14734, 14737, 14741, 14746, 14749, 14754, 14758, 14764
+      ],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "type": 14731, "path": 14732 },
+      "catchall": 14733,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": ["chat-files.directory.list"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 8192, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 14735, "path": 12645 },
+      "catchall": 14736,
+      "checks": []
+    },
+    { "type": "literal", "values": ["chat-files.file.read"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 14738, "reference": 14739 },
+      "catchall": 14740,
+      "checks": []
+    },
+    { "type": "literal", "values": ["chat-files.path.resolve"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "type": 14742,
+        "path": 12645,
+        "offset": 14743,
+        "limit": 14744
+      },
+      "catchall": 14745,
+      "checks": []
+    },
+    { "type": "literal", "values": ["chat-files.media.read"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 262144, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "type": 14747,
+        "path": 12645,
+        "content": 12851,
+        "version": 12642
+      },
+      "catchall": 14748,
+      "checks": []
+    },
+    { "type": "literal", "values": ["chat-files.file.write"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 14750, "path": 12645, "recursive": 14751 },
+      "catchall": 14753,
+      "checks": []
+    },
+    { "type": "literal", "values": ["chat-files.entry.delete"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 14752,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 14755, "kind": 14756, "path": 14732 },
+      "catchall": 14757,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "standalone-chat-file-download-path",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "literal",
+      "values": ["chat-files.download.prepare"],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "standaloneChatFileDownloadKindSchema",
+      "values": ["file", "folder", "all"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "type": 14759,
+        "downloadId": 14760,
+        "offset": 14761,
+        "limit": 14762
+      },
+      "catchall": 14763,
+      "checks": []
+    },
+    { "type": "literal", "values": ["chat-files.download.read"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 262144, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 14765, "downloadId": 14766 },
+      "catchall": 14767,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": ["chat-files.download.cancel"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
       ]
     },
     { "type": "never", "checks": [] }

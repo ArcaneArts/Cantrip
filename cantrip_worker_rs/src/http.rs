@@ -39,8 +39,8 @@ pub fn heartbeat(
                     "remove":true,"reconcile":true,"routingHandles":true,
                 }),
                 "files": json!({
-                    "list":false,"read":false,"write":false,"remove":false,"download":false,
-                    "archive":false,"networkShare":true,
+                    "list":true,"read":true,"write":true,"remove":true,"download":true,
+                    "archive":true,"networkShare":true,
                 }),
             }),
         }),

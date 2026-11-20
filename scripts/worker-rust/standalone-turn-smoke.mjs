@@ -67,6 +67,7 @@ const { values } = parseArgs({
     policies: { type: "boolean" },
     "host-skills": { type: "boolean" },
     "standalone-skills": { type: "boolean" },
+    "scratch-files": { type: "boolean" },
     "skill-settings": { type: "boolean" },
     "customization-inventory": { type: "boolean" },
     "project-automations": { type: "boolean" },
@@ -190,6 +191,7 @@ const consoleStateKey =
   guestCua ||
   autonomousCua ||
   values["host-skills"] ||
+  values["scratch-files"] ||
   values.policies ||
   values.codegraph ||
   consoleInteractions ||
@@ -3073,7 +3075,18 @@ try {
   }
   await startWorker(enrollment.code);
   await setupEncryption();
-  if (workflowKey) {
+  if (values["scratch-files"]) {
+    const { verifyStandaloneChatFiles } =
+      await import("./standalone-chat-files-cases.mjs");
+    await verifyStandaloneChatFiles({
+      call,
+      createChat,
+      data,
+      ownerId,
+      keyRevision,
+      componentKey: consoleStateKey,
+    });
+  } else if (workflowKey) {
     await verifyProjectAutomations({
       call,
       eventually,

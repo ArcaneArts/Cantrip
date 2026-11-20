@@ -205,6 +205,23 @@ export function standaloneChatWireFixtures(timestamp) {
         archiveExpiresAt: "2027-01-01T00:00:00.000Z",
       },
     ],
+    standaloneChatFileOperationRequestContentSchema: [
+      { type: "chat-files.directory.list", path: "" },
+      { type: "chat-files.entry.delete", path: "docs/archive" },
+      { type: "chat-files.download.prepare", kind: "all", path: "" },
+      { type: "chat-files.download.prepare", kind: "folder", path: "docs" },
+      {
+        type: "chat-files.download.prepare",
+        kind: "file",
+        path: "docs/draft.md",
+      },
+      {
+        type: "chat-files.download.read",
+        downloadId: job.id,
+        offset: 32,
+        limit: 256 * 1_024,
+      },
+    ],
     standaloneChatFileWireRequestSchema: [
       {
         intent: "read",

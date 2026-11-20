@@ -16,6 +16,10 @@ use cantrip_crypto::checked;
 use cantrip_wire::{JsString, Value, value::json};
 use std::{fs::Metadata, path::Path};
 
+pub(super) use files::{decode, hex_digest, version};
+pub(super) use pages::media_type_for_name;
+pub(super) use search::Sorting;
+
 pub use directory::{create_directory, create_file, delete_entry, list_directory, rename_entry};
 pub use files::{TextPreviewRequiredError, read_file, write_file};
 pub use git::directory_commits;
@@ -137,7 +141,7 @@ pub(crate) fn complete(result: &Value, request: &Value) -> bool {
     }
 }
 
-fn joined(parent: &JsString, name: &JsString) -> JsString {
+pub(super) fn joined(parent: &JsString, name: &JsString) -> JsString {
     if parent.is_empty() {
         return name.clone();
     }
@@ -173,7 +177,7 @@ fn modified_milliseconds(metadata: &Metadata) -> Result<f64> {
         + nanos.rem_euclid(1_000_000_000) as f64 / 1_000_000.)
 }
 
-fn date_iso(milliseconds: f64) -> Result<String> {
+pub(super) fn date_iso(milliseconds: f64) -> Result<String> {
     // Stats rounds before constructing the Date, with ties toward +infinity.
     let floor = milliseconds.floor();
     let rounded = if milliseconds - floor >= 0.5 {
