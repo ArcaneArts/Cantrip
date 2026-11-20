@@ -136,6 +136,17 @@ async fn cycle(
         cwd,
         environment,
     ));
+    let external_history = Arc::new(crate::external_history::Manager::new(
+        &config.codex_installation.binary,
+        &config.data_directory,
+        cwd,
+        environment,
+        &codex_compatibility["version"]["raw"],
+    ));
+    let attachment_commands = Arc::new(crate::attachments::commands::Commands::new(
+        &config.data_directory,
+        logs.clone(),
+    )?);
     let repository_operations = Arc::new(crate::repository_operations::RepositoryOperations::new(
         &config.data_directory,
         &worker,
@@ -167,6 +178,7 @@ async fn cycle(
     let mut heartbeat = http::heartbeat(&config, host.platform, host.architecture, &started)?;
     heartbeat["codexVersion"] = codex_compatibility["version"]["raw"].clone();
     heartbeat["codexRuntime"] = codex_compatibility.clone();
+    heartbeat["externalCodexHistory"] = json!(crate::codex::external_home::supported());
     let managed_web = Arc::new(crate::managed_web::Runtimes::configure(
         &config.data_directory,
         environment,
@@ -1018,6 +1030,26 @@ async fn cycle(
                             folders.execute_routed(command, &routing, &scope).await
                         }.await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
+                if crate::external_history::supports(kind) || crate::attachments::commands::Commands::supports(kind) {
+                    let external_history = external_history.clone();
+                    let attachments = attachment_commands.clone();
+                    let routing = routing.clone();
+                    let encryption = encryption.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    let scope = crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let command = &request["command"];
+                        let result = if crate::external_history::supports(command["type"].as_str().unwrap()) {
+                            external_history.execute(command, &routing, encryption, &scope).await
+                        } else {
+                            attachments.execute(command, &encryption, &scope).await
+                        };
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
                     continue;
                 }

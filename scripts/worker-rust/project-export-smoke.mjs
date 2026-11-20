@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, readdir, readFile } from "node:fs/promises";
+import { lstat, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import * as crypto from "../../packages/crypto/dist/index.js";
-import { workerHeartbeatSchema } from "../../packages/protocol/dist/index.js";
 
 export async function verifyProjectExport({
   call,
-  origin,
+  eventually,
   projectId,
   workerId,
   workerDirectory,
@@ -30,32 +29,6 @@ export async function verifyProjectExport({
       "utf8",
     ),
   );
-  const { credential } = JSON.parse(
-    await readFile(
-      path.join(workerDirectory, "worker-credential.json"),
-      "utf8",
-    ),
-  );
-  async function enableFixtureExport() {
-    const workers = await call("GET", "/api/workers");
-    assert.equal(workers.status, 200, JSON.stringify(workers));
-    const worker = workers.body.find((record) => record.workerId === workerId);
-    assert.ok(worker, "The enrolled Rust worker is online");
-    // This fixture exercises the real Core relay before the companion import
-    // port can advertise the shared capability in the production heartbeat.
-    const response = await fetch(origin() + "/api/internal/workers/heartbeat", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${credential}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(
-        workerHeartbeatSchema.parse({ ...worker, externalCodexHistory: true }),
-      ),
-      signal: AbortSignal.timeout(5_000),
-    });
-    assert.equal(response.status, 202);
-  }
   async function grant(component) {
     const componentKey = crypto.deriveComponentKey({
       accountMasterKey: master,
@@ -98,6 +71,7 @@ export async function verifyProjectExport({
   }
   const labelKey = await grant("private-surface-metadata");
   const chatKey = await grant("chat-content");
+  const mediaKey = await grant("attachment-content");
   try {
     const chatId = randomUUID();
     const title = "Private exported fixture";
@@ -148,7 +122,6 @@ export async function verifyProjectExport({
     assert.equal(before.status, 200);
     const target = { kind: "codex-local" };
     const worktreeId = worktree.id;
-    await enableFixtureExport();
     const preview = await call("POST", endpoint + "/exports/preview", {
       target,
       worktreeId,
@@ -159,7 +132,6 @@ export async function verifyProjectExport({
     const operationId = randomUUID();
     const request = { operationId, target, worktreeId, chatIds: [chatId] };
     async function exportChat() {
-      await enableFixtureExport();
       const response = await call("POST", endpoint + "/exports", request);
       assert.equal(response.status, 200, JSON.stringify(response));
       assert.equal(response.body.outcomes.length, 1);
@@ -220,8 +192,171 @@ export async function verifyProjectExport({
       ),
       artifacts,
     );
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5XcAAAAASUVORK5CYII=",
+      "base64",
+    );
+    const picture = path.join(checkout, "fixture-image.png");
+    await writeFile(picture, png);
+    // Add a genuine local-image event to the owned external rollout. The
+    // bundled Codex app-server still reads and projects the source session.
+    const records = transcript
+      .trimEnd()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const userMessage = records.find(
+      (row) => row.type === "event_msg" && row.payload.type === "user_message",
+    );
+    assert.ok(userMessage, "The native rollout contains a user message.");
+    userMessage.payload.local_images = [picture];
+    await writeFile(
+      path.join(sessions, artifacts[0]),
+      records.map((row) => JSON.stringify(row)).join("\n") + "\n",
+    );
+
+    const discovery = await call(
+      "GET",
+      endpoint + "/external-chat-history?includeArchived=true",
+    );
+    assert.equal(discovery.status, 200, JSON.stringify(discovery));
+    const sourceWorker = discovery.body.workers.find(
+      (worker) => worker.workerId === workerId,
+    );
+    assert.equal(sourceWorker?.status, "ok", JSON.stringify(discovery));
+    const source = sourceWorker.sources.find(
+      (source) => source.homeLabel === "$CODEX_HOME",
+    );
+    assert.equal(
+      source?.availability,
+      "available",
+      JSON.stringify(sourceWorker),
+    );
+    const candidate = source.threads.find(
+      (thread) => thread.sourceThreadId === first.threadId,
+    );
+    assert.equal(candidate?.title, title);
+    assert.equal(candidate.match.worktreeId, worktreeId);
+    const imported = await call("POST", endpoint + "/chat-imports", {
+      imports: [
+        {
+          sourceKind: source.kind,
+          sourceWorkerId: workerId,
+          sourceId: source.sourceId,
+          sourceThreadId: candidate.sourceThreadId,
+          idempotencyKey: randomUUID(),
+          target: { kind: "worktree", projectId, worktreeId },
+        },
+      ],
+    });
+    assert.equal(imported.status, 202, JSON.stringify(imported));
+    const jobId = imported.body[0].id;
+    const { body: job } = await eventually(
+      () => call("GET", `/api/chat-imports/${jobId}`),
+      (value) => {
+        assert.equal(value.status, 200, JSON.stringify(value));
+        assert.ok(
+          ["succeeded", "failed", "blocked"].includes(value.body.state),
+          JSON.stringify(value),
+        );
+      },
+      "native external import settled",
+    );
+    assert.equal(job.state, "succeeded", JSON.stringify(job));
+    assert.equal(job.attachmentCount, 1);
+    assert.equal(job.attachmentWarningCount, 0);
+    const importedMessages = await call(
+      "GET",
+      `/api/chats/${job.chatId}/messages`,
+    );
+    assert.equal(importedMessages.status, 200);
+    function openMessage(message) {
+      return crypto.decryptChatMessageProtectedContent({
+        ownerId,
+        messageId: message.id,
+        componentKey: chatKey,
+        keyRevision: 1,
+        publicClassification: message.classification ?? {
+          role: message.role,
+          mode: message.mode,
+          attachmentIds: message.attachmentIds,
+        },
+        encrypted: message.protectedContent,
+      });
+    }
+    const history = await Promise.all(
+      importedMessages.body.messages.map(openMessage),
+    );
+    const user = history.find(
+      (message) =>
+        message.classification.role === "user" &&
+        message.content.some(
+          (item) => item.type === "text" && item.text === input,
+        ),
+    );
+    assert.ok(user, "The canonical history contains the imported question.");
+    const assistant = history.find(
+      (message) =>
+        message.classification.role === "assistant" &&
+        message.content.some(
+          (item) => item.type === "text" && item.text === largeAnswer,
+        ),
+    );
+    assert.ok(assistant, "The canonical history contains the imported answer.");
+    assert.ok(
+      history.some((message) =>
+        message.content.some(
+          (item) =>
+            item.type === "activity" && item.activity.type === "turnSummary",
+        ),
+      ),
+      "The canonical history retains the turn summary.",
+    );
+    assert.equal(user.classification.attachmentIds.length, 1);
+    const [attachmentId] = user.classification.attachmentIds;
+    const destination = path.join(
+      workerDirectory,
+      "attachments",
+      job.chatId,
+      attachmentId,
+      "fixture-image.png",
+    );
+    assert.deepEqual(await readFile(destination), png);
+    await restartWorker();
+    const downloadId = randomUUID();
+    const download = await call(
+      "GET",
+      `/api/attachments/${attachmentId}/content?operationId=${downloadId}`,
+    );
+    assert.equal(download.status, 200, JSON.stringify(download));
+    assert.equal(download.body.chunks.length, 1);
+    const [encrypted] = download.body.chunks;
+    assert.ok(encrypted.eof);
+    assert.deepEqual(
+      Buffer.from(
+        await crypto.decryptAttachmentChunk({
+          ownerId,
+          chatId: job.chatId,
+          attachmentId,
+          operationId: downloadId,
+          direction: "download",
+          sequence: 0,
+          keyRevision: 1,
+          componentKey: mediaKey,
+          encrypted,
+        }),
+      ),
+      png,
+    );
+    const sourceStage = path.join(
+      workerDirectory,
+      "external-chat-imports",
+      source.sourceId,
+      createHash("sha256").update(first.threadId).digest("hex"),
+    );
+    await assert.rejects(lstat(sourceStage), { code: "ENOENT" });
   } finally {
     labelKey.fill(0);
     chatKey.fill(0);
+    mediaKey.fill(0);
   }
 }

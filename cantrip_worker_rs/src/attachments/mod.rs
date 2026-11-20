@@ -1,5 +1,6 @@
 //! Ordinary local attachment uploads. History uses exactly the same paths and
 //! chunk/verification rules as later command and stream adapters.
+pub(crate) mod commands;
 pub mod content;
 pub mod paths;
 use crate::{filesystem::paths as host, logging::Logs};

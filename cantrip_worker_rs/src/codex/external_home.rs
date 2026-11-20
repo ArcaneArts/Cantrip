@@ -11,6 +11,7 @@ pub(crate) struct Home {
     pub path: PathBuf,
     pub label: &'static str,
     pub fingerprint: String,
+    pub present: bool,
 }
 
 pub(crate) struct Homes {
@@ -51,6 +52,14 @@ impl Homes {
     }
 
     pub(crate) async fn available(&self) -> Vec<Home> {
+        self.candidates()
+            .await
+            .into_iter()
+            .filter(|home| home.present)
+            .collect()
+    }
+
+    pub(crate) async fn candidates(&self) -> Vec<Home> {
         let managed = paths::canonical(&self.directory)
             .await
             .unwrap_or_else(|_| self.directory.clone());
@@ -64,13 +73,10 @@ impl Homes {
             else {
                 continue;
             };
-            let Ok(path) = paths::canonical(candidate).await else {
-                continue;
-            };
-            if !tokio::fs::metadata(&path)
+            let path = paths::canonical(candidate)
                 .await
-                .is_ok_and(|metadata| metadata.is_dir())
-                || paths::within(&managed, &path)
+                .unwrap_or_else(|_| candidate.clone());
+            if paths::within(&managed, &path)
                 || homes.iter().any(|home| paths::equal(&home.path, &path))
             {
                 continue;
@@ -82,6 +88,9 @@ impl Homes {
             };
             homes.push(Home {
                 fingerprint: fingerprint(&normalized),
+                present: tokio::fs::metadata(&path)
+                    .await
+                    .is_ok_and(|metadata| metadata.is_dir()),
                 path,
                 label,
             });
