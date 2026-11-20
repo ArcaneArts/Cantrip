@@ -702,12 +702,13 @@ async fn cycle(
                 }
                 if kind == crate::codex::turn::handoff::COMMAND {
                     let turns = turns.clone();
+                    let codex = codex.clone();
                     let signal = command_signal.clone();
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();
                     let worker = worker.clone();
                     commands.spawn(async move {
-                        let result = turns.runtime_handoff(&request["command"], signal).await;
+                        let result = turns.runtime_handoff(&request["command"], signal, codex).await;
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
                     continue;

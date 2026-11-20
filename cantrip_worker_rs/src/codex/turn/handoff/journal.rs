@@ -1,6 +1,9 @@
 //! The version-one handoff journal is shared with the retiring worker.
+use crate::http::checked;
 use anyhow::{Context, Result, bail, ensure};
-use cantrip_history::files::{ensure_directory, queue, read_json, write_immutable};
+use cantrip_history::files::{
+    ensure_directory, flush_directory, queue, read_json, write_immutable,
+};
 use cantrip_wire::{JsString, Value, parse_json_text, payload_digest, value::json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -52,6 +55,57 @@ impl Journal {
             scope,
             state,
         })
+    }
+
+    fn withdrawal_identity(&self) -> Value {
+        json!({
+            "version":1, "scope":self.scope, "chatId":self.state["chatId"],
+            "operationId":self.state["operationId"],
+            "sourceBindingId":self.state["source"]["bindingId"],
+            "sourceOperationId":self.state["queuedSource"]["operationId"],
+            "sourceOperationGeneration":self.state["queuedSource"]["operationGeneration"],
+        })
+    }
+
+    pub async fn saved_withdrawal(&self) -> Result<Option<Value>> {
+        let Some(bytes) = read_optional(&self.root.join("withdrawal.json")).await? else {
+            return Ok(None);
+        };
+        let mut stored = parse_json(&bytes)?;
+        let Value::Object(fields) = &mut stored else {
+            bail!("Invalid handoff withdrawal journal.");
+        };
+        let record = fields
+            .shift_remove("record")
+            .context("Missing handoff withdrawal proof")?;
+        ensure!(
+            stored == self.withdrawal_identity(),
+            "The handoff withdrawal reservation changed."
+        );
+        Ok(Some(checked(
+            "workerInferenceJournalRecordSchema",
+            &record,
+        )?))
+    }
+
+    pub async fn save_withdrawal(&self, record: &Value) -> Result<()> {
+        let mut stored = self.withdrawal_identity();
+        stored["record"] = checked("workerInferenceJournalRecordSchema", record)?;
+        let root = self.root.clone();
+        queue(&self.root)
+            .run(move || {
+                ensure_directory(&root)?;
+                publish(&root.join("withdrawal.json"), &stored)
+            })
+            .await
+    }
+
+    pub async fn retire_withdrawal(&self) -> Result<()> {
+        if self.saved_withdrawal().await?.is_some() {
+            tokio::fs::remove_file(self.root.join("withdrawal.json")).await?;
+            flush_directory(&self.root)?;
+        }
+        Ok(())
     }
 
     /// Only a source that is still authorized to export may create a plan.

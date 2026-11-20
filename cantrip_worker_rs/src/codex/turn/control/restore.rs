@@ -120,6 +120,7 @@ impl Turns {
             root: Some(root.clone()),
             project: receipt.session()["projectId"].as_js_string().cloned(),
             control: OnceLock::from(binding),
+            queued_inference: OnceLock::new(),
             task: OnceLock::new(),
             task_input: None,
             logical_finished: AtomicBool::new(false),

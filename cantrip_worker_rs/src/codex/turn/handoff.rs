@@ -1,6 +1,7 @@
 //! Core reserves and commits a provider transfer. The worker moves the native
 //! history and keeps staged runtimes private until it observes the commit.
 mod journal;
+pub(super) mod withdrawal;
 
 use super::{
     Turns, id,
@@ -9,6 +10,7 @@ use super::{
 use crate::{
     chat_content::Scope,
     codex::{
+        managed::Worker,
         observation::{home, provider},
         preparation::{
             Intent,
@@ -60,6 +62,7 @@ impl Coordinator {
 
 struct Transfer {
     turns: Turns,
+    worker: Worker,
     identity: Scope,
     scope: Value,
     request: Value,
@@ -68,7 +71,12 @@ struct Transfer {
 }
 
 impl Turns {
-    pub(crate) async fn runtime_handoff(&self, command: &Value, signal: Signal) -> Result<Value> {
+    pub(crate) async fn runtime_handoff(
+        &self,
+        command: &Value,
+        signal: Signal,
+        worker: Worker,
+    ) -> Result<Value> {
         let identity = Scope::new(self.encryption.clone())?;
         let scope = json!({
             "serverId":identity.server,"ownerId":identity.owner,"workerId":self.handoffs.worker,
@@ -94,6 +102,7 @@ impl Turns {
             local_key: key
                 .join(journal::operation_id(&request["operationId"]).context("Handoff operation")?),
             turns: self.clone(),
+            worker,
             identity,
             scope,
             request,
@@ -224,11 +233,12 @@ impl Transfer {
 
     async fn run(&self) -> Result<Value> {
         let state = self.action("read", json!({})).await?;
-        if matches!(state["phase"].as_str(), Some("completed" | "cancelled")) {
+        let result = if matches!(state["phase"].as_str(), Some("completed" | "cancelled")) {
             self.settle_local(state["phase"] == "cancelled").await?;
-            return Ok(state);
-        }
-        let result = self.execute(state).await;
+            Ok(state)
+        } else {
+            self.execute(state).await
+        };
         if result.is_err() && self.check().is_ok() {
             let _ = self
                 .action(
@@ -236,6 +246,12 @@ impl Transfer {
                     json!({"errorCode":"handoff-worker-operation-failed"}),
                 )
                 .await;
+        }
+        if let Ok(state) = &result
+            && withdrawal::is_gui(state)
+            && state["queuedSource"]["withdrawn"] == true
+        {
+            self.retire_gui_withdrawal(state).await?;
         }
         result
     }
@@ -245,7 +261,12 @@ impl Transfer {
             .context("Invalid native handoff operation")?
             .to_owned();
         let thread = id(&state["source"]["threadId"], "handoff thread")?;
-        if !state["queuedSource"].is_null() && state["queuedSource"]["withdrawn"] != true {
+        if withdrawal::is_gui(&state) {
+            state = self.withdraw_gui(state).await?;
+            if state["phase"] == "cancelled" {
+                return Ok(state);
+            }
+        } else if !state["queuedSource"].is_null() && state["queuedSource"]["withdrawn"] != true {
             bail!("The queued native handoff source still requires a confirmed withdrawal.");
         }
         let journal = journal::Journal::new(self.data(), self.scope.clone(), state.clone())?;
@@ -400,6 +421,50 @@ impl Transfer {
             queue.reconcile_on_prepare();
         }
         Ok(state)
+    }
+
+    async fn withdraw_gui(&self, state: Value) -> Result<Value> {
+        if state["queuedSource"]["withdrawn"] == true {
+            self.acknowledge_withdrawal(&state).await?;
+            return Ok(state);
+        }
+        let journal = journal::Journal::new(self.data(), self.scope.clone(), state.clone())?;
+        let record = match journal.saved_withdrawal().await? {
+            Some(record) => Some(record),
+            None => match self.capture_withdrawal(&state).await {
+                Ok(record) => {
+                    if let Some(record) = &record {
+                        journal.save_withdrawal(record).await?;
+                    }
+                    record
+                }
+                Err(error) if error.is::<withdrawal::SourceUnavailable>() => {
+                    return self.action("decline-queued-source", json!({})).await;
+                }
+                Err(error) => return Err(error),
+            },
+        };
+        let state = self.action("withdrawn", json!({"record":record})).await?;
+        ensure!(
+            state["queuedSource"]["withdrawn"] == true,
+            "Core did not acknowledge the unused inference reservation."
+        );
+        self.acknowledge_withdrawal(&state).await?;
+        Ok(state)
+    }
+
+    async fn retire_gui_withdrawal(&self, state: &Value) -> Result<()> {
+        self.check()?;
+        let journal = journal::Journal::new(self.data(), self.scope.clone(), state.clone())?;
+        let manager = self
+            .worker
+            .inference_manager(&self.identity.owner, &self.identity.server)?;
+        let mut expected = state["queuedSource"].clone();
+        expected["chatId"] = state["chatId"].clone();
+        if let Some(record) = manager.withdrawal_record(expected).await? {
+            manager.retire_withdrawal(record).await?;
+        }
+        journal.retire_withdrawal().await
     }
 
     async fn settle_local(&self, cancelled: bool) -> Result<()> {

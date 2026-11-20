@@ -7527,3 +7527,28 @@ regression passed on the same worker build.
 Handoffs of live queued prompts and recovered Goals and Tasks still need
 worker withdrawal and acknowledgement. An open managed console still
 needs to retarget to the newly selected runtime.
+
+## 198. Transfer an unused queued Chat prompt between providers
+
+Reference commit 356dda0cb331bc11084086e642c1ae1c00dcdc24 (#3361).
+
+An accepted GUI prompt exposes its exact worker inference reservation to
+the handoff coordinator. The coordinator seals the unused reservation through
+the native keeper and writes the version-one withdrawal journal. The original
+command waits until Core acknowledges the withdrawal and returns the same
+prompt to its queue. Recovery reads the existing handoff and keeper evidence.
+A reservation that already crossed the dispatch boundary stays with its
+original execution. The worker retires confirmed withdrawal metadata after
+the handoff settles.
+
+Local macOS ARM64 tests ran the production Rust Core with PGlite, the Rust
+worker and bundled Codex. The Standalone Chat transferred its exact prompt
+while an unrelated Chat held the source provider's only slot. The target
+executed the prompt once and retained its protected message ID. A second run
+dropped the withdrawal response after Core persisted it and completed the
+transfer after a worker restart. Cancellation at that same boundary resumed
+the original prompt once on the source provider. The existing deferred
+permission receipt restart test also passed.
+
+Withdrawal of queued autonomous Goals and Tasks, recovery of retired Goal
+sources, and retargeting an attached managed console remain open.

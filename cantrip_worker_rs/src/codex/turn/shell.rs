@@ -88,6 +88,7 @@ impl Turns {
                 control: OnceLock::from(control::Binding::new(
                     session.clone(), command["permissionProfileId"].clone(), prepared.thread.version()
                 )),
+                queued_inference: OnceLock::new(),
                 task: OnceLock::new(),
             task_input: None,
                 // Like the managed Node shell observer, release the local

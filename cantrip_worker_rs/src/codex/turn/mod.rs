@@ -113,6 +113,7 @@ struct Active {
     root: Option<receipt::Operation>,
     project: Option<JsString>,
     control: OnceLock<control::Binding>,
+    queued_inference: OnceLock<handoff::withdrawal::QueuedInference>,
     task: OnceLock<task::checkpoint::Checkpoint>,
     task_input: Option<Arc<task_route::Attempt>>,
     logical_finished: AtomicBool,
@@ -621,6 +622,7 @@ impl Turns {
             root: root.clone(),
             project: incoming["policyProjectId"].as_js_string().cloned(),
             control: OnceLock::new(),
+            queued_inference: OnceLock::new(),
             task: OnceLock::new(),
             task_input: task.as_ref().map(|task| task.input.clone()),
             preparation: abort,
@@ -786,30 +788,48 @@ impl Turns {
             recovery["taskInput"] = command["taskInferenceInput"].clone();
         }
         request.recovery = Some(recovery);
-        let shared_title = if let Some(title) = title {
-            if title.shares_provider(&command["provider"]) {
-                Some(title)
+        if is_queued && root.is_some() && task.is_none() {
+            active.queued_inference.get_or_init(|| {
+                handoff::withdrawal::QueuedInference::new(admission.clone(), source.clone())
+            });
+        }
+        let acquired = async {
+            let shared_title = if let Some(title) = title {
+                if title.shares_provider(&command["provider"]) {
+                    Some(title)
+                } else {
+                    let job = title.clone();
+                    let preparation = self.preparation.clone();
+                    let encryption = self.encryption.clone();
+                    let result = admission
+                        .prepare_before_acquire(request.clone(), move |signal| {
+                            Box::pin(job.separate(preparation, encryption, signal))
+                        })
+                        .await;
+                    if result.as_ref().err().is_some_and(|error| {
+                        crate::inference::withdrawal::Withdrawal::in_error(error).is_some()
+                    }) {
+                        result?;
+                    } else {
+                        title.report(&emit, result)?;
+                    }
+                    None
+                }
             } else {
-                let job = title.clone();
-                let preparation = self.preparation.clone();
-                let encryption = self.encryption.clone();
-                let result = admission
-                    .prepare_before_acquire(request.clone(), move |signal| {
-                        Box::pin(job.separate(preparation, encryption, signal))
-                    })
-                    .await;
-                title.report(&emit, result)?;
                 None
-            }
-        } else {
-            None
-        };
-        let acquired = admission.acquire(request).await;
-        let execution = match acquired {
-            Ok(execution) => execution,
+            };
+            let execution = admission.acquire(request).await?;
+            Ok::<_, anyhow::Error>((execution, shared_title))
+        }
+        .await;
+        let (execution, shared_title) = match acquired {
+            Ok(acquired) => acquired,
             Err(error) => {
                 source.close();
-                return Err(error);
+                return Err(active
+                    .finish_withdrawal(runtime, &signal)
+                    .await
+                    .unwrap_or(error));
             }
         };
         let result = async {
@@ -1109,6 +1129,11 @@ impl Turns {
         .await;
         let cleanup = execution.not_dispatched();
         source.close();
+        if result.is_err()
+            && let Some(deferral) = active.finish_withdrawal(runtime, &signal).await
+        {
+            return Err(deferral);
+        }
         if task.is_some() {
             execution.settled().await?;
         }
