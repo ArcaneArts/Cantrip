@@ -8615,3 +8615,35 @@ and neither the neighboring project nor the managed Codex home was changed.
 The same fixture rechecked skill, hook, and MCP behavior. Repeat with
 `scripts/worker-rust/standalone-turn-smoke.mjs --customization-inventory`.
 Four focused Rust customization tests and 13 Node reference tests passed.
+
+## 240. Run Project Automation schedules through both Rust services
+
+Reference commit `97db2c95d821f03a11c1d8458ba1a33b109ce6bb` (#3403).
+
+The Rust worker polls the existing authenticated schedule endpoint every ten
+seconds and when the command connection becomes ready. Each dispatch sends
+the Core-provided occurrence and revision using the current worker credential.
+Core claims the occurrence, advances the schedule and admits the encrypted turn
+under its existing idempotency key. Worker shutdown stops polling and reaps
+its local condition subprocesses.
+
+The worker opens the existing workflow-content name, prompt and condition with
+their original record and field bindings. It runs script conditions in the
+resolved checkout and uses the native GitHub client to query open-issue counts.
+Allowed conditions use the standard protected Chat and queued-prompt envelopes.
+Protected script content and subprocess output stay out of worker diagnostics.
+
+On macOS ARM64, production Rust Core in PGlite mode, the Rust worker and
+bundled Codex 0.166.0 exercised the real scheduler. A script queued its
+protected prompt behind an active turn. Codex received the scheduled prompt
+after that turn finished. An unconditional occurrence then started directly
+in the idle chat. A worker restart retained the completed occurrence and
+next scheduled time after the new scheduler polled Core. The fixture exercised
+a nonzero script exit, a missing GitHub repository, an envelope from a different automation,
+and disabled and future schedules. The copied envelope was rejected before
+script execution. Six Node reference tests and the native customization
+regression passed. Repeat with
+`scripts/worker-rust/standalone-turn-smoke.mjs --project-automations`.
+The GitHub-backed success path and Windows script execution need focused
+runtime coverage. Ordinary Chat pause exposed a separate gap in the
+`chat.pause.set` branch, which currently requires Task scope.

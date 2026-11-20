@@ -181,6 +181,33 @@ fn pull_request(value: &Value) -> Result<Value> {
     checked("githubPullRequestSummarySchema", &result)
 }
 impl Client {
+    pub(crate) async fn count_open_issues(
+        &self,
+        repository: &JsString,
+        scope: &Scope,
+    ) -> Result<f64> {
+        repository_path(repository)?;
+        let search = format!("q=repo:{} is:issue is:open", repository.lossy());
+        let result = self
+            .api(
+                "search/issues",
+                &[
+                    "--method".into(),
+                    "GET".into(),
+                    "-f".into(),
+                    search.into(),
+                    "-f".into(),
+                    "per_page=1".into(),
+                ],
+                scope,
+            )
+            .await?;
+        result["total_count"]
+            .as_f64()
+            .filter(|value| value.is_finite() && *value >= 0. && value.fract() == 0.)
+            .ok_or_else(|| anyhow!("GitHub returned an invalid open issue count."))
+    }
+
     pub(super) async fn list_issues(&self, command: &Value, scope: &Scope) -> Result<Value> {
         let pull = command["type"] == "github.pull-requests.list";
         let kind = if pull { "pull-request" } else { "issue" };
