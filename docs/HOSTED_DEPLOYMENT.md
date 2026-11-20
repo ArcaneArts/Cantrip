@@ -183,6 +183,12 @@ volume retains its unique credential, identity, repositories, Code profile, and
 extensions. It also retains worker-managed project folders beneath `folders/`.
 Never clone this volume to create a second worker.
 
+Set `CANTRIP_WORKER_RUNTIME=rust` in `deploy/hosted.env` to build the opt-in
+Rust worker image with the same Compose command. Its final image contains the
+Rust worker, Codex, the Cantrip CLI and native helper binaries. It uses the
+same enrollment variables and persistent volume. The Compose default remains
+`node` while the worker port is in progress.
+
 ## Native server and worker packages
 
 `pnpm bundle` creates platform-native server, worker, and desktop archives. The

@@ -8127,3 +8127,23 @@ refused for an ignored user file, index recovery, and deletion after retrying
 the same job. The ignored file survived the refusal with its contents intact.
 
 Native installation, update checks, and managed MCP injection remain open.
+
+## 221. Package an opt-in Rust worker image for hosted Compose
+
+Hosted Compose forwards `CANTRIP_WORKER_RUNTIME=rust` to the worker build.
+The final image launches the Rust worker directly under `tini`, includes
+the bundled Codex and Cantrip native helpers, and keeps the worker's
+existing data volume and enrollment variables. The build uses Node-based
+packaging tooling. The Rust runtime image uses Debian with native runtime
+libraries. The Compose default is still `node`.
+
+The local Linux ARM64 image built from reference commit
+`402266b314a7790b498bc4200f71d8be118c4e9e` (#3372) plus this container
+change passed against production Rust Core in PGlite mode. The worker
+enrolled and reopened on its persisted volume, reported its version, and
+exited cleanly on SIGTERM. The fixture inspected the running executable,
+non-root UID, read-only container filesystem, absence of Node and worker
+JavaScript modules, and launch of the bundled binaries. Compose rendered
+both worker selectors and the 15 deployment tests passed. Linux x64 image
+execution and an image built from the latest worker remain to be exercised
+at cutover.
