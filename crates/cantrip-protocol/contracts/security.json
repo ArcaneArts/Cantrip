@@ -1001,7 +1001,10 @@
     "cantripOsSystemArchiveReceiptSchema": 11954,
     "cantripOsSystemCaptureAdmissionSchema": 6495,
     "cantripOsSystemProtectedResultSchema": 14476,
-    "cantripOsSystemCaptureOutcomeSchema": 14479
+    "cantripOsSystemCaptureOutcomeSchema": 14479,
+    "gitAgentDraftCreateSchema": 14486,
+    "gitAgentDraftModelOutputSchema": 14500,
+    "gitAgentDraftResultSchema": 14502
   },
   "nodes": [
     {
@@ -86937,6 +86940,182 @@
       ]
     },
     { "type": "nullable", "innerType": 14476, "checks": [] },
-    { "type": "never", "checks": [] }
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "gitAgentDraftCreateSchema",
+      "shape": {
+        "task": 14487,
+        "modelId": 14488,
+        "instructions": 14490,
+        "baseRevision": 14493,
+        "headRevision": 14495,
+        "pullRequestNumber": 14497
+      },
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "git-agent-draft-input",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "gitAgentDraftTaskSchema",
+      "values": [
+        "summarize-changes",
+        "draft-commit-message",
+        "draft-pr-description",
+        "review-commit-range",
+        "explain-conflicts",
+        "summarize-failed-checks"
+      ],
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14489,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 14491,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14492, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 14494,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 4471, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 14496,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 4471, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 14498,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14499, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "gitAgentDraftModelOutputSchema",
+      "shape": { "text": 14501 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "gitAgentDraftResultSchema",
+      "shape": {
+        "generationId": 14503,
+        "task": 14487,
+        "text": 14504,
+        "modelId": 14505,
+        "modelName": 14506,
+        "providerName": 14507,
+        "worktreeId": 14508,
+        "generatedAt": 14509
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100000, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    }
   ]
 }

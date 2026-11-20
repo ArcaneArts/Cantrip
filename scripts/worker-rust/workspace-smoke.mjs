@@ -38,6 +38,7 @@ import { verifyRunDefinitions } from "./run-definitions-smoke.mjs";
 import { verifyTerminalServices } from "./terminal-services-smoke.mjs";
 import { verifyHostTerminal } from "./host-terminal-relay-smoke.mjs";
 import { verifyGit } from "./git-smoke-cases.mjs";
+import { verifyGitDrafts } from "./git-draft-smoke.mjs";
 import { verifyNativeWorktrees } from "./worktree-smoke-cases.mjs";
 import { githubCatalogFixture } from "./github-catalog-fixture.mjs";
 import { verifyGithubCatalog } from "./github-catalog-smoke-cases.mjs";
@@ -63,6 +64,7 @@ const { values } = parseArgs({
   options: {
     worker: { type: "string" },
     server: { type: "string" },
+    codex: { type: "string" },
     cli: { type: "string" },
     "observations-only": { type: "boolean", default: false },
     "codegraph-distribution": { type: "string" },
@@ -76,6 +78,7 @@ const { values } = parseArgs({
     "replica-provision-only": { type: "boolean", default: false },
     "replica-lifecycle-only": { type: "boolean", default: false },
     "folder-conversion-only": { type: "boolean", default: false },
+    "git-draft-only": { type: "boolean", default: false },
     "terminal-relay-only": { type: "boolean", default: false },
     "terminal-direct-broker": { type: "string" },
     "worker-link-local": { type: "boolean", default: false },
@@ -119,6 +122,7 @@ if (
   !values["pull-request-lifecycle-only"] &&
   !values["github-operations-only"] &&
   !values["folder-conversion-only"] &&
+  !values["git-draft-only"] &&
   !values["terminal-relay-only"] &&
   !values["run-definitions-only"] &&
   !values["binary-writes-only"] &&
@@ -242,6 +246,7 @@ function startWorker(code) {
     PATH: bin,
     ...(codegraph ? { HOME: path.join(root, "codegraph-home") } : {}),
     ...(values.cli ? { CANTRIP_CLI_BIN: path.resolve(values.cli) } : {}),
+    ...(values.codex ? { CANTRIP_CODEX_BIN: path.resolve(values.codex) } : {}),
     ...(values["terminal-relay-only"] || values["run-runtime-only"]
       ? { SHELL: "/bin/sh" }
       : {}),
@@ -475,12 +480,12 @@ async function repositoryClient() {
   assertSurfaceGrantRefresh(surfaceRefreshed);
   const serverId = JSON.parse(await readFile(encryptionPath, "utf8")).serverId;
   assert.equal(typeof serverId, "string");
-  async function operation(id, content, route, body) {
+  async function operation(id, content, route, body, worktreeId = workerId) {
     const operationId = crypto.randomUUID();
     const context = {
       serverId,
       projectId: id,
-      worktreeId: workerId,
+      worktreeId,
       operationId,
       direction: "request",
     };
@@ -726,6 +731,17 @@ try {
       "actual native checkout validation and durable import",
     );
     assert.equal(await readFile(sentinel, "utf8"), "private dirty content\n");
+    if (values["git-draft-only"]) {
+      await verifyGitDrafts({
+        call,
+        checkout,
+        git,
+        operation: repository.operation,
+        projectId,
+        workerId,
+      });
+      break exercise;
+    }
     if (values["run-runtime-only"]) {
       const ownerId = repository.ownerId;
       const runKey = cryptoClient.deriveComponentKey({
@@ -1116,6 +1132,15 @@ try {
         passed: true,
         preservesLocalEditsAcrossRetry: true,
         reconcilesCommittedPushWithoutReplay: true,
+      }),
+    );
+  else if (values["git-draft-only"])
+    console.log(
+      JSON.stringify({
+        suite: "actual-native-git-drafts-worker-server",
+        passed: true,
+        structuredFallbackAndUsage: true,
+        preservedGitStatusAndHead: true,
       }),
     );
   else if (values["run-runtime-only"])

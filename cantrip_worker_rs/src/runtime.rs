@@ -1128,8 +1128,10 @@ async fn cycle(
                 }
                 if kind=="repository.operation" {
                     let operations=repository_operations.clone();let encryption=encryption.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::workspace::Scope::with_stop(stop_rx.clone());
+                    let turns = turns.clone();
+                    let signal = command_signal.clone();
                     commands.spawn(async move {
-                        let result=operations.execute(&request["command"],&encryption,&routing,&scope).await;
+                        let result=operations.execute_with_drafts(&request["command"],&encryption,&routing,&scope,Some((&turns,signal))).await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);
                     });
                     continue;

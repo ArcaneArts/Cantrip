@@ -1209,18 +1209,31 @@ impl Ensurer {
         bound: &(JsString, Value),
     ) -> Result<Runtime> {
         self.assert_bound(bound)?;
+        let chat = field(job, "chatId")?;
+        let provider = open_runtime_provider(&self.0.encryption, &job["provider"])?;
+        self.helper_runtime(&job["model"], provider, bound, Some(&chat))
+            .await
+    }
+
+    pub(in crate::codex) async fn helper_runtime(
+        &self,
+        model: &Value,
+        provider: Value,
+        bound: &(JsString, Value),
+        chat: Option<&JsString>,
+    ) -> Result<Runtime> {
+        self.assert_bound(bound)?;
         let owner = &bound.0;
         let server = bound
             .1
             .as_js_string()
             .context("Unverified worker server identity")?;
-        let provider = open_runtime_provider(&self.0.encryption, &job["provider"])?;
         let scope = json!({"serverId":server,"ownerId":owner,"workerId":self.0.worker});
         let profile = home::profile(
             &self.0.data,
             &scope,
             home::Source::Current(None),
-            Some(&field(job, "chatId")?),
+            chat,
             &provider,
             "ide",
             self.0.skills.clone(),
@@ -1236,17 +1249,35 @@ impl Ensurer {
                     profile,
                     provider,
                     self.0.access.clone(),
-                    &job["model"],
+                    model,
                     &Value::Null,
                 )?,
                 Some((server.clone(), owner.clone())),
             )
             .await?;
-        runtime
-            .synchronize_models(&job["model"], &Value::Null)
-            .await?;
+        runtime.synchronize_models(model, &Value::Null).await?;
         self.assert_bound(bound)?;
         Ok(runtime)
+    }
+
+    pub(in crate::codex) async fn repository_draft_mcp(&self, command: &Value) -> Result<Value> {
+        let servers = open_mcp_servers(
+            &self.0.encryption,
+            command["mcpServers"]
+                .as_array()
+                .context("Managed MCP configurations")?,
+        )?;
+        let mut mcp = profile::external_servers(servers, false)?;
+        let admitted = json!({"projectId":command["projectId"],"worktreeId":command["worktreeId"],"rootKind":"git-worktree"});
+        if let Some(codegraph) = self
+            .0
+            .codegraph
+            .agent_mcp(&self.0.data, &field(command, "cwd")?, Some(&admitted))
+            .await
+        {
+            mcp["codegraph"] = codegraph;
+        }
+        Ok(mcp)
     }
 
     pub(crate) async fn resolve_routing(&self, incoming: &Value) -> Result<Value> {

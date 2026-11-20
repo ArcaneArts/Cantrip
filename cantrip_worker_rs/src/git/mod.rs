@@ -5,6 +5,7 @@ mod branches;
 pub(crate) mod commits;
 mod conflicts;
 mod diff;
+pub(crate) mod draft;
 pub mod editor;
 mod graph;
 mod history;

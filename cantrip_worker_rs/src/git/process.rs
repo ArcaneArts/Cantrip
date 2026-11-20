@@ -71,7 +71,7 @@ pub(super) async fn run_bounded(cwd: &Path, args: &[&str], scope: &Scope) -> Res
     };
     Err(GitError(remote_text::sanitize(&message.into()).0).into())
 }
-async fn capture_options(
+pub(super) async fn capture_options(
     cwd: &Path,
     args: &[&str],
     scope: &Scope,

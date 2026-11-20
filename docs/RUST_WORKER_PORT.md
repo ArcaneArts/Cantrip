@@ -8242,3 +8242,26 @@ push or changes to a local edit. Run
 `scripts/worker-rust/workspace-smoke.mjs --folder-conversion-only` with the
 linked server and worker executables to repeat the fixture. The native
 replica lifecycle smoke also passed.
+
+## 225. Generate protected Git drafts through the Rust worker
+
+Reference commit `9ffba6f8e9525914af753546ff8c2b57c060eb18` (#3388).
+
+The native repository operation supports the existing working-change summary,
+commit message, pull request description, range review, conflict explanation
+and failed-check summary. It collects bounded evidence from the admitted
+checkout or GitHub pull request and passes it as untrusted text to a read-only
+Codex turn. The worker uses the existing inference admission, project
+authorization, provider fallback and structured output contracts. The draft
+stays encrypted in the worker response. Core receives the selected route,
+turn identity and measured usage for its existing token accounting.
+
+The local macOS ARM64 fixture used production Rust Core with PGlite, the
+Rust worker, bundled Codex 0.166.0, and a loopback Responses provider. It
+verified the protected result against staged evidence, rejected invalid input
+before inference, fell back after invalid structured output, confirmed the
+selected turn in Core's usage export, and preserved the checkout's original
+HEAD and status. Run
+`scripts/worker-rust/workspace-smoke.mjs --git-draft-only` with linked Core and
+worker executables and the bundled Codex binary to repeat it. The existing
+Node prompt and failure-evidence tests also passed.
