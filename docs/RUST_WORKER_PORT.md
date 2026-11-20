@@ -7751,3 +7751,32 @@ The existing browser fixture selects the native worker through
 `CANTRIP_TEST_WORKER_BINARY`. Use it with
 `CANTRIP_TEST_SERVER_BINARY` and `CANTRIP_CODEX_BIN`, then run
 `node --import tsx scripts/server-rust/actual-folder-client.mjs --runtime rust --task-goal-autonomous-provider-transfer`.
+
+## 206. Assemble and launch a standalone Rust worker package
+
+Reference commit eba3e726e7f91bbe38eeb40cf52b51a480cd7025 (#3369).
+
+On the target platform, run `pnpm package:worker --worker-runtime rust`.
+The build stages `artifacts/cantrip-worker-rust-<platform>-<arch>` with the
+native worker, Codex bundle, Cantrip CLI, CUA helper, example environment
+and service launchers. Copy `.env.example` to `.env` and start the service
+with `start.sh` or `start.cmd`. Build tooling uses Node. The staged service
+starts directly in Rust and bundles no Node runtime or worker modules.
+
+To reassemble local builds with `--prebuilt-worker-dir <directory>`, supply
+`cantrip-worker`, `cantrip` and `cantrip-cua` (with `.exe` on Windows) and
+a complete `codex/` bundle with its manifest. Assembly validates the copied
+Codex artifacts and runs the packaged executables before publishing the tree.
+
+The macOS ARM64 package was assembled from prebuilt local binaries and
+relocated to a path with spaces and Unicode. The local standalone turn smoke
+can start this package with `--worker <package>/start.sh --bundled` and a
+production Rust `--server` binary. The worker runs with an empty `PATH`,
+finds its bundled Codex, and completes a protected managed turn that exercises
+the packaged CLI. The same launcher passed control integration against Rust
+Core in PGlite mode, including enrollment, credential rotation, reconnect,
+restart and SIGTERM shutdown. The packaged native MCP host passed the stdio
+comparison against the Node reference. The launcher read the packaged `.env`
+from another working directory and preserved supervisor variable precedence.
+The standalone artifact is opt-in. Desktop, Docker and release worker selection
+remain on the current production path.
