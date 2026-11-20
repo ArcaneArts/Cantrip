@@ -33,6 +33,7 @@ pub(crate) struct DesktopInventory {
     previews: preview::Previews,
     captures: Captures,
     task: JoinHandle<()>,
+    preview_lifetime: JoinHandle<()>,
 }
 
 struct Helper {
@@ -61,6 +62,7 @@ struct Scan {
 impl DesktopInventory {
     pub(crate) fn start(
         root: &Path,
+        data: &Path,
         environment: &cantrip_config::Environment,
         encryption: Arc<Service>,
         outgoing: Arc<Outbound>,
@@ -76,8 +78,13 @@ impl DesktopInventory {
         let (queue, input) = mpsc::channel(4);
         let (captures, operations) = Captures::channel();
         let (effects, preferences) = EffectUpdates::channel();
-        let (previews, retirements) =
-            preview::Previews::new(encryption.clone(), outgoing.clone(), queue.clone());
+        let (previews, retirements) = preview::Previews::new(
+            data.to_owned(),
+            encryption.clone(),
+            outgoing.clone(),
+            queue.clone(),
+        );
+        let preview_lifetime = previews.monitor(stop.clone());
         let task = tokio::spawn(run(
             binary,
             encryption,
@@ -93,6 +100,7 @@ impl DesktopInventory {
             previews,
             captures,
             task,
+            preview_lifetime,
         }
     }
 
@@ -144,7 +152,7 @@ impl DesktopInventory {
 
     pub(crate) async fn close(self) {
         drop(self.queue);
-        let _ = self.task.await;
+        let _ = tokio::join!(self.task, self.preview_lifetime);
     }
 }
 
@@ -218,7 +226,7 @@ async fn run(
                             _ = connection_changed(&mut epoch, current) => {
                                 retire(&mut process).await;
                             }
-                            _ = preview::run(request, &mut process, &binary) => {}
+                            _ = preview::run(request, &mut process, Some(&binary)) => {}
                         }
                         continue;
                     }
@@ -336,7 +344,7 @@ async fn helper<'a>(current: &'a mut Option<Helper>, binary: &Path) -> Result<&'
     if current.is_none() {
         let mut child = Helper {
             identity: uuid::Uuid::new_v4(),
-            process: Process::spawn(binary, &[])?,
+            process: Process::spawn(binary.as_os_str(), &[])?,
             effects: effects::NativeState::default(),
         };
         match child.process.initialize().await {

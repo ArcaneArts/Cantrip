@@ -23,6 +23,7 @@ impl std::fmt::Display for DeliveryUnknown {
 }
 impl std::error::Error for DeliveryUnknown {}
 
+#[derive(PartialEq, Eq)]
 pub(crate) enum Transport {
     Docker(String),
     Ssh {
@@ -38,12 +39,35 @@ pub(crate) enum Transport {
 /// host credentials, and each SSH argument crosses the remote shell quoted.
 pub(super) enum Program {
     Executor,
+    Remote,
     Workspaces,
     Python,
     Recovery,
 }
 
 impl Transport {
+    pub(crate) fn remote_connection(
+        &self,
+        context: &Value,
+        connection_id: &str,
+    ) -> Result<(&'static OsStr, Vec<OsString>)> {
+        Ok(self.spec(
+            Program::Remote,
+            &[
+                "connect",
+                super::text(context, "workspace_id")?,
+                "--expect",
+                &context.stringify(),
+                "--connection-id",
+                connection_id,
+            ],
+        ))
+    }
+
+    pub(crate) async fn remote_control(&self, arguments: &[&str], scope: &Scope) -> Result<Value> {
+        self.control(Program::Remote, arguments, scope).await
+    }
+
     pub(crate) fn executor_connection(
         &self,
         binding: &Value,
@@ -82,6 +106,7 @@ impl Transport {
     ) -> (&'static OsStr, Vec<OsString>) {
         let guest = match program {
             Program::Executor => "/usr/bin/cantrip-executor",
+            Program::Remote => "/usr/bin/cantrip-remote",
             Program::Workspaces => "/usr/bin/cantrip-workspaces",
             Program::Python => "/usr/bin/python3",
             Program::Recovery => "/usr/bin/cantrip-recovery",

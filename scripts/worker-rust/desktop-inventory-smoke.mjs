@@ -23,6 +23,10 @@ import {
   remoteDesktopServerMessageSchema,
 } from "../../packages/protocol/dist/index.js";
 import { cuaEffectWorkerStatusSchema } from "../../packages/protocol/dist/computer-use-effects.js";
+import {
+  guestDockerEnvironment,
+  verifyCantripOsPreview,
+} from "./cantrip-os-preview-cases.mjs";
 
 async function withTimeout(work, milliseconds, action) {
   let timer;
@@ -43,7 +47,10 @@ async function withTimeout(work, milliseconds, action) {
 
 const { values } = parseArgs({
   options: Object.fromEntries(
-    ["worker", "codex", "helper"].map((name) => [name, { type: "string" }]),
+    ["worker", "codex", "helper", "guest-image"].map((name) => [
+      name,
+      { type: "string" },
+    ]),
   ),
 });
 assert.ok(values.worker && values.codex && values.helper);
@@ -59,6 +66,12 @@ const workerId = "desktop-inventory-fixture";
 const token = "ctwk_" + "D".repeat(43);
 const key = randomBytes(32);
 const component = "surface-private-state";
+const previewKeys = values["guest-image"]
+  ? new Map([
+      ["client-control-content", randomBytes(32)],
+      ["chat-content", randomBytes(32)],
+    ])
+  : new Map();
 const time = new Date().toISOString();
 const off = { effect: "off", parameters: {} };
 const debug = { effect: "debug-gradient", parameters: { strength: 0.5 } };
@@ -79,29 +92,31 @@ async function bootstrap(request) {
   for await (const chunk of request) chunks.push(chunk);
   const { principalId, publicKey } = JSON.parse(Buffer.concat(chunks));
   const grants = grant
-    ? [
-        {
-          id: randomUUID(),
-          ownerId,
-          principalId,
-          component,
-          keyRevision: 1,
-          wrappedKey: await wrapComponentKeyForWorker({
+    ? await Promise.all(
+        [[component, key], ...previewKeys].map(
+          async ([component, componentKey]) => ({
+            id: randomUUID(),
             ownerId,
-            workerId,
+            principalId,
             component,
             keyRevision: 1,
-            componentKey: key,
-            workerPublicKey: publicKey,
+            wrappedKey: await wrapComponentKeyForWorker({
+              ownerId,
+              workerId,
+              component,
+              keyRevision: 1,
+              componentKey,
+              workerPublicKey: publicKey,
+            }),
+            state: "active",
+            revision: 1,
+            revokedAt: null,
+            revokedReason: null,
+            createdAt: time,
+            updatedAt: time,
           }),
-          state: "active",
-          revision: 1,
-          revokedAt: null,
-          revokedReason: null,
-          createdAt: time,
-          updatedAt: time,
-        },
-      ]
+        ),
+      )
     : [];
   return {
     serverId,
@@ -164,6 +179,9 @@ server.listen(0, "127.0.0.1");
 await once(server, "listening");
 
 const connection = once(sockets, "connection");
+const guestEnvironment = values["guest-image"]
+  ? await guestDockerEnvironment(root)
+  : {};
 const child = spawn(
   path.resolve(values.worker),
   ["--shutdown-on-stdin-close"],
@@ -180,6 +198,7 @@ const child = spawn(
       CANTRIP_WORKER_DATA_DIR: path.join(root, "profile"),
       CANTRIP_CODEX_BIN: path.resolve(values.codex),
       CANTRIP_CUA_BIN: helper,
+      ...guestEnvironment,
     },
   },
 );
@@ -193,7 +212,7 @@ for (const stream of [child.stdout, child.stderr]) {
 
 try {
   let [socket] = await withTimeout(connection, 20_000, "Worker connection");
-  async function send(command) {
+  async function send(command, events = []) {
     const requestId = randomUUID();
     const pending = new AbortController();
     const reply = (async () => {
@@ -202,6 +221,8 @@ try {
       })) {
         if (binary) continue;
         const response = JSON.parse(raw);
+        if (response.kind === "event" && response.requestId === requestId)
+          events.push(response.event);
         if (response.kind === "response" && response.requestId === requestId)
           return response;
       }
@@ -566,10 +587,29 @@ try {
   assert.equal((await send({ type: "surface.close", surfaceId })).ok, true);
   const [pid] = await readPids();
   assert.deepEqual(await readPids(), [pid]);
+  async function reconnectWorker() {
+    const reconnect = once(sockets, "connection");
+    socket.close();
+    [socket] = await withTimeout(reconnect, 20_000, "Worker reconnect");
+  }
 
-  const reconnect = once(sockets, "connection");
-  socket.close();
-  [socket] = await withTimeout(reconnect, 20_000, "Worker reconnect");
+  if (values["guest-image"]) {
+    await verifyCantripOsPreview({
+      image: values["guest-image"],
+      data: path.join(root, "profile"),
+      send,
+      serverId,
+      workerId,
+      ownerId,
+      endpointKey: previewKeys.get("client-control-content"),
+      hostProcesses: readPids,
+      reconnectWorker,
+    });
+    assert.deepEqual(await readPids(), [pid]);
+  } else {
+    await reconnectWorker();
+  }
+
   assert.deepEqual(await effects(3, debug), {
     revision: 6,
     configuration: off,
@@ -597,6 +637,7 @@ try {
   throw failure ?? error;
 } finally {
   key.fill(0);
+  for (const value of previewKeys.values()) value.fill(0);
   try {
     if (child.exitCode === null && child.signalCode === null) {
       child.stdin.end();

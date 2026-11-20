@@ -242,6 +242,7 @@ async fn cycle(
     let outgoing = Arc::new(Outbound::default());
     let desktop_inventory = crate::desktop_inventory::DesktopInventory::start(
         worker_root,
+        &data_directory,
         environment,
         encryption.clone(),
         outgoing.clone(),

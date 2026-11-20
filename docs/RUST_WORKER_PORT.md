@@ -8861,3 +8861,32 @@ Repeat the integrated check with
 `scripts/worker-rust/standalone-turn-smoke.mjs --cua-preview`.
 The fixture did not dispatch input to a live desktop or exercise guest
 clipboard and resize. Guest previews and agent computer use remain open.
+
+## 249. Route Rust previews to their assigned Cantrip OS desktop
+
+Reference commit `7c59cf72238cf5b9966c16abf60eacdf713cb676` (#3412).
+
+The worker checks preview authority against the Chat's captured OS execution
+record and opens the existing root-owned guest carrier. It verifies the
+guest instance, attachment, workspace account, desktop generation, and
+remote manager identity. Concurrent Chat leases for the same workspace share
+one carrier and own separate native sessions. Stop releases its session,
+the final owner closes the exact carrier, and command socket replacement
+revokes earlier leases. Guest and Host operations have separate execution
+queues.
+
+A local macOS ARM64 worker exercised a real Linux guest over Docker using
+the existing `cantrip-os-local-qa:2938-rekeyed` image. The fixture used an
+authenticated command socket and supplied captured placement records. It
+rejected a stale generation and a Host command for a captured guest Chat,
+opened two sessions on the guest carrier, decrypted a PNG, confirmed a
+coordinate click, read back clipboard text, and resized the display to
+800×600. Closing one lease preserved the other, closing both retired the
+carrier, and a reconnect cleaned up another live guest lease.
+
+Repeat with `scripts/worker-rust/desktop-inventory-smoke.mjs --guest-image`
+and an existing image with the current remote carrier. The Host preview
+smoke against production Rust Core and 12 Node reference tests also passed.
+SSH guest execution and the guest public API from Chat creation through
+placement capture still need integrated coverage. Agent computer use
+remains open.

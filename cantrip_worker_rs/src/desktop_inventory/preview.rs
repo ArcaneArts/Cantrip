@@ -1,6 +1,7 @@
 //! One authenticated native preview lifetime per Chat.
 mod activity;
 mod approvals;
+mod guest;
 mod input;
 mod native;
 mod protected;
@@ -16,10 +17,14 @@ use anyhow::{Context, Result, bail, ensure};
 use cantrip_wire::{JsString, Value, value::json};
 use std::{
     collections::HashMap,
+    path::PathBuf,
     sync::{Arc, Mutex, Weak},
 };
-use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
+use tokio::{
+    sync::{mpsc, oneshot, watch},
+    task::JoinHandle,
+};
 
 const SESSION_LIMIT: usize = 32;
 const OPEN: &str = "computer-use.preview.open";
@@ -41,6 +46,7 @@ struct Manager {
     encryption: Arc<Service>,
     outgoing: Arc<Outbound>,
     approvals: approvals::Approvals,
+    guests: guest::Guests,
     requests: mpsc::Sender<DesktopRequest>,
     retirements: mpsc::UnboundedSender<Arc<Lease>>,
 }
@@ -66,6 +72,7 @@ pub(super) struct Lease {
     abort: Abort,
     signal: Signal,
     session: Mutex<Option<native::Session>>,
+    guest: Mutex<Option<Arc<guest::Group>>>,
 }
 
 pub(super) struct Request {
@@ -87,6 +94,7 @@ impl Request {
 
 impl Previews {
     pub(super) fn new(
+        data: PathBuf,
         encryption: Arc<Service>,
         outgoing: Arc<Outbound>,
         requests: mpsc::Sender<DesktopRequest>,
@@ -96,6 +104,7 @@ impl Previews {
             leases: Mutex::default(),
             encryption,
             approvals: approvals::Approvals::new(outgoing.clone()),
+            guests: guest::Guests::new(data),
             outgoing,
             requests,
             retirements,
@@ -105,6 +114,27 @@ impl Previews {
             releases,
         };
         (Self(manager), retirements)
+    }
+
+    pub(super) fn monitor(&self, mut stop: watch::Receiver<bool>) -> JoinHandle<()> {
+        let previews = self.clone();
+        let mut epoch = self.0.outgoing.stream_epoch();
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = stop.wait_for(|stopped| *stopped) => break,
+                    changed = epoch.changed() => {
+                        if changed.is_err() {
+                            break;
+                        }
+                        let generation = *epoch.borrow_and_update();
+                        previews.expire(generation);
+                    }
+                }
+            }
+            previews.remove_matching(|_| true);
+            previews.0.guests.close().await;
+        })
     }
 
     pub(crate) async fn execute(
@@ -164,6 +194,7 @@ impl Previews {
             abort,
             signal,
             session: Mutex::default(),
+            guest: Mutex::default(),
         });
         let result = lease.public()?;
         leases.insert(lease.id.clone(), lease);
@@ -250,7 +281,11 @@ impl Previews {
             .abort
             .abort(anyhow::anyhow!("Computer-use preview authority expired."));
         self.0.approvals.revoke(&lease.id);
-        let _ = self.0.retirements.send(lease);
+        if lease.authority["osPlacement"].is_null() {
+            let _ = self.0.retirements.send(lease);
+        } else {
+            self.0.guests.release(lease);
+        }
     }
 
     fn identity(&self, identity: &Value) -> Result<()> {
@@ -343,7 +378,7 @@ impl Previews {
             let action = content.open()?;
             audit.action(&lease, &action);
             lease.signal.check()?;
-            native::require_host(&lease, &action)?;
+            let placement = self.0.guests.placement(&lease.authority)?;
             self.0.approvals.authorize(
                 &self.0.encryption,
                 &lease,
@@ -352,16 +387,21 @@ impl Previews {
                 &emit,
             )?;
             let (reply, result) = oneshot::channel();
-            self.0
-                .requests
-                .try_send(DesktopRequest::Preview(Request {
-                    lease: lease.clone(),
-                    deadline: (action["operation"] != "input.perform")
-                        .then(|| Instant::now() + DEADLINE),
-                    action,
-                    reply,
-                }))
-                .map_err(|_| native::reject("capacity", "Computer-use preview is busy."))?;
+            let request = Request {
+                lease: lease.clone(),
+                deadline: (action["operation"] != "input.perform")
+                    .then(|| Instant::now() + DEADLINE),
+                action,
+                reply,
+            };
+            if let Some(execution) = placement {
+                self.0.guests.dispatch(request, &execution).await?;
+            } else {
+                self.0
+                    .requests
+                    .try_send(DesktopRequest::Preview(request))
+                    .map_err(|_| native::reject("capacity", "Computer-use preview is busy."))?;
+            }
             result.await.context("The native desktop helper stopped.")?
         }
         .await;

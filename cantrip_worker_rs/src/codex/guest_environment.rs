@@ -21,7 +21,7 @@ pub(super) struct Environment {
     pub instructions: String,
 }
 
-pub(super) fn record_path(data: &Path, authority: &Value, chat: &JsString) -> PathBuf {
+pub(crate) fn record_path(data: &Path, authority: &Value, chat: &JsString) -> PathBuf {
     // All identity fields are strings. Canonical and ordinary JSON yield the
     // same array bytes as the previously shipped worker.
     let key = payload_digest(&Value::Array(vec![
@@ -33,7 +33,7 @@ pub(super) fn record_path(data: &Path, authority: &Value, chat: &JsString) -> Pa
     data.join("os-agent-placements").join(format!("{key}.json"))
 }
 
-pub(super) fn stored(file: &Path) -> Result<Option<Value>> {
+pub(crate) fn stored(file: &Path) -> Result<Option<Value>> {
     match read_bounded(file, MAX_RECORD_BYTES) {
         Ok(raw) => {
             let record = parse_json_text(std::str::from_utf8(&raw)?)
