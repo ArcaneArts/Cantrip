@@ -173,6 +173,7 @@ impl std::error::Error for NativeFailure {}
 pub(super) struct Settled {
     pub status: &'static str,
     pub result: Result<Value>,
+    pub provider_failure: Option<JsString>,
 }
 
 pub(super) async fn collect(
@@ -401,7 +402,17 @@ pub(super) async fn collect_restored(
                     "interrupted" => Err(anyhow::anyhow!("The Codex turn was interrupted.")),
                     _ => Err(NativeFailure::classify(&params["turn"]["error"]).into()),
                 };
-                return Ok(Settled { status, result });
+                // Retain only the endpoint-safe diagnostic. Chat and Task
+                // failures still use their existing generic failure path.
+                let provider_failure = (status == "failed")
+                    .then(|| params["turn"]["error"]["message"].as_js_string())
+                    .flatten()
+                    .map(crate::codex::provider_errors::safe_endpoint);
+                return Ok(Settled {
+                    status,
+                    result,
+                    provider_failure,
+                });
             }
             _ => {}
         }

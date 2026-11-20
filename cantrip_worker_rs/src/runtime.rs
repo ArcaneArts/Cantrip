@@ -655,6 +655,21 @@ async fn cycle(
                     finish(&request, &worker, logs, &outgoing, began, &result);
                     continue;
                 }
+                if kind == crate::codex::turn::provider_test::COMMAND {
+                    let preparation = thread_preparation.clone();
+                    let encryption = encryption.clone();
+                    let signal = command_signal.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = crate::codex::turn::provider_test::execute(
+                            &request["command"], &preparation, &encryption, signal,
+                        ).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if matches!(kind, crate::model_operations::EMBEDDING | crate::model_operations::DECISION) {
                     let operations = model_operations.clone();
                     let signal = command_signal.clone();

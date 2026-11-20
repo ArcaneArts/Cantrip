@@ -16,6 +16,7 @@ mod output;
 mod params;
 mod policy;
 mod protected;
+pub(crate) mod provider_test;
 pub(crate) mod queue_wake;
 mod queued;
 pub(super) use protected::runtime_text;

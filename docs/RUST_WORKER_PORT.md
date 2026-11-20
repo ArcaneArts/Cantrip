@@ -9369,3 +9369,22 @@ production Rust worker and Rust Core in PGlite mode. It used an isolated
 listener list with real loopback endpoints to verify global and project
 discovery, encrypted round-trips, session cleanup, redirect rejection and
 saving a discovered project configuration.
+
+## 270. Run Settings provider connection tests with the Rust worker
+
+Reference commit `0523efd8fb4ac3f9dfd46eba6b4e46c824cb7af5` (#3433).
+
+The worker opens the saved credential and selects the same provider runtime
+and model route used by conversation turns. It admits a real Codex turn on
+an ephemeral thread with a disposable workspace, a read-only sandbox, and no
+shell or attached MCP servers. A nonempty reply is required. The worker waits
+for native settlement before releasing the workspace. Provider failures use
+the endpoint-safe diagnostic so Core can classify them without provider
+credentials or raw response bodies.
+
+The macOS ARM64 `standalone-turn-smoke.mjs --provider-connection-test` run
+used Rust Core in PGlite mode, the Rust worker, bundled Codex, and a loopback
+Responses fixture. It verified encrypted credential use, streamed success,
+repeated HTTP 401 replies, an empty reply failure, recovery, and cleanup.
+The existing worker and public response contracts matched 354 Node and Rust
+comparisons.
