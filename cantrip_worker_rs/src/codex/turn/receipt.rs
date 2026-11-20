@@ -1145,9 +1145,9 @@ impl Client {
         activation: Value,
         origin: &'static str,
     ) -> Result<(Receipt<'_>, bool, Value)> {
-        let claim = command
-            .get("queueClaim")
-            .filter(|_| command["type"] == crate::codex::goals::QUEUE_EXECUTE);
+        let claim = command.get("queueClaim").filter(|_| {
+            method == "turn/steer" || command["type"] == crate::codex::goals::QUEUE_EXECUTE
+        });
         let operation = command["operationId"]
             .as_js_string()
             .cloned()
@@ -1240,6 +1240,9 @@ impl Client {
         if method == "serverRequest/reply" {
             request["reply"] = command["reply"].clone();
             request["intent"]["expectedTurnId"] = command["expectedTurnId"].clone();
+        }
+        if method == "turn/steer" {
+            request["intent"]["expectedTurnId"] = params["expectedTurnId"].clone();
         }
         if let Some(claim) = claim {
             request["queueClaim"] = claim.clone();

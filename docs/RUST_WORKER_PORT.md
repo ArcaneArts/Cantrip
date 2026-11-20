@@ -8680,3 +8680,27 @@ The managed Codex CLI smoke and 40 focused Node reference cases passed.
 The separate Node queue execution fixture, enabled with the bundled Codex,
 timed out waiting for its first provider input. The GUI case reproduced
 the same timeout on the reference commit.
+
+## 242. Steer active native Chats from the public queue
+
+Reference commit `3863b8114bce4381a110272d77f93d2c1fbe6df4` (#3405).
+
+The worker handles the protected steer variant of `chat.native-control` and
+the older `chat.steer` command. It selects the live turn and opens the user
+message and any retained native input using the existing queue and attachment
+formats. Managed steering records its own encrypted receipt with the exact
+Core claim, activation, and native turn. The worker checks the selected turn
+again when forwarding the RPC. Only a result identifying that turn is applied.
+
+On macOS ARM64, production Rust Core with PGlite, the Rust worker, and
+bundled Codex 0.166.0 processed two protected steers into one Project Chat
+turn. The first used the ordinary queued message and the second carried a
+retained native input. The real runtime forwarded both to the loopback
+provider. Core consumed both queue items and history kept one copy of each
+original protected message. The fixture also rejected requests missing the
+queue revision. Repeat with
+`scripts/worker-rust/standalone-turn-smoke.mjs --queued-steer`.
+
+The restored-interaction regression and 65 focused Node reference cases
+passed. The older unbound worker command was compile-checked. Terminal-originated
+steering through the managed gateway and Windows runtime coverage remain open.

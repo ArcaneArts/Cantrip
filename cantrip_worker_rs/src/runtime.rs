@@ -830,9 +830,10 @@ async fn cycle(
                     });
                     continue;
                 }
-                if matches!(kind, crate::codex::turn::RUN | crate::codex::turn::INTERRUPT | crate::codex::turn::CONTROL | crate::codex::turn::STOP_SUSPENSION | crate::codex::turn::PAUSE_SET) {
+                if matches!(kind, crate::codex::turn::RUN | crate::codex::turn::INTERRUPT | crate::codex::turn::CONTROL | crate::codex::turn::STEER | crate::codex::turn::STOP_SUSPENSION | crate::codex::turn::PAUSE_SET) {
                     let observations = worker_link.clone();
                     let turns = turns.clone();
+                    let signal = command_signal.clone();
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();
                     let worker = worker.clone();
@@ -840,7 +841,8 @@ async fn cycle(
                         let command = &request["command"];
                         let (result, note) = match command["type"].as_str() {
                             Some(crate::codex::turn::INTERRUPT) => (turns.interrupt(command).await, None),
-                            Some(crate::codex::turn::CONTROL) => (turns.control(command).await, None),
+                            Some(crate::codex::turn::CONTROL) => (turns.control(command, signal).await, None),
+                            Some(crate::codex::turn::STEER) => (turns.steer(command, signal).await, None),
                             Some(crate::codex::turn::STOP_SUSPENSION) => (turns.stop_suspension(command).await, None),
                             Some(crate::codex::turn::PAUSE_SET) => (turns.set_pause(command).await, None),
                             _ => {

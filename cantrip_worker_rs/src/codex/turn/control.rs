@@ -2,12 +2,13 @@
 mod chat_pause;
 pub(super) mod pause;
 mod restore;
+mod steer;
 mod stop;
 pub(crate) mod task_pause;
 pub(crate) const PAUSE_SET: &str = "chat.pause.set";
 mod task_stop;
 use super::{Active, Phase, RPC_TIMEOUT, Runtime, Turns, output};
-use crate::{chat_content::Scope, codex::rpc_requests::Failure, http::checked};
+use crate::{chat_content::Scope, codex::rpc_requests::Failure, http::checked, metadata::Signal};
 use anyhow::{Context, Result, bail};
 use cantrip_wire::{JsString, Value, payload_digest, value::json};
 use std::sync::{OnceLock, atomic::Ordering};
@@ -47,6 +48,7 @@ impl Action<'_> {
 pub(super) struct Binding {
     pub(super) session: Value,
     permission: Value,
+    input_target: Value,
     published: watch::Sender<Option<bool>>,
     checkpoint: OnceLock<output::Continuation>,
     pause_control: Mutex<()>,
@@ -55,11 +57,20 @@ pub(super) struct Binding {
 }
 
 impl Binding {
-    pub(super) fn new(session: Value, permission: Value, thread_version: u64) -> Self {
+    pub(super) fn new(
+        session: Value,
+        permission: Value,
+        thread_version: u64,
+        target: &Value,
+    ) -> Self {
         Self {
             session,
             interactions: OnceLock::new(),
             permission,
+            input_target: json!({
+                "model":target["model"],"provider":json!({"kind":target["provider"]["kind"]}),
+                "osExecution":target["osExecution"],
+            }),
             published: watch::channel(None).0,
             checkpoint: OnceLock::new(),
             pause_control: Mutex::default(),
@@ -101,11 +112,15 @@ impl Selection {
 }
 
 impl Active {
-    async fn select_control(&self, binding: &Binding) -> Result<Option<Selection>> {
+    async fn select_control(
+        &self,
+        binding: &Binding,
+        require_logical_open: bool,
+    ) -> Result<Option<Selection>> {
         let mut phase_updates = self.changed.subscribe();
         let mut receipt_updates = binding.published.subscribe();
         loop {
-            if self.logical_finished.load(Ordering::Relaxed) {
+            if require_logical_open && self.logical_finished.load(Ordering::Relaxed) {
                 return Ok(None);
             }
             {
@@ -145,11 +160,12 @@ impl Active {
 }
 
 impl Turns {
-    pub(crate) async fn control(&self, command: &Value) -> Result<Value> {
+    pub(crate) async fn control(&self, command: &Value, signal: Signal) -> Result<Value> {
         let action = match command["control"]["kind"].as_str() {
             Some("reply") => return self.interaction(command).await,
             Some("interrupt") => Action::Stop,
             Some("pause") => Action::Pause(command["control"]["paused"] == true),
+            Some("steer") => return self.steer(command, signal).await,
             _ => bail!("This native control requires a different managed execution path."),
         };
         self.control_active(command, action).await
@@ -231,7 +247,7 @@ impl Turns {
                 &json!({"interrupted": interrupted}),
             )
         };
-        let Some(selected) = active.select_control(binding).await? else {
+        let Some(selected) = active.select_control(binding, true).await? else {
             return match action {
                 Action::Pause(paused) => pause::result(paused, None),
                 Action::Resume(_) => Err(anyhow::anyhow!(

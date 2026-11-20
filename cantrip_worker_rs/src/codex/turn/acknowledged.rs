@@ -111,7 +111,7 @@ impl Turns {
                 root: Some(root.clone()),
                 project: session["projectId"].as_js_string().cloned(),
                 control: OnceLock::from(control::Binding::new(
-                    session.clone(), command["permissionProfileId"].clone(), loaded.version()
+                    session.clone(), command["permissionProfileId"].clone(), loaded.version(), command,
                 )),
                 queued_inference: OnceLock::new(),
                 task: OnceLock::new(),
