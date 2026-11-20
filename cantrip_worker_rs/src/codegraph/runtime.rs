@@ -11,6 +11,7 @@ use std::{
     ffi::OsString,
     fs,
     path::{Path, PathBuf},
+    process::Command as ProcessCommand,
     sync::{Arc, LazyLock, Mutex, Weak},
     time::Duration,
 };
@@ -109,6 +110,25 @@ fn message(value: &Captured) -> String {
 }
 
 impl Installation {
+    pub(super) fn current(storage: &Storage) -> Result<Option<Self>> {
+        let Some(current) = storage.current()? else {
+            return Ok(None);
+        };
+        let root = paths::canonical_sync(&storage.root)?;
+        let package = root.join("versions").join(&current.package);
+        let resolved = paths::canonical_sync(&package)?;
+        ensure!(
+            resolved == package,
+            "CodeGraph package is outside its managed version directory."
+        );
+        Ok(Some(Self::open(
+            &resolved,
+            &root.join(&current.executable),
+            &current.version,
+            current.package,
+        )?))
+    }
+
     fn open(
         package_root: &Path,
         executable: &Path,
@@ -147,8 +167,8 @@ impl Installation {
         })
     }
 
-    fn command(&self, directory: &Path) -> Command {
-        let mut command = Command::new(&self.program);
+    fn command(&self, directory: &Path) -> ProcessCommand {
+        let mut command = ProcessCommand::new(&self.program);
         command
             .current_dir(directory)
             .args(&self.arguments)
@@ -157,6 +177,15 @@ impl Installation {
             .env("CODEGRAPH_TELEMETRY", "0")
             .env("DO_NOT_TRACK", "1")
             .env("NO_COLOR", "1");
+        command
+    }
+
+    pub(super) fn mcp_command(&self, root: &Path) -> ProcessCommand {
+        let mut command = self.command(root);
+        command
+            .args(["serve", "--mcp", "--path"])
+            .arg(root)
+            .envs(super::agent::ENVIRONMENT);
         command
     }
 
@@ -170,7 +199,7 @@ impl Installation {
         let mut command = self.command(directory);
         command.args(args);
         let capture = scope
-            .capture_configured(command, OUTPUT_LIMIT, timeout, None)
+            .capture_configured(Command::from(command), OUTPUT_LIMIT, timeout, None)
             .await?;
         ensure!(
             capture.overflow.is_none(),
@@ -225,8 +254,7 @@ impl Installation {
         let uri = url::Url::from_directory_path(&root)
             .ok()
             .context("Invalid CodeGraph health directory.")?;
-        let mut command = self.command(&root);
-        command.args(["serve", "--mcp", "--path"]).arg(&root);
+        let command = Command::from(self.mcp_command(&root));
         let initialize = json!({"jsonrpc":"2.0","id":0,"method":"initialize",
             "params":json!({"protocolVersion":"2025-11-25","capabilities":json!({}),
                 "clientInfo":json!({"name":"cantrip-runtime-check","version":"1.0.0"}),"rootUri":uri.as_str()})});
@@ -279,6 +307,10 @@ impl Runtime {
         self.snapshot.lock().unwrap().active.clone()
     }
 
+    pub(super) async fn project_lock(&self, root: &Path, scope: &Scope) -> Result<fs::File> {
+        self.storage.project_lock(root, scope).await
+    }
+
     pub(super) fn status(&self) -> Value {
         let state = self.snapshot.lock().unwrap();
         let available = state.active.is_some();
@@ -286,7 +318,7 @@ impl Runtime {
             "installedVersion":state.active.as_ref().map(|active| active.version.as_str()),
             "latestVersion":state.latest,"previousVersion":state.previous,"lastCheckedAt":state.last_checked,
             "telemetryDisabled":available,"healthy":available && state.error.is_none(),"statusMessage":state.error,
-            "cliAvailable":available,"mcpInjectionAvailable":false})
+            "cliAvailable":available,"mcpInjectionAvailable":available})
     }
 
     pub(super) fn failed(&self, error: &anyhow::Error) {
@@ -303,24 +335,10 @@ impl Runtime {
 
     pub(super) async fn reopen(&self, scope: &Scope) -> Result<bool> {
         self.storage.prepare()?;
-        let Some(current) = self.storage.current()? else {
+        let Some(installed) = Installation::current(&self.storage)? else {
             return Ok(false);
         };
-        let root = paths::canonical(&self.storage.root).await?;
-        let versions = root.join("versions");
-        let package = versions.join(&current.package);
-        let resolved = paths::canonical(&package).await?;
-        ensure!(
-            resolved == package,
-            "CodeGraph package is outside its managed version directory."
-        );
-        let installed = Installation::open(
-            &resolved,
-            &root.join(&current.executable),
-            &current.version,
-            current.package,
-        )?;
-        installed.verify_cli(scope, &root).await?;
+        installed.verify_cli(scope, &self.storage.root).await?;
         self.activate(installed);
         Ok(true)
     }

@@ -15,6 +15,7 @@ export async function createPreparedProjectChat({
   keyRevision,
   labelKey,
   title,
+  beforeChat,
 }) {
   const workspaceId = randomUUID();
   const { nameProtection } =
@@ -46,6 +47,7 @@ export async function createPreparedProjectChat({
     () => call("GET", `${projectUrl}/folder-setup`, 200),
     (row) => assert.equal(row.state, "succeeded", JSON.stringify(row)),
   );
+  await beforeChat?.({ projectId, workspaceId });
   const chatId = randomUUID();
   await call("POST", `${projectUrl}/chats`, 201, {
     id: chatId,

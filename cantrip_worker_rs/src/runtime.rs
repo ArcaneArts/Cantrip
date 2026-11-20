@@ -351,6 +351,24 @@ async fn cycle(
         skill_root.clone(),
         worker.clone(),
     );
+    let publish_observation = {
+        let outgoing = outgoing.clone();
+        let routing = routing.clone();
+        Arc::new(move |notification| {
+            routing
+                .protect_notification(&notification)
+                .ok()
+                .flatten()
+                .is_some_and(|notification| outgoing.notification(notification).unwrap_or(false))
+        })
+    };
+    let codegraph = crate::codegraph::Supervisor::new(
+        &data_directory,
+        stop_rx.clone(),
+        worktrees.clone(),
+        logs.clone(),
+        publish_observation.clone(),
+    );
     let thread_preparation = crate::codex::preparation::command::Ensurer::new(
         codex.clone(),
         provider_access.clone(),
@@ -361,6 +379,7 @@ async fn cycle(
         cli.contexts(),
         managed_web.clone(),
         browser_surfaces.clone(),
+        codegraph.clone(),
     );
     let history = crate::history::managed::runtime::open(
         configuration.clone(),
@@ -387,24 +406,6 @@ async fn cycle(
     thread_preparation.configure_autonomous(turns.autonomous(routing.clone()))?;
     turns.configure_queue_imports()?;
     turns.configure_settings_publisher(logs.clone())?;
-    let publish_observation = {
-        let outgoing = outgoing.clone();
-        let routing = routing.clone();
-        Arc::new(move |notification| {
-            routing
-                .protect_notification(&notification)
-                .ok()
-                .flatten()
-                .is_some_and(|notification| outgoing.notification(notification).unwrap_or(false))
-        })
-    };
-    let codegraph = crate::codegraph::Supervisor::new(
-        &data_directory,
-        stop_rx.clone(),
-        worktrees.clone(),
-        logs.clone(),
-        publish_observation.clone(),
-    );
     replicas.set_removal_lifecycle({
         let codegraph = codegraph.clone();
         Arc::new(move |root, remove| {

@@ -11,6 +11,7 @@ use super::{
     native::{self, LoadedThread},
 };
 use crate::{
+    codegraph::Supervisor,
     codex::{
         guest_environment::Environment,
         managed::{Runtime, WeakRuntime, Worker},
@@ -109,6 +110,7 @@ struct Inner {
     worker: JsString,
     preparation: Coordinator,
     broker: OnceCell<Broker>,
+    codegraph: Arc<Supervisor>,
     web: Arc<crate::managed_web::Runtimes>,
     browser_surfaces: Arc<crate::browser_surface::Manager>,
     cli_contexts: crate::cli::Contexts,
@@ -129,6 +131,7 @@ impl Ensurer {
         cli_contexts: crate::cli::Contexts,
         web: Arc<crate::managed_web::Runtimes>,
         browser_surfaces: Arc<crate::browser_surface::Manager>,
+        codegraph: Arc<Supervisor>,
     ) -> Self {
         let (data, worker) = {
             let config = settings.lock().unwrap();
@@ -152,6 +155,7 @@ impl Ensurer {
             worker,
             preparation,
             broker: OnceCell::new(),
+            codegraph,
             web,
             browser_surfaces,
             cli_contexts,
@@ -633,6 +637,20 @@ impl Ensurer {
                         }
                         let session = &command["session"];
                         let mut mcp = mcp;
+                        if !structured
+                            && !standalone
+                            && !guest
+                            && !stopping
+                            && let Some(codegraph) = this
+                                .0
+                                .codegraph
+                                .agent_mcp(&this.0.data, &cwd, Some(session))
+                                .await
+                        {
+                            mcp["codegraph"] = codegraph;
+                        }
+                        resource.signal.check()?;
+                        this.assert_bound(&bound)?;
                         let admission = if structured {
                             None
                         } else {
@@ -1152,10 +1170,14 @@ impl Ensurer {
         model_provider: &str,
     ) -> Result<JsString> {
         let cwd = field(command, "cwd")?;
+        let mut mcp = json!({});
+        if let Some(codegraph) = self.0.codegraph.agent_mcp(&self.0.data, &cwd, None).await {
+            mcp["codegraph"] = codegraph;
+        }
         let mut configuration = profile::configuration(
             command,
             &cwd,
-            json!({}),
+            mcp,
             Some(runtime.generation().into()),
             model_provider,
             false,

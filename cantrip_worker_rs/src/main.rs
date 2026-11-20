@@ -7,6 +7,9 @@ fn main() -> Result<()> {
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("mcp")) {
         return cantrip_worker::mcp::run(std::env::args_os().skip(2));
     }
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("codegraph-mcp")) {
+        return cantrip_worker::launch_codegraph_mcp(std::env::args_os().skip(2));
+    }
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("chromium-probe")) {
         return cantrip_worker::browser_probe::run(std::env::args_os().skip(2));
     }

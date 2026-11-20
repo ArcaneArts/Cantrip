@@ -2,9 +2,9 @@
 use super::runtime::{is_digest, now, version};
 use crate::filesystem::{Scope, paths};
 use anyhow::{Context, Result, ensure};
-use cantrip_wire::{Value, parse_json_text, value::json};
+use cantrip_wire::{Value, parse_json_text, payload_digest, value::json};
 use std::{
-    fs::{self, File},
+    fs::{self, File, OpenOptions, TryLockError},
     io::{self, Read, Write},
     path::{Component, Path, PathBuf},
     sync::LazyLock,
@@ -73,6 +73,37 @@ impl Storage {
 
     fn pointer(&self) -> PathBuf {
         self.root.join("bin").join("current.json")
+    }
+
+    /// Serialize creation of the database across the indexer and MCP launcher.
+    pub(super) async fn project_lock(&self, root: &Path, scope: &Scope) -> Result<File> {
+        let directory = self.root.join("project-locks");
+        cantrip_host::files::private_directory(&directory)?;
+        ensure!(
+            fs::symlink_metadata(&directory)?.is_dir(),
+            "CodeGraph lock storage is not a regular directory."
+        );
+        let name = payload_digest(&json!(paths::text(root)));
+        let mut options = OpenOptions::new();
+        options.read(true).write(true).create(true).truncate(false);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+        }
+        let file = options.open(directory.join(name))?;
+        loop {
+            scope.check()?;
+            match file.try_lock() {
+                Ok(()) => return Ok(file),
+                Err(TryLockError::WouldBlock) => {}
+                Err(TryLockError::Error(error)) => return Err(error.into()),
+            }
+            tokio::select! {
+                _ = scope.stopped() => anyhow::bail!("CodeGraph project operation stopped."),
+                _ = tokio::time::sleep(Duration::from_millis(50)) => {},
+            }
+        }
     }
 
     pub(super) fn current(&self) -> Result<Option<Current>> {
