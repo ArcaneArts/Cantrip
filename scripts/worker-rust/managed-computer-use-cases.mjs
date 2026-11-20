@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import {
   decryptEndpointContentPayload,
   decryptInteractionRequestContent,
@@ -8,6 +9,10 @@ import {
 } from "../../packages/crypto/dist/index.js";
 import { modelFunctions } from "../server-rust/task-model-provider.mjs";
 import { previewOperations } from "./computer-use-preview-cases.mjs";
+import {
+  createPreparedProjectChat,
+  openConsoleView,
+} from "./console-interaction-cases.mjs";
 
 export async function verifyManagedComputerUse({
   call,
@@ -20,6 +25,7 @@ export async function verifyManagedComputerUse({
   keyRevision,
   interactionKey,
   previewKey,
+  console: managedConsole,
   openMessage,
 }) {
   const { model, profile, provider } = await createModel(
@@ -49,10 +55,18 @@ export async function verifyManagedComputerUse({
     defaultChatPermissionProfileId: ":workspace",
     autoNameChats: false,
   });
-  const { chatId, chatUrl } = await createChat(
-    "Managed native computer use",
-    false,
-  );
+  const title = "Managed native computer use";
+  const { chatId, chatUrl } = managedConsole
+    ? await createPreparedProjectChat({
+        call,
+        eventually,
+        ownerId,
+        workerId,
+        keyRevision,
+        labelKey: managedConsole.labelKey,
+        title,
+      })
+    : await createChat(title, false);
   const tools = model.reply({ hold: true });
   const captured = model.reply({ hold: true });
   const afterReset = model.reply({ hold: true });
@@ -60,12 +74,39 @@ export async function verifyManagedComputerUse({
     hold: true,
     text: "The fixture capture completed.",
   });
-  await call(
-    "POST",
-    chatUrl + "/turns",
-    202,
-    await encryptedTurn("Observe the fixture window.", profile.id),
-  );
+  const prompt = "Observe the fixture window.";
+  let consoleTurn;
+  if (managedConsole) {
+    const url = await eventually(
+      () => readFile(managedConsole.socketFile, "utf8"),
+      (value) => assert.ok(value.startsWith("ws://127.0.0.1:")),
+    );
+    const view = await openConsoleView(url, eventually);
+    try {
+      const { threadId } = view;
+      const restored = await view.request(2, "thread/resume", { threadId });
+      assert.equal(
+        restored.result?.thread.id,
+        threadId,
+        JSON.stringify(restored),
+      );
+      const started = await view.request(3, "turn/start", {
+        threadId,
+        input: [{ type: "text", text: prompt, text_elements: [] }],
+      });
+      assert.ok(started.result?.turn?.id, JSON.stringify(started));
+      consoleTurn = { threadId, turnId: started.result.turn.id };
+    } finally {
+      view.close();
+    }
+  } else {
+    await call(
+      "POST",
+      chatUrl + "/turns",
+      202,
+      await encryptedTurn(prompt, profile.id),
+    );
+  }
   await eventually(
     () => tools.entered,
     (entered) => assert.equal(entered, true),
@@ -156,6 +197,10 @@ export async function verifyManagedComputerUse({
     assert.equal(record.provenance.workerId, workerId);
     for (const id of ["threadId", "turnId", "executionLaneId"])
       assert.ok(record.provenance[id]);
+    if (consoleTurn) {
+      assert.equal(record.provenance.threadId, consoleTurn.threadId);
+      assert.equal(record.provenance.turnId, consoleTurn.turnId);
+    }
     if (provenance) assert.deepEqual(record.provenance, provenance);
     provenance = record.provenance;
     const permissions = {
@@ -398,6 +443,11 @@ export async function verifyManagedComputerUse({
   );
   assert.deepEqual(model.failures, []);
   console.log(
-    JSON.stringify({ suite: "native-managed-computer-use", passed: true }),
+    JSON.stringify({
+      suite: managedConsole
+        ? "native-console-computer-use"
+        : "native-managed-computer-use",
+      passed: true,
+    }),
   );
 }

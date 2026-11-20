@@ -7,7 +7,7 @@ use crate::{
 use anyhow::{Context, Result};
 use cantrip_wire::{JsString, Value, value::json};
 use std::{
-    sync::Arc,
+    sync::{Arc, OnceLock, Weak},
     time::{Duration, Instant},
 };
 use tokio::sync::{mpsc, oneshot};
@@ -18,6 +18,7 @@ pub(super) enum Event {
 }
 type Events = mpsc::UnboundedReceiver<Event>;
 pub(super) type Capture = mpsc::UnboundedSender<Event>;
+pub(super) type ComputerUseObserver = Arc<OnceLock<Weak<super::computer_use::Turn>>>;
 pub(super) struct Continuation {
     pub channel: Capture,
     pub seed: Value,
@@ -74,7 +75,7 @@ pub(super) fn subscribe_with_context(
     observation: &RuntimeHub,
     thread: &JsString,
     context: Option<Arc<super::context::ContextTurn>>,
-    computer_use: Option<Arc<super::computer_use::Turn>>,
+    computer_use: Option<ComputerUseObserver>,
 ) -> Result<(Subscription, Events, Capture)> {
     let (observed, events) = mpsc::unbounded_channel();
     let capture = observed.clone();
@@ -83,7 +84,11 @@ pub(super) fn subscribe_with_context(
         Observer {
             capture: Arc::new(move |frame| {
                 if observes(&frame["method"]) {
-                    if let Some(computer_use) = &computer_use {
+                    if let Some(computer_use) = computer_use
+                        .as_ref()
+                        .and_then(|observer| observer.get())
+                        .and_then(Weak::upgrade)
+                    {
                         computer_use.observe(&frame);
                     }
                     if let Some(context) = &context {

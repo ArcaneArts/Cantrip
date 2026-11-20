@@ -272,8 +272,15 @@ impl Protected {
             Some(
                 "agent.interaction.requested.protected"
                 | "agent.interaction.cleared"
-                | "agent.interaction.expired",
+                | "agent.interaction.expired"
+                | "computer-use.approval.request"
+                | "computer-use.approval.terminal",
             ) => Ok(event.clone()),
+            Some("agent.protected-message")
+                if event["telemetry"]["activityType"] == "computerUse" =>
+            {
+                Ok(event.clone())
+            }
             _ => bail!("The protected turn cannot publish this event."),
         }
     }

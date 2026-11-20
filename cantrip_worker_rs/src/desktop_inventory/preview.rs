@@ -167,6 +167,10 @@ impl Previews {
         self.0.observations.turn()
     }
 
+    pub(crate) fn current_epoch(&self) -> u64 {
+        *self.0.outgoing.stream_epoch().borrow()
+    }
+
     pub(crate) async fn execute(
         &self,
         command: &Value,
